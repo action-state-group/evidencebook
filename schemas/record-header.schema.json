@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/action-state-group/evidencebook/schemas/record-header.schema.json",
+  "title": "Evidence Layer record header (evidencebook wire form, v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "book_id", "seq", "record_type", "epistemic_type", "committed_at", "links"],
+  "properties": {
+    "v": { "const": 1 },
+    "book_id": { "type": "string", "minLength": 1 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "record_type": { "type": "string", "minLength": 1 },
+    "epistemic_type": { "$ref": "#/$defs/epistemicType" },
+    "committed_at": { "type": "string", "format": "date-time" },
+    "event_time_claim": { "type": "string", "format": "date-time" },
+    "payload_commitments": { "type": "array", "items": { "$ref": "#/$defs/digest" } },
+    "retention_state": { "$ref": "#/$defs/retentionState" },
+    "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
+    "subject_ref": { "type": "string" },
+    "principal_ref": { "type": "string" },
+    "counterparty_ref": { "type": "string" },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exchange_id": { "type": "string" },
+        "request_digest": { "type": "string" },
+        "twin_bracket_id": { "type": "string" }
+      }
+    },
+    "statement": {}
+  },
+  "dependentRequired": { "payload_commitments": ["retention_state"] },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "epistemicType": {
+      "enum": [
+        "observed_event",
+        "system_of_record_fact",
+        "producer_claim",
+        "human_report",
+        "semantic_judgment",
+        "derived_metric",
+        "adjudication",
+        "obligation_reference"
+      ]
+    },
+    "linkType": { "enum": ["cites", "adjudicates", "supersedes", "acknowledges", "rebuts", "closes"] },
+    "retentionState": { "enum": ["AVAILABLE", "PARTIAL", "WITHHELD", "DELETED", "LEGAL_HOLD"] },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "target"],
+      "properties": {
+        "type": { "$ref": "#/$defs/linkType" },
+        "target": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}
