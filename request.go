@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -125,9 +126,13 @@ type ArtifactResponse struct {
 	Sig            string          `json:"sig"`
 }
 
+// ArtifactResponseType is the context member of an artifact response's
+// signing body, so its signature cannot be read as any other statement.
+const ArtifactResponseType = "evidence-artifact-response/v1"
+
 // SigningBody is the exact bytes an artifact response signature covers.
 func (a ArtifactResponse) SigningBody() ([]byte, error) {
-	return canonicalJSON(map[string]string{"request_digest": a.RequestDigest, "anchor": a.Anchor, "artifact_kind": a.ArtifactKind, "artifact_digest": a.ArtifactDigest, "issued_at": a.IssuedAt})
+	return canonicalJSON(map[string]string{"type": ArtifactResponseType, "request_digest": a.RequestDigest, "anchor": a.Anchor, "artifact_kind": a.ArtifactKind, "artifact_digest": a.ArtifactDigest, "issued_at": a.IssuedAt})
 }
 
 // Verify checks the signature and that the artifact bytes hash to the signed digest.
@@ -507,7 +512,8 @@ type SentRequest struct {
 }
 
 // Request records that this book is asking responder for evidence and
-// returns the canonical bytes to transmit. Recording happens before sending,
+// returns the canonical bytes to transmit. An empty nonce is filled with a
+// fresh random one, and a nonce this book already used is refused. Recording happens before sending,
 // so "I asked" is committed whatever comes back.
 func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder string) (SentRequest, error) {
 	if !validSubject(req.Subject) || (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
@@ -517,6 +523,13 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 		if _, err := time.Parse(time.RFC3339Nano, req.Deadline); err != nil {
 			return SentRequest{}, fmt.Errorf("%w: deadline: %v", ErrInvalid, err)
 		}
+	}
+	if req.Nonce == "" {
+		nonce := make([]byte, 16)
+		if _, err := rand.Read(nonce); err != nil {
+			return SentRequest{}, err
+		}
+		req.Nonce = hex.EncodeToString(nonce)
 	}
 	data, err := canonicalJSON(req)
 	if err != nil {
@@ -528,6 +541,16 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// A unique nonce gives every request unique bytes and so a unique digest;
+	// a response to an earlier identical request can never be replayed onto it.
+	for _, id := range b.order {
+		if b.records[id].Header.RecordType != RecordTypeRequest {
+			continue
+		}
+		if prior, err := b.sentLocked(id); err == nil && prior.request.Nonce == req.Nonce {
+			return SentRequest{}, fmt.Errorf("%w: nonce already used by request %s", ErrInvalid, id)
+		}
+	}
 	record, err := b.appendLocked(ctx, Entry{RecordType: RecordTypeRequest, EpistemicType: ObservedEvent, Statement: body})
 	if err != nil {
 		return SentRequest{}, err
@@ -560,12 +583,13 @@ func (b *Book) sentLocked(requestRecordID string) (sentRequest, error) {
 }
 
 // ResponseStatement is the body of the record a requester seals on receipt.
+// KeyID is always the pinned responder key the response verified under.
 type ResponseStatement struct {
 	RequestDigest string `json:"request_digest"`
 	Outcome       string `json:"outcome"`
 	Reason        string `json:"reason,omitempty"`
-	KeyID         string `json:"key_id,omitempty"`
-	KeyPinned     bool   `json:"key_pinned"`
+	KeyID         string `json:"key_id"`
+	CheckpointKey string `json:"checkpoint_key_id"`
 	ArtifactKind  string `json:"artifact_kind,omitempty"`
 	Artifact      string `json:"artifact_digest,omitempty"`
 	Anchor        string `json:"anchor,omitempty"`
@@ -579,39 +603,57 @@ const (
 	OutcomeArtifactFailed = "artifact_failed_verification"
 )
 
+// ResponderKeys are the responder's keys as the requester obtained them,
+// independently of any response: Signer signs refusals and artifact
+// responses, Checkpoint signs the checkpoints an artifact is anchored to.
+type ResponderKeys struct {
+	Signer     string
+	Checkpoint string
+}
+
 // RecordResponse verifies and records what came back for the request
-// recorded as requestRecordID. responderKeyID, when set, is the key the
-// requester expects the responder to sign with; a response under any other
-// key is refused. An artifact that fails verification is recorded as
-// received-and-failed, never as a grant and never as an absence.
-func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp Response, responderKeyID string) (Record, error) {
+// recorded as requestRecordID. Both responder keys are required. A response
+// that does not verify under the pinned signer key is refused and is not
+// recorded: an unauthenticated message can neither become an outcome nor
+// foreclose the real one. An artifact that is genuinely signed by the
+// responder but fails verification (wrong subject, anchor, freshness, or
+// proofs) is recorded as received-and-failed, never as a grant and never
+// as an absence.
+func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp Response, keys ResponderKeys) (Record, error) {
+	if keys.Signer == "" || keys.Checkpoint == "" {
+		return Record{}, fmt.Errorf("%w: pinned responder signer and checkpoint keys are required", ErrInvalid)
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sent, err := b.sentLocked(requestRecordID)
 	if err != nil {
 		return Record{}, err
 	}
-	statement := ResponseStatement{RequestDigest: sent.digest, KeyPinned: responderKeyID != ""}
+	statement := ResponseStatement{RequestDigest: sent.digest, KeyID: keys.Signer, CheckpointKey: keys.Checkpoint}
 	switch {
 	case resp.Refusal != nil && resp.Artifact == nil:
-		if resp.Refusal.RequestDigest != sent.digest {
-			return Record{}, fmt.Errorf("%w: refusal names a different request", ErrInvalid)
+		r := resp.Refusal
+		if r.RequestDigest != sent.digest || r.KeyID != keys.Signer {
+			return Record{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
 		}
-		if err := resp.Refusal.Verify(); err != nil {
+		if err := r.Verify(); err != nil {
 			return Record{}, err
 		}
-		statement.Outcome, statement.Reason, statement.KeyID = OutcomeRefusal, resp.Refusal.Reason, resp.Refusal.KeyID
+		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
 	case resp.Artifact != nil && resp.Refusal == nil:
 		a := resp.Artifact
-		statement.Outcome, statement.KeyID, statement.ArtifactKind, statement.Artifact, statement.Anchor = OutcomeArtifact, a.KeyID, a.ArtifactKind, a.ArtifactDigest, a.Anchor
-		if err := verifyArtifact(sent, *a); err != nil {
+		if a.RequestDigest != sent.digest || a.KeyID != keys.Signer {
+			return Record{}, fmt.Errorf("%w: artifact is not for this request under the pinned responder key", ErrInvalid)
+		}
+		if err := a.Verify(); err != nil {
+			return Record{}, err
+		}
+		statement.Outcome, statement.ArtifactKind, statement.Artifact, statement.Anchor = OutcomeArtifact, a.ArtifactKind, a.ArtifactDigest, a.Anchor
+		if err := verifyArtifactContent(sent, *a, keys.Checkpoint); err != nil {
 			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
 		}
 	default:
 		return Record{}, fmt.Errorf("%w: a response carries exactly one of artifact or refusal", ErrInvalid)
-	}
-	if responderKeyID != "" && statement.KeyID != responderKeyID {
-		return Record{}, fmt.Errorf("%w: response is signed by %s, not the expected responder key", ErrInvalid, statement.KeyID)
 	}
 	body, err := json.Marshal(statement)
 	if err != nil {
@@ -623,16 +665,16 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp 
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypeResponse, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body})
 }
 
-// verifyArtifact checks the signature, then that the artifact answers the
-// request that was recorded: same subject, the pinned anchor or one at
-// least as fresh as asked, and proofs that verify.
-func verifyArtifact(sent sentRequest, a ArtifactResponse) error {
-	if a.RequestDigest != sent.digest {
-		return fmt.Errorf("%w: artifact names a different request", ErrInvalid)
-	}
-	if err := a.Verify(); err != nil {
-		return err
-	}
+type subjectExtension struct {
+	Subject Subject  `json:"subject"`
+	Matched []string `json:"matched"`
+}
+
+// verifyArtifactContent checks that a responder-signed artifact answers the
+// request that was recorded: same subject, an anchor signed by the pinned
+// checkpoint key, the pinned anchor or one at least as fresh as asked, and
+// proofs that verify. The envelope signature is already checked.
+func verifyArtifactContent(sent sentRequest, a ArtifactResponse, checkpointKey string) error {
 	coverage := sent.request.Coverage
 	var anchor Pin
 	var entries uint64
@@ -641,14 +683,14 @@ func verifyArtifact(sent sentRequest, a ArtifactResponse) error {
 		if sent.request.Subject.Kind != SubjectCheckpoints {
 			return fmt.Errorf("%w: a checkpoints artifact does not answer a %s subject", ErrInvalid, sent.request.Subject.Kind)
 		}
-		var artifact checkpointsArtifact
-		if err := json.Unmarshal(a.Artifact, &artifact); err != nil {
-			return fmt.Errorf("%w: checkpoints artifact: %v", ErrInvalid, err)
-		}
-		if err := VerifyCheckpoints(artifact.Checkpoints, artifact.Consistency); err != nil {
+		artifact, err := strictDecode[checkpointsArtifact](a.Artifact)
+		if err != nil {
 			return err
 		}
-		last := artifact.Checkpoints[len(artifact.Checkpoints)-1]
+		last, err := VerifyCheckpoints(artifact.Checkpoints, artifact.Consistency, checkpointKey)
+		if err != nil {
+			return err
+		}
 		if last.ID != a.Anchor {
 			return fmt.Errorf("%w: checkpoints do not end at the signed anchor", ErrInvalid)
 		}
@@ -658,13 +700,14 @@ func verifyArtifact(sent sentRequest, a ArtifactResponse) error {
 		if err != nil {
 			return err
 		}
-		if !verified.AnchorAuthenticated || fmt.Sprintf("%s:%d", verified.Anchor.Root, verified.Anchor.MMRSize) != a.Anchor {
+		if !verified.AnchorAuthenticated || verified.AnchorKeyID != checkpointKey {
+			return fmt.Errorf("%w: bundle is not anchored to a checkpoint signed by the pinned key", ErrInvalid)
+		}
+		if fmt.Sprintf("%s:%d", verified.Anchor.Root, verified.Anchor.MMRSize) != a.Anchor {
 			return fmt.Errorf("%w: bundle is not covered by the signed anchor", ErrInvalid)
 		}
-		var subject struct {
-			Subject Subject `json:"subject"`
-		}
-		if err := json.Unmarshal(verified.Extensions[ExtensionSubject], &subject); err != nil || subject.Subject != sent.request.Subject {
+		subject, err := strictDecode[subjectExtension](verified.Extensions[ExtensionSubject])
+		if err != nil || subject.Subject != sent.request.Subject {
 			return fmt.Errorf("%w: bundle answers a different subject", ErrInvalid)
 		}
 		anchor, entries = Pin{Root: verified.Anchor.Root, MMRSize: verified.Anchor.MMRSize}, verified.IntervalLast
@@ -700,6 +743,10 @@ type AbsenceStatement struct {
 	WindowEnd     string `json:"window_end"`
 }
 
+// MinimumAbsenceWindow is the shortest waiting window an absence may claim,
+// measured from when the request was recorded.
+const MinimumAbsenceWindow = time.Minute
+
 // RecordAbsence commits that no response arrived for the recorded request
 // between its recording and windowEnd. The request, its deadline and the
 // window start come from the committed request record. It refuses while the
@@ -715,6 +762,13 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 	}
 	if windowEnd.After(b.now()) {
 		return Record{}, fmt.Errorf("%w: the waiting window has not closed; the request is pending", ErrInvalid)
+	}
+	asked, err := time.Parse(time.RFC3339Nano, sent.record.Header.CommittedAt)
+	if err != nil {
+		return Record{}, fmt.Errorf("%w: committed_at of request %s: %v", ErrCorrupt, requestRecordID, err)
+	}
+	if windowEnd.Before(asked.Add(MinimumAbsenceWindow)) {
+		return Record{}, fmt.Errorf("%w: a waiting window must end at least %s after the request was recorded", ErrInvalid, MinimumAbsenceWindow)
 	}
 	if sent.request.Deadline != "" {
 		deadline, err := time.Parse(time.RFC3339Nano, sent.request.Deadline)

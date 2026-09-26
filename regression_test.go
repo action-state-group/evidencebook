@@ -305,15 +305,15 @@ func TestRecordResponseEnforcesThePinnedResponderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp := respond(t, responder, sent.Bytes, "requester")
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, resp, KeyID(requester.signer)); !errors.Is(err, ErrInvalid) {
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, resp, ResponderKeys{Signer: KeyID(requester.signer), Checkpoint: checkpointKeyID(1)}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("a response under a key other than the pinned one was recorded")
 	}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, KeyID(responder.signer))
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var statement ResponseStatement
-	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || !statement.KeyPinned || statement.Outcome != OutcomeArtifact {
+	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.KeyID != KeyID(responder.signer) || statement.Outcome != OutcomeArtifact {
 		t.Fatalf("pinned response: %+v %v", statement, err)
 	}
 }
@@ -332,11 +332,11 @@ func TestCheckpointsArtifactProofsAreVerified(t *testing.T) {
 	if err := json.Unmarshal(artifact.Artifact, &cps); err != nil {
 		t.Fatal(err)
 	}
-	if err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency); err != nil {
+	if _, err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency, checkpointKeyID(1)); err != nil {
 		t.Fatalf("an honest checkpoint history does not verify: %v", err)
 	}
 	cps.Consistency[0], cps.Consistency[1] = cps.Consistency[1], cps.Consistency[0]
-	if err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency); !errors.Is(err, ErrInvalid) {
+	if _, err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
 		t.Fatal("swapped consistency proofs verified")
 	}
 }

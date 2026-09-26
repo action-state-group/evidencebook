@@ -15,8 +15,17 @@ import (
 )
 
 // AuthenticatedIndex is a deterministic structure whose root the book commits
-// as a record, so membership, non-membership, range and completeness claims
-// about it are checkable by a party that does not trust the book.
+// as a record.
+//
+// What a party that does not trust the book can check, and what it cannot:
+// a membership proof shows a (key, record id) leaf is under the committed
+// root, with no further trust. Non-membership, range and completeness proofs
+// additionally rely on the committed tree being sorted and holding every
+// record: a book that commits an unsorted or incomplete tree can prove a
+// false absence or omit a match. Only a party holding the full leaf set (for
+// example the book's full history) can audit that, by rebuilding the root.
+// Those three claims are therefore statements by the book, checkable against
+// its commitment but not against a dishonest book.
 type AuthenticatedIndex interface {
 	Name() string
 	// KeyOf returns the key a record contributes, or false for none.
@@ -319,7 +328,12 @@ func interior(left, right []byte) []byte {
 
 // KeyRangeAnswer is a key-range proof bound to what the book committed: the
 // index root it verifies under, the index_root record that committed that
-// root, and the checkpoint that covers that record.
+// root, and the checkpoint that covers that record. This package ships no
+// standalone verifier for the binding (that the root equals the index_root
+// record's statement and that the record is included under Anchor); a
+// relying party checks the proof with VerifyKeyRange and the binding from a
+// bundle carrying the index_root record. See AuthenticatedIndex for what the
+// proof does not establish against a dishonest book.
 type KeyRangeAnswer struct {
 	Root         IndexRoot     `json:"root"`
 	RootRecordID string        `json:"root_record_id"`

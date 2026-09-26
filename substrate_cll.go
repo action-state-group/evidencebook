@@ -314,35 +314,58 @@ func decodeRecordID(recordID string) ([]byte, error) {
 	return hex.DecodeString(recordID)
 }
 
-// VerifyCheckpoints checks a checkpoints/v1 history: every statement verifies
-// under its own key, matches the fields it is listed with, and each
-// consistency proof shows the next checkpoint append-only extends the
-// previous one. A relying party still pins the key it expects.
-func VerifyCheckpoints(checkpoints []Checkpoint, consistency []ConsistencyEvidence) error {
+// VerifyCheckpoints checks a checkpoints/v1 history and returns its newest
+// checkpoint as the signed statement states it. Every field is taken from
+// the signed statement, never from the listed copy: each statement must
+// verify, sign under pinnedKey, name the same log as the first, and match
+// its listed fields exactly; sizes must strictly grow; and each consistency
+// proof must show the next signed root append-only extends the previous one.
+func VerifyCheckpoints(checkpoints []Checkpoint, consistency []ConsistencyEvidence, pinnedKey string) (Checkpoint, error) {
+	if pinnedKey == "" {
+		return Checkpoint{}, fmt.Errorf("%w: a pinned checkpoint key is required", ErrInvalid)
+	}
 	if len(checkpoints) == 0 {
-		return fmt.Errorf("%w: no checkpoints", ErrInvalid)
+		return Checkpoint{}, fmt.Errorf("%w: no checkpoints", ErrInvalid)
 	}
 	if len(consistency) != len(checkpoints)-1 {
-		return fmt.Errorf("%w: %d consistency proofs for %d checkpoints", ErrInvalid, len(consistency), len(checkpoints))
+		return Checkpoint{}, fmt.Errorf("%w: %d consistency proofs for %d checkpoints", ErrInvalid, len(consistency), len(checkpoints))
 	}
-	for i, cp := range checkpoints {
-		parsed, err := checkpointFromStatement(cp.Statement)
+	signed := make([]Checkpoint, len(checkpoints))
+	for i, listed := range checkpoints {
+		parsed, err := checkpointFromStatement(listed.Statement)
 		if err != nil {
-			return err
+			return Checkpoint{}, err
 		}
-		if parsed.ID != cp.ID || parsed.LogID != cp.LogID || parsed.KeyID != checkpoints[0].KeyID || parsed.KeyID != cp.KeyID {
-			return fmt.Errorf("%w: checkpoint %d does not match its signed statement or key", ErrInvalid, i)
+		if parsed.KeyID != pinnedKey {
+			return Checkpoint{}, fmt.Errorf("%w: checkpoint %d is signed by %s, not the pinned key", ErrInvalid, i, parsed.KeyID)
 		}
-		if i == 0 {
-			continue
+		if !sameCheckpoint(parsed, listed) {
+			return Checkpoint{}, fmt.Errorf("%w: checkpoint %d's listed fields differ from its signed statement", ErrInvalid, i)
 		}
-		if err := verifyCLLConsistency(checkpoints[i-1], cp, consistency[i-1]); err != nil {
-			return fmt.Errorf("checkpoint %d: %w", i, err)
+		if i > 0 {
+			if parsed.LogID != signed[0].LogID {
+				return Checkpoint{}, fmt.Errorf("%w: checkpoint %d names log %s, not %s", ErrInvalid, i, parsed.LogID, signed[0].LogID)
+			}
+			if parsed.TreeSize <= signed[i-1].TreeSize {
+				return Checkpoint{}, fmt.Errorf("%w: checkpoint %d does not grow the log", ErrInvalid, i)
+			}
+			if err := verifyCLLConsistency(signed[i-1], parsed, consistency[i-1]); err != nil {
+				return Checkpoint{}, fmt.Errorf("checkpoint %d: %w", i, err)
+			}
 		}
+		signed[i] = parsed
 	}
-	return nil
+	return signed[len(signed)-1], nil
 }
 
+func sameCheckpoint(signed, listed Checkpoint) bool {
+	return signed.Kind == listed.Kind && signed.LogID == listed.LogID && signed.ID == listed.ID &&
+		signed.Entries == listed.Entries && signed.Root == listed.Root && signed.TreeSize == listed.TreeSize &&
+		signed.KeyID == listed.KeyID && signed.IssuedAt.Equal(listed.IssuedAt)
+}
+
+// verifyCLLConsistency must only be called with checkpoints parsed from
+// their signed statements.
 func verifyCLLConsistency(older, newer Checkpoint, evidence ConsistencyEvidence) error {
 	var wire portableConsistency
 	if evidence.Kind != "cll-mmr-consistency" || json.Unmarshal(evidence.Proof, &wire) != nil {

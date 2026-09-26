@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sync"
@@ -100,4 +101,10 @@ func appendRaw(t *testing.T, path, text string) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// responderKeys pins a fixture book's signing and checkpoint keys, as a
+// requester would obtain them out of band. seed is the fixture's seed.
+func responderKeys(book *Book, seed byte) ResponderKeys {
+	return ResponderKeys{Signer: KeyID(book.signer), Checkpoint: hex.EncodeToString(seededKey(seed + 100)[32:])}
 }

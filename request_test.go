@@ -269,7 +269,7 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 		t.Fatalf("absence recorded while pending: %v", err)
 	}
 	resp := respond(t, responder, sent.Bytes, "requester")
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, "")
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestRecordResponseMarksUnverifiableArtifactAsFailed(t *testing.T) {
 	if err := a.Verify(); err != nil {
 		t.Fatalf("the re-signed envelope must verify so only the bundle can fail: %v", err)
 	}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, "")
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}

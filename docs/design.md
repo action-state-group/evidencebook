@@ -82,10 +82,12 @@ with the error so the caller does not append it twice.
 carried inside the capsule. A bundle discloses headers as the `agent_input`
 member of its disclosure overlay, and the neutral verifier reports each one as
 matched against its commitment or as withheld. Suppressing `agent_input`
-leaves every header withheld with its digest (§6.2). `VerifyBundle` reads a
-disclosed header only if re-encoding it reproduces the disclosed JSON
-exactly, so a header with an unknown, duplicate or case-variant key is
-refused rather than read differently from another implementation.
+leaves every header withheld with its digest (§6.2). `VerifyBundle` reads
+every member from the one decoded tree the neutral verifier checked, by
+exact key, and refuses a bundle holding two keys that differ only by case
+anywhere in it, so the verifier and the reader can never see different
+members. It reads a disclosed header only if re-encoding it reproduces the
+disclosed JSON exactly.
 
 **What a bundle discloses.** Only the selected set (the root's closure plus
 `Include`) is ever disclosed. Other records in the interval ride along as
@@ -150,13 +152,21 @@ replaces the older `no_such_record`.
 Absence is the requester's own signed record that nothing arrived in its
 window. `RecordResponse` and `RecordAbsence` take the id of the committed
 request record and re-derive the request bytes, digest, deadline and window
-start from it. `RecordAbsence` refuses while the request is pending, and both
-refuse once any outcome is recorded, so outcomes never convert.
-`RecordResponse` verifies an artifact against the recorded request: the
-signed anchor, the subject the bundle states it answers, the pinned
-checkpoint or the freshness floor, and, for a `checkpoints` answer, every
-checkpoint signature and consistency proof. Passing the responder's key pins
-it; a response under another key is refused.
+start from it. `RecordAbsence` refuses while the request is pending,
+including a window shorter than `MinimumAbsenceWindow` from the recording,
+and both refuse once any outcome is recorded, so outcomes never convert.
+`RecordResponse` requires `ResponderKeys`, the responder's signing and
+checkpoint keys as the requester obtained them. A response that does not
+verify under the pinned signing key is refused and not recorded, so a forged
+message can neither become an outcome nor foreclose the real one. A signed
+artifact is then checked against the recorded request: the signed anchor,
+signed by the pinned checkpoint key; the subject the bundle states it
+answers; the pinned checkpoint or the freshness floor; and, for a
+`checkpoints` answer, every field of every checkpoint taken from its signed
+statement plus every consistency proof. A signed artifact that fails those
+checks is recorded as received-and-failed. `Request` gives every request a
+unique nonce, so no two requests share a digest and an old answer cannot be
+replayed onto a new request.
 
 **Reconcile correlation.** Pairing runs in two passes over all halves, so it
 does not depend on input order: `exchange_id` first, preferring a counterpart
@@ -218,10 +228,15 @@ not by validating produced headers against it.
   refusals and artifacts are signed through the `Signer` interface, so any
   custodian works for those. Routing checkpoint signing through `Signer` needs
   a cll-go signer constructor that accepts an external signing function.
-- **Absence proofs need a sorted tree.** A `KeyRangeProof` checks neighbour
-  ordering around the proved range. Anyone holding the full leaf set can
-  recompute the committed root and confirm the tree is sorted; a verifier
-  holding only the proof relies on the root having been built by this code.
+- **Non-membership, range and completeness are the book's statements.** A
+  membership proof is checkable against the committed root with no trust in
+  the book. A non-membership, range or completeness proof checks neighbour
+  ordering around the proved range, and is sound only if the committed tree
+  is sorted and holds every record; a dishonest book can commit a tree that
+  is neither and prove a false absence. Only a party holding the full leaf
+  set can audit that, by rebuilding the root. `KeyRangeAnswer` has no
+  standalone verifier for its root-to-record-to-anchor binding; a relying
+  party checks it from a bundle carrying the `index_root` record.
 - **Bundles run to the checkpoint tip.** Evidence Bundle v2 requires a
   membership for every position from the first carried record to the
   checkpoint's tip, so a bundle carries every record capsule in that
@@ -232,6 +247,13 @@ not by validating produced headers against it.
   `EvidenceRequest` encoding here (`digest`, `first`/`last`, `value`;
   `min_freshness` as `size`/`time`) differs from the one `capsule_emit`
   currently speaks, so the two do not yet exchange requests directly.
+- **The refusal signing body has no context member.** The artifact response
+  body carries `"type": "evidence-artifact-response/v1"`. The refusal body is
+  kept byte-compatible with `capsule_emit`, which signs exactly
+  `issued_at`, `reason`, `request_digest` (verified in both directions), so
+  adding a context member there is a coordinated change across both
+  implementations, not a change this package makes alone. The two bodies
+  have disjoint member sets, so neither signature verifies as the other.
 - **The signer is called with the book locked.** A slow remote signer
   serializes the book.
 - **Index operations are linear.** The in-memory authenticated index and the

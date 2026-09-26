@@ -325,29 +325,38 @@ func (b *Book) anchorLocked(ctx context.Context, at *Checkpoint) (Checkpoint, er
 	return Checkpoint{}, fmt.Errorf("%w: checkpoint %s was not issued by this book", ErrNotFound, at.ID)
 }
 
-// strictHeader decodes a disclosed header only if re-encoding it reproduces
-// the disclosed value exactly. The disclosure digest covers the disclosed
-// JSON, so any key the struct would ignore, merge or read case-insensitively
-// (a duplicate "seq"/"SEQ", an unknown field) is refused rather than read
-// differently from other implementations.
-func strictHeader(raw json.RawMessage) (Header, error) {
+// strictDecode decodes raw into T only if re-encoding the result reproduces
+// raw's canonical form exactly. Any key the struct would ignore, merge, or
+// match case-insensitively (an unknown field, a duplicate "seq"/"SEQ") makes
+// the two differ, so the value is refused rather than read differently from
+// other implementations.
+func strictDecode[T any](raw json.RawMessage) (T, error) {
+	var zero, out T
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	var header Header
-	if err := decoder.Decode(&header); err != nil {
-		return Header{}, fmt.Errorf("%w: header: %v", ErrInvalid, err)
+	if err := decoder.Decode(&out); err != nil {
+		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	disclosed, err := decodeJSON(raw)
 	if err != nil {
-		return Header{}, fmt.Errorf("%w: header: %v", ErrInvalid, err)
+		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	want, err := canonical.JCS(disclosed)
 	if err != nil {
-		return Header{}, fmt.Errorf("%w: header: %v", ErrInvalid, err)
+		return zero, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	got, err := canonicalJSON(header)
+	got, err := canonicalJSON(out)
 	if err != nil || !bytes.Equal(got, want) {
-		return Header{}, fmt.Errorf("%w: header does not re-encode to the disclosed value", ErrInvalid)
+		return zero, fmt.Errorf("%w: value does not re-encode to what was disclosed", ErrInvalid)
+	}
+	return out, nil
+}
+
+// strictHeader decodes a disclosed header strictly and validates it.
+func strictHeader(raw json.RawMessage) (Header, error) {
+	header, err := strictDecode[Header](raw)
+	if err != nil {
+		return Header{}, err
 	}
 	return header, validateHeader(header)
 }
@@ -392,17 +401,26 @@ func (v VerifiedBundle) Covers(seq uint64) bool {
 // VerifyBundle checks a bundle with the neutral AAC Evidence Bundle verifier
 // and then reads the evidence-layer content out of what verified. It never
 // trusts the producer's own verification member.
+//
+// Everything is read from the one decoded tree the verifier checked, by
+// exact key, so the verifier and this reader can never see different
+// members: a second copy of a member under a case-variant key ("Disclosures",
+// "CHECKPOINT") is refused outright, and a member present only under a
+// case-variant key is simply absent, exactly as the verifier sees it.
 func VerifyBundle(data []byte) (VerifiedBundle, error) {
 	decoded, err := decodeJSON(data)
 	if err != nil {
 		return VerifiedBundle{}, fmt.Errorf("%w: bundle JSON: %v", ErrInvalid, err)
 	}
-	result := aacbundle.VerifyBundle(decoded)
-	var wire bundleWire
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return VerifiedBundle{}, fmt.Errorf("%w: bundle shape: %v", ErrInvalid, err)
+	tree := jsonNode{value: decoded}
+	if !tree.isObject() {
+		return VerifiedBundle{}, fmt.Errorf("%w: bundle is not a JSON object", ErrInvalid)
 	}
-	out := VerifiedBundle{Payloads: make(map[string][]byte), Extensions: wire.Extensions}
+	if err := rejectFoldedKeys(tree, "$"); err != nil {
+		return VerifiedBundle{}, err
+	}
+	result := aacbundle.VerifyBundle(decoded)
+	out := VerifiedBundle{Payloads: make(map[string][]byte), Extensions: make(map[string]json.RawMessage)}
 	if result.BundleDigest != nil {
 		out.Digest = *result.BundleDigest
 	}
@@ -412,12 +430,17 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		}
 		out.Findings = append(out.Findings, claim.Findings...)
 	}
-	if wire.Certificate != nil && wire.Checkpoint != nil {
-		out.LogID, out.Anchor = wire.Certificate.LogID, *wire.Checkpoint
-		out.IntervalFirst, out.IntervalLast = wire.Certificate.FirstSeq, wire.Certificate.LastSeq
+	certificate, checkpointMember := tree.get("completeness_certificate"), tree.get("checkpoint")
+	if certificate.isObject() && checkpointMember.isObject() {
+		out.LogID, _ = certificate.get("log_id").str()
+		out.IntervalFirst, _ = certificate.get("first_seq").uint()
+		out.IntervalLast, _ = certificate.get("last_seq").uint()
+		out.Anchor.Root, _ = checkpointMember.get("root").str()
+		out.Anchor.MMRSize, _ = checkpointMember.get("mmr_size").uint()
+		out.Anchor.COSE, _ = checkpointMember.get("cose").str()
 		out.AnchorAuthenticated = result.IntervalCoverage.Status == "pass" && !slices.Contains(result.IntervalCoverage.Findings, "checkpoint_unverified")
 		if out.AnchorAuthenticated {
-			statement, err := base64.RawURLEncoding.DecodeString(wire.Checkpoint.COSE)
+			statement, err := base64.RawURLEncoding.DecodeString(out.Anchor.COSE)
 			if err != nil {
 				return out, fmt.Errorf("%w: checkpoint statement: %v", ErrInvalid, err)
 			}
@@ -425,7 +448,16 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 			if err != nil {
 				return out, err
 			}
+			if cp.Root != out.Anchor.Root || cp.TreeSize != out.Anchor.MMRSize || cp.LogID != out.LogID {
+				return out, fmt.Errorf("%w: checkpoint statement does not name the verified interval", ErrInvalid)
+			}
 			out.AnchorKeyID = cp.KeyID
+		}
+	}
+	extensions := tree.get("extensions")
+	for _, key := range extensions.keys() {
+		if out.Extensions[key], err = extensions.get(key).canonical(); err != nil {
+			return out, fmt.Errorf("%w: extension %s: %v", ErrInvalid, key, err)
 		}
 	}
 	matched := make(map[string]bool)
@@ -434,34 +466,35 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 			matched[d.CapsuleID] = true
 		}
 	}
-	for _, raw := range wire.Records {
-		var binding capsuleBinding
-		if err := json.Unmarshal(raw, &binding); err != nil {
-			return out, fmt.Errorf("%w: bundle record: %v", ErrInvalid, err)
+	for _, record := range tree.get("records").items() {
+		id, ok := record.get("capsule_id").str()
+		if !ok {
+			return out, fmt.Errorf("%w: bundle record has no capsule_id", ErrInvalid)
 		}
-		peer := PeerRecord{RecordID: binding.CapsuleID, CapsuleOK: result.CapsuleResults[binding.CapsuleID].OK}
-		if wire.Certificate != nil {
-			peer.Seq = wire.Certificate.Memberships[binding.CapsuleID].LogCoordinates.Seq
-		}
-		if raw, ok := wire.Disclosures[binding.CapsuleID][HeaderMember]; ok && matched[binding.CapsuleID] {
-			if header, err := strictHeader(raw); err == nil {
-				peer.Header, peer.HeaderVerified = &header, true
+		peer := PeerRecord{RecordID: id, CapsuleOK: result.CapsuleResults[id].OK}
+		peer.Seq, _ = certificate.get("memberships").get(id).get("log_coordinates").get("seq").uint()
+		if header := tree.get("disclosures").get(id).get(HeaderMember); header.present() && matched[id] {
+			raw, err := header.canonical()
+			if err != nil {
+				return out, fmt.Errorf("%w: disclosed header: %v", ErrInvalid, err)
+			}
+			if parsed, err := strictHeader(raw); err == nil {
+				peer.Header, peer.HeaderVerified = &parsed, true
 			}
 		}
 		out.Records = append(out.Records, peer)
 	}
-	if raw, ok := wire.Extensions[ExtensionPayloads]; ok {
-		var encoded map[string]string
-		if err := json.Unmarshal(raw, &encoded); err != nil {
-			return out, fmt.Errorf("%w: payload extension: %v", ErrInvalid, err)
+	payloads := extensions.get(ExtensionPayloads)
+	for _, digest := range payloads.keys() {
+		value, ok := payloads.get(digest).str()
+		if !ok {
+			return out, fmt.Errorf("%w: disclosed payload %s is not a string", ErrInvalid, digest)
 		}
-		for digest, value := range encoded {
-			data, err := base64.RawURLEncoding.DecodeString(value)
-			if err != nil || digestBytes(data) != digest {
-				return out, fmt.Errorf("%w: disclosed payload does not hash to %s", ErrInvalid, digest)
-			}
-			out.Payloads[digest] = data
+		data, err := base64.RawURLEncoding.DecodeString(value)
+		if err != nil || digestBytes(data) != digest {
+			return out, fmt.Errorf("%w: disclosed payload does not hash to %s", ErrInvalid, digest)
 		}
+		out.Payloads[digest] = data
 	}
 	return out, nil
 }
