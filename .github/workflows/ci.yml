@@ -64,7 +64,7 @@ jobs:
         run: go test -race ./...
 
   python-cll-interop:
-    name: Python interoperability (CLL checkpoint and proofs, capsule-emit refusal)
+    name: Python interoperability (AAC bundle verifier, CLL checkpoint and proofs, capsule-emit refusal)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -87,13 +87,14 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Install Python CLL and capsule-emit
-        run: python -m pip install ./checkpointed-local-log "capsule-emit==0.8.6"
+      - name: Install Python CLL, the AAC bundle verifier and capsule-emit
+        run: python -m pip install ./checkpointed-local-log "agent-action-capsule==0.6.0" "capsule-emit==0.8.6"
       - name: Verify a Go-produced bundle with the Python reference
         shell: bash
         run: |
           interop_dir=$(mktemp -d)
           trap 'rm -rf "$interop_dir"' EXIT
           go -C evidencebook run ./test/interop/bundle "$interop_dir/book" "$interop_dir/bundle.json" "$interop_dir/refusal.json"
+          python evidencebook/test/interop/python-aac/verify_bundle.py "$interop_dir/bundle.json"
           python evidencebook/test/interop/python-cll/verify_bundle.py "$interop_dir/bundle.json"
           python evidencebook/test/interop/python-cll/verify_refusal.py "$interop_dir/refusal.json"

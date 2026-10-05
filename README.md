@@ -59,8 +59,28 @@ go test ./...
 go test -race ./...
 ```
 
-CI also verifies a bundle produced here with the Python CLL reference
-(`test/interop/python-cll/verify_bundle.py`).
+CI also verifies a bundle produced here with the Python Agent Action Capsule
+bundle verifier (`test/interop/python-aac/verify_bundle.py`) and the Python
+CLL reference (`test/interop/python-cll/verify_bundle.py`).
+
+## Other implementations and parity
+
+- **Rust:** the `evidencebook` crate in
+  [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log)
+  (`rust/evidencebook`) implements the same evidence-layer semantics over the
+  Rust Checkpointed Local Log: records, epistemic types, links, disclosure,
+  retention, requests and reconcile/close.
+- **Parity vectors** shared across implementations, all checked in CI:
+  - `schemas/vendor/epistemic-types.json`: the epistemic type value set
+    (`TestEpistemicTypeThreeWayParity`);
+  - `testdata/refusal-interop/`: a refusal signed in Python, verified here;
+    a refusal signed here is verified in Python;
+  - `testdata/reconcile-parity/`: exchange halves and the Python correlator's
+    outcomes, which `ReconcileHalves` must match.
+- **Bundles** are Evidence Bundle v2: anything that verifies one (the Go and
+  Python Agent Action Capsule bundle verifiers) checks a bundle from a book.
+
+[docs/design.md](docs/design.md) lists every cross-implementation check.
 
 ## License
 
