@@ -1,0 +1,17 @@
+{
+  "$comment": "The closed value set of record.epistemic_type, as a machine-readable list. Tests read this file instead of a second hand-typed enum, so the two cannot drift apart; a change to the set is made here first.",
+  "source": {
+    "section": "Record header",
+    "owning_field": "record.epistemic_type"
+  },
+  "values": [
+    "OBSERVED_EVENT",
+    "SYSTEM_OF_RECORD_FACT",
+    "PRODUCER_CLAIM",
+    "HUMAN_REPORT",
+    "SEMANTIC_JUDGMENT",
+    "DERIVED_METRIC",
+    "ADJUDICATION",
+    "OBLIGATION_REFERENCE"
+  ]
+}
