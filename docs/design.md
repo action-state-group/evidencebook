@@ -200,6 +200,7 @@ never rewritten.
 |---|---|---|
 | Bundles and record capsules | `agent-action-capsule/go/bundle` and `go/verify` | `bundle_test.go` |
 | A Go-built bundle, whole: graph closure, interval coverage, per-record membership, every capsule; a changed record fails | Python `agent_action_capsule.bundle.verify_bundle` (the reference the Go verifier ports), pinned 0.6.0 | `test/interop/python-aac/verify_bundle.py`, CI job `python-cll-interop` |
+| A Python-built bundle (records sealed by Python `agent_action_capsule`, log, signed checkpoint, range and inclusion proofs by Python `cll`) fully verifies here; a changed record does not | `VerifyBundle` + `FullyVerified` | `test/interop/python-cll/build_bundle.py`, `test/interop/verify`, CI job `python-cll-interop` |
 | Checkpoint statement, interval range proof, every membership proof | Python `cll` (`checkpointed-local-log`, pinned commit) | `test/interop/python-cll/verify_bundle.py`, CI job `python-cll-interop` |
 | Checkpoint consistency proofs | cll-go `mmr.VerifyConsistency` | `VerifyCheckpoints`, `TestCheckpointsArtifactProofsAreVerified` |
 | Reconcile correlation | `capsule-emit-mesh` `served_request_join.join_served_request`, on halves sealed by its sidecar | `testdata/reconcile-parity/` (generator and fixture), `TestReconcileParityWithMeshCorrelator` |

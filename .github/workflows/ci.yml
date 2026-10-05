@@ -64,7 +64,7 @@ jobs:
         run: go test -race ./...
 
   python-cll-interop:
-    name: Python interoperability (AAC bundle verifier, CLL checkpoint and proofs, capsule-emit refusal)
+    name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -98,3 +98,15 @@ jobs:
           python evidencebook/test/interop/python-aac/verify_bundle.py "$interop_dir/bundle.json"
           python evidencebook/test/interop/python-cll/verify_bundle.py "$interop_dir/bundle.json"
           python evidencebook/test/interop/python-cll/verify_refusal.py "$interop_dir/refusal.json"
+      - name: Verify a Python-produced bundle with this module (and refuse a tampered one)
+        shell: bash
+        run: |
+          interop_dir=$(mktemp -d)
+          trap 'rm -rf "$interop_dir"' EXIT
+          python evidencebook/test/interop/python-cll/build_bundle.py "$interop_dir/bundle.json" "$interop_dir/tampered.json"
+          go -C evidencebook run ./test/interop/verify "$interop_dir/bundle.json"
+          if out=$(go -C evidencebook run ./test/interop/verify "$interop_dir/tampered.json" 2>&1); then
+            echo "a tampered Python-produced bundle verified: $out"; exit 1
+          fi
+          grep -q "evidencebook rejected the bundle" <<<"$out" || { echo "the tampered bundle failed for another reason: $out"; exit 1; }
+          echo "tampered copy rejected: $out"

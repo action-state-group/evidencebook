@@ -59,9 +59,12 @@ go test ./...
 go test -race ./...
 ```
 
-CI also verifies a bundle produced here with the Python Agent Action Capsule
-bundle verifier (`test/interop/python-aac/verify_bundle.py`) and the Python
-CLL reference (`test/interop/python-cll/verify_bundle.py`).
+CI also checks bundles both ways: a bundle produced here is verified by the
+Python Agent Action Capsule bundle verifier
+(`test/interop/python-aac/verify_bundle.py`) and the Python CLL reference
+(`test/interop/python-cll/verify_bundle.py`), and a bundle produced in Python
+(`test/interop/python-cll/build_bundle.py`) is verified here
+(`test/interop/verify`); a tampered copy must fail in each direction.
 
 ## Other implementations and parity
 
