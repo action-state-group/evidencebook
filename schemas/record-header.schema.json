@@ -34,6 +34,7 @@
   "$defs": {
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "epistemicType": {
+      "description": "Closed set owned by draft-mih-agent-evidence-layer-00 (posted revision 00, https://datatracker.ietf.org/doc/draft-mih-agent-evidence-layer/), section 4.1 'Epistemic Type'; interim registry: agent-action-capsule spec/REGISTRY.md section 17.",
       "enum": [
         "observed_event",
         "system_of_record_fact",
@@ -45,8 +46,14 @@
         "obligation_reference"
       ]
     },
-    "linkType": { "enum": ["cites", "adjudicates", "supersedes", "acknowledges", "rebuts", "closes"] },
-    "retentionState": { "enum": ["AVAILABLE", "PARTIAL", "WITHHELD", "DELETED", "LEGAL_HOLD"] },
+    "linkType": {
+      "description": "Closed set owned by draft-mih-agent-evidence-layer-00 (posted revision 00, https://datatracker.ietf.org/doc/draft-mih-agent-evidence-layer/), section 5 'Typed Links'; interim registry: agent-action-capsule spec/REGISTRY.md section 18.",
+      "enum": ["cites", "adjudicates", "supersedes", "acknowledges", "rebuts", "closes"]
+    },
+    "retentionState": {
+      "description": "The five states of draft-mih-agent-evidence-layer-00 (posted revision 00, https://datatracker.ietf.org/doc/draft-mih-agent-evidence-layer/), section 6.1 'Retention States'. The draft keeps this set out of its registries.",
+      "enum": ["AVAILABLE", "PARTIAL", "WITHHELD", "DELETED", "LEGAL_HOLD"]
+    },
     "link": {
       "type": "object",
       "additionalProperties": false,
