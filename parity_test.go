@@ -38,9 +38,9 @@ func sorted(values []string) []string {
 }
 
 // TestEpistemicTypeThreeWayParity: one value set, three places. The vendored
-// JSON is a byte-for-byte copy of the file capsule-engine's own parity test
-// reads; the Go constants and the published header schema must both equal
-// it. The vendored copy is upper-case and the wire form lower-case, so the
+// JSON is a byte-for-byte copy of the file the other implementations' parity
+// tests read (the Rust evidencebook crate vendors the same file); the Go
+// constants and the published header schema must both equal it. The vendored copy is upper-case and the wire form lower-case, so the
 // set is compared case-folded; the wire casing itself is pinned by the
 // schema enum and the Go constants, which must match exactly.
 func TestEpistemicTypeThreeWayParity(t *testing.T) {

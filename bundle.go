@@ -391,6 +391,39 @@ type VerifiedBundle struct {
 	// producer's statements; nothing in them is independently verified.
 	Extensions map[string]json.RawMessage
 	Findings   []string
+	// Claims is each of the three verifier claims' status ("pass",
+	// "withheld", "unverified", ...). VerifyBundle refuses only "fail";
+	// FullyVerified reports whether everything passed.
+	Claims BundleClaims
+}
+
+// BundleClaims is the status of each Evidence Bundle verifier claim.
+type BundleClaims struct {
+	GraphClosure        string
+	IntervalCoverage    string
+	PerRecordMembership string
+}
+
+// FullyVerified returns nil only when all three claims passed and every
+// record's capsule verified. VerifyBundle accepts a bundle whose claims are
+// "withheld" or "unverified" (nothing in it is false); a caller that treats
+// the bundle as proof of what it answers must also require this.
+func (v VerifiedBundle) FullyVerified() error {
+	for name, status := range map[string]string{
+		"graph closure":         v.Claims.GraphClosure,
+		"interval coverage":     v.Claims.IntervalCoverage,
+		"per-record membership": v.Claims.PerRecordMembership,
+	} {
+		if status != "pass" {
+			return fmt.Errorf("%w: bundle %s is %q, not pass", ErrInvalid, name, status)
+		}
+	}
+	for _, record := range v.Records {
+		if !record.CapsuleOK {
+			return fmt.Errorf("%w: bundle record %s does not verify as a capsule", ErrInvalid, record.RecordID)
+		}
+	}
+	return nil
 }
 
 // Covers reports whether the bundle proves seq is inside its authenticated interval.
@@ -420,7 +453,15 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		return VerifiedBundle{}, err
 	}
 	result := aacbundle.VerifyBundle(decoded)
-	out := VerifiedBundle{Payloads: make(map[string][]byte), Extensions: make(map[string]json.RawMessage)}
+	out := VerifiedBundle{
+		Payloads:   make(map[string][]byte),
+		Extensions: make(map[string]json.RawMessage),
+		Claims: BundleClaims{
+			GraphClosure:        result.GraphClosure.Status,
+			IntervalCoverage:    result.IntervalCoverage.Status,
+			PerRecordMembership: result.PerRecordMembership.Status,
+		},
+	}
 	if result.BundleDigest != nil {
 		out.Digest = *result.BundleDigest
 	}

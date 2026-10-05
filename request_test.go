@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -349,5 +350,81 @@ func TestRefusalSignedByCapsuleEmitVerifies(t *testing.T) {
 	refusal.Reason = ReasonPolicyDeclined
 	if refusal.Verify() == nil {
 		t.Fatal("a capsule_emit refusal with a changed reason still verifies")
+	}
+}
+
+// A responder-signed bundle whose claims are not all "pass" (here graph
+// closure is "withheld": the bundle declares a record missing) is recorded as
+// artifact_failed_verification, never as an artifact.
+func TestABundleWithAWithheldClaimIsAFailedArtifact(t *testing.T) {
+	ctx := context.Background()
+	responder, records := linkedBook(t)
+	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
+	requester := newFixture(t, "requester", 30).open(t)
+	keys := responderKeys(responder, 1)
+	ask := func() SentRequest {
+		sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()}, "book-a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sent
+	}
+	outcome := func(r Record) ResponseStatement {
+		var statement ResponseStatement
+		if err := json.Unmarshal(r.Header.Statement, &statement); err != nil {
+			t.Fatal(err)
+		}
+		return statement
+	}
+
+	// The genuine response is a fully verified artifact.
+	sent := ask()
+	genuine := respond(t, responder, sent.Bytes, "requester")
+	verified, err := VerifyBundle(genuine.Artifact.Artifact)
+	if err != nil || verified.FullyVerified() != nil {
+		t.Fatalf("the genuine bundle must fully verify: %v %v", err, verified.FullyVerified())
+	}
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, genuine, keys)
+	if err != nil || outcome(recorded).Outcome != OutcomeArtifact {
+		t.Fatalf("genuine response: %+v %v", outcome(recorded), err)
+	}
+
+	// The same answer with a record declared missing, re-signed by the
+	// responder: VerifyBundle accepts it (nothing is false), but graph
+	// closure is only "withheld".
+	sent = ask()
+	doctored := *respond(t, responder, sent.Bytes, "requester").Artifact
+	var bundle map[string]any
+	if err := json.Unmarshal(doctored.Artifact, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	completeness := bundle["completeness"].(map[string]any)
+	completeness["missing"], completeness["records_mode"] = []any{strings.Repeat("ab", 32)}, "declared_incomplete"
+	if doctored.Artifact, err = json.Marshal(bundle); err != nil {
+		t.Fatal(err)
+	}
+	withheld, err := VerifyBundle(doctored.Artifact)
+	if err != nil || withheld.Claims.GraphClosure != "withheld" || !withheld.AnchorAuthenticated {
+		t.Fatalf("the doctored bundle must verify with a withheld graph closure: %+v %v", withheld.Claims, err)
+	}
+	doctored.ArtifactDigest = digestBytes(doctored.Artifact)
+	body, err := doctored.SigningBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := responder.signer.Sign(ctx, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doctored.Sig = hex.EncodeToString(sig)
+	if err := doctored.Verify(); err != nil {
+		t.Fatalf("the re-signed response must carry a valid signature: %v", err)
+	}
+	recorded, err = requester.RecordResponse(ctx, sent.RecordID, Response{Artifact: &doctored}, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := outcome(recorded); got.Outcome != OutcomeArtifactFailed || !strings.Contains(got.Failure, "graph closure") {
+		t.Fatalf("a withheld-claim bundle was recorded as %+v", got)
 	}
 }

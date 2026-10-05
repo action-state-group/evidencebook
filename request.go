@@ -700,6 +700,12 @@ func verifyArtifactContent(sent sentRequest, a ArtifactResponse, checkpointKey s
 		if err != nil {
 			return err
 		}
+		// A bundle recorded as an answer must prove all of it: a claim that
+		// is only "withheld" or "unverified", or a record whose capsule does
+		// not verify, makes it a failed artifact, never a grant.
+		if err := verified.FullyVerified(); err != nil {
+			return err
+		}
 		if !verified.AnchorAuthenticated || verified.AnchorKeyID != checkpointKey {
 			return fmt.Errorf("%w: bundle is not anchored to a checkpoint signed by the pinned key", ErrInvalid)
 		}
