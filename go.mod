@@ -6,6 +6,7 @@ require (
 	github.com/action-state-group/agent-action-capsule/go v0.5.2-0.20260926200142-fcf238114581
 	github.com/action-state-group/capsule-emit-go v0.1.0
 	github.com/action-state-group/cll-go v0.0.0-20260926202724-9741da3d4ace
+	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/veraison/go-cose v1.3.0
 	modernc.org/sqlite v1.58.0
 )
@@ -13,7 +14,6 @@ require (
 require (
 	github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
