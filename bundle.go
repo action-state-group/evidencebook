@@ -383,10 +383,18 @@ type VerifiedBundle struct {
 	Anchor              BundleCheckpoint
 	AnchorAuthenticated bool
 	AnchorKeyID         string
-	IntervalFirst       uint64
-	IntervalLast        uint64
-	Records             []PeerRecord
-	Payloads            map[string][]byte
+	// AnchorStatement is the anchor's signed checkpoint statement, when
+	// AnchorAuthenticated.
+	AnchorStatement []byte
+	// Witnesses are the witness receipts the bundle carries
+	// (checkpoint.witnesses), as given. Nothing here verifies them: a
+	// requester checks them against the anchor under its own witness
+	// directory (RecordResponse does, through ResponderKeys.Witnesses).
+	Witnesses     []json.RawMessage
+	IntervalFirst uint64
+	IntervalLast  uint64
+	Records       []PeerRecord
+	Payloads      map[string][]byte
 	// Extensions are integrity-covered by the bundle digest but are the
 	// producer's statements; nothing in them is independently verified.
 	Extensions map[string]json.RawMessage
@@ -493,6 +501,22 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 				return out, fmt.Errorf("%w: checkpoint statement does not name the verified interval", ErrInvalid)
 			}
 			out.AnchorKeyID = cp.KeyID
+			out.AnchorStatement = statement
+		}
+		// A witnesses member, when present, is an array of receipts. Any other
+		// value (a lone receipt object, a string, null) is malformed: read as
+		// absent, it would let an answer's receipts go unchecked.
+		if stated, present := checkpointMember.value.(map[string]any)["witnesses"]; present {
+			if _, isArray := stated.([]any); !isArray {
+				return out, fmt.Errorf("%w: checkpoint.witnesses is not an array", ErrInvalid)
+			}
+		}
+		for _, entry := range checkpointMember.get("witnesses").items() {
+			raw, err := entry.canonical()
+			if err != nil {
+				return out, fmt.Errorf("%w: witness receipt: %v", ErrInvalid, err)
+			}
+			out.Witnesses = append(out.Witnesses, raw)
 		}
 	}
 	extensions := tree.get("extensions")

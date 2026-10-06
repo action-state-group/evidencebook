@@ -72,7 +72,7 @@ with the error so the caller does not append it twice.
 | §8, Evidence Bundle v2 wire | `CompletenessCertificate`, `RangeWitness`, `Membership`, `LogCoordinates`, `MMRInclusion`, `BundleCheckpoint`, `Bundle`, `BundleRequest`, `Book.Bundle`, `VerifyBundle`, `VerifiedBundle`, `PeerRecord` |
 | §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Pin`, `Freshness`, `EvidenceRequest`, `ArtifactResponse`, `Response`, `Book.Respond`, `RespondOptions`, `AnsweredStatement`, `SharePolicy` |
 | §9.1 Three Kinds of "No" | non-membership: `Book.ProveKeyRange` returning no matches; withheld: `WithheldItem`, `UnavailableError`; asserted absence: a `Refusal` with `no_such_subject` |
-| Request draft: outcomes | `Refusal` (signed), `ArtifactResponse` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceStatement` |
+| Request draft: outcomes | `Refusal` (signed), `ArtifactResponse` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponderKeys`, `WitnessRow`, `ParseWitnessDirectory`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceStatement` |
 | §10 Reconcile and Close | `ExchangeState` (six states), `Half`, `HalfSet`, `Comparator`, `SamePayloadCommitments`, `PairResult`, `Tallies`, `ReconcileHalves`, `ReconcileInput`, `Reconciliation`, `Book.Reconcile`, `CloseInput`, `CloseStatement`, `Book.Close`, `Book.Acknowledge`, `Book.Rebut`, `CloseStatus`, `StatusOfClose` |
 | Out of scope in the I-D, needed by any implementation | `Signer`, `Ed25519Signer`, `KeyID`, `Store`, `FileStore`, `Config`, `Book`, `Open`, `Release`, the error values |
 
@@ -163,10 +163,20 @@ artifact is then checked against the recorded request: the signed anchor,
 signed by the pinned checkpoint key; the subject the bundle states it
 answers; the pinned checkpoint or the freshness floor; and, for a
 `checkpoints` answer, every field of every checkpoint taken from its signed
-statement plus every consistency proof. A signed artifact that fails those
-checks is recorded as received-and-failed. `Request` gives every request a
-unique nonce, so no two requests share a digest and an old answer cannot be
-replayed onto a new request.
+statement plus every consistency proof. Every witness receipt a bundle
+answer carries (`checkpoint.witnesses`) must verify against that signed
+anchor under the requester's own witness directory (`ResponderKeys.Witnesses`,
+read by `ParseWitnessDirectory` in capsule-emit's `witnesses.json` format):
+a receipt with bad bytes, one for another checkpoint, one from a witness the
+directory does not list, or any receipt when no directory is given, makes
+the answer a failed artifact. An answer carrying no receipt is unaffected:
+how many witnesses a requester needs is its own policy. A signed artifact
+that fails those checks is recorded as received-and-failed. `Request` gives
+every request a unique nonce, so no two requests share a digest and an old
+answer cannot be replayed onto a new request. The request record holds the
+transmitted bytes exactly: request, refusal and artifact-response signing
+bodies are JCS (RFC 8785, with agent-action-capsule's integer-only number
+profile), and the record does not re-escape them.
 
 **Reconcile correlation.** Pairing runs in two passes over all halves, so it
 does not depend on input order: `exchange_id` first, preferring a counterpart
