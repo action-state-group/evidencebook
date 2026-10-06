@@ -535,10 +535,16 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	if err != nil {
 		return SentRequest{}, err
 	}
-	body, err := json.Marshal(RequestStatement{Request: data, ResponderRef: responder})
-	if err != nil {
+	// The record holds the transmitted bytes exactly: encoding/json would
+	// rewrite <, > and & inside them as \u escapes, and the request read back
+	// from the record would no longer be the request that was sent.
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(RequestStatement{Request: data, ResponderRef: responder}); err != nil {
 		return SentRequest{}, err
 	}
+	body := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	// A unique nonce gives every request unique bytes and so a unique digest;
@@ -606,9 +612,14 @@ const (
 // ResponderKeys are the responder's keys as the requester obtained them,
 // independently of any response: Signer signs refusals and artifact
 // responses, Checkpoint signs the checkpoints an artifact is anchored to.
+// Witnesses is the requester's own witness directory: every witness receipt
+// an artifact carries must verify under it, against the artifact's anchor,
+// or the artifact is recorded as failed. Without it, an artifact carrying
+// any receipt is recorded as failed; one carrying none is unaffected.
 type ResponderKeys struct {
 	Signer     string
 	Checkpoint string
+	Witnesses  []WitnessRow
 }
 
 // RecordResponse verifies and records what came back for the request
@@ -649,7 +660,7 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp 
 			return Record{}, err
 		}
 		statement.Outcome, statement.ArtifactKind, statement.Artifact, statement.Anchor = OutcomeArtifact, a.ArtifactKind, a.ArtifactDigest, a.Anchor
-		if err := verifyArtifactContent(sent, *a, keys.Checkpoint); err != nil {
+		if err := verifyArtifactContent(sent, *a, keys); err != nil {
 			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
 		}
 	default:
@@ -672,9 +683,12 @@ type subjectExtension struct {
 
 // verifyArtifactContent checks that a responder-signed artifact answers the
 // request that was recorded: same subject, an anchor signed by the pinned
-// checkpoint key, the pinned anchor or one at least as fresh as asked, and
-// proofs that verify. The envelope signature is already checked.
-func verifyArtifactContent(sent sentRequest, a ArtifactResponse, checkpointKey string) error {
+// checkpoint key, the pinned anchor or one at least as fresh as asked,
+// proofs that verify, and every witness receipt it carries verified against
+// that anchor under the requester's witness directory. The envelope
+// signature is already checked.
+func verifyArtifactContent(sent sentRequest, a ArtifactResponse, keys ResponderKeys) error {
+	checkpointKey := keys.Checkpoint
 	coverage := sent.request.Coverage
 	var anchor Pin
 	var entries uint64
@@ -711,6 +725,9 @@ func verifyArtifactContent(sent sentRequest, a ArtifactResponse, checkpointKey s
 		}
 		if fmt.Sprintf("%s:%d", verified.Anchor.Root, verified.Anchor.MMRSize) != a.Anchor {
 			return fmt.Errorf("%w: bundle is not covered by the signed anchor", ErrInvalid)
+		}
+		if err := verifyCarriedReceipts(verified.AnchorStatement, verified.Witnesses, keys.Witnesses); err != nil {
+			return err
 		}
 		subject, err := strictDecode[subjectExtension](verified.Extensions[ExtensionSubject])
 		if err != nil || subject.Subject != sent.request.Subject {
