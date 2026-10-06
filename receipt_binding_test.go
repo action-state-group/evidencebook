@@ -210,3 +210,26 @@ func TestAnswerWithReceiptForItsCheckpoint(t *testing.T) {
 		})
 	}
 }
+
+// A witnesses member that is not an array (a receipt object on its own, a
+// string, or null) is malformed, not absent: the answer is a failed
+// artifact, never a grant with its receipts skipped.
+func TestAnswerWithNonArrayWitnessesIsAFailedArtifact(t *testing.T) {
+	witnessKey, directory := testWitness()
+	for name, value := range map[string]func([]byte) any{
+		"object": func(statement []byte) any { return mintReceipt(t, statement, witnessKey) },
+		"string": func([]byte) any { return "bogus" },
+		"null":   func([]byte) any { return nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newReceiptCase(t)
+			c.keys.Witnesses = directory
+			got := c.answer(t, func(member map[string]any, statement []byte) {
+				member["witnesses"] = value(statement)
+			})
+			if got.Outcome != OutcomeArtifactFailed {
+				t.Fatalf("witnesses %s: recorded %q, want %q (%+v)", name, got.Outcome, OutcomeArtifactFailed, got)
+			}
+		})
+	}
+}

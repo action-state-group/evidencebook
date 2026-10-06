@@ -503,6 +503,14 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 			out.AnchorKeyID = cp.KeyID
 			out.AnchorStatement = statement
 		}
+		// A witnesses member, when present, is an array of receipts. Any other
+		// value (a lone receipt object, a string, null) is malformed: read as
+		// absent, it would let an answer's receipts go unchecked.
+		if stated, present := checkpointMember.value.(map[string]any)["witnesses"]; present {
+			if _, isArray := stated.([]any); !isArray {
+				return out, fmt.Errorf("%w: checkpoint.witnesses is not an array", ErrInvalid)
+			}
+		}
 		for _, entry := range checkpointMember.get("witnesses").items() {
 			raw, err := entry.canonical()
 			if err != nil {
