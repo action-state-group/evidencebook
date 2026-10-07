@@ -7,7 +7,7 @@ distinct classes of index, and answers requests for evidence with portable
 bundles that anyone can verify.
 
 A book embeds a commitment substrate and never exposes it. The Checkpointed
-Local Log ([cll-go](https://github.com/action-state-group/cll-go)) is the
+Local Log ([CLL Go](https://github.com/action-state-group/checkpointed-local-log/tree/main/go)) is the
 reference substrate; a SCITT receipt-holding binding shows the book does not
 depend on it. Every record is sealed as an
 [Agent Action Capsule](https://github.com/action-state-group/agent-action-capsule),

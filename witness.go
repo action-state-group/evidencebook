@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/action-state-group/cll-go/witness"
+	"github.com/action-state-group/checkpointed-local-log/go/witness"
 )
 
 // WitnessRow is one row of a witness directory, in capsule-emit's
