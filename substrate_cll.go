@@ -239,7 +239,7 @@ func (s *CLLSubstrate) ProveInterval(ctx context.Context, firstSeq uint64, at Ch
 	certificate.RangeProof = RangeWitness{FromSeq: firstSeq, ToSeq: at.Entries, Size: at.TreeSize, FromIndex: firstSeq - 1, ToIndex: at.Entries - 1, Witness: hexList(rangeProof.Witness)}
 	return IntervalEvidence{
 		Certificate: certificate,
-		Checkpoint:  BundleCheckpoint{Root: at.Root, MMRSize: at.TreeSize, COSE: base64.RawURLEncoding.EncodeToString(at.Statement)},
+		Checkpoint:  BundleCheckpoint{LogID: s.logID, Root: at.Root, MMRSize: at.TreeSize, COSE: base64.RawURLEncoding.EncodeToString(at.Statement)},
 	}, nil
 }
 

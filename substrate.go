@@ -137,8 +137,11 @@ type MMRInclusion struct {
 
 // BundleCheckpoint is the checkpoint member of an Evidence Bundle. COSE is the
 // base64url signed checkpoint statement, so a verifier authenticates the root
-// rather than trusting the producer's copy of it.
+// rather than trusting the producer's copy of it. LogID is the log id the
+// statement signs, as the completeness certificate states it; a bundle from
+// before it was stated has none.
 type BundleCheckpoint struct {
+	LogID   string `json:"log_id,omitempty"`
 	Root    string `json:"root"`
 	MMRSize uint64 `json:"mmr_size"`
 	COSE    string `json:"cose,omitempty"`
