@@ -317,3 +317,27 @@ func TestVerifyBundleHoldsTheCheckpointLogIDToTheSignedOne(t *testing.T) {
 		t.Fatalf("a checkpoint that states no log_id: %v", err)
 	}
 }
+
+// A checkpoint log_id that is present must be a non-empty string: a number,
+// null or "" is refused, not read as "states none".
+func TestVerifyBundleRefusesACheckpointLogIDThatIsNotAString(t *testing.T) {
+	book, records := linkedBook(t)
+	bundle, err := book.Bundle(context.Background(), BundleRequest{Root: records[0].RecordID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]any{"a number": 7, "null": nil, "empty": "", "an object": map[string]any{}} {
+		var tree map[string]any
+		if err := json.Unmarshal(bundle.JSON, &tree); err != nil {
+			t.Fatal(err)
+		}
+		tree["checkpoint"].(map[string]any)["log_id"] = value
+		edited, err := json.Marshal(tree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := VerifyBundle(edited); !errors.Is(err, ErrInvalid) {
+			t.Errorf("checkpoint log_id %s: err = %v; want ErrInvalid", name, err)
+		}
+	}
+}

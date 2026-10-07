@@ -23,6 +23,17 @@ type jsonNode struct {
 
 func (n jsonNode) present() bool { return n.value != nil }
 
+// has reports whether n is an object with key, whatever its value (null
+// included), unlike get(key).present().
+func (n jsonNode) has(key string) bool {
+	m, ok := n.value.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, ok = m[key]
+	return ok
+}
+
 func (n jsonNode) isObject() bool {
 	_, ok := n.value.(map[string]any)
 	return ok

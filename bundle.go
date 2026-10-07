@@ -484,7 +484,16 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		out.LogID, _ = certificate.get("log_id").str()
 		out.IntervalFirst, _ = certificate.get("first_seq").uint()
 		out.IntervalLast, _ = certificate.get("last_seq").uint()
-		out.Anchor.LogID, _ = checkpointMember.get("log_id").str()
+		// A checkpoint that states a log id states it as a non-empty
+		// string; anything else there (a number, null, "") is refused rather
+		// than read as stating none.
+		logIDStated := checkpointMember.has("log_id")
+		if logIDStated {
+			var ok bool
+			if out.Anchor.LogID, ok = checkpointMember.get("log_id").str(); !ok || out.Anchor.LogID == "" {
+				return out, fmt.Errorf("%w: checkpoint log_id is not a non-empty string", ErrInvalid)
+			}
+		}
 		out.Anchor.Root, _ = checkpointMember.get("root").str()
 		out.Anchor.MMRSize, _ = checkpointMember.get("mmr_size").uint()
 		out.Anchor.COSE, _ = checkpointMember.get("cose").str()
@@ -498,7 +507,7 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 			if err != nil {
 				return out, err
 			}
-			if cp.Root != out.Anchor.Root || cp.TreeSize != out.Anchor.MMRSize || cp.LogID != out.LogID || out.Anchor.LogID != "" && out.Anchor.LogID != cp.LogID {
+			if cp.Root != out.Anchor.Root || cp.TreeSize != out.Anchor.MMRSize || cp.LogID != out.LogID || logIDStated && out.Anchor.LogID != cp.LogID {
 				return out, fmt.Errorf("%w: checkpoint statement does not name the verified interval", ErrInvalid)
 			}
 			out.AnchorKeyID = cp.KeyID
