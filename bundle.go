@@ -484,6 +484,7 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		out.LogID, _ = certificate.get("log_id").str()
 		out.IntervalFirst, _ = certificate.get("first_seq").uint()
 		out.IntervalLast, _ = certificate.get("last_seq").uint()
+		out.Anchor.LogID, _ = checkpointMember.get("log_id").str()
 		out.Anchor.Root, _ = checkpointMember.get("root").str()
 		out.Anchor.MMRSize, _ = checkpointMember.get("mmr_size").uint()
 		out.Anchor.COSE, _ = checkpointMember.get("cose").str()
@@ -497,7 +498,7 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 			if err != nil {
 				return out, err
 			}
-			if cp.Root != out.Anchor.Root || cp.TreeSize != out.Anchor.MMRSize || cp.LogID != out.LogID {
+			if cp.Root != out.Anchor.Root || cp.TreeSize != out.Anchor.MMRSize || cp.LogID != out.LogID || out.Anchor.LogID != "" && out.Anchor.LogID != cp.LogID {
 				return out, fmt.Errorf("%w: checkpoint statement does not name the verified interval", ErrInvalid)
 			}
 			out.AnchorKeyID = cp.KeyID

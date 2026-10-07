@@ -249,3 +249,71 @@ func TestBundleCheckpointCOSEIsTheSignedStatement(t *testing.T) {
 		t.Fatal("record capsule fails Class 1")
 	}
 }
+
+// The bundle's checkpoint states the log id its statement signs, as the
+// completeness certificate does: a verifier that holds the checkpoint's own
+// copy of the log id to the signed one (an older capsulectl, among others)
+// finds it there.
+func TestBundleCheckpointStatesTheSignedLogID(t *testing.T) {
+	book, records := linkedBook(t)
+	bundle, err := book.Bundle(context.Background(), BundleRequest{Root: records[0].RecordID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Certificate struct {
+			LogID string `json:"log_id"`
+		} `json:"completeness_certificate"`
+		Checkpoint struct {
+			LogID string `json:"log_id"`
+			COSE  string `json:"cose"`
+		} `json:"checkpoint"`
+	}
+	if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
+		t.Fatal(err)
+	}
+	statement, err := base64.RawURLEncoding.DecodeString(wire.Checkpoint.COSE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := checkpointFromStatement(statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wire.Checkpoint.LogID == "" || wire.Checkpoint.LogID != signed.LogID || wire.Checkpoint.LogID != wire.Certificate.LogID {
+		t.Fatalf("checkpoint log_id = %q; want the signed %q (certificate %q)", wire.Checkpoint.LogID, signed.LogID, wire.Certificate.LogID)
+	}
+	verified, err := VerifyBundle(bundle.JSON)
+	if err != nil || verified.Anchor.LogID != signed.LogID {
+		t.Fatalf("VerifyBundle: anchor log_id %q, err %v", verified.Anchor.LogID, err)
+	}
+}
+
+// A checkpoint whose stated log id differs from the one its statement signs
+// is refused; one that states none (a bundle from before it was stated) is
+// read as before.
+func TestVerifyBundleHoldsTheCheckpointLogIDToTheSignedOne(t *testing.T) {
+	book, records := linkedBook(t)
+	bundle, err := book.Bundle(context.Background(), BundleRequest{Root: records[0].RecordID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit := func(change func(checkpoint map[string]any)) []byte {
+		var tree map[string]any
+		if err := json.Unmarshal(bundle.JSON, &tree); err != nil {
+			t.Fatal(err)
+		}
+		change(tree["checkpoint"].(map[string]any))
+		out, err := json.Marshal(tree)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if _, err := VerifyBundle(edit(func(cp map[string]any) { cp["log_id"] = "another-log" })); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a checkpoint log_id other than the signed one: err = %v; want ErrInvalid", err)
+	}
+	if _, err := VerifyBundle(edit(func(cp map[string]any) { delete(cp, "log_id") })); err != nil {
+		t.Fatalf("a checkpoint that states no log_id: %v", err)
+	}
+}
