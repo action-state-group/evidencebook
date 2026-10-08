@@ -3,9 +3,9 @@ module github.com/action-state-group/evidencebook
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.6.1-0.20261007183444-9dd604efa9a1
+	github.com/action-state-group/agent-action-capsule/go v0.7.1-0.20261008155852-5d80d40097f6
 	github.com/action-state-group/capsule-emit-go v0.1.0
-	github.com/action-state-group/checkpointed-local-log/go v0.0.0-20261007180255-c13f117793af
+	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/veraison/go-cose v1.3.0
 	modernc.org/sqlite v1.58.0
