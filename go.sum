@@ -1,9 +1,9 @@
-github.com/action-state-group/agent-action-capsule/go v0.5.2-0.20260926200142-fcf238114581 h1:czsrT77DaKC45e4Tm5EOFiRrck5ne2ENnCkfWImTqBM=
-github.com/action-state-group/agent-action-capsule/go v0.5.2-0.20260926200142-fcf238114581/go.mod h1:miJnjbceLMHON1PmfHKRjqlNSsy95k6qZ1jz1j3KR84=
+github.com/action-state-group/agent-action-capsule/go v0.7.1-0.20261008155852-5d80d40097f6 h1:bzMJwv7Kw+fXxVPselZvUIbh4AvbVdVjmcL0yiajGjc=
+github.com/action-state-group/agent-action-capsule/go v0.7.1-0.20261008155852-5d80d40097f6/go.mod h1:E27XJeKbb5rmSlYd/OABhNe5dnNJkengaewtgkdwPqo=
 github.com/action-state-group/capsule-emit-go v0.1.0 h1:QC7eqh7YBG6KphA//7dqR9FO1x62fiNoYs0IDi+iYcY=
 github.com/action-state-group/capsule-emit-go v0.1.0/go.mod h1:El/Ixeri6VCY0Vg/Vvj0vMxJRT36PUrL/vB0kyhBQ7Y=
-github.com/action-state-group/cll-go v0.0.0-20260926202724-9741da3d4ace h1:XDFC5EQL/YvcsBNCDFPpSAEDCDVghgk6Sn0KTjeNlus=
-github.com/action-state-group/cll-go v0.0.0-20260926202724-9741da3d4ace/go.mod h1:56rOQ/W8Uk7nz69nfqQ3AKqyJ9ZTmwLfhYPLsc1BEEM=
+github.com/action-state-group/checkpointed-local-log/go v0.1.0 h1:bDJSW+fy3eZnwneJBOGuvqYXe0VlvDfPKEJ6ecHnTek=
+github.com/action-state-group/checkpointed-local-log/go v0.1.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
 github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 h1:hfoqVFr2B8uIqnbKxHTFSP2J5Er6Znd4giwut3GcYYM=
 github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08/go.mod h1:D9U4yGzzpH3ObRlgbeZzn9RJVcgWgekEWE+Ye1q0yoU=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=

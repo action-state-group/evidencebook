@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/action-state-group/cll-go/checkpoint"
-	"github.com/action-state-group/cll-go/cll"
-	"github.com/action-state-group/cll-go/mmr"
-	"github.com/action-state-group/cll-go/store/jsonl"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
+	"github.com/action-state-group/checkpointed-local-log/go/cll"
+	"github.com/action-state-group/checkpointed-local-log/go/mmr"
+	"github.com/action-state-group/checkpointed-local-log/go/store/jsonl"
 )
 
 // SubstrateKindCLL labels checkpoints and proofs produced by the CLL binding.

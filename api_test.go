@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-const cllModule = "github.com/action-state-group/cll-go"
+const cllModule = "github.com/action-state-group/checkpointed-local-log/go"
 
 // checkedPackage type-checks this package's non-test sources.
 func checkedPackage(t *testing.T) *types.Package {
