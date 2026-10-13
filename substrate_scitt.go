@@ -13,6 +13,14 @@ import (
 // SubstrateKindSCITTReceipt labels the receipt-holding binding.
 const SubstrateKindSCITTReceipt = "scitt-receipt"
 
+// InclusionKindSCITTReceiptUnverified labels the inclusion evidence this
+// stub carries: a transparency-service receipt held as opaque bytes and
+// never verified here. It proves possession of those bytes only (FR-20); a
+// verifier runs the receipt's own check. The stub's receipts are never
+// served as checkpoints or proofs in a profile answer: Respond answers only
+// from a Checkpointed Local Log.
+const InclusionKindSCITTReceiptUnverified = "scitt-receipt-unverified"
+
 // Registrar registers a record identity with a SCITT transparency service and
 // returns the service's receipt. The service, not the book, assigns the
 // position the receipt proves.
@@ -130,7 +138,7 @@ func (s *SCITTReceiptSubstrate) ProveInclusion(_ context.Context, seq uint64, at
 	if err != nil {
 		return InclusionEvidence{}, err
 	}
-	return InclusionEvidence{Kind: "scitt-receipt", Seq: seq, Proof: encoded}, nil
+	return InclusionEvidence{Kind: InclusionKindSCITTReceiptUnverified, Seq: seq, Proof: encoded}, nil
 }
 
 func (s *SCITTReceiptSubstrate) ProveInterval(context.Context, uint64, Checkpoint) (IntervalEvidence, error) {

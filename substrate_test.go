@@ -78,8 +78,8 @@ func TestBookRunsWithoutCLL(t *testing.T) {
 	if err := json.Unmarshal(wire.Extensions[ExtensionInclusion], &inclusion); err != nil {
 		t.Fatal(err)
 	}
-	if got := inclusion[claim.RecordID]; got.Kind != "scitt-receipt" {
-		t.Fatalf("claim carries no receipt: %+v", inclusion)
+	if got := inclusion[claim.RecordID]; got.Kind != InclusionKindSCITTReceiptUnverified {
+		t.Fatalf("claim carries no receipt labelled unverified: %+v", inclusion)
 	}
 	if _, err := book.commitments.ProveConsistency(ctx, cp, cp); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("a receipt-only substrate must report consistency as unsupported, not fabricate it")
