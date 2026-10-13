@@ -239,7 +239,7 @@ func TestRecordResponseRequiresAndEnforcesPinnedKeys(t *testing.T) {
 	}
 	impostor := newFixture(t, "book-a", 77).open(t)
 	mustAppend(t, impostor, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
-	selfSigned, _, err := impostor.Respond(ctx, sent.Bytes, RespondOptions{RequesterID: "requester", Policy: DefaultSharePolicy()})
+	selfSigned, _, err := impostor.Respond(ctx, sent.Bytes, RespondOptions{AuthenticatedRequester: "requester", Policy: DefaultSharePolicy()})
 	if err != nil || selfSigned.Refusal == nil || selfSigned.Refusal.Verify() != nil {
 		t.Fatalf("the impostor must produce a refusal that verifies under its own key: %+v %v", selfSigned, err)
 	}

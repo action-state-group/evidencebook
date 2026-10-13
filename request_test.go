@@ -24,9 +24,11 @@ func requestBytes(t *testing.T, req EvidenceRequest) []byte {
 
 func fresh() Coverage { return Coverage{MinFreshness: &Freshness{Size: 1}} }
 
+// respond answers req as if the transport had authenticated the caller as
+// requester ("" for an unauthenticated caller).
 func respond(t *testing.T, book *Book, req []byte, requester string) Response {
 	t.Helper()
-	resp, answered, err := book.Respond(context.Background(), req, RespondOptions{RequesterID: requester, Policy: DefaultSharePolicy()})
+	resp, answered, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +190,13 @@ func TestSharePolicyGateByRelationship(t *testing.T) {
 		"off":            {"": false, "someone": false, "known-peer": false},
 		"counterparties": {"": false, "someone": false, "known-peer": true},
 		"prospective":    {"": false, "someone": true, "known-peer": true},
-		"peers":          {"": true, "someone": true, "known-peer": true},
+		"peers":          {"": false, "someone": true, "known-peer": true},
 	}
 	for tier, requesters := range matrix {
 		for requester, answered := range requesters {
 			policy := DefaultSharePolicy()
 			policy.HistorySegments = tier
-			resp, _, err := book.Respond(context.Background(), req, RespondOptions{RequesterID: requester, Policy: policy})
+			resp, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policy})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -207,7 +209,7 @@ func TestSharePolicyGateByRelationship(t *testing.T) {
 	for range 2 {
 		policy := DefaultSharePolicy()
 		policy.HistorySegments = "counterparties"
-		resp, _, err := book.Respond(context.Background(), req, RespondOptions{RequesterID: "someone", Policy: policy})
+		resp, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: "someone", Policy: policy})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,9 +239,9 @@ func TestCallerInvariance(t *testing.T) {
 	peers := DefaultSharePolicy()
 	peers.HistorySegments = "peers"
 	var artifacts [][]byte
-	for _, variant := range []struct{ nonce, route, requester string }{{"n1", "https://a.example", "alice"}, {"n2", "peer:xyz", "bob"}, {"", "", ""}} {
+	for _, variant := range []struct{ nonce, route, requester string }{{"n1", "https://a.example", "alice"}, {"n2", "peer:xyz", "bob"}, {"", "", "carol"}} {
 		req := requestBytes(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: &pin}, Nonce: variant.nonce, Route: variant.route})
-		resp, _, err := book.Respond(ctx, req, RespondOptions{RequesterID: variant.requester, Policy: peers})
+		resp, _, err := book.Respond(ctx, req, RespondOptions{AuthenticatedRequester: variant.requester, Policy: peers})
 		if err != nil {
 			t.Fatal(err)
 		}
