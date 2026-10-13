@@ -14,6 +14,9 @@ depend on it. Every record is sealed as an
 so a bundle from a book on the CLL substrate verifies, interval and all, with
 the neutral Evidence Bundle verifier alone.
 
+Terms Packs (packs): EU AI Act Obligations and Outcomes (draft) are published at
+[actionstate.ai/packs](https://actionstate.ai/packs), and Everyday Rules ships with the Muse integration.
+
 ## Install
 
 Requires Go 1.27 or newer.
