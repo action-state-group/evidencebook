@@ -343,12 +343,12 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
 
 	deadline := f.clock.t.Add(time.Hour).Truncate(time.Second)
-	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: profileTime(deadline)}, "book-a")
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: profileTime(deadline), Route: "https://book-a.example"}, "book-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Pending is never absence: the window has not closed.
-	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, "https://book-a.example"); !errors.Is(err, ErrInvalid) {
+	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("absence recorded while pending: %v", err)
 	}
 	reply := respondAs(t, responder, sent.Message(), "requester")
@@ -361,22 +361,36 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 		t.Fatalf("a verified record artifact must be recorded as a grant with every property checked: %+v %v", statement, err)
 	}
 	f.clock.t = deadline.Add(time.Minute)
-	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, "https://book-a.example"); !errors.Is(err, ErrInvalid) {
+	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatal("an absence was recorded after a response: outcomes must never convert")
 	}
 
-	// A second request that gets no answer is recorded as a signed absence.
-	quiet, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: fresh()}, "book-a")
+	// A second request that gets no answer is recorded as an absence in the
+	// profile's shape, with the route the request named.
+	quiet, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: fresh(), Route: "peer:book-a"}, "book-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.clock.t = f.clock.t.Add(time.Hour)
-	absence, err := requester.RecordAbsence(ctx, quiet.RecordID, f.clock.t.Add(-time.Minute), "https://book-a.example")
+	if _, err := requester.RecordAbsence(ctx, quiet.RecordID, f.clock.t.Add(-time.Minute), "https://elsewhere.example"); !errors.Is(err, ErrInvalid) {
+		t.Fatal("an absence naming a route other than the request's was recorded")
+	}
+	absence, err := requester.RecordAbsence(ctx, quiet.RecordID, f.clock.t.Add(-time.Minute), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if absence.Header.RecordType != RecordTypeAbsence || absence.Header.EpistemicType != ObservedEvent {
 		t.Fatalf("absence record shape: %+v", absence.Header)
+	}
+	var shape AbsenceRecord
+	if err := json.Unmarshal(absence.Header.Statement, &shape); err != nil {
+		t.Fatal(err)
+	}
+	if shape.Outcome != "recorded_absence" || shape.RequestDigest != quiet.Digest || shape.Route != "peer:book-a" || shape.RecordedAt < shape.Window.Closed || shape.Window.Opened > shape.Window.Closed {
+		t.Fatalf("absence record is not the profile's shape: %+v", shape)
+	}
+	if _, err := decodeStrictJSON(absence.Header.Statement); err != nil || strings.Contains(string(absence.Header.Statement), `"reason"`) {
+		t.Fatalf("an absence carries no responder act: %s", absence.Header.Statement)
 	}
 	stored, err := requester.storedLocked(ctx, absence.RecordID)
 	if err != nil || len(stored.Envelope) == 0 {

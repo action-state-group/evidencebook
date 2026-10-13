@@ -411,26 +411,38 @@ func (b *Book) outcomeRecordedLocked(requestRecordID string) bool {
 	return false
 }
 
-// AbsenceStatement is the body of a recorded absence: the requester's own
-// signed statement that no answer arrived in its window. It states nothing
-// about the responder's intent.
-type AbsenceStatement struct {
-	RequestDigest string `json:"request_digest"`
-	Route         string `json:"route,omitempty"`
-	WindowStart   string `json:"window_start"`
-	WindowEnd     string `json:"window_end"`
+// AbsenceRecord is the requester's own record that neither an envelope nor a
+// refusal arrived in its waiting window (ER §4.4, profile §6.4). It is the
+// statement of a recorded_absence record, so the book's signature over the
+// record attributes it to the requester; it carries no responder act.
+type AbsenceRecord struct {
+	Outcome       string        `json:"outcome"`
+	RequestDigest string        `json:"request_digest"`
+	Route         string        `json:"route,omitempty"`
+	Window        AbsenceWindow `json:"window"`
+	RecordedAt    string        `json:"recorded_at"`
+}
+
+// AbsenceWindow is when the request was transmitted and when the waiting
+// window closed.
+type AbsenceWindow struct {
+	Opened string `json:"opened"`
+	Closed string `json:"closed"`
 }
 
 // MinimumAbsenceWindow is the shortest waiting window an absence may claim,
 // measured from when the request was recorded.
 const MinimumAbsenceWindow = time.Minute
 
-// RecordAbsence commits that no response arrived for the recorded request
-// between its recording and windowEnd. The request, its deadline and the
-// window start come from the committed request record. It refuses while the
-// request is still pending (window not closed, or closing before the
-// request's own deadline) and once any response has been recorded, so an
-// outcome is never converted into another.
+// RecordAbsence commits that no reply arrived for the recorded request
+// between its recording and windowEnd. The request digest, its deadline and
+// the window's opening come from the committed request record, and so does
+// the route when the request named one: a different route is refused. When
+// the request named none, route is the route the binding attempted, if any.
+// It refuses while the request is still pending (window not closed, or
+// closing before the request's own deadline) and once any reply has been
+// recorded, so an outcome is never converted into another. The record's
+// statement is the profile's absence record (AbsenceRecord), in JCS.
 func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, windowEnd time.Time, route string) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -438,7 +450,8 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 	if err != nil {
 		return Record{}, err
 	}
-	if windowEnd.After(b.now()) {
+	now := b.now()
+	if windowEnd.After(now) {
 		return Record{}, fmt.Errorf("%w: the waiting window has not closed; the request is pending", ErrInvalid)
 	}
 	asked, err := time.Parse(time.RFC3339Nano, sent.record.Header.CommittedAt)
@@ -457,10 +470,21 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 			return Record{}, fmt.Errorf("%w: the window closes before the request's own deadline", ErrInvalid)
 		}
 	}
+	if committed := sent.request.Route; committed != "" {
+		if route != "" && route != committed {
+			return Record{}, fmt.Errorf("%w: the request named route %q, not %q", ErrInvalid, committed, route)
+		}
+		route = committed
+	}
 	if b.outcomeRecordedLocked(requestRecordID) {
 		return Record{}, fmt.Errorf("%w: an outcome is already recorded for request %s", ErrInvalid, sent.digest)
 	}
-	body, err := json.Marshal(AbsenceStatement{RequestDigest: sent.digest, Route: route, WindowStart: sent.record.Header.CommittedAt, WindowEnd: windowEnd.UTC().Format(time.RFC3339Nano)})
+	record := AbsenceRecord{
+		Outcome: RecordTypeAbsence, RequestDigest: sent.digest, Route: route,
+		Window:     AbsenceWindow{Opened: profileTime(asked), Closed: profileTime(windowEnd)},
+		RecordedAt: profileTime(now),
+	}
+	body, err := canonicalJSON(record)
 	if err != nil {
 		return Record{}, err
 	}
