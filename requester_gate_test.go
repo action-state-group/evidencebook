@@ -78,7 +78,8 @@ func TestUnauthenticatedRequesterGetsOnlyPublicSubjects(t *testing.T) {
 }
 
 // (b) One requester's id never appears, in any recoverable form, in what
-// another requester is later served.
+// another requester is later served, and the record of its request is never
+// served at all.
 func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 	book, records := linkedBook(t)
 	const alice = "alice-private-handle"
@@ -99,12 +100,10 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: covering}),
 		RespondOptions{RequesterID: "bob", AuthenticatedRequester: "bob", Policy: peers})
 	e := mustEnvelope(t, reply)
-	served := false
 	for _, entry := range artifactRecords(t, e) {
-		served = served || entry["digest"] == answered
-	}
-	if !served {
-		t.Fatal("bob's full_history must include the record of alice's request for this test to mean anything")
+		if entry["digest"] == answered {
+			t.Fatal("bob's full_history serves the record of alice's request")
+		}
 	}
 	sum := sha256.Sum256([]byte(alice))
 	forms := map[string]string{
@@ -115,10 +114,11 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 		"sha256 b64":  base64.StdEncoding.EncodeToString(sum[:]),
 		"field name":  "requester_ref",
 		"json-quoted": `"` + alice + `"`,
+		"answered":    answered,
 	}
 	for name, form := range forms {
 		if bytes.Contains(reply.Octets, []byte(form)) || bytes.Contains(e.Artifact, []byte(form)) {
-			t.Fatalf("bob's answer contains alice's id (%s form)", name)
+			t.Fatalf("bob's answer contains alice's id or her request (%s form)", name)
 		}
 	}
 	for _, id := range book.order {
@@ -126,6 +126,8 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 			t.Fatalf("answered-request record %s carries a requester id", id)
 		}
 	}
+	// Named directly, the record of alice's request does not exist to bob.
+	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: answered}, Coverage: covering}), "bob"), ReasonNoSuchSubject)
 }
 
 // (c) A claimed counterparty id, without authentication, never grants

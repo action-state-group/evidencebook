@@ -95,7 +95,8 @@ type RespondOptions struct {
 
 // AnsweredStatement is the body of the record a responder seals for a
 // request it answered for an authenticated requester. It names no
-// requester: the record is part of the book's history.
+// requester, and records of this type are never served to anyone (they are
+// not servable), so asking leaves no trace another requester can read.
 type AnsweredStatement struct {
 	RequestDigest  string      `json:"request_digest"`
 	SubjectKind    SubjectKind `json:"subject_kind,omitempty"`
@@ -272,6 +273,9 @@ func (a *answer) run() (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
+	if built.declined {
+		return a.refuse(ReasonPolicyDeclined, "")
+	}
 	envelope := Envelope{
 		Profile: req.Profile, RequestDigest: a.digest, Subject: req.Subject, Derivation: req.Derivation,
 		Anchor: Anchor{Digest: anchorDigest(anchor)}, ArtifactDigest: digestBytes(built.artifact),
@@ -354,9 +358,18 @@ func (v *bookView) leafOf(digest string) (uint64, bool) {
 	return leaf, ok && v.servable(leaf)
 }
 
-// servable: every committed record may be served.
+// servable: the responder's own bookkeeping of who asked and what it
+// disclosed is never served, so one requester's asking or receiving can
+// never be read by another (NFR-2, NFR-4).
 func (v *bookView) servable(leaf uint64) bool {
-	return leaf < uint64(len(v.book.order))
+	if leaf >= uint64(len(v.book.order)) {
+		return false
+	}
+	switch v.book.records[v.book.order[leaf]].Header.RecordType {
+	case RecordTypeRequestAnswered, RecordTypeDisclosure:
+		return false
+	}
+	return true
 }
 
 func (v *bookView) matching(match func(Header) bool) []uint64 {

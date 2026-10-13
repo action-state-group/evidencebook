@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // The canonical Artifact (ER §4.1, §5; profile §6.2) is a deterministic
@@ -34,11 +36,31 @@ type builtArtifact struct {
 	artifact     []byte
 	verification []VerificationEntry
 	material     [][]byte
+	// declined: the answer failed the disclosure scan; it is refused
+	// policy_declined.
+	declined bool
 }
+
+// declaredFields is the field set an artifact form may carry (NFR-2). The
+// disclosure scan refuses an artifact with any member outside it.
+type declaredFields struct {
+	top   []string
+	entry []string
+	// list is the member holding the entries; bodies are hex record octets
+	// in body (records) or none.
+	list string
+}
+
+var (
+	recordSetFields   = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
+	checkpointsFields = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
+	historyFields     = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
+)
 
 func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
 	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.value()}
 	var built builtArtifact
+	var declared declaredFields
 	switch {
 	case req.Derivation == DerivationHistoryCard || req.Subject.Kind == SubjectCheckpoints:
 		chain := checkpointsThrough(view.checkpoints, anchor)
@@ -47,13 +69,13 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 			if err != nil {
 				return builtArtifact{}, err
 			}
-			head["derivation"], head["history"] = DerivationHistoryCard, history
+			head["derivation"], head["history"], declared = DerivationHistoryCard, history, historyFields
 		} else {
 			list := make([]any, len(chain))
 			for i, cp := range chain {
 				list[i] = hex.EncodeToString(cp.Statement)
 			}
-			head["checkpoints"] = list
+			head["checkpoints"], declared = list, checkpointsFields
 		}
 	case def != nil:
 		records, err := b.projectLocked(ctx, leaves, def)
@@ -61,6 +83,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 			return builtArtifact{}, err
 		}
 		head["derivation"], head["records"] = def.id, records
+		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: append([]string{"digest", "leaf_index"}, def.def.Fields...), list: "records"}
 	case req.Subject.Kind == SubjectRecord:
 		id := b.order[leaves[0]]
 		stored, err := b.storedLocked(ctx, id)
@@ -70,6 +93,9 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 		body, err := capsulePreimage(stored.Capsule, id)
 		if err != nil {
 			return builtArtifact{}, err
+		}
+		if !b.disclosureClean(body, nil) {
+			return builtArtifact{declined: true}, nil
 		}
 		verification, material, err := cllMaterial(ctx, b.commitments.(cllMaterialSource), leaves[0]+1, anchor)
 		if err != nil {
@@ -90,11 +116,14 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 			}
 			records[i] = map[string]any{"leaf_index": leaf, "digest": id, "body": hex.EncodeToString(body)}
 		}
-		head["records"] = records
+		head["records"], declared = records, recordSetFields
 	}
 	artifact, err := toJCS(head)
 	if err != nil {
 		return builtArtifact{}, err
+	}
+	if !b.disclosureClean(artifact, &declared) {
+		return builtArtifact{declined: true}, nil
 	}
 	built.artifact = artifact
 	return built, nil
@@ -135,6 +164,101 @@ func (b *Book) historyCardLocked(ctx context.Context, chain []Checkpoint, anchor
 		history[i] = map[string]any{"checkpoint": hex.EncodeToString(cp.Statement), "consistency_from_previous": consistency}
 	}
 	return history, nil
+}
+
+// disclosureClean is the byte scan and linkage check run on every artifact
+// before release (NFR-2). With declared set, the artifact is a JSON object
+// and every member, and every member of each entry of its list, must be in
+// the declared field set. Every record body it carries, and the artifact
+// itself when it is a bare record, must contain no principal or
+// counterparty reference this book holds, and no entry may be a record the
+// responder keeps for its own bookkeeping.
+func (b *Book) disclosureClean(artifact []byte, declared *declaredFields) bool {
+	identities := map[string]bool{}
+	for _, id := range b.order {
+		h := b.records[id].Header
+		for _, ref := range []string{h.PrincipalRef, h.CounterpartyRef} {
+			if ref != "" {
+				identities[ref] = true
+			}
+		}
+	}
+	if declared == nil {
+		return !mentionsAny(artifact, identities)
+	}
+	root, err := decodeStrictJSON(artifact)
+	object, ok := root.(map[string]any)
+	if err != nil || !ok {
+		return false
+	}
+	for name := range object {
+		if !slices.Contains(declared.top, name) {
+			return false
+		}
+	}
+	entries, _ := object[declared.list].([]any)
+	for _, item := range entries {
+		entry, isMap := item.(map[string]any)
+		if !isMap {
+			// checkpoints: a hex statement, nothing else.
+			if _, isText := item.(string); !isText || declared.entry != nil {
+				return false
+			}
+			continue
+		}
+		for name := range entry {
+			if !slices.Contains(declared.entry, name) {
+				return false
+			}
+		}
+		if digest, ok := entry["digest"].(string); ok {
+			if record, held := b.records[digest]; held && (record.Header.RecordType == RecordTypeRequestAnswered || record.Header.RecordType == RecordTypeDisclosure) {
+				return false
+			}
+		}
+		if body, ok := entry["body"].(string); ok {
+			raw, err := hex.DecodeString(body)
+			if err != nil || mentionsAny(raw, identities) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// mentionsAny reports whether a JSON document carries any of the strings as
+// a string value or member name.
+func mentionsAny(document []byte, strs map[string]bool) bool {
+	if len(strs) == 0 {
+		return false
+	}
+	root, err := decodeStrictJSON(document)
+	if err != nil {
+		// Not JSON: scan the raw bytes.
+		for s := range strs {
+			if strings.Contains(string(document), s) {
+				return true
+			}
+		}
+		return false
+	}
+	var walk func(v any) bool
+	walk = func(v any) bool {
+		switch x := v.(type) {
+		case string:
+			return strs[x]
+		case []any:
+			return slices.ContainsFunc(x, walk)
+		case map[string]any:
+			for k, item := range x {
+				if strs[k] || walk(item) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(root)
 }
 
 // projectLocked builds a registered derivation's records: each record's
