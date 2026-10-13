@@ -13,179 +13,235 @@ import (
 	"time"
 )
 
-func requestBytes(t *testing.T, req EvidenceRequest) []byte {
+func sizeFloor(n uint64) *Freshness { return &Freshness{Size: &n} }
+
+func fresh() Coverage { return Coverage{MinFreshness: sizeFloor(1)} }
+
+// requestIn encodes req (with the profile member set) in mediaType.
+func requestIn(t *testing.T, req EvidenceRequest, mediaType string) Message {
 	t.Helper()
-	data, err := canonicalJSON(req)
+	if req.Profile == "" {
+		req.Profile = ProfileID
+	}
+	octets, err := EncodeRequest(req, mediaType)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return data
+	return Message{Octets: octets, MediaType: mediaType}
 }
 
-func fresh() Coverage { return Coverage{MinFreshness: &Freshness{Size: 1}} }
-
-// respond answers req as if the transport had authenticated the caller as
-// requester ("" for an unauthenticated caller).
-func respond(t *testing.T, book *Book, req []byte, requester string) Response {
+func jsonRequest(t *testing.T, req EvidenceRequest) Message {
 	t.Helper()
-	resp, answered, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
+	return requestIn(t, req, MediaTypeJSON)
+}
+
+// respondAs answers req as if the transport had authenticated the caller as
+// requester ("" for an unauthenticated caller) under the default policy.
+func respondAs(t *testing.T, book *Book, req Message, requester string) Reply {
+	t.Helper()
+	reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answered.Header.RecordType != RecordTypeRequestAnswered {
-		t.Fatal("every inbound request must be sealed as a record")
-	}
-	return resp
+	return reply
 }
 
-func mustArtifact(t *testing.T, resp Response) ArtifactResponse {
+func mustEnvelope(t *testing.T, reply Reply) Envelope {
 	t.Helper()
-	if resp.Artifact == nil || resp.Refusal != nil {
-		t.Fatalf("want an artifact, got %+v", resp.Refusal)
+	if reply.Envelope == nil || reply.Refusal != nil {
+		t.Fatalf("want an envelope, got refusal %+v", reply.Refusal)
 	}
-	if err := resp.Artifact.Verify(); err != nil {
+	if err := reply.Envelope.Verify(); err != nil {
 		t.Fatal(err)
 	}
-	return *resp.Artifact
+	parsed, err := ParseReply(reply.Message)
+	if err != nil || parsed.Envelope == nil || !bytes.Equal(parsed.Envelope.Artifact, reply.Envelope.Artifact) {
+		t.Fatalf("the reply octets do not carry the envelope: %v", err)
+	}
+	return *reply.Envelope
 }
 
-func mustRefusal(t *testing.T, resp Response, reason string) {
+func mustRefusal(t *testing.T, reply Reply, reason string) Refusal {
 	t.Helper()
-	if resp.Refusal == nil || resp.Artifact != nil {
-		t.Fatalf("want refusal %s, got an artifact", reason)
+	if reply.Refusal == nil || reply.Envelope != nil {
+		t.Fatalf("want refusal %s, got an envelope", reason)
 	}
-	if resp.Refusal.Reason != reason {
-		t.Fatalf("refusal reason %s, want %s", resp.Refusal.Reason, reason)
+	if reply.Refusal.Reason != reason {
+		t.Fatalf("refusal reason %s, want %s", reply.Refusal.Reason, reason)
 	}
-	if err := resp.Refusal.Verify(); err != nil {
-		t.Fatalf("refusal does not verify: %v", err)
+	if err := reply.Refusal.Verify(); err != nil || !reply.Refusal.Conforming() {
+		t.Fatalf("refusal does not verify or does not conform: %v", err)
 	}
+	parsed, err := ParseReply(reply.Message)
+	if err != nil || parsed.Refusal == nil || parsed.Refusal.Sig != reply.Refusal.Sig {
+		t.Fatalf("the reply octets do not carry the refusal: %v", err)
+	}
+	return *reply.Refusal
 }
 
-func bundleMatched(t *testing.T, a ArtifactResponse) []string {
+// artifactRecords reads a record-set artifact's entries.
+func artifactRecords(t *testing.T, e Envelope) []map[string]any {
 	t.Helper()
-	var wire bundleWire
-	if err := json.Unmarshal(a.Artifact, &wire); err != nil {
+	var artifact struct {
+		Records []map[string]any `json:"records"`
+	}
+	if err := json.Unmarshal(e.Artifact, &artifact); err != nil {
 		t.Fatal(err)
 	}
-	var subject struct{ Matched []string }
-	if err := json.Unmarshal(wire.Extensions[ExtensionSubject], &subject); err != nil {
+	return artifact.Records
+}
+
+// anchorPin checkpoints the book now and returns the anchor's digest, the
+// value a requester pins.
+func anchorPin(t *testing.T, book *Book) string {
+	t.Helper()
+	cp, err := book.Checkpoint(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := VerifyBundle(a.Artifact); err != nil {
-		t.Fatal(err)
-	}
-	return subject.Matched
+	return anchorDigest(cp)
 }
 
 func TestRespondResolvesEverySubjectForm(t *testing.T) {
 	book, records := linkedBook(t)
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1", Links: []Link{{Type: Cites, Target: digestBytes([]byte("peer half"))}}})
-	// full_history's count grows as answered requests are recorded, so it is
-	// checked as a lower bound; every other subject is exact.
+	half := digestBytes([]byte("peer half"))
+	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1", Links: []Link{{Type: Cites, Target: half}}})
+	pin := anchorPin(t, book)
 	cases := []struct {
 		subject Subject
 		want    int
 	}{
-		{Subject{Kind: SubjectRecord, Digest: records[1].RecordID}, 1},
-		{Subject{Kind: SubjectRange, First: 2, Last: 3}, 2},
-		{Subject{Kind: SubjectCorrelation, Value: "order-17"}, 3},
-		{Subject{Kind: SubjectExchange, Digest: digestBytes([]byte("peer half"))}, 1},
-		{Subject{Kind: SubjectFullHistory}, 5},
+		{Subject{Kind: SubjectRange, Range: [2]uint64{1, 2}}, 2},
+		{Subject{Kind: SubjectCorrelation, Correlation: "order-17"}, 3},
+		{Subject{Kind: SubjectExchange, Digest: half}, 1},
+		// full_history also carries the book's own index-root records.
+		{Subject{Kind: SubjectFullHistory}, 7},
 	}
 	for _, c := range cases {
 		t.Run(string(c.subject.Kind), func(t *testing.T) {
-			matched := bundleMatched(t, mustArtifact(t, respond(t, book, requestBytes(t, EvidenceRequest{Subject: c.subject, Coverage: fresh()}), "peer-1")))
-			if exact := c.subject.Kind != SubjectFullHistory; (exact && len(matched) != c.want) || len(matched) < c.want {
-				t.Fatalf("matched %d records, want %d", len(matched), c.want)
+			e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: c.subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+			got := artifactRecords(t, e)
+			if len(got) != c.want {
+				t.Fatalf("served %d records, want %d", len(got), c.want)
+			}
+			for _, entry := range got {
+				body, err := hex.DecodeString(entry["body"].(string))
+				if err != nil || digestBytes(body) != entry["digest"] {
+					t.Fatal("a served record's body does not hash to its digest")
+				}
 			}
 		})
 	}
-	t.Run("checkpoints", func(t *testing.T) {
-		artifact := mustArtifact(t, respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}), ""))
-		var cps checkpointsArtifact
-		if err := json.Unmarshal(artifact.Artifact, &cps); err != nil || len(cps.Checkpoints) == 0 {
-			t.Fatalf("checkpoints artifact is empty: %v", err)
+	t.Run("record", func(t *testing.T) {
+		e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[1].RecordID}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+		if e.ArtifactDigest != records[1].RecordID {
+			t.Fatal("a record's artifact is the record's own octets: its digest is the record id")
 		}
-		if len(cps.Consistency) != len(cps.Checkpoints)-1 {
-			t.Fatalf("want a consistency proof between each pair of checkpoints: %d for %d", len(cps.Consistency), len(cps.Checkpoints))
+		kinds := []string{}
+		for _, entry := range e.Verification {
+			kinds = append(kinds, entry.Kind)
+		}
+		if strings.Join(kinds, ",") != KindCLLCheckpoint+","+KindCLLInclusionProof {
+			t.Fatalf("record material kinds %v", kinds)
+		}
+		if e.Verification[0].Digest != pin || e.Anchor.Digest != pin {
+			t.Fatal("the anchor is the checkpoint the material carries")
 		}
 	})
+	for _, derivation := range []string{"", DerivationHistoryCard} {
+		t.Run("checkpoints "+derivation, func(t *testing.T) {
+			e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), ""))
+			if len(e.Verification) != 0 {
+				t.Fatal("for checkpoints and history_card/1 the artifact is the material")
+			}
+			if err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestRespondRefusalReasons(t *testing.T) {
 	book, records := linkedBook(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
-	anchor, err := book.Checkpoint(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pin, err := ParsePin(anchor.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pin := anchorPin(t, book)
 	record := Subject{Kind: SubjectRecord, Digest: records[0].RecordID}
-	// A real pin: each member alone would be answered, so only the
-	// exactly-one rule can refuse this.
-	both := Coverage{ExpectedPin: &pin, MinFreshness: &Freshness{Size: 1}}
+	raw := func(s string) Message { return Message{Octets: []byte(s), MediaType: MediaTypeJSON} }
+	subjectJSON := `"subject":{"record":"` + records[0].RecordID + `"}`
 	cases := []struct {
 		name, requester, reason string
-		body                    []byte
+		req                     Message
 	}{
-		{"malformed JSON", "peer-1", ReasonRequestMalformed, []byte(`{"subject":`)},
-		{"unknown field", "peer-1", ReasonRequestMalformed, []byte(`{"subject":{"kind":"full_history"},"coverage":{"min_freshness":{"size":1}},"extra":1}`)},
-		{"bad subject", "peer-1", ReasonRequestMalformed, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: "nope"}, Coverage: fresh()})},
-		{"both coverage members", "peer-1", ReasonCoverageUnsatisfiable, requestBytes(t, EvidenceRequest{Subject: record, Coverage: both})},
-		{"no coverage member", "peer-1", ReasonCoverageUnsatisfiable, requestBytes(t, EvidenceRequest{Subject: record})},
-		{"unknown pin", "peer-1", ReasonCoverageUnsatisfiable, requestBytes(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: &Pin{Root: records[0].RecordID, MMRSize: 99}}})},
-		{"freshness beyond the log", "peer-1", ReasonCoverageUnsatisfiable, requestBytes(t, EvidenceRequest{Subject: record, Coverage: Coverage{MinFreshness: &Freshness{Size: 1000}}})},
-		{"derivation", "peer-1", ReasonDerivationUnsupported, requestBytes(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: "count/1"})},
-		{"stranger under default policy", "", ReasonNotAuthorized, requestBytes(t, EvidenceRequest{Subject: record, Coverage: fresh()})},
-		{"pin alone is answerable", "peer-1", "", requestBytes(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: &pin}})},
-		{"no such record", "peer-1", ReasonNoSuchSubject, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never recorded"))}, Coverage: fresh()})},
-		{"range past the anchor", "peer-1", ReasonNoSuchSubject, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, First: 2, Last: 500}, Coverage: fresh()})},
+		{"malformed JSON", "peer-1", ReasonRequestMalformed, raw(`{"subject":`)},
+		{"trailing bytes", "peer-1", ReasonRequestMalformed, raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"}} {}`)},
+		{"duplicate member", "peer-1", ReasonRequestMalformed, raw(`{` + subjectJSON + `,` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"}}`)},
+		{"case-variant member is not the member", "peer-1", ReasonRequestMalformed, raw(`{"SUBJECT":{"record":"` + records[0].RecordID + `"},"coverage":{"expected_pin":"` + pin + `"}}`)},
+		{"old subject shape", "peer-1", ReasonRequestMalformed, raw(`{"subject":{"kind":"record","digest":"` + records[0].RecordID + `"},"coverage":{"expected_pin":"` + pin + `"}}`)},
+		{"deadline not a time", "peer-1", ReasonRequestMalformed, raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"},"deadline":"whenever"}`)},
+		{"both coverage members", "peer-1", ReasonCoverageUnsatisfiable, raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `","min_freshness":1}}`)},
+		{"no coverage member", "peer-1", ReasonCoverageUnsatisfiable, raw(`{` + subjectJSON + `,"coverage":{}}`)},
+		{"coverage missing", "peer-1", ReasonCoverageUnsatisfiable, raw(`{` + subjectJSON + `}`)},
+		{"unknown profile", "peer-1", ReasonRequestMalformed, raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"},"profile":"evidence-interop/9"}`)},
+		{"unknown pin", "peer-1", ReasonCoverageUnsatisfiable, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: records[0].RecordID}})},
+		{"freshness beyond the log", "peer-1", ReasonCoverageUnsatisfiable, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: Coverage{MinFreshness: sizeFloor(1000)}})},
+		{"derivation unsupported", "peer-1", ReasonDerivationUnsupported, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: "count/1"})},
+		{"derivation digest unknown", "peer-1", ReasonDerivationUnsupported, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: digestBytes([]byte("def"))})},
+		{"history card not for a record", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: DerivationHistoryCard})},
+		{"stranger under default policy", "", ReasonNotAuthorized, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh()})},
+		{"pin alone is answerable", "peer-1", "", jsonRequest(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: pin}})},
+		{"unknown member is ignored", "peer-1", "", raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"},"page":{"size":10}}`)},
+		{"no such record", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never recorded"))}, Coverage: fresh()})},
+		{"range past the log", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{1, 500}}, Coverage: fresh()})},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			resp := respond(t, book, c.body, c.requester)
+			reply := respondAs(t, book, c.req, c.requester)
 			if c.reason == "" {
-				mustArtifact(t, resp)
+				mustEnvelope(t, reply)
 				return
 			}
-			mustRefusal(t, resp, c.reason)
-			if resp.Refusal.RequestDigest != digestBytes(c.body) {
-				t.Fatal("a refusal must name the digest of the request bytes as received")
+			refusal := mustRefusal(t, reply, c.reason)
+			if refusal.RequestDigest != digestBytes(c.req.Octets) {
+				t.Fatal("a refusal must name the digest of the request octets as received")
 			}
 		})
 	}
+	t.Run("unknown profile lists the supported one", func(t *testing.T) {
+		refusal := mustRefusal(t, respondAs(t, book, raw(`{`+subjectJSON+`,"coverage":{"expected_pin":"`+pin+`"},"profile":"evidence-interop/9"}`), "peer-1"), ReasonRequestMalformed)
+		if !strings.Contains(refusal.Detail, ProfileID) {
+			t.Fatalf("detail %q does not list %s", refusal.Detail, ProfileID)
+		}
+	})
 }
 
 func TestRefusalSignatureCoversReasonAndTime(t *testing.T) {
 	book := newFixture(t, "book-a", 1).open(t)
-	resp := respond(t, book, []byte("{"), "")
-	mustRefusal(t, resp, ReasonRequestMalformed)
+	original := mustRefusal(t, respondAs(t, book, Message{Octets: []byte("{"), MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
 	for name, mutate := range map[string]func(r *Refusal){
 		"reason":  func(r *Refusal) { r.Reason = ReasonPolicyDeclined },
 		"time":    func(r *Refusal) { r.IssuedAt = "2020-01-01T00:00:00Z" },
 		"request": func(r *Refusal) { r.RequestDigest = digestBytes([]byte("other")) },
 		"key":     func(r *Refusal) { r.KeyID = hex.EncodeToString(seededKey(9)[32:]) },
 	} {
-		forged := *resp.Refusal
+		forged := original
 		mutate(&forged)
 		if forged.Verify() == nil {
 			t.Fatalf("a refusal with a changed %s still verifies", name)
 		}
 	}
-	body, err := resp.Refusal.SigningBody()
-	if err != nil || !bytes.Equal(body, []byte(`{"issued_at":"`+resp.Refusal.IssuedAt+`","reason":"request_malformed","request_digest":"`+resp.Refusal.RequestDigest+`"}`)) {
-		t.Fatalf("refusal signing body is not the sorted compact JSON the other implementations sign: %s", body)
+	body, err := original.SigningBody()
+	if err != nil || !bytes.Equal(body, []byte(`{"issued_at":"`+original.IssuedAt+`","reason":"request_malformed","request_digest":"`+original.RequestDigest+`"}`)) {
+		t.Fatalf("refusal signing body is not exactly {issued_at, reason, request_digest} in JCS: %s", body)
+	}
+	if _, ok := parseProfileTime(original.IssuedAt); !ok {
+		t.Fatalf("issued_at %q is not the §5.2 time form", original.IssuedAt)
 	}
 }
 
 func TestSharePolicyGateByRelationship(t *testing.T) {
 	book, records := linkedBook(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	req := requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
+	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
 	matrix := map[string]map[string]bool{
 		"off":            {"": false, "someone": false, "known-peer": false},
 		"counterparties": {"": false, "someone": false, "known-peer": true},
@@ -194,64 +250,87 @@ func TestSharePolicyGateByRelationship(t *testing.T) {
 	}
 	for tier, requesters := range matrix {
 		for requester, answered := range requesters {
-			policy := DefaultSharePolicy()
-			policy.HistorySegments = tier
-			resp, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policy})
+			reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policyWith(tier)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (resp.Artifact != nil) != answered {
-				t.Fatalf("tier %s requester %q: answered=%v, want %v", tier, requester, resp.Artifact != nil, answered)
+			if (reply.Envelope != nil) != answered {
+				t.Fatalf("tier %s requester %q: answered=%v, want %v", tier, requester, reply.Envelope != nil, answered)
 			}
 		}
 	}
 	// Asking never makes a requester a counterparty.
 	for range 2 {
-		policy := DefaultSharePolicy()
-		policy.HistorySegments = "counterparties"
-		resp, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: "someone", Policy: policy})
+		reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: "someone", Policy: policyWith("counterparties")})
 		if err != nil {
 			t.Fatal(err)
 		}
-		mustRefusal(t, resp, ReasonNotAuthorized)
+		mustRefusal(t, reply, ReasonNotAuthorized)
 	}
 	// checkpoints is always answerable.
-	mustArtifact(t, respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}), ""))
+	mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}), ""))
 	if _, _, err := book.Respond(context.Background(), req, RespondOptions{Policy: SharePolicy{HistorySegments: "everyone"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("an out-of-vocabulary policy must be rejected, not coerced")
 	}
 }
 
-// TestCallerInvariance: nonce, route and the requester's identity never change
-// the artifact served for one (subject, coverage) pair.
+// TestCallerInvariance (FR-8, ER §5): nonce, route, the requester's
+// identity, the profile member and the encoding never change the canonical
+// Artifact served for one (subject, anchor, derivation). Only the envelope
+// differs.
 func TestCallerInvariance(t *testing.T) {
-	ctx := context.Background()
-	book, _ := linkedBook(t)
-	anchor, err := book.Checkpoint(ctx)
-	if err != nil {
-		t.Fatal(err)
+	book, records := linkedBook(t)
+	half := digestBytes([]byte("peer half"))
+	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: half}}})
+	pin := anchorPin(t, book)
+	peers := policyWith("peers")
+	subjects := []EvidenceRequest{
+		{Subject: Subject{Kind: SubjectRecord, Digest: records[1].RecordID}},
+		{Subject: Subject{Kind: SubjectCorrelation, Correlation: "order-17"}},
+		{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{0, 3}}},
+		{Subject: Subject{Kind: SubjectFullHistory}},
+		{Subject: Subject{Kind: SubjectCheckpoints}},
+		{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard},
+		{Subject: Subject{Kind: SubjectExchange, Digest: half}},
 	}
-	pin, err := ParsePin(anchor.ID)
-	if err != nil {
-		t.Fatal(err)
+	variants := []struct{ nonce, route, requester, profile, mediaType string }{
+		{"n1", "https://a.example", "alice", ProfileID, MediaTypeJSON},
+		{"n2", "peer:xyz", "bob", ProfileID, MediaTypeCBOR},
+		{"", "", "carol", "", MediaTypeJSON},
+		{"n4", "", "alice", "", MediaTypeCBOR},
 	}
-	subject := Subject{Kind: SubjectCorrelation, Value: "order-17"}
-	peers := DefaultSharePolicy()
-	peers.HistorySegments = "peers"
-	var artifacts [][]byte
-	for _, variant := range []struct{ nonce, route, requester string }{{"n1", "https://a.example", "alice"}, {"n2", "peer:xyz", "bob"}, {"", "", "carol"}} {
-		req := requestBytes(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: &pin}, Nonce: variant.nonce, Route: variant.route})
-		resp, _, err := book.Respond(ctx, req, RespondOptions{AuthenticatedRequester: variant.requester, Policy: peers})
-		if err != nil {
-			t.Fatal(err)
-		}
-		artifacts = append(artifacts, mustArtifact(t, resp).Artifact)
-		mustAppend(t, book, observation("order-17", "arrives after the pin"))
-	}
-	for i := 1; i < len(artifacts); i++ {
-		if !bytes.Equal(artifacts[0], artifacts[i]) {
-			t.Fatalf("artifact %d differs from artifact 0 for the same (subject, coverage)", i)
-		}
+	for _, base := range subjects {
+		t.Run(string(base.Subject.Kind)+base.Derivation, func(t *testing.T) {
+			var artifacts [][]byte
+			var digests []string
+			for _, v := range variants {
+				req := base
+				req.Coverage, req.Nonce, req.Route, req.Profile = Coverage{ExpectedPin: pin}, v.nonce, v.route, v.profile
+				octets, err := EncodeRequest(req, v.mediaType)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reply, _, err := book.Respond(context.Background(), Message{Octets: octets, MediaType: v.mediaType}, RespondOptions{AuthenticatedRequester: v.requester, Policy: peers})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if reply.MediaType != v.mediaType {
+					t.Fatalf("a reply is in the request's encoding: got %s for %s", reply.MediaType, v.mediaType)
+				}
+				e := mustEnvelope(t, reply)
+				artifacts, digests = append(artifacts, e.Artifact), append(digests, e.RequestDigest)
+				// Growth beyond the pin changes nothing pinned.
+				mustAppend(t, book, observation("order-17", "arrives after the pin"))
+			}
+			for i := 1; i < len(artifacts); i++ {
+				if !bytes.Equal(artifacts[0], artifacts[i]) {
+					t.Fatalf("artifact %d differs from artifact 0 for the same (subject, anchor, derivation)", i)
+				}
+				if digests[i] == digests[0] {
+					t.Fatal("distinct requests must have distinct request digests")
+				}
+			}
+		})
 	}
 }
 
@@ -262,8 +341,8 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	requester := f.open(t)
 	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
 
-	deadline := f.clock.t.Add(time.Hour)
-	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: deadline.Format(time.RFC3339Nano)}, "book-a")
+	deadline := f.clock.t.Add(time.Hour).Truncate(time.Second)
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: profileTime(deadline)}, "book-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,14 +350,14 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, "https://book-a.example"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("absence recorded while pending: %v", err)
 	}
-	resp := respond(t, responder, sent.Bytes, "requester")
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
+	reply := respondAs(t, responder, sent.Message(), "requester")
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var statement ResponseStatement
-	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifact {
-		t.Fatalf("a verified artifact must be recorded as a grant: %+v %v", statement, err)
+	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifact || len(statement.NotChecked) != 0 {
+		t.Fatalf("a verified record artifact must be recorded as a grant with every property checked: %+v %v", statement, err)
 	}
 	f.clock.t = deadline.Add(time.Minute)
 	if _, err := requester.RecordAbsence(ctx, sent.RecordID, deadline, "https://book-a.example"); !errors.Is(err, ErrInvalid) {
@@ -304,6 +383,8 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	}
 }
 
+// A responder-signed envelope whose artifact is not the record it names is
+// recorded as received and failed, never as a grant.
 func TestRecordResponseMarksUnverifiableArtifactAsFailed(t *testing.T) {
 	ctx := context.Background()
 	responder, records := linkedBook(t)
@@ -313,32 +394,37 @@ func TestRecordResponseMarksUnverifiableArtifactAsFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := respond(t, responder, sent.Bytes, "requester")
-	// The responder signs a bundle that the neutral verifier rejects, so the
-	// failure is found in the bundle itself, not in the envelope.
-	a := resp.Artifact
-	a.Artifact = bytes.Replace(a.Artifact, []byte(`"bundle_version":"2"`), []byte(`"bundle_version":"3"`), 1)
-	a.ArtifactDigest = digestBytes(a.Artifact)
-	body, err := a.SigningBody()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig, err := responder.signer.Sign(ctx, body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.Sig = hex.EncodeToString(sig)
-	if err := a.Verify(); err != nil {
-		t.Fatalf("the re-signed envelope must verify so only the bundle can fail: %v", err)
-	}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
+	e := mustEnvelope(t, respondAs(t, responder, sent.Message(), "requester"))
+	e.Artifact = append(e.Artifact, ' ')
+	e.ArtifactDigest = digestBytes(e.Artifact)
+	resigned := resign(t, responder, e)
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resigned.Message, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var statement ResponseStatement
-	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifactFailed {
+	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifactFailed || !strings.Contains(statement.Failure, "anchor_inclusion") {
 		t.Fatalf("a tampered artifact must be recorded as failed, got %+v", statement)
 	}
+}
+
+// resign signs e again with the responder's own key and encodes it as JSON.
+func resign(t *testing.T, responder *Book, e Envelope) Reply {
+	t.Helper()
+	body, err := e.SigningBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := responder.signer.Sign(context.Background(), body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Sig = hex.EncodeToString(sig)
+	reply, err := encodeReply(MediaTypeJSON, &e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reply
 }
 
 // TestRefusalSignedByCapsuleEmitVerifies: a refusal signed by the Python
@@ -355,78 +441,38 @@ func TestRefusalSignedByCapsuleEmitVerifies(t *testing.T) {
 	}
 }
 
-// A responder-signed bundle whose claims are not all "pass" (here graph
-// closure is "withheld": the bundle declares a record missing) is recorded as
-// artifact_failed_verification, never as an artifact.
-func TestABundleWithAWithheldClaimIsAFailedArtifact(t *testing.T) {
+// A holder-disclosed bundle whose claims are not all "pass" (here graph
+// closure is "withheld": the bundle declares a record missing) does not
+// verify as an answer, though VerifyBundle accepts it.
+func TestABundleWithAWithheldClaimIsNotAVerifiedAnswer(t *testing.T) {
 	ctx := context.Background()
-	responder, records := linkedBook(t)
-	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
-	requester := newFixture(t, "requester", 30).open(t)
-	keys := responderKeys(responder, 1)
-	ask := func() SentRequest {
-		sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()}, "book-a")
-		if err != nil {
-			t.Fatal(err)
-		}
-		return sent
-	}
-	outcome := func(r Record) ResponseStatement {
-		var statement ResponseStatement
-		if err := json.Unmarshal(r.Header.Statement, &statement); err != nil {
-			t.Fatal(err)
-		}
-		return statement
-	}
-
-	// The genuine response is a fully verified artifact.
-	sent := ask()
-	genuine := respond(t, responder, sent.Bytes, "requester")
-	verified, err := VerifyBundle(genuine.Artifact.Artifact)
-	if err != nil || verified.FullyVerified() != nil {
-		t.Fatalf("the genuine bundle must fully verify: %v %v", err, verified.FullyVerified())
-	}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, genuine, keys)
-	if err != nil || outcome(recorded).Outcome != OutcomeArtifact {
-		t.Fatalf("genuine response: %+v %v", outcome(recorded), err)
-	}
-
-	// The same answer with a record declared missing, re-signed by the
-	// responder: VerifyBundle accepts it (nothing is false), but graph
-	// closure is only "withheld".
-	sent = ask()
-	doctored := *respond(t, responder, sent.Bytes, "requester").Artifact
-	var bundle map[string]any
-	if err := json.Unmarshal(doctored.Artifact, &bundle); err != nil {
+	holder, records := linkedBook(t)
+	keys := responderKeys(holder, 1)
+	bundle, err := holder.Bundle(ctx, BundleRequest{Root: records[1].RecordID})
+	if err != nil {
 		t.Fatal(err)
 	}
-	completeness := bundle["completeness"].(map[string]any)
+	if _, err := VerifyBundleAnswer(bundle.JSON, keys); err != nil {
+		t.Fatalf("the genuine bundle must verify: %v", err)
+	}
+	var doctored map[string]any
+	if err := json.Unmarshal(bundle.JSON, &doctored); err != nil {
+		t.Fatal(err)
+	}
+	completeness := doctored["completeness"].(map[string]any)
 	completeness["missing"], completeness["records_mode"] = []any{strings.Repeat("ab", 32)}, "declared_incomplete"
-	if doctored.Artifact, err = json.Marshal(bundle); err != nil {
+	data, err := json.Marshal(doctored)
+	if err != nil {
 		t.Fatal(err)
 	}
-	withheld, err := VerifyBundle(doctored.Artifact)
+	withheld, err := VerifyBundle(data)
 	if err != nil || withheld.Claims.GraphClosure != "withheld" || !withheld.AnchorAuthenticated {
 		t.Fatalf("the doctored bundle must verify with a withheld graph closure: %+v %v", withheld.Claims, err)
 	}
-	doctored.ArtifactDigest = digestBytes(doctored.Artifact)
-	body, err := doctored.SigningBody()
-	if err != nil {
-		t.Fatal(err)
+	if _, err := VerifyBundleAnswer(data, keys); err == nil || !strings.Contains(err.Error(), "graph closure") {
+		t.Fatalf("a withheld-claim bundle verified as an answer: %v", err)
 	}
-	sig, err := responder.signer.Sign(ctx, body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	doctored.Sig = hex.EncodeToString(sig)
-	if err := doctored.Verify(); err != nil {
-		t.Fatalf("the re-signed response must carry a valid signature: %v", err)
-	}
-	recorded, err = requester.RecordResponse(ctx, sent.RecordID, Response{Artifact: &doctored}, keys)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := outcome(recorded); got.Outcome != OutcomeArtifactFailed || !strings.Contains(got.Failure, "graph closure") {
-		t.Fatalf("a withheld-claim bundle was recorded as %+v", got)
+	if _, err := VerifyBundleAnswer(bundle.JSON, ResponderKeys{Checkpoint: checkpointKeyID(77)}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a bundle anchored under another checkpoint key verified")
 	}
 }

@@ -174,9 +174,9 @@ func TestCheckpointFieldsAreTakenFromTheSignedStatement(t *testing.T) {
 	}
 }
 
-// B3: a response with the pinned key id but no valid signature was recorded
-// as artifact_failed_verification with key_pinned: true, and the real signed
-// response was then refused because an outcome already existed.
+// B3: a reply with the pinned key id but no valid signature was recorded
+// as received-and-failed, and the real signed reply was then refused
+// because an outcome already existed.
 func TestUnsignedResponseCannotForecloseARequest(t *testing.T) {
 	ctx := context.Background()
 	responder, records := linkedBook(t)
@@ -188,28 +188,38 @@ func TestUnsignedResponseCannotForecloseARequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := responderKeys(responder, 1)
-	junk := []Response{
-		{Artifact: &ArtifactResponse{RequestDigest: sent.Digest, ArtifactKind: "x", Artifact: json.RawMessage(`{}`), KeyID: keys.Signer, Sig: "00"}},
-		{Artifact: &ArtifactResponse{RequestDigest: sent.Digest, ArtifactKind: ArtifactEvidenceBundle, Artifact: json.RawMessage(`{}`), ArtifactDigest: digestBytes([]byte(`{}`)), KeyID: keys.Signer, Sig: strings.Repeat("00", 64)}},
-		{Refusal: &Refusal{RequestDigest: sent.Digest, Reason: ReasonNotAuthorized, IssuedAt: "2026-09-26T12:00:00Z", KeyID: keys.Signer, Sig: "00"}},
+	unsigned := Envelope{Profile: ProfileID, RequestDigest: sent.Digest, Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Anchor: Anchor{Digest: sent.Digest}, Artifact: []byte("{}"), ArtifactDigest: digestBytes([]byte("{}")), Responder: keys.Signer, IssuedAt: "2026-09-26T12:00:00Z", Sig: strings.Repeat("00", 64)}
+	junkEnvelope, err := encodeReply(MediaTypeJSON, &unsigned, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	junkRefusal, err := encodeReply(MediaTypeJSON, nil, &Refusal{RequestDigest: sent.Digest, Reason: ReasonNotAuthorized, IssuedAt: "2026-09-26T12:00:00Z", KeyID: keys.Signer, Sig: "00"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	junk := []Message{
+		junkEnvelope.Message, junkRefusal.Message,
+		{Octets: []byte(`{"artifact_digest":"x","reason":"not_authorized"}`), MediaType: MediaTypeJSON},
+		{Octets: []byte(`{"neither":true}`), MediaType: MediaTypeJSON},
+		{Octets: []byte(`<html>502</html>`), MediaType: MediaTypeJSON},
 	}
 	before := requester.Size()
-	for i, response := range junk {
-		if _, err := requester.RecordResponse(ctx, sent.RecordID, response, keys); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("junk response %d was recorded (err=%v)", i, err)
+	for i, reply := range junk {
+		if _, err := requester.RecordResponse(ctx, sent.RecordID, reply, keys); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("junk reply %d was recorded (err=%v)", i, err)
 		}
 	}
 	if requester.Size() != before {
-		t.Fatal("an unauthenticated response left a record behind")
+		t.Fatal("an unauthenticated reply left a record behind")
 	}
-	real := respond(t, responder, sent.Bytes, "requester")
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, real, keys)
+	real := respondAs(t, responder, sent.Message(), "requester")
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, real.Message, keys)
 	if err != nil {
-		t.Fatalf("the genuine response was refused after junk: %v", err)
+		t.Fatalf("the genuine reply was refused after junk: %v", err)
 	}
 	var statement ResponseStatement
 	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifact || statement.KeyID != keys.Signer {
-		t.Fatalf("genuine response recorded as %+v (%v)", statement, err)
+		t.Fatalf("genuine reply recorded as %+v (%v)", statement, err)
 	}
 
 	// Junk must not block a later recorded absence either.
@@ -227,7 +237,7 @@ func TestUnsignedResponseCannotForecloseARequest(t *testing.T) {
 }
 
 // S2: the responder keys are required, and a correctly self-signed refusal
-// or artifact under any other key is refused, not recorded.
+// or envelope under any other key is refused, not recorded.
 func TestRecordResponseRequiresAndEnforcesPinnedKeys(t *testing.T) {
 	ctx := context.Background()
 	responder, records := linkedBook(t)
@@ -239,23 +249,23 @@ func TestRecordResponseRequiresAndEnforcesPinnedKeys(t *testing.T) {
 	}
 	impostor := newFixture(t, "book-a", 77).open(t)
 	mustAppend(t, impostor, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
-	selfSigned, _, err := impostor.Respond(ctx, sent.Bytes, RespondOptions{AuthenticatedRequester: "requester", Policy: DefaultSharePolicy()})
-	if err != nil || selfSigned.Refusal == nil || selfSigned.Refusal.Verify() != nil {
-		t.Fatalf("the impostor must produce a refusal that verifies under its own key: %+v %v", selfSigned, err)
+	selfSigned := respondAs(t, impostor, sent.Message(), "requester")
+	if selfSigned.Refusal == nil || selfSigned.Refusal.Verify() != nil {
+		t.Fatalf("the impostor must produce a refusal that verifies under its own key: %+v", selfSigned)
 	}
 	keys := responderKeys(responder, 1)
 	for name, pinned := range map[string]ResponderKeys{"none": {}, "signer only": {Signer: keys.Signer}, "checkpoint only": {Checkpoint: keys.Checkpoint}} {
-		if _, err := requester.RecordResponse(ctx, sent.RecordID, selfSigned, pinned); !errors.Is(err, ErrInvalid) {
+		if _, err := requester.RecordResponse(ctx, sent.RecordID, selfSigned.Message, pinned); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("pinned keys %s: recorded without both keys", name)
 		}
 	}
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, selfSigned, keys); !errors.Is(err, ErrInvalid) {
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, selfSigned.Message, keys); !errors.Is(err, ErrInvalid) {
 		t.Fatal("a refusal self-signed by another key was recorded")
 	}
-	// A genuine artifact anchored to a checkpoint key other than the pinned
+	// A genuine envelope anchored to a checkpoint key other than the pinned
 	// one is recorded as failed, never as a grant.
 	wrongCheckpoint := ResponderKeys{Signer: keys.Signer, Checkpoint: checkpointKeyID(77)}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, respond(t, responder, sent.Bytes, "requester"), wrongCheckpoint)
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, respondAs(t, responder, sent.Message(), "requester").Message, wrongCheckpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,9 +326,9 @@ func TestIdenticalRequestsGetDistinctDigests(t *testing.T) {
 	if first.Digest == second.Digest {
 		t.Fatal("two requests share a digest; an answer to one would be accepted for the other")
 	}
-	var sentReq EvidenceRequest
-	if err := json.Unmarshal(first.Bytes, &sentReq); err != nil || sentReq.Nonce == "" {
-		t.Fatal("the transmitted request carries no nonce")
+	sentReq := readRequest(first.Message()).request
+	if sentReq.Nonce == "" || sentReq.Profile != ProfileID {
+		t.Fatal("the transmitted request carries no nonce or no profile")
 	}
 	req.Nonce = sentReq.Nonce
 	if _, err := requester.Request(ctx, req, "x"); !errors.Is(err, ErrInvalid) {
@@ -326,14 +336,19 @@ func TestIdenticalRequestsGetDistinctDigests(t *testing.T) {
 	}
 }
 
-// Nit: the artifact signing body carries its own context member.
-func TestArtifactSigningBodyNamesItsType(t *testing.T) {
-	body, err := ArtifactResponse{RequestDigest: "r", Anchor: "a", ArtifactKind: "k", ArtifactDigest: "d", IssuedAt: "t"}.SigningBody()
+// The envelope signs exactly the profile's signed members, in JCS (§6.2):
+// no type member and no product-specific member, and every member present
+// is covered.
+func TestEnvelopeSigningBodyIsTheProfilesSignedMembers(t *testing.T) {
+	size := uint64(7)
+	e := Envelope{Profile: ProfileID, RequestDigest: "r", Subject: Subject{Kind: SubjectRecord, Digest: strings.Repeat("ab", 32)}, Derivation: "d/1", Anchor: Anchor{Digest: "a", FreshnessSize: &size}, ArtifactDigest: "x", Verification: []VerificationEntry{{Kind: KindCLLCheckpoint, Digest: "c"}}, Responder: "k", IssuedAt: "2026-01-01T00:00:00Z", Sig: "s", Artifact: []byte("A"), VerificationContent: [][]byte{[]byte("C")}}
+	body, err := e.SigningBody()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(body, []byte(`"type":"`+ArtifactResponseType+`"`)) {
-		t.Fatalf("artifact signing body has no type member: %s", body)
+	want := `{"anchor":{"digest":"a","freshness":7},"artifact_digest":"x","derivation":"d/1","issued_at":"2026-01-01T00:00:00Z","profile":"evidence-interop/0","request_digest":"r","responder":"k","subject":{"record":"` + strings.Repeat("ab", 32) + `"},"verification":[{"digest":"c","kind":"cll-checkpoint"}]}`
+	if string(body) != want {
+		t.Fatalf("envelope signing body\n got %s\nwant %s", body, want)
 	}
 }
 
@@ -367,40 +382,51 @@ func TestFoldedKeyCheckMatchesJSONFolding(t *testing.T) {
 	}
 }
 
-// S2/B3: an artifact validly self-signed by a key other than the pinned one
+// S2/B3: an envelope validly self-signed by a key other than the pinned one
 // is refused and not recorded, so it cannot become an outcome or foreclose
 // the genuine answer; a genuine answer with no pinned keys is refused too.
 func TestForeignSignedArtifactIsRefusedNotRecorded(t *testing.T) {
 	ctx := context.Background()
 	responder, _ := linkedBook(t)
 	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
+	if _, err := responder.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
 	requester := newFixture(t, "requester", 30).open(t)
 	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}, "book-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	impostor, _ := linkedBook(t)
+	if _, err := impostor.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
 	impostor.signer, err = NewEd25519Signer(seededKey(77))
 	if err != nil {
 		t.Fatal(err)
 	}
-	foreign := respond(t, impostor, sent.Bytes, "")
-	if foreign.Artifact == nil || foreign.Artifact.Verify() != nil {
-		t.Fatal("the impostor must produce an artifact that verifies under its own key")
+	foreign := respondAs(t, impostor, sent.Message(), "")
+	if foreign.Envelope == nil || foreign.Envelope.Verify() != nil {
+		t.Fatal("the impostor must produce an envelope that verifies under its own key")
 	}
 	keys := responderKeys(responder, 1)
 	before := requester.Size()
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, foreign, keys); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("an artifact signed by another key was recorded (err=%v)", err)
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, foreign.Message, keys); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an envelope signed by another key was recorded (err=%v)", err)
 	}
-	genuine := respond(t, responder, sent.Bytes, "")
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, genuine, ResponderKeys{}); !errors.Is(err, ErrInvalid) {
-		t.Fatal("a response was recorded with no pinned keys")
+	genuine := respondAs(t, responder, sent.Message(), "")
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, genuine.Message, ResponderKeys{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a reply was recorded with no pinned keys")
 	}
 	if requester.Size() != before {
-		t.Fatal("a refused response left a record behind")
+		t.Fatal("a refused reply left a record behind")
 	}
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, genuine, keys); err != nil {
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, genuine.Message, keys)
+	if err != nil {
 		t.Fatalf("the genuine answer was foreclosed: %v", err)
+	}
+	var statement ResponseStatement
+	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.Outcome != OutcomeArtifact {
+		t.Fatalf("the genuine checkpoints answer was recorded as %+v", statement)
 	}
 }

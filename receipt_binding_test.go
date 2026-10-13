@@ -67,72 +67,60 @@ func mintReceipt(t *testing.T, statement []byte, witnessKey ed25519.PrivateKey) 
 	}
 }
 
-// receiptCase is a responder answering a full-history request, and the
-// requester about to record it.
+// receiptCase is a holder disclosing an Evidence Bundle (Book.Bundle) and a
+// recipient about to check it with VerifyBundleAnswer under the holder's
+// pinned keys.
 type receiptCase struct {
-	ctx       context.Context
-	responder *Book
-	requester *Book
-	keys      ResponderKeys
+	ctx    context.Context
+	holder *Book
+	keys   ResponderKeys
 }
 
 func newReceiptCase(t *testing.T) receiptCase {
 	t.Helper()
-	responder, _ := linkedBook(t)
-	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
-	return receiptCase{ctx: context.Background(), responder: responder, requester: newFixture(t, "requester", 30).open(t), keys: responderKeys(responder, 1)}
+	holder, _ := linkedBook(t)
+	mustAppend(t, holder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
+	return receiptCase{ctx: context.Background(), holder: holder, keys: responderKeys(holder, 1)}
 }
 
-// answer asks for the full history, lets the responder answer, applies
-// change to the bundle's checkpoint member (re-signing the response with the
-// responder's own key, so only the bundle can fail), and records it.
-func (c receiptCase) answer(t *testing.T, change func(checkpoint map[string]any, statement []byte)) ResponseStatement {
+// receiptOutcome is what the recipient makes of a bundle: verified, or
+// failed and why.
+type receiptOutcome struct {
+	Outcome, Failure string
+}
+
+// answer bundles the holder's newest record (anchored at a fresh
+// checkpoint), applies change to the bundle's checkpoint member, and checks
+// the result.
+func (c receiptCase) answer(t *testing.T, change func(checkpoint map[string]any, statement []byte)) receiptOutcome {
 	t.Helper()
-	// Fresh at the responder's whole log, so a grown log gets a new checkpoint.
-	coverage := Coverage{MinFreshness: &Freshness{Size: c.responder.Size()}}
-	sent, err := c.requester.Request(c.ctx, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: coverage}, "book-a")
+	bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.order[len(c.holder.order)-1]})
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := respond(t, c.responder, sent.Bytes, "requester")
+	data := bundle.JSON
 	if change != nil {
-		a := resp.Artifact
-		var bundle map[string]any
-		if err := json.Unmarshal(a.Artifact, &bundle); err != nil {
+		var wire map[string]any
+		if err := json.Unmarshal(data, &wire); err != nil {
 			t.Fatal(err)
 		}
-		member := bundle["checkpoint"].(map[string]any)
+		member := wire["checkpoint"].(map[string]any)
 		statement, err := base64.RawURLEncoding.DecodeString(member["cose"].(string))
 		if err != nil {
 			t.Fatal(err)
 		}
 		change(member, statement)
-		if a.Artifact, err = json.Marshal(bundle); err != nil {
+		if data, err = json.Marshal(wire); err != nil {
 			t.Fatal(err)
 		}
-		a.ArtifactDigest = digestBytes(a.Artifact)
-		body, err := a.SigningBody()
-		if err != nil {
-			t.Fatal(err)
-		}
-		sig, err := c.responder.signer.Sign(c.ctx, body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		a.Sig = hex.EncodeToString(sig)
 	}
-	recorded, err := c.requester.RecordResponse(c.ctx, sent.RecordID, resp, c.keys)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := VerifyBundleAnswer(data, c.keys); err != nil {
+		return receiptOutcome{Outcome: OutcomeArtifactFailed, Failure: err.Error()}
 	}
-	var statement ResponseStatement
-	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil {
-		t.Fatal(err)
-	}
-	return statement
+	return receiptOutcome{Outcome: OutcomeArtifact}
 }
 
-// A history answer carrying a witness receipt whose bytes are bogus is
+// A bundle carrying a witness receipt whose bytes are bogus is
 // recorded as a failed artifact, never as a grant, even when the requester's
 // directory lists the witness.
 func TestAnswerWithBogusWitnessReceiptIsAFailedArtifact(t *testing.T) {
@@ -157,8 +145,8 @@ func TestAnswerWithReceiptForAnotherCheckpointIsAFailedArtifact(t *testing.T) {
 	// A first answer issues a checkpoint; the log then grows, so the next
 	// answer is anchored at a later one.
 	c.answer(t, nil)
-	mustAppend(t, c.responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
-	history, err := c.responder.store.Checkpoints(c.ctx)
+	mustAppend(t, c.holder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
+	history, err := c.holder.store.Checkpoints(c.ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

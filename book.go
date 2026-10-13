@@ -68,6 +68,8 @@ type Book struct {
 	// checkpointing suppresses the automatic checkpoint while the book is
 	// committing index roots inside a checkpoint.
 	checkpointing bool
+
+	derivations map[string]derivationEntry
 }
 
 // Open validates cfg, reconciles the record store with the substrate, and
@@ -80,7 +82,8 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 		return nil, fmt.Errorf("%w: store, substrate, payloads and signer are required", ErrInvalid)
 	}
 	b := &Book{
-		id: cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
+		derivations: make(map[string]derivationEntry),
+		id:          cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
 		checkpointEvery: cfg.CheckpointEvery, now: cfg.Now,
 		store: cfg.Store, commitments: cfg.Substrate, payloads: cfg.Payloads, signer: cfg.Signer,
 		operational: cfg.Operational, index: cfg.Authenticated, discovery: cfg.Discovery,

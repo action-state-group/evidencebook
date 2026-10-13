@@ -12,9 +12,10 @@ import (
 	"testing"
 )
 
-// Tests for the requester gate: protected subjects are answered only to an
-// authenticated requester, a declared or disclosed id never grants scope, and
-// answered-request records never carry a requester id.
+// Tests for the requester gate (NFR-4, NFR-5): protected subjects are
+// answered only to an authenticated requester, a declared or disclosed id
+// never grants scope, and answered-request records never carry a requester
+// id and are never served.
 
 func policyWith(tier string) SharePolicy {
 	p := DefaultSharePolicy()
@@ -22,26 +23,32 @@ func policyWith(tier string) SharePolicy {
 	return p
 }
 
-func respondWith(t *testing.T, book *Book, req []byte, opts RespondOptions) (Response, AnsweredStatement) {
+// respondWith answers req and returns the answered-request statement, which
+// is zero when nothing was sealed.
+func respondWith(t *testing.T, book *Book, req Message, opts RespondOptions) (Reply, AnsweredStatement) {
 	t.Helper()
-	resp, answered, err := book.Respond(context.Background(), req, opts)
+	reply, answered, err := book.Respond(context.Background(), req, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var statement AnsweredStatement
-	if err := json.Unmarshal(answered.Header.Statement, &statement); err != nil {
-		t.Fatal(err)
+	if answered.RecordID != "" {
+		if err := json.Unmarshal(answered.Header.Statement, &statement); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return resp, statement
+	return reply, statement
 }
 
-// (a) Without an authenticated requester only public subjects are answered;
-// everything else gets a signed not_authorized refusal, whatever id the
-// caller declares and whatever tier the policy is set to.
+// (a) Without an authenticated requester only public questions are
+// answered; everything else gets a signed not_authorized refusal, whatever
+// id the caller declares and whatever tier the policy is set to. Nothing an
+// unauthenticated caller sends grows the log.
 func TestUnauthenticatedRequesterGetsOnlyPublicSubjects(t *testing.T) {
 	book, _ := linkedBook(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	history := requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: fresh()})
+	pin := anchorPin(t, book)
+	history := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: pin}})
 	cases := map[string]RespondOptions{
 		"no id, default policy":        {Policy: DefaultSharePolicy()},
 		"no id, peers":                 {Policy: policyWith("peers")},
@@ -51,20 +58,23 @@ func TestUnauthenticatedRequesterGetsOnlyPublicSubjects(t *testing.T) {
 	}
 	for name, opts := range cases {
 		t.Run(name, func(t *testing.T) {
-			resp, statement := respondWith(t, book, history, opts)
-			mustRefusal(t, resp, ReasonNotAuthorized)
-			if resp.Refusal.KeyID != KeyID(book.signer) {
+			before := book.Size()
+			reply, statement := respondWith(t, book, history, opts)
+			refusal := mustRefusal(t, reply, ReasonNotAuthorized)
+			if refusal.KeyID != KeyID(book.signer) {
 				t.Fatal("the refusal must be signed by the book's own key")
 			}
-			if statement.Relationship != RelationshipStranger {
-				t.Fatalf("relationship %q, want %q", statement.Relationship, RelationshipStranger)
+			if statement != (AnsweredStatement{}) || book.Size() != before {
+				t.Fatal("an unauthenticated request grew the log")
 			}
 		})
 	}
-	t.Run("checkpoints stay public", func(t *testing.T) {
-		resp, _ := respondWith(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}), RespondOptions{Policy: DefaultSharePolicy()})
-		mustArtifact(t, resp)
-	})
+	for _, derivation := range []string{"", DerivationHistoryCard} {
+		t.Run("checkpoints stay public "+derivation, func(t *testing.T) {
+			reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), RespondOptions{Policy: DefaultSharePolicy()})
+			mustEnvelope(t, reply)
+		})
+	}
 }
 
 // (b) One requester's id never appears, in any recoverable form, in what
@@ -73,22 +83,28 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 	book, records := linkedBook(t)
 	const alice = "alice-private-handle"
 	peers := policyWith("peers")
-	_, statement := respondWith(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()}),
+	_, statement := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()}),
 		RespondOptions{RequesterID: alice, AuthenticatedRequester: alice, Policy: peers})
 	if statement.Outcome != OutcomeArtifact {
 		t.Fatalf("alice's request was not answered: %+v", statement)
 	}
-	// The floor makes bob's answer cover the record of alice's request.
-	covering := Coverage{MinFreshness: &Freshness{Size: uint64(len(book.order))}}
-	resp, _ := respondWith(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: covering}),
-		RespondOptions{RequesterID: "bob", AuthenticatedRequester: "bob", Policy: peers})
-	artifact := mustArtifact(t, resp)
-	if !bytes.Contains(artifact.Artifact, []byte(RecordTypeRequestAnswered)) {
-		t.Fatal("bob's full_history must include the record of alice's request for this test to mean anything")
+	var answered string
+	for _, id := range book.order {
+		if book.records[id].Header.RecordType == RecordTypeRequestAnswered {
+			answered = id
+		}
 	}
-	wire, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatal(err)
+	// The floor makes bob's answer cover the record of alice's request.
+	covering := Coverage{MinFreshness: sizeFloor(uint64(len(book.order)))}
+	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: covering}),
+		RespondOptions{RequesterID: "bob", AuthenticatedRequester: "bob", Policy: peers})
+	e := mustEnvelope(t, reply)
+	served := false
+	for _, entry := range artifactRecords(t, e) {
+		served = served || entry["digest"] == answered
+	}
+	if !served {
+		t.Fatal("bob's full_history must include the record of alice's request for this test to mean anything")
 	}
 	sum := sha256.Sum256([]byte(alice))
 	forms := map[string]string{
@@ -101,7 +117,7 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 		"json-quoted": `"` + alice + `"`,
 	}
 	for name, form := range forms {
-		if bytes.Contains(wire, []byte(form)) {
+		if bytes.Contains(reply.Octets, []byte(form)) || bytes.Contains(e.Artifact, []byte(form)) {
 			t.Fatalf("bob's answer contains alice's id (%s form)", name)
 		}
 	}
@@ -118,15 +134,15 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 func TestClaimedCounterpartyIDGrantsNoScope(t *testing.T) {
 	book, records := linkedBook(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	req := requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
+	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
 	for name, opts := range map[string]RespondOptions{
 		"claimed, unauthenticated":         {RequesterID: "known-peer", Policy: policyWith("counterparties")},
 		"claimed, authenticated as other":  {RequesterID: "known-peer", AuthenticatedRequester: "someone-else", Policy: policyWith("counterparties")},
 		"claimed, unauthenticated, prosp.": {RequesterID: "known-peer", Policy: policyWith("prospective")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			resp, statement := respondWith(t, book, req, opts)
-			mustRefusal(t, resp, ReasonNotAuthorized)
+			reply, statement := respondWith(t, book, req, opts)
+			mustRefusal(t, reply, ReasonNotAuthorized)
 			if statement.Relationship == RelationshipCounterparty {
 				t.Fatal("a claimed id was classified as a counterparty")
 			}
@@ -139,9 +155,9 @@ func TestClaimedCounterpartyIDGrantsNoScope(t *testing.T) {
 func TestAuthenticatedCounterpartyKeepsScope(t *testing.T) {
 	book, records := linkedBook(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	req := requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
-	resp, statement := respondWith(t, book, req, RespondOptions{RequesterID: "known-peer", AuthenticatedRequester: "known-peer", Policy: policyWith("counterparties")})
-	mustArtifact(t, resp)
+	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
+	reply, statement := respondWith(t, book, req, RespondOptions{RequesterID: "known-peer", AuthenticatedRequester: "known-peer", Policy: policyWith("counterparties")})
+	mustEnvelope(t, reply)
 	if statement.Relationship != RelationshipCounterparty {
 		t.Fatalf("relationship %q, want %q", statement.Relationship, RelationshipCounterparty)
 	}
