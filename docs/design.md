@@ -70,9 +70,9 @@ with the error so the caller does not append it twice.
 | §7 Index Classes, discovery | `DiscoveryIndex`, `TokenIndex`, `Candidates`, `Book.Discover` |
 | §8 Commitment-Substrate Interface | `Substrate`, `SubstrateInfo`, `SubstrateEntry`, `Checkpoint`, `InclusionEvidence`, `ConsistencyEvidence`, `IntervalEvidence`, `CLLSubstrate` / `OpenCLL`, `VerifyCheckpoints`, `SCITTReceiptSubstrate` / `NewSCITTReceiptSubstrate`, `Registrar`, `Receipt`, `Book.Checkpoint`, `Book.Checkpoints` |
 | §8, Evidence Bundle v2 wire | `CompletenessCertificate`, `RangeWitness`, `Membership`, `LogCoordinates`, `MMRInclusion`, `BundleCheckpoint`, `Bundle`, `BundleRequest`, `Book.Bundle`, `VerifyBundle`, `VerifiedBundle`, `PeerRecord` |
-| §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Pin`, `Freshness`, `EvidenceRequest`, `ArtifactResponse`, `Response`, `Book.Respond`, `RespondOptions`, `AnsweredStatement`, `SharePolicy` |
+| §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Freshness`, `EvidenceRequest`, `EncodeRequest`, `Message`, `Envelope`, `Anchor`, `VerificationEntry`, `Reply`, `ParseReply`, `Book.Respond`, `RespondOptions`, `ResponderPolicy`, `RequestLimiter`, `WindowLimiter`, `AnsweredStatement`, `SharePolicy`, `DerivationDefinition`, `Book.RegisterDerivation`, `Book.CommitRetention`, `Book.Manifest` |
 | §9.1 Three Kinds of "No" | non-membership: `Book.ProveKeyRange` returning no matches; withheld: `WithheldItem`, `UnavailableError`; asserted absence: a `Refusal` with `no_such_subject` |
-| Request draft: outcomes | `Refusal` (signed), `ArtifactResponse` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponderKeys`, `WitnessRow`, `ParseWitnessDirectory`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceStatement` |
+| Request draft: outcomes | `Refusal` (signed), `Envelope` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponderKeys`, `WitnessRow`, `ParseWitnessDirectory`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceRecord`, `VerifyBundleAnswer` |
 | §10 Reconcile and Close | `ExchangeState` (six states), `Half`, `HalfSet`, `Comparator`, `SamePayloadCommitments`, `PairResult`, `Tallies`, `ReconcileHalves`, `ReconcileInput`, `Reconciliation`, `Book.Reconcile`, `CloseInput`, `CloseStatement`, `Book.Close`, `Book.Acknowledge`, `Book.Rebut`, `CloseStatus`, `StatusOfClose` |
 | Out of scope in the I-D, needed by any implementation | `Signer`, `Ed25519Signer`, `KeyID`, `Store`, `FileStore`, `Config`, `Book`, `Open`, `Release`, the error values |
 
@@ -120,73 +120,120 @@ themselves indexed. Otherwise each root commit would make the next one stale.
 no exported function other than its own methods accepts it.
 `TestDiscoveryCandidatesNeverReachProofs` enforces this by type.
 
+**The profile, and what it pins.** `Respond` implements the responder side
+of `evidence-interop/0` (agent-action-capsule `spec/interop-profile-v0.md`)
+and nothing the profile does not define. The request map is the request
+draft's (§6.1): a one-member subject map, `expected_pin` as a digest,
+`min_freshness` as a size or a time, unknown members ignored, member names
+matched exactly, and the profile's validation order, so both coverage members
+or neither is `coverage_unsatisfiable` and every other non-conforming value is
+`request_malformed`. Duplicate members and trailing bytes make a request not
+well formed. A request is read in JSON or in CBOR (the `evidence-request/1`
+frame), its digest is SHA-256 over the octets as received, and the reply is
+written in the request's encoding: JCS for JSON, deterministic CBOR for CBOR.
+
+**The canonical Artifact.** It is a deterministic function of the subject,
+the resolved anchor and the derivation. For a `record` subject it is the
+record's own octets, the capsule preimage whose SHA-256 is the record id, so
+the envelope proves it with the profile's Checkpointed Local Log material
+(`cll-checkpoint`, `cll-inclusion-proof`, and `cll-consistency-proof` when the
+anchor extends an earlier checkpoint). The anchor is a checkpoint, named by
+the SHA-256 of its signed statement; that digest is what a requester pins.
+For the other forms it is JCS JSON in the stream binding's member names
+(`anchor`, `evidence_stream`, `subject`, `records` with `leaf_index`,
+`digest` and `body`, `checkpoints`, `history` with `checkpoint` and
+`consistency_from_previous`, `derivation`); `range` positions are zero-based
+log positions. No member names this product, and nothing the responder says
+about its own checks is carried. For `checkpoints` and `history_card/1` the
+Artifact is its own verification material. The envelope signs exactly the
+profile's members (`profile`, `request_digest`, `subject`, `derivation`,
+`anchor`, `artifact_digest`, `verification`, `responder`, `issued_at`) in
+JCS, the same bytes in either encoding. `TestCallerInvariance` checks the
+Artifact is byte-identical across nonces, routes, requesters, the profile
+member and both encodings. Under `min_freshness` the book answers from the
+newest checkpoint it has issued that meets the floor, and checkpoints only
+when none does and the requester is authenticated, so two requests can
+resolve to different anchors if a checkpoint was issued between them. An
+`exchange` subject pinned by the requester's own half resolves to the
+earliest checkpoint covering every checkpointed record citing it.
+
 **Relationship gating.** `Respond` classifies a requester from
 `RespondOptions.AuthenticatedRequester` only: `stranger` (not authenticated),
 `counterparty` (the authenticated identity is named in `counterparty_ref` on
 one of the book's records) or `identified`, and answers per
 `SharePolicy.HistorySegments` with the same tiers and defaults as the mesh
 plugin's `share.*` object. The other three switches travel unchanged;
-`Respond` does not act on them. `checkpoints` is the only public subject.
-Every other subject is gated and fails closed: a stranger is refused
-`not_authorized` under every tier, including `peers`, which means any
-authenticated peer. The book does not authenticate anyone itself: the
-transport sets `AuthenticatedRequester` only after it has authenticated the
-caller. A declared identity (`RespondOptions.RequesterID`, deprecated) is
-ignored, and a `counterparty_ref` value is not a credential, so knowing one
-grants nothing. The record of answering a request carries the request digest,
-subject kind, outcome, reason, relationship class and anchor, and no
-requester identity in any form, because that record is part of the history
-later answers can disclose. A holder that needs to know who asked keeps that
-in its transport's own access log, outside the book. The record of asking
-names the responder in its statement, never in `counterparty_ref`, so neither
-asking nor being asked changes anyone's relationship. An answer carries
-headers only, never payload bytes. A subject the book holds only beyond the
-resolved anchor is refused `coverage_unsatisfiable`, never `no_such_subject`.
-A `min_freshness.time` in the future is refused without doing any work.
+`Respond` does not act on them. `checkpoints` and `history_card/1` are the
+only public questions. Every other subject is gated and fails closed: a
+stranger is refused `not_authorized` under every tier, including `peers`,
+which means any authenticated peer. The book does not authenticate anyone
+itself: the transport sets `AuthenticatedRequester` only after it has
+authenticated the caller. A declared identity (`RespondOptions.RequesterID`,
+deprecated) is ignored, and a `counterparty_ref` value, a route or a handle
+is not a credential, so knowing one grants nothing. Authorization decides
+whether to answer, never what a (subject, anchor, derivation) yields.
 
-**Caller invariance.** An artifact depends only on the subject and the
-resolved anchor, and is built under that checkpoint, so records committed
-after it (including the record of the request itself) never enter it. Under
-`expected_pin` it is byte-identical for every caller; `TestCallerInvariance`
-checks that across nonces, routes and requesters. Under `min_freshness` the
-book answers from the newest checkpoint it has issued that meets the floor,
-and checkpoints only when none does, so two requests can resolve to different
-anchors if a checkpoint was issued between them.
+**Recipient-specific disclosure is a derivation.** A projection prepared for
+one recipient is registered with `RegisterDerivation` and named by the
+SHA-256 of the JCS of its definition document; the recipient is part of the
+definition, so two recipients' projections have two identities. It is
+answered only to its recipient, carries each record's digest and position
+and only its declared header fields, and is never listed in the manifest. The
+canonical Artifact of the underived subject is never varied per recipient.
+
+**What an answer may disclose.** Every artifact is scanned before release
+against its form's declared field set, and refused `policy_declined` if it
+carries a member outside it, or if any record it carries mentions a principal
+or counterparty reference the book holds. The responder's bookkeeping
+records (`evidence_request_answered`, `disclosure`) are never served, by any
+subject form, so one requester's asking never reaches another. A book seals
+an `evidence_request_answered` record only for an authenticated, well-formed
+request; it names no requester.
+
+**Cost and abuse.** `Config.Responder` (`ResponderPolicy`) sets a per-requester
+rate limit (`RequestLimiter`, reference `WindowLimiter`), a request size cap
+and an answer size cap, each refused `policy_declined` before any work, and
+the refusal policy: `specific`, or `uniform`, which answers `policy_declined`
+wherever `not_authorized`, `no_such_subject` or `coverage_unsatisfiable` would
+say what the policy protects. A deadline already passed, or passed while the
+answer was built, is `deadline_unmet`. A lapsed retention commitment
+(`CommitRetention`) turns `no_such_subject` into `retention_expired`.
+Unauthenticated and malformed traffic never grows the log and never forces a
+checkpoint, and a time floor in the future is refused without work.
 
 **Refusal signatures.** A refusal signs the sorted, compact JSON of
 `issued_at`, `reason` and `request_digest`, the same body `capsule_emit`
-signs. The reason tokens are the request draft's registry; `no_such_subject`
-replaces the older `no_such_record`.
+signs and the profile pins (§6.3), with `issued_at` at seconds precision. The
+reason tokens are the request draft's registry and nothing else.
 
 **Recorded absence belongs to the requester.** A responder grants or refuses.
-Absence is the requester's own signed record that nothing arrived in its
-window. `RecordResponse` and `RecordAbsence` take the id of the committed
-request record and re-derive the request bytes, digest, deadline and window
-start from it. `RecordAbsence` refuses while the request is pending,
-including a window shorter than `MinimumAbsenceWindow` from the recording,
-and both refuse once any outcome is recorded, so outcomes never convert.
-`RecordResponse` requires `ResponderKeys`, the responder's signing and
-checkpoint keys as the requester obtained them. A response that does not
-verify under the pinned signing key is refused and not recorded, so a forged
-message can neither become an outcome nor foreclose the real one. A signed
-artifact is then checked against the recorded request: the signed anchor,
-signed by the pinned checkpoint key; the subject the bundle states it
-answers; the pinned checkpoint or the freshness floor; and, for a
-`checkpoints` answer, every field of every checkpoint taken from its signed
-statement plus every consistency proof. Every witness receipt a bundle
-answer carries (`checkpoint.witnesses`) must verify against that signed
-anchor under the requester's own witness directory (`ResponderKeys.Witnesses`,
-read by `ParseWitnessDirectory` in capsule-emit's `witnesses.json` format):
-a receipt with bad bytes, one for another checkpoint, one from a witness the
-directory does not list, or any receipt when no directory is given, makes
-the answer a failed artifact. An answer carrying no receipt is unaffected:
-how many witnesses a requester needs is its own policy. A signed artifact
-that fails those checks is recorded as received-and-failed. `Request` gives
-every request a unique nonce, so no two requests share a digest and an old
-answer cannot be replayed onto a new request. The request record holds the
-transmitted bytes exactly: request, refusal and artifact-response signing
-bodies are JCS (RFC 8785, with agent-action-capsule's integer-only number
-profile), and the record does not re-escape them.
+Absence is the requester's own record that nothing arrived in its window, in
+the profile's shape (`AbsenceRecord`: `outcome`, `request_digest`, `route`,
+`window` with `opened` and `closed`, `recorded_at`), carrying no responder
+act, sealed in the requester's book. `RecordResponse` and `RecordAbsence` take
+the id of the committed request record and re-derive the request bytes,
+digest, deadline, route and window start from it; an absence naming a route
+other than the one the request named is refused. `RecordAbsence` refuses
+while the request is pending, including a window shorter than
+`MinimumAbsenceWindow` from the recording, and both refuse once any outcome
+is recorded, so outcomes never convert. `RecordResponse` requires
+`ResponderKeys`, the responder's signing and checkpoint keys as the requester
+obtained them. A reply that is not signed under the pinned signing key for
+this request's digest is refused and not recorded, so a forged message can
+neither become an outcome nor foreclose the real one. A signed envelope is
+then checked as profile §7.3 says: profile, issuance time, subject and
+derivation, artifact digest, verification binding, anchor match, and anchor
+inclusion by the method the Artifact's form allows (for a record, the §6.2.1
+procedure under the pinned checkpoint key; for checkpoints and history cards,
+every checkpoint and consistency proof). A property the profile gives no
+method for is listed in `ResponseStatement.NotChecked`. A signed reply that
+fails a check is recorded as received-and-failed
+(`artifact_verification_failed`, or `refusal_nonconformant` for a signed
+refusal with an unregistered reason). `Request` gives every request a unique
+nonce and the `profile` member, so no two requests share a digest. Evidence
+Bundles a holder discloses (`Bundle`) are a separate path, checked with
+`VerifyBundleAnswer`, which also checks every witness receipt carried on the
+anchor under the requester's own witness directory.
 
 **Reconcile correlation.** Pairing runs in two passes over all halves, so it
 does not depend on input order: `exchange_id` first, preferring a counterpart
@@ -222,7 +269,9 @@ never rewritten.
 | A Go-built bundle, whole: graph closure, interval coverage, per-record membership, every capsule; a changed record fails | Python `agent_action_capsule.bundle.verify_bundle` (the reference the Go verifier ports), pinned 0.6.0 | `test/interop/python-aac/verify_bundle.py`, CI job `python-cll-interop` |
 | A Python-built bundle (records sealed by Python `agent_action_capsule`, log, signed checkpoint, range and inclusion proofs by Python `cll`) fully verifies here; a changed record does not | `VerifyBundle` + `FullyVerified` | `test/interop/python-cll/build_bundle.py`, `test/interop/verify`, CI job `python-cll-interop` |
 | Checkpoint statement, interval range proof, every membership proof | Python `cll` (`checkpointed-local-log`, pinned commit) | `test/interop/python-cll/verify_bundle.py`, CI job `python-cll-interop` |
-| Checkpoint consistency proofs | cll-go `mmr.VerifyConsistency` | `VerifyCheckpoints`, `TestCheckpointsArtifactProofsAreVerified` |
+| Checkpoint consistency proofs | cll-go `mmr.VerifyConsistency` | `VerifyCheckpoints` |
+| Request map, resolution and refusal readings of `draft-mih-agent-evidence-request-00` | the draft's spec-derived vectors (`request.json` 33 cases in both bindings, `resolution.json` 19, `refusal.json` 21) | `testdata/evidence-request/`, `TestRequestVectors`, `TestResolutionVectors`, `TestRefusalVectors` |
+| Profile envelope, refusal, CLL material, invariance, absence record and manifest | the profile's reference verifier (`agent_action_capsule.interop_profile`) over the profile's conformance vectors | `test/interop/responder`, `test/interop/python-profile/verify_responder.py`, CI job `interop-profile` |
 | Reconcile correlation | `capsule-emit-mesh` `served_request_join.join_served_request`, on halves sealed by its sidecar | `testdata/reconcile-parity/` (generator and fixture), `TestReconcileParityWithMeshCorrelator` |
 | Refusal signing body, both directions | Python `capsule_emit` | Python-signed, verified in Go: `testdata/refusal-interop/`, `TestRefusalSignedByCapsuleEmitVerifies`. Go-signed, verified by Python: `test/interop/python-cll/verify_refusal.py` in CI |
 | Epistemic type value set | the vendored `epistemic-types.json` shared with other implementations | `TestEpistemicTypeThreeWayParity` |
@@ -235,8 +284,7 @@ with one half; multi-half ordering is covered by
 
 Not covered by an external oracle: the authenticated index's RFC 9162 hashing
 is checked against itself (every leaf at every size from 1 to 17), not against
-published vectors; the `ArtifactResponse` signing body has no second
-implementation yet; the header JSON schema is checked for vocabulary parity,
+published vectors; the header JSON schema is checked for vocabulary parity,
 not by validating produced headers against it.
 
 ## Known limits
@@ -264,18 +312,30 @@ not by validating produced headers against it.
   checkpoint's tip, so a bundle carries every record capsule in that
   interval. Capsules carry digests only. Headers and payloads of records
   outside the selected set are not disclosed.
-- **The request wire shape is this package's.** The request draft fixes the
-  six subject forms and the coverage rule, not a JSON encoding. The
-  `EvidenceRequest` encoding here (`digest`, `first`/`last`, `value`;
-  `min_freshness` as `size`/`time`) differs from the one `capsule_emit`
-  currently speaks, so the two do not yet exchange requests directly.
-- **The refusal signing body has no context member.** The artifact response
-  body carries `"type": "evidence-artifact-response/v1"`. The refusal body is
-  kept byte-compatible with `capsule_emit`, which signs exactly
-  `issued_at`, `reason`, `request_digest` (verified in both directions), so
-  adding a context member there is a coordinated change across both
-  implementations, not a change this package makes alone. The two bodies
-  have disjoint member sets, so neither signature verifies as the other.
+- **Profile v0 has no proof method for record sets.** The CLL material kinds
+  prove one record. For `full_history`, `range`, `correlation`, `exchange`
+  and any registered derivation, the profile defines no material (P-13), so
+  this responder sends none rather than invent a kind, and a verifier reports
+  `anchor_inclusion` as `NOT_CHECKED`. Each served record carries its body,
+  which hashes to its digest.
+- **Only a Checkpointed Local Log answers.** A book over another substrate
+  refuses every profile request whose answer would need an anchor
+  (`coverage_unsatisfiable`): the SCITT stub's receipts are held, never
+  verified, so they are never served as checkpoints or proofs, and its bundle
+  inclusion evidence is labelled `scitt-receipt-unverified`.
+- **The checkpoint's identity claims are cll-go's.** cll-go writes the
+  checkpoint's CWT `sub` as `<log id>#<size>` and its `log_size` claim as the
+  MMR size, so a relying party pins `(iss, sub, kid)` per checkpoint, and an
+  envelope's size freshness is the MMR size. The size floor itself is
+  compared with the number of entries, which never exceeds it, so no floor is
+  met by weaker coverage.
+- **Witness receipts are not in the history card.** The responder holds no
+  witness receipts for its own checkpoints, so `history_card/1` lists each
+  checkpoint and its consistency proof only.
+- **The refusal signing body has no context member.** It is the profile's
+  and `capsule_emit`'s body exactly (`issued_at`, `reason`,
+  `request_digest`); the envelope's signed members differ (it always carries
+  `profile` and `artifact_digest`), so neither signature verifies as the other.
 - **The signer is called with the book locked.** A slow remote signer
   serializes the book.
 - **Index operations are linear.** The in-memory authenticated index and the
