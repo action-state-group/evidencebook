@@ -12,8 +12,9 @@ import (
 
 // Ruling 5, profile §6.5: a recipient-specific disclosure is a derivation
 // named by the digest of its definition. It is answered only to its
-// recipient, reveals only its declared fields and has its own identity. The
-// underived subject's artifact is unchanged by it.
+// recipient, reveals only its declared fields, has its own identity, and is
+// never listed in the manifest. The underived subject's artifact is
+// unchanged by it.
 func TestRecipientSpecificDerivation(t *testing.T) {
 	book, records := linkedBook(t)
 	pin := anchorPin(t, book)
@@ -58,6 +59,13 @@ func TestRecipientSpecificDerivation(t *testing.T) {
 	}
 	if again := mustEnvelope(t, ask("", "bob")); !bytes.Equal(again.Artifact, underived.Artifact) {
 		t.Fatal("registering projections changed the underived artifact")
+	}
+	manifest, err := book.Manifest(ManifestOptions{Bindings: []string{BindingHTTP}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(manifest, []byte(forAlice)) || bytes.Contains(manifest, []byte("alice")) {
+		t.Fatal("the manifest lists a recipient-specific derivation")
 	}
 	if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{}`), Forms: []SubjectKind{SubjectCheckpoints}, Fields: []string{"seq"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("a record projection over checkpoints was registered")
