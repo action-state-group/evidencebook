@@ -188,6 +188,7 @@ func TestRespondRefusalReasons(t *testing.T) {
 		{"derivation digest unknown", "peer-1", ReasonDerivationUnsupported, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: digestBytes([]byte("def"))})},
 		{"history card not for a record", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Derivation: DerivationHistoryCard})},
 		{"stranger under default policy", "", ReasonNotAuthorized, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh()})},
+		{"deadline passed", "peer-1", ReasonDeadlineUnmet, jsonRequest(t, EvidenceRequest{Subject: record, Coverage: fresh(), Deadline: "2020-01-01T00:00:00Z"})},
 		{"pin alone is answerable", "peer-1", "", jsonRequest(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: pin}})},
 		{"unknown member is ignored", "peer-1", "", raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"},"page":{"size":10}}`)},
 		{"no such record", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never recorded"))}, Coverage: fresh()})},

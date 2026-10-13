@@ -37,6 +37,11 @@ type Config struct {
 	// only when Checkpoint is called or an answer requires it.
 	CheckpointEvery uint64
 	Now             func() time.Time
+
+	// Responder is the responder's cost and abuse policy for Respond
+	// (FR-37). The zero value answers the most specific reason with no rate
+	// limit.
+	Responder ResponderPolicy
 }
 
 // Book is an evidence store: records, typed links, payload separation, three
@@ -69,6 +74,7 @@ type Book struct {
 	// committing index roots inside a checkpoint.
 	checkpointing bool
 
+	responder   ResponderPolicy
 	derivations map[string]derivationEntry
 }
 
@@ -81,9 +87,12 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 	if cfg.Store == nil || cfg.Substrate == nil || cfg.Payloads == nil || cfg.Signer == nil {
 		return nil, fmt.Errorf("%w: store, substrate, payloads and signer are required", ErrInvalid)
 	}
+	if err := cfg.Responder.validate(); err != nil {
+		return nil, err
+	}
 	b := &Book{
-		derivations: make(map[string]derivationEntry),
-		id:          cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
+		responder: cfg.Responder, derivations: make(map[string]derivationEntry),
+		id: cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
 		checkpointEvery: cfg.CheckpointEvery, now: cfg.Now,
 		store: cfg.Store, commitments: cfg.Substrate, payloads: cfg.Payloads, signer: cfg.Signer,
 		operational: cfg.Operational, index: cfg.Authenticated, discovery: cfg.Discovery,

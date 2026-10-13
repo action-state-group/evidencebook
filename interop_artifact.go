@@ -36,8 +36,8 @@ type builtArtifact struct {
 	artifact     []byte
 	verification []VerificationEntry
 	material     [][]byte
-	// declined: the answer failed the disclosure scan; it is refused
-	// policy_declined.
+	// declined: the answer would exceed the cost policy or failed the
+	// disclosure scan; it is refused policy_declined.
 	declined bool
 }
 
@@ -58,12 +58,22 @@ var (
 )
 
 func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
+	maxItems := b.responder.MaxAnswerItems
+	if maxItems == 0 {
+		maxItems = DefaultMaxAnswerItems
+	}
+	if len(leaves) > maxItems {
+		return builtArtifact{declined: true}, nil
+	}
 	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.value()}
 	var built builtArtifact
 	var declared declaredFields
 	switch {
 	case req.Derivation == DerivationHistoryCard || req.Subject.Kind == SubjectCheckpoints:
 		chain := checkpointsThrough(view.checkpoints, anchor)
+		if len(chain) > maxItems {
+			return builtArtifact{declined: true}, nil
+		}
 		if req.Derivation == DerivationHistoryCard {
 			history, err := b.historyCardLocked(ctx, chain, anchor)
 			if err != nil {

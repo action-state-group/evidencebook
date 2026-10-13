@@ -8,10 +8,88 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 )
+
+// Refusal policies a responder may declare (profile §11.4.2 refusal_policy).
+const (
+	// RefusalPolicySpecific answers the most specific registered token.
+	RefusalPolicySpecific = "specific"
+	// RefusalPolicyUniform answers policy_declined wherever a more specific
+	// token would disclose what the responder's policy protects: whether a
+	// subject exists, whether it is covered yet, and whether this requester
+	// may see it (ER §4.2, §12).
+	RefusalPolicyUniform = "uniform"
+)
+
+// Defaults of the responder's cost policy.
+const (
+	DefaultMaxRequestBytes = 64 << 10
+	DefaultMaxAnswerItems  = 10_000
+)
+
+// RequestLimiter decides whether a requester may be answered now. The
+// requester is the authenticated identity, or "" for every caller the
+// transport did not authenticate. A request over the limit is refused
+// policy_declined.
+type RequestLimiter interface {
+	Allow(requester string, now time.Time) bool
+}
+
+// ResponderPolicy is the responder's cost and abuse policy (FR-37). The zero
+// value answers the most specific token with no rate limit.
+type ResponderPolicy struct {
+	// RefusalPolicy is RefusalPolicySpecific (the default when empty) or
+	// RefusalPolicyUniform.
+	RefusalPolicy string
+	// Limiter rate-limits requests per requester; nil sets no limit.
+	Limiter RequestLimiter
+	// MaxRequestBytes caps a request's size; zero is DefaultMaxRequestBytes.
+	MaxRequestBytes int
+	// MaxAnswerItems caps the records or checkpoints one artifact carries; a
+	// larger answer is refused policy_declined. Zero is DefaultMaxAnswerItems.
+	MaxAnswerItems int
+}
+
+func (p ResponderPolicy) validate() error {
+	if p.RefusalPolicy != "" && p.RefusalPolicy != RefusalPolicySpecific && p.RefusalPolicy != RefusalPolicyUniform {
+		return fmt.Errorf("%w: refusal policy %q is neither %s nor %s", ErrInvalid, p.RefusalPolicy, RefusalPolicySpecific, RefusalPolicyUniform)
+	}
+	if p.MaxRequestBytes < 0 || p.MaxAnswerItems < 0 {
+		return fmt.Errorf("%w: responder limits must not be negative", ErrInvalid)
+	}
+	return nil
+}
+
+// WindowLimiter allows each requester at most N requests in any window of
+// Window. Unauthenticated callers share the one "" bucket.
+type WindowLimiter struct {
+	mu     sync.Mutex
+	n      int
+	window time.Duration
+	seen   map[string][]time.Time
+}
+
+// NewWindowLimiter returns a limiter of n requests per window.
+func NewWindowLimiter(n int, window time.Duration) *WindowLimiter {
+	return &WindowLimiter{n: n, window: window, seen: make(map[string][]time.Time)}
+}
+
+// Allow records a request at now and reports whether it is within the limit.
+func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	recent := slices.DeleteFunc(l.seen[requester], func(t time.Time) bool { return !t.After(now.Add(-l.window)) })
+	if len(recent) >= l.n {
+		l.seen[requester] = recent
+		return false
+	}
+	l.seen[requester] = append(recent, now)
+	return true
+}
 
 // SharePolicy is the four-switch sharing policy, carried unchanged from the
 // mesh plugin's share.* object. Every default keys on relationship.
@@ -174,13 +252,23 @@ func (a *answer) refuse(reason, detail string) (Reply, error) {
 // gate is what a decision reads besides the evidence: who asks, and under
 // which policies.
 type gate struct {
-	requester    string // the authenticated requester, or ""
-	relationship string
-	policy       SharePolicy
-	derivations  map[string]derivationEntry
+	requester     string // the authenticated requester, or ""
+	relationship  string
+	policy        SharePolicy
+	derivations   map[string]derivationEntry
+	refusalPolicy string
 	// cll: the book's substrate is a Checkpointed Local Log, the only one
 	// whose anchors and proofs are served.
 	cll bool
+}
+
+// uniform applies the uniform refusal policy to a reason that would
+// disclose what the policy protects.
+func (g gate) uniform(reason string) string {
+	if g.refusalPolicy == RefusalPolicyUniform && slices.Contains([]string{ReasonNotAuthorized, ReasonNoSuchSubject, ReasonCoverageUnsatisfiable}, reason) {
+		return ReasonPolicyDeclined
+	}
+	return reason
 }
 
 // decision is Respond's answer to a well-formed request before any
@@ -191,13 +279,19 @@ type decision struct {
 }
 
 // decide applies Respond's steps that follow the request reader, in order:
-// derivation support (at all, then for this subject; ER §3.3),
-// authorization, the substrate, coverage and the subject. mayIssue says whether the responder will issue an anchor
+// the deadline, derivation support (at all, then for this subject; ER
+// §3.3), authorization, the substrate, coverage, the subject, and the
+// refusal policy. mayIssue says whether the responder will issue an anchor
 // to meet a freshness floor; when that is what is needed, the decision says
 // needAnchor and the caller decides again after issuing one.
 func decide(view evidenceView, check requestCheck, g gate, now time.Time, mayIssue bool) decision {
 	req := check.request
 	refuse := func(reason string) decision { return decision{resolution: resolution{reason: reason}} }
+	if req.Deadline != "" {
+		if deadline, _ := parseRequestTime(req.Deadline); !now.Before(deadline) {
+			return refuse(ReasonDeadlineUnmet)
+		}
+	}
 	var def *derivationEntry
 	switch {
 	case req.Derivation == DerivationHistoryCard:
@@ -217,28 +311,43 @@ func decide(view evidenceView, check requestCheck, g gate, now time.Time, mayIss
 		// Public: commitments only.
 	case def != nil && def.def.Recipient != "":
 		if g.requester != def.def.Recipient {
-			return refuse(ReasonNotAuthorized)
+			return refuse(g.uniform(ReasonNotAuthorized))
 		}
 	default:
 		if !g.policy.allows(g.relationship) {
-			return refuse(ReasonNotAuthorized)
+			return refuse(g.uniform(ReasonNotAuthorized))
 		}
 	}
 	if def != nil && !slices.Contains(def.def.Forms, req.Subject.Kind) {
-		return refuse(ReasonNoSuchSubject)
+		return refuse(g.uniform(ReasonNoSuchSubject))
 	}
 	if !g.cll {
-		return refuse(ReasonCoverageUnsatisfiable)
+		return refuse(g.uniform(ReasonCoverageUnsatisfiable))
 	}
 	r := resolveCoverage(view, req, check.floorTime, now, mayIssue)
 	if r.reason == "" && !r.needAnchor {
 		r = resolveSubject(view, req, r, now)
+	}
+	if r.reason != "" {
+		r.reason = g.uniform(r.reason)
 	}
 	return decision{resolution: r, def: def}
 }
 
 func (a *answer) run() (Reply, error) {
 	b := a.book
+	limit := b.responder.MaxRequestBytes
+	if limit == 0 {
+		limit = DefaultMaxRequestBytes
+	}
+	// Cost policy first: an oversized or over-limit request is declined
+	// before any parsing or resolution work (FR-37).
+	if len(a.request.Octets) > limit {
+		return a.refuse(ReasonPolicyDeclined, "")
+	}
+	if l := b.responder.Limiter; l != nil && !l.Allow(a.opts.AuthenticatedRequester, a.now) {
+		return a.refuse(ReasonPolicyDeclined, "")
+	}
 	check := readRequest(a.request)
 	if check.reason != "" {
 		return a.refuse(check.reason, check.detail)
@@ -251,7 +360,7 @@ func (a *answer) run() (Reply, error) {
 		return Reply{}, err
 	}
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, cll: isCLL}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.needAnchor {
 		if _, err := b.checkpointLocked(a.ctx); err != nil {
@@ -261,7 +370,7 @@ func (a *answer) run() (Reply, error) {
 			return Reply{}, err
 		}
 		if d = decide(view, check, g, a.now, false); d.needAnchor {
-			d.reason = ReasonCoverageUnsatisfiable
+			d.reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}
 	}
 	if d.reason != "" {
@@ -275,6 +384,11 @@ func (a *answer) run() (Reply, error) {
 	}
 	if built.declined {
 		return a.refuse(ReasonPolicyDeclined, "")
+	}
+	if req.Deadline != "" {
+		if deadline, _ := parseRequestTime(req.Deadline); b.now().After(deadline) {
+			return a.refuse(ReasonDeadlineUnmet, "")
+		}
 	}
 	envelope := Envelope{
 		Profile: req.Profile, RequestDigest: a.digest, Subject: req.Subject, Derivation: req.Derivation,
@@ -329,6 +443,7 @@ type bookView struct {
 	checkpoints []Checkpoint
 	views       []anchorView
 	leaves      map[string]uint64
+	commitments []retentionCommitment
 }
 
 func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
@@ -346,6 +461,11 @@ func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
 	}
 	for i, id := range b.order {
 		v.leaves[id] = uint64(i)
+		if b.records[id].Header.RecordType == RecordTypeRetentionCommitment {
+			if c, ok := readRetentionCommitment(b.records[id].Header.Statement); ok {
+				v.commitments = append(v.commitments, c)
+			}
+		}
 	}
 	return v, nil
 }
@@ -388,6 +508,15 @@ func (v *bookView) correlated(id string) []uint64 {
 
 func (v *bookView) citing(half string) []uint64 {
 	return v.matching(func(h Header) bool { return slices.Contains(h.LinksTo(Cites), half) })
+}
+
+func (v *bookView) lapsed(subject Subject, now time.Time) bool {
+	for _, c := range v.commitments {
+		if c.subject == subject && now.After(c.until) {
+			return true
+		}
+	}
+	return false
 }
 
 // capsulePreimage is a record's octets as the log commits them: UTF-8 of

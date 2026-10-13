@@ -31,6 +31,9 @@ type evidenceView interface {
 	// carrying a correlation identifier, or citing an exchange half.
 	correlated(id string) []uint64
 	citing(half string) []uint64
+	// lapsed reports a retention commitment for exactly this subject whose
+	// until has passed (ER §9).
+	lapsed(subject Subject, now time.Time) bool
 }
 
 // resolution is the decision for one well-formed, authorized request: the
@@ -103,7 +106,7 @@ func resolveSubject(view evidenceView, req EvidenceRequest, r resolution, now ti
 		// no citing record never changes the artifact (ER §3.2, §5).
 		cited := view.citing(req.Subject.Digest)
 		if len(cited) == 0 {
-			return resolution{reason: ReasonNoSuchSubject}
+			return withRetention(view, req, now, resolution{reason: ReasonNoSuchSubject})
 		}
 		latest := uint64(0)
 		if n := len(anchors); n > 0 {
@@ -144,7 +147,7 @@ func resolveSubject(view evidenceView, req EvidenceRequest, r resolution, now ti
 		leaf, held := view.leafOf(req.Subject.Digest)
 		switch {
 		case !held:
-			return resolution{reason: ReasonNoSuchSubject}
+			return withRetention(view, req, now, resolution{reason: ReasonNoSuchSubject})
 		case leaf >= covered:
 			return resolution{reason: ReasonCoverageUnsatisfiable}
 		}
@@ -156,7 +159,7 @@ func resolveSubject(view evidenceView, req EvidenceRequest, r resolution, now ti
 			if b < view.logEntries() {
 				return resolution{reason: ReasonCoverageUnsatisfiable}
 			}
-			return resolution{reason: ReasonNoSuchSubject}
+			return withRetention(view, req, now, resolution{reason: ReasonNoSuchSubject})
 		}
 		for leaf := a; leaf <= b; leaf++ {
 			if view.servable(leaf) {
@@ -164,7 +167,7 @@ func resolveSubject(view evidenceView, req EvidenceRequest, r resolution, now ti
 			}
 		}
 		if len(r.leaves) == 0 {
-			return resolution{reason: ReasonNoSuchSubject}
+			return withRetention(view, req, now, resolution{reason: ReasonNoSuchSubject})
 		}
 		return r
 	case SubjectCorrelation, SubjectExchange:
@@ -187,7 +190,18 @@ func resolveSubject(view evidenceView, req EvidenceRequest, r resolution, now ti
 		case len(all) > 0:
 			return resolution{reason: ReasonCoverageUnsatisfiable}
 		}
-		return resolution{reason: ReasonNoSuchSubject}
+		return withRetention(view, req, now, resolution{reason: ReasonNoSuchSubject})
 	}
 	return resolution{reason: ReasonRequestMalformed}
+}
+
+// withRetention turns no_such_subject into retention_expired when the
+// responder once committed to answer exactly this subject and the
+// commitment has lapsed, so a lapsed promise never reads as never having
+// held the evidence (ER §4.2 item 2, §9).
+func withRetention(view evidenceView, req EvidenceRequest, now time.Time, r resolution) resolution {
+	if r.reason == ReasonNoSuchSubject && view.lapsed(req.Subject, now) {
+		r.reason = ReasonRetentionExpired
+	}
+	return r
 }
