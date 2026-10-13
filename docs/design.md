@@ -120,15 +120,25 @@ themselves indexed. Otherwise each root commit would make the next one stale.
 no exported function other than its own methods accepts it.
 `TestDiscoveryCandidatesNeverReachProofs` enforces this by type.
 
-**Relationship gating.** `Respond` classifies a requester as `stranger` (no
-identity), `counterparty` (named in `counterparty_ref` on one of the book's
-records) or `identified`, and answers per `SharePolicy.HistorySegments` with
-the same tiers and defaults as the mesh plugin's `share.*` object. The other
-three switches travel unchanged; `Respond` does not act on them. Every subject
-except `checkpoints` is gated. The requester identity is whatever the
-transport supplied and is not authenticated here, so the gate is scope
-reduction, not access control. Records of answering and of asking name the
-other party in their statements, never in `counterparty_ref`, so neither
+**Relationship gating.** `Respond` classifies a requester from
+`RespondOptions.AuthenticatedRequester` only: `stranger` (not authenticated),
+`counterparty` (the authenticated identity is named in `counterparty_ref` on
+one of the book's records) or `identified`, and answers per
+`SharePolicy.HistorySegments` with the same tiers and defaults as the mesh
+plugin's `share.*` object. The other three switches travel unchanged;
+`Respond` does not act on them. `checkpoints` is the only public subject.
+Every other subject is gated and fails closed: a stranger is refused
+`not_authorized` under every tier, including `peers`, which means any
+authenticated peer. The book does not authenticate anyone itself: the
+transport sets `AuthenticatedRequester` only after it has authenticated the
+caller. A declared identity (`RespondOptions.RequesterID`, deprecated) is
+ignored, and a `counterparty_ref` value is not a credential, so knowing one
+grants nothing. The record of answering a request carries the request digest,
+subject kind, outcome, reason, relationship class and anchor, and no
+requester identity in any form, because that record is part of the history
+later answers can disclose. A holder that needs to know who asked keeps that
+in its transport's own access log, outside the book. The record of asking
+names the responder in its statement, never in `counterparty_ref`, so neither
 asking nor being asked changes anyone's relationship. An answer carries
 headers only, never payload bytes. A subject the book holds only beyond the
 resolved anchor is refused `coverage_unsatisfiable`, never `no_such_subject`.

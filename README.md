@@ -50,6 +50,14 @@ Production code must handle every error. The verbs are `Append`, `Query`,
 [docs/design.md](docs/design.md) for how each public type maps to the
 specification, the cross-implementation checks, and the known limits.
 
+## Answering requests
+
+`Respond` answers a protected subject only to a requester the transport has
+authenticated: set `RespondOptions.AuthenticatedRequester` from that
+authentication. With it empty, only `checkpoints` is answered and every
+other subject gets a signed `not_authorized` refusal. A declared requester id
+is never trusted and is not recorded. See the CHANGELOG for the upgrade note.
+
 ## Development
 
 ```bash

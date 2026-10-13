@@ -189,14 +189,25 @@ func (p SharePolicy) Validate() error {
 	return nil
 }
 
-// Relationship of a requester to this book, checkable from local records.
+// Relationship of a requester to this book, checkable from local records. A
+// stranger is a caller with no authenticated identity.
 const (
 	RelationshipStranger     = "stranger"
 	RelationshipIdentified   = "identified"
 	RelationshipCounterparty = "counterparty"
 )
 
+// publicSubject reports whether a subject is answered to any caller,
+// authenticated or not. Only checkpoints are public.
+func publicSubject(kind SubjectKind) bool { return kind == SubjectCheckpoints }
+
+// allows gates protected subjects. It fails closed: a stranger (no
+// authenticated requester) is never allowed, under any tier; "peers" means
+// any authenticated peer.
 func (p SharePolicy) allows(relationship string) bool {
+	if relationship == RelationshipStranger {
+		return false
+	}
 	switch p.HistorySegments {
 	case "peers":
 		return true
@@ -208,25 +219,37 @@ func (p SharePolicy) allows(relationship string) bool {
 	return false
 }
 
-// RespondOptions carries the requester's declared identity and the policy.
-// RequesterID is whatever the transport supplied; this package does not
-// authenticate it. The relationship gate built on it is scope reduction, not
-// access control: a caller that can claim another party's identity gets that
-// party's answers, so authenticate the requester at the transport when the
-// difference matters.
+// RespondOptions carries the requester's identity and the sharing policy.
+//
+// AuthenticatedRequester is the requester identity established by the
+// transport's own authentication of the caller (for example a verified
+// mutual-TLS peer or a verified signature over the request). Set it only from
+// that authentication; leave it empty when the caller is not authenticated.
+// It is the only input to the relationship gate: with it empty, Respond
+// answers only public subjects (checkpoints) and refuses every other subject
+// with a signed not_authorized refusal, whatever the policy tier.
+//
+// RequesterID is the identity the caller declared. It is never trusted: it
+// does not select a relationship, does not grant any scope, and is not
+// recorded.
 type RespondOptions struct {
+	AuthenticatedRequester string
+	// Deprecated: a declared identity is not authentication. Respond ignores
+	// it; set AuthenticatedRequester from the transport's authentication.
 	RequesterID string
 	Policy      SharePolicy
 }
 
 // AnsweredStatement is the body of the record a responder seals for every
-// inbound request, whatever the outcome.
+// inbound request, whatever the outcome. It names no requester: the record
+// is part of the book's history and can itself be disclosed in later
+// answers. Relationship records the class the gate applied (stranger means
+// the caller was not authenticated).
 type AnsweredStatement struct {
 	RequestDigest string      `json:"request_digest"`
 	SubjectKind   SubjectKind `json:"subject_kind,omitempty"`
 	Outcome       string      `json:"outcome"`
 	Reason        string      `json:"reason,omitempty"`
-	RequesterRef  string      `json:"requester_ref,omitempty"`
 	Relationship  string      `json:"relationship"`
 	Anchor        string      `json:"anchor,omitempty"`
 }
@@ -234,7 +257,8 @@ type AnsweredStatement struct {
 // Respond answers one request received as requestBytes with a signed artifact
 // or a signed refusal, and seals a record of the request and its outcome.
 // The artifact depends only on (subject, coverage): nonce, route and the
-// requester's identity never change it.
+// requester's identity never change it; the identity only decides whether a
+// protected subject is answered at all.
 func (b *Book) Respond(ctx context.Context, requestBytes []byte, opts RespondOptions) (Response, Record, error) {
 	if err := opts.Policy.Validate(); err != nil {
 		return Response{}, Record{}, err
@@ -242,7 +266,7 @@ func (b *Book) Respond(ctx context.Context, requestBytes []byte, opts RespondOpt
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	requestDigest := digestBytes(requestBytes)
-	statement := AnsweredStatement{RequestDigest: requestDigest, RequesterRef: opts.RequesterID, Relationship: b.relationshipLocked(opts.RequesterID)}
+	statement := AnsweredStatement{RequestDigest: requestDigest, Relationship: b.relationshipLocked(opts.AuthenticatedRequester)}
 	response, err := b.answerLocked(ctx, requestBytes, requestDigest, opts, &statement)
 	if err != nil {
 		return Response{}, Record{}, err
@@ -258,15 +282,17 @@ func (b *Book) Respond(ctx context.Context, requestBytes []byte, opts RespondOpt
 	return response, record, nil
 }
 
-// relationshipLocked classifies by counterparty_ref on the book's own records.
-// Records of answered requests carry the requester in their statement, not in
-// counterparty_ref, so asking never makes a stranger a counterparty.
-func (b *Book) relationshipLocked(requesterID string) string {
-	if requesterID == "" {
+// relationshipLocked classifies an authenticated requester by counterparty_ref
+// on the book's own records. It is only ever given the authenticated
+// identity: a counterparty_ref value is not a credential, so knowing one
+// grants nothing. Records of answered requests name no requester, so asking
+// never makes a stranger a counterparty.
+func (b *Book) relationshipLocked(authenticated string) string {
+	if authenticated == "" {
 		return RelationshipStranger
 	}
 	for _, id := range b.order {
-		if b.records[id].Header.CounterpartyRef == requesterID {
+		if b.records[id].Header.CounterpartyRef == authenticated {
 			return RelationshipCounterparty
 		}
 	}
@@ -304,7 +330,7 @@ func (b *Book) answerLocked(ctx context.Context, requestBytes []byte, requestDig
 	if req.Derivation != "" {
 		return refuse(ReasonDerivationUnsupported)
 	}
-	if req.Subject.Kind != SubjectCheckpoints && !opts.Policy.allows(statement.Relationship) {
+	if !publicSubject(req.Subject.Kind) && !opts.Policy.allows(statement.Relationship) {
 		return refuse(ReasonNotAuthorized)
 	}
 	anchor, ok, err := b.coverageLocked(ctx, req.Coverage, notBefore)

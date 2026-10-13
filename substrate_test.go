@@ -86,7 +86,7 @@ func TestBookRunsWithoutCLL(t *testing.T) {
 	}
 	peers := DefaultSharePolicy()
 	peers.HistorySegments = "peers"
-	resp, _, err := book.Respond(ctx, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: observed.RecordID}, Coverage: fresh()}), RespondOptions{Policy: peers})
+	resp, _, err := book.Respond(ctx, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: observed.RecordID}, Coverage: fresh()}), RespondOptions{AuthenticatedRequester: "peer-1", Policy: peers})
 	if err != nil {
 		t.Fatal(err)
 	}
