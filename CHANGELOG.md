@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+### Evidence interoperability profile: MCP carriage
+
+`Book.MCP` returns an `MCPServer` that carries the evidence request exchange
+over MCP 2026-07-28 as profile `evidence-interop/0` §11.4.5 writes it
+(agent-action-capsule `spec/interop-profile-v0.md` at main `a726b9f`). It is
+a carriage only: `Respond` answers, and the canonical Artifact is the one the
+native stream gets for the same request octets.
+
+- **Tools.** `tools/list` lists exactly `evidence_manifest` and
+  `evidence_request`, with the profile's input and output schemas, fixed
+  descriptive text and no `x-mcp-header`; the list is the same for every
+  caller. `evidence_manifest` returns `Book.Manifest` as its
+  `structuredContent`, byte for byte the manifest served elsewhere.
+  `evidence_request` decodes the base64url `request`, hands the octets to
+  `Respond` unchanged, and returns `{"reply", "media_type"}` with `isError`
+  false, for an envelope and for a refusal alike.
+- **Authorization.** `Handle(ctx, message, authenticated)` takes the
+  requester the host's transport authenticated, the same value as
+  `RespondOptions.AuthenticatedRequester`. Nothing in the MCP message is
+  read as an identity: not `_meta` (`clientInfo` included), not an argument,
+  not the connection.
+- **Not a request, not a refusal.** Arguments outside the schema, an unknown
+  tool, a missing or other protocol version, a batch or a malformed message
+  get a JSON-RPC error, which a requester treats as a transport condition.
+  Notifications get no response. Carriage members (`_meta`,
+  `inputResponses`, `requestState`, the JSON-RPC id) never reach `Respond`.
+- **No SDK.** The MCP surface the profile needs is `server/discover`,
+  `tools/list` and `tools/call` over JSON-RPC 2.0, implemented here with the
+  standard library and the package's strict JSON decoder. The host supplies
+  the transport (stdio or Streamable HTTP) and its authentication.
+- **Conformance.** The reference verifier now runs the carriage vectors over
+  this responder's native and MCP replies (`carriage-invariance`, and the
+  MCP negative halves of §11.4.8 as mutations of its replies); CI checks the
+  canonical Artifact is byte-identical across the two. There is no A2A
+  carriage here, so the A2A-only carriage vectors are skipped.
+
 ### Evidence interoperability profile (responder)
 
 `Respond` now implements the responder side of the Minimum Evidence

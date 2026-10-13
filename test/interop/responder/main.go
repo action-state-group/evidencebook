@@ -13,12 +13,18 @@
 // requests are the vectors' requests made against this book's own log: the
 // same subject form, coverage form, nonces and profile member, with this
 // book's record digests and anchors in place of the vectors'.
+//
+// The carriage vectors' request R (request C in deterministic CBOR) is sent
+// over the native stream (Respond) and over MCP (the book's MCPServer, as
+// JSON-RPC octets), and the MCP call and result are written as carried. No
+// A2A carriage exists in this repository.
 package main
 
 import (
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -99,6 +105,29 @@ type exchange struct {
 	AbsenceRecord *carried  `json:"absence_record,omitempty"`
 }
 
+// carriage is one request sent over the native stream and over MCP.
+type carriage struct {
+	Request carried         `json:"request"`
+	Native  *nativeCarriage `json:"native,omitempty"`
+	MCP     mcpCarriage     `json:"mcp"`
+	// AbsenceRecord is the requester's own absence record for Request.
+	AbsenceRecord *carried `json:"absence_record,omitempty"`
+}
+
+type nativeCarriage struct {
+	RequestFrameHex  string `json:"request_frame_hex"`
+	ResponseFrameHex string `json:"response_frame_hex"`
+}
+
+// mcpCarriage is the tools/call params and its result, as JSON values, and
+// the JSON-RPC octets exactly as sent and received.
+type mcpCarriage struct {
+	Call        json.RawMessage `json:"call"`
+	Result      json.RawMessage `json:"result"`
+	JSONRPCSent string          `json:"jsonrpc_sent"`
+	JSONRPCRecv string          `json:"jsonrpc_received"`
+}
+
 type output struct {
 	ResponderKey string              `json:"responder_key"`
 	LogKeys      []map[string]string `json:"log_keys"`
@@ -107,6 +136,62 @@ type output struct {
 	RecordSet    map[string]string   `json:"invariance_record_set_artifacts_hex"`
 	Requests     map[string]carried  `json:"other_requests"`
 	Manifests    []json.RawMessage   `json:"manifests"`
+	// Carriage holds the carriage vectors' exchanges: "invariance" (R over
+	// the native stream and MCP) and "mcp-absence" (a requester's request
+	// over MCP, and its absence record once its window closed).
+	Carriage map[string]carriage `json:"carriage"`
+	// MCPManifest is the evidence_manifest tools/call result.
+	MCPManifest json.RawMessage `json:"mcp_manifest"`
+	// MCPTools is the tools/list result.
+	MCPTools json.RawMessage `json:"mcp_tools"`
+}
+
+// mcpCall sends one tools/call over the MCP carriage and returns the params
+// sent, the result received, and both JSON-RPC messages as octets.
+func mcpCall(ctx context.Context, server *evidencebook.MCPServer, id int, method string, params map[string]any, authenticated string) (mcpCarriage, error) {
+	params["_meta"] = map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    evidencebook.MCPProtocolVersion,
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+		"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "interop-harness", "version": "0"},
+	}
+	sent, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+	if err != nil {
+		return mcpCarriage{}, err
+	}
+	received := server.Handle(ctx, sent, authenticated)
+	var response struct {
+		Result json.RawMessage `json:"result"`
+		Error  json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(received, &response); err != nil || response.Result == nil {
+		return mcpCarriage{}, fmt.Errorf("%s: no result: %s (%v)", method, received, err)
+	}
+	delete(params, "_meta")
+	call, err := json.Marshal(params)
+	if err != nil {
+		return mcpCarriage{}, err
+	}
+	return mcpCarriage{Call: call, Result: response.Result, JSONRPCSent: string(sent), JSONRPCRecv: string(received)}, nil
+}
+
+// mcpRequest sends request m over the MCP carriage.
+func mcpRequest(ctx context.Context, server *evidencebook.MCPServer, id int, m evidencebook.Message, authenticated string) (mcpCarriage, evidencebook.Message, error) {
+	c, err := mcpCall(ctx, server, id, "tools/call", map[string]any{"name": evidencebook.MCPToolRequest,
+		"arguments": map[string]any{"request": base64.RawURLEncoding.EncodeToString(m.Octets), "media_type": m.MediaType}}, authenticated)
+	if err != nil {
+		return c, evidencebook.Message{}, err
+	}
+	var result struct {
+		StructuredContent struct {
+			Reply     string `json:"reply"`
+			MediaType string `json:"media_type"`
+		} `json:"structuredContent"`
+	}
+	if err := json.Unmarshal(c.Result, &result); err != nil {
+		return c, evidencebook.Message{}, err
+	}
+	octets, err := base64.RawURLEncoding.Strict().DecodeString(result.StructuredContent.Reply)
+	return c, evidencebook.Message{Octets: octets, MediaType: result.StructuredContent.MediaType}, err
 }
 
 func run(ctx context.Context, dir, out string) error {
@@ -140,7 +225,11 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	pin := hexDigest(anchor.Statement)
-	manifest := evidencebook.ManifestOptions{Bindings: []string{evidencebook.BindingStream, evidencebook.BindingHTTP}}
+	manifest := evidencebook.ManifestOptions{Bindings: []string{evidencebook.BindingStream, evidencebook.BindingHTTP, evidencebook.BindingMCP}}
+	server, err := book.MCP(evidencebook.MCPOptions{Manifest: manifest, Policy: evidencebook.DefaultSharePolicy()})
+	if err != nil {
+		return err
+	}
 	first, err := book.Manifest(manifest)
 	if err != nil {
 		return err
@@ -157,6 +246,7 @@ func run(ctx context.Context, dir, out string) error {
 	o := output{
 		ResponderKey: hex.EncodeToString(seeded(responderLabel).Public().(ed25519.PublicKey)),
 		Exchanges:    map[string]exchange{}, Invariance: map[string]string{}, RecordSet: map[string]string{}, Requests: map[string]carried{},
+		Carriage: map[string]carriage{},
 	}
 	checkpoints, err := book.Checkpoints(ctx)
 	if err != nil {
@@ -194,6 +284,40 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "artifact-bob-cbor-nonce-d.bin"), replyD.Envelope.Artifact, 0o600); err != nil {
+		return err
+	}
+
+	// The carriage vectors' R: request C in deterministic CBOR, sent once over
+	// the native stream and once over MCP, by the same authenticated
+	// requester. Only the carriage differs; the canonical Artifact must not.
+	r, err := request(subject, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeCBOR)
+	if err != nil {
+		return err
+	}
+	native, err := respond(r, "alice")
+	if err != nil {
+		return err
+	}
+	overMCP, mcpReply, err := mcpRequest(ctx, server, 1, r, "alice")
+	if err != nil {
+		return err
+	}
+	carriedReply, err := evidencebook.ParseReply(mcpReply)
+	if err != nil {
+		return err
+	}
+	if native.Envelope == nil || carriedReply.Envelope == nil {
+		return fmt.Errorf("request R was refused over a carriage")
+	}
+	o.Carriage["invariance"] = carriage{Request: carry(r), MCP: overMCP,
+		Native: &nativeCarriage{RequestFrameHex: hex.EncodeToString(r.Octets), ResponseFrameHex: hex.EncodeToString(native.Octets)}}
+	if err := os.WriteFile(filepath.Join(dir, "artifact-native-cbor.bin"), native.Envelope.Artifact, 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "artifact-mcp-cbor.bin"), carriedReply.Envelope.Artifact, 0o600); err != nil {
+		return err
+	}
+	if o.MCPTools, err = rawResult(ctx, server, 2, "tools/list", map[string]any{}); err != nil {
 		return err
 	}
 
@@ -282,10 +406,33 @@ func run(ctx context.Context, dir, out string) error {
 	absenceRecord := carry(evidencebook.Message{Octets: absence.Header.Statement, MediaType: evidencebook.MediaTypeJSON})
 	o.Exchanges["missing-evidence-recorded-absence"] = exchange{Requests: []carried{carry(sent.Message())}, Replies: []carried{}, AbsenceRecord: &absenceRecord}
 
+	// A requester's request sent over MCP, and its own absence record once
+	// its window closed with no reply recorded. The MCP vectors replace the
+	// result with a transport condition (an isError result, no reply) or
+	// mark this one isError; the absence record is what the requester keeps.
+	viaMCP, err := requester.Request(ctx, evidencebook.EvidenceRequest{Subject: subject, Coverage: evidencebook.Coverage{ExpectedPin: pin}, Nonce: "2026-10-12T00:00:30Z/m", Route: "mcp:example-responder"}, "responder")
+	if err != nil {
+		return err
+	}
+	absentCall, _, err := mcpRequest(ctx, server, 3, viaMCP.Message(), "alice")
+	if err != nil {
+		return err
+	}
+	clock = clock.Add(2 * time.Minute)
+	mcpAbsence, err := requester.RecordAbsence(ctx, viaMCP.RecordID, clock.Add(-time.Second), "")
+	if err != nil {
+		return err
+	}
+	mcpAbsenceRecord := carry(evidencebook.Message{Octets: mcpAbsence.Header.Statement, MediaType: evidencebook.MediaTypeJSON})
+	o.Carriage["mcp-absence"] = carriage{Request: carry(viaMCP.Message()), MCP: absentCall, AbsenceRecord: &mcpAbsenceRecord}
+
 	// The manifest after every answer above is the one served before them:
 	// it carries nothing that grows with history.
 	last, err := book.Manifest(manifest)
 	if err != nil {
+		return err
+	}
+	if o.MCPManifest, err = rawResult(ctx, server, 4, "tools/call", map[string]any{"name": evidencebook.MCPToolManifest, "arguments": map[string]any{}}); err != nil {
 		return err
 	}
 	o.Manifests = []json.RawMessage{first, last}
@@ -294,6 +441,11 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	return os.WriteFile(out, data, 0o600)
+}
+
+func rawResult(ctx context.Context, server *evidencebook.MCPServer, id int, method string, params map[string]any) (json.RawMessage, error) {
+	c, err := mcpCall(ctx, server, id, method, params, "")
+	return c.Result, err
 }
 
 func hexDigest(b []byte) string {

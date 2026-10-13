@@ -15,6 +15,12 @@ modified. Every vector case is accounted for in exactly one of three ways:
   (re-signed where the vector re-signs) and the verifier's result matches;
 - skipped, with the reason.
 
+The carriage cases (§11.4) are run over the native stream and MCP. This
+repository has no A2A carriage, so each carriage case is compared with its
+expected block less its A2A half (the A2A reply, digest and classification),
+and the cases that exist only for A2A are skipped. Digests the vectors write
+for their own request are compared as "equal to the request digest".
+
 The vectors' trust pins are used as written, except log_keys, which name this
 responder's log (its iss and sub) under the same test log key. Row 7's status
 is read from the vectors file, never assumed.
@@ -36,6 +42,8 @@ sys.path.insert(0, str(AAC / "python"))
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
 from agent_action_capsule.canonical import jcs  # noqa: E402
+from agent_action_capsule.interop_profile import carriage as carriage_mod  # noqa: E402
+from agent_action_capsule.interop_profile._cbor import decode as cbor_decode, encode_head  # noqa: E402
 from agent_action_capsule.interop_profile.carriage import manifest_consistency, manifest_form  # noqa: E402
 from agent_action_capsule.interop_profile import (  # noqa: E402
     Exchange,
@@ -55,6 +63,9 @@ RUN = ["valid-exchange", "invariance-two-nonces-two-transports", "declined", "mi
 MUTATIONS = ["tampered-artifact", "wrong-request-digest", "envelope-bad-signature", "envelope-untrusted-responder",
              "envelope-subject-mismatch", "envelope-anchor-not-the-pin", "verification-material-tampered",
              "inclusion-proof-forged-and-signed", "forged-refusal-untrusted-key", "forged-refusal-bad-signature"]
+CARRIAGE_RUN = ["carriage-invariance"]
+CARRIAGE_MUTATIONS = ["carriage-mcp-rehashes-json", "carriage-mcp-error-no-reply", "carriage-mcp-error-with-reply",
+                      "carriage-manifest-count-member"]
 SKIP_PREFIX = {
     "unsupported-version-mismatch": "verifier-side: an envelope naming a profile other than the one requested; a "
                                     "conforming evidence-interop/0 responder never emits one",
@@ -66,8 +77,8 @@ SKIP_PREFIX = {
                              "responder's canonical Artifacts are its own AAC records and carry none",
     "acceptance-": "§11.1 acceptance records and receipts: not responder output, and not in this item",
     "lifecycle-": "§11.2 lifecycle statements: not responder output, and not in this item",
-    "carriage-": "§11.4 A2A and MCP carriage: the next item ([interop-mcp-adapter]); this item is the native "
-                 "stream and HTTP JSON bindings",
+    "carriage-a2a-": "§11.4.4 A2A carriage: this repository has no A2A adapter, so there is no A2A Task of its "
+                     "own to classify; the native stream and MCP halves of the carriage cases are run",
 }
 
 
@@ -200,6 +211,150 @@ def verify(case: dict, requests: list, replies: list, absence: dict | None = Non
     return got
 
 
+def cbor_encode(v) -> bytes:
+    """Deterministic CBOR (RFC 8949 §4.2.1) of the envelope's data model."""
+    if isinstance(v, bool) or v is None or isinstance(v, float):
+        raise TypeError(f"no {type(v).__name__} in an envelope")
+    if isinstance(v, int):
+        return encode_head(0, v) if v >= 0 else encode_head(1, -1 - v)
+    if isinstance(v, (bytes, bytearray)):
+        return encode_head(2, len(v)) + bytes(v)
+    if isinstance(v, str):
+        b = v.encode("utf-8")
+        return encode_head(3, len(b)) + b
+    if isinstance(v, list):
+        return encode_head(4, len(v)) + b"".join(cbor_encode(x) for x in v)
+    if isinstance(v, dict):
+        items = sorted((cbor_encode(k), cbor_encode(x)) for k, x in v.items())
+        return encode_head(5, len(v)) + b"".join(k + x for k, x in items)
+    raise TypeError(type(v).__name__)
+
+
+def cbor_value(b: bytes):
+    decoded = cbor_decode(b)
+    if not decoded.well_formed or not decoded.deterministic or cbor_encode(decoded.value) != b:
+        raise SystemExit("this responder's CBOR reply does not round-trip as deterministic CBOR")
+    return decoded.value
+
+
+def render_carriage(case: dict, request: dict, native: dict | None = None, mcp: dict | None = None,
+                    absence: dict | None = None, manifests: dict | None = None) -> dict:
+    """The carriage case's checks, as the AAC vector test runs them, over what this responder carried."""
+    trust, vpolicy, now = policies(case)
+    req = message(request)
+    mt, r_digest = req.media_type, sha(req.octets)
+    same = lambda d: "= request digest" if d == r_digest else d  # noqa: E731
+    digests, classes, replies = {}, {}, []
+    if native is not None:
+        digests["native"] = same(sha(bytes.fromhex(native["request_frame_hex"])))
+        classes["native"] = "reply"
+        replies.append(bytes.fromhex(native["response_frame_hex"]))
+    if mcp is not None:
+        sent = carriage_mod.mcp_request_octets(mcp["call"])
+        if sent is not None:
+            digests["mcp"] = same(sha(sent[0]))
+        got = carriage_mod.classify_mcp_result(mcp["result"], mt)
+        classes["mcp"] = got.outcome
+        replies += got.replies
+    exchange = Exchange(req, [Message(r, mt) for r in replies], message(absence) if absence else None)
+    result = InteropVerifier(trust, vpolicy, now, contract=CONTRACT).verify([exchange], requirements=["r-record"])
+    ex = result.exchanges[0]
+    out: dict = {"request_digest": same(ex.request_digest), "carriage_request_digests": digests,
+                 "classification": classes,
+                 "replies": [{"message_type": r.message_type, "properties": {p.property: p.status for p in r.properties},
+                              "requirements": {q: {"row": x.row, "status": x.status, "sufficiency": x.sufficiency,
+                                                   "verdict": x.verdict} for q, x in r.requirements.items()}}
+                             for r in ex.replies]}
+    if ex.replies:
+        out["set_properties"] = {"caller_invariance": result.caller_invariance.status}
+    if ex.absence is not None:
+        out["absence"] = {"form": ex.absence.form, "requirements": {
+            q: {"row": x.row, "status": x.status, "sufficiency": x.sufficiency, "verdict": x.verdict}
+            for q, x in ex.absence.requirements.items()},
+            "presentation_kind_recommended": ex.absence.presentation_kind_recommended}
+    if manifests is not None:
+        implemented = vpolicy.profiles_implemented
+        out["manifest_properties"] = {name: {"manifest_form": manifest_form(m, implemented).status}
+                                      for name, m in manifests.items()}
+        out["manifest_properties"]["manifest_consistency"] = manifest_consistency(list(manifests.values())).status
+    return out
+
+
+def expected_carriage(case: dict, keep_a2a_manifest: bool = False) -> dict:
+    """The case's expected block less its A2A half, with its own request digest written as such."""
+    e, inp = case["expected"], case["inputs"]
+    r_digest = e["request_digest"]
+    same = lambda d: "= request digest" if d == r_digest else d  # noqa: E731
+    replies = list(e.get("replies", []))
+    if "a2a" in inp:
+        start = 1 if "native" in inp else 0
+        count = len(carriage_mod.classify_a2a_task(inp["a2a"]["task"], inp["request"]["media_type"]).replies)
+        del replies[start:start + count]
+    out: dict = {"request_digest": same(r_digest),
+                 "carriage_request_digests": {k: same(v) for k, v in e["carriage_request_digests"].items() if k != "a2a"},
+                 "classification": {k: v for k, v in e["classification"].items() if k != "a2a"},
+                 "replies": [{"message_type": r["message_type"], "properties": r["properties"],
+                              "requirements": {q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")}
+                                               for q, x in r["requirements"].items()}} for r in replies]}
+    if "set_properties" in e:
+        out["set_properties"] = e["set_properties"]
+    if "absence" in e:
+        a = e["absence"]
+        out["absence"] = {"form": a["form"], "requirements": {
+            q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")} for q, x in a["requirements"].items()},
+            "presentation_kind_recommended": a["presentation_kind_recommended"]}
+    if "manifest_properties" in e:
+        mp = dict(e["manifest_properties"])
+        if not keep_a2a_manifest:
+            mp.pop("a2a_extension", None)
+        out["manifest_properties"] = mp
+    return out
+
+
+def carriage_case(case_id: str) -> tuple[dict, dict]:
+    """(got, want) for a carriage case, run over this responder's native and MCP carriage."""
+    case = CASES[case_id]
+    inv = PRODUCED["carriage"]["invariance"]
+    mcp_manifest = PRODUCED["mcp_manifest"]["structuredContent"]
+    if case_id == "carriage-invariance":
+        # The MCP manifest and the manifest the book serves natively, before
+        # and after answering: one manifest over every carriage.
+        manifests = {"mcp_evidence_manifest": mcp_manifest}
+        got = render_carriage(case, inv["request"], inv["native"], inv["mcp"], manifests=manifests)
+        got["manifest_properties"]["manifest_consistency"] = manifest_consistency(
+            [mcp_manifest, *PRODUCED["manifests"]]).status
+        return got, expected_carriage(case)
+    if case_id == "carriage-mcp-rehashes-json":
+        # The MCP reply re-signed over the digest of a JSON re-encoding of R.
+        request = cbor_value(octets(inv["request"]))
+        reply = copy.deepcopy(inv["mcp"])
+        env = cbor_value(unb64(reply["result"]["structuredContent"]["reply"]))
+        env["request_digest"] = sha(jcs(request))
+        env["sig"] = RESPONDER.sign(jcs({k: env[k] for k in SIGNED if k in env})).hex()
+        reply["result"]["structuredContent"]["reply"] = b64(cbor_encode(env))
+        return render_carriage(case, inv["request"], inv["native"], reply), expected_carriage(case)
+    if case_id.startswith("carriage-mcp-error-"):
+        absent = PRODUCED["carriage"]["mcp-absence"]
+        if case_id == "carriage-mcp-error-no-reply":
+            # The result replaced by an isError result with no reply and text
+            # saying the caller is not authorized; the requester's absence
+            # record once its window closed.
+            mcp = {"call": absent["mcp"]["call"], "result": copy.deepcopy(case["inputs"]["mcp"]["result"])}
+            return render_carriage(case, absent["request"], mcp=mcp, absence=absent["absence_record"]), \
+                expected_carriage(case)
+        mcp = copy.deepcopy(inv["mcp"])
+        mcp["result"]["isError"] = True
+        return render_carriage(case, inv["request"], mcp=mcp), expected_carriage(case)
+    if case_id == "carriage-manifest-count-member":
+        # This responder's manifest with the vector's count member added,
+        # standing where the A2A extension params would be.
+        counted = dict(mcp_manifest, record_count=42)
+        manifests = {"a2a_extension": counted, "mcp_evidence_manifest": mcp_manifest}
+        got = render_carriage(case, inv["request"], manifests=manifests)
+        return got, expected_carriage(case, keep_a2a_manifest=True)
+    raise KeyError(case_id)
+
+
 def mutate(case_id: str):
     base = PRODUCED["exchanges"]["valid-exchange"]
     request, reply = base["requests"][0], base["replies"][0]
@@ -241,7 +396,10 @@ def main() -> int:
     ran, mutated, skipped, failed = [], [], [], []
     for case_id, case in CASES.items():
         want = expected_view(case["expected"])
-        if case_id in RUN:
+        if case_id in CARRIAGE_RUN or case_id in CARRIAGE_MUTATIONS:
+            got, want = carriage_case(case_id)
+            bucket = ran if case_id in CARRIAGE_RUN else mutated
+        elif case_id in RUN:
             ex = PRODUCED["exchanges"][case_id]
             got = verify(case, ex["requests"], ex["replies"], ex.get("absence_record"))
             bucket = ran
@@ -274,11 +432,19 @@ def main() -> int:
         identical = identical and same
         print(f"invariance: canonical Artifact octets across {sorted(artifacts)}: "
               f"{'byte-identical' if same else 'DIFFERENT'} (sha256 {sha(bytes.fromhex(next(iter(artifacts.values()))))})")
-    manifests = PRODUCED["manifests"]
+    native_mcp = [PRODUCED["carriage"]["invariance"]["native"]["response_frame_hex"],
+                  PRODUCED["carriage"]["invariance"]["mcp"]["result"]["structuredContent"]["reply"]]
+    a_native = cbor_value(bytes.fromhex(native_mcp[0]))["artifact"]
+    a_mcp = cbor_value(unb64(native_mcp[1]))["artifact"]
+    identical = identical and a_native == a_mcp
+    print(f"invariance: canonical Artifact octets across ['mcp', 'native'] for request R (CBOR): "
+          f"{'byte-identical' if a_native == a_mcp else 'DIFFERENT'} (sha256 {sha(a_native)})")
+    manifests = [*PRODUCED["manifests"], PRODUCED["mcp_manifest"]["structuredContent"]]
     form = manifest_form(manifests[0], frozenset({"evidence-interop/0"}))
     consistency = manifest_consistency(manifests)
     print(f"manifest: manifest_form {form.status}{' (' + form.detail + ')' if form.detail else ''}; "
-          f"manifest_consistency across {len(manifests)} copies (before and after answering) {consistency.status}")
+          f"manifest_consistency across {len(manifests)} copies (native before and after answering, and MCP "
+          f"evidence_manifest) {consistency.status}")
     ok = form.status == "PASS" and consistency.status == "PASS"
     return 0 if ok and not failed and identical and len(ran) + len(mutated) + len(skipped) == len(CASES) else 1
 
