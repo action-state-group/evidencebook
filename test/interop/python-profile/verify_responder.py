@@ -15,11 +15,10 @@ modified. Every vector case is accounted for in exactly one of three ways:
   (re-signed where the vector re-signs) and the verifier's result matches;
 - skipped, with the reason.
 
-The carriage cases (§11.4) are run over the native stream and MCP. This
-repository has no A2A carriage, so each carriage case is compared with its
-expected block less its A2A half (the A2A reply, digest and classification),
-and the cases that exist only for A2A are skipped. Digests the vectors write
-for their own request are compared as "equal to the request digest".
+The carriage cases (§11.4) are run over the native stream, A2A and MCP: the
+A2A Message and Task and the MCP call and result this responder carried, and
+the manifest its Agent Card and evidence_manifest serve. Digests the vectors
+write for their own request are compared as "equal to the request digest".
 
 The vectors' trust pins are used as written, except log_keys, which name this
 responder's log (its iss and sub) under the same test log key. Row 7's status
@@ -65,6 +64,7 @@ MUTATIONS = ["tampered-artifact", "wrong-request-digest", "envelope-bad-signatur
              "inclusion-proof-forged-and-signed", "forged-refusal-untrusted-key", "forged-refusal-bad-signature"]
 CARRIAGE_RUN = ["carriage-invariance"]
 CARRIAGE_MUTATIONS = ["carriage-mcp-rehashes-json", "carriage-mcp-error-no-reply", "carriage-mcp-error-with-reply",
+                      "carriage-a2a-reserializes-artifact", "carriage-a2a-task-rejected", "carriage-a2a-two-artifacts",
                       "carriage-manifest-count-member"]
 SKIP_PREFIX = {
     "unsupported-version-mismatch": "verifier-side: an envelope naming a profile other than the one requested; a "
@@ -77,8 +77,6 @@ SKIP_PREFIX = {
                              "responder's canonical Artifacts are its own AAC records and carry none",
     "acceptance-": "§11.1 acceptance records and receipts: not responder output, and not in this item",
     "lifecycle-": "§11.2 lifecycle statements: not responder output, and not in this item",
-    "carriage-a2a-": "§11.4.4 A2A carriage: this repository has no A2A adapter, so there is no A2A Task of its "
-                     "own to classify; the native stream and MCP halves of the carriage cases are run",
 }
 
 
@@ -237,8 +235,8 @@ def cbor_value(b: bytes):
     return decoded.value
 
 
-def render_carriage(case: dict, request: dict, native: dict | None = None, mcp: dict | None = None,
-                    absence: dict | None = None, manifests: dict | None = None) -> dict:
+def render_carriage(case: dict, request: dict, native: dict | None = None, a2a: dict | None = None,
+                    mcp: dict | None = None, absence: dict | None = None, manifests: dict | None = None) -> dict:
     """The carriage case's checks, as the AAC vector test runs them, over what this responder carried."""
     trust, vpolicy, now = policies(case)
     req = message(request)
@@ -249,6 +247,13 @@ def render_carriage(case: dict, request: dict, native: dict | None = None, mcp: 
         digests["native"] = same(sha(bytes.fromhex(native["request_frame_hex"])))
         classes["native"] = "reply"
         replies.append(bytes.fromhex(native["response_frame_hex"]))
+    if a2a is not None:
+        sent = carriage_mod.a2a_request_octets(a2a["message"])
+        if sent is not None:
+            digests["a2a"] = same(sha(sent[0]))
+        got = carriage_mod.classify_a2a_task(a2a["task"], mt)
+        classes["a2a"] = got.outcome
+        replies += got.replies
     if mcp is not None:
         sent = carriage_mod.mcp_request_octets(mcp["call"])
         if sent is not None:
@@ -280,22 +285,17 @@ def render_carriage(case: dict, request: dict, native: dict | None = None, mcp: 
     return out
 
 
-def expected_carriage(case: dict, keep_a2a_manifest: bool = False) -> dict:
-    """The case's expected block less its A2A half, with its own request digest written as such."""
-    e, inp = case["expected"], case["inputs"]
+def expected_carriage(case: dict) -> dict:
+    """The case's expected block, with its own request digest written as such."""
+    e = case["expected"]
     r_digest = e["request_digest"]
     same = lambda d: "= request digest" if d == r_digest else d  # noqa: E731
-    replies = list(e.get("replies", []))
-    if "a2a" in inp:
-        start = 1 if "native" in inp else 0
-        count = len(carriage_mod.classify_a2a_task(inp["a2a"]["task"], inp["request"]["media_type"]).replies)
-        del replies[start:start + count]
     out: dict = {"request_digest": same(r_digest),
-                 "carriage_request_digests": {k: same(v) for k, v in e["carriage_request_digests"].items() if k != "a2a"},
-                 "classification": {k: v for k, v in e["classification"].items() if k != "a2a"},
+                 "carriage_request_digests": {k: same(v) for k, v in e["carriage_request_digests"].items()},
+                 "classification": e["classification"],
                  "replies": [{"message_type": r["message_type"], "properties": r["properties"],
                               "requirements": {q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")}
-                                               for q, x in r["requirements"].items()}} for r in replies]}
+                                               for q, x in r["requirements"].items()}} for r in e.get("replies", [])]}
     if "set_properties" in e:
         out["set_properties"] = e["set_properties"]
     if "absence" in e:
@@ -304,26 +304,68 @@ def expected_carriage(case: dict, keep_a2a_manifest: bool = False) -> dict:
             q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")} for q, x in a["requirements"].items()},
             "presentation_kind_recommended": a["presentation_kind_recommended"]}
     if "manifest_properties" in e:
-        mp = dict(e["manifest_properties"])
-        if not keep_a2a_manifest:
-            mp.pop("a2a_extension", None)
-        out["manifest_properties"] = mp
+        out["manifest_properties"] = e["manifest_properties"]
     return out
 
 
+def a2a_params() -> dict:
+    """The manifest this responder's Agent Card serves as its extension params."""
+    entries = [x for x in PRODUCED["agent_card"]["capabilities"]["extensions"] if x["uri"] == carriage_mod.EXTENSION_URI]
+    if len(entries) != 1:
+        raise SystemExit("the Agent Card does not list the evidence request extension exactly once")
+    return entries[0]["params"]
+
+
+def reserialized(reply_b64: str) -> str:
+    """§11.4.8: an A2A reply whose canonical Artifact the adapter re-serialized (indented JSON), signed
+    validly by the responder over the new artifact digest."""
+    env = cbor_value(base64.b64decode(reply_b64))
+    env["artifact"] = json.dumps(json.loads(env["artifact"]), indent=1).encode()
+    env["artifact_digest"] = sha(env["artifact"])
+    env["sig"] = RESPONDER.sign(jcs({k: env[k] for k in SIGNED if k in env})).hex()
+    return base64.b64encode(cbor_encode(env)).decode()
+
+
 def carriage_case(case_id: str) -> tuple[dict, dict]:
-    """(got, want) for a carriage case, run over this responder's native and MCP carriage."""
+    """(got, want) for a carriage case, run over this responder's native, A2A and MCP carriage."""
     case = CASES[case_id]
     inv = PRODUCED["carriage"]["invariance"]
     mcp_manifest = PRODUCED["mcp_manifest"]["structuredContent"]
     if case_id == "carriage-invariance":
-        # The MCP manifest and the manifest the book serves natively, before
-        # and after answering: one manifest over every carriage.
-        manifests = {"mcp_evidence_manifest": mcp_manifest}
-        got = render_carriage(case, inv["request"], inv["native"], inv["mcp"], manifests=manifests)
+        # The Agent Card's extension params, the MCP manifest, and the
+        # manifest the book serves natively before and after answering: one
+        # manifest over every carriage.
+        manifests = {"a2a_extension": a2a_params(), "mcp_evidence_manifest": mcp_manifest}
+        got = render_carriage(case, inv["request"], inv["native"], inv["a2a"], inv["mcp"], manifests=manifests)
         got["manifest_properties"]["manifest_consistency"] = manifest_consistency(
-            [mcp_manifest, *PRODUCED["manifests"]]).status
+            [*manifests.values(), *PRODUCED["manifests"]]).status
         return got, expected_carriage(case)
+    if case_id == "carriage-a2a-reserializes-artifact":
+        # This responder's A2A reply with its Artifact re-serialized and the
+        # envelope re-signed over it; its native and MCP replies unchanged.
+        a2a = copy.deepcopy(inv["a2a"])
+        part = a2a["task"]["artifacts"][0]["parts"][0]
+        part["raw"] = reserialized(part["raw"])
+        return render_carriage(case, inv["request"], inv["native"], a2a, inv["mcp"]), expected_carriage(case)
+    if case_id == "carriage-a2a-two-artifacts":
+        # This responder's Task with a second reply Artifact, under another
+        # artifactId, whose envelope signs the re-serialized Artifact.
+        a2a = copy.deepcopy(inv["a2a"])
+        second = copy.deepcopy(a2a["task"]["artifacts"][0])
+        second["artifactId"] = hashlib.sha256(second["artifactId"].encode()).hexdigest()[:32]
+        second["parts"][0]["raw"] = reserialized(second["parts"][0]["raw"])
+        a2a["task"]["artifacts"].append(second)
+        return render_carriage(case, inv["request"], a2a=a2a), expected_carriage(case)
+    if case_id == "carriage-a2a-task-rejected":
+        # This responder's Task replaced by one that ended
+        # TASK_STATE_REJECTED with no reply Artifact; the requester's absence
+        # record once its window closed.
+        absent = PRODUCED["carriage"]["a2a-absence"]
+        task = {k: absent["a2a"]["task"][k] for k in ("id", "contextId")}
+        task["status"] = {"state": "TASK_STATE_REJECTED"}
+        a2a = {"message": absent["a2a"]["message"], "task": task}
+        return render_carriage(case, absent["request"], a2a=a2a, absence=absent["absence_record"]), \
+            expected_carriage(case)
     if case_id == "carriage-mcp-rehashes-json":
         # The MCP reply re-signed over the digest of a JSON re-encoding of R.
         request = cbor_value(octets(inv["request"]))
@@ -332,7 +374,7 @@ def carriage_case(case_id: str) -> tuple[dict, dict]:
         env["request_digest"] = sha(jcs(request))
         env["sig"] = RESPONDER.sign(jcs({k: env[k] for k in SIGNED if k in env})).hex()
         reply["result"]["structuredContent"]["reply"] = b64(cbor_encode(env))
-        return render_carriage(case, inv["request"], inv["native"], reply), expected_carriage(case)
+        return render_carriage(case, inv["request"], inv["native"], inv["a2a"], reply), expected_carriage(case)
     if case_id.startswith("carriage-mcp-error-"):
         absent = PRODUCED["carriage"]["mcp-absence"]
         if case_id == "carriage-mcp-error-no-reply":
@@ -346,12 +388,12 @@ def carriage_case(case_id: str) -> tuple[dict, dict]:
         mcp["result"]["isError"] = True
         return render_carriage(case, inv["request"], mcp=mcp), expected_carriage(case)
     if case_id == "carriage-manifest-count-member":
-        # This responder's manifest with the vector's count member added,
-        # standing where the A2A extension params would be.
-        counted = dict(mcp_manifest, record_count=42)
+        # This responder's Agent Card extension params with the vector's
+        # count member added.
+        counted = dict(a2a_params(), record_count=42)
         manifests = {"a2a_extension": counted, "mcp_evidence_manifest": mcp_manifest}
         got = render_carriage(case, inv["request"], manifests=manifests)
-        return got, expected_carriage(case, keep_a2a_manifest=True)
+        return got, expected_carriage(case)
     raise KeyError(case_id)
 
 
@@ -432,19 +474,20 @@ def main() -> int:
         identical = identical and same
         print(f"invariance: canonical Artifact octets across {sorted(artifacts)}: "
               f"{'byte-identical' if same else 'DIFFERENT'} (sha256 {sha(bytes.fromhex(next(iter(artifacts.values()))))})")
-    native_mcp = [PRODUCED["carriage"]["invariance"]["native"]["response_frame_hex"],
-                  PRODUCED["carriage"]["invariance"]["mcp"]["result"]["structuredContent"]["reply"]]
-    a_native = cbor_value(bytes.fromhex(native_mcp[0]))["artifact"]
-    a_mcp = cbor_value(unb64(native_mcp[1]))["artifact"]
-    identical = identical and a_native == a_mcp
-    print(f"invariance: canonical Artifact octets across ['mcp', 'native'] for request R (CBOR): "
-          f"{'byte-identical' if a_native == a_mcp else 'DIFFERENT'} (sha256 {sha(a_native)})")
-    manifests = [*PRODUCED["manifests"], PRODUCED["mcp_manifest"]["structuredContent"]]
+    inv = PRODUCED["carriage"]["invariance"]
+    a_native = cbor_value(bytes.fromhex(inv["native"]["response_frame_hex"]))["artifact"]
+    a_a2a = cbor_value(base64.b64decode(inv["a2a"]["task"]["artifacts"][0]["parts"][0]["raw"]))["artifact"]
+    a_mcp = cbor_value(unb64(inv["mcp"]["result"]["structuredContent"]["reply"]))["artifact"]
+    same = a_native == a_a2a == a_mcp
+    identical = identical and same
+    print(f"invariance: canonical Artifact octets across ['a2a', 'mcp', 'native'] for request R (CBOR): "
+          f"{'byte-identical' if same else 'DIFFERENT'} (sha256 {sha(a_native)})")
+    manifests = [*PRODUCED["manifests"], a2a_params(), PRODUCED["mcp_manifest"]["structuredContent"]]
     form = manifest_form(manifests[0], frozenset({"evidence-interop/0"}))
     consistency = manifest_consistency(manifests)
     print(f"manifest: manifest_form {form.status}{' (' + form.detail + ')' if form.detail else ''}; "
-          f"manifest_consistency across {len(manifests)} copies (native before and after answering, and MCP "
-          f"evidence_manifest) {consistency.status}")
+          f"manifest_consistency across {len(manifests)} copies (native before and after answering, the A2A "
+          f"extension params and the MCP evidence_manifest) {consistency.status}")
     ok = form.status == "PASS" and consistency.status == "PASS"
     return 0 if ok and not failed and identical and len(ran) + len(mutated) + len(skipped) == len(CASES) else 1
 

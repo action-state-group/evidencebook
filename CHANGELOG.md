@@ -29,6 +29,50 @@ a citation purpose.
   over every capsule a book seals with each link type and a bundle
   (`test/interop/capsules`), and requires the legacy records to fail it.
 
+### Evidence interoperability profile: A2A carriage
+
+`Book.A2A` returns an `A2AServer` that carries the evidence request exchange
+over A2A 1.0 (JSON-RPC binding) as profile `evidence-interop/0` §11.4.4
+writes it (agent-action-capsule `spec/interop-profile-v0.md` at main
+`1ea8f75`). It is a carriage only: `Respond` answers, and the canonical
+Artifact is the one the native stream and MCP get for the same request
+octets.
+
+- **Declaration.** `AgentCard` lists one extension,
+  `https://datatracker.ietf.org/doc/draft-mih-agent-evidence-request/`, with
+  `required` false and `Book.Manifest` as its `params` (byte for byte the
+  manifest `evidence_manifest` serves), `application/cbor` and
+  `application/json` as default modes, and no skill. The card is the same
+  for every caller and carries nothing about what the book holds.
+- **Request and reply.** `SendMessage` with `A2A-Version` `1.0` and the
+  extension in `A2A-Extensions`, whose `Message` is `ROLE_USER`, names the
+  extension and holds one `raw` part of one of the two media types, is
+  answered by handing the decoded octets to `Respond` unchanged. The reply,
+  envelope or refusal, is a `TASK_STATE_COMPLETED` `Task` with one `Artifact`
+  marked with the extension URI and one `raw` part of the request's media
+  type.
+- **Authorization.** `Handle(ctx, request, authenticated)` takes the
+  requester the host's A2A security scheme authenticated, the same value as
+  `RespondOptions.AuthenticatedRequester`. Nothing A2A carries is read as an
+  identity: not an Agent Card, `metadata`, `tenant`, `contextId` or
+  `messageId`.
+- **Not a request, not a refusal.** A `data` or `text` part, more than one
+  part, another media type, a `taskId`, another role, a missing extension or
+  version, or an unwanted output mode get a JSON-RPC or A2A error, which a
+  requester treats as a transport condition. No task is ever left rejected
+  or failed in place of a refusal.
+- **No task state, no SDK.** No task is kept: `GetTask` and `CancelTask` find
+  none and `ListTasks` lists none, so no task is visible to another client.
+  Identifiers are 128 random bits. Streaming, push notifications and the
+  extended card are declared off and answered with A2A's errors. The JSON-RPC
+  surface is implemented with the standard library and the package's strict
+  JSON decoder; the host supplies the HTTP endpoint and its authentication.
+- **Conformance.** The reference verifier now runs every carriage vector
+  over this responder's native, A2A and MCP replies (`carriage-invariance`,
+  and the A2A and MCP negative halves of §11.4.8 as mutations of its
+  replies); none is skipped. CI checks the canonical Artifact is
+  byte-identical across the three.
+
 ### Evidence interoperability profile: MCP carriage
 
 `Book.MCP` returns an `MCPServer` that carries the evidence request exchange
@@ -62,8 +106,8 @@ native stream gets for the same request octets.
 - **Conformance.** The reference verifier now runs the carriage vectors over
   this responder's native and MCP replies (`carriage-invariance`, and the
   MCP negative halves of §11.4.8 as mutations of its replies); CI checks the
-  canonical Artifact is byte-identical across the two. There is no A2A
-  carriage here, so the A2A-only carriage vectors are skipped.
+  canonical Artifact is byte-identical across the two. (The A2A-only
+  carriage vectors were skipped until the A2A carriage, above.)
 
 ### Evidence interoperability profile (responder)
 
