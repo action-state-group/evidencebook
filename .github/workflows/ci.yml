@@ -110,3 +110,41 @@ jobs:
           fi
           grep -q "evidencebook rejected the bundle" <<<"$out" || { echo "the tampered bundle failed for another reason: $out"; exit 1; }
           echo "tampered copy rejected: $out"
+
+  interop-profile:
+    name: Evidence interop profile (the reference verifier over this responder's replies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out evidencebook
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: evidencebook
+      # The profile's reference verifier (AAC #238) and its conformance
+      # vectors (AAC #237 head 5abc0da7, which #238 carries unchanged).
+      # Re-pin to the merged SHA once both land.
+      - name: Check out the profile's reference verifier and vectors
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: 0012b78f507f1034b775030ca5f5d064974c4986
+          path: agent-action-capsule
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: evidencebook/go.mod
+          cache-dependency-path: evidencebook/go.sum
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install the verifier's one dependency
+        run: python -m pip install "cryptography>=42"
+      - name: Answer the vectors' requests, then verify every reply with the reference verifier
+        shell: bash
+        run: |
+          interop_dir=$(mktemp -d)
+          trap 'rm -rf "$interop_dir"' EXIT
+          go -C evidencebook run ./test/interop/responder "$interop_dir" "$interop_dir/responder.json"
+          python evidencebook/test/interop/python-profile/verify_responder.py agent-action-capsule "$interop_dir/responder.json"
+          cmp "$interop_dir/artifact-alice-json-nonce-c.bin" "$interop_dir/artifact-bob-cbor-nonce-d.bin"

@@ -8,517 +8,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 )
-
-// SubjectKind is one of the request draft's six subject forms.
-type SubjectKind string
-
-const (
-	SubjectFullHistory SubjectKind = "full_history"
-	SubjectCheckpoints SubjectKind = "checkpoints"
-	SubjectRecord      SubjectKind = "record"
-	SubjectRange       SubjectKind = "range"
-	SubjectCorrelation SubjectKind = "correlation"
-	SubjectExchange    SubjectKind = "exchange"
-)
-
-// Refusal reason tokens (the request draft's initial registry).
-const (
-	ReasonNotAuthorized         = "not_authorized"
-	ReasonNoSuchSubject         = "no_such_subject"
-	ReasonCoverageUnsatisfiable = "coverage_unsatisfiable"
-	ReasonDerivationUnsupported = "derivation_unsupported"
-	ReasonPolicyDeclined        = "policy_declined"
-	ReasonDeadlineUnmet         = "deadline_unmet"
-	ReasonRequestMalformed      = "request_malformed"
-	ReasonRetentionExpired      = "retention_expired"
-)
-
-// Subject names what is asked for. Digest serves record and exchange, First
-// and Last serve range, Value serves correlation.
-type Subject struct {
-	Kind   SubjectKind `json:"kind"`
-	Digest string      `json:"digest,omitempty"`
-	First  uint64      `json:"first,omitempty"`
-	Last   uint64      `json:"last,omitempty"`
-	Value  string      `json:"value,omitempty"`
-}
-
-// Pin names a checkpoint the requester already holds.
-type Pin struct {
-	Root    string `json:"root"`
-	MMRSize uint64 `json:"mmr_size"`
-}
-
-// Freshness is a minimum coverage: a log size, a time, or both.
-type Freshness struct {
-	Size uint64 `json:"size,omitempty"`
-	Time string `json:"time,omitempty"`
-}
-
-// Coverage carries exactly one of ExpectedPin or MinFreshness.
-type Coverage struct {
-	ExpectedPin  *Pin       `json:"expected_pin,omitempty"`
-	MinFreshness *Freshness `json:"min_freshness,omitempty"`
-}
-
-// EvidenceRequest is the request map. Nonce and Route never influence the
-// artifact served.
-type EvidenceRequest struct {
-	Subject    Subject  `json:"subject"`
-	Coverage   Coverage `json:"coverage"`
-	Derivation string   `json:"derivation,omitempty"`
-	Deadline   string   `json:"deadline,omitempty"`
-	Nonce      string   `json:"nonce,omitempty"`
-	Route      string   `json:"route,omitempty"`
-}
-
-// Refusal is a signed answer declining one request. The signature covers the
-// canonical JSON of request_digest, reason and issued_at.
-type Refusal struct {
-	RequestDigest string `json:"request_digest"`
-	Reason        string `json:"reason"`
-	IssuedAt      string `json:"issued_at"`
-	KeyID         string `json:"key_id"`
-	Sig           string `json:"sig"`
-}
-
-// SigningBody is the exact bytes a refusal signature covers.
-func (r Refusal) SigningBody() ([]byte, error) {
-	return canonicalJSON(map[string]string{"request_digest": r.RequestDigest, "reason": r.Reason, "issued_at": r.IssuedAt})
-}
-
-// Verify checks the refusal signature offline against its own key_id.
-func (r Refusal) Verify() error {
-	body, err := r.SigningBody()
-	if err != nil {
-		return err
-	}
-	sig, err := hex.DecodeString(r.Sig)
-	if err != nil {
-		return fmt.Errorf("%w: refusal signature is not hex", ErrInvalid)
-	}
-	return verifySignature(r.KeyID, body, sig)
-}
-
-// Artifact kinds an artifact response may carry.
-const (
-	ArtifactEvidenceBundle = "evidence-bundle/v2"
-	ArtifactCheckpoints    = "checkpoints/v1"
-)
-
-// ArtifactResponse is the signed granting answer: the artifact, the anchor it
-// verifies against, and a signature binding both to the request.
-type ArtifactResponse struct {
-	RequestDigest  string          `json:"request_digest"`
-	Anchor         string          `json:"anchor"`
-	ArtifactKind   string          `json:"artifact_kind"`
-	Artifact       json.RawMessage `json:"artifact"`
-	ArtifactDigest string          `json:"artifact_digest"`
-	IssuedAt       string          `json:"issued_at"`
-	KeyID          string          `json:"key_id"`
-	Sig            string          `json:"sig"`
-}
-
-// ArtifactResponseType is the context member of an artifact response's
-// signing body, so its signature cannot be read as any other statement.
-const ArtifactResponseType = "evidence-artifact-response/v1"
-
-// SigningBody is the exact bytes an artifact response signature covers.
-func (a ArtifactResponse) SigningBody() ([]byte, error) {
-	return canonicalJSON(map[string]string{"type": ArtifactResponseType, "request_digest": a.RequestDigest, "anchor": a.Anchor, "artifact_kind": a.ArtifactKind, "artifact_digest": a.ArtifactDigest, "issued_at": a.IssuedAt})
-}
-
-// Verify checks the signature and that the artifact bytes hash to the signed digest.
-func (a ArtifactResponse) Verify() error {
-	if digestBytes(a.Artifact) != a.ArtifactDigest {
-		return fmt.Errorf("%w: artifact does not hash to its signed digest", ErrInvalid)
-	}
-	body, err := a.SigningBody()
-	if err != nil {
-		return err
-	}
-	sig, err := hex.DecodeString(a.Sig)
-	if err != nil {
-		return fmt.Errorf("%w: artifact signature is not hex", ErrInvalid)
-	}
-	return verifySignature(a.KeyID, body, sig)
-}
-
-// Response is exactly one of the two answers a responder can send.
-type Response struct {
-	Artifact *ArtifactResponse `json:"artifact,omitempty"`
-	Refusal  *Refusal          `json:"refusal,omitempty"`
-}
-
-// SharePolicy is the four-switch sharing policy, carried unchanged from the
-// mesh plugin's share.* object. Every default keys on relationship.
-type SharePolicy struct {
-	RecordAtCompletion string `json:"record_at_completion"`
-	HistorySegments    string `json:"history_segments"`
-	Adjudications      string `json:"adjudications"`
-	Witness            string `json:"witness,omitempty"`
-}
-
-// DefaultSharePolicy returns the documented defaults.
-func DefaultSharePolicy() SharePolicy {
-	return SharePolicy{RecordAtCompletion: "counterparty", HistorySegments: "prospective", Adjudications: "deliver_to_subjects"}
-}
-
-// Validate rejects any switch outside its enumerated values.
-func (p SharePolicy) Validate() error {
-	checks := []struct {
-		name, value string
-		allowed     []string
-	}{
-		{"record_at_completion", p.RecordAtCompletion, []string{"counterparty", "off"}},
-		{"history_segments", p.HistorySegments, []string{"counterparties", "prospective", "peers", "off"}},
-		{"adjudications", p.Adjudications, []string{"deliver_to_subjects", "off"}},
-	}
-	for _, check := range checks {
-		if !slices.Contains(check.allowed, check.value) {
-			return fmt.Errorf("%w: share.%s=%q is not one of %v", ErrInvalid, check.name, check.value, check.allowed)
-		}
-	}
-	return nil
-}
-
-// Relationship of a requester to this book, checkable from local records. A
-// stranger is a caller with no authenticated identity.
-const (
-	RelationshipStranger     = "stranger"
-	RelationshipIdentified   = "identified"
-	RelationshipCounterparty = "counterparty"
-)
-
-// publicSubject reports whether a subject is answered to any caller,
-// authenticated or not. Only checkpoints are public.
-func publicSubject(kind SubjectKind) bool { return kind == SubjectCheckpoints }
-
-// allows gates protected subjects. It fails closed: a stranger (no
-// authenticated requester) is never allowed, under any tier; "peers" means
-// any authenticated peer.
-func (p SharePolicy) allows(relationship string) bool {
-	if relationship == RelationshipStranger {
-		return false
-	}
-	switch p.HistorySegments {
-	case "peers":
-		return true
-	case "prospective":
-		return relationship != RelationshipStranger
-	case "counterparties":
-		return relationship == RelationshipCounterparty
-	}
-	return false
-}
-
-// RespondOptions carries the requester's identity and the sharing policy.
-//
-// AuthenticatedRequester is the requester identity established by the
-// transport's own authentication of the caller (for example a verified
-// mutual-TLS peer or a verified signature over the request). Set it only from
-// that authentication; leave it empty when the caller is not authenticated.
-// It is the only input to the relationship gate: with it empty, Respond
-// answers only public subjects (checkpoints) and refuses every other subject
-// with a signed not_authorized refusal, whatever the policy tier.
-//
-// RequesterID is the identity the caller declared. It is never trusted: it
-// does not select a relationship, does not grant any scope, and is not
-// recorded.
-type RespondOptions struct {
-	AuthenticatedRequester string
-	// Deprecated: a declared identity is not authentication. Respond ignores
-	// it; set AuthenticatedRequester from the transport's authentication.
-	RequesterID string
-	Policy      SharePolicy
-}
-
-// AnsweredStatement is the body of the record a responder seals for every
-// inbound request, whatever the outcome. It names no requester: the record
-// is part of the book's history and can itself be disclosed in later
-// answers. Relationship records the class the gate applied (stranger means
-// the caller was not authenticated).
-type AnsweredStatement struct {
-	RequestDigest string      `json:"request_digest"`
-	SubjectKind   SubjectKind `json:"subject_kind,omitempty"`
-	Outcome       string      `json:"outcome"`
-	Reason        string      `json:"reason,omitempty"`
-	Relationship  string      `json:"relationship"`
-	Anchor        string      `json:"anchor,omitempty"`
-}
-
-// Respond answers one request received as requestBytes with a signed artifact
-// or a signed refusal, and seals a record of the request and its outcome.
-// The artifact depends only on (subject, coverage): nonce, route and the
-// requester's identity never change it; the identity only decides whether a
-// protected subject is answered at all.
-func (b *Book) Respond(ctx context.Context, requestBytes []byte, opts RespondOptions) (Response, Record, error) {
-	if err := opts.Policy.Validate(); err != nil {
-		return Response{}, Record{}, err
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	requestDigest := digestBytes(requestBytes)
-	statement := AnsweredStatement{RequestDigest: requestDigest, Relationship: b.relationshipLocked(opts.AuthenticatedRequester)}
-	response, err := b.answerLocked(ctx, requestBytes, requestDigest, opts, &statement)
-	if err != nil {
-		return Response{}, Record{}, err
-	}
-	body, err := json.Marshal(statement)
-	if err != nil {
-		return Response{}, Record{}, err
-	}
-	record, err := b.appendLocked(ctx, Entry{RecordType: RecordTypeRequestAnswered, EpistemicType: ObservedEvent, Links: []Link{}, Statement: body})
-	if err != nil {
-		return Response{}, Record{}, err
-	}
-	return response, record, nil
-}
-
-// relationshipLocked classifies an authenticated requester by counterparty_ref
-// on the book's own records. It is only ever given the authenticated
-// identity: a counterparty_ref value is not a credential, so knowing one
-// grants nothing. Records of answered requests name no requester, so asking
-// never makes a stranger a counterparty.
-func (b *Book) relationshipLocked(authenticated string) string {
-	if authenticated == "" {
-		return RelationshipStranger
-	}
-	for _, id := range b.order {
-		if b.records[id].Header.CounterpartyRef == authenticated {
-			return RelationshipCounterparty
-		}
-	}
-	return RelationshipIdentified
-}
-
-func (b *Book) answerLocked(ctx context.Context, requestBytes []byte, requestDigest string, opts RespondOptions, statement *AnsweredStatement) (Response, error) {
-	refuse := func(reason string) (Response, error) {
-		refusal, err := b.refusalLocked(ctx, requestDigest, reason)
-		statement.Outcome, statement.Reason = "refusal", reason
-		return Response{Refusal: &refusal}, err
-	}
-	var req EvidenceRequest
-	decoder := json.NewDecoder(bytes.NewReader(requestBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil || !validSubject(req.Subject) {
-		return refuse(ReasonRequestMalformed)
-	}
-	statement.SubjectKind = req.Subject.Kind
-	if (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
-		return refuse(ReasonCoverageUnsatisfiable)
-	}
-	var notBefore time.Time
-	if floor := req.Coverage.MinFreshness; floor != nil && floor.Time != "" {
-		var err error
-		if notBefore, err = time.Parse(time.RFC3339Nano, floor.Time); err != nil {
-			return refuse(ReasonRequestMalformed)
-		}
-		if notBefore.After(b.now()) {
-			// No checkpoint can be issued in the future; refuse without
-			// doing any work on the requester's behalf.
-			return refuse(ReasonCoverageUnsatisfiable)
-		}
-	}
-	if req.Derivation != "" {
-		return refuse(ReasonDerivationUnsupported)
-	}
-	if !publicSubject(req.Subject.Kind) && !opts.Policy.allows(statement.Relationship) {
-		return refuse(ReasonNotAuthorized)
-	}
-	anchor, ok, err := b.coverageLocked(ctx, req.Coverage, notBefore)
-	if err != nil {
-		return Response{}, err
-	}
-	if !ok {
-		return refuse(ReasonCoverageUnsatisfiable)
-	}
-	statement.Anchor = anchor.ID
-	var kind string
-	var artifact []byte
-	if req.Subject.Kind == SubjectCheckpoints {
-		kind = ArtifactCheckpoints
-		if artifact, err = b.checkpointsArtifactLocked(ctx, anchor); err != nil {
-			return Response{}, err
-		}
-	} else {
-		matched, reason := b.resolveSubjectLocked(req.Subject, anchor)
-		if reason != "" {
-			return refuse(reason)
-		}
-		kind = ArtifactEvidenceBundle
-		subject, err := json.Marshal(struct {
-			Subject Subject  `json:"subject"`
-			Matched []string `json:"matched"`
-		}{req.Subject, matched})
-		if err != nil {
-			return Response{}, err
-		}
-		// Headers only: an answer discloses what was matched and what it
-		// cites, and never payload bytes.
-		bundle, err := b.bundleLocked(ctx, BundleRequest{
-			Root: matched[len(matched)-1], Include: matched, ClosureDepth: 1, Payloads: PayloadsSelected,
-			WithholdPayloads: true, At: &anchor, Extensions: map[string]json.RawMessage{ExtensionSubject: subject},
-		})
-		if err != nil {
-			return Response{}, err
-		}
-		artifact = bundle.JSON
-	}
-	response := ArtifactResponse{RequestDigest: requestDigest, Anchor: anchor.ID, ArtifactKind: kind, Artifact: artifact, ArtifactDigest: digestBytes(artifact), IssuedAt: b.now().UTC().Format(time.RFC3339Nano), KeyID: KeyID(b.signer)}
-	body, err := response.SigningBody()
-	if err != nil {
-		return Response{}, err
-	}
-	sig, err := b.signer.Sign(ctx, body)
-	if err != nil {
-		return Response{}, err
-	}
-	response.Sig = hex.EncodeToString(sig)
-	statement.Outcome = "artifact"
-	return Response{Artifact: &response}, nil
-}
-
-func validSubject(s Subject) bool {
-	switch s.Kind {
-	case SubjectFullHistory, SubjectCheckpoints:
-		return s.Digest == "" && s.Value == "" && s.First == 0 && s.Last == 0
-	case SubjectRecord, SubjectExchange:
-		return hex64.MatchString(s.Digest)
-	case SubjectRange:
-		return s.First >= 1 && s.Last >= s.First
-	case SubjectCorrelation:
-		return s.Value != ""
-	}
-	return false
-}
-
-func (b *Book) refusalLocked(ctx context.Context, requestDigest, reason string) (Refusal, error) {
-	refusal := Refusal{RequestDigest: requestDigest, Reason: reason, IssuedAt: b.now().UTC().Format(time.RFC3339Nano), KeyID: KeyID(b.signer)}
-	body, err := refusal.SigningBody()
-	if err != nil {
-		return Refusal{}, err
-	}
-	sig, err := b.signer.Sign(ctx, body)
-	if err != nil {
-		return Refusal{}, err
-	}
-	refusal.Sig = hex.EncodeToString(sig)
-	return refusal, nil
-}
-
-// coverageLocked resolves the anchor. A pin must name a checkpoint this book
-// issued; a freshness floor may trigger a new checkpoint. Weaker coverage is
-// never substituted for the coverage asked for.
-func (b *Book) coverageLocked(ctx context.Context, coverage Coverage, notBefore time.Time) (Checkpoint, bool, error) {
-	history, err := b.store.Checkpoints(ctx)
-	if err != nil {
-		return Checkpoint{}, false, err
-	}
-	if pin := coverage.ExpectedPin; pin != nil {
-		for _, cp := range history {
-			if cp.Root == pin.Root && cp.TreeSize == pin.MMRSize {
-				return cp, true, nil
-			}
-		}
-		return Checkpoint{}, false, nil
-	}
-	floor := coverage.MinFreshness
-	if floor.Size > uint64(len(b.order)) {
-		return Checkpoint{}, false, nil
-	}
-	fresh := func(cp Checkpoint) bool { return cp.Entries >= floor.Size && !cp.IssuedAt.Before(notBefore) }
-	if n := len(history); n > 0 && fresh(history[n-1]) {
-		return history[n-1], true, nil
-	}
-	if len(b.order) == 0 {
-		return Checkpoint{}, false, nil
-	}
-	cp, err := b.checkpointLocked(ctx)
-	if err != nil {
-		return Checkpoint{}, false, err
-	}
-	return cp, fresh(cp), nil
-}
-
-// resolveSubjectLocked returns the records the subject names under anchor,
-// or a refusal reason. A subject that exists only beyond the anchor is
-// coverage_unsatisfiable, never no_such_subject: the book does hold it.
-func (b *Book) resolveSubjectLocked(s Subject, anchor Checkpoint) ([]string, string) {
-	if s.Kind == SubjectRange && s.Last > anchor.Entries {
-		if s.Last <= uint64(len(b.order)) {
-			return nil, ReasonCoverageUnsatisfiable
-		}
-		return nil, ReasonNoSuchSubject
-	}
-	var matched []string
-	beyond := false
-	for _, id := range b.order {
-		record := b.records[id]
-		var hit bool
-		switch s.Kind {
-		case SubjectFullHistory:
-			hit = true
-		case SubjectRecord:
-			hit = id == s.Digest
-		case SubjectRange:
-			hit = record.Seq >= s.First && record.Seq <= s.Last
-		case SubjectCorrelation:
-			hit = record.Header.SubjectRef == s.Value
-		case SubjectExchange:
-			hit = slices.Contains(record.Header.LinksTo(Cites), s.Digest)
-		}
-		switch {
-		case hit && anchor.Covers(record.Seq):
-			matched = append(matched, id)
-		case hit:
-			beyond = true
-		}
-	}
-	switch {
-	case len(matched) > 0:
-		return matched, ""
-	case beyond:
-		return nil, ReasonCoverageUnsatisfiable
-	}
-	return nil, ReasonNoSuchSubject
-}
-
-type checkpointsArtifact struct {
-	Checkpoints []Checkpoint          `json:"checkpoints"`
-	Consistency []ConsistencyEvidence `json:"consistency"`
-}
-
-func (b *Book) checkpointsArtifactLocked(ctx context.Context, anchor Checkpoint) ([]byte, error) {
-	history, err := b.store.Checkpoints(ctx)
-	if err != nil {
-		return nil, err
-	}
-	artifact := checkpointsArtifact{Consistency: []ConsistencyEvidence{}}
-	for _, cp := range history {
-		if cp.Entries > anchor.Entries {
-			continue
-		}
-		if n := len(artifact.Checkpoints); n > 0 {
-			proof, err := b.commitments.ProveConsistency(ctx, artifact.Checkpoints[n-1], cp)
-			if err != nil && !errors.Is(err, ErrUnsupported) {
-				return nil, err
-			}
-			if err == nil {
-				artifact.Consistency = append(artifact.Consistency, proof)
-			}
-		}
-		artifact.Checkpoints = append(artifact.Checkpoints, cp)
-	}
-	return canonicalJSON(artifact)
-}
 
 // RequestStatement is the body of the record a requester seals before it
 // sends a request. The responder is named here, not in counterparty_ref:
@@ -528,7 +21,7 @@ type RequestStatement struct {
 	ResponderRef string          `json:"responder_ref,omitempty"`
 }
 
-// SentRequest is a request as transmitted: its canonical bytes, their
+// SentRequest is a request as transmitted: its octets (JCS JSON), their
 // digest, and the id of the record of having asked. RecordResponse and
 // RecordAbsence re-derive everything else from that committed record.
 type SentRequest struct {
@@ -537,19 +30,19 @@ type SentRequest struct {
 	RecordID string
 }
 
+// Message is the request as carried.
+func (s SentRequest) Message() Message {
+	return Message{Octets: s.Bytes, MediaType: MediaTypeJSON}
+}
+
 // Request records that this book is asking responder for evidence and
-// returns the canonical bytes to transmit. An empty nonce is filled with a
-// fresh random one, and a nonce this book already used is refused. Recording happens before sending,
-// so "I asked" is committed whatever comes back.
+// returns the octets to transmit: the request map under this profile (its
+// profile member set to ProfileID), in JCS (profile §6.1, P-9). An empty
+// nonce is filled with a fresh random one, and a nonce this book already
+// used is refused. Recording happens before sending, so "I asked" is
+// committed whatever comes back.
 func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder string) (SentRequest, error) {
-	if !validSubject(req.Subject) || (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
-		return SentRequest{}, fmt.Errorf("%w: request needs a valid subject and exactly one coverage member", ErrInvalid)
-	}
-	if req.Deadline != "" {
-		if _, err := time.Parse(time.RFC3339Nano, req.Deadline); err != nil {
-			return SentRequest{}, fmt.Errorf("%w: deadline: %v", ErrInvalid, err)
-		}
-	}
+	req.Profile = ProfileID
 	if req.Nonce == "" {
 		nonce := make([]byte, 16)
 		if _, err := rand.Read(nonce); err != nil {
@@ -557,7 +50,7 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 		}
 		req.Nonce = hex.EncodeToString(nonce)
 	}
-	data, err := canonicalJSON(req)
+	data, err := EncodeRequest(req, MediaTypeJSON)
 	if err != nil {
 		return SentRequest{}, err
 	}
@@ -590,12 +83,13 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	return SentRequest{Bytes: data, Digest: digestBytes(data), RecordID: record.RecordID}, nil
 }
 
-// sentLocked re-reads a request from its committed record.
+// sentRequest is a request re-read from its committed record.
 type sentRequest struct {
-	record  Record
-	bytes   []byte
-	digest  string
-	request EvidenceRequest
+	record    Record
+	bytes     []byte
+	digest    string
+	request   EvidenceRequest
+	floorTime time.Time
 }
 
 func (b *Book) sentLocked(requestRecordID string) (sentRequest, error) {
@@ -607,58 +101,67 @@ func (b *Book) sentLocked(requestRecordID string) (sentRequest, error) {
 	if err := json.Unmarshal(record.Header.Statement, &statement); err != nil {
 		return sentRequest{}, fmt.Errorf("%w: request record %s: %v", ErrCorrupt, requestRecordID, err)
 	}
-	out := sentRequest{record: record, bytes: statement.Request, digest: digestBytes(statement.Request)}
-	if err := json.Unmarshal(statement.Request, &out.request); err != nil {
-		return sentRequest{}, fmt.Errorf("%w: request record %s: %v", ErrCorrupt, requestRecordID, err)
+	check := readRequest(Message{Octets: statement.Request, MediaType: MediaTypeJSON})
+	if check.reason != "" {
+		return sentRequest{}, fmt.Errorf("%w: request record %s holds no well-formed request: %s", ErrCorrupt, requestRecordID, check.reason)
 	}
-	return out, nil
+	return sentRequest{record: record, bytes: statement.Request, digest: digestBytes(statement.Request), request: check.request, floorTime: check.floorTime}, nil
 }
 
 // ResponseStatement is the body of the record a requester seals on receipt.
-// KeyID is always the pinned responder key the response verified under.
+// KeyID is always the pinned responder key the reply verified under.
 type ResponseStatement struct {
 	RequestDigest string `json:"request_digest"`
 	Outcome       string `json:"outcome"`
 	Reason        string `json:"reason,omitempty"`
 	KeyID         string `json:"key_id"`
 	CheckpointKey string `json:"checkpoint_key_id"`
-	ArtifactKind  string `json:"artifact_kind,omitempty"`
 	Artifact      string `json:"artifact_digest,omitempty"`
 	Anchor        string `json:"anchor,omitempty"`
-	Failure       string `json:"failure,omitempty"`
+	// NotChecked names the profile properties (§7.2) this requester could
+	// not check for a recorded artifact, for example anchor_inclusion where
+	// the profile defines no material kind for the subject (P-13).
+	NotChecked []string `json:"not_checked,omitempty"`
+	Failure    string   `json:"failure,omitempty"`
 }
 
-// Response outcomes as recorded by a requester.
+// Response outcomes as recorded by a requester. Artifact and refusal are two
+// of the request draft's three outcomes; the other two values are sub-states
+// of a received reply that did not verify (a response received and failed,
+// profile P-21), named as the request-draft vectors name them. None is ever
+// an absence.
 const (
-	OutcomeArtifact       = "artifact"
-	OutcomeRefusal        = "refusal"
-	OutcomeArtifactFailed = "artifact_failed_verification"
+	OutcomeArtifact             = "artifact"
+	OutcomeRefusal              = "refusal"
+	OutcomeArtifactFailed       = "artifact_verification_failed"
+	OutcomeRefusalNonconforming = "refusal_nonconformant"
 )
 
 // ResponderKeys are the responder's keys as the requester obtained them,
-// independently of any response: Signer signs refusals and artifact
-// responses, Checkpoint signs the checkpoints an artifact is anchored to.
-// Witnesses is the requester's own witness directory: every witness receipt
-// an artifact carries must verify under it, against the artifact's anchor,
-// or the artifact is recorded as failed. Without it, an artifact carrying
-// any receipt is recorded as failed; one carrying none is unaffected.
+// independently of any reply: Signer signs refusals and envelopes,
+// Checkpoint signs the checkpoints an artifact is anchored to.
 type ResponderKeys struct {
 	Signer     string
 	Checkpoint string
-	Witnesses  []WitnessRow
+	// Witnesses is the requester's witness directory, used when it checks an
+	// Evidence Bundle (VerifyBundleAnswer).
+	Witnesses []WitnessRow
 }
 
-// RecordResponse verifies and records what came back for the request
-// recorded as requestRecordID. Both responder keys are required. A response
-// that does not verify under the pinned signer key is refused and is not
-// recorded: an unauthenticated message can neither become an outcome nor
-// foreclose the real one. An artifact that is genuinely signed by the
-// responder but fails verification (wrong subject, anchor, freshness, or
-// proofs) is recorded as received-and-failed, never as a grant and never
-// as an absence.
-func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp Response, keys ResponderKeys) (Record, error) {
+// RecordResponse verifies and records the reply that came back for the
+// request recorded as requestRecordID. Both responder keys are required. A
+// reply that is not signed under the pinned signer key for this request's
+// digest is refused and is not recorded: an unauthenticated message can
+// neither become an outcome nor foreclose the real one. A reply genuinely
+// signed by the responder that fails a check of profile §7.2 is recorded as
+// received-and-failed, never as a grant and never as an absence.
+func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply Message, keys ResponderKeys) (Record, error) {
 	if keys.Signer == "" || keys.Checkpoint == "" {
 		return Record{}, fmt.Errorf("%w: pinned responder signer and checkpoint keys are required", ErrInvalid)
+	}
+	parsed, err := ParseReply(reply)
+	if err != nil {
+		return Record{}, err
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -668,8 +171,8 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp 
 	}
 	statement := ResponseStatement{RequestDigest: sent.digest, KeyID: keys.Signer, CheckpointKey: keys.Checkpoint}
 	switch {
-	case resp.Refusal != nil && resp.Artifact == nil:
-		r := resp.Refusal
+	case parsed.Refusal != nil:
+		r := parsed.Refusal
 		if r.RequestDigest != sent.digest || r.KeyID != keys.Signer {
 			return Record{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
 		}
@@ -677,20 +180,31 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp 
 			return Record{}, err
 		}
 		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
-	case resp.Artifact != nil && resp.Refusal == nil:
-		a := resp.Artifact
-		if a.RequestDigest != sent.digest || a.KeyID != keys.Signer {
-			return Record{}, fmt.Errorf("%w: artifact is not for this request under the pinned responder key", ErrInvalid)
+		if !r.Conforming() {
+			statement.Outcome = OutcomeRefusalNonconforming
 		}
-		if err := a.Verify(); err != nil {
+	case parsed.Envelope != nil:
+		e := parsed.Envelope
+		if e.RequestDigest != sent.digest || e.Responder != keys.Signer {
+			return Record{}, fmt.Errorf("%w: envelope is not for this request under the pinned responder key", ErrInvalid)
+		}
+		body, err := e.SigningBody()
+		if err != nil {
 			return Record{}, err
 		}
-		statement.Outcome, statement.ArtifactKind, statement.Artifact, statement.Anchor = OutcomeArtifact, a.ArtifactKind, a.ArtifactDigest, a.Anchor
-		if err := verifyArtifactContent(sent, *a, keys); err != nil {
+		sig, err := hex.DecodeString(e.Sig)
+		if err != nil || len(sig) != 64 {
+			return Record{}, fmt.Errorf("%w: envelope signature is malformed", ErrInvalid)
+		}
+		if err := verifySignature(e.Responder, body, sig); err != nil {
+			return Record{}, err
+		}
+		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest
+		notChecked, err := verifyEnvelopeContent(sent, *e, keys)
+		statement.NotChecked = notChecked
+		if err != nil {
 			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
 		}
-	default:
-		return Record{}, fmt.Errorf("%w: a response carries exactly one of artifact or refusal", ErrInvalid)
 	}
 	body, err := json.Marshal(statement)
 	if err != nil {
@@ -702,72 +216,187 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, resp 
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypeResponse, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body})
 }
 
-type subjectExtension struct {
-	Subject Subject  `json:"subject"`
-	Matched []string `json:"matched"`
+// verifyEnvelopeContent runs the checks of profile §7.3 that follow the
+// envelope signature: profile_version, issued_at_form, subject_binding,
+// artifact_digest, verification_binding, anchor_match and anchor_inclusion.
+// It returns the properties it could not check (never failures), and an
+// error naming the first check that failed.
+func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]string, error) {
+	req := sent.request
+	if e.Profile != req.Profile {
+		return nil, fmt.Errorf("%w: profile_version: requested %s, got %s", ErrInvalid, req.Profile, e.Profile)
+	}
+	if _, ok := parseProfileTime(e.IssuedAt); !ok {
+		return nil, fmt.Errorf("%w: issued_at_form: %q", ErrInvalid, e.IssuedAt)
+	}
+	if e.Subject != req.Subject || e.Derivation != req.Derivation {
+		return nil, fmt.Errorf("%w: subject_binding: the envelope answers a different subject or derivation", ErrInvalid)
+	}
+	if digestBytes(e.Artifact) != e.ArtifactDigest {
+		return nil, fmt.Errorf("%w: artifact_digest: the artifact does not hash to the signed digest", ErrInvalid)
+	}
+	if len(e.Verification) != len(e.VerificationContent) {
+		return nil, fmt.Errorf("%w: verification_binding: %d entries, %d items", ErrInvalid, len(e.Verification), len(e.VerificationContent))
+	}
+	for i, item := range e.VerificationContent {
+		if digestBytes(item) != e.Verification[i].Digest {
+			return nil, fmt.Errorf("%w: verification_binding: item %d", ErrInvalid, i)
+		}
+	}
+	// anchor_match.
+	if pin := req.Coverage.ExpectedPin; pin != "" {
+		if e.Anchor.Digest != pin {
+			return nil, fmt.Errorf("%w: anchor_match: the anchor is not the pinned one", ErrInvalid)
+		}
+	} else if floor := req.Coverage.MinFreshness; floor != nil {
+		switch {
+		case floor.Size != nil && (e.Anchor.FreshnessSize == nil || *e.Anchor.FreshnessSize < *floor.Size):
+			return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a size meeting the floor", ErrInvalid)
+		case floor.Size == nil:
+			attained, ok := parseProfileTime(e.Anchor.FreshnessTime)
+			if !ok || attained.Before(sent.floorTime) {
+				return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a time meeting the floor", ErrInvalid)
+			}
+		}
+	}
+	return verifyAnchorInclusion(req, e, keys.Checkpoint)
 }
 
-// verifyArtifactContent checks that a responder-signed artifact answers the
-// request that was recorded: same subject, an anchor signed by the pinned
-// checkpoint key, the pinned anchor or one at least as fresh as asked,
-// proofs that verify, and every witness receipt it carries verified against
-// that anchor under the requester's witness directory. The envelope
-// signature is already checked.
-func verifyArtifactContent(sent sentRequest, a ArtifactResponse, keys ResponderKeys) error {
-	checkpointKey := keys.Checkpoint
-	coverage := sent.request.Coverage
-	var anchor Pin
-	var entries uint64
-	switch a.ArtifactKind {
-	case ArtifactCheckpoints:
-		if sent.request.Subject.Kind != SubjectCheckpoints {
-			return fmt.Errorf("%w: a checkpoints artifact does not answer a %s subject", ErrInvalid, sent.request.Subject.Kind)
-		}
-		artifact, err := strictDecode[checkpointsArtifact](a.Artifact)
-		if err != nil {
-			return err
-		}
-		last, err := VerifyCheckpoints(artifact.Checkpoints, artifact.Consistency, checkpointKey)
-		if err != nil {
-			return err
-		}
-		if last.ID != a.Anchor {
-			return fmt.Errorf("%w: checkpoints do not end at the signed anchor", ErrInvalid)
-		}
-		anchor, entries = Pin{Root: last.Root, MMRSize: last.TreeSize}, last.Entries
-	case ArtifactEvidenceBundle:
-		verified, err := VerifyBundle(a.Artifact)
-		if err != nil {
-			return err
-		}
-		// A bundle recorded as an answer must prove all of it: a claim that
-		// is only "withheld" or "unverified", or a record whose capsule does
-		// not verify, makes it a failed artifact, never a grant.
-		if err := verified.FullyVerified(); err != nil {
-			return err
-		}
-		if !verified.AnchorAuthenticated || verified.AnchorKeyID != checkpointKey {
-			return fmt.Errorf("%w: bundle is not anchored to a checkpoint signed by the pinned key", ErrInvalid)
-		}
-		if fmt.Sprintf("%s:%d", verified.Anchor.Root, verified.Anchor.MMRSize) != a.Anchor {
-			return fmt.Errorf("%w: bundle is not covered by the signed anchor", ErrInvalid)
-		}
-		if err := verifyCarriedReceipts(verified.AnchorStatement, verified.Witnesses, keys.Witnesses); err != nil {
-			return err
-		}
-		subject, err := strictDecode[subjectExtension](verified.Extensions[ExtensionSubject])
-		if err != nil || subject.Subject != sent.request.Subject {
-			return fmt.Errorf("%w: bundle answers a different subject", ErrInvalid)
-		}
-		anchor, entries = Pin{Root: verified.Anchor.Root, MMRSize: verified.Anchor.MMRSize}, verified.IntervalLast
-	default:
-		return fmt.Errorf("%w: unknown artifact kind %q", ErrInvalid, a.ArtifactKind)
+// verifyAnchorInclusion checks the artifact against its anchor by the method
+// its form allows (profile §6.2 point 4, §6.2.1).
+func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string) ([]string, error) {
+	halfPin := req.Subject.Kind == SubjectExchange && req.Coverage.ExpectedPin == req.Subject.Digest
+	switch {
+	case req.Subject.Kind == SubjectRecord && req.Derivation == "":
+		return nil, verifyRecordInclusion(e, checkpointKey)
+	case req.Subject.Kind == SubjectCheckpoints || req.Derivation == DerivationHistoryCard:
+		return nil, verifyCheckpointChain(e, checkpointKey)
 	}
-	if pin := coverage.ExpectedPin; pin != nil && *pin != anchor {
-		return fmt.Errorf("%w: artifact anchor is not the pinned checkpoint", ErrInvalid)
+	// Record sets and registered derivations: the profile defines no material
+	// kind for them (P-13). Their bodies and their anchor member are checked;
+	// inclusion is not.
+	artifact, err := decodeStrictJSON(e.Artifact)
+	fields, ok := artifact.(map[string]any)
+	if err != nil || !ok {
+		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
 	}
-	if floor := coverage.MinFreshness; floor != nil && entries < floor.Size {
-		return fmt.Errorf("%w: artifact anchor covers %d records, fewer than the %d asked for", ErrInvalid, entries, floor.Size)
+	if anchor, _ := fields["anchor"].(string); !halfPin && anchor != e.Anchor.Digest {
+		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact names another anchor", ErrInvalid)
+	}
+	records, _ := fields["records"].([]any)
+	for i, item := range records {
+		entry, _ := item.(map[string]any)
+		digest, _ := entry["digest"].(string)
+		if body, present := entry["body"]; present {
+			text, _ := body.(string)
+			raw, err := hex.DecodeString(text)
+			if err != nil || digestBytes(raw) != digest {
+				return nil, fmt.Errorf("%w: anchor_inclusion: record %d does not hash to its digest", ErrInvalid, i)
+			}
+		}
+	}
+	return []string{"anchor_inclusion"}, nil
+}
+
+// verifyRecordInclusion is the §6.2.1 procedure, steps 2 to 13, under the
+// pinned checkpoint key.
+func verifyRecordInclusion(e Envelope, checkpointKey string) error {
+	items := map[string][]byte{}
+	for i, entry := range e.Verification {
+		if _, repeated := items[entry.Kind]; repeated {
+			return fmt.Errorf("%w: anchor_inclusion: kind %s appears more than once", ErrInvalid, entry.Kind)
+		}
+		if !slices.Contains([]string{KindCLLCheckpoint, KindCLLInclusionProof, KindCLLConsistencyProof}, entry.Kind) {
+			return fmt.Errorf("%w: anchor_inclusion: kind %q is not one this requester implements", ErrInvalid, entry.Kind)
+		}
+		items[entry.Kind] = e.VerificationContent[i]
+	}
+	if items[KindCLLCheckpoint] == nil || items[KindCLLInclusionProof] == nil {
+		return fmt.Errorf("%w: anchor_inclusion: the checkpoint or the inclusion proof is not present", ErrInvalid)
+	}
+	if e.Subject.Digest != e.ArtifactDigest {
+		return fmt.Errorf("%w: anchor_inclusion: the record is not named by its artifact digest", ErrInvalid)
+	}
+	if digestBytes(items[KindCLLCheckpoint]) != e.Anchor.Digest {
+		return fmt.Errorf("%w: anchor_inclusion: the checkpoint is not the anchor", ErrInvalid)
+	}
+	cp, err := readSignedCheckpoint(items[KindCLLCheckpoint], checkpointKey)
+	if err != nil {
+		return fmt.Errorf("anchor_inclusion: %w", err)
+	}
+	if e.Anchor.FreshnessSize != nil && *e.Anchor.FreshnessSize != cp.TreeSize ||
+		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != profileTime(cp.IssuedAt) {
+		return fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
+	}
+	entry, err := hex.DecodeString(e.ArtifactDigest)
+	if err != nil {
+		return fmt.Errorf("%w: anchor_inclusion: artifact digest", ErrInvalid)
+	}
+	if err := checkCLLInclusion(cp, entry, items[KindCLLInclusionProof], items[KindCLLConsistencyProof]); err != nil {
+		return fmt.Errorf("anchor_inclusion: %w", err)
+	}
+	return nil
+}
+
+// verifyCheckpointChain checks a checkpoints or history_card/1 artifact,
+// which is its own verification material (ER §4.1): every checkpoint signed
+// under the pinned key for one log, sizes strictly growing, each consistency
+// proof present in a history card reaching the next commitment, and the
+// last checkpoint the envelope's anchor.
+func verifyCheckpointChain(e Envelope, checkpointKey string) error {
+	artifact, err := decodeStrictJSON(e.Artifact)
+	fields, ok := artifact.(map[string]any)
+	if err != nil || !ok {
+		return fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
+	}
+	var statements, proofs []string
+	if history, isCard := fields["history"].([]any); isCard {
+		for _, item := range history {
+			entry, _ := item.(map[string]any)
+			statement, _ := entry["checkpoint"].(string)
+			proof, _ := entry["consistency_from_previous"].(string)
+			statements, proofs = append(statements, statement), append(proofs, proof)
+		}
+	} else {
+		list, _ := fields["checkpoints"].([]any)
+		for _, item := range list {
+			statement, _ := item.(string)
+			statements, proofs = append(statements, statement), append(proofs, "")
+		}
+	}
+	if len(statements) == 0 {
+		return fmt.Errorf("%w: anchor_inclusion: no checkpoints", ErrInvalid)
+	}
+	var previous signedCheckpoint
+	for i, text := range statements {
+		raw, err := hex.DecodeString(text)
+		if err != nil {
+			return fmt.Errorf("%w: anchor_inclusion: checkpoint %d is not hex", ErrInvalid, i)
+		}
+		cp, err := readSignedCheckpoint(raw, checkpointKey)
+		if err != nil {
+			return fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
+		}
+		if i > 0 {
+			if cp.LogID != previous.LogID || cp.TreeSize <= previous.TreeSize {
+				return fmt.Errorf("%w: anchor_inclusion: checkpoint %d does not extend the log", ErrInvalid, i)
+			}
+			if proofs[i] != "" {
+				proof, err := hex.DecodeString(proofs[i])
+				if err != nil {
+					return fmt.Errorf("%w: anchor_inclusion: consistency proof %d is not hex", ErrInvalid, i)
+				}
+				if err := checkCLLConsistency(previous.commitment, cp.commitment, proof); err != nil {
+					return fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
+				}
+			} else if _, isCard := fields["history"]; isCard {
+				return fmt.Errorf("%w: anchor_inclusion: history entry %d has no consistency proof", ErrInvalid, i)
+			}
+		}
+		if i == len(statements)-1 && digestBytes(raw) != e.Anchor.Digest {
+			return fmt.Errorf("%w: anchor_inclusion: the last checkpoint is not the anchor", ErrInvalid)
+		}
+		previous = cp
 	}
 	return nil
 }
@@ -782,26 +411,38 @@ func (b *Book) outcomeRecordedLocked(requestRecordID string) bool {
 	return false
 }
 
-// AbsenceStatement is the body of a recorded absence: the requester's own
-// signed statement that no answer arrived in its window. It states nothing
-// about the responder's intent.
-type AbsenceStatement struct {
-	RequestDigest string `json:"request_digest"`
-	Route         string `json:"route,omitempty"`
-	WindowStart   string `json:"window_start"`
-	WindowEnd     string `json:"window_end"`
+// AbsenceRecord is the requester's own record that neither an envelope nor a
+// refusal arrived in its waiting window (ER §4.4, profile §6.4). It is the
+// statement of a recorded_absence record, so the book's signature over the
+// record attributes it to the requester; it carries no responder act.
+type AbsenceRecord struct {
+	Outcome       string        `json:"outcome"`
+	RequestDigest string        `json:"request_digest"`
+	Route         string        `json:"route,omitempty"`
+	Window        AbsenceWindow `json:"window"`
+	RecordedAt    string        `json:"recorded_at"`
+}
+
+// AbsenceWindow is when the request was transmitted and when the waiting
+// window closed.
+type AbsenceWindow struct {
+	Opened string `json:"opened"`
+	Closed string `json:"closed"`
 }
 
 // MinimumAbsenceWindow is the shortest waiting window an absence may claim,
 // measured from when the request was recorded.
 const MinimumAbsenceWindow = time.Minute
 
-// RecordAbsence commits that no response arrived for the recorded request
-// between its recording and windowEnd. The request, its deadline and the
-// window start come from the committed request record. It refuses while the
-// request is still pending (window not closed, or closing before the
-// request's own deadline) and once any response has been recorded, so an
-// outcome is never converted into another.
+// RecordAbsence commits that no reply arrived for the recorded request
+// between its recording and windowEnd. The request digest, its deadline and
+// the window's opening come from the committed request record, and so does
+// the route when the request named one: a different route is refused. When
+// the request named none, route is the route the binding attempted, if any.
+// It refuses while the request is still pending (window not closed, or
+// closing before the request's own deadline) and once any reply has been
+// recorded, so an outcome is never converted into another. The record's
+// statement is the profile's absence record (AbsenceRecord), in JCS.
 func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, windowEnd time.Time, route string) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -809,7 +450,8 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 	if err != nil {
 		return Record{}, err
 	}
-	if windowEnd.After(b.now()) {
+	now := b.now()
+	if windowEnd.After(now) {
 		return Record{}, fmt.Errorf("%w: the waiting window has not closed; the request is pending", ErrInvalid)
 	}
 	asked, err := time.Parse(time.RFC3339Nano, sent.record.Header.CommittedAt)
@@ -820,30 +462,31 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 		return Record{}, fmt.Errorf("%w: a waiting window must end at least %s after the request was recorded", ErrInvalid, MinimumAbsenceWindow)
 	}
 	if sent.request.Deadline != "" {
-		deadline, err := time.Parse(time.RFC3339Nano, sent.request.Deadline)
-		if err != nil {
-			return Record{}, fmt.Errorf("%w: committed deadline: %v", ErrCorrupt, err)
+		deadline, ok := parseRequestTime(sent.request.Deadline)
+		if !ok {
+			return Record{}, fmt.Errorf("%w: committed deadline %q", ErrCorrupt, sent.request.Deadline)
 		}
 		if windowEnd.Before(deadline) {
 			return Record{}, fmt.Errorf("%w: the window closes before the request's own deadline", ErrInvalid)
 		}
 	}
+	if committed := sent.request.Route; committed != "" {
+		if route != "" && route != committed {
+			return Record{}, fmt.Errorf("%w: the request named route %q, not %q", ErrInvalid, committed, route)
+		}
+		route = committed
+	}
 	if b.outcomeRecordedLocked(requestRecordID) {
 		return Record{}, fmt.Errorf("%w: an outcome is already recorded for request %s", ErrInvalid, sent.digest)
 	}
-	body, err := json.Marshal(AbsenceStatement{RequestDigest: sent.digest, Route: route, WindowStart: sent.record.Header.CommittedAt, WindowEnd: windowEnd.UTC().Format(time.RFC3339Nano)})
+	record := AbsenceRecord{
+		Outcome: RecordTypeAbsence, RequestDigest: sent.digest, Route: route,
+		Window:     AbsenceWindow{Opened: profileTime(asked), Closed: profileTime(windowEnd)},
+		RecordedAt: profileTime(now),
+	}
+	body, err := canonicalJSON(record)
 	if err != nil {
 		return Record{}, err
 	}
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypeAbsence, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body})
-}
-
-// ParsePin parses the "<root-hex>:<mmr_size>" checkpoint identity form.
-func ParsePin(id string) (Pin, error) {
-	root, size, ok := strings.Cut(id, ":")
-	n, err := strconv.ParseUint(size, 10, 64)
-	if !ok || err != nil || !hex64.MatchString(root) {
-		return Pin{}, fmt.Errorf("%w: checkpoint id %q", ErrInvalid, id)
-	}
-	return Pin{Root: root, MMRSize: n}, nil
 }

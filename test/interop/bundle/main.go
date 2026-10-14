@@ -9,7 +9,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -88,16 +87,13 @@ func run(ctx context.Context, dir, out, refusalOut string) error {
 	if refusalOut == "" {
 		return nil
 	}
-	resp, _, err := book.Respond(ctx, []byte(`{"subject":`), evidencebook.RespondOptions{Policy: evidencebook.DefaultSharePolicy()})
+	reply, _, err := book.Respond(ctx, evidencebook.Message{Octets: []byte(`{"subject":`), MediaType: evidencebook.MediaTypeJSON}, evidencebook.RespondOptions{Policy: evidencebook.DefaultSharePolicy()})
 	if err != nil {
 		return err
 	}
-	if resp.Refusal == nil {
+	if reply.Refusal == nil {
 		return fmt.Errorf("a malformed request was not refused")
 	}
-	data, err := json.Marshal(resp.Refusal)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(refusalOut, data, 0o600)
+	// The reply octets as sent: the refusal object itself (profile §6.3).
+	return os.WriteFile(refusalOut, reply.Octets, 0o600)
 }

@@ -439,6 +439,33 @@ func (v VerifiedBundle) Covers(seq uint64) bool {
 	return v.AnchorAuthenticated && seq >= v.IntervalFirst && seq <= v.IntervalLast
 }
 
+// VerifyBundleAnswer checks an Evidence Bundle a holder disclosed to this
+// requester (Book.Bundle) under the holder's pinned keys: the neutral bundle
+// verifier must pass every claim, the anchor must be a checkpoint signed by
+// keys.Checkpoint, and every witness receipt carried on it must verify
+// against that checkpoint under the requester's own witness directory. A
+// bundle is never the canonical Artifact of an evidence request; this is the
+// separate disclosure path (profile §6.6).
+func VerifyBundleAnswer(data []byte, keys ResponderKeys) (VerifiedBundle, error) {
+	if keys.Checkpoint == "" {
+		return VerifiedBundle{}, fmt.Errorf("%w: a pinned checkpoint key is required", ErrInvalid)
+	}
+	verified, err := VerifyBundle(data)
+	if err != nil {
+		return verified, err
+	}
+	if err := verified.FullyVerified(); err != nil {
+		return verified, err
+	}
+	if !verified.AnchorAuthenticated || verified.AnchorKeyID != keys.Checkpoint {
+		return verified, fmt.Errorf("%w: bundle is not anchored to a checkpoint signed by the pinned key", ErrInvalid)
+	}
+	if err := verifyCarriedReceipts(verified.AnchorStatement, verified.Witnesses, keys.Witnesses); err != nil {
+		return verified, err
+	}
+	return verified, nil
+}
+
 // VerifyBundle checks a bundle with the neutral AAC Evidence Bundle verifier
 // and then reads the evidence-layer content out of what verified. It never
 // trusts the producer's own verification member.

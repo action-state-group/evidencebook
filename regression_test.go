@@ -3,7 +3,9 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,14 +166,14 @@ func TestRespondNeverDisclosesPayloadBytes(t *testing.T) {
 	book := newFixture(t, "book-a", 1).open(t)
 	secret := mustAppend(t, book, observation("private", "SECRET-PAYLOAD"))
 	asked := mustAppend(t, book, Entry{RecordType: "claim", EpistemicType: ProducerClaim, SubjectRef: "asked", CounterpartyRef: "peer-1", Links: []Link{{Type: Cites, Target: secret.RecordID}}, Payloads: [][]byte{[]byte("OWN-PAYLOAD")}})
-	resp := respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: asked.RecordID}, Coverage: fresh()}), "peer-1")
-	artifact := mustArtifact(t, resp)
-	if strings.Contains(string(artifact.Artifact), "SECRET") {
-		t.Fatal("an answer carried payload bytes")
-	}
-	verified, err := VerifyBundle(artifact.Artifact)
-	if err != nil || len(verified.Payloads) != 0 {
-		t.Fatalf("answer carried %d payloads (%v)", len(verified.Payloads), err)
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: asked.RecordID}, {Kind: SubjectFullHistory}, {Kind: SubjectCorrelation, Correlation: "private"}} {
+		reply := respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}), "peer-1")
+		e := mustEnvelope(t, reply)
+		for _, leak := range []string{"SECRET", "OWN-PAYLOAD", "peer-1"} {
+			if bytes.Contains(reply.Octets, []byte(leak)) || bytes.Contains(e.Artifact, []byte(leak)) || strings.Contains(hex.EncodeToString(e.Artifact), hex.EncodeToString([]byte(leak))) {
+				t.Fatalf("a %s answer carried %q", subject.Kind, leak)
+			}
+		}
 	}
 }
 
@@ -247,41 +249,45 @@ func TestVerifyBundleRefusesAmbiguousHeaders(t *testing.T) {
 }
 
 func TestExistingSubjectBeyondTheAnchorIsCoverageNotAbsence(t *testing.T) {
-	ctx := context.Background()
 	book := newFixture(t, "book-a", 1).open(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
-	anchor, err := book.Checkpoint(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pin, err := ParsePin(anchor.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pin := anchorPin(t, book)
 	later := mustAppend(t, book, observation("late", "x"))
 	for name, subject := range map[string]Subject{
 		"record":      {Kind: SubjectRecord, Digest: later.RecordID},
-		"correlation": {Kind: SubjectCorrelation, Value: "late"},
-		"range":       {Kind: SubjectRange, First: 1, Last: later.Seq},
+		"correlation": {Kind: SubjectCorrelation, Correlation: "late"},
+		"range":       {Kind: SubjectRange, Range: [2]uint64{0, later.Seq - 1}},
 	} {
-		resp := respond(t, book, requestBytes(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: &pin}}), "peer-1")
-		if resp.Refusal == nil || resp.Refusal.Reason != ReasonCoverageUnsatisfiable {
-			t.Fatalf("%s held beyond the pin must be coverage_unsatisfiable, got %+v", name, resp.Refusal)
+		reply := respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1")
+		if reply.Refusal == nil || reply.Refusal.Reason != ReasonCoverageUnsatisfiable {
+			t.Fatalf("%s held beyond the pin must be coverage_unsatisfiable, got %+v", name, reply.Refusal)
 		}
 	}
 }
 
 func TestFutureFreshnessRefusesWithoutWork(t *testing.T) {
 	book, _ := linkedBook(t)
-	before := book.Size()
-	future := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
-	resp := respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{MinFreshness: &Freshness{Time: future}}}), "")
-	mustRefusal(t, resp, ReasonCoverageUnsatisfiable)
-	if book.Size() != before+1 {
-		t.Fatalf("a future freshness floor made the book do work: %d records added", book.Size()-before)
+	for _, requester := range []string{"", "peer-1"} {
+		before, checkpoints := book.Size(), len(mustCheckpoints(t, book))
+		future := "2099-01-01T00:00:00Z"
+		reply := respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{MinFreshness: &Freshness{Time: future}}}), requester)
+		mustRefusal(t, reply, ReasonCoverageUnsatisfiable)
+		grew := book.Size() - before
+		if requester == "" && grew != 0 || requester != "" && grew != 1 || len(mustCheckpoints(t, book)) != checkpoints {
+			t.Fatalf("a future freshness floor made the book do work for %q: %d records, a checkpoint issued=%v", requester, grew, len(mustCheckpoints(t, book)) != checkpoints)
+		}
 	}
-	resp = respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{MinFreshness: &Freshness{Time: "yesterday"}}}), "")
-	mustRefusal(t, resp, ReasonRequestMalformed)
+	reply := respondAs(t, book, Message{Octets: []byte(`{"subject":{"checkpoints":null},"coverage":{"min_freshness":"yesterday"}}`), MediaType: MediaTypeJSON}, "")
+	mustRefusal(t, reply, ReasonRequestMalformed)
+}
+
+func mustCheckpoints(t *testing.T, book *Book) []Checkpoint {
+	t.Helper()
+	history, err := book.Checkpoints(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return history
 }
 
 func TestRequesterRecordingRefusesUnknownRequests(t *testing.T) {
@@ -304,21 +310,23 @@ func TestRecordResponseEnforcesThePinnedResponderKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := respond(t, responder, sent.Bytes, "requester")
-	if _, err := requester.RecordResponse(ctx, sent.RecordID, resp, ResponderKeys{Signer: KeyID(requester.signer), Checkpoint: checkpointKeyID(1)}); !errors.Is(err, ErrInvalid) {
-		t.Fatal("a response under a key other than the pinned one was recorded")
+	reply := respondAs(t, responder, sent.Message(), "requester")
+	if _, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, ResponderKeys{Signer: KeyID(requester.signer), Checkpoint: checkpointKeyID(1)}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a reply under a key other than the pinned one was recorded")
 	}
-	recorded, err := requester.RecordResponse(ctx, sent.RecordID, resp, responderKeys(responder, 1))
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(responder, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var statement ResponseStatement
 	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil || statement.KeyID != KeyID(responder.signer) || statement.Outcome != OutcomeArtifact {
-		t.Fatalf("pinned response: %+v %v", statement, err)
+		t.Fatalf("pinned reply: %+v %v", statement, err)
 	}
 }
 
-func TestCheckpointsArtifactProofsAreVerified(t *testing.T) {
+// A history card's checkpoints and consistency proofs are verified: an
+// honest card passes, and swapping two entries' proofs fails.
+func TestHistoryCardProofsAreVerified(t *testing.T) {
 	ctx := context.Background()
 	book, _ := linkedBook(t)
 	for i := range 3 {
@@ -327,17 +335,30 @@ func TestCheckpointsArtifactProofsAreVerified(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	artifact := mustArtifact(t, respond(t, book, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}), ""))
-	var cps checkpointsArtifact
-	if err := json.Unmarshal(artifact.Artifact, &cps); err != nil {
+	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: fresh()}), ""))
+	if err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
+		t.Fatalf("an honest history card does not verify: %v", err)
+	}
+	var card map[string]any
+	if err := json.Unmarshal(e.Artifact, &card); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency, checkpointKeyID(1)); err != nil {
-		t.Fatalf("an honest checkpoint history does not verify: %v", err)
+	history := card["history"].([]any)
+	if len(history) < 3 || history[0].(map[string]any)["consistency_from_previous"] != nil {
+		t.Fatalf("the card starts at the first checkpoint with no proof before it: %d entries", len(history))
 	}
-	cps.Consistency[0], cps.Consistency[1] = cps.Consistency[1], cps.Consistency[0]
-	if _, err := VerifyCheckpoints(cps.Checkpoints, cps.Consistency, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
+	first, second := history[1].(map[string]any), history[2].(map[string]any)
+	first["consistency_from_previous"], second["consistency_from_previous"] = second["consistency_from_previous"], first["consistency_from_previous"]
+	swapped, err := toJCS(card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Artifact = swapped
+	if err := verifyCheckpointChain(e, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
 		t.Fatal("swapped consistency proofs verified")
+	}
+	if err := verifyCheckpointChain(e, checkpointKeyID(77)); !errors.Is(err, ErrInvalid) {
+		t.Fatal("a card under another checkpoint key verified")
 	}
 }
 

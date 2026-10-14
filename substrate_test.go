@@ -78,19 +78,22 @@ func TestBookRunsWithoutCLL(t *testing.T) {
 	if err := json.Unmarshal(wire.Extensions[ExtensionInclusion], &inclusion); err != nil {
 		t.Fatal(err)
 	}
-	if got := inclusion[claim.RecordID]; got.Kind != "scitt-receipt" {
-		t.Fatalf("claim carries no receipt: %+v", inclusion)
+	if got := inclusion[claim.RecordID]; got.Kind != InclusionKindSCITTReceiptUnverified {
+		t.Fatalf("claim carries no receipt labelled unverified: %+v", inclusion)
 	}
 	if _, err := book.commitments.ProveConsistency(ctx, cp, cp); !errors.Is(err, ErrUnsupported) {
 		t.Fatal("a receipt-only substrate must report consistency as unsupported, not fabricate it")
 	}
-	peers := DefaultSharePolicy()
-	peers.HistorySegments = "peers"
-	resp, _, err := book.Respond(ctx, requestBytes(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: observed.RecordID}, Coverage: fresh()}), RespondOptions{AuthenticatedRequester: "peer-1", Policy: peers})
-	if err != nil {
-		t.Fatal(err)
+	// A profile answer is served only from a Checkpointed Local Log: a
+	// receipt this stub holds but never verified is never presented as a
+	// checkpoint or an inclusion proof (FR-20).
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: observed.RecordID}, {Kind: SubjectCheckpoints}} {
+		reply, _, err := book.Respond(ctx, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}), RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustRefusal(t, reply, ReasonCoverageUnsatisfiable)
 	}
-	mustArtifact(t, resp)
 }
 
 func TestCLLConsistencyBetweenCheckpoints(t *testing.T) {

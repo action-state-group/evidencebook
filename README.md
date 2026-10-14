@@ -55,11 +55,23 @@ specification, the cross-implementation checks, and the known limits.
 
 ## Answering requests
 
-`Respond` answers a protected subject only to a requester the transport has
+`Respond` implements the responder side of the Minimum Evidence
+Interoperability Profile, `evidence-interop/0` (agent-action-capsule
+`spec/interop-profile-v0.md`), over the request map of
+`draft-mih-agent-evidence-request-00`. It takes the request octets with their
+media type (`application/json` or `application/cbor`) and answers in the same
+encoding with a signed envelope carrying the canonical Artifact, or a signed
+refusal with exactly one registered reason. The Artifact depends only on the
+subject, the resolved anchor and the derivation: never on the requester, the
+nonce, the route or the encoding. `Manifest` returns the profile's
+history-free manifest.
+
+A protected subject is answered only to a requester the transport has
 authenticated: set `RespondOptions.AuthenticatedRequester` from that
-authentication. With it empty, only `checkpoints` is answered and every
-other subject gets a signed `not_authorized` refusal. A declared requester id
-is never trusted and is not recorded. See the CHANGELOG for the upgrade note.
+authentication. With it empty, only `checkpoints` and the `history_card/1`
+derivation are answered and every other subject gets a signed
+`not_authorized` refusal. A declared requester id is never trusted and is not
+recorded. See the CHANGELOG for the upgrade note.
 
 ## Development
 
@@ -75,7 +87,10 @@ Python Agent Action Capsule bundle verifier
 (`test/interop/python-aac/verify_bundle.py`) and the Python CLL reference
 (`test/interop/python-cll/verify_bundle.py`), and a bundle produced in Python
 (`test/interop/python-cll/build_bundle.py`) is verified here
-(`test/interop/verify`); a tampered copy must fail in each direction.
+(`test/interop/verify`); a tampered copy must fail in each direction. The
+profile's reference verifier checks this responder's replies against the
+profile's conformance vectors (`test/interop/responder`,
+`test/interop/python-profile/verify_responder.py`).
 
 ## Other implementations and parity
 
@@ -89,6 +104,9 @@ Python Agent Action Capsule bundle verifier
     (`TestEpistemicTypeThreeWayParity`);
   - `testdata/refusal-interop/`: a refusal signed in Python, verified here;
     a refusal signed here is verified in Python;
+  - `testdata/evidence-request/`: the request draft's spec-derived request,
+    resolution and refusal vectors, vendored with their upstream SHA-256s
+    (`TestRequestVectors`, `TestResolutionVectors`, `TestRefusalVectors`);
   - `testdata/reconcile-parity/`: exchange halves and the Python correlator's
     outcomes, which `ReconcileHalves` must match.
 - **Bundles** are Evidence Bundle v2: anything that verifies one (the Go and
