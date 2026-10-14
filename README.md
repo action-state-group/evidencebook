@@ -90,7 +90,9 @@ Python Agent Action Capsule bundle verifier
 (`test/interop/verify`); a tampered copy must fail in each direction. The
 profile's reference verifier checks this responder's replies against the
 profile's conformance vectors (`test/interop/responder`,
-`test/interop/python-profile/verify_responder.py`).
+`test/interop/python-profile/verify_responder.py`), over the native stream
+and over the MCP carriage (`Book.MCP`), and checks that both carry a
+byte-identical canonical Artifact.
 
 ## Other implementations and parity
 

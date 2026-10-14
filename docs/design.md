@@ -70,7 +70,7 @@ with the error so the caller does not append it twice.
 | §7 Index Classes, discovery | `DiscoveryIndex`, `TokenIndex`, `Candidates`, `Book.Discover` |
 | §8 Commitment-Substrate Interface | `Substrate`, `SubstrateInfo`, `SubstrateEntry`, `Checkpoint`, `InclusionEvidence`, `ConsistencyEvidence`, `IntervalEvidence`, `CLLSubstrate` / `OpenCLL`, `VerifyCheckpoints`, `SCITTReceiptSubstrate` / `NewSCITTReceiptSubstrate`, `Registrar`, `Receipt`, `Book.Checkpoint`, `Book.Checkpoints` |
 | §8, Evidence Bundle v2 wire | `CompletenessCertificate`, `RangeWitness`, `Membership`, `LogCoordinates`, `MMRInclusion`, `BundleCheckpoint`, `Bundle`, `BundleRequest`, `Book.Bundle`, `VerifyBundle`, `VerifiedBundle`, `PeerRecord` |
-| §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Freshness`, `EvidenceRequest`, `EncodeRequest`, `Message`, `Envelope`, `Anchor`, `VerificationEntry`, `Reply`, `ParseReply`, `Book.Respond`, `RespondOptions`, `ResponderPolicy`, `RequestLimiter`, `WindowLimiter`, `AnsweredStatement`, `SharePolicy`, `DerivationDefinition`, `Book.RegisterDerivation`, `Book.CommitRetention`, `Book.Manifest` |
+| §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Freshness`, `EvidenceRequest`, `EncodeRequest`, `Message`, `Envelope`, `Anchor`, `VerificationEntry`, `Reply`, `ParseReply`, `Book.Respond`, `RespondOptions`, `ResponderPolicy`, `RequestLimiter`, `WindowLimiter`, `AnsweredStatement`, `SharePolicy`, `DerivationDefinition`, `Book.RegisterDerivation`, `Book.CommitRetention`, `Book.Manifest`; MCP carriage (profile §11.4.5): `Book.MCP`, `MCPOptions`, `MCPServer`, `MCPServer.Handle`, `MCPProtocolVersion`, `MCPToolManifest`, `MCPToolRequest` |
 | §9.1 Three Kinds of "No" | non-membership: `Book.ProveKeyRange` returning no matches; withheld: `WithheldItem`, `UnavailableError`; asserted absence: a `Refusal` with `no_such_subject` |
 | Request draft: outcomes | `Refusal` (signed), `Envelope` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponderKeys`, `WitnessRow`, `ParseWitnessDirectory`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceRecord`, `VerifyBundleAnswer` |
 | §10 Reconcile and Close | `ExchangeState` (six states), `Half`, `HalfSet`, `Comparator`, `SamePayloadCommitments`, `PairResult`, `Tallies`, `ReconcileHalves`, `ReconcileInput`, `Reconciliation`, `Book.Reconcile`, `CloseInput`, `CloseStatement`, `Book.Close`, `Book.Acknowledge`, `Book.Rebut`, `CloseStatus`, `StatusOfClose` |
@@ -173,6 +173,19 @@ deprecated) is ignored, and a `counterparty_ref` value, a route or a handle
 is not a credential, so knowing one grants nothing. Authorization decides
 whether to answer, never what a (subject, anchor, derivation) yields.
 
+**MCP is a carriage, not an answer and not a credential.** `MCPServer`
+(`Book.MCP`) lists the profile's two tools and nothing else, moves request
+and reply octets as opaque base64url, and calls `Respond` with the octets it
+decoded, so the request digest, the reply's encoding and the canonical
+Artifact are those of the native stream. `Handle` takes the authenticated
+requester from the host, exactly as `RespondOptions.AuthenticatedRequester`;
+an MCP client name, `_meta` member, argument or connection is never read as
+one. What is not a request under §11.4.5 gets a JSON-RPC error, never an
+envelope, a refusal or an `isError` result. The server implements only the
+JSON-RPC methods the profile's binding needs (`server/discover`, `tools/list`,
+`tools/call`) and leaves the transport to the host, so it takes no MCP SDK
+dependency.
+
 **Recipient-specific disclosure is a derivation.** A projection prepared for
 one recipient is registered with `RegisterDerivation` and named by the
 SHA-256 of the JCS of its definition document; the recipient is part of the
@@ -271,7 +284,7 @@ never rewritten.
 | Checkpoint statement, interval range proof, every membership proof | Python `cll` (`checkpointed-local-log`, pinned commit) | `test/interop/python-cll/verify_bundle.py`, CI job `python-cll-interop` |
 | Checkpoint consistency proofs | cll-go `mmr.VerifyConsistency` | `VerifyCheckpoints` |
 | Request map, resolution and refusal readings of `draft-mih-agent-evidence-request-00` | the draft's spec-derived vectors (`request.json` 33 cases in both bindings, `resolution.json` 19, `refusal.json` 21) | `testdata/evidence-request/`, `TestRequestVectors`, `TestResolutionVectors`, `TestRefusalVectors` |
-| Profile envelope, refusal, CLL material, invariance, absence record and manifest | the profile's reference verifier (`agent_action_capsule.interop_profile`) over the profile's conformance vectors | `test/interop/responder`, `test/interop/python-profile/verify_responder.py`, CI job `interop-profile` |
+| Profile envelope, refusal, CLL material, invariance, absence record, manifest, and MCP carriage (native and MCP replies to one request, the MCP negative halves of §11.4.8) | the profile's reference verifier (`agent_action_capsule.interop_profile`, its `carriage` module included) over the profile's conformance vectors | `test/interop/responder`, `test/interop/python-profile/verify_responder.py`, CI job `interop-profile` |
 | Reconcile correlation | `capsule-emit-mesh` `served_request_join.join_served_request`, on halves sealed by its sidecar | `testdata/reconcile-parity/` (generator and fixture), `TestReconcileParityWithMeshCorrelator` |
 | Refusal signing body, both directions | Python `capsule_emit` | Python-signed, verified in Go: `testdata/refusal-interop/`, `TestRefusalSignedByCapsuleEmitVerifies`. Go-signed, verified by Python: `test/interop/python-cll/verify_refusal.py` in CI |
 | Epistemic type value set | the vendored `epistemic-types.json` shared with other implementations | `TestEpistemicTypeThreeWayParity` |

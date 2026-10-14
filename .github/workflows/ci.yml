@@ -148,3 +148,6 @@ jobs:
           go -C evidencebook run ./test/interop/responder "$interop_dir" "$interop_dir/responder.json"
           python evidencebook/test/interop/python-profile/verify_responder.py agent-action-capsule "$interop_dir/responder.json"
           cmp "$interop_dir/artifact-alice-json-nonce-c.bin" "$interop_dir/artifact-bob-cbor-nonce-d.bin"
+          # FR-8: request R sent over the native stream and over MCP; only the
+          # carriage differs, so the canonical Artifact is byte-identical.
+          cmp "$interop_dir/artifact-native-cbor.bin" "$interop_dir/artifact-mcp-cbor.bin"
