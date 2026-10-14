@@ -151,3 +151,51 @@ jobs:
           # FR-8: request R sent over the native stream and over MCP; only the
           # carriage differs, so the canonical Artifact is byte-identical.
           cmp "$interop_dir/artifact-native-cbor.bin" "$interop_dir/artifact-mcp-cbor.bin"
+
+  registry-conformance:
+    name: Registry conformance (every registry-governed value the book seals is registered on its axis)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out evidencebook
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: evidencebook
+      # The producer-side registry conformance check
+      # (agent_action_capsule.registry_conformance) is AAC #241, head
+      # 4c4cd202, not yet merged. Re-pin to the merged SHA once #241 lands.
+      - name: Check out the registry conformance check
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: 4c4cd202327d02fce9af08bf968477e6116b4202
+          path: agent-action-capsule
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: evidencebook/go.mod
+          cache-dependency-path: evidencebook/go.sum
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install the check's dependencies
+        run: python -m pip install "cryptography>=42" "cbor2>=5"
+      - name: Check every capsule a book seals, one record per link type plus a bundle
+        shell: bash
+        env:
+          PYTHONPATH: agent-action-capsule/python
+        run: |
+          interop_dir=$(mktemp -d)
+          trap 'rm -rf "$interop_dir"' EXIT
+          go -C evidencebook run ./test/interop/capsules "$interop_dir/book" "$interop_dir/capsules.json"
+          python -m agent_action_capsule.registry_conformance "$interop_dir/capsules.json"
+          # The check must bite: records sealed by the previous writer carry
+          # link types in references[].citation_purpose and must fail it.
+          python -c 'import json, sys; json.dump([json.loads(l)["capsule"] for l in open(sys.argv[1])], open(sys.argv[2], "w"))' \
+            evidencebook/testdata/legacy-citation-purpose/book/records/records.jsonl "$interop_dir/legacy.json"
+          if out=$(python -m agent_action_capsule.registry_conformance "$interop_dir/legacy.json"); then
+            echo "the check passed records that carry link types as citation_purpose"; exit 1
+          fi
+          grep -q "is not registered on citation_purpose" <<<"$out" || { echo "the legacy records failed for another reason: $out"; exit 1; }
+          echo "legacy records rejected as expected:"; echo "$out"

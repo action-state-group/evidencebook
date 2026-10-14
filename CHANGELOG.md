@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Breaking: record capsules no longer carry the link type as `citation_purpose`
+
+Every link on an appended record used to be sealed as a `references[]`
+entry with `citation_purpose` set to the link type (`cites`, `supersedes`,
+`closes`, `acknowledges`, `rebuts`, `adjudicates`). Those are Evidence
+Layer link types (agent-action-capsule `spec/REGISTRY.md` §18), not
+registered citation purposes (§11). The entry now carries no
+`citation_purpose`, which the Capsule draft allows (`-05`, "Cross-record
+references": a `references` entry MAY carry it). No link type is mapped to
+a citation purpose.
+
+- **Wire.** A new record's capsule differs from what the previous writer
+  sealed for the same entry, so its record id (capsule id) differs too.
+  The header, including `links[].type`, is unchanged; it stays the one
+  place the link type is recorded, committed through `agent_input_digest`.
+- **Old records.** Records already sealed keep verifying and keep their
+  ids: nothing here reads `citation_purpose` back (link types are read from
+  the header), and a verifier reports an unregistered value as
+  informational, never as a rejection. A book written by the previous
+  writer opens, takes new records and bundles both
+  (`testdata/legacy-citation-purpose/`, `TestLegacyCitationPurposeRecordsStillVerify`).
+- **Conformance.** New CI job `registry-conformance` runs the AAC
+  producer-side check `agent_action_capsule.registry_conformance` (AAC
+  #241, pinned to its unmerged head `4c4cd202`; re-pin when it merges)
+  over every capsule a book seals with each link type and a bundle
+  (`test/interop/capsules`), and requires the legacy records to fail it.
+
 ### Evidence interoperability profile: MCP carriage
 
 `Book.MCP` returns an `MCPServer` that carries the evidence request exchange

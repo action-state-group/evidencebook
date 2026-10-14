@@ -37,7 +37,13 @@ answer, and authenticated-index proofs through `ProveKeyRange`.
    through the `PayloadResolver` (§6);
 3. canonicalizes the header (JCS) and seals it as an Agent Action Capsule
    whose `agent_input_digest` is the digest of the header bytes, with every
-   link also carried as a typed `references[]` entry;
+   link also carried as a `references[]` entry by digest. The entry carries
+   no `citation_purpose`: a link type is an Evidence Layer link type
+   (agent-action-capsule `spec/REGISTRY.md` §18), not a citation purpose
+   (§11), and the link type is committed in the header's `links[]`, which is
+   where it is read. Records sealed before this rule carry the link type as
+   `citation_purpose`; they verify as before, since a verifier treats an
+   unregistered value as informational and nothing here reads it back;
 4. writes the complete record to the `Store`;
 5. appends the capsule ID, the record ID, to the substrate and requires the
    position it gets back to equal the header's `seq`;
@@ -285,6 +291,7 @@ never rewritten.
 | Checkpoint consistency proofs | cll-go `mmr.VerifyConsistency` | `VerifyCheckpoints` |
 | Request map, resolution and refusal readings of `draft-mih-agent-evidence-request-00` | the draft's spec-derived vectors (`request.json` 33 cases in both bindings, `resolution.json` 19, `refusal.json` 21) | `testdata/evidence-request/`, `TestRequestVectors`, `TestResolutionVectors`, `TestRefusalVectors` |
 | Profile envelope, refusal, CLL material, invariance, absence record, manifest, and MCP carriage (native and MCP replies to one request, the MCP negative halves of §11.4.8) | the profile's reference verifier (`agent_action_capsule.interop_profile`, its `carriage` module included) over the profile's conformance vectors | `test/interop/responder`, `test/interop/python-profile/verify_responder.py`, CI job `interop-profile` |
+| Every registry-governed value a record capsule carries is registered on its own axis (no link type in `references[].citation_purpose`); records from the previous writer fail the check | `agent_action_capsule.registry_conformance` (AAC #241, pinned head `4c4cd202`) | `test/interop/capsules`, `testdata/legacy-citation-purpose/`, `TestRecordCapsulesCarryNoLinkTypeAsCitationPurpose`, CI job `registry-conformance` |
 | Reconcile correlation | `capsule-emit-mesh` `served_request_join.join_served_request`, on halves sealed by its sidecar | `testdata/reconcile-parity/` (generator and fixture), `TestReconcileParityWithMeshCorrelator` |
 | Refusal signing body, both directions | Python `capsule_emit` | Python-signed, verified in Go: `testdata/refusal-interop/`, `TestRefusalSignedByCapsuleEmitVerifies`. Go-signed, verified by Python: `test/interop/python-cll/verify_refusal.py` in CI |
 | Epistemic type value set | the vendored `epistemic-types.json` shared with other implementations | `TestEpistemicTypeThreeWayParity` |
