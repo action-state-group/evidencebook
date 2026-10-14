@@ -395,9 +395,13 @@ func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at t
 	if err != nil {
 		return emit.Result{}, err
 	}
+	// Each link is also a references[] entry, with no citation_purpose. A
+	// link type is an Evidence Layer link type, not an AAC citation purpose,
+	// and none maps onto one; the link type is carried, and committed, in the
+	// header's links[] (the capsule's agent_input_digest covers it).
 	var references []emit.Reference
 	for _, link := range header.Links {
-		references = append(references, emit.Reference{Type: "agent-action-capsule", DigestAlg: "SHA-256", Digest: link.Target, CitationPurpose: string(link.Type)})
+		references = append(references, emit.Reference{Type: "agent-action-capsule", DigestAlg: "SHA-256", Digest: link.Target})
 	}
 	sealed, err := emit.Seal(emit.SealInput{
 		Capsule: emit.Input{
