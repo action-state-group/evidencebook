@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	emit "github.com/action-state-group/capsule-emit-go"
+	emit "github.com/action-state-group/capsule-emit/go"
 )
 
 // DefaultDeveloper is the AAC developer value a book writes when none is set.

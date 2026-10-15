@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	emit "github.com/action-state-group/capsule-emit-go"
+	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/veraison/go-cose"
 )
 
@@ -56,7 +56,7 @@ func (s *Ed25519Signer) Sign(ctx context.Context, message []byte) ([]byte, error
 	return ed25519.Sign(s.private, message), nil
 }
 
-// coseSigner adapts a Signer to go-cose so capsule-emit-go can build Producer
+// coseSigner adapts a Signer to go-cose so capsule-emit can build Producer
 // Envelopes without the book ever seeing a private key.
 type coseSigner struct {
 	ctx    context.Context
