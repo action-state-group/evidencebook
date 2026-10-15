@@ -73,6 +73,16 @@ derivation are answered and every other subject gets a signed
 `not_authorized` refusal. A declared requester id is never trusted and is not
 recorded. See the CHANGELOG for the upgrade note.
 
+## Testing evidencebook with your own verifier
+
+To check evidencebook's answers with a verifier you wrote yourself, from the
+profile text and with keys you choose to trust, follow
+[docs/THIRD-PARTY-VERIFIER.md](docs/THIRD-PARTY-VERIFIER.md). It starts from a
+fresh machine. It names the pinned profile, request draft and conformance
+vectors, and runs a test responder (`go run ./test/interop/answer`) that
+answers your own request octets. For each vector class it gives the request to
+send and the result the vectors specify, and it says what to report back.
+
 ## Development
 
 ```bash
