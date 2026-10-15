@@ -10,9 +10,9 @@ name: Rust CI
 on:
   push:
     branches: [main]
-    paths: ["rust/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
   pull_request:
-    paths: ["rust/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
