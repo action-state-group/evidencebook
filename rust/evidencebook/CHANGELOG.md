@@ -1,6 +1,6 @@
 # Changelog: evidencebook (Rust)
 
-## Unreleased
+## 0.0.5
 
 - **`answer`: the artifact response to an evidence request, built from the
   book's log in the interop profile's envelope** (agent-action-capsule
