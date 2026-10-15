@@ -1,8 +1,12 @@
 # Changelog: evidencebook (Rust)
 
-## 0.0.2 (unreleased)
+## 0.0.4
 
-- Depends on `checkpointed-local-log` 0.3.0 (which has no default witness
+- First release from this repository. It carries everything below.
+- **0.0.3 was published from the checkpointed-local-log repository's
+  pre-move copy.** That release has only the `checkpointed-local-log` 0.3.1
+  dependency and none of the changes listed here. Use 0.0.4.
+- Depends on `checkpointed-local-log` 0.3.1 (0.3.0 dropped the default witness
   client). Nothing in this crate used the removed default.
 - **Moved** to the evidencebook repository (`rust/evidencebook/`), next to the
   Go implementation, with its history. It depends on `checkpointed-local-log`
