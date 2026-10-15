@@ -16,8 +16,8 @@
 //! cll            append order · MMR · checkpoint · inclusion · consistency
 //! ```
 //!
-//! The Checkpointed Local Log (`cll`, a sibling crate in this repository) is
-//! the reference commitment substrate. It is embedded, never exposed: no
+//! The Checkpointed Local Log (`cll`, published as `checkpointed-local-log`)
+//! is the reference commitment substrate. It is embedded, never exposed: no
 //! public item of this crate takes or returns a `cll` type
 //! (`tests/public_api.rs` enforces this). Callers ask the book's substrate for
 //! checkpoints and inclusion evidence in this crate's own types.

@@ -1,13 +1,14 @@
 //! A refusal signed by the Python implementation (`capsule_emit`'s
 //! `evidence_request.Refusal`, key generated fresh and discarded) verifies
-//! here unchanged. `tests/vectors/refusal.json` is the vector the Go
-//! implementation checks in its own refusal interop test, copied byte for
-//! byte, so all three implementations agree on the signing body.
+//! here unchanged. The vector is this repository's
+//! `testdata/refusal-interop/refusal.json`, the one the Go implementation
+//! checks in its own refusal interop test, read in place so the
+//! implementations agree on the signing body.
 
 use evidencebook::request::{Refusal, RefusalError};
 
 fn vector() -> Refusal {
-    let text = include_str!("vectors/refusal.json");
+    let text = include_str!("../../../testdata/refusal-interop/refusal.json");
     serde_json::from_str(text).expect("refusal vector parses")
 }
 
