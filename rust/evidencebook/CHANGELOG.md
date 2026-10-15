@@ -1,5 +1,21 @@
 # Changelog: evidencebook (Rust)
 
+## Unreleased
+
+- **`answer`: the artifact response to an evidence request, built from the
+  book's log in the interop profile's envelope** (agent-action-capsule
+  `spec/interop-profile-v0.md` §6.2; agent-action-capsule#270). It is the
+  Checkpointed Local Log builder that was `evidence-request`'s `answer`
+  feature, moved here and changed to the profile's forms, which the Go
+  implementation also builds: a record is its own octets, proven by the
+  anchor checkpoint statement, its inclusion proof and, when the checkpoint
+  extends another, the consistency proof (§6.2.1); a record set, the
+  checkpoint list and `history_card/1` are RFC 8785 objects with no material
+  (P-13). Anchors are the checkpoints with a COSE wire statement
+  (`CllSubstrate::stated_checkpoints`), identified by its SHA-256.
+- Depends on `evidence-request` 0.2 with its `cll` feature, on the same
+  `checkpointed-local-log` line as this crate.
+
 ## 0.0.4
 
 - First release from this repository. It carries everything below.

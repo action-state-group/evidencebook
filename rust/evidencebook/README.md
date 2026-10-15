@@ -12,6 +12,14 @@ commitment substrate, and it is embedded, not exposed: no public item takes or
 returns a `cll` type (`tests/public_api.rs`).
 The substrate keeps one sequence commitment, the MMR.
 
+`answer` builds the artifact response to an evidence request
+(`draft-mih-agent-evidence-request-00`) from the book's log, in the interop
+profile's signed envelope (agent-action-capsule `spec/interop-profile-v0.md`
+§6.2): the canonical artifact for each subject form, the Checkpointed Local
+Log material that proves a record under its anchor (§6.2.1), and the
+signature. The request protocol itself, and checking a received envelope and
+its material, is the `evidence-request` crate's.
+
 The crate carries no deployment vocabulary. Record kinds, correlation key
 names and content comparators come from the calling profile.
 `scripts/check-vocabulary.sh` enforces this in CI.

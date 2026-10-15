@@ -34,10 +34,12 @@
 //! | Index Classes | [`index`] |
 //! | The Commitment-Substrate Interface | [`substrate`] |
 //! | Answering a Request; Three Kinds of "No" | [`request`] |
+//! | Answering a Request: the artifact response | [`answer`] |
 //! | Reconcile and Close | [`reconcile`] |
 //! | Privacy Considerations: What a Checkpoint Reveals | [`padding`] |
 //! | (record identity: JCS and JSON-DIGEST) | [`canonical`] |
 
+pub mod answer;
 pub mod canonical;
 pub mod disclosure;
 pub mod index;

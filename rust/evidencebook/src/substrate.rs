@@ -34,7 +34,7 @@ use cll::mmr::{
     leaf_index_to_pos, node_count, peaks, root_from_peaks, Hash, InclusionProof, NodeReader,
 };
 use cll::node_store::FileNodeStore;
-use cll::store::{append_checkpoint, read_last_checkpoint, CheckpointLine};
+use cll::store::{append_checkpoint, read_checkpoints, read_last_checkpoint, CheckpointLine};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -346,6 +346,21 @@ pub enum SubstrateError {
     StalePrepared { prev_size: u64, latest_size: u64 },
 }
 
+/// Old peaks, their paths into the new MMR, and the new peaks.
+pub(crate) type ConsistencyParts = (Vec<[u8; 32]>, Vec<Vec<[u8; 32]>>, Vec<[u8; 32]>);
+
+fn hashes(hex_list: &[String]) -> Result<Vec<[u8; 32]>, SubstrateError> {
+    hex_list
+        .iter()
+        .map(|h| {
+            hex::decode(h)
+                .ok()
+                .and_then(|b| b.try_into().ok())
+                .ok_or_else(|| SubstrateError::Mmr(format!("not a 32-octet node hash: {h}")))
+        })
+        .collect()
+}
+
 /// Converts the embedded log's errors into [`SubstrateError`]. Private, so no
 /// `cll` error type appears in this crate's public trait impls.
 trait FromLog<T> {
@@ -395,6 +410,15 @@ impl PreparedCheckpoint {
     pub fn leaf_count(&self) -> u64 {
         self.leaf_count
     }
+}
+
+/// A persisted checkpoint and its COSE wire statement: the form a stranger
+/// verifies, and the coverage anchor of a request answer (identified by the
+/// SHA-256 of `statement`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatedCheckpoint {
+    pub checkpoint: Checkpoint,
+    pub statement: Vec<u8>,
 }
 
 /// The reference substrate: a Checkpointed Local Log with a durable MMR node
@@ -622,6 +646,57 @@ impl CllSubstrate {
     ) -> Result<InclusionEvidence, SubstrateError> {
         Ok(InclusionEvidence::from_log(
             inclusion_proof(&self.node_store, leaf_index, mmr_size).log_err()?,
+        ))
+    }
+
+    /// Every persisted checkpoint that has its COSE wire statement, oldest
+    /// first. A checkpoint whose wire form could not be built stays
+    /// self-attested and is left out: it cannot anchor an answer.
+    pub fn stated_checkpoints(&self) -> Result<Vec<StatedCheckpoint>, SubstrateError> {
+        if !self.checkpoints_path.exists() {
+            return Ok(Vec::new());
+        }
+        Ok(read_checkpoints(&self.checkpoints_path)
+            .log_err()?
+            .into_iter()
+            .filter_map(|line| {
+                let statement = hex::decode(line.checkpoint_cose_hex?).ok()?;
+                Some(StatedCheckpoint {
+                    checkpoint: Checkpoint::from_log(line.record),
+                    statement,
+                })
+            })
+            .collect())
+    }
+
+    /// The inclusion path (sibling hashes, leaf upward) of the leaf at
+    /// `leaf_index` in the MMR of `mmr_size` nodes.
+    pub(crate) fn inclusion_path(
+        &self,
+        leaf_index: u64,
+        mmr_size: u64,
+    ) -> Result<Vec<[u8; 32]>, SubstrateError> {
+        let proof = inclusion_proof(&self.node_store, leaf_index, mmr_size).log_err()?;
+        hashes(&proof.witness)
+    }
+
+    /// What a consistency proof from the MMR of `from` nodes to the MMR of
+    /// `to` nodes is made of: the old peaks, each one's path into the new
+    /// MMR, and the new peaks.
+    pub(crate) fn consistency_parts(
+        &self,
+        from: u64,
+        to: u64,
+    ) -> Result<ConsistencyParts, SubstrateError> {
+        let proof = consistency_proof(&self.node_store, from, to).log_err()?;
+        Ok((
+            hashes(&proof.old_peaks)?,
+            proof
+                .witness
+                .iter()
+                .map(|p| hashes(p))
+                .collect::<Result<_, _>>()?,
+            hashes(&proof.new_peaks)?,
         ))
     }
 
