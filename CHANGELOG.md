@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Changed: the Evidence Request protocol comes from agent-action-capsule
+
+The request draft's protocol logic now lives in
+`github.com/action-state-group/agent-action-capsule/go/evidencerequest`
+(v0.8.0), next to `draft-mih-agent-evidence-request-00` and its conformance
+vectors (action-state-group/agent-action-capsule#262). evidencebook builds on
+it: request parsing and validation, the JSON and CBOR encodings and digests,
+resolution (`Decide` with evidencebook's share policy, derivations and refusal
+policy as its `Policy`), reply parsing, refusal and envelope signing, and the
+CLL proof checks and encodings. The `Book`-bound responder and requester,
+storage, and the MCP and A2A carriages stay here.
+
+- **API.** Unchanged for callers: `EvidenceRequest`, `Subject`, `Coverage`,
+  `Freshness`, `Refusal`, `Anchor`, `VerificationEntry`, `Envelope`, `Reply`
+  and `Message` are now aliases of the package's types (same fields), the
+  reason, subject and media-type constants are the package's values, and
+  `EncodeRequest` and `ParseReply` errors still match `ErrInvalid`.
+- **Behaviour.** Stricter where the package is: a JSON request or reply with
+  an unpaired UTF-16 surrogate escape is malformed instead of being decoded
+  with U+FFFD, and a CLL inclusion or consistency proof deeper than the MMR can
+  be is refused instead of panicking.
+
 ### Changed: sealed with `github.com/action-state-group/capsule-emit/go` v0.3.0
 
 evidencebook now imports `github.com/action-state-group/capsule-emit/go`

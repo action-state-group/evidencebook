@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"time"
 )
@@ -177,7 +178,7 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 			return Record{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
 		}
 		if err := r.Verify(); err != nil {
-			return Record{}, err
+			return Record{}, asInvalid(err)
 		}
 		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
 		if !r.Conforming() {
@@ -226,7 +227,7 @@ func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]
 	if e.Profile != req.Profile {
 		return nil, fmt.Errorf("%w: profile_version: requested %s, got %s", ErrInvalid, req.Profile, e.Profile)
 	}
-	if _, ok := parseProfileTime(e.IssuedAt); !ok {
+	if _, ok := evidencerequest.ParseProfileTime(e.IssuedAt); !ok {
 		return nil, fmt.Errorf("%w: issued_at_form: %q", ErrInvalid, e.IssuedAt)
 	}
 	if e.Subject != req.Subject || e.Derivation != req.Derivation {
@@ -253,7 +254,7 @@ func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]
 		case floor.Size != nil && (e.Anchor.FreshnessSize == nil || *e.Anchor.FreshnessSize < *floor.Size):
 			return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a size meeting the floor", ErrInvalid)
 		case floor.Size == nil:
-			attained, ok := parseProfileTime(e.Anchor.FreshnessTime)
+			attained, ok := evidencerequest.ParseProfileTime(e.Anchor.FreshnessTime)
 			if !ok || attained.Before(sent.floorTime) {
 				return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a time meeting the floor", ErrInvalid)
 			}
@@ -275,7 +276,7 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	// Record sets and registered derivations: the profile defines no material
 	// kind for them (P-13). Their bodies and their anchor member are checked;
 	// inclusion is not.
-	artifact, err := decodeStrictJSON(e.Artifact)
+	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)
 	if err != nil || !ok {
 		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
@@ -325,7 +326,7 @@ func verifyRecordInclusion(e Envelope, checkpointKey string) error {
 		return fmt.Errorf("anchor_inclusion: %w", err)
 	}
 	if e.Anchor.FreshnessSize != nil && *e.Anchor.FreshnessSize != cp.TreeSize ||
-		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != profileTime(cp.IssuedAt) {
+		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != evidencerequest.ProfileTime(cp.IssuedAt) {
 		return fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
 	}
 	entry, err := hex.DecodeString(e.ArtifactDigest)
@@ -344,7 +345,7 @@ func verifyRecordInclusion(e Envelope, checkpointKey string) error {
 // proof present in a history card reaching the next commitment, and the
 // last checkpoint the envelope's anchor.
 func verifyCheckpointChain(e Envelope, checkpointKey string) error {
-	artifact, err := decodeStrictJSON(e.Artifact)
+	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)
 	if err != nil || !ok {
 		return fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
@@ -462,7 +463,7 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 		return Record{}, fmt.Errorf("%w: a waiting window must end at least %s after the request was recorded", ErrInvalid, MinimumAbsenceWindow)
 	}
 	if sent.request.Deadline != "" {
-		deadline, ok := parseRequestTime(sent.request.Deadline)
+		deadline, ok := evidencerequest.ParseRequestTime(sent.request.Deadline)
 		if !ok {
 			return Record{}, fmt.Errorf("%w: committed deadline %q", ErrCorrupt, sent.request.Deadline)
 		}
@@ -481,8 +482,8 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 	}
 	record := AbsenceRecord{
 		Outcome: RecordTypeAbsence, RequestDigest: sent.digest, Route: route,
-		Window:     AbsenceWindow{Opened: profileTime(asked), Closed: profileTime(windowEnd)},
-		RecordedAt: profileTime(now),
+		Window:     AbsenceWindow{Opened: evidencerequest.ProfileTime(asked), Closed: evidencerequest.ProfileTime(windowEnd)},
+		RecordedAt: evidencerequest.ProfileTime(now),
 	}
 	body, err := canonicalJSON(record)
 	if err != nil {

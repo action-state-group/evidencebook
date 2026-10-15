@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 )
 
@@ -44,14 +45,14 @@ var headerFields = []string{"book_id", "committed_at", "correlation", "counterpa
 // the book's history, because a recipient-specific definition names its
 // recipient.
 func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
-	decoded, err := decodeStrictJSON(def.Document)
+	decoded, err := evidencerequest.DecodeJSON(def.Document)
 	if err != nil {
 		return "", fmt.Errorf("%w: derivation definition: %v", ErrInvalid, err)
 	}
 	if _, ok := decoded.(map[string]any); !ok {
 		return "", fmt.Errorf("%w: a derivation definition is a JSON object", ErrInvalid)
 	}
-	canonicalDoc, err := toJCS(decoded)
+	canonicalDoc, err := evidencerequest.EncodeJCS(decoded)
 	if err != nil {
 		return "", fmt.Errorf("%w: derivation definition: %v", ErrInvalid, err)
 	}

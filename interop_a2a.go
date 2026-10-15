@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"regexp"
 	"slices"
 	"strings"
@@ -177,7 +178,7 @@ func (s *A2AServer) Handle(ctx context.Context, req A2ARequest, authenticated st
 	if len(req.Body) > s.maxMessage() {
 		return A2AResponse{Body: mcpError(nil, mcpInvalidRequest, "message too large", nil)}
 	}
-	root, err := decodeStrictJSON(req.Body)
+	root, err := evidencerequest.DecodeJSON(req.Body)
 	if err != nil {
 		return A2AResponse{Body: mcpError(nil, mcpParseError, "parse error", nil)}
 	}

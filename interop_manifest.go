@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 )
 
@@ -68,5 +69,5 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 	if opts.Retention != "" {
 		manifest["retention"] = opts.Retention
 	}
-	return toJCS(manifest)
+	return evidencerequest.EncodeJCS(manifest)
 }

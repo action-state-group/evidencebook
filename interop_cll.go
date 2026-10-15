@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
@@ -40,11 +41,7 @@ func (s *CLLSubstrate) cllInclusionProof(ctx context.Context, seq uint64, at Che
 	if err != nil {
 		return nil, err
 	}
-	path := make([]any, len(proof.Witness))
-	for i, node := range proof.Witness {
-		path[i] = node
-	}
-	return toDeterministicCBOR([]any{mmrLeafIndex(seq - 1), path})
+	return evidencerequest.EncodeCLLInclusionProof(seq-1, proof.Witness)
 }
 
 func (s *CLLSubstrate) cllConsistencyProof(ctx context.Context, oldSize, newSize uint64, at Checkpoint) ([]byte, error) {
@@ -59,7 +56,7 @@ func (s *CLLSubstrate) cllConsistencyProof(ctx context.Context, oldSize, newSize
 	if err != nil {
 		return nil, err
 	}
-	roots := mmrConsistentRoots(oldSize-1, proof.OldPeaks, proof.Witness)
+	roots := evidencerequest.MMRConsistentRoots(oldSize-1, proof.OldPeaks, proof.Witness)
 	if len(roots) > len(proof.NewPeaks) {
 		return nil, fmt.Errorf("%w: consistency roots exceed the new peaks", ErrCorrupt)
 	}
@@ -67,19 +64,7 @@ func (s *CLLSubstrate) cllConsistencyProof(ctx context.Context, oldSize, newSize
 	if !slices.EqualFunc(append(slices.Clone(roots), right...), proof.NewPeaks, bytes.Equal) {
 		return nil, fmt.Errorf("%w: consistency proof from %d to %d does not reach the new peaks", ErrCorrupt, oldSize, newSize)
 	}
-	paths := make([]any, len(proof.Witness))
-	for i, path := range proof.Witness {
-		nodes := make([]any, len(path))
-		for j, node := range path {
-			nodes[j] = node
-		}
-		paths[i] = nodes
-	}
-	peaks := make([]any, len(right))
-	for i, node := range right {
-		peaks[i] = node
-	}
-	return toDeterministicCBOR([]any{oldSize, newSize, paths, peaks})
+	return evidencerequest.EncodeCLLConsistencyProof(oldSize, newSize, proof.Witness, right)
 }
 
 // anchorDigest identifies a checkpoint as a coverage anchor: SHA-256 over
@@ -148,25 +133,8 @@ func readSignedCheckpoint(statement []byte, pinnedKey string) (signedCheckpoint,
 // anchor_inclusion procedure (profile §6.2.1 steps 12 and 13) for entry
 // under cp.
 func checkCLLInclusion(cp signedCheckpoint, entry []byte, inclusion, consistency []byte) error {
-	proof, err := decodeStrictCBOR(inclusion)
-	if err != nil {
-		return fmt.Errorf("%w: inclusion proof: %v", ErrInvalid, err)
-	}
-	pair, ok := proof.([]any)
-	if !ok || len(pair) != 2 {
-		return fmt.Errorf("%w: inclusion proof is not [index, path]", ErrInvalid)
-	}
-	index, ok := uintValue(pair[0])
-	path, pathOK := byteStrings32(pair[1])
-	if !ok || !pathOK {
-		return fmt.Errorf("%w: inclusion proof is not [index, [32-octet byte strings]]", ErrInvalid)
-	}
-	if mmrIndexHeight(index) != 0 {
-		return fmt.Errorf("%w: inclusion index %d is not a leaf", ErrInvalid, index)
-	}
-	root := mmrIncludedRoot(index, cllLeafValue(entry), path)
-	if !slices.ContainsFunc(cp.commitment, func(peak []byte) bool { return bytes.Equal(peak, root) }) {
-		return fmt.Errorf("%w: the inclusion path reaches no peak of the checkpoint", ErrInvalid)
+	if err := evidencerequest.VerifyCLLInclusion(cp.commitment, entry, inclusion); err != nil {
+		return asInvalid(err)
 	}
 	if consistency == nil {
 		return nil
@@ -178,55 +146,7 @@ func checkCLLInclusion(cp signedCheckpoint, entry []byte, inclusion, consistency
 }
 
 // checkCLLConsistency checks cll-consistency-proof octets: that the
-// commitment newPeaks extends the commitment oldPeaks (profile §6.2.1 step
-// 13; MMR §7.1, §7.1.1).
+// commitment oldPeaks extends to newPeaks.
 func checkCLLConsistency(oldPeaks, newPeaks [][]byte, consistency []byte) error {
-	decoded, err := decodeStrictCBOR(consistency)
-	if err != nil {
-		return fmt.Errorf("%w: consistency proof: %v", ErrInvalid, err)
-	}
-	parts, ok := decoded.([]any)
-	if !ok || len(parts) != 4 {
-		return fmt.Errorf("%w: consistency proof is not four members", ErrInvalid)
-	}
-	size1, ok1 := uintValue(parts[0])
-	size2, ok2 := uintValue(parts[1])
-	rawPaths, ok3 := parts[2].([]any)
-	right, ok4 := byteStrings32(parts[3])
-	if !ok1 || !ok2 || !ok3 || !ok4 || size1 == 0 || size1 > size2 || len(rawPaths) > 64 {
-		return fmt.Errorf("%w: consistency proof is malformed", ErrInvalid)
-	}
-	paths := make([][][]byte, len(rawPaths))
-	for i, raw := range rawPaths {
-		if paths[i], ok = byteStrings32(raw); !ok {
-			return fmt.Errorf("%w: consistency path %d is malformed", ErrInvalid, i)
-		}
-	}
-	if n := len(mmrPeaks(size1 - 1)); n != len(paths) || n != len(oldPeaks) {
-		return fmt.Errorf("%w: consistency proof does not match the earlier commitment", ErrInvalid)
-	}
-	roots := mmrConsistentRoots(size1-1, oldPeaks, paths)
-	if len(right) != len(mmrPeaks(size2-1))-len(roots) {
-		return fmt.Errorf("%w: consistency proof has the wrong number of right peaks", ErrInvalid)
-	}
-	if !slices.EqualFunc(append(roots, right...), newPeaks, bytes.Equal) {
-		return fmt.Errorf("%w: consistency proof does not reach the later commitment", ErrInvalid)
-	}
-	return nil
-}
-
-func byteStrings32(v any) ([][]byte, bool) {
-	items, ok := v.([]any)
-	if !ok || len(items) > 64 {
-		return nil, false
-	}
-	out := make([][]byte, len(items))
-	for i, item := range items {
-		b, ok := item.([]byte)
-		if !ok || len(b) != 32 {
-			return nil, false
-		}
-		out[i] = b
-	}
-	return out, true
+	return asInvalid(evidencerequest.VerifyCLLConsistency(oldPeaks, newPeaks, consistency))
 }

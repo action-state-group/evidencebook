@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"strings"
 )
@@ -65,7 +66,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 	if len(leaves) > maxItems {
 		return builtArtifact{declined: true}, nil
 	}
-	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.value()}
+	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.Value()}
 	var built builtArtifact
 	var declared declaredFields
 	switch {
@@ -128,7 +129,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 		}
 		head["records"], declared = records, recordSetFields
 	}
-	artifact, err := toJCS(head)
+	artifact, err := evidencerequest.EncodeJCS(head)
 	if err != nil {
 		return builtArtifact{}, err
 	}
@@ -196,7 +197,7 @@ func (b *Book) disclosureClean(artifact []byte, declared *declaredFields) bool {
 	if declared == nil {
 		return !mentionsAny(artifact, identities)
 	}
-	root, err := decodeStrictJSON(artifact)
+	root, err := evidencerequest.DecodeJSON(artifact)
 	object, ok := root.(map[string]any)
 	if err != nil || !ok {
 		return false
@@ -242,7 +243,7 @@ func mentionsAny(document []byte, strs map[string]bool) bool {
 	if len(strs) == 0 {
 		return false
 	}
-	root, err := decodeStrictJSON(document)
+	root, err := evidencerequest.DecodeJSON(document)
 	if err != nil {
 		// Not JSON: scan the raw bytes.
 		for s := range strs {
@@ -281,7 +282,7 @@ func (b *Book) projectLocked(ctx context.Context, leaves []uint64, def *derivati
 		if err != nil {
 			return nil, err
 		}
-		header, err := decodeStrictJSON(stored.Header)
+		header, err := evidencerequest.DecodeJSON(stored.Header)
 		fields, ok := header.(map[string]any)
 		if err != nil || !ok {
 			return nil, fmt.Errorf("%w: header of %s", ErrCorrupt, id)

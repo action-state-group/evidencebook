@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"encoding/json"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,36 +12,36 @@ import (
 	"time"
 )
 
-// vectorView is the resolution.json responder state as an evidenceView:
+// vectorView is the resolution.json responder state as an evidencerequest.View:
 // records at positions 0, 1, 2 of a 42-entry log, two anchors (sizes 40 and
 // 42), the declared correlation and exchange citations.
 type vectorView struct {
 	logSize     uint64
-	anchorList  []anchorView
+	anchorList  []evidencerequest.AnchorView
 	records     []string
 	correlation map[string][]string
 	citations   map[string][]string
 }
 
-func (v vectorView) anchors() []anchorView { return v.anchorList }
-func (v vectorView) logEntries() uint64    { return v.logSize }
-func (v vectorView) leafOf(d string) (uint64, bool) {
+func (v vectorView) Anchors() []evidencerequest.AnchorView { return v.anchorList }
+func (v vectorView) LogEntries() uint64                    { return v.logSize }
+func (v vectorView) LeafOf(d string) (uint64, bool) {
 	i := slices.Index(v.records, d)
 	return uint64(i), i >= 0
 }
-func (v vectorView) servable(leaf uint64) bool { return leaf < uint64(len(v.records)) }
+func (v vectorView) Servable(leaf uint64) bool { return leaf < uint64(len(v.records)) }
 func (v vectorView) positions(ds []string) []uint64 {
 	var out []uint64
 	for _, d := range ds {
-		if leaf, ok := v.leafOf(d); ok {
+		if leaf, ok := v.LeafOf(d); ok {
 			out = append(out, leaf)
 		}
 	}
 	return out
 }
-func (v vectorView) correlated(id string) []uint64  { return v.positions(v.correlation[id]) }
-func (v vectorView) citing(half string) []uint64    { return v.positions(v.citations[half]) }
-func (v vectorView) lapsed(Subject, time.Time) bool { return false }
+func (v vectorView) Correlated(id string) []uint64  { return v.positions(v.correlation[id]) }
+func (v vectorView) Citing(half string) []uint64    { return v.positions(v.citations[half]) }
+func (v vectorView) Lapsed(Subject, time.Time) bool { return false }
 
 type resolutionVector struct {
 	ID          string         `json:"id"`
@@ -93,7 +94,7 @@ func TestResolutionVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		view.anchorList = append(view.anchorList, anchorView{digest: a.Digest, entries: a.Size, issuedAt: issued})
+		view.anchorList = append(view.anchorList, evidencerequest.AnchorView{Digest: a.Digest, Entries: a.Size, IssuedAt: issued})
 	}
 	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 	ran := 0
@@ -125,7 +126,7 @@ func TestResolutionVectors(t *testing.T) {
 // decideForVector runs Respond's own decision (decide) over a declared
 // state, for an authenticated requester under the peers tier. It returns the
 // refusal reason, or "" for an artifact.
-func decideForVector(view evidenceView, request []byte, now time.Time, mayIssue bool, uniform bool) string {
+func decideForVector(view evidencerequest.View, request []byte, now time.Time, mayIssue bool, uniform bool) string {
 	check := readRequest(Message{Octets: request, MediaType: MediaTypeJSON})
 	if check.reason != "" {
 		return check.reason
@@ -135,8 +136,8 @@ func decideForVector(view evidenceView, request []byte, now time.Time, mayIssue 
 		g.refusalPolicy = RefusalPolicyUniform
 	}
 	d := decide(view, check, g, now, mayIssue)
-	if d.needAnchor {
+	if d.NeedAnchor {
 		return g.uniform(ReasonCoverageUnsatisfiable)
 	}
-	return d.reason
+	return d.Reason
 }

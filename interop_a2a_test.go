@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"reflect"
 	"regexp"
 	"strings"
@@ -129,7 +130,7 @@ func TestA2AAgentCardDeclaresTheExtension(t *testing.T) {
 	if entry["uri"] != "https://datatracker.ietf.org/doc/draft-mih-agent-evidence-request/" || entry["required"] != false {
 		t.Fatalf("extension entry %v", entry)
 	}
-	params, err := toJCS(jsonAny(t, entry["params"]))
+	params, err := evidencerequest.EncodeJCS(jsonAny(t, entry["params"]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +143,7 @@ func TestA2AAgentCardDeclaresTheExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	served := mcpCall(t, mcp, "tools/call", map[string]any{"name": MCPToolManifest, "arguments": map[string]any{}, "_meta": mcpMeta}, "")
-	viaMCP, err := toJCS(jsonAny(t, served["result"].(map[string]any)["structuredContent"]))
+	viaMCP, err := evidencerequest.EncodeJCS(jsonAny(t, served["result"].(map[string]any)["structuredContent"]))
 	if err != nil || !bytes.Equal(viaMCP, params) {
 		t.Fatalf("the A2A params %s and the evidence_manifest result %s differ", params, viaMCP)
 	}
