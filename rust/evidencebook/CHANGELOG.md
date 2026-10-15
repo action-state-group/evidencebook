@@ -13,9 +13,12 @@
   second checkpointed-local-log line). `Refusal::signing_body` is its RFC 8785
   body, `reason_is_registered` reads its `Reason` registry, and `verify` lets
   it check the signature, now with strict Ed25519 verification (small-order
-  keys and non-canonical signatures are refused). New `SubjectKind::form()`
-  maps to its `SubjectForm`. The public types, their serialized forms,
-  `Outcome` and `NoKind` are unchanged.
+  keys and non-canonical signatures are refused, where the Go and Python
+  verifiers still accept them; honest signers are unaffected). Tests pin the
+  subject and reason tokens to its registry. The public types, their
+  serialized forms, `Outcome` and `NoKind` are unchanged.
+- `tests/refusal_interop.rs` reads the repository's
+  `testdata/refusal-interop/refusal.json` in place instead of a copy.
 
 ## 0.0.1
 

@@ -10,7 +10,7 @@
 //! ([`Outcome`], [`NoKind`]) over it.
 
 use ed25519_dalek::VerifyingKey;
-use evidence_request::registry::{Reason, SubjectForm};
+use evidence_request::registry::Reason;
 use serde::{Deserialize, Serialize};
 
 /// The six subject forms a request can name, with the store capability that
@@ -51,16 +51,6 @@ impl SubjectKind {
     /// `checkpoints`).
     pub fn resolves_records(self) -> bool {
         self != SubjectKind::Checkpoints
-    }
-
-    /// The request draft's subject form for this kind (its wire token is
-    /// this kind's serialized form).
-    pub fn form(self) -> SubjectForm {
-        let token = serde_json::to_value(self).expect("a unit variant serializes");
-        token
-            .as_str()
-            .and_then(SubjectForm::from_token)
-            .expect("every subject kind is a registered subject form")
     }
 }
 
@@ -239,8 +229,8 @@ mod tests {
 
     #[test]
     fn subject_kinds_are_the_registry_forms() {
-        let forms: Vec<&str> = SubjectKind::ALL.iter().map(|s| s.form().token()).collect();
-        let tokens: Vec<String> = SubjectKind::ALL
+        use evidence_request::registry::SubjectForm;
+        let mut ours: Vec<String> = SubjectKind::ALL
             .iter()
             .map(|s| {
                 serde_json::to_value(s)
@@ -250,11 +240,13 @@ mod tests {
                     .to_string()
             })
             .collect();
-        assert_eq!(forms, tokens);
-        let mut registry: Vec<&str> = SubjectForm::ALL.iter().map(|f| f.token()).collect();
-        let mut ours = forms.clone();
-        registry.sort_unstable();
+        assert!(ours.iter().all(|t| SubjectForm::from_token(t).is_some()));
+        let mut registry: Vec<String> = SubjectForm::ALL
+            .iter()
+            .map(|f| f.token().to_string())
+            .collect();
         ours.sort_unstable();
+        registry.sort_unstable();
         assert_eq!(ours, registry);
     }
 
@@ -312,8 +304,16 @@ mod tests {
         t.key_id = "zz".into();
         assert_eq!(t.verify(), Err(RefusalError::BadKey));
 
-        let mut t = good;
+        let mut t = good.clone();
         t.sig = "00".into();
         assert_eq!(t.verify(), Err(RefusalError::BadSignature));
+
+        // Strict verification: the identity point as key with R = identity
+        // and s = 0 passes a non-strict Ed25519 check for any message; it is
+        // refused here.
+        let mut t = good;
+        t.key_id = format!("01{}", "00".repeat(31));
+        t.sig = format!("01{}{}", "00".repeat(31), "00".repeat(32));
+        assert_eq!(t.verify(), Err(RefusalError::Unverified));
     }
 }

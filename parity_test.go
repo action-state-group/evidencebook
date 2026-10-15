@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"slices"
@@ -86,5 +87,22 @@ func TestLinkAndRetentionVocabularyParity(t *testing.T) {
 	}
 	if len(schema.Defs.RetentionState.Enum) != 5 || RetentionState("ARCHIVED").Valid() {
 		t.Fatal("retention states are not exactly the five registered values")
+	}
+}
+
+// TestRustCrateVendorsTheSameEpistemicTypes: the Rust evidencebook crate
+// packages its own copy of the epistemic type set (crates.io needs it inside
+// the crate); it must stay byte-identical to the one the Go tests read.
+func TestRustCrateVendorsTheSameEpistemicTypes(t *testing.T) {
+	ours, err := os.ReadFile("schemas/vendor/epistemic-types.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rust, err := os.ReadFile("rust/evidencebook/schemas/vendor/epistemic-types.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(ours, rust) {
+		t.Fatal("rust/evidencebook/schemas/vendor/epistemic-types.json differs from schemas/vendor/epistemic-types.json")
 	}
 }

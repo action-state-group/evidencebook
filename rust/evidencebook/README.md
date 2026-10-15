@@ -19,11 +19,12 @@ names and content comparators come from the calling profile.
 ## Shared with the other implementations
 
 - `schemas/vendor/epistemic-types.json` is the vendored epistemic-type set,
-  the same file the Go and Python implementations read.
+  the same file the Go and Python implementations read (the Go parity test
+  checks the two copies are byte-identical).
   `EpistemicType::ALL` is tested against it.
-- `tests/vectors/refusal.json` is a refusal signed by the Python
-  implementation. The Go implementation verifies the same file, and so does
-  this crate.
+- `testdata/refusal-interop/refusal.json` (at the repository root) is a
+  refusal signed by the Python implementation. The Go implementation verifies
+  it, and `tests/refusal_interop.rs` reads the same file in place.
 
 ## Changes
 
