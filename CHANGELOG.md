@@ -19,6 +19,10 @@ storage, and the MCP and A2A carriages stay here.
   and `Message` are now aliases of the package's types (same fields), the
   reason, subject and media-type constants are the package's values, and
   `EncodeRequest` and `ParseReply` errors still match `ErrInvalid`.
+  `ErrInvalid` is now `evidencerequest.ErrInvalid` itself, so errors from the
+  aliased types' own methods (`Refusal.Verify`, `Envelope.Verify`) match it
+  too; its message reads `evidencerequest: invalid` instead of
+  `evidencebook: invalid`.
 - **Behaviour.** Stricter where the package is: a JSON request or reply with
   an unpaired UTF-16 surrogate escape is malformed instead of being decoded
   with U+FFFD, and a CLL inclusion or consistency proof deeper than the MMR can
