@@ -7,7 +7,7 @@ implements the store-level semantics of the Evidence Layer Internet-Draft
 ([`draft-mih-agent-evidence-layer-00`](https://github.com/action-state-group/agent-action-capsule/blob/main/spec/draft-mih-agent-evidence-layer-00.md)).
 Each public item's documentation names the draft section it implements.
 
-The `cll` library beside it (published as `checkpointed-local-log`) is the
+The `cll` library (published as `checkpointed-local-log`) is the
 commitment substrate, and it is embedded, not exposed: no public item takes or
 returns a `cll` type (`tests/public_api.rs`).
 The substrate keeps one sequence commitment, the MMR.

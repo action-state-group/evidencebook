@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
 description = "Evidence book: records, epistemic types, typed links, retention, disclosure, index classes, request answers and reconcile/close over an embedded Checkpointed Local Log -- a Rust implementation of the Evidence Layer semantics."
-repository = "https://github.com/action-state-group/checkpointed-local-log"
+repository = "https://github.com/action-state-group/evidencebook"
 keywords = ["evidence", "mmr", "checkpoint", "scitt"]
 categories = ["cryptography"]
 readme = "README.md"
@@ -19,7 +19,7 @@ name = "evidencebook"
 path = "src/lib.rs"
 
 [dependencies]
-cll = { package = "checkpointed-local-log", version = "0.3.0", path = "../checkpointed-local-log" }
+cll = { package = "checkpointed-local-log", version = "0.3.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
