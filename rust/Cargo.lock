@@ -53,13 +53,15 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "checkpointed-local-log"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfdb1bfd9b71f14d1040f0dfbaf4c572eae414df023fa29ff395ae0f92b1ce21"
+checksum = "7e0849196938de287c059d1f53874c76cc6583051e4ab7327bedb0f658ffd9d2"
 dependencies = [
+ "base64",
  "coset",
  "ed25519-dalek",
  "hex",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
@@ -260,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "evidencebook"
-version = "0.0.2"
+version = "0.0.4"
 dependencies = [
  "checkpointed-local-log",
  "ed25519-dalek",
