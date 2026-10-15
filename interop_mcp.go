@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // The MCP carriage of the exchange (profile §11.4.5), over MCP 2026-07-28.
@@ -153,7 +155,7 @@ func (s *MCPServer) Handle(ctx context.Context, message []byte, authenticated st
 	if len(message) > s.maxMessage() {
 		return mcpError(nil, mcpInvalidRequest, "message too large", nil)
 	}
-	root, err := decodeStrictJSON(message)
+	root, err := evidencerequest.DecodeJSON(message)
 	if err != nil {
 		return mcpError(nil, mcpParseError, "parse error", nil)
 	}
@@ -280,7 +282,7 @@ func mcpRequestID(v any) (any, bool) {
 	switch x := v.(type) {
 	case string:
 		return x, true
-	case jsonNumber:
+	case evidencerequest.JSONNumber:
 		if mcpInteger.MatchString(string(x)) {
 			return json.Number(x), true
 		}

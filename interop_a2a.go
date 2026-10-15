@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // The A2A carriage of the exchange (profile §11.4.4), over A2A 1.0 in its
@@ -177,7 +179,7 @@ func (s *A2AServer) Handle(ctx context.Context, req A2ARequest, authenticated st
 	if len(req.Body) > s.maxMessage() {
 		return A2AResponse{Body: mcpError(nil, mcpInvalidRequest, "message too large", nil)}
 	}
-	root, err := decodeStrictJSON(req.Body)
+	root, err := evidencerequest.DecodeJSON(req.Body)
 	if err != nil {
 		return A2AResponse{Body: mcpError(nil, mcpParseError, "parse error", nil)}
 	}

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // RecordTypeRetentionCommitment is the record type of a retention
@@ -25,10 +27,10 @@ type retentionCommitment struct {
 // subject the book no longer answers is refused retention_expired, never
 // no_such_subject (ER §4.2 item 2).
 func (b *Book) CommitRetention(ctx context.Context, subject Subject, until time.Time) (Record, error) {
-	if !subject.valid() || (subject.Kind != SubjectRecord && subject.Kind != SubjectExchange && subject.Kind != SubjectRange) {
+	if !subject.Valid() || (subject.Kind != SubjectRecord && subject.Kind != SubjectExchange && subject.Kind != SubjectRange) {
 		return Record{}, fmt.Errorf("%w: a retention commitment names a record, an exchange or a range", ErrInvalid)
 	}
-	statement, err := toJCS(map[string]any{"subject": subject.value(), "until": profileTime(until)})
+	statement, err := evidencerequest.EncodeJCS(map[string]any{"subject": subject.Value(), "until": evidencerequest.ProfileTime(until)})
 	if err != nil {
 		return Record{}, err
 	}
@@ -38,13 +40,13 @@ func (b *Book) CommitRetention(ctx context.Context, subject Subject, until time.
 }
 
 func readRetentionCommitment(statement []byte) (retentionCommitment, bool) {
-	decoded, err := decodeStrictJSON(statement)
+	decoded, err := evidencerequest.DecodeJSON(statement)
 	fields, ok := decoded.(map[string]any)
 	if err != nil || !ok {
 		return retentionCommitment{}, false
 	}
-	subject, ok := parseSubject(fields["subject"])
+	subject, ok := evidencerequest.ParseSubject(fields["subject"])
 	text, textOK := fields["until"].(string)
-	until, timeOK := parseProfileTime(text)
+	until, timeOK := evidencerequest.ParseProfileTime(text)
 	return retentionCommitment{subject: subject, until: until}, ok && textOK && timeOK
 }

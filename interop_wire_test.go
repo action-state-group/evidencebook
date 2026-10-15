@@ -9,6 +9,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // A request in deterministic CBOR is answered in CBOR, and its digest is over
@@ -24,7 +26,7 @@ func TestCBORRequestIsAnsweredInCBORAndDigestedAsReceived(t *testing.T) {
 	if reply.MediaType != MediaTypeCBOR || e.RequestDigest != digestBytes(deterministic.Octets) {
 		t.Fatal("a CBOR request is answered in CBOR over the digest of its octets")
 	}
-	if _, err := decodeStrictCBOR(reply.Octets); err != nil {
+	if _, err := evidencerequest.DecodeCBOR(reply.Octets); err != nil {
 		t.Fatal(err)
 	}
 	// The same map with a non-minimal length head for its first key.
@@ -112,7 +114,7 @@ func TestRecordMaterialProvesTheArtifact(t *testing.T) {
 
 func mustEnvelopeOctets(t *testing.T, e Envelope) []byte {
 	t.Helper()
-	reply, err := encodeReply(MediaTypeJSON, &e, nil)
+	reply, err := evidencerequest.EncodeReply(MediaTypeJSON, &e, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

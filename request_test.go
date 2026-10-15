@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 func sizeFloor(n uint64) *Freshness { return &Freshness{Size: &n} }
@@ -234,7 +236,7 @@ func TestRefusalSignatureCoversReasonAndTime(t *testing.T) {
 	if err != nil || !bytes.Equal(body, []byte(`{"issued_at":"`+original.IssuedAt+`","reason":"request_malformed","request_digest":"`+original.RequestDigest+`"}`)) {
 		t.Fatalf("refusal signing body is not exactly {issued_at, reason, request_digest} in JCS: %s", body)
 	}
-	if _, ok := parseProfileTime(original.IssuedAt); !ok {
+	if _, ok := evidencerequest.ParseProfileTime(original.IssuedAt); !ok {
 		t.Fatalf("issued_at %q is not the §5.2 time form", original.IssuedAt)
 	}
 }
@@ -343,7 +345,7 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	mustAppend(t, responder, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "requester"})
 
 	deadline := f.clock.t.Add(time.Hour).Truncate(time.Second)
-	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: profileTime(deadline), Route: "https://book-a.example"}, "book-a")
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[2].RecordID}, Coverage: fresh(), Deadline: evidencerequest.ProfileTime(deadline), Route: "https://book-a.example"}, "book-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +391,7 @@ func TestRequesterRecordsExactlyOneOutcome(t *testing.T) {
 	if shape.Outcome != "recorded_absence" || shape.RequestDigest != quiet.Digest || shape.Route != "peer:book-a" || shape.RecordedAt < shape.Window.Closed || shape.Window.Opened > shape.Window.Closed {
 		t.Fatalf("absence record is not the profile's shape: %+v", shape)
 	}
-	if _, err := decodeStrictJSON(absence.Header.Statement); err != nil || strings.Contains(string(absence.Header.Statement), `"reason"`) {
+	if _, err := evidencerequest.DecodeJSON(absence.Header.Statement); err != nil || strings.Contains(string(absence.Header.Statement), `"reason"`) {
 		t.Fatalf("an absence carries no responder act: %s", absence.Header.Statement)
 	}
 	stored, err := requester.storedLocked(ctx, absence.RecordID)
@@ -435,7 +437,7 @@ func resign(t *testing.T, responder *Book, e Envelope) Reply {
 		t.Fatal(err)
 	}
 	e.Sig = hex.EncodeToString(sig)
-	reply, err := encodeReply(MediaTypeJSON, &e, nil)
+	reply, err := evidencerequest.EncodeReply(MediaTypeJSON, &e, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,8 @@ package evidencebook
 import (
 	"fmt"
 	"slices"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Binding tokens a manifest may list (profile §4, §11.4.2).
@@ -68,5 +70,5 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 	if opts.Retention != "" {
 		manifest["retention"] = opts.Retention
 	}
-	return toJCS(manifest)
+	return evidencerequest.EncodeJCS(manifest)
 }

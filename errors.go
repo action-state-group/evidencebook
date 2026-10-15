@@ -2,11 +2,18 @@
 
 package evidencebook
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
+)
 
 var (
-	// ErrInvalid reports input that violates the record model or a request shape.
-	ErrInvalid = errors.New("evidencebook: invalid")
+	// ErrInvalid reports input that violates the record model or a request
+	// shape. It is go/evidencerequest's own sentinel, so an error from the
+	// aliased protocol types (Refusal.Verify, Envelope.Verify, ...) and one
+	// raised here both match it.
+	ErrInvalid = evidencerequest.ErrInvalid
 	// ErrNotFound reports a record, payload or checkpoint the book does not hold.
 	ErrNotFound = errors.New("evidencebook: not found")
 	// ErrCorrupt reports stored state that disagrees with the commitment substrate.

@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Tests for the MCP carriage (profile §11.4.5): the profile's two tools
@@ -192,7 +194,7 @@ func TestMCPCanonicalArtifactIsTheNativeOne(t *testing.T) {
 	}
 	manifest := mcpCall(t, server, "tools/call", map[string]any{"name": MCPToolManifest, "arguments": map[string]any{}, "_meta": mcpMeta}, "")
 	result := manifest["result"].(map[string]any)
-	served, err := toJCS(jsonAny(t, result["structuredContent"]))
+	served, err := evidencerequest.EncodeJCS(jsonAny(t, result["structuredContent"]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,14 +205,14 @@ func TestMCPCanonicalArtifactIsTheNativeOne(t *testing.T) {
 }
 
 // jsonAny converts a value decoded by encoding/json into the profile value
-// model toJCS takes.
+// model evidencerequest.EncodeJCS takes.
 func jsonAny(t *testing.T, v any) any {
 	t.Helper()
 	data, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := decodeStrictJSON(data)
+	out, err := evidencerequest.DecodeJSON(data)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,6 @@ package evidencebook
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Refusal policies a responder may declare (profile §11.4.2 refusal_policy).
@@ -235,18 +235,13 @@ type answer struct {
 
 func (a *answer) refuse(reason, detail string) (Reply, error) {
 	b := a.book
-	refusal := Refusal{RequestDigest: a.digest, Reason: reason, IssuedAt: profileTime(a.now), KeyID: KeyID(b.signer), Detail: detail}
-	body, err := refusal.SigningBody()
+	refusal := Refusal{RequestDigest: a.digest, Reason: reason, IssuedAt: evidencerequest.ProfileTime(a.now), KeyID: KeyID(b.signer), Detail: detail}
+	refusal, err := refusal.Sign(a.ctx, b.signer)
 	if err != nil {
 		return Reply{}, err
 	}
-	sig, err := b.signer.Sign(a.ctx, body)
-	if err != nil {
-		return Reply{}, err
-	}
-	refusal.Sig = hex.EncodeToString(sig)
 	a.statement.Outcome, a.statement.Reason = OutcomeRefusal, reason
-	return encodeReply(a.request.MediaType, nil, &refusal)
+	return evidencerequest.EncodeReply(a.request.MediaType, nil, &refusal)
 }
 
 // gate is what a decision reads besides the evidence: who asks, and under
@@ -265,73 +260,55 @@ type gate struct {
 // uniform applies the uniform refusal policy to a reason that would
 // disclose what the policy protects.
 func (g gate) uniform(reason string) string {
-	if g.refusalPolicy == RefusalPolicyUniform && slices.Contains([]string{ReasonNotAuthorized, ReasonNoSuchSubject, ReasonCoverageUnsatisfiable}, reason) {
-		return ReasonPolicyDeclined
+	return evidencerequest.Policy{Uniform: g.refusalPolicy == RefusalPolicyUniform}.Disclose(reason)
+}
+
+// responderPolicy is the gate as go/evidencerequest's responder policy: the
+// registered derivations, who may have a request answered, the refusal
+// policy, and whether the substrate serves anchors at all.
+func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
+	return evidencerequest.Policy{
+		Derivation: func(name string) ([]SubjectKind, bool) {
+			entry, ok := g.derivations[name]
+			return entry.def.Forms, ok
+		},
+		// Authorization decides whether, never what (ER §3.7, §5).
+		Authorize: func(req EvidenceRequest) bool {
+			switch {
+			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard:
+				return true // public: commitments only
+			case req.Derivation != "" && g.derivations[req.Derivation].def.Recipient != "":
+				return g.requester == g.derivations[req.Derivation].def.Recipient
+			default:
+				return g.policy.allows(g.relationship)
+			}
+		},
+		Uniform:    g.refusalPolicy == RefusalPolicyUniform,
+		Unanchored: !g.cll,
+		MayIssue:   mayIssue,
 	}
-	return reason
 }
 
 // decision is Respond's answer to a well-formed request before any
 // artifact is built: the resolution, and the registered derivation named.
 type decision struct {
-	resolution
+	evidencerequest.Resolution
 	def *derivationEntry
 }
 
-// decide applies Respond's steps that follow the request reader, in order:
-// the deadline, derivation support (at all, then for this subject; ER
-// §3.3), authorization, the substrate, coverage, the subject, and the
-// refusal policy. mayIssue says whether the responder will issue an anchor
-// to meet a freshness floor; when that is what is needed, the decision says
-// needAnchor and the caller decides again after issuing one.
-func decide(view evidenceView, check requestCheck, g gate, now time.Time, mayIssue bool) decision {
-	req := check.request
-	refuse := func(reason string) decision { return decision{resolution: resolution{reason: reason}} }
-	if req.Deadline != "" {
-		if deadline, _ := parseRequestTime(req.Deadline); !now.Before(deadline) {
-			return refuse(ReasonDeadlineUnmet)
-		}
+// decide applies Respond's steps that follow the request reader, in the
+// request draft's order (evidencerequest.Decide): the deadline, derivation
+// support (at all, then for this subject; ER §3.3), authorization, the
+// substrate, coverage, the subject, and the refusal policy. mayIssue says
+// whether the responder will issue an anchor to meet a freshness floor;
+// when that is what is needed, the decision says NeedAnchor and the caller
+// decides again after issuing one.
+func decide(view evidencerequest.View, check requestCheck, g gate, now time.Time, mayIssue bool) decision {
+	d := decision{Resolution: evidencerequest.Decide(view, check.request, g.responderPolicy(mayIssue), now)}
+	if entry, ok := g.derivations[check.request.Derivation]; ok && d.Reason == "" {
+		d.def = &entry
 	}
-	var def *derivationEntry
-	switch {
-	case req.Derivation == DerivationHistoryCard:
-		if req.Subject.Kind != SubjectFullHistory && req.Subject.Kind != SubjectCheckpoints {
-			return refuse(ReasonNoSuchSubject)
-		}
-	case req.Derivation != "":
-		entry, ok := g.derivations[req.Derivation]
-		if !ok {
-			return refuse(ReasonDerivationUnsupported)
-		}
-		def = &entry
-	}
-	// Authorization decides whether, never what (ER §3.7, §5).
-	switch {
-	case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard:
-		// Public: commitments only.
-	case def != nil && def.def.Recipient != "":
-		if g.requester != def.def.Recipient {
-			return refuse(g.uniform(ReasonNotAuthorized))
-		}
-	default:
-		if !g.policy.allows(g.relationship) {
-			return refuse(g.uniform(ReasonNotAuthorized))
-		}
-	}
-	if def != nil && !slices.Contains(def.def.Forms, req.Subject.Kind) {
-		return refuse(g.uniform(ReasonNoSuchSubject))
-	}
-	if !g.cll {
-		return refuse(g.uniform(ReasonCoverageUnsatisfiable))
-	}
-	r := resolveCoverage(view, req, check.floorTime, now, mayIssue)
-	if r.reason == "" && !r.needAnchor {
-		r = resolveSubject(view, req, r, now)
-	}
-	if r.reason != "" {
-		r.reason = g.uniform(r.reason)
-	}
-	return decision{resolution: r, def: def}
+	return d
 }
 
 func (a *answer) run() (Reply, error) {
@@ -362,23 +339,23 @@ func (a *answer) run() (Reply, error) {
 	_, isCLL := b.commitments.(cllMaterialSource)
 	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL}
 	d := decide(view, check, g, a.now, a.seal)
-	if d.needAnchor {
+	if d.NeedAnchor {
 		if _, err := b.checkpointLocked(a.ctx); err != nil {
 			return Reply{}, err
 		}
 		if view, err = b.viewLocked(a.ctx); err != nil {
 			return Reply{}, err
 		}
-		if d = decide(view, check, g, a.now, false); d.needAnchor {
-			d.reason = g.uniform(ReasonCoverageUnsatisfiable)
+		if d = decide(view, check, g, a.now, false); d.NeedAnchor {
+			d.Reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}
 	}
-	if d.reason != "" {
-		return a.refuse(d.reason, "")
+	if d.Reason != "" {
+		return a.refuse(d.Reason, "")
 	}
-	r, def := d.resolution, d.def
-	anchor := view.checkpoints[r.anchor]
-	built, err := b.buildArtifactLocked(a.ctx, view, req, anchor, r.leaves, def)
+	r, def := d.Resolution, d.def
+	anchor := view.checkpoints[r.Anchor]
+	built, err := b.buildArtifactLocked(a.ctx, view, req, anchor, r.Leaves, def)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -386,17 +363,17 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(ReasonPolicyDeclined, "")
 	}
 	if req.Deadline != "" {
-		if deadline, _ := parseRequestTime(req.Deadline); b.now().After(deadline) {
+		if deadline, _ := evidencerequest.ParseRequestTime(req.Deadline); b.now().After(deadline) {
 			return a.refuse(ReasonDeadlineUnmet, "")
 		}
 	}
 	envelope := Envelope{
 		Profile: req.Profile, RequestDigest: a.digest, Subject: req.Subject, Derivation: req.Derivation,
 		Anchor: Anchor{Digest: anchorDigest(anchor)}, ArtifactDigest: digestBytes(built.artifact),
-		Verification: built.verification, Responder: KeyID(b.signer), IssuedAt: profileTime(a.now),
+		Verification: built.verification, Responder: KeyID(b.signer), IssuedAt: evidencerequest.ProfileTime(a.now),
 		Artifact: built.artifact, VerificationContent: built.material,
 	}
-	if r.halfPin {
+	if r.HalfPin {
 		envelope.Anchor.Digest = req.Coverage.ExpectedPin
 	}
 	if floor := req.Coverage.MinFreshness; floor != nil {
@@ -404,20 +381,15 @@ func (a *answer) run() (Reply, error) {
 			size := anchor.TreeSize
 			envelope.Anchor.FreshnessSize = &size
 		} else {
-			envelope.Anchor.FreshnessTime = profileTime(anchor.IssuedAt)
+			envelope.Anchor.FreshnessTime = evidencerequest.ProfileTime(anchor.IssuedAt)
 		}
 	}
-	body, err := envelope.SigningBody()
+	envelope, err = envelope.Sign(a.ctx, b.signer)
 	if err != nil {
 		return Reply{}, err
 	}
-	sig, err := b.signer.Sign(a.ctx, body)
-	if err != nil {
-		return Reply{}, err
-	}
-	envelope.Sig = hex.EncodeToString(sig)
 	a.statement.Outcome, a.statement.Anchor, a.statement.ArtifactDigest = OutcomeArtifact, envelope.Anchor.Digest, envelope.ArtifactDigest
-	return encodeReply(a.request.MediaType, &envelope, nil)
+	return evidencerequest.EncodeReply(a.request.MediaType, &envelope, nil)
 }
 
 // relationshipLocked classifies an authenticated requester by counterparty_ref
@@ -437,11 +409,11 @@ func (b *Book) relationshipLocked(authenticated string) string {
 	return RelationshipIdentified
 }
 
-// bookView is the Book's evidenceView, built under the book's lock.
+// bookView is the Book's evidencerequest.View, built under the book's lock.
 type bookView struct {
 	book        *Book
 	checkpoints []Checkpoint
-	views       []anchorView
+	views       []evidencerequest.AnchorView
 	leaves      map[string]uint64
 	commitments []retentionCommitment
 }
@@ -457,7 +429,7 @@ func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
 			continue
 		}
 		v.checkpoints = append(v.checkpoints, cp)
-		v.views = append(v.views, anchorView{digest: anchorDigest(cp), entries: cp.Entries, issuedAt: cp.IssuedAt})
+		v.views = append(v.views, evidencerequest.AnchorView{Digest: anchorDigest(cp), Entries: cp.Entries, IssuedAt: cp.IssuedAt})
 	}
 	for i, id := range b.order {
 		v.leaves[id] = uint64(i)
@@ -470,18 +442,18 @@ func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
 	return v, nil
 }
 
-func (v *bookView) anchors() []anchorView { return v.views }
-func (v *bookView) logEntries() uint64    { return uint64(len(v.book.order)) }
+func (v *bookView) Anchors() []evidencerequest.AnchorView { return v.views }
+func (v *bookView) LogEntries() uint64                    { return uint64(len(v.book.order)) }
 
-func (v *bookView) leafOf(digest string) (uint64, bool) {
+func (v *bookView) LeafOf(digest string) (uint64, bool) {
 	leaf, ok := v.leaves[digest]
-	return leaf, ok && v.servable(leaf)
+	return leaf, ok && v.Servable(leaf)
 }
 
 // servable: the responder's own bookkeeping of who asked and what it
 // disclosed is never served, so one requester's asking or receiving can
 // never be read by another (NFR-2, NFR-4).
-func (v *bookView) servable(leaf uint64) bool {
+func (v *bookView) Servable(leaf uint64) bool {
 	if leaf >= uint64(len(v.book.order)) {
 		return false
 	}
@@ -495,22 +467,22 @@ func (v *bookView) servable(leaf uint64) bool {
 func (v *bookView) matching(match func(Header) bool) []uint64 {
 	var out []uint64
 	for i, id := range v.book.order {
-		if match(v.book.records[id].Header) && v.servable(uint64(i)) {
+		if match(v.book.records[id].Header) && v.Servable(uint64(i)) {
 			out = append(out, uint64(i))
 		}
 	}
 	return out
 }
 
-func (v *bookView) correlated(id string) []uint64 {
+func (v *bookView) Correlated(id string) []uint64 {
 	return v.matching(func(h Header) bool { return h.SubjectRef == id })
 }
 
-func (v *bookView) citing(half string) []uint64 {
+func (v *bookView) Citing(half string) []uint64 {
 	return v.matching(func(h Header) bool { return slices.Contains(h.LinksTo(Cites), half) })
 }
 
-func (v *bookView) lapsed(subject Subject, now time.Time) bool {
+func (v *bookView) Lapsed(subject Subject, now time.Time) bool {
 	for _, c := range v.commitments {
 		if c.subject == subject && now.After(c.until) {
 			return true

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // These tests turn the line-review attacks on commit cb41932 into assertions.
@@ -189,11 +191,11 @@ func TestUnsignedResponseCannotForecloseARequest(t *testing.T) {
 	}
 	keys := responderKeys(responder, 1)
 	unsigned := Envelope{Profile: ProfileID, RequestDigest: sent.Digest, Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Anchor: Anchor{Digest: sent.Digest}, Artifact: []byte("{}"), ArtifactDigest: digestBytes([]byte("{}")), Responder: keys.Signer, IssuedAt: "2026-09-26T12:00:00Z", Sig: strings.Repeat("00", 64)}
-	junkEnvelope, err := encodeReply(MediaTypeJSON, &unsigned, nil)
+	junkEnvelope, err := evidencerequest.EncodeReply(MediaTypeJSON, &unsigned, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	junkRefusal, err := encodeReply(MediaTypeJSON, nil, &Refusal{RequestDigest: sent.Digest, Reason: ReasonNotAuthorized, IssuedAt: "2026-09-26T12:00:00Z", KeyID: keys.Signer, Sig: "00"})
+	junkRefusal, err := evidencerequest.EncodeReply(MediaTypeJSON, nil, &Refusal{RequestDigest: sent.Digest, Reason: ReasonNotAuthorized, IssuedAt: "2026-09-26T12:00:00Z", KeyID: keys.Signer, Sig: "00"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // flakySubstrate fails the next N appends, then behaves.
@@ -349,7 +351,7 @@ func TestHistoryCardProofsAreVerified(t *testing.T) {
 	}
 	first, second := history[1].(map[string]any), history[2].(map[string]any)
 	first["consistency_from_previous"], second["consistency_from_previous"] = second["consistency_from_previous"], first["consistency_from_previous"]
-	swapped, err := toJCS(card)
+	swapped, err := evidencerequest.EncodeJCS(card)
 	if err != nil {
 		t.Fatal(err)
 	}
