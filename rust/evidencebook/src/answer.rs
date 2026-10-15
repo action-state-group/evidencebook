@@ -84,6 +84,11 @@ pub trait RecordSource {
 pub enum AnswerError {
     #[error("the resolved anchor is not one of the stream's stated checkpoints")]
     AnchorNotFound,
+    /// Records cite the requester's half, but no stated checkpoint covers
+    /// one yet. Answer with a `coverage_unsatisfiable` refusal, as the Go
+    /// responder does.
+    #[error("no stated checkpoint covers a record citing the half yet")]
+    CitingNotAnchored,
     #[error("a record the subject names is not in the log under the anchor")]
     RecordNotFound,
     #[error("the subject resolves to no records under the anchor")]
@@ -132,11 +137,16 @@ pub fn anchors(substrate: &CllSubstrate) -> Result<Vec<resolve::Anchor>, Substra
 /// resolved it. For a citing-records subject pinned by the requester's own half,
 /// the records are proven under the earliest checkpoint covering every
 /// checkpointed record citing the half, never simply the latest, so growth
-/// that adds no citing record does not change the artifact (-00 §5).
+/// that adds no citing record does not change the artifact (-00 §5). Its
+/// envelope names the pin, the half, as its anchor (profile §7.1
+/// `anchor_match`); the artifact names the serving checkpoint. When no
+/// stated checkpoint covers a citing record yet,
+/// [`AnswerError::CitingNotAnchored`].
 ///
 /// `limit` caps the records (or checkpoints) the answer carries, clamped to
-/// [`MAX_RECORDS`]; over it, [`AnswerError::OverLimit`]. The records are
-/// never read beyond the limit.
+/// [`MAX_RECORDS`]; over it, [`AnswerError::OverLimit`]. It counts the
+/// distinct records under the anchor, so growth past the anchor never makes
+/// a pinned answer unavailable.
 #[allow(clippy::too_many_arguments)]
 pub fn answer(
     substrate: &CllSubstrate,
@@ -153,7 +163,9 @@ pub fn answer(
         ResolvedAnchor::Anchor(a) => checkpoints
             .iter()
             .position(|cp| anchor_digest(cp) == a.digest),
-        ResolvedAnchor::ExchangeHalf(half) => citing_anchor(records, &checkpoints, half)?,
+        ResolvedAnchor::ExchangeHalf(half) => Some(
+            citing_anchor(records, &checkpoints, half)?.ok_or(AnswerError::CitingNotAnchored)?,
+        ),
     }
     .ok_or(AnswerError::AnchorNotFound)?;
     let at = &checkpoints[anchor_index];
@@ -208,6 +220,7 @@ pub fn answer(
             head.insert("checkpoints".into(), Value::Array(list));
             jcs(head)
         }
+        (None, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
         (None, Subject::Record(d)) => {
             let record = records
                 .record_by_digest(d)
@@ -292,8 +305,11 @@ pub fn answer(
         EnvelopeParts {
             subject: request.subject.clone(),
             derivation: request.derivation.clone(),
+            // Under a half pin the envelope names the pin, the requester's
+            // own half (profile §7.1 anchor_match), as the Go responder does;
+            // the artifact's `anchor` member names the serving checkpoint.
             anchor: Anchor {
-                digest: anchor_digest(at),
+                digest: anchor.digest().to_string(),
                 freshness,
             },
             artifact,
@@ -411,9 +427,6 @@ fn records_under(
     covered: u64,
     limit: u64,
 ) -> Result<Vec<Record>, AnswerError> {
-    if digests.len() as u64 > limit {
-        return Err(AnswerError::OverLimit);
-    }
     let mut found: Vec<Record> = digests
         .iter()
         .filter_map(|d| records.record_by_digest(d))
@@ -423,6 +436,12 @@ fn records_under(
     found.dedup_by_key(|r| r.leaf_index);
     if found.is_empty() {
         return Err(AnswerError::NoRecords);
+    }
+    // The limit counts the distinct records under the anchor, as the Go
+    // responder counts its resolved leaves: growth past the anchor never
+    // makes a pinned answer unavailable.
+    if found.len() as u64 > limit {
+        return Err(AnswerError::OverLimit);
     }
     Ok(found)
 }

@@ -40,50 +40,60 @@ fn half() -> String {
 /// Ten records, checkpoints after 3, 7 and 10. Records 1 and 5 carry
 /// correlation c-1; records 2 and 8 cite the requester's half.
 fn book() -> Book {
+    book_with(10, &[3, 7, 10], &[2, 8])
+}
+
+/// `n` records, a checkpoint after each count in `cuts`, records 1 and 5
+/// correlated as c-1, and the records at `citing` citing the half.
+fn book_with(n: u64, cuts: &[u64], citing: &[u64]) -> Book {
     let dir = tempfile::tempdir().unwrap();
-    let (mut substrate, _) = CllSubstrate::open(
+    let (substrate, _) = CllSubstrate::open(
         &dir.path().join("nodes"),
         &dir.path().join("checkpoints.jsonl"),
     )
     .unwrap();
-    let log_key = key("log");
-    let mut records = Vec::new();
-    let mut correlation: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut citing: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for i in 0..10u64 {
+    let mut b = Book {
+        substrate,
+        records: Vec::new(),
+        correlation: BTreeMap::new(),
+        citing: BTreeMap::new(),
+        _dir: dir,
+    };
+    for i in 0..n {
         let body = format!("record-{i}").into_bytes();
         let id: [u8; 32] = Sha256::digest(&body).into();
-        assert_eq!(substrate.append_leaf(&id).unwrap(), i);
+        assert_eq!(b.substrate.append_leaf(&id).unwrap(), i);
         let digest = hex::encode(id);
         if i == 1 || i == 5 {
-            correlation
+            b.correlation
                 .entry("c-1".into())
                 .or_default()
                 .push(digest.clone());
         }
-        if i == 2 || i == 8 {
-            citing.entry(half()).or_default().push(digest.clone());
+        if citing.contains(&i) {
+            b.citing.entry(half()).or_default().push(digest.clone());
         }
-        records.push(Record {
+        b.records.push(Record {
             leaf_index: i,
             digest,
             body,
         });
-        if [2, 6, 9].contains(&i) {
-            let ts = format!("2026-10-15T00:00:0{i}Z");
-            let prepared = substrate
-                .prepare_checkpoint(i + 1, LOG_ID, &ts, &log_key as &dyn CheckpointSigner)
-                .unwrap();
-            assert!(prepared.cose().is_some(), "{:?}", prepared.cose_error());
-            substrate.commit_checkpoint(prepared).unwrap();
+        if cuts.contains(&(i + 1)) {
+            b.cut(i + 1);
         }
     }
-    Book {
-        substrate,
-        records,
-        correlation,
-        citing,
-        _dir: dir,
+    b
+}
+
+impl Book {
+    fn cut(&mut self, leaves: u64) {
+        let ts = format!("2026-10-15T00:00:{leaves:02}Z");
+        let prepared = self
+            .substrate
+            .prepare_checkpoint(leaves, LOG_ID, &ts, &key("log") as &dyn CheckpointSigner)
+            .unwrap();
+        assert!(prepared.cose().is_some(), "{:?}", prepared.cose_error());
+        self.substrate.commit_checkpoint(prepared).unwrap();
     }
 }
 
@@ -296,7 +306,9 @@ fn every_subject_form_builds_and_verifies() {
     );
     let env = round_trip(&b, &x, &q);
     assert_eq!(leaves(&env), vec![2, 8]);
-    assert_eq!(env.anchor.digest, b.anchors()[2].digest);
+    // The envelope names the pin; the artifact names the serving checkpoint.
+    assert_eq!(env.anchor.digest, half());
+    assert_eq!(artifact_json(&env)["anchor"], b.anchors()[2].digest);
 
     let (x, q) = request(json!({"checkpoints": null}), pin(&b, 1), json!({}));
     let env = round_trip(&b, &x, &q);
@@ -407,4 +419,80 @@ fn limits_and_unsupported_derivations_are_refused() {
         go(json!({"correlation": "c-1"}), json!({}), 1),
         Err(AnswerError::OverLimit)
     ));
+}
+
+/// The citing-records anchor is the earliest checkpoint covering every
+/// checkpointed citing record: not the latest checkpoint, unmoved by a citing
+/// record no checkpoint covers, and moved once one does.
+#[test]
+fn the_citing_records_anchor_is_the_earliest_covering_checkpoint() {
+    let ask = |b: &Book| {
+        let subject = json!({"exchange": half()}); // vocabulary-gate: request-draft wire token
+        let (x, q) = request(subject, json!({"expected_pin": half()}), json!({}));
+        let Resolution::Artifact(anchor) = resolve(&q, b) else {
+            panic!("expected an artifact")
+        };
+        answer(
+            &b.substrate,
+            b,
+            &q,
+            &x,
+            &anchor,
+            MAX_RECORDS,
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    // Citing records 2 and 5 are under the second checkpoint; the third
+    // covers only unrelated records; record 10 cites but is not covered.
+    let mut b = book_with(11, &[3, 7, 9], &[2, 5, 10]);
+    let env = ask(&b).unwrap();
+    assert_eq!(artifact_json(&env)["anchor"], b.anchors()[1].digest);
+    assert_eq!(leaves(&env), vec![2, 5]);
+    let before = env.artifact.clone();
+    // A later cut that covers the citing record moves the anchor to it.
+    b.cut(11);
+    let env = ask(&b).unwrap();
+    assert_eq!(artifact_json(&env)["anchor"], b.anchors()[3].digest);
+    assert_eq!(leaves(&env), vec![2, 5, 10]);
+    assert_ne!(env.artifact, before);
+    // Citing records exist, but no checkpoint covers one yet.
+    let b = book_with(11, &[3, 7, 9], &[10]);
+    assert!(matches!(ask(&b), Err(AnswerError::CitingNotAnchored)));
+}
+
+#[test]
+fn limits_count_only_records_under_the_anchor() {
+    let b = book();
+    let go = |subject: Value, anchor_index: usize, limit: u64| {
+        let (x, q) = request(subject, pin(&b, anchor_index), json!({}));
+        let Resolution::Artifact(anchor) = resolve(&q, &b) else {
+            panic!("expected an artifact")
+        };
+        answer(
+            &b.substrate,
+            &b,
+            &q,
+            &x,
+            &anchor,
+            limit,
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    // c-1 has records 1 and 5; under the first checkpoint only record 1.
+    assert_eq!(
+        leaves(&go(json!({"correlation": "c-1"}), 0, 1).unwrap()),
+        vec![1]
+    );
+    assert!(matches!(
+        go(json!({"correlation": "c-1"}), 2, 1),
+        Err(AnswerError::OverLimit)
+    ));
+    // A record answer is capped like every other.
+    assert!(matches!(
+        go(json!({"record": b.records[0].digest}), 0, 0),
+        Err(AnswerError::OverLimit)
+    ));
+    assert!(go(json!({"record": b.records[0].digest}), 0, 1).is_ok());
 }
