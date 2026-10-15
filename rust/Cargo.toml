@@ -1,8 +1,3 @@
 [workspace]
 resolver = "2"
 members = ["evidencebook"]
-
-# Until evidence-request 0.2.0 is on crates.io (agent-action-capsule#276):
-# its release commit, pinned. The release of this crate removes the patch.
-[patch.crates-io]
-evidence-request = { git = "https://github.com/action-state-group/agent-action-capsule", rev = "dcc1a39cd6798882a60150027348ad8889b0ac49" }
