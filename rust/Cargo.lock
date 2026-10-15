@@ -245,11 +245,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "evidence-request"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb3587833cd210019ceb1f2b4a8380686d1d0d448ea3bd34f626484b8bb714cc"
+dependencies = [
+ "ciborium",
+ "ed25519-dalek",
+ "hex",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "evidencebook"
 version = "0.0.2"
 dependencies = [
  "checkpointed-local-log",
  "ed25519-dalek",
+ "evidence-request",
  "hex",
  "rand_core",
  "serde",

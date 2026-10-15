@@ -4,9 +4,13 @@
 //! I-D sections: *Answering a Request*, *Three Kinds of "No"*. Subject forms,
 //! outcomes and refusal reasons are the tokens of the companion request draft
 //! (`draft-mih-agent-evidence-request-00`); this module does not restate that
-//! draft's rules about coverage anchors.
+//! draft's rules about coverage anchors. The draft's registry and refusal
+//! profile come from the `evidence-request` crate (its protocol core); this
+//! module keeps evidencebook's own names and the evidence layer's concepts
+//! ([`Outcome`], [`NoKind`]) over it.
 
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
+use evidence_request::registry::{Reason, SubjectForm};
 use serde::{Deserialize, Serialize};
 
 /// The six subject forms a request can name, with the store capability that
@@ -47,6 +51,16 @@ impl SubjectKind {
     /// `checkpoints`).
     pub fn resolves_records(self) -> bool {
         self != SubjectKind::Checkpoints
+    }
+
+    /// The request draft's subject form for this kind (its wire token is
+    /// this kind's serialized form).
+    pub fn form(self) -> SubjectForm {
+        let token = serde_json::to_value(self).expect("a unit variant serializes");
+        token
+            .as_str()
+            .and_then(SubjectForm::from_token)
+            .expect("every subject kind is a registered subject form")
     }
 }
 
@@ -136,35 +150,45 @@ pub enum RefusalError {
 }
 
 impl Refusal {
-    /// The exact bytes a refusal signature covers.
+    fn object(&self) -> serde_json::Map<String, serde_json::Value> {
+        match serde_json::to_value(self).expect("five string members serialize") {
+            serde_json::Value::Object(map) => map,
+            _ => unreachable!("a struct serializes to an object"),
+        }
+    }
+
+    /// The exact bytes a refusal signature covers: RFC 8785 of `issued_at`,
+    /// `reason` and `request_digest` (`evidence_request::refusal::signing_body`).
     pub fn signing_body(&self) -> Vec<u8> {
-        let body = serde_json::json!({
-            "issued_at": self.issued_at,
-            "reason": self.reason,
-            "request_digest": self.request_digest,
-        });
-        crate::canonical::jcs(&body).expect("three string members always canonicalize")
+        evidence_request::refusal::signing_body(&self.object())
+            .expect("three string members always canonicalize")
+            .into_bytes()
     }
 
     /// Whether `reason` is a registered token. Separate from [`Refusal::verify`],
     /// which, like the Go and Python verifiers, checks only the signature.
     pub fn reason_is_registered(&self) -> bool {
-        reasons::ALL.contains(&self.reason.as_str())
+        Reason::from_token(&self.reason).is_some()
     }
 
-    /// Check the signature, offline, against the refusal's own `key_id`.
+    /// Check the signature, offline, against the refusal's own `key_id`
+    /// (`evidence_request::refusal::check`: Ed25519, strict verification).
     pub fn verify(&self) -> Result<(), RefusalError> {
         let key: [u8; 32] = hex::decode(&self.key_id)
             .ok()
             .and_then(|b| b.try_into().ok())
             .ok_or(RefusalError::BadKey)?;
-        let key = VerifyingKey::from_bytes(&key).map_err(|_| RefusalError::BadKey)?;
-        let sig: [u8; 64] = hex::decode(&self.sig)
+        VerifyingKey::from_bytes(&key).map_err(|_| RefusalError::BadKey)?;
+        hex::decode(&self.sig)
             .ok()
-            .and_then(|b| b.try_into().ok())
+            .filter(|b| b.len() == 64)
             .ok_or(RefusalError::BadSignature)?;
-        key.verify(&self.signing_body(), &Signature::from_bytes(&sig))
-            .map_err(|_| RefusalError::Unverified)
+        let check = evidence_request::refusal::check(&serde_json::Value::Object(self.object()));
+        if check.signature_valid {
+            Ok(())
+        } else {
+            Err(RefusalError::Unverified)
+        }
     }
 }
 
@@ -211,6 +235,36 @@ mod tests {
         );
         assert!(!SubjectKind::Checkpoints.resolves_records());
         assert!(SubjectKind::ALL[..5].iter().all(|s| s.resolves_records()));
+    }
+
+    #[test]
+    fn subject_kinds_are_the_registry_forms() {
+        let forms: Vec<&str> = SubjectKind::ALL.iter().map(|s| s.form().token()).collect();
+        let tokens: Vec<String> = SubjectKind::ALL
+            .iter()
+            .map(|s| {
+                serde_json::to_value(s)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(forms, tokens);
+        let mut registry: Vec<&str> = SubjectForm::ALL.iter().map(|f| f.token()).collect();
+        let mut ours = forms.clone();
+        registry.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(ours, registry);
+    }
+
+    #[test]
+    fn reason_tokens_are_the_registry_tokens() {
+        let mut registry: Vec<&str> = Reason::ALL.iter().map(|r| r.token()).collect();
+        let mut ours = reasons::ALL.to_vec();
+        registry.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(ours, registry);
     }
 
     #[test]
