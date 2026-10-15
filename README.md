@@ -106,11 +106,11 @@ that all three carry a byte-identical canonical Artifact.
 
 ## Other implementations and parity
 
-- **Rust:** the `evidencebook` crate in
-  [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log)
-  (`rust/evidencebook`) implements the same evidence-layer semantics over the
-  Rust Checkpointed Local Log: records, epistemic types, links, disclosure,
-  retention, requests and reconcile/close.
+- **Rust:** the `evidencebook` crate in this repository
+  ([`rust/evidencebook`](rust/evidencebook/), moved here from
+  checkpointed-local-log with its history) implements the same evidence-layer
+  semantics over the Rust Checkpointed Local Log: records, epistemic types,
+  links, disclosure, retention, requests and reconcile/close.
 - **Parity vectors** shared across implementations, all checked in CI:
   - `schemas/vendor/epistemic-types.json`: the epistemic type value set
     (`TestEpistemicTypeThreeWayParity`);

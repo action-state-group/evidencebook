@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added: the Rust `evidencebook` crate
+
+The Rust implementation moved here from checkpointed-local-log with its
+history (action-state-group/capsule-emit#290 stage B): `rust/evidencebook/`
+in a `rust/` workspace, depending on `checkpointed-local-log` 0.3.0 from
+crates.io. Rust CI (`rust.yml`: vocabulary gate, format, Clippy, tests,
+rustdoc, package checks) and a crates.io publisher (`publish-rust.yml`,
+`crates/evidencebook-v*` tags, separate from the Go module's `v*` tags) come
+with it.
+
 ### Changed: the Evidence Request protocol comes from agent-action-capsule
 
 The request draft's protocol logic now lives in
