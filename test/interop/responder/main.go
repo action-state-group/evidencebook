@@ -15,9 +15,9 @@
 // book's record digests and anchors in place of the vectors'.
 //
 // The carriage vectors' request R (request C in deterministic CBOR) is sent
-// over the native stream (Respond) and over MCP (the book's MCPServer, as
-// JSON-RPC octets), and the MCP call and result are written as carried. No
-// A2A carriage exists in this repository.
+// over the native stream (Respond), over A2A (the book's A2AServer) and over
+// MCP (the book's MCPServer), each as JSON-RPC octets, and the A2A Message and
+// Task and the MCP call and result are written as carried.
 package main
 
 import (
@@ -105,11 +105,12 @@ type exchange struct {
 	AbsenceRecord *carried  `json:"absence_record,omitempty"`
 }
 
-// carriage is one request sent over the native stream and over MCP.
+// carriage is one request sent over the native stream, A2A and MCP.
 type carriage struct {
 	Request carried         `json:"request"`
 	Native  *nativeCarriage `json:"native,omitempty"`
-	MCP     mcpCarriage     `json:"mcp"`
+	A2A     *a2aCarriage    `json:"a2a,omitempty"`
+	MCP     *mcpCarriage    `json:"mcp,omitempty"`
 	// AbsenceRecord is the requester's own absence record for Request.
 	AbsenceRecord *carried `json:"absence_record,omitempty"`
 }
@@ -128,6 +129,18 @@ type mcpCarriage struct {
 	JSONRPCRecv string          `json:"jsonrpc_received"`
 }
 
+// a2aCarriage is the SendMessage Message and the Task it returned, as JSON
+// values, the service parameters sent, and the JSON-RPC octets exactly as
+// sent and received.
+type a2aCarriage struct {
+	Message     json.RawMessage `json:"message"`
+	Task        json.RawMessage `json:"task"`
+	Version     string          `json:"a2a_version"`
+	Extensions  []string        `json:"a2a_extensions"`
+	JSONRPCSent string          `json:"jsonrpc_sent"`
+	JSONRPCRecv string          `json:"jsonrpc_received"`
+}
+
 type output struct {
 	ResponderKey string              `json:"responder_key"`
 	LogKeys      []map[string]string `json:"log_keys"`
@@ -137,9 +150,12 @@ type output struct {
 	Requests     map[string]carried  `json:"other_requests"`
 	Manifests    []json.RawMessage   `json:"manifests"`
 	// Carriage holds the carriage vectors' exchanges: "invariance" (R over
-	// the native stream and MCP) and "mcp-absence" (a requester's request
-	// over MCP, and its absence record once its window closed).
+	// the native stream, A2A and MCP), and "a2a-absence" and "mcp-absence"
+	// (a requester's request over A2A or MCP, and its absence record once
+	// its window closed).
 	Carriage map[string]carriage `json:"carriage"`
+	// AgentCard is the A2A Agent Card, its extension params the manifest.
+	AgentCard json.RawMessage `json:"agent_card"`
 	// MCPManifest is the evidence_manifest tools/call result.
 	MCPManifest json.RawMessage `json:"mcp_manifest"`
 	// MCPTools is the tools/list result.
@@ -172,6 +188,50 @@ func mcpCall(ctx context.Context, server *evidencebook.MCPServer, id int, method
 		return mcpCarriage{}, err
 	}
 	return mcpCarriage{Call: call, Result: response.Result, JSONRPCSent: string(sent), JSONRPCRecv: string(received)}, nil
+}
+
+// a2aRequest sends request m over the A2A carriage as a SendMessage with
+// the §11.4.4 service parameters, and returns the reply octets the Task's
+// one Artifact carries.
+func a2aRequest(ctx context.Context, server *evidencebook.A2AServer, id int, messageID string, m evidencebook.Message, authenticated string) (a2aCarriage, evidencebook.Message, error) {
+	message := map[string]any{
+		"messageId": messageID, "role": "ROLE_USER", "extensions": []any{evidencebook.A2AExtensionURI},
+		"parts": []any{map[string]any{"mediaType": m.MediaType, "raw": base64.StdEncoding.EncodeToString(m.Octets)}},
+	}
+	sent, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": "SendMessage", "params": map[string]any{"message": message}})
+	if err != nil {
+		return a2aCarriage{}, evidencebook.Message{}, err
+	}
+	params := evidencebook.A2ARequest{Version: evidencebook.A2AProtocolVersion, Extensions: []string{evidencebook.A2AExtensionURI}, Body: sent}
+	received := server.Handle(ctx, params, authenticated).Body
+	var response struct {
+		Result struct {
+			Task json.RawMessage `json:"task"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(received, &response); err != nil || response.Result.Task == nil {
+		return a2aCarriage{}, evidencebook.Message{}, fmt.Errorf("SendMessage: no task: %s (%v)", received, err)
+	}
+	carried, err := json.Marshal(message)
+	if err != nil {
+		return a2aCarriage{}, evidencebook.Message{}, err
+	}
+	c := a2aCarriage{Message: carried, Task: response.Result.Task, Version: params.Version, Extensions: params.Extensions,
+		JSONRPCSent: string(sent), JSONRPCRecv: string(received)}
+	var task struct {
+		Artifacts []struct {
+			Parts []struct {
+				Raw       string `json:"raw"`
+				MediaType string `json:"mediaType"`
+			} `json:"parts"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(c.Task, &task); err != nil || len(task.Artifacts) != 1 || len(task.Artifacts[0].Parts) != 1 {
+		return c, evidencebook.Message{}, fmt.Errorf("SendMessage: the task does not hold one reply Artifact: %s (%v)", c.Task, err)
+	}
+	part := task.Artifacts[0].Parts[0]
+	octets, err := base64.StdEncoding.Strict().DecodeString(part.Raw)
+	return c, evidencebook.Message{Octets: octets, MediaType: part.MediaType}, err
 }
 
 // mcpRequest sends request m over the MCP carriage.
@@ -225,8 +285,13 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	pin := hexDigest(anchor.Statement)
-	manifest := evidencebook.ManifestOptions{Bindings: []string{evidencebook.BindingStream, evidencebook.BindingHTTP, evidencebook.BindingMCP}}
+	manifest := evidencebook.ManifestOptions{Bindings: []string{evidencebook.BindingStream, evidencebook.BindingHTTP, evidencebook.BindingA2A, evidencebook.BindingMCP}}
 	server, err := book.MCP(evidencebook.MCPOptions{Manifest: manifest, Policy: evidencebook.DefaultSharePolicy()})
+	if err != nil {
+		return err
+	}
+	agent, err := book.A2A(evidencebook.A2AOptions{Manifest: manifest, Policy: evidencebook.DefaultSharePolicy(),
+		Name: "evidencebook interop responder", URL: "https://responder.example/a2a"})
 	if err != nil {
 		return err
 	}
@@ -288,8 +353,9 @@ func run(ctx context.Context, dir, out string) error {
 	}
 
 	// The carriage vectors' R: request C in deterministic CBOR, sent once over
-	// the native stream and once over MCP, by the same authenticated
-	// requester. Only the carriage differs; the canonical Artifact must not.
+	// the native stream, once over A2A and once over MCP, by the same
+	// authenticated requester. Only the carriage differs; the canonical
+	// Artifact must not.
 	r, err := request(subject, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeCBOR)
 	if err != nil {
 		return err
@@ -306,11 +372,22 @@ func run(ctx context.Context, dir, out string) error {
 	if err != nil {
 		return err
 	}
-	if native.Envelope == nil || carriedReply.Envelope == nil {
+	overA2A, a2aReply, err := a2aRequest(ctx, agent, 1, "m-r", r, "alice")
+	if err != nil {
+		return err
+	}
+	a2aCarried, err := evidencebook.ParseReply(a2aReply)
+	if err != nil {
+		return err
+	}
+	if native.Envelope == nil || carriedReply.Envelope == nil || a2aCarried.Envelope == nil {
 		return fmt.Errorf("request R was refused over a carriage")
 	}
-	o.Carriage["invariance"] = carriage{Request: carry(r), MCP: overMCP,
+	o.Carriage["invariance"] = carriage{Request: carry(r), MCP: &overMCP, A2A: &overA2A,
 		Native: &nativeCarriage{RequestFrameHex: hex.EncodeToString(r.Octets), ResponseFrameHex: hex.EncodeToString(native.Octets)}}
+	if err := os.WriteFile(filepath.Join(dir, "artifact-a2a-cbor.bin"), a2aCarried.Envelope.Artifact, 0o600); err != nil {
+		return err
+	}
 	if err := os.WriteFile(filepath.Join(dir, "artifact-native-cbor.bin"), native.Envelope.Artifact, 0o600); err != nil {
 		return err
 	}
@@ -424,7 +501,27 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	mcpAbsenceRecord := carry(evidencebook.Message{Octets: mcpAbsence.Header.Statement, MediaType: evidencebook.MediaTypeJSON})
-	o.Carriage["mcp-absence"] = carriage{Request: carry(viaMCP.Message()), MCP: absentCall, AbsenceRecord: &mcpAbsenceRecord}
+	o.Carriage["mcp-absence"] = carriage{Request: carry(viaMCP.Message()), MCP: &absentCall, AbsenceRecord: &mcpAbsenceRecord}
+
+	// The same over A2A: a requester's request sent as a SendMessage, and its
+	// own absence record once its window closed with no reply recorded. The
+	// A2A vector replaces the Task with one that ended TASK_STATE_REJECTED
+	// with no reply Artifact; the absence record is what the requester keeps.
+	viaA2A, err := requester.Request(ctx, evidencebook.EvidenceRequest{Subject: subject, Coverage: evidencebook.Coverage{ExpectedPin: pin}, Nonce: "2026-10-12T00:00:30Z/a", Route: "a2a:example-responder"}, "responder")
+	if err != nil {
+		return err
+	}
+	absentTask, _, err := a2aRequest(ctx, agent, 5, "m-absent", viaA2A.Message(), "alice")
+	if err != nil {
+		return err
+	}
+	clock = clock.Add(2 * time.Minute)
+	a2aAbsence, err := requester.RecordAbsence(ctx, viaA2A.RecordID, clock.Add(-time.Second), "")
+	if err != nil {
+		return err
+	}
+	a2aAbsenceRecord := carry(evidencebook.Message{Octets: a2aAbsence.Header.Statement, MediaType: evidencebook.MediaTypeJSON})
+	o.Carriage["a2a-absence"] = carriage{Request: carry(viaA2A.Message()), A2A: &absentTask, AbsenceRecord: &a2aAbsenceRecord}
 
 	// The manifest after every answer above is the one served before them:
 	// it carries nothing that grows with history.
@@ -436,6 +533,7 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	o.Manifests = []json.RawMessage{first, last}
+	o.AgentCard = agent.AgentCard()
 	data, err := json.MarshalIndent(o, "", " ")
 	if err != nil {
 		return err
