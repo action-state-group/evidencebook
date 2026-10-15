@@ -25,7 +25,7 @@ a citation purpose.
   (`testdata/legacy-citation-purpose/`, `TestLegacyCitationPurposeRecordsStillVerify`).
 - **Conformance.** New CI job `registry-conformance` runs the AAC
   producer-side check `agent_action_capsule.registry_conformance` (AAC
-  #241, pinned to its unmerged head `4c4cd202`; re-pin when it merges)
+  #241, pinned to its merge commit `7fabe9a5`)
   over every capsule a book seals with each link type and a bundle
   (`test/interop/capsules`), and requires the legacy records to fail it.
 

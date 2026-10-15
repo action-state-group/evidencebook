@@ -163,13 +163,13 @@ jobs:
         with:
           path: evidencebook
       # The producer-side registry conformance check
-      # (agent_action_capsule.registry_conformance) is AAC #241, head
-      # 4c4cd202, not yet merged. Re-pin to the merged SHA once #241 lands.
+      # (agent_action_capsule.registry_conformance), pinned to the AAC main
+      # commit that merged it (#241).
       - name: Check out the registry conformance check
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 4c4cd202327d02fce9af08bf968477e6116b4202
+          ref: 7fabe9a5c3fe2efbeb45ac4b222f0021455acf7f
           path: agent-action-capsule
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
