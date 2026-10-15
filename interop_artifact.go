@@ -6,9 +6,10 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"strings"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // The canonical Artifact (ER §4.1, §5; profile §6.2) is a deterministic

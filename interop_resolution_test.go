@@ -4,12 +4,13 @@ package evidencebook
 
 import (
 	"encoding/json"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // vectorView is the resolution.json responder state as an evidencerequest.View:

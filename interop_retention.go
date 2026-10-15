@@ -6,8 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // RecordTypeRetentionCommitment is the record type of a retention

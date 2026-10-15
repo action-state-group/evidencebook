@@ -8,10 +8,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 func sizeFloor(n uint64) *Freshness { return &Freshness{Size: &n} }

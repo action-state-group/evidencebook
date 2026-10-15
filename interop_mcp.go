@@ -8,9 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"regexp"
 	"slices"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // The MCP carriage of the exchange (profile §11.4.5), over MCP 2026-07-28.

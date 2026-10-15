@@ -9,10 +9,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // The A2A carriage of the exchange (profile §11.4.4), over A2A 1.0 in its

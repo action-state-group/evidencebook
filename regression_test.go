@@ -9,11 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // flakySubstrate fails the next N appends, then behaves.

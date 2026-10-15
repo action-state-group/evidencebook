@@ -6,12 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Refusal policies a responder may declare (profile §11.4.2 refusal_policy).
@@ -260,7 +260,7 @@ type gate struct {
 // uniform applies the uniform refusal policy to a reason that would
 // disclose what the policy protects.
 func (g gate) uniform(reason string) string {
-	return g.responderPolicy(false).Disclose(reason)
+	return evidencerequest.Policy{Uniform: g.refusalPolicy == RefusalPolicyUniform}.Disclose(reason)
 }
 
 // responderPolicy is the gate as go/evidencerequest's responder policy: the

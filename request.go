@@ -9,9 +9,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // RequestStatement is the body of the record a requester seals before it
@@ -178,7 +179,7 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 			return Record{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
 		}
 		if err := r.Verify(); err != nil {
-			return Record{}, asInvalid(err)
+			return Record{}, err
 		}
 		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
 		if !r.Conforming() {
@@ -197,7 +198,7 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 		if err != nil || len(sig) != 64 {
 			return Record{}, fmt.Errorf("%w: envelope signature is malformed", ErrInvalid)
 		}
-		if err := verifySignature(e.Responder, body, sig); err != nil {
+		if err := evidencerequest.VerifySignature(e.Responder, body, sig); err != nil {
 			return Record{}, err
 		}
 		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest

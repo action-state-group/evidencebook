@@ -2,12 +2,7 @@
 
 package evidencebook
 
-import (
-	"errors"
-	"fmt"
-
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
-)
+import "github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 
 // Verification-material kinds (profile §6.2.1), the Checkpointed Local Log
 // mechanism's proof formats.
@@ -28,18 +23,7 @@ type (
 )
 
 // ParseReply reads a received reply: exactly one of an envelope or a
-// refusal. Every failure matches ErrInvalid, and also
-// evidencerequest.ErrInvalid where the package reported one.
+// refusal. Every failure matches ErrInvalid.
 func ParseReply(m Message) (Reply, error) {
-	reply, err := evidencerequest.ParseReply(m)
-	return reply, asInvalid(err)
-}
-
-// asInvalid makes an error from go/evidencerequest match ErrInvalid, which
-// evidencebook's callers test for, without hiding the package's own error.
-func asInvalid(err error) error {
-	if err == nil || errors.Is(err, ErrInvalid) {
-		return err
-	}
-	return fmt.Errorf("%w: %w", ErrInvalid, err)
+	return evidencerequest.ParseReply(m)
 }

@@ -4,8 +4,9 @@ package evidencebook
 
 import (
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // DerivationDefinition is a derivation this responder serves by the digest

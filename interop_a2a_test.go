@@ -8,11 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Tests for the A2A carriage (profile §11.4.4): the Agent Card extension

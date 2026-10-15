@@ -7,9 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 	"testing"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // A request in deterministic CBOR is answered in CBOR, and its digest is over

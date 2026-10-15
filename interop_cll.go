@@ -6,9 +6,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 )
 
@@ -134,7 +134,7 @@ func readSignedCheckpoint(statement []byte, pinnedKey string) (signedCheckpoint,
 // under cp.
 func checkCLLInclusion(cp signedCheckpoint, entry []byte, inclusion, consistency []byte) error {
 	if err := evidencerequest.VerifyCLLInclusion(cp.commitment, entry, inclusion); err != nil {
-		return asInvalid(err)
+		return err
 	}
 	if consistency == nil {
 		return nil
@@ -148,5 +148,5 @@ func checkCLLInclusion(cp signedCheckpoint, entry []byte, inclusion, consistency
 // checkCLLConsistency checks cll-consistency-proof octets: that the
 // commitment oldPeaks extends to newPeaks.
 func checkCLLConsistency(oldPeaks, newPeaks [][]byte, consistency []byte) error {
-	return asInvalid(evidencerequest.VerifyCLLConsistency(oldPeaks, newPeaks, consistency))
+	return evidencerequest.VerifyCLLConsistency(oldPeaks, newPeaks, consistency)
 }

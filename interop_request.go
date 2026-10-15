@@ -58,8 +58,7 @@ type (
 // EncodeRequest encodes r in the given media type: JCS for JSON, core
 // deterministic CBOR for CBOR.
 func EncodeRequest(r EvidenceRequest, mediaType string) ([]byte, error) {
-	octets, err := evidencerequest.EncodeRequest(r, mediaType)
-	return octets, asInvalid(err)
+	return evidencerequest.EncodeRequest(r, mediaType)
 }
 
 // requestCheck is evidencebook's view of evidencerequest.ParseRequest:

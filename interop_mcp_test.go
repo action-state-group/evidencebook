@@ -8,10 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Tests for the MCP carriage (profile §11.4.5): the profile's two tools

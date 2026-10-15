@@ -7,11 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // These tests turn the line-review attacks on commit cb41932 into assertions.

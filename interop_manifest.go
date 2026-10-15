@@ -4,8 +4,9 @@ package evidencebook
 
 import (
 	"fmt"
-	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"slices"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // Binding tokens a manifest may list (profile §4, §11.4.2).

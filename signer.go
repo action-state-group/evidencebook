@@ -72,14 +72,3 @@ func (c coseSigner) Sign(_ io.Reader, content []byte) ([]byte, error) {
 func signingIdentity(ctx context.Context, signer Signer) (emit.SigningIdentity, error) {
 	return emit.NewSigningIdentity(coseSigner{ctx: ctx, signer: signer}, signer.PublicKey())
 }
-
-func verifySignature(publicKeyHex string, message, signature []byte) error {
-	public, err := hex.DecodeString(publicKeyHex)
-	if err != nil || len(public) != ed25519.PublicKeySize {
-		return fmt.Errorf("%w: key_id is not an Ed25519 public key", ErrInvalid)
-	}
-	if !ed25519.Verify(public, message, signature) {
-		return fmt.Errorf("%w: signature does not verify", ErrInvalid)
-	}
-	return nil
-}
