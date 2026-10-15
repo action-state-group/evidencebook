@@ -6,6 +6,11 @@
 - **0.0.3 was published from the checkpointed-local-log repository's
   pre-move copy.** That release has only the `checkpointed-local-log` 0.3.1
   dependency and none of the changes listed here. Use 0.0.4.
+- **0.0.2 was never published.** The checkpointed-local-log repository's
+  manifest carried it before that repository released from merged version
+  bumps, so no release ever fired for it, and its next release took 0.0.3.
+  crates.io therefore has 0.0.1 and 0.0.3 from checkpointed-local-log and
+  0.0.4 from here.
 - Depends on `checkpointed-local-log` 0.3.1 (0.3.0 dropped the default witness
   client). Nothing in this crate used the removed default.
 - **Moved** to the evidencebook repository (`rust/evidencebook/`), next to the
