@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Changed: sealed with `github.com/action-state-group/capsule-emit/go` v0.3.0
+
+evidencebook now imports `github.com/action-state-group/capsule-emit/go`
+v0.3.0 instead of `github.com/action-state-group/capsule-emit-go` v0.1.0, which
+is archived. Go treats the two paths as different modules, so a build that
+uses capsule-emit with evidencebook needs the new path too.
+
+- **Wire.** A new record's capsule carries `spec_version`
+  `draft-mih-scitt-agent-action-capsule-05` instead of `-04`, so its record id
+  (capsule id) differs from what the previous writer sealed for the same
+  entry. The third-party verifier guide quotes the new pins and record ids of
+  `test/interop/answer`.
+- **Old records.** `-04` records keep verifying and keep their ids
+  (`testdata/legacy-citation-purpose/` is still `-04`).
+
 ### Breaking: record capsules no longer carry the link type as `citation_purpose`
 
 Every link on an appended record used to be sealed as a `references[]`

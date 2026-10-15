@@ -110,15 +110,15 @@ are the same on every run and on every machine:
 |---|---|
 | `responder_key` | `e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117` |
 | log key `kid` | `c82acf66ef2bdc106017544b91873dfbdc92f0963b099d49b0f621bedf76e2af` |
-| checkpoint 1 `expected_pin` | `2faed55bcd9bb04cfa753df224879148c6f53608769aefde68ddc8a91ae9f05d` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#8`) |
-| checkpoint 2 `expected_pin` | `cd9648a8c81b15841f41d97fbade236bc6f10ceabed2259745594638ebfbfc64` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#19`) |
-| record 1 | `4fdcd0414e3a1a1b5a63ad135a463a6d46a7623d4973e2dd53e6c0377c2a6beb` |
-| record 2 | `17ea4a57e9ec7b5dfebb96bf8e9bc1f64e6d1acdee51395e43fa54f285708938` |
-| record 3 | `6cf41cfa1eaccf3965950228cfafba099495b80c4bae35d83b6843ec65a9f5f0` |
-| record 4 | `21039e6c0bd9151a96aa143b0534f7b9180ad8de2804f7bea11d73d46b6b5a1f` |
-| record 5 | `15171dfcbe39459228d82f52b61823e6fbd927e61424fb2c936de44eeeef022d` |
-| record 6 | `67f36d5ef16cc916969b6c1caa30708b87f4731bcfb5ab1479f50095333fc317` |
-| record 7 | `d1246d27c620e1d970e12a953218a8b9b5468a536bcff51f450d7dfa2b472c46` |
+| checkpoint 1 `expected_pin` | `07e8e7a0936fdc0d5eda424946ca36576a0bdff8b7602b419daf308d7719afbd` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#8`) |
+| checkpoint 2 `expected_pin` | `a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#19`) |
+| record 1 | `78c2628bf823fc958b96c66e47cbaec799194b4da38b5f3ad30eda1404b4a9b0` |
+| record 2 | `5053828d77686751cdefd690ff1c8112a3e0f11c038060e69029d300adc412b4` |
+| record 3 | `b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d` |
+| record 4 | `b74c29ca59de0592d4cda8fc8d437412017f3faffc8fac3530c14f70f2188773` |
+| record 5 | `4312eabdde48711b4f5645a0f2007934c74ea7a7587695c7e5a796119595e0f2` |
+| record 6 | `d70427536a4ac642d4afd56afda4554a7ad402288a57c8a9aee9e5bf809182f7` |
+| record 7 | `5347d0817c005f092d346fb23e2aa9ed7fd385331cdf9e817c19b72ad918e91b` |
 
 The responder key and the log key are the vectors' `responder` and `log` test
 keys (`test_keys` in `vectors.json`). You can derive both yourself from their
@@ -156,8 +156,8 @@ that you can compare your own encoder's output with it, and then gets the reply.
 
 ```bash
 mkdir -p run
-PIN=cd9648a8c81b15841f41d97fbade236bc6f10ceabed2259745594638ebfbfc64
-REC=6cf41cfa1eaccf3965950228cfafba099495b80c4bae35d83b6843ec65a9f5f0
+PIN=a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d
+REC=b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d
 ```
 
 **Positive.** Record 3 under checkpoint 2, as `alice`:
@@ -169,7 +169,7 @@ go run ./test/interop/answer -media-type application/json -requester alice -in r
 
 **Invariance.** The same question, as `bob` with another nonce, in
 deterministic CBOR. Your encoder's output must be these 211 bytes, with SHA-256
-`5d19f563c9ed541f41a3be2e682c41526fd06f44eb3af530e1f06e1c4de4dabb`:
+`bb1f40c649a44c58bd0ab9da36f90c3a83938ca0ec5933d73f5488c57e8e487f`:
 
 ```bash
 printf '%b' '\xa4\x65nonce\x65bob-1\x67profile\x72evidence-interop/0\x67subject\xa1\x66record\x78\x40'$REC'\x68coverage\xa1\x6cexpected_pin\x78\x40'$PIN > run/invariance-bob.req.cbor
