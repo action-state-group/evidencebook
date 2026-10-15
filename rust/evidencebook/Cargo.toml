@@ -27,10 +27,11 @@ hex = "0.4"
 thiserror = "1"
 ed25519-dalek = "2"
 rand_core = { version = "0.6", features = ["getrandom"] }
-# The request draft's registry and refusal profile
-# (draft-mih-agent-evidence-request-00): the protocol core only, without the
-# answer path and its checkpointed-local-log dependency.
-evidence-request = { version = "0.1", default-features = false }
+# The request draft (draft-mih-agent-evidence-request-00): its registry and
+# refusal profile, the interop profile's envelope, and (`cll`) the encoders and
+# checks of the Checkpointed Local Log material, on the same
+# checkpointed-local-log line as this crate.
+evidence-request = { version = "0.2", default-features = false, features = ["cll"] }
 
 [dev-dependencies]
 tempfile = "3"
