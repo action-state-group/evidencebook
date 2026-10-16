@@ -163,7 +163,9 @@ type output struct {
 }
 
 // mcpCall sends one tools/call over the MCP carriage and returns the params
-// sent, the result received, and both JSON-RPC messages as octets.
+// sent (with the _meta MCP 2026-07-28 requires on every request, which is
+// carriage, as the profile's vectors write the call), the result received,
+// and both JSON-RPC messages as octets.
 func mcpCall(ctx context.Context, server *evidencebook.MCPServer, id int, method string, params map[string]any, authenticated string) (mcpCarriage, error) {
 	params["_meta"] = map[string]any{
 		"io.modelcontextprotocol/protocolVersion":    evidencebook.MCPProtocolVersion,
@@ -182,7 +184,6 @@ func mcpCall(ctx context.Context, server *evidencebook.MCPServer, id int, method
 	if err := json.Unmarshal(received, &response); err != nil || response.Result == nil {
 		return mcpCarriage{}, fmt.Errorf("%s: no result: %s (%v)", method, received, err)
 	}
-	delete(params, "_meta")
 	call, err := json.Marshal(params)
 	if err != nil {
 		return mcpCarriage{}, err
