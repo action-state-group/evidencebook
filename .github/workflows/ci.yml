@@ -121,12 +121,13 @@ jobs:
         with:
           path: evidencebook
       # The profile's reference verifier (AAC #238) and its conformance
-      # vectors (AAC #237), pinned to an AAC main commit that carries both.
+      # vectors (AAC #237, regenerated in #263), pinned to an AAC main commit
+      # that carries both.
       - name: Check out the profile's reference verifier and vectors
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: fc8934b881e89d819ca4bdfb222f111709a1fbdc
+          ref: dfc47036e9fa3a1f11d918052d2fa4377ed3ec2d
           path: agent-action-capsule
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

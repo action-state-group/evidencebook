@@ -12,7 +12,9 @@ modified. Every vector case is accounted for in exactly one of three ways:
 - run: the responder answered the vector's request (made against its own log)
   and the verifier's result matches the case's expected block;
 - mutation: the vector's corruption was applied to this responder's own reply
-  (re-signed where the vector re-signs) and the verifier's result matches;
+  (re-signed where the vector re-signs), or the vector's signing was applied
+  to the absence record this book wrote as requester, and the verifier's
+  result matches;
 - skipped, with the reason.
 
 The carriage cases (§11.4) are run over the native stream, A2A and MCP: the
@@ -22,7 +24,12 @@ write for their own request are compared as "equal to the request digest".
 
 The vectors' trust pins are used as written, except log_keys, which name this
 responder's log (its iss and sub) under the same test log key. Row 7's status
-is read from the vectors file, never assumed.
+is read from the vectors file, never assumed. An absence block carries
+presentation_kind_recommended only where the vector's does: a record that is
+not a conforming absence yields no claim (§6.4, §8.2 invariant 3).
+
+Every MCP result this responder returned (the replies and the
+evidence_manifest result) must carry resultType "complete" (§11.4.5).
 """
 from __future__ import annotations
 
@@ -62,6 +69,13 @@ RUN = ["valid-exchange", "invariance-two-nonces-two-transports", "declined", "mi
 MUTATIONS = ["tampered-artifact", "wrong-request-digest", "envelope-bad-signature", "envelope-untrusted-responder",
              "envelope-subject-mismatch", "envelope-anchor-not-the-pin", "verification-material-tampered",
              "inclusion-proof-forged-and-signed", "forged-refusal-untrusted-key", "forged-refusal-bad-signature"]
+# §6.4 lets the requester sign its absence record (key_id and sig, both or
+# neither, over JCS of every member except sig). The book writes the record
+# unsigned, which §6.4 allows; these cases apply the vector's signing to that
+# record under the vectors' requester test key.
+ABSENCE_MUTATIONS = ["missing-evidence-recorded-absence-signed", "missing-evidence-recorded-absence-key-id-unsigned",
+                     "missing-evidence-recorded-absence-key-id-without-sig",
+                     "missing-evidence-recorded-absence-sig-without-key-id"]
 CARRIAGE_RUN = ["carriage-invariance"]
 CARRIAGE_MUTATIONS = ["carriage-mcp-rehashes-json", "carriage-mcp-error-no-reply", "carriage-mcp-error-with-reply",
                       "carriage-a2a-reserializes-artifact", "carriage-a2a-task-rejected", "carriage-a2a-two-artifacts",
@@ -88,6 +102,10 @@ KEYS = VECTORS["test_keys"]["keys"]
 RESPONDER = seed_key(KEYS["responder"]["seed_label"])
 IMPOSTOR = seed_key(KEYS["impostor"]["seed_label"])
 IMPOSTOR_PUB = KEYS["impostor"]["public"]
+# The requester's test key arrived with the signed absence cases; a vectors
+# file without them has no such key and no case that uses it.
+REQUESTER = seed_key(KEYS["requester"]["seed_label"]) if "requester" in KEYS else None
+REQUESTER_PUB = KEYS["requester"]["public"] if "requester" in KEYS else None
 if PRODUCED["responder_key"] != KEYS["responder"]["public"]:
     raise SystemExit("the responder did not sign with the vectors' responder test key")
 
@@ -143,6 +161,27 @@ def policies(case: dict):
             pins["evaluation_time"])
 
 
+def render_absence(a) -> dict:
+    """An absence block as the vectors write it: a record that is not a conforming absence is no
+    absence and yields no claim, so it carries no presentation recommendation (§6.4, §8.2
+    invariant 3)."""
+    out = {"form": a.form, "requirements": {q: {"row": x.row, "status": x.status, "sufficiency": x.sufficiency,
+                                                "verdict": x.verdict} for q, x in a.requirements.items()}}
+    if a.form == "conforming":
+        out["presentation_kind_recommended"] = a.presentation_kind_recommended
+    return out
+
+
+def expected_absence(a: dict) -> dict:
+    """The case's absence block without its claim digests, which are over the vector's own bytes.
+    presentation_kind_recommended is kept exactly where the vector writes it."""
+    out = {"form": a["form"], "requirements": {q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")}
+                                               for q, x in a["requirements"].items()}}
+    if "presentation_kind_recommended" in a:
+        out["presentation_kind_recommended"] = a["presentation_kind_recommended"]
+    return out
+
+
 def render(result, multi: bool) -> dict:
     out: dict = {"replies": []}
     for k, ex in enumerate(result.exchanges):
@@ -157,11 +196,7 @@ def render(result, multi: bool) -> dict:
                 rendered["request_index"] = k
             out["replies"].append(rendered)
         if ex.absence is not None:
-            a = ex.absence
-            out["absence"] = {"form": a.form, "requirements": {q: {"row": x.row, "status": x.status,
-                                                                   "sufficiency": x.sufficiency, "verdict": x.verdict}
-                                                               for q, x in a.requirements.items()},
-                              "presentation_kind_recommended": a.presentation_kind_recommended, "detail": a.detail}
+            out["absence"] = dict(render_absence(ex.absence), detail=ex.absence.detail)
     if multi:
         artifacts = [r.artifact for ex in result.exchanges for r in ex.replies]
         out["artifact_octets_identical"] = len(set(artifacts)) == 1
@@ -182,10 +217,7 @@ def expected_view(expected: dict) -> dict:
             e["request_index"] = r["request_index"]
         out["replies"].append(e)
     if "absence" in expected:
-        a = expected["absence"]
-        out["absence"] = {"form": a["form"], "requirements": {q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")}
-                                                              for q, x in a["requirements"].items()},
-                          "presentation_kind_recommended": a["presentation_kind_recommended"]}
+        out["absence"] = expected_absence(expected["absence"])
     if "artifact_octets_identical" in expected:
         out["artifact_octets_identical"] = expected["artifact_octets_identical"]
     out["set_properties"] = expected.get("set_properties", {"caller_invariance": "NOT_CHECKED"})
@@ -273,10 +305,7 @@ def render_carriage(case: dict, request: dict, native: dict | None = None, a2a: 
     if ex.replies:
         out["set_properties"] = {"caller_invariance": result.caller_invariance.status}
     if ex.absence is not None:
-        out["absence"] = {"form": ex.absence.form, "requirements": {
-            q: {"row": x.row, "status": x.status, "sufficiency": x.sufficiency, "verdict": x.verdict}
-            for q, x in ex.absence.requirements.items()},
-            "presentation_kind_recommended": ex.absence.presentation_kind_recommended}
+        out["absence"] = render_absence(ex.absence)
     if manifests is not None:
         implemented = vpolicy.profiles_implemented
         out["manifest_properties"] = {name: {"manifest_form": manifest_form(m, implemented).status}
@@ -299,10 +328,7 @@ def expected_carriage(case: dict) -> dict:
     if "set_properties" in e:
         out["set_properties"] = e["set_properties"]
     if "absence" in e:
-        a = e["absence"]
-        out["absence"] = {"form": a["form"], "requirements": {
-            q: {k: x[k] for k in ("row", "status", "sufficiency", "verdict")} for q, x in a["requirements"].items()},
-            "presentation_kind_recommended": a["presentation_kind_recommended"]}
+        out["absence"] = expected_absence(e["absence"])
     if "manifest_properties" in e:
         out["manifest_properties"] = e["manifest_properties"]
     return out
@@ -434,6 +460,41 @@ def mutate(case_id: str):
     return request, json_reply(env)
 
 
+def absence_signing_input(record: dict) -> bytes:
+    """§6.4: UTF-8 of JCS over every member present except sig, so key_id is signed."""
+    return jcs({k: v for k, v in record.items() if k != "sig"})
+
+
+def mutate_absence(case_id: str):
+    """The absence record this book wrote as requester for request C, with the case's signing
+    applied under the vectors' requester test key."""
+    base = PRODUCED["exchanges"]["missing-evidence-recorded-absence"]
+    record = json.loads(octets(base["absence_record"]))
+    if "key_id" in record or "sig" in record:
+        raise SystemExit("the book's absence record is already signed; these cases expect it unsigned")
+    signed = dict(record, key_id=REQUESTER_PUB)
+    signed["sig"] = REQUESTER.sign(absence_signing_input(signed)).hex()
+    if case_id == "missing-evidence-recorded-absence-signed":
+        out = signed
+    elif case_id == "missing-evidence-recorded-absence-key-id-unsigned":
+        # The refusal's signing input (§6.3): key_id left out of what is signed.
+        out = dict(record, key_id=REQUESTER_PUB, sig=REQUESTER.sign(jcs(record)).hex())
+    elif case_id == "missing-evidence-recorded-absence-key-id-without-sig":
+        out = dict(record, key_id=REQUESTER_PUB)
+    elif case_id == "missing-evidence-recorded-absence-sig-without-key-id":
+        out = dict(record, sig=signed["sig"])
+    else:
+        raise KeyError(case_id)
+    return base["requests"], json_reply(out)
+
+
+def mcp_results() -> dict:
+    """Every MCP result this responder returned: the replies it carried and its evidence_manifest."""
+    c = PRODUCED["carriage"]
+    return {"invariance": c["invariance"]["mcp"]["result"], "mcp-absence": c["mcp-absence"]["mcp"]["result"],
+            "evidence_manifest": PRODUCED["mcp_manifest"]}
+
+
 def main() -> int:
     ran, mutated, skipped, failed = [], [], [], []
     for case_id, case in CASES.items():
@@ -448,6 +509,10 @@ def main() -> int:
         elif case_id in MUTATIONS:
             request, reply = mutate(case_id)
             got = verify(case, [request], [reply])
+            bucket = mutated
+        elif case_id in ABSENCE_MUTATIONS:
+            requests, record = mutate_absence(case_id)
+            got = verify(case, requests, [], record)
             bucket = mutated
         else:
             reason = next((r for p, r in SKIP_PREFIX.items() if case_id == p or case_id.startswith(p)), None)
@@ -488,7 +553,10 @@ def main() -> int:
     print(f"manifest: manifest_form {form.status}{' (' + form.detail + ')' if form.detail else ''}; "
           f"manifest_consistency across {len(manifests)} copies (native before and after answering, the A2A "
           f"extension params and the MCP evidence_manifest) {consistency.status}")
-    ok = form.status == "PASS" and consistency.status == "PASS"
+    result_types = {name: r.get("resultType") for name, r in mcp_results().items()}
+    complete = all(t == "complete" for t in result_types.values())
+    print(f"mcp: resultType of every result (§11.4.5): {'complete' if complete else result_types}")
+    ok = form.status == "PASS" and consistency.status == "PASS" and complete
     return 0 if ok and not failed and identical and len(ran) + len(mutated) + len(skipped) == len(CASES) else 1
 
 
