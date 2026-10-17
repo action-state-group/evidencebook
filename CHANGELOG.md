@@ -1,9 +1,10 @@
 # Changelog
 
+## Unreleased
+
 ## v0.2.0 (2026-10-17)
 
-Everything since v0.1.1. The adapter drafts for ACP and UCP are not in this
-release.
+Everything since v0.1.1.
 
 ### Added: foreign-evidence adapters, starting with x402
 
@@ -24,7 +25,7 @@ release.
   with detail `{"check", "object"}` (`adapter.NativeCheckReport`), and the
   table includes `authorization_window`. The recorded chain observation has
   the node's result shapes.
-  - It reports the twelve checks of the declaration's §7 table.
+  - It reports the thirteen checks of the declaration's §7 table.
   - The payer signature is checked by EIP-712 recovery under the policy's
     domain. A mismatch is `INCONCLUSIVE` unless the policy says `eoa`.
   - Settlement is checked from a recorded transaction lookup, including the
@@ -34,8 +35,10 @@ release.
     each wrapped object and leg cross-checks), the bare payment payload, and
     an HTTP header block.
   - Fixtures are constructed with published development keys.
-- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
-  prints the reports as JSON and exits 1 on any `FAIL`.
+- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] [-explain]
+  <file | ->` prints the reports as JSON and exits 1 on any `FAIL`.
+  `-explain` adds a human-readable explanation to each report, and
+  `-declare` prints the adapter's declaration.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
 
@@ -69,11 +72,12 @@ service-evidence response.
 
 The Rust implementation moved here from checkpointed-local-log with its
 history (action-state-group/capsule-emit#290 stage B): `rust/evidencebook/`
-in a `rust/` workspace, depending on `checkpointed-local-log` 0.3.0 from
+in a `rust/` workspace, depending on `checkpointed-local-log` 0.3.1 from
 crates.io. Rust CI (`rust.yml`: vocabulary gate, format, Clippy, tests,
 rustdoc, package checks) and a crates.io publisher (`publish-rust.yml`,
 `crates/evidencebook-v*` tags, separate from the Go module's `v*` tags) come
-with it.
+with it. The crate's own releases (0.0.4 and 0.0.5 so far) are in
+`rust/evidencebook/CHANGELOG.md`.
 
 ### Changed: the Evidence Request protocol comes from agent-action-capsule
 
@@ -292,7 +296,7 @@ defines.
 ### Security
 
 - `Respond` now fails closed. Protected subjects (everything except
-  `checkpoints`) are answered only to a requester the transport has
+  `checkpoints` and the `history_card/1` derivation) are answered only to a requester the transport has
   authenticated, passed in the new `RespondOptions.AuthenticatedRequester`.
   An unauthenticated caller gets only public subjects; every other request is
   answered with a signed refusal, reason `not_authorized`. This holds under
@@ -311,7 +315,8 @@ defines.
 - Callers that relied on `RequesterID` to unlock answers must now
   authenticate the requester at the transport and set
   `AuthenticatedRequester`. Without that change, those callers receive
-  `not_authorized` for every subject except `checkpoints`.
+  `not_authorized` for every subject except `checkpoints` and the
+  `history_card/1` derivation.
 - Records sealed before this change are immutable and still contain the
   `requester_ref` they were written with. Operators of books with such
   history should take that into account before serving `full_history` or
@@ -329,5 +334,5 @@ paths as different modules.
   statement signs (`BundleCheckpoint.LogID`). capsulectl's `verify --bundle`
   up to v0.1.0-rc8 required it and failed every book bundle without it.
 - `VerifyBundle` refuses a stated `checkpoint.log_id` other than the signed
-  one, and one that is present but not a non-empty string (`ErrInvalid`). A
+  one when the checkpoint is authenticated, and one that is present but not a non-empty string (`ErrInvalid`). A
   bundle that states none reads as before.
