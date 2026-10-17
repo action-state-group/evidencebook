@@ -209,7 +209,8 @@ func TestRunIsThePublishedRun(t *testing.T) {
 }
 
 // TestProducerIsTheCorpusProducer: main.go is the corpus's producer/main.go,
-// unchanged, so the guide's cmp holds.
+// unchanged, so the guide's cmp holds. Its header comment still describes the
+// corpus README's copy step; it is left unedited so the bytes match.
 func TestProducerIsTheCorpusProducer(t *testing.T) {
 	if got := sha(readFile(t, "main.go")); got != producerSHA256 {
 		t.Fatalf("main.go has SHA-256 %s, not the corpus producer's %s", got, producerSHA256)
@@ -339,7 +340,7 @@ func TestGuideQuotesTheCorpus(t *testing.T) {
 	}
 
 	// §6.1 and §6.2: where the inputs come from, and the run.
-	quote("the corpus commit", "AAC_PH="+aacCommit)
+	quote("the corpus commit", "AAC="+aacCommit)
 	quote("the corpus commit", code(aacCommit))
 	quote("the vectors' digest", code(vectorsSHA256))
 	quote("the responder commit", code(c.Responder.Commit))

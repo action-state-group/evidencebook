@@ -29,8 +29,9 @@ The commands below are for a Unix shell (bash or zsh) on Linux or macOS, with
 
 All three come from the public
 [agent-action-capsule](https://github.com/action-state-group/agent-action-capsule)
-repository, pinned at commit `c86a73a3a726dd82dce28cf0e2105c5af008bf42`.
+repository, pinned at commit `0b7b1825965e7f7845cbc70a490a581cbc70bd37`.
 Read them at that commit, not at the tip of `main`, which may have moved on.
+The personal-evidence part (§6) uses the same commit.
 
 | Input | Path at the pinned commit |
 |---|---|
@@ -38,16 +39,17 @@ Read them at that commit, not at the tip of `main`, which may have moved on.
 | The request draft the profile builds on | `spec/draft-mih-agent-evidence-request-00.md` |
 | The profile's conformance vectors | `vectors/interop-profile-v0/` (`vectors.json`, with `README.md` explaining how to read it) |
 
-The vectors at this commit are byte-for-byte the same as when they were first
-published, in commit `5beee5454e54f966e6026e3161d17a577edfd7c2`. The later
-commit corrects only the profile text, and none of the corrections touch the
-exchanges this page uses.
+The vectors at this commit hold 53 cases. They are byte-for-byte the same as
+when they were last regenerated, in commit
+`dfc47036e9fa3a1f11d918052d2fa4377ed3ec2d`. evidencebook's continuous
+integration runs the profile's reference verifier against this responder over
+these same vectors.
 
 Download them into a working directory:
 
 ```bash
 mkdir -p ~/eb-verifier-test && cd ~/eb-verifier-test
-AAC=c86a73a3a726dd82dce28cf0e2105c5af008bf42
+AAC=0b7b1825965e7f7845cbc70a490a581cbc70bd37
 for f in spec/interop-profile-v0.md spec/draft-mih-agent-evidence-request-00.md \
   vectors/interop-profile-v0/README.md vectors/interop-profile-v0/manifest.json \
   vectors/interop-profile-v0/vectors.json vectors/interop-profile-v0/SHA256SUMS; do
@@ -206,7 +208,9 @@ go run ./test/interop/answer -media-type application/json -requester alice -in r
 record that no reply came within its window (§6.4), so the responder plays no
 part. Write a request, do not send it, and once your window has closed write
 your absence record for it. Below is an unsigned example. A signed one adds
-`key_id` and `sig` under your own key:
+`key_id` and `sig` under your own key, both or neither. Its signing input is
+JCS of every member except `sig`, so `key_id` is signed (§6.4). That differs
+from a refusal's signing input, which leaves `key_id` out:
 
 ```bash
 printf '%s' '{"coverage":{"expected_pin":"'$PIN'"},"nonce":"alice-4","profile":"evidence-interop/0","subject":{"record":"'$REC'"}}' > run/absence.req.json
@@ -242,12 +246,13 @@ and the replies you received instead (§8.3).
 
 | Class | What you run | Vector case whose `expected` is the specified result | In short |
 |---|---|---|---|
-| Positive | `run/positive.req.json` and its reply | `valid-exchange` | envelope; every required property `PASS`; row `envelope-7`, whose status, sufficiency and verdict stay `null`, because the profile fixes no content rule; `claim.evidence` is the `artifact_digest`, and `claim.proofs` is the `cll-inclusion-proof` entry |
+| Positive | `run/positive.req.json` and its reply | `valid-exchange` | envelope; every required property `PASS`; row `envelope-7`: `UNKNOWN`, `UNKNOWN`, `not_evaluable`, because the profile fixes no content rule, so with no content evaluator the requirement is `UNKNOWN`; `claim.evidence` is the `artifact_digest`, and `claim.proofs` is the `cll-inclusion-proof` entry |
 | Invariance | the positive pair and the `bob` CBOR pair, as one set of two exchanges | `invariance-two-nonces-two-transports` | two envelopes, each as for the positive class; the Artifact octets are identical; `caller_invariance` `PASS` |
 | Tampered | the vector inputs of `tampered-artifact`, `wrong-request-digest`, `envelope-bad-signature`, `envelope-untrusted-responder`, `envelope-subject-mismatch`, `envelope-anchor-not-the-pin`, `verification-material-tampered`, `inclusion-proof-forged-and-signed`, `forged-refusal-untrusted-key` and `forged-refusal-bad-signature` | each case itself | the property each case breaks is `FAIL`; row `envelope-2` (`INSUFFICIENT`) for the eight envelope cases and `refusal-failed` (`UNKNOWN`) for the two forged refusals. A conforming responder never sends these. To check your verifier on this responder's bytes as well, flip one bit of the decoded `artifact` in `run/positive.reply.json`: `artifact_digest` is then `FAIL`, row `envelope-2` |
 | Declined | `run/positive.req.json` and `run/declined.reply.json` | `declined` | refusal `policy_declined`; every refusal property `PASS`; row `refusal-withheld`: `WITHHELD`, `GAP`, `not_evaluable`, with presentation `analysis` or `story` |
 | Missing evidence | `run/missing.req.json` and its reply | `missing-evidence-no-such-subject` | refusal `no_such_subject`; row `refusal-no_such_subject`: `NOT_FOUND`, `GAP`, `not_evaluable` |
 | Missing evidence | `run/absence.req.json` with `run/absence.record.json` and no reply | `missing-evidence-recorded-absence` | absence form `conforming`; row `absence`: `UNKNOWN`, `UNKNOWN`, `not_evaluable`; presentation `story` |
+| Missing evidence | the vector inputs of `missing-evidence-recorded-absence-signed`, `missing-evidence-recorded-absence-key-id-unsigned`, `missing-evidence-recorded-absence-key-id-without-sig` and `missing-evidence-recorded-absence-sig-without-key-id` | each case itself | the signed record: form `conforming`, and the same row `absence` as the unsigned one. The other three are signed over the refusal's signing input, or carry `key_id` or `sig` alone: form `not_conforming`, with no requirement row and no claim. These are requester-side records signed by the vectors' requester test key, so they come only from the vectors |
 | Backdated acceptance | the vector inputs of `acceptance-absent` and `acceptance-backdated-A-no-ordering-evidence` to `acceptance-backdated-G-policy-requires-other-party`, including `acceptance-after-action-D` | each case itself | each candidate's §11.1.7 properties and the §11.1.8 finding. These are acceptance records and receipts (§11.1), which no responder sends, so they come only from the vectors |
 | Unsupported version | `run/unsupported.req.json` and its reply | `unsupported-version-refused` | refusal `request_malformed`; row `refusal-deadline_or_malformed`: `UNKNOWN`, `UNKNOWN`, `not_evaluable` |
 | Unsupported version | the vector inputs of `unsupported-version-mismatch`, `unsupported-version-absent` and `unsupported-version-unimplemented` | each case itself | `profile_version` `FAIL`, `NOT_PRESENT` or `NOT_CHECKED` respectively, under the version rules of §3.3 step 5. A conforming `evidence-interop/0` responder never sends these envelopes |
@@ -271,11 +276,8 @@ selection. The request's `derivation` is the SHA-256 of that document.
 
 ### 6.1 The inputs
 
-They come from the same public repository, at commit
-`0b7b1825965e7f7845cbc70a490a581cbc70bd37`. That commit is later than the one
-in §1. Between the two, the interop profile text changes in one row of its
-§11.5 table of vector cases, and the request draft does not change, so the
-copies you downloaded in §1 still serve.
+They come from the same public repository at the same commit as §1,
+`0b7b1825965e7f7845cbc70a490a581cbc70bd37`.
 
 | Input | Path at this commit |
 |---|---|
@@ -284,19 +286,19 @@ copies you downloaded in §1 still serve.
 | The responder run the vectors are built from | `vectors/personal-history-basic-v0/responder-run.json` |
 | The program that produced that run | `vectors/personal-history-basic-v0/producer/main.go` |
 
-Download them next to the §1 inputs, in a directory of their own:
+Download them next to the §1 inputs:
 
 ```bash
 cd ~/eb-verifier-test
-AAC_PH=0b7b1825965e7f7845cbc70a490a581cbc70bd37
+AAC=0b7b1825965e7f7845cbc70a490a581cbc70bd37
 for f in spec/personal-agent-history-profile-v0.md spec/evidence-result-v0.md \
   vectors/personal-history-basic-v0/README.md vectors/personal-history-basic-v0/manifest.json \
   vectors/personal-history-basic-v0/vectors.json vectors/personal-history-basic-v0/responder-run.json \
   vectors/personal-history-basic-v0/producer/main.go vectors/personal-history-basic-v0/SHA256SUMS; do
-  curl -fsSL --create-dirs -o "aac-ph/$f" \
-    "https://raw.githubusercontent.com/action-state-group/agent-action-capsule/$AAC_PH/$f"
+  curl -fsSL --create-dirs -o "aac/$f" \
+    "https://raw.githubusercontent.com/action-state-group/agent-action-capsule/$AAC/$f"
 done
-(cd aac-ph/vectors/personal-history-basic-v0 && sha256sum -c SHA256SUMS)
+(cd aac/vectors/personal-history-basic-v0 && sha256sum -c SHA256SUMS)
 ```
 
 On macOS, use `shasum -a 256 -c SHA256SUMS`. All five files should report
@@ -315,13 +317,15 @@ this repository as `test/interop/personal-history`, byte-for-byte the
 a checkpoint after the sixth record and another after the eighth, and registers
 the Basic level definition for one recipient. Then it asks for each deal as the
 requester each exchange names. Its clock is fixed and its keys are test keys,
-so every run on every machine gives the same bytes.
+so every run on every machine gives the same bytes. Its header comment still
+describes the corpus README's copy step: the file is kept byte-identical to the
+corpus's, so that comment is not edited here.
 
 In the `evidencebook` clone of §2:
 
 ```bash
 cd ~/eb-verifier-test/evidencebook
-PH=../aac-ph/vectors/personal-history-basic-v0
+PH=../aac/vectors/personal-history-basic-v0
 cmp "$PH/producer/main.go" test/interop/personal-history/main.go
 go run ./test/interop/personal-history > run/responder-run.json
 cmp "$PH/responder-run.json" run/responder-run.json
@@ -431,8 +435,8 @@ Open an issue on the
 [evidencebook repository](https://github.com/action-state-group/evidencebook/issues)
 with:
 
-1. the agent-action-capsule commits you read (they should be the ones in §1
-   and §6.1), and the evidencebook commit you ran (`git rev-parse HEAD`);
+1. the agent-action-capsule commit you read (it should be the one in §1 and
+   §6.1), and the evidencebook commit you ran (`git rev-parse HEAD`);
 2. your verifier: language, the libraries it uses for Ed25519, SHA-256, JCS and
    CBOR, and a statement that it uses no code from evidencebook or from
    agent-action-capsule;

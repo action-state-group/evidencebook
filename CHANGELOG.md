@@ -20,6 +20,13 @@ service-evidence response.
   with the corpus generator, and runs the corpus test, with counts per case
   class. The `interop-profile` job moves to the same agent-action-capsule
   commit, at which `vectors/interop-profile-v0/` is unchanged.
+- The service-evidence part (§1 to §5) moves to the same agent-action-capsule
+  commit, so the guide pins one commit. Its results follow the 53-case vectors
+  that CI runs. The positive class's row `envelope-7` is `UNKNOWN`, `UNKNOWN`,
+  `not_evaluable`, where the earlier vectors gave `null`. The four
+  signed-absence cases are routed under missing evidence. A test pins every
+  case and result the §5 table quotes against those vectors
+  (`test/interop/answer/testdata/`, pinned by digest).
 
 ### Added: the Rust `evidencebook` crate
 
