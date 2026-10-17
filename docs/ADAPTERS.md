@@ -33,13 +33,23 @@ type Adapter interface {
   `INCONCLUSIVE`.
 - **Report shape.** The profile defines one property per foreign object,
   `native_check` (§7.2). An adapter that splits the native check into named
-  checks reports each one as a `native_check` report and puts the check's name
-  in `detail`, followed by `": "` and an explanation when there is one. For
-  example, `{"property": "native_check", "status": "FAIL", "method": "…",
-  "detail": "payer_signature: recovers to 0x…, not authorization.from 0x…"}`.
-  `adapter.NativeCheckResult` builds such a report, and `adapter.CheckName`
-  reads the name back. A check that is not a native check (for example, a
-  carrier's digest check) keeps its own property name.
+  checks reports each one as a `native_check` report, with the check's name
+  and its object in a `detail` object. This is the shape of the adapter
+  declarations, for example:
+
+  ```json
+  {"property": "native_check", "status": "FAIL", "method": "…", "detail": {"check": "payer_signature", "object": "x402.payment-payload"}}
+  ```
+
+  - `adapter.NativeCheckReport` builds such a report.
+  - `adapter.CheckName` reads the check's name back.
+  - The report also keeps a human-readable explanation in
+    `PropertyResult.Detail`. It is not part of the report's JSON; the CLI
+    adds it under `-explain`.
+  - `adapter.NativeCheckResult` (text detail `"<check>: <explanation>"`)
+    remains for adapters written against it.
+  - A check that is not a native check (for example, a carrier's digest
+    check) keeps its own property name.
 - `TrustPolicy` is data:
   - `pins`: values the relying party fixes in advance;
   - `keys`: accepted key identifiers per issuer role;
@@ -74,10 +84,10 @@ counts against a requirement that does not rest on that signature.
 
 ## x402
 
-The adapter implements the x402 adapter declaration v0
-(`agent-action-capsule` `spec/adapters/x402-v0.md`, commit `2520c963`). The
-points where the declaration's first implementation follows the later rulings
-instead of its text are listed at the end of this section.
+The adapter implements the x402 adapter declaration v0 (`agent-action-capsule`
+`spec/adapters/x402-v0.md`, at `247d5e4f`, which folds in the rulings on its
+first implementation). It reproduces the declaration's vectors
+(`vectors/adapters/x402/`, the same commit) exactly: `TestAACVectors`.
 
 ### What it reads
 
@@ -122,8 +132,10 @@ The input is detected as one of three forms:
    PAYMENT-RESPONSE: <base64 of the SettlementResponse JSON>
    ```
 
-   Names are case-insensitive, other headers are ignored, and a repeated
-   header is an error.
+   Names are case-insensitive, and other headers are ignored. Decoding a
+   header is a transport step. A value that does not decode, or a malformed
+   or repeated header, yields no octets, and the object is reported as not
+   held (`NOT_PRESENT`, with the reason in the explanation).
 
 Input that starts with `{` is JSON: a leg if it has a `settlement` member,
 otherwise the bare payload. Anything else is read as a header block.
@@ -151,61 +163,71 @@ as data.
 ### Checks
 
 Every row of the declaration's §7 table is reported as a `native_check`
-report, in this order:
+report, in this order. `detail` is `{"check": <row>, "object": <wrapped type>}`,
+plus `variant` on receipt rows. `method` is the table's text, and the policy
+rows report `relying party policy <id>`, with the id taken from the pin
+`policy.id`.
 
-| Check in `detail` | Object | Notes |
+| Check | Object | Notes |
 |---|---|---|
-| `payload_form` | payment payload | base64 (RFC 4648 §4) and JSON parse, no duplicate members |
-| `payer_signature` | payment payload | EIP-712 `TransferWithAuthorization` recovery, compared to `authorization.from`. The domain comes from the policy for `accepted.network` and `accepted.asset`. `v` 0/1 is normalized to 27/28, and `s` must be low. A mismatch is `INCONCLUSIVE` under the default policy, `FAIL` under policy `eoa` |
-| `payer_trust` | payment payload | the policy binds (`PASS`), rejects (`FAIL`) or holds no binding for (`INCONCLUSIVE`) `authorization.from` |
-| `asset_trust` | payment payload | the policy accepts `accepted.asset` on `accepted.network`, or rejects it; `INCONCLUSIVE` without an entry |
-| `authorization_terms` | payment payload | `to = payTo`, `value = amount`, `validAfter < validBefore` |
-| `settle_response_form` | settlement response | parse and 5.3.2 member types. A response stating `success: false` is well formed (`PASS`) |
-| `settle_response_join` | settlement response | `network = accepted.network`, `payer = authorization.from` |
-| `settle_response_signature` | settlement response | always `NOT_PRESENT`: there is no signature to check |
-| `settlement_onchain` | settlement response | a recorded transaction lookup: status success and final, `Transfer` and `AuthorizationUsed` by `accepted.asset` matching the authorization, and the settling block's timestamp strictly inside (`validAfter`, `validBefore`). `NOT_CHECKED` offline; `NOT_PRESENT` when `transaction` is empty |
-| `receipt_signature` | receipt | EIP-712 recovery. Version 1, or version 2 under #3186 or #3140, selected by member names. JWS is `NOT_CHECKED` |
-| `receipt_signer_authorized` | receipt | the recovered signer is listed under `x402.receipt_signer` |
-| `delivery_binding` | receipt | version 2 only. The response body is not held in v0, so a v2 hash is `NOT_PRESENT` |
+| `payload_form` | `x402.payment-payload` | JSON parse of the registered octets, no duplicate members |
+| `payer_signature` | `x402.payment-payload` | EIP-712 `TransferWithAuthorization` recovery, compared to `authorization.from`. The domain is the policy's entry for `accepted.network` and `accepted.asset`, and is `NOT_CHECKED` without one. `v` 0/1 is normalized to 27/28, and `s` must be low. A mismatch is `INCONCLUSIVE` under the default policy, and `FAIL` under policy `eoa` or when the recorded lookup shows no code at `from` |
+| `payer_trust` | `x402.payment-payload` | the policy binds (`PASS`), rejects (`FAIL`) or holds no binding for (`INCONCLUSIVE`) `authorization.from` |
+| `asset_trust` | `x402.payment-payload` | the policy has a domain for `accepted.asset` on `accepted.network` (`PASS`), rejects the pair (`FAIL`), or has no entry (`INCONCLUSIVE`) |
+| `authorization_terms` | `x402.payment-payload` | `to = payTo`, `value = amount` |
+| `authorization_window` | `x402.payment-payload` | `validAfter < t < validBefore`, `t` the settling block's timestamp from the recorded lookup. `NOT_CHECKED` offline, `NOT_PRESENT` without a transaction |
+| `settle_response_form` | `x402.settle-response` | JSON parse and 5.3.2 member types. A response stating `success: false` is well formed (`PASS`) |
+| `settle_response_join` | `x402.settle-response` | `network = accepted.network`, `payer = authorization.from` |
+| `settle_response_signature` | `x402.settle-response` | always `NOT_PRESENT`: there is no signature to check |
+| `settlement_onchain` | `x402.settle-response` | the recorded lookup: receipt status success, and `Transfer` and `AuthorizationUsed` emitted by `accepted.asset` matching the authorization. `NOT_CHECKED` offline, `NOT_PRESENT` when `transaction` is empty |
+| `receipt_signature` | `x402.receipt` | EIP-712 recovery. Version 1, or version 2 under #3186 or #3140, selected by member names. JWS is `NOT_CHECKED` |
+| `receipt_signer_authorized` | `x402.receipt` | the recovered signer is listed under `x402.receipt_signer` |
+| `delivery_binding` | `x402.receipt` | version 2 only. The response body is not held in v0, so a v2 hash is `NOT_PRESENT` |
 
 A leg adds `wrapped_content_check` (once per wrapped x402 type, before that
 object's checks), `leg_amount` and `leg_network`.
 
 A change to `authorization.value` or `authorization.to` fails both
 `payer_signature` (the members are signed) and `authorization_terms`. A
-changed `accepted.network` fails `asset_trust` and `settle_response_join`, not
-the signature. The signature is checked under the policy's domain.
+changed `accepted.network` or `accepted.asset` names a pair the policy has no
+domain for. `asset_trust` is then `INCONCLUSIVE` and `payer_signature` is
+`NOT_CHECKED`, and a changed network also fails `settle_response_join`.
 
 ### Trust policy
 
 | Name | Kind | Meaning |
 |---|---|---|
-| `x402.chain`, `x402.asset` | pin | the (network, token contract) accepted (`asset_trust`), and the source of the signature's EIP-712 `chainId` and `verifyingContract` |
-| `x402.asset.name`, `x402.asset.version` | pin | the token's EIP-712 domain name and version |
+| `policy.id` | pin | the policy's name, reported in the policy rows' `method` |
+| `x402.chain`, `x402.asset`, `x402.asset.name`, `x402.asset.version` | pin | the policy's one domain entry: the (network, token) pair, and the token's EIP-712 name and version. Its `chainId` is the network's reference and its `verifyingContract` is the token |
 | `x402.payer_accounts` | pin | `eoa-or-contract` (default) or `eoa` |
 | `x402.payer_trust`, `x402.asset_trust`, `x402.receipt_signer_authorized` | pin | `excluded` gives `NOT_CHECKED` |
 | `x402.payer`, `x402.payer_rejected` | keys | payer addresses bound to a party, or rejected |
+| `x402.asset_rejected` | keys | `<network>/<asset>` pairs the policy rejects |
 | `x402.receipt_signer` | keys | addresses authorized to sign receipts |
-| `x402.tx_lookup` | recorded | a transaction lookup, see below |
-| `x402.code_lookup` | recorded | `{source, network, address, code}`. Code `0x` at `authorization.from` turns a signature mismatch into `FAIL` under the default policy |
+| `x402.lookup` | recorded | the recorded chain observation, below |
 
-A recorded transaction lookup is the relying party's own observation. The
-adapter never fetches it:
+The recorded chain observation is the relying party's own; the adapter never
+fetches it. It has the shape of the agent-action-capsule vectors'
+`lookup.json`: the transaction receipt and the block, as a chain node returns
+them, and the code at the payer's address.
 
 ```json
 {
-  "source": "the node or service the relying party read the chain from",
   "network": "eip155:84532",
-  "transaction": "0x…",
-  "status": "success",
-  "final": true,
-  "block_timestamp": "1792238400",
-  "logs": [
-    {"address": "0x036C…CF7e", "event": "Transfer", "from": "0x…", "to": "0x…", "value": "10000"},
-    {"address": "0x036C…CF7e", "event": "AuthorizationUsed", "authorizer": "0x…", "nonce": "0x…"}
-  ]
+  "source": "the node or service the relying party read the chain from",
+  "transaction_receipt": {
+    "transactionHash": "0x…", "blockNumber": "0x…", "status": "0x1",
+    "logs": [{"address": "0x036C…CF7e", "topics": ["0x…", "0x…", "0x…"], "data": "0x…"}]
+  },
+  "block": {"number": "0x…", "timestamp": "0x…"},
+  "code_at_payer": "0x"
 }
 ```
+
+- A `transaction_receipt` of `null` means the transaction is absent.
+- An optional `"final": false` makes `settlement_onchain` `INCONCLUSIVE`.
+- A recording of another transaction or network is ignored, which is the
+  same as offline.
 
 ### Checking a recorded payment later
 
@@ -213,12 +235,13 @@ The authorization's validity window is checked against the settling block's
 timestamp, from the recorded lookup. It is never checked against the time of
 evaluation, which would fail every historical payment. A payment replayed days
 later is therefore checked exactly as on the day it settled. Without a
-recorded lookup, `settlement_onchain`, and with it the window, is
+recorded lookup, `settlement_onchain` and `authorization_window` are
 `NOT_CHECKED`. A demo policy for a replay:
 
 ```json
 {
   "pins": {
+    "policy.id": "demo-replay",
     "x402.chain": "eip155:84532",
     "x402.asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     "x402.asset.name": "USDC",
@@ -230,8 +253,7 @@ recorded lookup, `settlement_onchain`, and with it the window, is
     "x402.receipt_signer": ["0x<payee receipt signer>"]
   },
   "recorded": {
-    "x402.tx_lookup": {"source": "…", "network": "eip155:84532", "transaction": "0x…", "status": "success",
-      "final": true, "block_timestamp": "…", "logs": ["…"]}
+    "x402.lookup": {"network": "eip155:84532", "source": "…", "transaction_receipt": {"…": "…"}, "block": {"…": "…"}, "code_at_payer": "0x"}
   }
 }
 ```
@@ -246,13 +268,14 @@ go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.
 go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json adapter/x402/testdata/payment-payload.json
 go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy-recorded-lookup.json adapter/x402/testdata/leg-payer-observed.json
 go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy-eoa.json adapter/x402/testdata/leg-payer-observed-signature-bit-flip.json
-go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy-eoa.json - < adapter/x402/testdata/payment-payload-signature-bit-flip.json
+go run ./cmd/evidencebook adapt x402 -explain -policy adapter/x402/testdata/trust-policy-eoa.json - < adapter/x402/testdata/payment-payload-signature-bit-flip.json
 go run ./cmd/evidencebook adapt x402 -declare
 ```
 
 Flags come before the file, and `-` reads standard input. The command prints
 `{"adapter": "x402", "properties": [...]}` and exits 0 when no report is
-`FAIL`, 1 when any is, and 2 on a usage or input error.
+`FAIL`, 1 when any is, and 2 on a usage or input error. `-explain` adds each
+report's human-readable `explanation` beside the report members.
 
 The fixtures in `adapter/x402/testdata/` are constructed, not recorded.
 `adapter/x402/testdata/README.md` lists them and the published development
@@ -261,19 +284,12 @@ keys they are signed with. `go test ./adapter/x402 -run TestFixturesUpToDate
 under which a changed signature is `FAIL`. Under the default policy the same
 fixture is `INCONCLUSIVE`.
 
-Conformance vectors for this adapter are planned in `agent-action-capsule`
-(`vectors/adapters/x402/`). `TestAACVectors` is skipped until they are
-published and pinned.
-
-### Where this implementation follows the rulings rather than the declaration text
-
-| Point | Declaration `2520c963` | Implemented |
-|---|---|---|
-| EIP-712 domain source (§6.1 step 4) | `accepted.extra.name/version`, `accepted.network`, `accepted.asset` | the relying party's policy for `accepted.network` and `accepted.asset` |
-| `v` (§6.1 step 5) | `v` ∈ {27, 28}, otherwise `FAIL` | 0/1 normalized to 27/28 |
-| recovered ≠ `from` (§7) | `FAIL` | `INCONCLUSIVE` by default; `FAIL` under policy `eoa` or a recorded no-code lookup |
-| validity window | `validAfter < validBefore` only | also `validAfter < block timestamp < validBefore`, from a recorded lookup, in `settlement_onchain`; `NOT_CHECKED` offline |
-| JWS receipts (§3, §6.3) | checked | `NOT_CHECKED` in v0 |
+The agent-action-capsule vectors (`vectors/adapters/x402/`) are vendored byte
+for byte in `adapter/x402/testdata/aac-vectors/`, checked against their
+`SHA256SUMS`. `TestAACVectors` requires every expected report to be
+reproduced exactly, and the §8.1 mapping of each listed requirement. The
+vectors are pinned to commit `247d5e4f`, which is not merged yet: re-pin them
+to the merge commit.
 
 ### Dependencies
 

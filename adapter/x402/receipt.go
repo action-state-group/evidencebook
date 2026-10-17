@@ -34,8 +34,6 @@ var (
 	receiptV23140 = receiptVariant{"v2 #3140 " + pr3140Head, "2", typeReceiptV2PR3140, fields3140}
 )
 
-const methodReceiptGeneric = "x402 offer-receipt <payload version>[ <variant and PR head>], <EIP-712 or JWS>"
-
 func receiptDomain(version string) []byte {
 	return keccak256(
 		keccak256([]byte(typeEIP712DomainNoVC)),
@@ -145,9 +143,9 @@ func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, pol
 				if err == nil {
 					err = fmt.Errorf("not a JSON object")
 				}
-				o.native(RowReceiptSignature, adapter.Fail, methodReceiptGeneric, "receipt octets: "+err.Error())
+				o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, "receipt octets: "+err.Error())
 				o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "receipt not readable")
-				o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "receipt not readable")
+				o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "receipt not readable")
 				return
 			}
 			env = e
@@ -161,18 +159,18 @@ func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, pol
 		if info.has("receipt") {
 			e, ok := info.object("receipt")
 			if !ok {
-				o.native(RowReceiptSignature, adapter.Fail, methodReceiptGeneric, "receipt is not an object")
+				o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, "receipt is not an object")
 				o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "receipt not readable")
-				o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "receipt not readable")
+				o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "receipt not readable")
 				return
 			}
 			env = e
 		}
 	}
 	if env == nil {
-		o.native(RowReceiptSignature, adapter.NotPresent, methodReceiptGeneric, "no receipt in extensions[\"offer-receipt\"].info.receipt")
+		o.native(RowReceiptSignature, adapter.NotPresent, MethodReceiptSignature, "no receipt in extensions[\"offer-receipt\"].info.receipt")
 		o.native(RowReceiptSignerAuthorized, adapter.NotPresent, MethodReceiptAuth, "no receipt")
-		o.native(RowDeliveryBinding, adapter.NotPresent, "delivery binding", "no receipt")
+		o.native(RowDeliveryBinding, adapter.NotPresent, MethodDeliveryBinding, "no receipt")
 		return
 	}
 	checkReceipt(o, env, policy)
@@ -181,24 +179,23 @@ func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, pol
 func checkReceipt(o *out, env obj, policy adapter.TrustPolicy) {
 	format, _ := env.str("format")
 	if format == "jws" {
-		const m = "x402 offer-receipt, JWS"
-		o.native(RowReceiptSignature, adapter.NotChecked, m, "JWS receipts are not checked in v0")
+		o.native(RowReceiptSignature, adapter.NotChecked, MethodReceiptSignature, "JWS receipts are not checked in v0")
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established (JWS not checked)")
-		o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "JWS receipt not checked")
+		o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "JWS receipt not checked")
 		return
 	}
 	if format != "eip712" {
-		o.native(RowReceiptSignature, adapter.Fail, methodReceiptGeneric, fmt.Sprintf("format %q is not eip712 or jws", format))
+		o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, fmt.Sprintf("format %q is not eip712 or jws", format))
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established")
-		o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "receipt not readable")
+		o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "receipt not readable")
 		return
 	}
 	payload, okP := env.object("payload")
 	sigHex, okS := env.str("signature")
 	if !okP || !okS {
-		o.native(RowReceiptSignature, adapter.Fail, methodReceiptGeneric, "an eip712 receipt needs payload and signature")
+		o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, "an eip712 receipt needs payload and signature")
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established")
-		o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "receipt not readable")
+		o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "receipt not readable")
 		return
 	}
 	variant, err := selectVariant(payload)
@@ -207,12 +204,12 @@ func checkReceipt(o *out, env obj, policy adapter.TrustPolicy) {
 		if _, ok := err.(errUnsupportedReceipt); ok {
 			st = adapter.NotChecked
 		}
-		o.native(RowReceiptSignature, st, methodReceiptGeneric, err.Error())
+		o.native(RowReceiptSignature, st, MethodReceiptSignature, err.Error())
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established")
-		o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", err.Error())
+		o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, err.Error())
 		return
 	}
-	method := "x402 offer-receipt " + variant.label + ", EIP-712"
+	vx := map[string]string{"variant": variant.label}
 	signer, err := func() (address, error) {
 		h, err := receiptStructHash(payload, variant)
 		if err != nil {
@@ -225,17 +222,17 @@ func checkReceipt(o *out, env obj, policy adapter.TrustPolicy) {
 		return recoverAddress(typedDataDigest(receiptDomain(variant.domainVersion), h), sig)
 	}()
 	if err != nil {
-		o.native(RowReceiptSignature, adapter.Fail, method, err.Error())
-		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established")
+		o.nativeX(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, err.Error(), vx)
+		o.nativeX(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established", vx)
 	} else {
-		o.native(RowReceiptSignature, adapter.Pass, method, "signer recovered: "+signer.String())
-		checkReceiptSigner(o, signer, policy)
+		o.nativeX(RowReceiptSignature, adapter.Pass, MethodReceiptSignature, "signer recovered: "+signer.String(), vx)
+		checkReceiptSigner(o, signer, policy, vx)
 	}
-	checkDeliveryBinding(o, payload, variant)
+	checkDeliveryBinding(o, payload, variant, vx)
 }
 
-func checkReceiptSigner(o *out, signer address, policy adapter.TrustPolicy) {
-	set := func(st adapter.Status, d string) { o.native(RowReceiptSignerAuthorized, st, MethodReceiptAuth, d) }
+func checkReceiptSigner(o *out, signer address, policy adapter.TrustPolicy, vx map[string]string) {
+	set := func(st adapter.Status, d string) { o.nativeX(RowReceiptSignerAuthorized, st, MethodReceiptAuth, d, vx) }
 	switch {
 	case policy.Pin(PinReceiptSignerAuthorized) == "excluded":
 		set(adapter.NotChecked, "excluded by policy")
@@ -251,25 +248,23 @@ func checkReceiptSigner(o *out, signer address, policy adapter.TrustPolicy) {
 // checkDeliveryBinding reports delivery_binding. The adapter holds no
 // response body in v0, so a v2 receipt with a hash is NOT_PRESENT (body
 // octets not held).
-func checkDeliveryBinding(o *out, payload obj, v receiptVariant) {
+func checkDeliveryBinding(o *out, payload obj, v receiptVariant, vx map[string]string) {
+	set := func(st adapter.Status, d string) { o.nativeX(RowDeliveryBinding, st, MethodDeliveryBinding, d, vx) }
 	switch v.label {
 	case receiptV1.label:
-		o.native(RowDeliveryBinding, adapter.NotChecked, "delivery binding", "version 1 receipt: no content hash")
-		return
+		set(adapter.NotChecked, "version 1 receipt: no content hash")
 	case receiptV23186.label:
 		enc, _ := payload.str("responseHashEncoding")
-		method := fmt.Sprintf("#3186 responseHash (%s), SHA-256", enc)
 		if h, _ := payload.str("responseHash"); h == "" {
-			o.native(RowDeliveryBinding, adapter.NotPresent, method, "no hash in the receipt")
+			set(adapter.NotPresent, "no hash in the receipt")
 			return
 		}
-		o.native(RowDeliveryBinding, adapter.NotPresent, method, "the response body octets are not held")
+		set(adapter.NotPresent, "responseHash ("+enc+") present; the response body octets are not held")
 	case receiptV23140.label:
-		method := "#3140 contentHash (decoded entity body), SHA-256"
 		if h, _ := payload.str("contentHash"); h == "" {
-			o.native(RowDeliveryBinding, adapter.NotPresent, method, "no hash in the receipt")
+			set(adapter.NotPresent, "no hash in the receipt")
 			return
 		}
-		o.native(RowDeliveryBinding, adapter.NotPresent, method, "the response body octets are not held")
+		set(adapter.NotPresent, "contentHash (decoded entity body) present; the response body octets are not held")
 	}
 }

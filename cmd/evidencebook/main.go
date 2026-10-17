@@ -2,7 +2,7 @@
 
 // Command evidencebook runs evidencebook's foreign-evidence adapters.
 //
-//	evidencebook adapt <adapter> [-policy trust-policy.json] <file | ->
+//	evidencebook adapt <adapter> [-policy trust-policy.json] [-explain] <file | ->
 //	evidencebook adapt <adapter> -declare
 //
 // adapt checks the foreign objects in <file> ("-" reads standard input) under the adapter's native
@@ -33,7 +33,7 @@ var adapters = map[string]adapter.Adapter{
 }
 
 const usage = `usage:
-  evidencebook adapt <adapter> [-policy trust-policy.json] <file | ->
+  evidencebook adapt <adapter> [-policy trust-policy.json] [-explain] <file | ->
   evidencebook adapt <adapter> -declare
 adapters: x402`
 
@@ -55,6 +55,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	policyPath := fs.String("policy", "", "trust policy JSON file (pins, keys, clock)")
 	declare := fs.Bool("declare", false, "print the adapter's FR-19 declaration")
+	explain := fs.Bool("explain", false, "add each report's human-readable explanation (not part of the report shape)")
 	if err := fs.Parse(args[2:]); err != nil {
 		return 2
 	}
@@ -96,10 +97,29 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	results := a.Check(raw, policy)
+	var props any = results
+	if *explain {
+		var ex []json.RawMessage
+		for _, r := range results {
+			b, err := json.Marshal(r)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 2
+			}
+			if r.DetailFields != nil && r.Detail != "" {
+				var m map[string]any
+				_ = json.Unmarshal(b, &m)
+				m["explanation"] = r.Detail
+				b, _ = json.Marshal(m)
+			}
+			ex = append(ex, b)
+		}
+		props = ex
+	}
 	out := struct {
-		Adapter    string                   `json:"adapter"`
-		Properties []adapter.PropertyResult `json:"properties"`
-	}{a.Name(), results}
+		Adapter    string `json:"adapter"`
+		Properties any    `json:"properties"`
+	}{a.Name(), props}
 	if err := enc.Encode(out); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

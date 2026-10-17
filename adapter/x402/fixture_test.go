@@ -309,25 +309,36 @@ func eoaPolicy() adapter.TrustPolicy {
 	return p
 }
 
-// recordedLookup is a constructed (not recorded) transaction lookup that
-// matches the fixture.
-func (f *fixture) recordedLookup() TxLookup {
-	return TxLookup{
-		Source: "constructed fixture (not a recorded lookup)", Network: fxNetwork, Transaction: f.Tx,
-		Status: "success", Final: true, BlockTimestamp: fmt.Sprint(fxNow.Unix()),
-		Logs: []TxLog{
-			{Address: fxAsset, Event: "Transfer", From: f.From, To: f.To, Value: f.Value},
-			{Address: fxAsset, Event: "AuthorizationUsed", Authorizer: f.From, Nonce: f.Nonce},
+// recordedLookup is a constructed (not recorded) chain observation that
+// matches the fixture, in the node's result shapes.
+func (f *fixture) recordedLookup() Lookup {
+	word := func(a string) string {
+		b, _ := parseAddress(a)
+		return hex0x(wordAddress(b))
+	}
+	value, _ := parseUint256(f.Value)
+	eoa := "0x"
+	return Lookup{
+		Provenance: "constructed, not recorded",
+		Source:     "constructed fixture (not a recorded lookup)", Network: fxNetwork,
+		TransactionReceipt: &RPCReceipt{
+			TransactionHash: f.Tx, BlockNumber: "0x1e84800", Status: "0x1",
+			Logs: []RPCLog{
+				{Address: fxAsset, Topics: []string{hex0x(topicAuthorizationUsed), word(f.From), f.Nonce}, Data: "0x"},
+				{Address: fxAsset, Topics: []string{hex0x(topicTransfer), word(f.From), word(f.To)}, Data: hex0x(wordUint(value))},
+			},
 		},
+		Block:       &RPCBlock{Number: "0x1e84800", Timestamp: fmt.Sprintf("0x%x", fxNow.Unix())},
+		CodeAtPayer: &eoa,
 	}
 }
 
-func withLookup(p adapter.TrustPolicy, l TxLookup) adapter.TrustPolicy {
+func withLookup(p adapter.TrustPolicy, l Lookup) adapter.TrustPolicy {
 	b, err := json.Marshal(l)
 	if err != nil {
 		panic(err)
 	}
-	p.Recorded = map[string]json.RawMessage{RecordedTxLookup: b}
+	p.Recorded = map[string]json.RawMessage{RecordedLookup: b}
 	return p
 }
 

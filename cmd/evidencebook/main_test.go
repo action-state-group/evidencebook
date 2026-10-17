@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/action-state-group/evidencebook/adapter"
 )
 
 type output struct {
-	Adapter    string `json:"adapter"`
-	Properties []struct {
-		Property, Status, Method, Detail string
-	} `json:"properties"`
+	Adapter    string                   `json:"adapter"`
+	Properties []adapter.PropertyResult `json:"properties"`
 }
 
 func TestAdaptX402(t *testing.T) {
@@ -29,12 +29,12 @@ func TestAdaptX402(t *testing.T) {
 		props int
 		fail  string
 	}{
-		{"exchange-positive.http", 0, 12, ""},
-		{"exchange-signature-bit-flip.http", 1, 12, "native_check"},
-		{"leg-payer-observed.json", 0, 17, ""},
-		{"leg-payer-observed-signature-bit-flip.json", 1, 17, "native_check"},
-		{"payment-payload.json", 0, 12, ""},
-		{"payment-payload-signature-bit-flip.json", 1, 12, "native_check"},
+		{"exchange-positive.http", 0, 13, ""},
+		{"exchange-signature-bit-flip.http", 1, 13, "native_check"},
+		{"leg-payer-observed.json", 0, 18, ""},
+		{"leg-payer-observed-signature-bit-flip.json", 1, 18, "native_check"},
+		{"payment-payload.json", 0, 13, ""},
+		{"payment-payload-signature-bit-flip.json", 1, 13, "native_check"},
 	}
 	for _, c := range cases {
 		for _, viaStdin := range []bool{false, true} {
@@ -60,8 +60,8 @@ func TestAdaptX402(t *testing.T) {
 			for _, p := range got.Properties {
 				if p.Status == "FAIL" {
 					fails = append(fails, p.Property)
-					if !strings.HasPrefix(p.Detail, "payer_signature: ") {
-						t.Errorf("%s: FAIL detail %q", c.file, p.Detail)
+					if p.DetailFields["check"] != "payer_signature" || p.DetailFields["object"] != "x402.payment-payload" {
+						t.Errorf("%s: FAIL detail %v", c.file, p.DetailFields)
 					}
 				}
 			}
@@ -74,6 +74,10 @@ func TestAdaptX402(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := run([]string{"adapt", "x402", "-policy", filepath.Join(td, "trust-policy.json"), filepath.Join(td, "leg-payer-observed-signature-bit-flip.json")}, nil, &out, &errOut); code != 0 {
 		t.Errorf("default policy, signature flip: exit %d, want 0 (INCONCLUSIVE)", code)
+	}
+	out.Reset()
+	if code := run([]string{"adapt", "x402", "-explain", "-policy", policy, filepath.Join(td, "payment-payload-signature-bit-flip.json")}, nil, &out, &errOut); code != 1 || !strings.Contains(out.String(), `"explanation": "recovers to`) {
+		t.Errorf("-explain: exit %d\n%s", code, out.String())
 	}
 	out.Reset()
 	if code := run([]string{"adapt", "x402", "-declare"}, nil, &out, &errOut); code != 0 || !json.Valid(out.Bytes()) {

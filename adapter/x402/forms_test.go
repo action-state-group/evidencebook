@@ -12,7 +12,7 @@ import (
 
 var legKeys = []string{
 	PropWrappedContent + "/" + wrappedPaymentPayload,
-	RowPayloadForm, RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms,
+	RowPayloadForm, RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms, RowAuthorizationWindow,
 	PropWrappedContent + "/" + wrappedSettleResponse,
 	RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
 	PropWrappedContent + "/" + wrappedReceipt,
@@ -54,7 +54,7 @@ func TestBarePayload(t *testing.T) {
 	st := statuses(Adapter{}.Check(newFixture().payloadJSON(), fixturePolicy()))
 	for _, row := range tableRows {
 		w := positiveStatuses[row]
-		if row == RowSettleResponseForm || row == RowSettleResponseJoin || row == RowSettlementOnchain ||
+		if row == RowAuthorizationWindow || row == RowSettleResponseForm || row == RowSettleResponseJoin || row == RowSettlementOnchain ||
 			row == RowReceiptSignature || row == RowReceiptSignerAuthorized || row == RowDeliveryBinding {
 			w = adapter.NotPresent
 		}
@@ -106,7 +106,8 @@ func TestLegMutations(t *testing.T) {
 	wcPay, wcResp, wcRcpt := PropWrappedContent+"/"+wrappedPaymentPayload, PropWrappedContent+"/"+wrappedSettleResponse, PropWrappedContent+"/"+wrappedReceipt
 	payloadAbsent := map[string]adapter.Status{RowPayloadForm: adapter.NotPresent, RowPayerSignature: adapter.NotPresent,
 		RowPayerTrust: adapter.NotPresent, RowAssetTrust: adapter.NotPresent, RowAuthorizationTerms: adapter.NotPresent,
-		RowSettleResponseJoin: adapter.NotPresent, PropLegAmount: adapter.NotChecked, PropLegNetwork: adapter.NotChecked}
+		RowSettleResponseJoin: adapter.NotPresent, RowAuthorizationWindow: adapter.NotPresent,
+		PropLegAmount: adapter.NotChecked, PropLegNetwork: adapter.NotChecked}
 	with := func(m map[string]adapter.Status, k string, v adapter.Status) map[string]adapter.Status {
 		out := map[string]adapter.Status{k: v}
 		for a, b := range m {
@@ -136,7 +137,7 @@ func TestLegMutations(t *testing.T) {
 		{"padded content", func(s map[string]any) { entry(s, 0)["content"] = entry(s, 0)["content"].(string) + "=" }, with(payloadAbsent, wcPay, adapter.Fail)},
 		{"no response wrapped", func(s map[string]any) { s["wrapped"] = []any{entry(s, 0), entry(s, 2)} },
 			map[string]adapter.Status{wcResp: adapter.NotPresent, RowSettleResponseForm: adapter.NotPresent,
-				RowSettleResponseJoin: adapter.NotPresent, RowSettlementOnchain: adapter.NotPresent}},
+				RowSettleResponseJoin: adapter.NotPresent, RowSettlementOnchain: adapter.NotPresent, RowAuthorizationWindow: adapter.NotPresent}},
 		{"no receipt wrapped", func(s map[string]any) { s["wrapped"] = s["wrapped"].([]any)[:2] },
 			map[string]adapter.Status{wcRcpt: adapter.NotPresent}}, // the receipt in the response is used
 	}
