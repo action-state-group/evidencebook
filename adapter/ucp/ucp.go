@@ -41,9 +41,15 @@ func (Adapter) Name() string { return "ucp" }
 //     (§4(d) body only; §5);
 //   - other JSON (or input that is neither JSON nor a request): a checkout
 //     (§3, or §5 when AP2 was not negotiated);
-//   - an HTTP/1.x request message: an Order Event Webhook held whole (§4).
+//   - an HTTP/1.x request message: an Order Event Webhook held whole (§4);
+//   - an HTTP/1.x response message: an operation response held whole. Its
+//     body is read as above, and ucp.response_signature (RFC 9421) is
+//     reported after the body's checks, outside them.
 func (Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
 	trimmed := bytes.TrimLeft(raw, " \t\r\n")
+	if looksLikeResponse(trimmed) {
+		return checkResponse(trimmed, policy)
+	}
 	if looksLikeRequest(trimmed) {
 		return asReports(CheckOrder, checkWebhook(trimmed, policy))
 	}
@@ -107,6 +113,15 @@ func (Adapter) NativeObject() adapter.NativeObject {
 				Method:           methodNoSignature,
 				NativelySigned:   false,
 			},
+			{
+				Name:             "operation response held whole (signed with RFC 9421)",
+				Format:           "an HTTP/1.1 response as received: status line, field lines (Content-Type, Content-Digest, Signature-Input, Signature), empty line, the checkout or order JSON body",
+				Octets:           "the raw response; the body octets unchanged",
+				Issuer:           "the holder of the business's HTTP signing key",
+				IssuerResolution: "keyid is looked up in the retained keys[] (trust policy " + PinKeys + "). The signature is message-level provenance for one response, not the issuer's signature over the object: the body's object keeps its own checks, and a checkout without AP2 or an order stays NOT_PRESENT",
+				Method:           "UCP Message Signatures §REST Response Verification (verify_rest_response): RFC 9421 over @status and, with a body, content-digest and content-type; RFC 9530 Content-Digest",
+				NativelySigned:   false,
+			},
 		},
 		Predicate: "AP2 checkout, native_check PASS: the holder possesses a UCP checkout object, and every member of it except ap2 was signed, in that exact JSON content, by the key with identifier kid in the business key set the verifier used; that key set was the one served at <business-origin>/.well-known/ucp, as of the time it was retained. When status is completed and order is present, this covers the business's signed statement of the order's id and permalink_url for that checkout, and nothing else about the order. " +
 			"Webhook held whole, native_check PASS: the holder possesses an HTTP request whose body is this order snapshot, signed with the covered components listed in its Signature-Input by the key keyid in the key set used for the business profile named in its UCP-Agent. " +
@@ -135,6 +150,7 @@ func (Adapter) NativeObject() adapter.NativeObject {
 			{Name: CheckCheckout, Object: "ucp.checkout", Method: methodNoSignature, Supports: "reported only for a checkout without AP2, which has no native signature (§5): NOT_PRESENT. A checkout with AP2 has no single report; its native check passes when each ucp.checkout.schema and ucp.merchant_authorization.* report is PASS"},
 			{Name: CheckOrder, Object: "ucp.order", Method: methodNoSignature, Supports: "reported only for an order body held without its request (§4(d), §5): NOT_PRESENT. A webhook held whole has no single report; its native check passes when each ucp.order.schema and ucp.webhook.* report is PASS"},
 			{Name: PropBusinessTrust, Object: "each object", Method: "relying party policy <" + adapter.PinPolicyID + ">", Supports: "the relying party's policy accepts the business origin (PASS), rejects it (FAIL), does not list it or cannot decide (INCONCLUSIVE), or was not supplied (NOT_CHECKED); reported beside the native checks, never inside them"},
+			{Name: PropResponseSignature, Object: "operation response", Method: "RFC 9421 <alg> over <covered components>", Supports: "the holder of the business's HTTP signing key (a key in the retained keys[]) sent these response bytes: message-level provenance. Reported as its own property, beside the object's checks and outside them; it never makes the object's native_check PASS. FAIL on a digest mismatch, an uncovered required component (@status; content-digest and content-type with a body), a keyid not in keys[], or a bad signature; NOT_PRESENT when the response carried no signature or covered components were not kept; NOT_CHECKED without a retained key set"},
 		},
 	}
 }

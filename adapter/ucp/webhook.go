@@ -46,11 +46,16 @@ func methodWebhookSignature(alg string) string {
 	return "RFC 9421 " + alg + " over signature base"
 }
 
-var requestLine = regexp.MustCompile(`^([A-Z]+) (\S+) HTTP/\d(?:\.\d)?$`)
+var (
+	requestLine = regexp.MustCompile(`^([A-Z]+) (\S+) HTTP/\d(?:\.\d)?$`)
+	statusLine  = regexp.MustCompile(`^HTTP/\d(?:\.\d)? (\d{3})(?: .*)?$`)
+)
 
-// httpRequest is a request as received: request line, field lines, body.
+// httpRequest is an HTTP/1.x message as received: a request (method,
+// target) or a response (status), field lines, body.
 type httpRequest struct {
 	method, target string
+	status         string              // set for a response
 	fields         map[string][]string // lowercase name -> field line values, in order
 	body           []byte
 }
@@ -74,8 +79,15 @@ func looksLikeRequest(raw []byte) bool {
 	return requestLine.Match(bytes.TrimSuffix(line, []byte("\r")))
 }
 
-// parseRequest reads an HTTP/1.1 request message. Lines end in CRLF or LF;
-// the body is every octet after the empty line, unchanged.
+// looksLikeResponse reports whether raw starts with an HTTP/1.x status line.
+func looksLikeResponse(raw []byte) bool {
+	line, _, _ := bytes.Cut(raw, []byte("\n"))
+	return statusLine.Match(bytes.TrimSuffix(line, []byte("\r")))
+}
+
+// parseRequest reads an HTTP/1.1 request message, or a response message
+// when it starts with a status line. Lines end in CRLF or LF; the body is
+// every octet after the empty line, unchanged.
 func parseRequest(raw []byte) (*httpRequest, error) {
 	h := &httpRequest{fields: map[string][]string{}}
 	rest := raw
@@ -88,9 +100,14 @@ func parseRequest(raw []byte) (*httpRequest, error) {
 		rest = after
 		l := string(bytes.TrimSuffix(line, []byte("\r")))
 		if first {
+			if m := statusLine.FindStringSubmatch(l); m != nil {
+				h.status = m[1]
+				first = false
+				continue
+			}
 			m := requestLine.FindStringSubmatch(l)
 			if m == nil {
-				return nil, errors.New("no HTTP/1.x request line")
+				return nil, errors.New("no HTTP/1.x request or status line")
 			}
 			h.method, h.target = m[1], m[2]
 			first = false
@@ -130,6 +147,18 @@ func (h *httpRequest) componentValue(c sfItem) (string, error) {
 	name, _ := c.val.(string)
 	if len(c.params) > 0 {
 		return "", fmt.Errorf("component %q has parameters, which this verifier does not support", name)
+	}
+	if h.status != "" {
+		// A response: @status, and fields (RFC 9421 §2.2.9).
+		switch {
+		case name == "@status":
+			return h.status, nil
+		case strings.HasPrefix(name, "@"):
+			return "", fmt.Errorf("derived component %q is not supported on a response", name)
+		case name != strings.ToLower(name) || !h.has(name):
+			return "", errNotHeld
+		}
+		return h.value(name), nil
 	}
 	path, query, hasQuery, err := h.pathQuery()
 	if err != nil {

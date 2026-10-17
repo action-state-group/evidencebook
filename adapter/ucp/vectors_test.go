@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,12 +21,13 @@ import (
 // The agent-action-capsule vectors for this adapter, vectors/adapters/ucp/,
 // copied byte for byte into testdata/aac-vectors/.
 //
-// PINNED TO AN UNMERGED HEAD: 9e65d793 is em-spec's branch head, not a merge
-// commit. Re-pin to the merge SHA when the vectors merge: copy the directory
-// from the merge commit, then update aacUCPCommit and aacUCPSumsSHA256.
+// PINNED TO AN UNMERGED HEAD: cff71823 is em-spec's branch head (vectors as
+// of 89a3f47f, detail as {check, object}), not a merge commit. Re-pin to the
+// merge SHA when the vectors merge: copy the directory from the merge
+// commit, then update aacUCPCommit and aacUCPSumsSHA256.
 const (
-	aacUCPCommit     = "9e65d7930fb85a30e6c206be35f0b287ed1657e6" // re-pin to the merge SHA
-	aacUCPSumsSHA256 = "d55ee23bfbaea618be73851fd28d51d9efc6096ed1a4b852353eb8a42ba11a9b"
+	aacUCPCommit     = "cff71823f4bffc44d798cfb70936b6116045677d" // re-pin to the merge SHA
+	aacUCPSumsSHA256 = "43814c37195905953e2aec64d20877ec75264459024095bb162e76503dbc5fca"
 )
 
 type aacCase struct {
@@ -119,18 +121,9 @@ func TestAACVectors(t *testing.T) {
 			}
 			for i, w := range want {
 				g := got[i]
-				// Detail shape: the vectors at 9e65d793 (and ucp-v0.md at
-				// 39bf254a, §3(e)) write detail as the text "<name>". This
-				// adapter writes {"check": <name>, "object": "ucp.checkout"}
-				// (adapter.NativeCheckReport), the shape the other adapter
-				// declarations use. The check name is compared; the shape
-				// difference is reported upstream, not hidden: if the
-				// vectors move to the object form, this assertion changes.
-				if w.DetailFields != nil {
-					t.Errorf("report %d: vector detail is now an object %v; compare it whole", i, w.DetailFields)
-				}
-				if g.Property != w.Property || adapter.CheckName(g) != w.Detail || g.Status != w.Status || g.DetailFields["object"] != CheckCheckout {
-					t.Errorf("report %d: got %s %v %s, want %s %s %s", i, g.Property, g.DetailFields, g.Status, w.Property, w.Detail, w.Status)
+				// The whole detail object is compared: {"check", "object"}.
+				if g.Property != w.Property || g.Status != w.Status || w.Detail != "" || !maps.Equal(g.DetailFields, w.DetailFields) {
+					t.Errorf("report %d: got %s %v %s, want %s %v %s", i, g.Property, g.DetailFields, g.Status, w.Property, w.DetailFields, w.Status)
 				}
 				if g.Method != w.Method {
 					t.Errorf("%s: method %q, want %q", w.Detail, g.Method, w.Method)

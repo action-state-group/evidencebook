@@ -33,6 +33,10 @@
     `native_check` `NOT_PRESENT`: they prove possession only.
   - Objects are validated against UCP's JSON schemas, which are copied
     unchanged and pinned by SHA-256.
+  - An operation response held whole adds `ucp.response_signature`. This
+    is the RFC 9421 signature on the response, reported as its own
+    property and outside the object's checks. An order, or a checkout
+    without AP2, stays `NOT_PRESENT` whatever that signature says.
   - `evidencebook adapt ucp`.
 - New dependency: `github.com/santhosh-tekuri/jsonschema/v6` v6.0.3 (JSON Schema
   2020-12, ACP and UCP schema validation), which brings in `golang.org/x/text`.

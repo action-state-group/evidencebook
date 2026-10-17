@@ -523,7 +523,7 @@ func TestDeclarationCoversResults(t *testing.T) {
 			if r.Method == "" {
 				t.Errorf("%s: %s has no method", name, n)
 			}
-			if (r.Property == adapter.NativeCheck) == (n == PropBusinessTrust) {
+			if ownProperty := n == PropBusinessTrust || n == PropResponseSignature; (r.Property == adapter.NativeCheck) == ownProperty {
 				t.Errorf("%s: %s reported as property %s", name, n, r.Property)
 			}
 			last = max(last, i)

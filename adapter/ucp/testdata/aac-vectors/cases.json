@@ -20,37 +20,55 @@
             "property": "native_check",
             "status": "PASS",
             "method": "ucp-schema validate --response --op complete, UCP v2026-08-25",
-            "detail": "ucp.checkout.schema"
+            "detail": {
+              "check": "ucp.checkout.schema",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "UCP AP2 Mandates §Business Authorization",
-            "detail": "ucp.merchant_authorization.present"
+            "detail": {
+              "check": "ucp.merchant_authorization.present",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "RFC 7515 Appendix F detached JWS",
-            "detail": "ucp.merchant_authorization.form"
+            "detail": {
+              "check": "ucp.merchant_authorization.form",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "AP2 v0.2 algorithm rule",
-            "detail": "ucp.merchant_authorization.alg"
+            "detail": {
+              "check": "ucp.merchant_authorization.alg",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "retained keys[] (key-set.json)",
-            "detail": "ucp.merchant_authorization.key"
+            "detail": {
+              "check": "ucp.merchant_authorization.key",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "ES256 over JWS signing input of JCS(checkout − ap2)",
-            "detail": "ucp.merchant_authorization.signature"
+            "detail": {
+              "check": "ucp.merchant_authorization.signature",
+              "object": "ucp.checkout"
+            }
           }
         ],
         "business_trust": "NOT_CHECKED"
@@ -78,37 +96,55 @@
             "property": "native_check",
             "status": "PASS",
             "method": "ucp-schema validate --response --op complete, UCP v2026-08-25",
-            "detail": "ucp.checkout.schema"
+            "detail": {
+              "check": "ucp.checkout.schema",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "UCP AP2 Mandates §Business Authorization",
-            "detail": "ucp.merchant_authorization.present"
+            "detail": {
+              "check": "ucp.merchant_authorization.present",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "RFC 7515 Appendix F detached JWS",
-            "detail": "ucp.merchant_authorization.form"
+            "detail": {
+              "check": "ucp.merchant_authorization.form",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "AP2 v0.2 algorithm rule",
-            "detail": "ucp.merchant_authorization.alg"
+            "detail": {
+              "check": "ucp.merchant_authorization.alg",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "PASS",
             "method": "retained keys[] (key-set.json)",
-            "detail": "ucp.merchant_authorization.key"
+            "detail": {
+              "check": "ucp.merchant_authorization.key",
+              "object": "ucp.checkout"
+            }
           },
           {
             "property": "native_check",
             "status": "FAIL",
             "method": "ES256 over JWS signing input of JCS(checkout − ap2)",
-            "detail": "ucp.merchant_authorization.signature"
+            "detail": {
+              "check": "ucp.merchant_authorization.signature",
+              "object": "ucp.checkout"
+            }
           }
         ],
         "business_trust": "NOT_CHECKED",
