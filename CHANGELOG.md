@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added: the personal-evidence part of the third-party verifier guide
+
+`docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure
+that the third-party verifier test also requires: a History at the Basic level
+of the Personal-Agent History Profile v0, with the conformance vectors
+published at agent-action-capsule `0b7b1825` (`vectors/personal-history-basic-v0/`,
+12 cases). It says how to reproduce the vectors' responder run, the result
+specified for each case, and how to report the History apart from the
+service-evidence response.
+
+- `test/interop/personal-history` is the corpus's `producer/main.go`,
+  unchanged. Its test checks that it writes the corpus's `responder-run.json`
+  byte for byte (`run_sha256` `f7d77d56…`), and that every value the guide
+  quotes is the corpus's (`testdata/vectors.json`, pinned by digest).
+- CI: a `personal-history` job reproduces the run, rebuilds the corpus from it
+  with the corpus generator, and runs the corpus test, with counts per case
+  class. The `interop-profile` job moves to the same agent-action-capsule
+  commit, at which `vectors/interop-profile-v0/` is unchanged.
+- The service-evidence part (§1 to §5) moves to the same agent-action-capsule
+  commit, so the guide pins one commit. Its results follow the 53-case vectors
+  that CI runs. The positive class's row `envelope-7` is `UNKNOWN`, `UNKNOWN`,
+  `not_evaluable`, where the earlier vectors gave `null`. The four
+  signed-absence cases are routed under missing evidence. A test pins every
+  case and result the §5 table quotes against those vectors
+  (`test/interop/answer/testdata/`, pinned by digest).
+
 ### Added: the Rust `evidencebook` crate
 
 The Rust implementation moved here from checkpointed-local-log with its

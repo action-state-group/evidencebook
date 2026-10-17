@@ -122,12 +122,13 @@ jobs:
           path: evidencebook
       # The profile's reference verifier (AAC #238) and its conformance
       # vectors (AAC #237, regenerated in #263), pinned to an AAC main commit
-      # that carries both.
+      # that carries both: the one that added the personal-history vectors
+      # (#296). vectors/interop-profile-v0/ there is unchanged since #263.
       - name: Check out the profile's reference verifier and vectors
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: dfc47036e9fa3a1f11d918052d2fa4377ed3ec2d
+          ref: 0b7b1825965e7f7845cbc70a490a581cbc70bd37
           path: agent-action-capsule
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -152,6 +153,65 @@ jobs:
           # carriage differs, so the canonical Artifact is byte-identical.
           cmp "$interop_dir/artifact-native-cbor.bin" "$interop_dir/artifact-mcp-cbor.bin"
           cmp "$interop_dir/artifact-native-cbor.bin" "$interop_dir/artifact-a2a-cbor.bin"
+
+  personal-history:
+    name: Personal-agent History vectors (reproduce the responder run, then the AAC corpus test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out evidencebook
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: evidencebook
+      # vectors/personal-history-basic-v0/ (AAC #296): built from a run of
+      # this repository's Respond by test/interop/personal-history, with the
+      # profile's reference verifier and the corpus test beside it.
+      - name: Check out the History vectors and their test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: 0b7b1825965e7f7845cbc70a490a581cbc70bd37
+          path: agent-action-capsule
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: evidencebook/go.mod
+          cache-dependency-path: evidencebook/go.sum
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install the test's dependencies
+        run: python -m pip install "cryptography>=42" pytest
+      - name: Reproduce the responder run byte for byte, and rebuild the corpus from it
+        shell: bash
+        run: |
+          corpus=agent-action-capsule/vectors/personal-history-basic-v0
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          cmp "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go
+          go -C evidencebook run ./test/interop/personal-history > "$work/responder-run.json"
+          want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
+          got=$(sha256sum "$work/responder-run.json" | cut -d' ' -f1)
+          echo "run_sha256: want $want, got $got"
+          test "$got" = "$want"
+          cmp "$corpus/responder-run.json" "$work/responder-run.json"
+          # The generator over this run must write the committed corpus.
+          mkdir -p "$work/out/producer"
+          cp "$corpus/README.md" "$work/out/"
+          cp "$corpus/producer/main.go" "$work/out/producer/"
+          python agent-action-capsule/python/scripts/generate_personal_history_basic_v0_vectors.py --out "$work/out" --run "$work/responder-run.json"
+          diff -r "$corpus" "$work/out"
+      - name: Run the corpus test (the reference verifier, then a History evaluator of its own)
+        shell: bash
+        env:
+          PYTHONPATH: agent-action-capsule/python
+        run: |
+          junit=$(mktemp)
+          python -m pytest -p no:cacheprovider -rA --junitxml="$junit" \
+            agent-action-capsule/python/tests/test_personal_history_basic_v0_vectors.py
+          python evidencebook/test/interop/python-personal/count_by_class.py "$junit" \
+            agent-action-capsule/vectors/personal-history-basic-v0/vectors.json
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
