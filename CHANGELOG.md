@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added: foreign-evidence adapters, starting with x402
+
+- `adapter`: one interface for every adapter: `Name`, `NativeObject` (the
+  declaration of native object and format, issuer resolution, verification
+  method, supported predicate and reported properties, as data) and
+  `Check(raw, TrustPolicy)`, which reports each property as `PASS`, `FAIL`,
+  `NOT_PRESENT`, `NOT_CHECKED` or `INCONCLUSIVE` with its method.
+  `Evaluate` maps a native failure to a requirement's sufficiency and verdict
+  by whether the requirement is the check or is only supported by it.
+- `adapter/x402`: x402 v2 (v1 headers read), scheme `exact` on EVM, EIP-3009.
+  EIP-712 signature recovery of the payer authorization over the members as
+  transmitted, under a chain, token and token domain pinned by the trust
+  policy; validity window against the policy's clock; structure check of the
+  unsigned settlement response; settlement `NOT_CHECKED` (no network calls);
+  EIP-712 check of an optional payee receipt (versions 1 and 2).
+- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file>` prints
+  the results as JSON and exits 1 on any `FAIL`.
+- New dependencies: `golang.org/x/crypto` (Keccak-256) and
+  `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
+
 ### Added: the personal-evidence part of the third-party verifier guide
 
 `docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure

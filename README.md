@@ -86,6 +86,20 @@ personal-evidence part reproduces the run the Personal-Agent History vectors
 were cut from (`go run ./test/interop/personal-history`) and gives the result
 specified for each of their cases.
 
+## Checking foreign evidence
+
+Adapters check objects produced by other protocols under each protocol's own
+verification method and report every property with the method used. The first
+is x402 (the payer's signed transfer authorization, the settlement response,
+and an optional payee receipt):
+
+```bash
+go run ./cmd/evidencebook adapt x402 -policy trust-policy.json exchange.http
+```
+
+See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the interface, what each adapter
+checks and does not check, and how a failed check maps to a requirement.
+
 ## Development
 
 ```bash
