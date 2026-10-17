@@ -10,7 +10,7 @@
 // calls. Exit status: 0 when no property is FAIL, 1 when any is, 2 on a usage
 // or input error. -declare prints the adapter's FR-19 declaration instead.
 //
-// Adapters: acp, x402.
+// Adapters: acp, ucp, x402.
 //
 // x402: <file> is detected as one of: a settlement-records leg
 // (JSON Capsule whose settlement.wrapped[] carries x402.payment-payload
@@ -23,6 +23,12 @@
 // order, delegate payment response or order event, as a JSON body, an MCP
 // JSON-RPC response, or an HTTP message (header fields, empty line, body).
 // ACP defines no issuer signature, so its native_check is never PASS.
+//
+// ucp: <file> is a UCP checkout (JSON; natively checked when it
+// carries ap2.merchant_authorization), an order body (JSON with
+// checkout_id; possession only), or an Order Event Webhook request held
+// whole (HTTP/1.1 request line, fields, body), as received. Keys come from
+// the trust policy, never from the network.
 package main
 
 import (
@@ -34,18 +40,20 @@ import (
 
 	"github.com/action-state-group/evidencebook/adapter"
 	"github.com/action-state-group/evidencebook/adapter/acp"
+	"github.com/action-state-group/evidencebook/adapter/ucp"
 	"github.com/action-state-group/evidencebook/adapter/x402"
 )
 
 var adapters = map[string]adapter.Adapter{
 	x402.Adapter{}.Name(): x402.Adapter{},
 	acp.Adapter{}.Name():  acp.Adapter{},
+	ucp.Adapter{}.Name():  ucp.Adapter{},
 }
 
 const usage = `usage:
   evidencebook adapt <adapter> [-policy trust-policy.json] [-explain] <file | ->
   evidencebook adapt <adapter> -declare
-adapters: acp, x402`
+adapters: acp, ucp, x402`
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
