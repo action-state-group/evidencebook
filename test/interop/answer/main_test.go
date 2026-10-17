@@ -162,7 +162,8 @@ func TestGuideQuotesThisBook(t *testing.T) {
 		t.Fatal(err)
 	}
 	book := readInfo(t)
-	quoted := []string{book.ResponderKey}
+	// §6.4 names the responder key by its first eight digits.
+	quoted := []string{book.ResponderKey, "the responder key `" + book.ResponderKey[:8] + "…`"}
 	for _, cp := range book.Checkpoints {
 		quoted = append(quoted, cp.Pin, cp.LogKey.Kid, "`"+cp.LogKey.Iss+"`", "`"+cp.LogKey.Sub+"`")
 	}

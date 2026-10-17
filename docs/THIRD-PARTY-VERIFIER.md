@@ -17,8 +17,10 @@ version.
 
 §8 also asks for one personal-evidence disclosure to be processed alongside a
 service-evidence response, each keeping its own units and source assertions.
-This page does not cover that part. The responder here serves service evidence
-only.
+Sections 1 to 5 cover the service-evidence response. Section 6 covers the
+personal-evidence disclosure: a holder's History at the Basic level of the
+Personal-Agent History Profile, with its own conformance vectors, which this
+repository's `Respond` produced. Section 6.4 says how to keep the two apart.
 
 The commands below are for a Unix shell (bash or zsh) on Linux or macOS, with
 `git` and `curl` installed.
@@ -257,14 +259,180 @@ The Artifact this responder returns is an Agent Action Capsule record, in
 JSON. You do not need to interpret it. Every property above treats it as
 octets.
 
-## 6. What to report back
+## 6. Personal evidence: a holder's History
+
+The personal-evidence part uses the Personal-Agent History Profile v0
+(`personal_history_basic/1`, its Basic level), an informational host profile
+written against the interop profile of §1. In it, the subject is a holder's
+signing key, and the unit is a deal the holder selected for one recipient. A
+History is a recipient-specific disclosure: one request and one envelope per
+selected deal, all under a definition document that names the recipient and the
+selection. The request's `derivation` is the SHA-256 of that document.
+
+### 6.1 The inputs
+
+They come from the same public repository, at commit
+`0b7b1825965e7f7845cbc70a490a581cbc70bd37`. That commit is later than the one
+in §1. Between the two, the interop profile text changes in one row of its
+§11.5 table of vector cases, and the request draft does not change, so the
+copies you downloaded in §1 still serve.
+
+| Input | Path at this commit |
+|---|---|
+| The host profile | `spec/personal-agent-history-profile-v0.md` |
+| Its conformance vectors | `vectors/personal-history-basic-v0/` (`vectors.json`, 12 cases, with `README.md` explaining how to read it) |
+| The responder run the vectors are built from | `vectors/personal-history-basic-v0/responder-run.json` |
+| The program that produced that run | `vectors/personal-history-basic-v0/producer/main.go` |
+
+Download them next to the §1 inputs, in a directory of their own:
+
+```bash
+cd ~/eb-verifier-test
+AAC_PH=0b7b1825965e7f7845cbc70a490a581cbc70bd37
+for f in spec/personal-agent-history-profile-v0.md spec/evidence-result-v0.md \
+  vectors/personal-history-basic-v0/README.md vectors/personal-history-basic-v0/manifest.json \
+  vectors/personal-history-basic-v0/vectors.json vectors/personal-history-basic-v0/responder-run.json \
+  vectors/personal-history-basic-v0/producer/main.go vectors/personal-history-basic-v0/SHA256SUMS; do
+  curl -fsSL --create-dirs -o "aac-ph/$f" \
+    "https://raw.githubusercontent.com/action-state-group/agent-action-capsule/$AAC_PH/$f"
+done
+(cd aac-ph/vectors/personal-history-basic-v0 && sha256sum -c SHA256SUMS)
+```
+
+On macOS, use `shasum -a 256 -c SHA256SUMS`. All five files should report
+`OK`. `vectors.json` has SHA-256
+`8369998d0fb0f118a1f4d6c5469cd93d83885fa6ae2c3b39e1267955001cbccc`.
+`spec/evidence-result-v0.md` is the Evidence Result document the profile takes
+its claim, sufficiency and verdict from.
+
+### 6.2 Reproduce the responder run
+
+The vectors' positive run is not hand-made. It is the octets that
+evidencebook's `Respond`, unmodified, sent at evidencebook commit
+`43f3cb1b955d647bc92cb4da0d823973d1981cad`. The program that drove it is in
+this repository as `test/interop/personal-history`, byte-for-byte the
+`producer/main.go` you downloaded. It seeds a holder stream of four deals, with
+a checkpoint after the sixth record and another after the eighth, and registers
+the Basic level definition for one recipient. Then it asks for each deal as the
+requester each exchange names. Its clock is fixed and its keys are test keys,
+so every run on every machine gives the same bytes.
+
+In the `evidencebook` clone of §2:
+
+```bash
+cd ~/eb-verifier-test/evidencebook
+PH=../aac-ph/vectors/personal-history-basic-v0
+cmp "$PH/producer/main.go" test/interop/personal-history/main.go
+go run ./test/interop/personal-history > run/responder-run.json
+cmp "$PH/responder-run.json" run/responder-run.json
+(sha256sum run/responder-run.json 2>/dev/null || shasum -a 256 run/responder-run.json) | cut -d' ' -f1
+```
+
+Both `cmp` commands print nothing, and the last line prints
+`f7d77d56d81ca187cb9a8118f8a15aae5407f5a96aca1c5525a5f5d2e827b848`. That is
+`run_sha256` in the corpus `manifest.json`. evidencebook's continuous
+integration reproduces the run on every change, so a later commit than
+`43f3cb1b…` gives the same bytes. If yours does not, report it as a finding.
+
+The run holds every request and reply as the octets carried, the definitions,
+the holder stream (four deals, three selected, eight records) and its two
+checkpoints. Your verifier can read the exchanges from your own copy. For the
+cases whose `source` is `responder`, the vector inputs are those same octets.
+
+### 6.3 What to verify, and what result is specified
+
+Each case pins its own policy in `pins`. Use it as given:
+
+- `trust_policy`: the holder key
+  `27cb07b534232cb4f4b7b269a8436fafb17c19be41fbab20ac948d1c81b0a034` as the
+  only accepted responder key (`mutant-second-trusted-key` adds the second
+  holder key `020126b36be66edbb505b7c18f5164055d99e457f0cdf42b0430ea0c93c00a1b`),
+  and the holder log key
+  `74897b69738198f3322a53d7e4ac2f70ffd568e7303f8549655ccffe14d28320` for
+  `iss` `holder-stream-1`, `sub` `holder-stream-1#15` and
+  `holder-stream-1#22`;
+- `verification_policy`: offline, `evidence-interop/0`, the three CLL kinds;
+- the contract `H@1`, with SHA-256
+  `5d4b7da72c8de9ef089f02b4f39dde25fe06d7659c9b4800e5fe79c6e8b12d34`, given
+  in `contract.document`. Its one requirement, `r-deal-steps`, has a Basic
+  level answer as its only evidence;
+- `evaluation_time` `2026-10-15T01:00:00Z`.
+
+These are test keys, derived from the `seed_label` values in `test_keys` like
+the keys of §3. **Trust them for this test only.**
+
+A case's `inputs` is either a History in the profile's one-file form (§8.2:
+`history`, `definition`, `exchanges`) or, for the refusal, one `request` and
+its `reply`. The requests are the recipient's own (`recipient-1`, `mode`
+`asked`), but your verifier did not send them. For every History case:
+
+1. verify each exchange as the interop profile §7.3 describes, and apply the
+   host profile's §6.1 to decide whether each envelope is accepted;
+2. evaluate the seven History properties of the host profile's §6.2 over the
+   accepted envelopes only;
+3. for an accepted History, derive each selected deal's state (host profile §5).
+
+The specified result is the case's whole `expected` block: per exchange, its
+`properties`, `accepted`, row for `r-deal-steps` and `claim`; then
+`history_properties`, `accepted`, and `deal_states` for the accepted History.
+`fails` names the property the host profile's §6.4 table names for that
+mutant. It is one of those the table below lists. Unlike §5, compare the
+digests too: these cases are fixed octets, not replies to requests of your own,
+so every value must match.
+
+In every case, an accepted envelope has `profile_version`, `envelope_signature`, `responder_trust`, `issued_at_form`, `request_binding`, `subject_binding`, `artifact_digest` and `anchor_match` `PASS`; `responder_key_current` and `anchor_inclusion` `NOT_CHECKED`; and `verification_binding` `NOT_PRESENT`.
+Its row for `r-deal-steps` is `envelope-4`: `UNKNOWN`, `UNKNOWN`, `not_evaluable`, and its `claim.proofs` is empty.
+An envelope that is not accepted has the one property the table names as `FAIL`, and its row is `envelope-2`: `INSUFFICIENT`, `INSUFFICIENT`, `not_evaluable`.
+`anchor_inclusion` stays `NOT_CHECKED` because the interop profile registers
+no verification material for a derivation's answer. So no case yields `met` or
+`not_met`. The Basic level makes no outcome claim for a requirement to meet.
+
+| Case | Source | What it holds | Envelopes accepted | Envelope not accepted | History property `FAIL` | History |
+|---|---|---|---|---|---|---|
+| `history-basic` | responder | the History: three of the four deals, at the second checkpoint | 3 of 3 | none | none | accepted |
+| `mutant-step-kind-in-transit` | derived | one step's kind changed in an artifact after signing, not re-signed | 2 of 3 | exchange 1: `artifact_digest` `FAIL` | `selection_coverage` | not accepted |
+| `mutant-deal-added-to-definition` | derived | the run's replies, under a definition with one more deal | 3 of 3 | none | `definition_binding`, `selection_coverage` | not accepted |
+| `mutant-envelope-for-deal-not-selected` | responder | the History and an envelope, signed by the holder key, for the deal not selected | 4 of 4 | none | `selection_coverage` | not accepted |
+| `mutant-selected-deal-not-answered` | derived | the replies for two of the three selected deals | 2 of 2 | none | `selection_coverage` | not accepted |
+| `mutant-second-trusted-key` | derived | one envelope re-signed by the second holder key, which the case's pins also trust | 3 of 3 | none | `single_signer` | not accepted |
+| `mutant-deal-at-another-anchor` | responder | one deal asked for and answered at the first checkpoint | 3 of 3 | none | `single_anchor` | not accepted |
+| `mutant-deal-at-another-anchor-request-at-history-anchor` | derived | that answer, re-signed over a request that names the History's checkpoint | 2 of 3 | exchange 3: `anchor_match` `FAIL` | `selection_coverage` | not accepted |
+| `mutant-record-kind-outside-list` | derived | one record's `record_type` changed to a kind outside the host profile's §3, re-signed by the holder key | 3 of 3 | none | `record_kinds` | not accepted |
+| `mutant-member-outside-reads` | derived | `counterparty_ref` added to one record, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-definition-reads-widened` | responder | answers under a definition whose `reads` adds `statement` and `counterparty_ref` | 3 of 3 | none | `definition_form` | not accepted |
+| `refused-other-requester` | responder | a request under the definition from `requester-2`, who is not its recipient | no envelope | refusal `not_authorized`; every refusal property `PASS` except `responder_key_current` `NOT_CHECKED`; row `refusal-withheld`: `WITHHELD`, `GAP`, `not_evaluable` | no History | no History |
+
+For `history-basic`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step.
+
+The two other-anchor cases are two readings of one row of the host profile's
+§6.4 table. That row names both `single_anchor` and `anchor_match`, and the
+two cannot fail together: the corpus README explains why. Each case's `expected` is the result for its
+own reading.
+
+### 6.4 Keeping the two kinds of evidence apart
+
+Report the service-evidence response of §5 and this History as two separate
+results. Each is evaluated under its own fixture's pins, against its own
+contract and requirement. Do not combine their counts, keys or requirement
+rows, and do not show either as support for the other.
+
+| | Service-evidence response (§3 to §5) | Personal-evidence disclosure (§6) |
+|---|---|---|
+| Subject | one record, named by its digest (`{"record": …}`), in the book of the responder key `e84fed81…` | the holder key `27cb07b5…`, the `responder` of every envelope in the History. Each request names one deal (`{"correlation": …}`) |
+| Unit | records: each exchange answers for one record | selected deals, 3 in `history-basic`. A deal's records are counted separately, as records. No figure adds deals to records |
+| Coverage | the record, under the checkpoint you pinned | the holder's selection, with `completeness` `not_asserted`: not a claim that it is all of the holder's deals |
+| Source assertion | the responder key's envelope over the record, and an inclusion proof to the pinned checkpoint: `anchor_inclusion` `PASS`, `claim.proofs` the `cll-inclusion-proof` entry | the holder key's envelope over the deal's records. Each record's `epistemic_type` (`producer_claim`) is the holder's agent's own label, never corroboration by anyone else. `event_time_claim` (the agent's claim) and `committed_at` (the holder stream's time) are two separate times. `anchor_inclusion` `NOT_CHECKED`, `claim.proofs` empty |
+| Requirement row | `r-record` of the interop vectors' contract, as §5 specifies | `r-deal-steps` of `H@1`: row `envelope-4`, `UNKNOWN`, `UNKNOWN`, `not_evaluable` |
+| Not established | what the record's content means: the profile fixes no content rule, so the Artifact is octets to you (§5) | any outcome of a deal (sale, payment, delivery, receipt or return); that anything happened at a claimed time; who holds the holder key |
+
+## 7. What to report back
 
 Open an issue on the
 [evidencebook repository](https://github.com/action-state-group/evidencebook/issues)
 with:
 
-1. the agent-action-capsule commit you read (it should be the one in §1), and
-   the evidencebook commit you ran (`git rev-parse HEAD`);
+1. the agent-action-capsule commits you read (they should be the ones in §1
+   and §6.1), and the evidencebook commit you ran (`git rev-parse HEAD`);
 2. your verifier: language, the libraries it uses for Ed25519, SHA-256, JCS and
    CBOR, and a statement that it uses no code from evidencebook or from
    agent-action-capsule;
@@ -273,17 +441,30 @@ with:
    CBOR as hex) or the vector case id, your verifier's per-property statuses,
    and your `row`, `status`, `sufficiency` and `verdict` for `r-record`, with
    the claim's `evidence` and `proofs`;
-5. every place the profile text left you unsure, or where you think the text,
+5. the SHA-256 of the `run/responder-run.json` you produced in §6.2;
+6. for each of the 12 cases of §6.3, by case id: per exchange, your
+   per-property statuses, whether you accepted the envelope, your `row`,
+   `status`, `sufficiency` and `verdict` for `r-deal-steps`, and the claim;
+   then your seven History properties, whether you accepted the History, and,
+   for `history-basic`, the number of selected deals and each deal's state;
+7. the two results side by side as §6.4 lays them out: for each, its subject,
+   its unit and count, its coverage, its source assertion, and what it does not
+   establish;
+8. every place the profile texts left you unsure, or where you think the text,
    the vectors and this responder disagree.
 
-**Pass** means that for every row of the table in §5, your results equal the
-named vector case's `expected` block as §5 describes. Any difference is a
+**Pass** means both of these hold. For every row of the table in §5, your
+results equal the named vector case's `expected` block as §5 describes. For
+every case of §6.3, your results equal that case's whole `expected` block, and
+your report keeps the two results apart as §6.4 describes. Any difference is a
 finding. Report it even if you think the mistake is ours.
 
 ## Other implementations
 
 evidencebook's continuous integration checks this responder with a Python
-reference verifier from the agent-action-capsule project. That verifier and
-evidencebook's Go code are the implementations this test is meant to be
-independent of. Do not use either for the test. Comparing results with them
-afterwards is fine.
+reference verifier from the agent-action-capsule project. It also reproduces the
+§6.2 run and runs the agent-action-capsule test for the History vectors, which
+uses that reference verifier and a History evaluator of its own. Those, and
+evidencebook's Go code, are the implementations this test is meant to be
+independent of. Do not use any of them for the test. Comparing results with
+them afterwards is fine.

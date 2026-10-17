@@ -81,7 +81,10 @@ profile text and with keys you choose to trust, follow
 fresh machine. It names the pinned profile, request draft and conformance
 vectors, and runs a test responder (`go run ./test/interop/answer`) that
 answers your own request octets. For each vector class it gives the request to
-send and the result the vectors specify, and it says what to report back.
+send and the result the vectors specify, and it says what to report back. Its
+personal-evidence part reproduces the run the Personal-Agent History vectors
+were cut from (`go run ./test/interop/personal-history`) and gives the result
+specified for each of their cases.
 
 ## Development
 
@@ -102,7 +105,10 @@ profile's reference verifier checks this responder's replies against the
 profile's conformance vectors (`test/interop/responder`,
 `test/interop/python-profile/verify_responder.py`), over the native stream,
 the A2A carriage (`Book.A2A`) and the MCP carriage (`Book.MCP`), and checks
-that all three carry a byte-identical canonical Artifact.
+that all three carry a byte-identical canonical Artifact. CI also reproduces
+the responder run of the Personal-Agent History vectors byte for byte
+(`test/interop/personal-history`), rebuilds the corpus from it, and runs the
+corpus's own test.
 
 ## Other implementations and parity
 
