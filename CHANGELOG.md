@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+## v0.2.0 (2026-10-17)
+
+Everything since v0.1.1.
+
 ### Added: foreign-evidence adapters, starting with x402
+
+`docs/ADAPTERS.md` describes the adapter interface and how an adapter reports.
 
 - `adapter`: one interface for every adapter. `Name` and `NativeObject` (the
   FR-19 declaration as data). `Check(raw, TrustPolicy)` returns profile §7.1
@@ -21,7 +27,7 @@
   with detail `{"check", "object"}` (`adapter.NativeCheckReport`), and the
   table includes `authorization_window`. The recorded chain observation has
   the node's result shapes.
-  - It reports the twelve checks of the declaration's §7 table.
+  - It reports the thirteen checks of the declaration's §7 table.
   - The payer signature is checked by EIP-712 recovery under the policy's
     domain. A mismatch is `INCONCLUSIVE` unless the policy says `eoa`.
   - Settlement is checked from a recorded transaction lookup, including the
@@ -31,12 +37,20 @@
     each wrapped object and leg cross-checks), the bare payment payload, and
     an HTTP header block.
   - Fixtures are constructed with published development keys.
-- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
-  prints the reports as JSON and exits 1 on any `FAIL`.
+- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] [-explain]
+  <file | ->` prints the reports as JSON and exits 1 on any `FAIL`.
+  `-explain` adds a human-readable explanation to each report, and
+  `-declare` prints the adapter's declaration.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
 
-### Added: the personal-evidence part of the third-party verifier guide
+### Added: the third-party verifier guide
+
+`docs/THIRD-PARTY-VERIFIER.md` is new in this release. §1 to §5 are a path
+for testing evidencebook's service-evidence responses with your own verifier,
+reproduced by `test/interop/answer`.
+`docs/PRD-EVIDENCE-INTEROP.md`, the evidence interop product requirements
+draft, is new too.
 
 `docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure
 that the third-party verifier test also requires: a History at the Basic level
@@ -66,11 +80,12 @@ service-evidence response.
 
 The Rust implementation moved here from checkpointed-local-log with its
 history (action-state-group/capsule-emit#290 stage B): `rust/evidencebook/`
-in a `rust/` workspace, depending on `checkpointed-local-log` 0.3.0 from
+in a `rust/` workspace, depending on `checkpointed-local-log` 0.3.1 from
 crates.io. Rust CI (`rust.yml`: vocabulary gate, format, Clippy, tests,
 rustdoc, package checks) and a crates.io publisher (`publish-rust.yml`,
 `crates/evidencebook-v*` tags, separate from the Go module's `v*` tags) come
-with it.
+with it. The crate's own releases (0.0.4 and 0.0.5 so far) are in
+`rust/evidencebook/CHANGELOG.md`.
 
 ### Changed: the Evidence Request protocol comes from agent-action-capsule
 
@@ -289,8 +304,9 @@ defines.
 ### Security
 
 - `Respond` now fails closed. Protected subjects (everything except
-  `checkpoints`) are answered only to a requester the transport has
-  authenticated, passed in the new `RespondOptions.AuthenticatedRequester`.
+  `checkpoints` and the `history_card/1` derivation) are answered only to a
+  requester the transport has authenticated, passed in the new
+  `RespondOptions.AuthenticatedRequester`.
   An unauthenticated caller gets only public subjects; every other request is
   answered with a signed refusal, reason `not_authorized`. This holds under
   every `history_segments` tier, including `peers`.
@@ -308,8 +324,25 @@ defines.
 - Callers that relied on `RequesterID` to unlock answers must now
   authenticate the requester at the transport and set
   `AuthenticatedRequester`. Without that change, those callers receive
-  `not_authorized` for every subject except `checkpoints`.
+  `not_authorized` for every subject except `checkpoints` and the
+  `history_card/1` derivation.
 - Records sealed before this change are immutable and still contain the
   `requester_ref` they were written with. Operators of books with such
   history should take that into account before serving `full_history` or
   `range` subjects that cover it.
+
+### Changed: the CLL Go module moves to `checkpointed-local-log/go`
+
+evidencebook imports `github.com/action-state-group/checkpointed-local-log/go`
+v0.1.0 instead of `github.com/action-state-group/cll-go`. Go treats the two
+paths as different modules.
+
+### Fixed: a bundle's checkpoint states its log id
+
+- A book's bundle writes `checkpoint.log_id`, the log id its checkpoint
+  statement signs (`BundleCheckpoint.LogID`). capsulectl's `verify --bundle`
+  up to v0.1.0-rc8 required it and failed every book bundle without it.
+- `VerifyBundle` refuses a stated `checkpoint.log_id` other than the signed
+  one when the checkpoint is authenticated, and one that is present but not
+  a non-empty string (`ErrInvalid`). A bundle that states none reads as
+  before.
