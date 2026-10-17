@@ -89,3 +89,67 @@ func TestAdaptX402(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptUCP(t *testing.T) {
+	td := filepath.Join("..", "..", "adapter", "ucp", "testdata")
+	policy := filepath.Join(td, "trust-policy.json")
+	cases := []struct {
+		file  string
+		code  int
+		props int
+		fails string // check names, from detail
+	}{
+		{"checkout-positive.json", 0, 7, ""},
+		{"checkout-member-mutated.json", 1, 7, "ucp.merchant_authorization.signature"},
+		{"checkout-no-ap2.json", 0, 8, ""},
+		{"order-webhook.http", 0, 7, ""},
+		{"order-webhook-body-mutated.http", 1, 7, "ucp.webhook.content_digest"},
+		{"order-webhook-example-coverage.http", 1, 7, "ucp.webhook.coverage"},
+		{"order-body.json", 0, 8, ""},
+		{filepath.Join("aac-vectors", "positive.checkout.json"), 0, 7, ""},
+		{filepath.Join("aac-vectors", "native-check-fails.checkout.json"), 1, 7, "ucp.merchant_authorization.signature"},
+	}
+	for _, c := range cases {
+		for _, viaStdin := range []bool{false, true} {
+			var out, errOut bytes.Buffer
+			path := filepath.Join(td, c.file)
+			arg, in := path, []byte(nil)
+			if viaStdin {
+				var err error
+				if in, err = os.ReadFile(path); err != nil {
+					t.Fatal(err)
+				}
+				arg = "-"
+			}
+			code := run([]string{"adapt", "ucp", "-policy", policy, arg}, bytes.NewReader(in), &out, &errOut)
+			if code != c.code {
+				t.Fatalf("%s (stdin %v): exit %d, want %d (%s)", c.file, viaStdin, code, c.code, errOut.String())
+			}
+			var got output
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			var fails []string
+			for _, p := range got.Properties {
+				if p.Status == "FAIL" {
+					fails = append(fails, adapter.CheckName(p))
+				}
+			}
+			for _, p := range got.Properties {
+				if p.Property == adapter.NativeCheck && !strings.HasPrefix(p.DetailFields["object"], "ucp.") {
+					t.Fatalf("%s: detail %v has no object", c.file, p.DetailFields)
+				}
+			}
+			if got.Adapter != "ucp" || len(got.Properties) != c.props || strings.Join(fails, ",") != c.fails {
+				t.Fatalf("%s: %s", c.file, out.String())
+			}
+		}
+	}
+	var out, errOut bytes.Buffer
+	if code := run([]string{"adapt", "ucp", "-declare"}, nil, &out, &errOut); code != 0 || !json.Valid(out.Bytes()) {
+		t.Fatalf("-declare: exit %d", code)
+	}
+	if code := run([]string{"adapt", "ucp"}, nil, &out, &errOut); code != 2 {
+		t.Fatalf("no file: exit %d, want 2", code)
+	}
+}

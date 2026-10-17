@@ -10,11 +10,17 @@
 // calls. Exit status: 0 when no property is FAIL, 1 when any is, 2 on a usage
 // or input error. -declare prints the adapter's FR-19 declaration instead.
 //
-// Adapters: x402. <file> is detected as one of: a settlement-records leg
+// Adapter x402: <file> is detected as one of: a settlement-records leg
 // (JSON Capsule whose settlement.wrapped[] carries x402.payment-payload
 // content), the bare payment payload (the base64-decoded PAYMENT-SIGNATURE
 // octets), or an HTTP header block carrying PAYMENT-SIGNATURE and optionally
 // PAYMENT-RESPONSE, as received.
+//
+// Adapter ucp: <file> is a UCP checkout (JSON; natively checked when it
+// carries ap2.merchant_authorization), an order body (JSON with
+// checkout_id; possession only), or an Order Event Webhook request held
+// whole (HTTP/1.1 request line, fields, body), as received. Keys come from
+// the trust policy, never from the network.
 package main
 
 import (
@@ -25,17 +31,19 @@ import (
 	"os"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/ucp"
 	"github.com/action-state-group/evidencebook/adapter/x402"
 )
 
 var adapters = map[string]adapter.Adapter{
 	x402.Adapter{}.Name(): x402.Adapter{},
+	ucp.Adapter{}.Name():  ucp.Adapter{},
 }
 
 const usage = `usage:
   evidencebook adapt <adapter> [-policy trust-policy.json] [-explain] <file | ->
   evidencebook adapt <adapter> -declare
-adapters: x402`
+adapters: x402, ucp`
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

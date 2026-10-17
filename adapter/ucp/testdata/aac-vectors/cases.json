@@ -1,0 +1,132 @@
+{
+  "declaration": "spec/adapters/ucp-v0.md",
+  "ucp_version": "2026-08-25",
+  "ucp_commit": "cd78fb38e819de77d9b527d110476eccb876f1bd",
+  "cases": [
+    {
+      "name": "positive",
+      "description": "complete_checkout response with ap2.merchant_authorization; every check passes.",
+      "checkout": "positive.checkout.json",
+      "key_set": "key-set.json",
+      "wrapped": {
+        "type": "ucp.checkout",
+        "digest_alg": "SHA-256",
+        "digest": "e041ddb24d1aa623d5bf017e384b4a958ca91f20bc747056e5e80ad4f1fd3a23",
+        "content": "eyJhcDIiOnsibWVyY2hhbnRfYXV0aG9yaXphdGlvbiI6ImV5SmhiR2NpT2lKRlV6STFOaUlzSW10cFpDSTZJbkptWXpjMU1UVXRZWEJ3Wlc1a2FYZ3RZVE1pZlEuLnZ0MFpnUVFlOVlIb2ttQ0VpWDFKdHo5ZWtyNTRqS1R1SXRRMWJJdHBWN1JEbGVzcDRDM0RYYU5QWEMza050VGU5SFBoNnZiQnZadmIwTnJnSHNtX21BIn0sImN1cnJlbmN5IjoiVVNEIiwiaWQiOiJjaGtfYWJjMTIzIiwibGluZV9pdGVtcyI6W3siaWQiOiJsaV8xIiwiaXRlbSI6eyJpZCI6Iml0ZW1fMTIzIiwicHJpY2UiOjI1MDAsInRpdGxlIjoiV2lkZ2V0In0sInF1YW50aXR5IjoyLCJ0b3RhbHMiOlt7ImFtb3VudCI6NTAwMCwidHlwZSI6InN1YnRvdGFsIn0seyJhbW91bnQiOjUwMDAsInR5cGUiOiJ0b3RhbCJ9XX1dLCJsaW5rcyI6W3sidHlwZSI6InRlcm1zX29mX3NlcnZpY2UiLCJ1cmwiOiJodHRwczovL21lcmNoYW50LmV4YW1wbGUvdGVybXMifV0sIm9yZGVyIjp7ImlkIjoib3JkXzQ1NiIsInBlcm1hbGlua191cmwiOiJodHRwczovL21lcmNoYW50LmV4YW1wbGUvb3JkZXJzL29yZF80NTYifSwic3RhdHVzIjoiY29tcGxldGVkIiwidG90YWxzIjpbeyJhbW91bnQiOjUwMDAsInR5cGUiOiJzdWJ0b3RhbCJ9LHsiYW1vdW50Ijo0MDAsInR5cGUiOiJ0YXgifSx7ImFtb3VudCI6NTQwMCwidHlwZSI6InRvdGFsIn1dLCJ1Y3AiOnsiY2FwYWJpbGl0aWVzIjp7ImRldi51Y3AuY29tbW9uLnBheW1lbnQuYXAyX21hbmRhdGUiOlt7ImV4dGVuZHMiOiJkZXYudWNwLnNob3BwaW5nLmNoZWNrb3V0Iiwic2NoZW1hIjoiaHR0cHM6Ly91Y3AuZGV2LzIwMjYtMDgtMjUvc2NoZW1hcy9jb21tb24vcGF5bWVudF9hcDJfbWFuZGF0ZS5qc29uIiwic3BlYyI6Imh0dHBzOi8vdWNwLmRldi8yMDI2LTA4LTI1L3NwZWNpZmljYXRpb24vcGF5bWVudC9leHRlbnNpb25zL2FwMi1tYW5kYXRlcyIsInZlcnNpb24iOiIyMDI2LTA4LTI1In1dLCJkZXYudWNwLnNob3BwaW5nLmNoZWNrb3V0IjpbeyJzY2hlbWEiOiJodHRwczovL3VjcC5kZXYvMjAyNi0wOC0yNS9zY2hlbWFzL3Nob3BwaW5nL2NoZWNrb3V0Lmpzb24iLCJzcGVjIjoiaHR0cHM6Ly91Y3AuZGV2LzIwMjYtMDgtMjUvc3BlY2lmaWNhdGlvbi9zaG9wcGluZy9jaGVja291dCIsInZlcnNpb24iOiIyMDI2LTA4LTI1In1dfSwicGF5bWVudF9oYW5kbGVycyI6e30sInN0YXR1cyI6InN1Y2Nlc3MiLCJ2ZXJzaW9uIjoiMjAyNi0wOC0yNSJ9fQ"
+      },
+      "expected": {
+        "reports": [
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "ucp-schema validate --response --op complete, UCP v2026-08-25",
+            "detail": "ucp.checkout.schema"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "UCP AP2 Mandates §Business Authorization",
+            "detail": "ucp.merchant_authorization.present"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "RFC 7515 Appendix F detached JWS",
+            "detail": "ucp.merchant_authorization.form"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "AP2 v0.2 algorithm rule",
+            "detail": "ucp.merchant_authorization.alg"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "retained keys[] (key-set.json)",
+            "detail": "ucp.merchant_authorization.key"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "ES256 over JWS signing input of JCS(checkout − ap2)",
+            "detail": "ucp.merchant_authorization.signature"
+          }
+        ],
+        "business_trust": "NOT_CHECKED"
+      }
+    },
+    {
+      "name": "native-check-fails",
+      "description": "The positive checkout with totals[2].amount (type total) changed from 5400 to 540 after signing; ap2.merchant_authorization unchanged.",
+      "checkout": "native-check-fails.checkout.json",
+      "key_set": "key-set.json",
+      "mutation": {
+        "pointer": "/totals/2/amount",
+        "from": 5400,
+        "to": 540
+      },
+      "wrapped": {
+        "type": "ucp.checkout",
+        "digest_alg": "SHA-256",
+        "digest": "881b7d357e2aea09925b8b20a9cf6d8a479d62ba912e918b77214d1b79f507c2",
+        "content": "eyJhcDIiOnsibWVyY2hhbnRfYXV0aG9yaXphdGlvbiI6ImV5SmhiR2NpT2lKRlV6STFOaUlzSW10cFpDSTZJbkptWXpjMU1UVXRZWEJ3Wlc1a2FYZ3RZVE1pZlEuLnZ0MFpnUVFlOVlIb2ttQ0VpWDFKdHo5ZWtyNTRqS1R1SXRRMWJJdHBWN1JEbGVzcDRDM0RYYU5QWEMza050VGU5SFBoNnZiQnZadmIwTnJnSHNtX21BIn0sImN1cnJlbmN5IjoiVVNEIiwiaWQiOiJjaGtfYWJjMTIzIiwibGluZV9pdGVtcyI6W3siaWQiOiJsaV8xIiwiaXRlbSI6eyJpZCI6Iml0ZW1fMTIzIiwicHJpY2UiOjI1MDAsInRpdGxlIjoiV2lkZ2V0In0sInF1YW50aXR5IjoyLCJ0b3RhbHMiOlt7ImFtb3VudCI6NTAwMCwidHlwZSI6InN1YnRvdGFsIn0seyJhbW91bnQiOjUwMDAsInR5cGUiOiJ0b3RhbCJ9XX1dLCJsaW5rcyI6W3sidHlwZSI6InRlcm1zX29mX3NlcnZpY2UiLCJ1cmwiOiJodHRwczovL21lcmNoYW50LmV4YW1wbGUvdGVybXMifV0sIm9yZGVyIjp7ImlkIjoib3JkXzQ1NiIsInBlcm1hbGlua191cmwiOiJodHRwczovL21lcmNoYW50LmV4YW1wbGUvb3JkZXJzL29yZF80NTYifSwic3RhdHVzIjoiY29tcGxldGVkIiwidG90YWxzIjpbeyJhbW91bnQiOjUwMDAsInR5cGUiOiJzdWJ0b3RhbCJ9LHsiYW1vdW50Ijo0MDAsInR5cGUiOiJ0YXgifSx7ImFtb3VudCI6NTQwLCJ0eXBlIjoidG90YWwifV0sInVjcCI6eyJjYXBhYmlsaXRpZXMiOnsiZGV2LnVjcC5jb21tb24ucGF5bWVudC5hcDJfbWFuZGF0ZSI6W3siZXh0ZW5kcyI6ImRldi51Y3Auc2hvcHBpbmcuY2hlY2tvdXQiLCJzY2hlbWEiOiJodHRwczovL3VjcC5kZXYvMjAyNi0wOC0yNS9zY2hlbWFzL2NvbW1vbi9wYXltZW50X2FwMl9tYW5kYXRlLmpzb24iLCJzcGVjIjoiaHR0cHM6Ly91Y3AuZGV2LzIwMjYtMDgtMjUvc3BlY2lmaWNhdGlvbi9wYXltZW50L2V4dGVuc2lvbnMvYXAyLW1hbmRhdGVzIiwidmVyc2lvbiI6IjIwMjYtMDgtMjUifV0sImRldi51Y3Auc2hvcHBpbmcuY2hlY2tvdXQiOlt7InNjaGVtYSI6Imh0dHBzOi8vdWNwLmRldi8yMDI2LTA4LTI1L3NjaGVtYXMvc2hvcHBpbmcvY2hlY2tvdXQuanNvbiIsInNwZWMiOiJodHRwczovL3VjcC5kZXYvMjAyNi0wOC0yNS9zcGVjaWZpY2F0aW9uL3Nob3BwaW5nL2NoZWNrb3V0IiwidmVyc2lvbiI6IjIwMjYtMDgtMjUifV19LCJwYXltZW50X2hhbmRsZXJzIjp7fSwic3RhdHVzIjoic3VjY2VzcyIsInZlcnNpb24iOiIyMDI2LTA4LTI1In19"
+      },
+      "expected": {
+        "reports": [
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "ucp-schema validate --response --op complete, UCP v2026-08-25",
+            "detail": "ucp.checkout.schema"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "UCP AP2 Mandates §Business Authorization",
+            "detail": "ucp.merchant_authorization.present"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "RFC 7515 Appendix F detached JWS",
+            "detail": "ucp.merchant_authorization.form"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "AP2 v0.2 algorithm rule",
+            "detail": "ucp.merchant_authorization.alg"
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "retained keys[] (key-set.json)",
+            "detail": "ucp.merchant_authorization.key"
+          },
+          {
+            "property": "native_check",
+            "status": "FAIL",
+            "method": "ES256 over JWS signing input of JCS(checkout − ap2)",
+            "detail": "ucp.merchant_authorization.signature"
+          }
+        ],
+        "business_trust": "NOT_CHECKED",
+        "mapping": {
+          "requirement_is_the_check": {
+            "row": 5,
+            "status": "SATISFIED",
+            "sufficiency": "SATISFIED",
+            "verdict": "not_met"
+          },
+          "requirement_rests_on_the_check": {
+            "row": 6,
+            "status": "INSUFFICIENT",
+            "sufficiency": "INSUFFICIENT",
+            "verdict": "not_evaluable"
+          }
+        }
+      }
+    }
+  ]
+}

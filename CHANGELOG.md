@@ -31,10 +31,24 @@
     each wrapped object and leg cross-checks), the bare payment payload, and
     an HTTP header block.
   - Fixtures are constructed with published development keys.
+- `adapter/ucp`: the UCP adapter declaration v0 (agent-action-capsule
+  `spec/adapters/ucp-v0.md`) for UCP v2026-08-25.
+  - The checkout carrying `ap2.merchant_authorization` is checked natively:
+    a detached JWS (ES256, ES384 or ES512) over the RFC 8785 form of the
+    checkout without `ap2`, under a `keys[]` copy that the relying party
+    retained and supplies in its trust policy.
+  - An Order Event Webhook request held whole is checked with RFC 9421 and
+    RFC 9530. A checkout without AP2, and an order body held alone, report
+    `native_check` `NOT_PRESENT`: they prove possession only.
+  - Objects are validated against UCP's JSON schemas, which are copied
+    unchanged and pinned by SHA-256.
+  - `evidencebook adapt ucp`.
 - `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
   prints the reports as JSON and exits 1 on any `FAIL`.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
-  `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
+  `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery);
+  `github.com/santhosh-tekuri/jsonschema/v6` v6.0.3 (JSON Schema 2020-12, UCP
+  schema validation), which brings in `golang.org/x/text`.
 
 ### Added: the personal-evidence part of the third-party verifier guide
 
