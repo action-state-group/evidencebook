@@ -1,6 +1,6 @@
 # PRD: Evidence Layer — Evidence Interoperability and History Sharing
 
-**Draft · 2026-10-12**
+**Draft · 2026-10-12 · status updated 2026-10-16**
 
 **Status:** product requirements proposal. Not a standard, not a published protocol, and this document supersedes no published spec. The neutral pieces it builds on are individual Internet-Drafts and pre-Internet-Draft specifications, none adopted by any working group.
 
@@ -8,9 +8,9 @@
 
 **Editor of the neutral drafts:** Action State Group (current editor only; the layer is meant to be implementable without any Action State Group software).
 
-**Host profiles that plug into this layer:** e.g. a personal-agent history profile and an inference-service profile (the latter planned as `docs/PRD-SERVICE-EVIDENCE.md` in [Mesh-LLM/capsules](https://github.com/Mesh-LLM/capsules)).
+**Host profiles that plug into this layer:** e.g. a personal-agent history profile (`agent-action-capsule` `spec/personal-agent-history-profile-v0.md`, Basic level) and an inference-service profile (its requirements are in `docs/PRD-SERVICE-EVIDENCE.md` in [Mesh-LLM/capsules](https://github.com/Mesh-LLM/capsules); the profile itself is planned).
 
-Status words used below: **exists** = verified in the cited file; **planned** = to be written; **unverified** = asserted by design, not checked for this PRD.
+Status words used below: **exists** = verified in the cited file; **merged** = on the repository's `main`, cited as repository, pull request and short commit; **planned** = to be written; **unverified** = asserted by design, not checked for this PRD. Section 11 marks each decision **resolved** (with a pointer to the merged text that settles it) or **open**.
 
 ---
 
@@ -203,27 +203,43 @@ Also required:
 - For the same subject and anchor, two requests with different nonces over two transports yield byte-identical canonical Artifacts and distinct envelopes.
 - Success is measured by independent recipients verifying supported claims and counterparties responding without adopting any one implementation.
 
+**Status (2026-10-16): not passed.** The pass of this section remains the precondition for any public interoperability claim.
+
+| Part | Status |
+|---|---|
+| Third-party verifier pack (service evidence) | merged: `evidencebook` #16 `30e3473` ([THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md), which pins `agent-action-capsule` `c86a73a`); this repository's CI runs the regenerated vectors at `agent-action-capsule` `dfc4703` (`evidencebook` #26 `43f3cb1`) |
+| Personal-evidence half | vectors merged: `agent-action-capsule` #296 `0b7b182` (`vectors/personal-history-basic-v0/`, 12 cases); the guide section that points to them is **planned** |
+| Run by an outside developer | **in progress**, owned by the project lead; not passed |
+
 **How host profiles plug in**
 
-*Personal-agent history profile.* The subject is a holder's key, the unit is a holder-selected deal, coverage is an explicit set with completeness not asserted, and every outcome claim carries its source label. A History prepared for one recipient is a recipient-specific disclosure (FR-8). It uses this layer's request, verification, Evidence Result and follow-up rules unchanged, and must pass the third-party verifier test.
+*Personal-agent history profile.* The subject is a holder's key, the unit is a holder-selected deal, coverage is an explicit set with completeness not asserted, and every outcome claim carries its source label. A History prepared for one recipient is a recipient-specific disclosure (FR-8). It uses this layer's request, verification, Evidence Result and follow-up rules unchanged, and must pass the third-party verifier test. Its Basic level is specified in `agent-action-capsule` `spec/personal-agent-history-profile-v0.md` (#259 `995c377`); outcome claims with source labels are left to a later level there (PA-9).
 
-*Inference-service history profile.* The subject is a node or service key; units are exchanges, checkpoints, witness receipts and referee verdicts over a pinned checkpoint interval; it may incorporate `history_card/1` unchanged and uses session-level agreements (FR-14). Checkpoint continuity is never presented as proof of execution. Requirements planned in `Mesh-LLM/capsules` `docs/PRD-SERVICE-EVIDENCE.md`.
+*Inference-service history profile.* The subject is a node or service key; units are exchanges, checkpoints, witness receipts and referee verdicts over a pinned checkpoint interval; it may incorporate `history_card/1` unchanged and uses session-level agreements (FR-14). Checkpoint continuity is never presented as proof of execution. Requirements are written in `Mesh-LLM/capsules` `docs/PRD-SERVICE-EVIDENCE.md` (#24 `b982f8a`, a draft requirements document); the host profile itself is **planned**.
 
 ## 9. Dependencies and status
 
-| Dependency | Kind | Where | Status for this PRD |
-|---|---|---|---|
-| `draft-mih-agent-evidence-request` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; A2A/MCP bindings planned; envelope request-digest binding pinned by Interop Profile (planned) |
-| `draft-mih-agent-bilateral-attestation` | Internet-Draft | `agent-action-capsule` `spec/` | exists; wire encodings TBD in draft |
-| `draft-mih-agent-settlement-records` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; payment profile only |
-| `draft-mih-agent-evidence-layer` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; lifecycle-link tokens partly missing (FR-29); implemented by `evidencebook` ([design.md](design.md)) |
-| `draft-mih-agent-disclosure-envelope` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists |
-| Evidence Contract v0 | JSON Schema only | `capsule-engine` `capsule_engine/schemas/evidence-contract-v0.json` (embedded byte-identical in `capsule-cli` `internal/cli/schemas/`) | schema exists; **prose spec planned** |
-| Evidence acceptance record | new record type | — | **planned** (incl. ordering evidence, FR-11a) |
-| Evidence Plan IR v0 | in-repo spec + schema | `agent-action-capsule` `spec/evidence-plan-ir-v0.md`, `schemas/evidence-plan-ir-v0.json` | exists (pre-I-D) |
-| Evidence Result v0 | in-repo spec + schema | `agent-action-capsule` `spec/evidence-result-v0.md`, `schemas/evidence-result-v0.json` | exists (pre-I-D) |
-| Per-property verification statuses | profile vocabulary | — | **planned** (Interop Profile) |
-| Interop Profile v0 + vectors | neutral spec | — | **planned** |
+Every row cites the merged commit it was checked at, as repository, pull request number and short SHA ("AAC" is `action-state-group/agent-action-capsule`; a bare number is this repository), or says **planned**. Checked 2026-10-16 against AAC `main` `7662a00` and `evidencebook` `main` `43f3cb1`. "IP" is the Interop Profile v0, `agent-action-capsule` `spec/interop-profile-v0.md`. A rule IP pins is IP's own open point (P-n) until a draft revision adopts it.
+
+| Dependency | Kind | Where | Status for this PRD | Merged at |
+|---|---|---|---|---|
+| `draft-mih-agent-evidence-request` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; A2A and MCP carriage pinned by IP §11.4 (P-37, P-40), not yet in a draft revision; envelope request-digest binding pinned by IP §6.2 (P-7) | draft: AAC #133 `f350bf7`; IP §6.2: AAC #231 `3910a79`; IP §11.4: AAC #235 `db6fec1` |
+| `draft-mih-agent-bilateral-attestation` | Internet-Draft | -03; `agent-action-capsule` `spec/` | exists; wire encodings TBD in draft | AAC #174 `0c9095a` |
+| `draft-mih-agent-settlement-records` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; payment profile only | AAC #159 `565d1f0` |
+| `draft-mih-agent-evidence-layer` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists; implemented by `evidencebook` ([design.md](design.md)). Lifecycle links (FR-29) defined by IP §11.2: `supersedes` and `rebuts` as registered, `amends`, `disputes` and `resolves` as IP's own tokens (P-32); their registration in -01 is **planned** | draft: AAC #277 `4decf59`; IP §11.2: AAC #234 `11de30a` |
+| `draft-mih-agent-disclosure-envelope` | Internet-Draft | -00; `agent-action-capsule` `spec/` | exists | AAC #133 `f350bf7` |
+| Evidence Contract v0 | JSON Schema + profile prose | `capsule-engine` `capsule_engine/schemas/evidence-contract-v0.json` (embedded byte-identical in `capsule-cli` `internal/cli/schemas/`); prose in IP §11.3 | schema exists, pinned by IP as EC; prose exists as IP §11.3 (describes the schema, adds no member) | schema: `capsule-engine` #149 `fd43d43` (same bytes on `main`); IP §11.3: AAC #236 `6cae247` |
+| Evidence acceptance record | profile record type | IP §11.1 | exists in IP, incl. ordering evidence (§11.1.5, FR-11a) and the backdated-acceptance vector (§11.1.9); not in a draft revision | AAC #232 `2e418f1` |
+| Evidence Plan IR v0 | in-repo spec + schema | `agent-action-capsule` `spec/evidence-plan-ir-v0.md`, `schemas/evidence-plan-ir-v0.json` | exists (pre-I-D) | AAC #181 `b3e7620` |
+| Evidence Result v0 | in-repo spec + schema | `agent-action-capsule` `spec/evidence-result-v0.md`, `schemas/evidence-result-v0.json` | exists (pre-I-D) | AAC #297 `7662a00` |
+| Per-property verification statuses | profile vocabulary | IP §7 | exists | AAC #231 `3910a79` |
+| Interop Profile v0 + vectors | neutral spec (pre-I-D) | `agent-action-capsule` `spec/interop-profile-v0.md`, `vectors/interop-profile-v0/` | exists; core, then §11.1 to §11.4; vectors and generator (§11.5); errata from the first responder build; vectors regenerated to 53 cases | core: AAC #231 `3910a79`; §11.1 to §11.4: AAC #232 `2e418f1`, #233 `370cc4e`, #234 `11de30a`, #235 `db6fec1`, #236 `6cae247`; vectors: AAC #237 `5beee54`; errata: AAC #243 `c86a73a`; 53 cases: AAC #263 `dfc4703` |
+| Reference verifier | Python, in `agent-action-capsule` | `python/agent_action_capsule/interop_profile/` | exists; in every Python release from `python/v0.8.0`; `python/v0.9.1` is the first release that contains #263 | AAC #238 `dafa5a4` |
+| Personal-agent history profile v0 | host profile (pre-I-D) | `agent-action-capsule` `spec/personal-agent-history-profile-v0.md`, `vectors/personal-history-basic-v0/` | Basic level exists; acceptance vectors exist (12 cases); outcome claims with source labels **planned** (PA-9) | profile: AAC #259 `995c377`; vectors: AAC #296 `0b7b182` |
+| Inference-service history profile | host profile | `Mesh-LLM/capsules` `docs/PRD-SERVICE-EVIDENCE.md` (requirements) | requirements draft exists; the profile is **planned** | `Mesh-LLM/capsules` #24 `b982f8a` |
+| `evidencebook` responder | implementation | this repository | exists: conforming `evidence-interop/0` responder; fails closed without an authenticated requester (NFR-4); MCP carriage (IP §11.4.5); A2A carriage (IP §11.4.4) | responder: #10 `5a86956`; requester gate: #9 `9deaf49`; MCP: #11 `db4e312`; A2A: #13 `59ad618` |
+| `evidencebook` interop CI | conformance run | this repository, `.github/workflows/ci.yml` | exists; runs the reference verifier and vectors pinned to AAC `dfc4703` | pin: #17 `8f655cd`; re-pin to 53 cases: #26 `43f3cb1` |
+| Third-party verifier pack (§8) | guide | [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md) | exists for service evidence; personal-evidence section **planned** | #16 `30e3473` |
 
 Canonical draft pages: `https://datatracker.ietf.org/doc/<draft-name>/`. Tooling note: `capsule-cli` `contract validate` validates a document against a caller-supplied schema and `contract diff` diffs two Evidence Contract versions against the embedded schema (`internal/cli/contract.go`, `contract_diff.go`); neither is required to implement this layer.
 
@@ -235,19 +251,20 @@ The layer does not wait on specialized evidence producers: TEE attestation, spli
 |---|---|---|
 | M1 | **Invariant Artifact, envelope and disclosure contract** | Interop Profile v0 core: canonical Artifact rules, envelope binding, recipient-specific disclosure identification (FR-8); refusal and absence shapes; acceptance record spec with ordering evidence; lifecycle-link issuer rules; Evidence Contract prose spec outline; §6 item-8 vectors with pinned policy, including invariance and backdated-acceptance |
 | — | **Host profiles (in parallel with M1–M2)** | Personal-agent and inference-service history profiles written against the M1 contract |
-| M2 | **A2A reference exchange and unaffiliated verifier** | One reference responder and one reference verifier pass all vectors over A2A and the native stream binding (MCP adapter passes the same vectors); an unaffiliated developer passes §8 without the editor's libraries, with findings fed back into the profile before any standards claim |
+| M2a | **A2A reference exchange** | One reference responder and one reference verifier pass all vectors over A2A and the native stream binding (MCP adapter passes the same vectors). **Landed:** the reference verifier (AAC #238 `dafa5a4`) over the `evidencebook` responder (#10, MCP #11, A2A #13) runs the 53 vectors with 0 failed: 7 against its replies, 21 as mutations of them, 25 skipped as not responder output (verifier-side version cases, foreign objects, acceptance, lifecycle). Canonical Artifact bytes are identical across callers, nonces, encodings and the native, MCP and A2A carriages. At AAC `dfc4703`, `evidencebook` `43f3cb1` (#26) |
+| M2b | **Unaffiliated verifier** | An unaffiliated developer passes §8 without the editor's libraries, with findings fed back into the profile before any standards claim. **Open** (§8 status); M2 is not complete until M2b passes |
 | M3 | **Payment and commerce adapters, on demand** | Each adapter declares FR-19 items and ships a native-check vector (FR-21) |
 
 ## 11. Open decisions
 
-1. **Lifecycle-link tokens:** register `amends`, `contradicts`, `disputes`, `resolves` as new tokens in the evidence-layer link registry, or map them onto existing tokens (`rebuts`, `adjudicates`, `supersedes`) with qualifiers.
-2. **Acceptance record shape:** fields, signature coverage, session-level agreement form (FR-14), and which ordering-evidence forms (FR-11a) the profile names normatively.
-3. **A2A and MCP bindings:** Agent Card extension URI, message/task mapping and artifact parts for A2A; tool names and schemas for MCP.
-4. **`evidence-request/1` naming across encodings:** reconcile the CBOR stream binding's identifiers and map keys with the JSON names used by the HTTP, A2A and MCP bindings.
-5. **Recipient-specific disclosure identity:** whether a per-recipient projection is identified as a new derivation (by definition digest) or as a distinct subject form.
-6. **Neutral name** for the cross-agent inquiry type over the `exchange` subject.
-7. **History commitments:** whether deal-level commitments in a History are salted-digest commitments (opened by revealing nonce and text, checked like the Disclosure Envelope).
-8. **Evidence Contract prose specification:** standalone pre-I-D document or section of the Interop Profile.
+1. **Lifecycle-link tokens:** register `amends`, `contradicts`, `disputes`, `resolves` as new tokens in the evidence-layer link registry, or map them onto existing tokens (`rebuts`, `adjudicates`, `supersedes`) with qualifiers. **Resolved** in IP §11.2.1 (AAC #234 `11de30a`, P-32): contradiction is carried as `rebuts`; `amends`, `disputes` and `resolves` are new tokens, registration proposed for evidence-layer -01. The -01 registration is **planned**.
+2. **Acceptance record shape:** fields, signature coverage, session-level agreement form (FR-14), and which ordering-evidence forms (FR-11a) the profile names normatively. **Resolved** in IP §11.1 (AAC #232 `2e418f1`, P-24 to P-30): one record with four states, session scope (§11.1.3) and ordering evidence (§11.1.5).
+3. **A2A and MCP bindings:** Agent Card extension URI, message/task mapping and artifact parts for A2A; tool names and schemas for MCP. **Resolved** in IP §11.4.4 and §11.4.5 (AAC #235 `db6fec1`, P-37 to P-40): the extension URI is the draft's Datatracker URL; MCP tools `evidence_manifest` and `evidence_request`. Not yet in a draft revision.
+4. **`evidence-request/1` naming across encodings:** reconcile the CBOR stream binding's identifiers and map keys with the JSON names used by the HTTP, A2A and MCP bindings. **Resolved** in IP §4 (AAC #231 `3910a79`, P-5): one name table, text keys only; JSON bindings reuse the stream binding's string identifiers verbatim.
+5. **Recipient-specific disclosure identity:** whether a per-recipient projection is identified as a new derivation (by definition digest) or as a distinct subject form. **Resolved** in IP §6.5 (AAC #231 `3910a79`, P-14): a new derivation identified by the digest of its definition, not a new subject form. IP does not fix the definition document's member names (still P-14); the personal-agent history profile fixes them for its Basic level (AAC #259 `995c377`, §4.1).
+6. **Neutral name** for the cross-agent inquiry type over the `exchange` subject. **Resolved** in IP §11.4.6 (AAC #235 `db6fec1`, P-44): "exchange inquiry".
+7. **History commitments:** whether deal-level commitments in a History are salted-digest commitments (opened by revealing nonce and text, checked like the Disclosure Envelope). **Open.** IP §6.5 item 5 (AAC #231 `3910a79`, P-20) makes withheld text in a recipient-specific projection a salted-digest commitment checked with the Disclosure Envelope's DE-3 computation. The personal-agent history profile's Basic level carries no payload commitment and leaves outcome claims to a later level (AAC #259 `995c377`, PA-9). No merged text says whether deal-level commitments in a History use this form.
+8. **Evidence Contract prose specification:** standalone pre-I-D document or section of the Interop Profile. **Resolved** as a section of IP: §11.3 (AAC #236 `6cae247`).
 
 ## Sources checked
 
@@ -260,7 +277,10 @@ Public repositories; file paths are repository-relative.
   - `spec/draft-mih-agent-evidence-layer-00.md` (typed links and registry, three kinds of "no")
   - `spec/draft-mih-agent-disclosure-envelope-00.md` (scope)
   - `spec/evidence-result-v0.md`, `spec/evidence-plan-ir-v0.md`, `schemas/` (listing)
+  - `spec/interop-profile-v0.md` (§4, §6.2, §6.5, §7, §11.1 to §11.5, §13), `vectors/interop-profile-v0/` (53 cases at `dfc4703`)
+  - `spec/personal-agent-history-profile-v0.md`, `vectors/personal-history-basic-v0/` (12 cases at `0b7b182`)
+  - `python/agent_action_capsule/interop_profile/` (reference verifier); release tags `python/v0.8.0` to `python/v0.9.1`
 - `action-state-group/capsule-engine` `capsule_engine/schemas/evidence-contract-v0.json` (`fd43d43`)
 - `action-state-group/capsule-cli` `internal/cli/contract.go`, `contract_diff.go`, `internal/cli/schemas/evidence-contract-v0.json` (`e9b1f21`; byte-identical to the capsule-engine schema)
-- `Mesh-LLM/capsules` `crates/evidence-plugin/src/evidence_answer.rs` (serves `history_card/1`)
-- `action-state-group/evidencebook` `README.md`, `docs/design.md`
+- `Mesh-LLM/capsules` `crates/evidence-plugin/src/evidence_answer.rs` (serves `history_card/1`); `docs/PRD-SERVICE-EVIDENCE.md` (`b982f8a`)
+- `action-state-group/evidencebook` `README.md`, `docs/design.md`, `docs/THIRD-PARTY-VERIFIER.md`, `.github/workflows/ci.yml` (`43f3cb1`)
