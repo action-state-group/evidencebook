@@ -118,8 +118,8 @@ const (
 	typeTransferWithAuth    = "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
 	typeReceiptV1           = "Receipt(uint256 version,string network,string resourceUrl,string payer,uint256 issuedAt,string transaction)"
 	typeReceiptV2           = "Receipt(uint256 version,string network,string resourceUrl,string payer,uint256 issuedAt,string transaction,string responseHash,string responseHashAlg,string responseHashEncoding)"
+	typeReceiptV2PR3140     = "Receipt(uint256 version,string network,string resourceUrl,string payer,uint256 issuedAt,string transaction,string commitmentId,bool settlementUnbound,string contentHash,string contentHashAlg,string requestHash,string receiptRef)"
 	receiptDomainName       = "x402 receipt"
-	receiptDomainVersion    = "1"
 	receiptDomainChainIDInt = 1
 )
 

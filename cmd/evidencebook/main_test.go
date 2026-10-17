@@ -14,25 +14,27 @@ import (
 type output struct {
 	Adapter    string `json:"adapter"`
 	Properties []struct {
-		Property, Status, Method string
+		Property, Status, Method, Detail string
 	} `json:"properties"`
 }
 
 func TestAdaptX402(t *testing.T) {
 	td := filepath.Join("..", "..", "adapter", "x402", "testdata")
-	policy := filepath.Join(td, "trust-policy.json")
+	// The negative fixtures are evaluated under policy eoa, so their FAIL is
+	// a real FAIL; under the default policy they are INCONCLUSIVE (exit 0).
+	policy := filepath.Join(td, "trust-policy-eoa.json")
 	cases := []struct {
 		file  string
 		code  int
 		props int
 		fail  string
 	}{
-		{"exchange-positive.http", 0, 10, ""},
-		{"exchange-signature-bit-flip.http", 1, 10, "payer_signature"},
-		{"leg-payer-observed.json", 0, 14, ""},
-		{"leg-payer-observed-signature-bit-flip.json", 1, 14, "payer_signature"},
-		{"payment-payload.json", 0, 10, ""},
-		{"payment-payload-signature-bit-flip.json", 1, 10, "payer_signature"},
+		{"exchange-positive.http", 0, 12, ""},
+		{"exchange-signature-bit-flip.http", 1, 12, "native_check"},
+		{"leg-payer-observed.json", 0, 17, ""},
+		{"leg-payer-observed-signature-bit-flip.json", 1, 17, "native_check"},
+		{"payment-payload.json", 0, 12, ""},
+		{"payment-payload-signature-bit-flip.json", 1, 12, "native_check"},
 	}
 	for _, c := range cases {
 		for _, viaStdin := range []bool{false, true} {
@@ -58,6 +60,9 @@ func TestAdaptX402(t *testing.T) {
 			for _, p := range got.Properties {
 				if p.Status == "FAIL" {
 					fails = append(fails, p.Property)
+					if !strings.HasPrefix(p.Detail, "payer_signature: ") {
+						t.Errorf("%s: FAIL detail %q", c.file, p.Detail)
+					}
 				}
 			}
 			if got.Adapter != "x402" || len(got.Properties) != c.props || strings.Join(fails, ",") != c.fail {
@@ -67,6 +72,10 @@ func TestAdaptX402(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
+	if code := run([]string{"adapt", "x402", "-policy", filepath.Join(td, "trust-policy.json"), filepath.Join(td, "leg-payer-observed-signature-bit-flip.json")}, nil, &out, &errOut); code != 0 {
+		t.Errorf("default policy, signature flip: exit %d, want 0 (INCONCLUSIVE)", code)
+	}
+	out.Reset()
 	if code := run([]string{"adapt", "x402", "-declare"}, nil, &out, &errOut); code != 0 || !json.Valid(out.Bytes()) {
 		t.Fatalf("-declare: exit %d", code)
 	}

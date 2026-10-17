@@ -20,17 +20,31 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
+
 	"github.com/action-state-group/evidencebook/adapter"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata fixtures")
 
-// TEST KEYS. Throwaway keys derived from public labels, for fixtures only.
-// They have never held funds on any chain and must never be funded.
+// DEVELOPMENT KEYS, published: the default accounts #0 and #1 of the
+// Hardhat Network and Foundry Anvil local development chains, derived from
+// the public mnemonic "test test test test test test test test test test
+// test junk" and listed in both tools' documentation. Anyone can sign with
+// them; they are used here only to construct fixtures. The fixtures are
+// constructed, not recorded: no payment was made.
 var (
-	testPayerKey = secp256k1.PrivKeyFromBytes(keccak256([]byte("evidencebook x402 adapter TEST payer key (throwaway, never funded)")))
-	testPayeeKey = secp256k1.PrivKeyFromBytes(keccak256([]byte("evidencebook x402 adapter TEST payee key (throwaway, never funded)")))
+	testPayerKey = mustKey("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80") // account #0, 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+	testPayeeKey = mustKey("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d") // account #1, 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
 )
+
+func mustKey(h string) *secp256k1.PrivateKey {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		panic(err)
+	}
+	return secp256k1.PrivKeyFromBytes(b)
+}
 
 // The fixture's chain and token are Base Sepolia (testnet) USDC, as in the
 // x402 reference default-asset table.
@@ -42,7 +56,8 @@ const (
 	fxURL     = "https://api.example.com/premium-data"
 )
 
-// fxNow is the relying party's clock in the fixture policy.
+// fxNow is the fixture's settlement time: the block timestamp of the
+// recorded lookup, the receipt's issuedAt and the leg's observed_at.
 var fxNow = time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 
 func addressOf(k *secp256k1.PrivateKey) address { return pubKeyAddress(k.PubKey()) }
@@ -74,6 +89,8 @@ type fixture struct {
 	ReceiptNetwork, ReceiptPayer, ReceiptTx  string
 	ReceiptSig                               string
 	ReceiptResponseHash                      string
+	ReceiptVariant                           string // "" (per version), "3186", "3140"
+	NoWrapReceipt                            bool   // the leg does not wrap x402.receipt on its own
 	DuplicateMember                          bool
 	ExtraPayload                             string // raw JSON members appended into payload (e.g. permissionContext)
 	TransferMethod                           string // accepted.extra.assetTransferMethod, "" for absent
@@ -118,11 +135,16 @@ func (f *fixture) sign() {
 	f.Signature = hex0x(sign65(testPayerKey, d))
 	if f.ReceiptFormat == "eip712" {
 		v, _ := decodeStrict(f.receiptPayloadJSON())
-		h, _, err := receiptStructHash(obj(v.(map[string]any)))
+		payload := obj(v.(map[string]any))
+		variant, err := selectVariant(payload)
+		if err != nil {
+			variant = receiptV1 // an unsupported receipt: sign anything
+		}
+		h, err := receiptStructHash(payload, variant)
 		if err != nil {
 			panic(err)
 		}
-		f.ReceiptSig = hex0x(sign65(testPayeeKey, typedDataDigest(receiptDomainSeparator(), h)))
+		f.ReceiptSig = hex0x(sign65(testPayeeKey, typedDataDigest(receiptDomain(variant.domainVersion), h)))
 	}
 }
 
@@ -157,19 +179,43 @@ func (f *fixture) payloadJSON() []byte {
 
 func (f *fixture) receiptPayloadJSON() []byte {
 	extra := ""
-	if f.ReceiptVersion == 2 {
+	if f.ReceiptVersion == 2 && f.ReceiptVariant == "both" {
+		extra = fmt.Sprintf(`,"responseHash":%s,"contentHash":%s`, q(f.ReceiptResponseHash), q(f.ReceiptResponseHash))
+	} else if f.ReceiptVersion == 2 && f.ReceiptVariant == "neither" {
+		extra = ""
+	} else if f.ReceiptVersion == 2 && f.ReceiptVariant == "3140" {
+		extra = fmt.Sprintf(`,"commitmentId":"","settlementUnbound":false,"contentHash":%s,"contentHashAlg":"sha256","requestHash":"","receiptRef":""`, q(f.ReceiptResponseHash))
+	} else if f.ReceiptVersion == 2 {
 		extra = fmt.Sprintf(`,"responseHash":%s,"responseHashAlg":"sha256","responseHashEncoding":"raw"`, q(f.ReceiptResponseHash))
 	}
 	return fmt.Appendf(nil, `{"version":%d,"network":%s,"resourceUrl":%s,"payer":%s,"issuedAt":%d,"transaction":%s%s}`,
 		f.ReceiptVersion, q(f.ReceiptNetwork), q(fxURL), q(f.ReceiptPayer), fxNow.Unix(), q(f.ReceiptTx), extra)
 }
 
+// receiptEnvelope is the receipt object {format, payload, signature}.
+func (f *fixture) receiptEnvelope() []byte {
+	return fmt.Appendf(nil, `{"format":"eip712","payload":%s,"signature":%s}`, f.receiptPayloadJSON(), q(f.ReceiptSig))
+}
+
+// receiptOctets is the registered octets of x402.receipt (EIP-712 format):
+// the RFC 8785 form of the envelope.
+func (f *fixture) receiptOctets() []byte {
+	v, err := decodeStrict(f.receiptEnvelope())
+	if err != nil {
+		panic(err)
+	}
+	b, err := canonical.JCS(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
 func (f *fixture) responseJSON() []byte {
 	ext := ""
 	switch f.ReceiptFormat {
 	case "eip712":
-		ext = fmt.Sprintf(`,"extensions":{"offer-receipt":{"info":{"receipt":{"format":"eip712","payload":%s,"signature":%s}}}}`,
-			f.receiptPayloadJSON(), q(f.ReceiptSig))
+		ext = fmt.Sprintf(`,"extensions":{"offer-receipt":{"info":{"receipt":%s}}}`, f.receiptEnvelope())
 	case "jws":
 		ext = `,"extensions":{"offer-receipt":{"info":{"receipt":{"format":"jws","signature":"eyJhbGciOiJFUzI1NksiLCJraWQiOiJkaWQ6d2ViOmFwaS5leGFtcGxlLmNvbSNrZXktMSJ9.e30.c2ln"}}}}`
 	}
@@ -213,9 +259,12 @@ func (f *fixture) legJSON() []byte {
 	if f.WithResponse {
 		wrapped = append(wrapped, legWrappedEntry(wrappedSettleResponse, f.responseJSON()))
 	}
+	if f.ReceiptFormat == "eip712" && !f.NoWrapReceipt {
+		wrapped = append(wrapped, legWrappedEntry(wrappedReceipt, f.receiptOctets()))
+	}
 	assetCode := "eip155:84532/erc20:" + strings.ToLower(fxAsset)
 	leg := map[string]any{
-		"action_id":           "settle-fixture-payer",
+		"action_id":           "settle-fixture-payer-constructed-not-recorded",
 		"action_type":         "fyi",
 		"canonicalization_id": "jcs",
 		"format_version":      "4",
@@ -238,14 +287,48 @@ func (f *fixture) legJSON() []byte {
 	return append(b, '\n')
 }
 
+// fixturePolicy is the default policy: payer accounts eoa-or-contract,
+// offline (no recorded lookup).
 func fixturePolicy() adapter.TrustPolicy {
 	return adapter.TrustPolicy{
-		Now: fxNow,
 		Pins: map[string]string{
 			PinChain: fxNetwork, PinAsset: fxAsset, PinAssetName: fxName, PinAssetVersion: fxVersion,
 		},
-		Keys: map[string][]string{KeyReceiptSigner: {addressOf(testPayeeKey).String()}},
+		Keys: map[string][]string{
+			KeyPayer:         {addressOf(testPayerKey).String()},
+			KeyReceiptSigner: {addressOf(testPayeeKey).String()},
+		},
 	}
+}
+
+// eoaPolicy is fixturePolicy with payer accounts "eoa": the policy the
+// negative fixtures are evaluated under, so their FAIL is a real FAIL.
+func eoaPolicy() adapter.TrustPolicy {
+	p := fixturePolicy()
+	p.Pins[PinPayerAccounts] = "eoa"
+	return p
+}
+
+// recordedLookup is a constructed (not recorded) transaction lookup that
+// matches the fixture.
+func (f *fixture) recordedLookup() TxLookup {
+	return TxLookup{
+		Source: "constructed fixture (not a recorded lookup)", Network: fxNetwork, Transaction: f.Tx,
+		Status: "success", Final: true, BlockTimestamp: fmt.Sprint(fxNow.Unix()),
+		Logs: []TxLog{
+			{Address: fxAsset, Event: "Transfer", From: f.From, To: f.To, Value: f.Value},
+			{Address: fxAsset, Event: "AuthorizationUsed", Authorizer: f.From, Nonce: f.Nonce},
+		},
+	}
+}
+
+func withLookup(p adapter.TrustPolicy, l TxLookup) adapter.TrustPolicy {
+	b, err := json.Marshal(l)
+	if err != nil {
+		panic(err)
+	}
+	p.Recorded = map[string]json.RawMessage{RecordedTxLookup: b}
+	return p
 }
 
 // flipBit flips the lowest bit of byte i of a 0x-hex string's decoded bytes.
@@ -268,14 +351,19 @@ func TestFixturesUpToDate(t *testing.T) {
 	positive := newFixture()
 	mutated := newFixture()
 	mutated.Signature = flipBit(mutated.Signature, 10)
-	policy, err := json.MarshalIndent(fixturePolicy(), "", "  ")
-	if err != nil {
-		t.Fatal(err)
+	marshal := func(p adapter.TrustPolicy) []byte {
+		b, err := json.MarshalIndent(p, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append(b, '\n')
 	}
 	files := map[string][]byte{
 		"exchange-positive.http":                     positive.headerBlock(),
 		"exchange-signature-bit-flip.http":           mutated.headerBlock(),
-		"trust-policy.json":                          append(policy, '\n'),
+		"trust-policy.json":                          marshal(fixturePolicy()),
+		"trust-policy-eoa.json":                      marshal(eoaPolicy()),
+		"trust-policy-recorded-lookup.json":          marshal(withLookup(fixturePolicy(), positive.recordedLookup())),
 		"leg-payer-observed.json":                    positive.legJSON(),
 		"leg-payer-observed-signature-bit-flip.json": mutated.legJSON(),
 		"payment-payload.json":                       positive.payloadJSON(),

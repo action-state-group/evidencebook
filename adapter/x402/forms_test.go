@@ -4,29 +4,21 @@ package x402
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook/adapter"
 )
 
-func props(results []adapter.PropertyResult) []string {
-	var out []string
-	for _, r := range results {
-		out = append(out, r.Property)
-	}
-	return out
+var legKeys = []string{
+	PropWrappedContent + "/" + wrappedPaymentPayload,
+	RowPayloadForm, RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms,
+	PropWrappedContent + "/" + wrappedSettleResponse,
+	RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
+	PropWrappedContent + "/" + wrappedReceipt,
+	RowReceiptSignature, RowReceiptSignerAuthorized, RowDeliveryBinding,
+	PropLegAmount, PropLegNetwork,
 }
-
-var (
-	headerProps = []string{PropPayloadForm, PropPayerSignature, PropChain, PropAsset, PropPayeeBinding,
-		PropAmountBinding, PropValidityWindow, PropSettleForm, PropSettlement, PropReceiptSignature}
-	legProps = []string{PropWrappedDigest, PropPayloadForm, PropPayerSignature, PropChain, PropAsset, PropPayeeBinding,
-		PropAmountBinding, PropValidityWindow, PropSettleWrappedDigest, PropSettleForm, PropSettlement,
-		PropReceiptSignature, PropLegAmount, PropLegNetwork}
-)
 
 func TestFormsPropertyLists(t *testing.T) {
 	f := newFixture()
@@ -34,11 +26,11 @@ func TestFormsPropertyLists(t *testing.T) {
 		raw  []byte
 		want []string
 	}{
-		"header block": {f.headerBlock(), headerProps},
-		"bare payload": {f.payloadJSON(), headerProps},
-		"leg":          {f.legJSON(), legProps},
+		"header block": {f.headerBlock(), tableRows},
+		"bare payload": {f.payloadJSON(), tableRows},
+		"leg":          {f.legJSON(), legKeys},
 	} {
-		got := props(Adapter{}.Check(c.raw, fixturePolicy()))
+		got := keys(Adapter{}.Check(c.raw, fixturePolicy()))
 		if strings.Join(got, ",") != strings.Join(c.want, ",") {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
@@ -46,49 +38,50 @@ func TestFormsPropertyLists(t *testing.T) {
 }
 
 func TestLegPositive(t *testing.T) {
-	results := Adapter{}.Check(newFixture().legJSON(), fixturePolicy())
-	for _, r := range results {
-		want, ok := positiveStatuses[r.Property]
-		if legOnly[r.Property] {
-			want, ok = adapter.Pass, true
+	for _, r := range (Adapter{}).Check(newFixture().legJSON(), fixturePolicy()) {
+		if want := positiveStatuses[key(r)]; r.Status != want {
+			t.Errorf("%s = %s (%s), want %s", key(r), r.Status, r.Detail, want)
 		}
-		if !ok || r.Status != want {
-			t.Errorf("%s = %s (%s), want %s", r.Property, r.Status, r.Detail, want)
+		native := r.Property == adapter.NativeCheck
+		leg := r.Property == PropWrappedContent || r.Property == PropLegAmount || r.Property == PropLegNetwork
+		if native == leg {
+			t.Errorf("%s: property %q", key(r), r.Property)
 		}
 	}
 }
 
 func TestBarePayload(t *testing.T) {
 	st := statuses(Adapter{}.Check(newFixture().payloadJSON(), fixturePolicy()))
-	for p, w := range positiveStatuses {
-		switch p {
-		case PropSettleForm, PropSettlement, PropReceiptSignature:
+	for _, row := range tableRows {
+		w := positiveStatuses[row]
+		if row == RowSettleResponseForm || row == RowSettleResponseJoin || row == RowSettlementOnchain ||
+			row == RowReceiptSignature || row == RowReceiptSignerAuthorized || row == RowDeliveryBinding {
 			w = adapter.NotPresent
 		}
-		if st[p] != w {
-			t.Errorf("%s = %s, want %s", p, st[p], w)
+		if st[row] != w {
+			t.Errorf("%s = %s, want %s", row, st[row], w)
 		}
 	}
 }
 
 // The demo negative: one signature byte flipped inside the leg's content,
-// with the digest recomputed so the leg still binds the content. The
-// wrapped digest passes and the native check fails, nothing else moves.
+// with the digest recomputed. Under policy eoa: the content check passes,
+// payer_signature fails, nothing else moves. Under the default policy the
+// same leg is INCONCLUSIVE (ruling Q5).
 func TestLegSignatureFlipDigestRecomputed(t *testing.T) {
 	f := newFixture()
 	f.Signature = flipBit(f.Signature, 10)
-	results := Adapter{}.Check(f.legJSON(), fixturePolicy())
-	if got := failing(results); strings.Join(got, ",") != PropPayerSignature {
+	results := Adapter{}.Check(f.legJSON(), eoaPolicy())
+	if got := failing(results); strings.Join(got, ",") != RowPayerSignature {
 		t.Fatalf("FAIL on %v, want exactly payer_signature", got)
 	}
-	positive := statuses(Adapter{}.Check(newFixture().legJSON(), fixturePolicy()))
-	for p, st := range statuses(results) {
-		if p != PropPayerSignature && st != positive[p] {
-			t.Errorf("%s = %s, positive %s", p, st, positive[p])
+	for k, st := range statuses(results) {
+		if k != RowPayerSignature && st != positiveStatuses[k] {
+			t.Errorf("%s = %s, positive %s", k, st, positiveStatuses[k])
 		}
 	}
-	if r, _ := adapter.Find(results, PropWrappedDigest); r.Status != adapter.Pass {
-		t.Fatalf("wrapped_digest %+v", r)
+	if r := find(t, Adapter{}.Check(f.legJSON(), fixturePolicy()), RowPayerSignature); r.Status != adapter.Inconclusive {
+		t.Fatalf("default policy: %+v", r)
 	}
 }
 
@@ -103,12 +96,23 @@ func legMutate(t *testing.T, edit func(settlement map[string]any)) []adapter.Pro
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Adapter{}.Check(b, fixturePolicy())
+	return Adapter{}.Check(b, eoaPolicy())
 }
 
 func TestLegMutations(t *testing.T) {
 	entry := func(s map[string]any, i int) map[string]any {
 		return s["wrapped"].([]any)[i].(map[string]any)
+	}
+	wcPay, wcResp, wcRcpt := PropWrappedContent+"/"+wrappedPaymentPayload, PropWrappedContent+"/"+wrappedSettleResponse, PropWrappedContent+"/"+wrappedReceipt
+	payloadAbsent := map[string]adapter.Status{RowPayloadForm: adapter.NotPresent, RowPayerSignature: adapter.NotPresent,
+		RowPayerTrust: adapter.NotPresent, RowAssetTrust: adapter.NotPresent, RowAuthorizationTerms: adapter.NotPresent,
+		RowSettleResponseJoin: adapter.NotPresent, PropLegAmount: adapter.NotChecked, PropLegNetwork: adapter.NotChecked}
+	with := func(m map[string]adapter.Status, k string, v adapter.Status) map[string]adapter.Status {
+		out := map[string]adapter.Status{k: v}
+		for a, b := range m {
+			out[a] = b
+		}
+		return out
 	}
 	cases := []struct {
 		name string
@@ -119,74 +123,43 @@ func TestLegMutations(t *testing.T) {
 			f := newFixture()
 			f.Signature = flipBit(f.Signature, 10)
 			entry(s, 0)["content"] = legWrappedEntry(wrappedPaymentPayload, f.payloadJSON())["content"]
-		}, map[string]adapter.Status{PropWrappedDigest: adapter.Fail, PropPayerSignature: adapter.Fail}},
+		}, map[string]adapter.Status{wcPay: adapter.Fail, RowPayerSignature: adapter.Fail}},
 		{"leg amount", func(s map[string]any) { s["amount"].(map[string]any)["value"] = "10001" },
 			map[string]adapter.Status{PropLegAmount: adapter.Fail}},
 		{"leg network", func(s map[string]any) { s["payment_ref"].(map[string]any)["network"] = "eip155:8453" },
 			map[string]adapter.Status{PropLegNetwork: adapter.Fail}},
 		{"response digest", func(s map[string]any) { entry(s, 1)["digest"] = strings.Repeat("0", 64) },
-			map[string]adapter.Status{PropSettleWrappedDigest: adapter.Fail}},
-		{"digest only", func(s map[string]any) { delete(entry(s, 0), "content") },
-			map[string]adapter.Status{PropWrappedDigest: adapter.NotPresent, PropPayloadForm: adapter.NotPresent,
-				PropPayerSignature: adapter.NotPresent, PropLegAmount: adapter.NotChecked, PropLegNetwork: adapter.NotChecked,
-				PropChain: adapter.NotPresent, PropAsset: adapter.NotPresent, PropPayeeBinding: adapter.NotPresent,
-				PropAmountBinding: adapter.NotPresent, PropValidityWindow: adapter.NotPresent}},
-		{"padded content", func(s map[string]any) { entry(s, 0)["content"] = entry(s, 0)["content"].(string) + "=" },
-			map[string]adapter.Status{PropWrappedDigest: adapter.Fail, PropPayloadForm: adapter.NotPresent,
-				PropPayerSignature: adapter.NotPresent, PropLegAmount: adapter.NotChecked, PropLegNetwork: adapter.NotChecked,
-				PropChain: adapter.NotPresent, PropAsset: adapter.NotPresent, PropPayeeBinding: adapter.NotPresent,
-				PropAmountBinding: adapter.NotPresent, PropValidityWindow: adapter.NotPresent}},
-		{"no response wrapped", func(s map[string]any) { s["wrapped"] = s["wrapped"].([]any)[:1] },
-			map[string]adapter.Status{PropSettleWrappedDigest: adapter.NotPresent, PropSettleForm: adapter.NotPresent,
-				PropSettlement: adapter.NotPresent, PropReceiptSignature: adapter.NotPresent}},
+			map[string]adapter.Status{wcResp: adapter.Fail}},
+		{"receipt digest", func(s map[string]any) { entry(s, 2)["digest"] = strings.Repeat("0", 64) },
+			map[string]adapter.Status{wcRcpt: adapter.Fail}},
+		{"digest only", func(s map[string]any) { delete(entry(s, 0), "content") }, with(payloadAbsent, wcPay, adapter.NotPresent)},
+		{"padded content", func(s map[string]any) { entry(s, 0)["content"] = entry(s, 0)["content"].(string) + "=" }, with(payloadAbsent, wcPay, adapter.Fail)},
+		{"no response wrapped", func(s map[string]any) { s["wrapped"] = []any{entry(s, 0), entry(s, 2)} },
+			map[string]adapter.Status{wcResp: adapter.NotPresent, RowSettleResponseForm: adapter.NotPresent,
+				RowSettleResponseJoin: adapter.NotPresent, RowSettlementOnchain: adapter.NotPresent}},
+		{"no receipt wrapped", func(s map[string]any) { s["wrapped"] = s["wrapped"].([]any)[:2] },
+			map[string]adapter.Status{wcRcpt: adapter.NotPresent}}, // the receipt in the response is used
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			st := statuses(legMutate(t, c.edit))
-			for p, got := range st {
-				want, ok := c.want[p]
+			for k, got := range statuses(legMutate(t, c.edit)) {
+				want, ok := c.want[k]
 				if !ok {
-					want = positiveStatuses[p]
-					if legOnly[p] {
-						want = adapter.Pass
-					}
+					want = positiveStatuses[k]
 				}
 				if got != want {
-					t.Errorf("%s = %s, want %s", p, got, want)
+					t.Errorf("%s = %s, want %s", k, got, want)
 				}
 			}
 		})
 	}
 }
 
-func TestCommittedFormFixtures(t *testing.T) {
-	p, err := adapter.LoadTrustPolicy(filepath.Join("testdata", "trust-policy.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for file, wantFail := range map[string]string{
-		"leg-payer-observed.json":                    "",
-		"leg-payer-observed-signature-bit-flip.json": PropPayerSignature,
-		"payment-payload.json":                       "",
-		"payment-payload-signature-bit-flip.json":    PropPayerSignature,
-	} {
-		raw, err := os.ReadFile(filepath.Join("testdata", file))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.Join(failing(Adapter{}.Check(raw, p)), ","); got != wantFail {
-			t.Errorf("%s: FAIL on %q, want %q", file, got, wantFail)
-		}
-	}
-}
-
 func TestJSONNeitherForm(t *testing.T) {
-	r, _ := adapter.Find(Adapter{}.Check([]byte(`{"hello":1}`), fixturePolicy()), PropPayloadForm)
-	if r.Status != adapter.Fail {
+	if r := find(t, Adapter{}.Check([]byte(`{"hello":1}`), fixturePolicy()), RowPayloadForm); r.Status != adapter.Fail {
 		t.Fatalf("%+v", r)
 	}
-	r, _ = adapter.Find(Adapter{}.Check([]byte(`{"x402Version":2,`), fixturePolicy()), PropPayloadForm)
-	if r.Status != adapter.Fail {
+	if r := find(t, Adapter{}.Check([]byte(`{"x402Version":2,`), fixturePolicy()), RowPayloadForm); r.Status != adapter.Fail {
 		t.Fatalf("truncated JSON: %+v", r)
 	}
 }

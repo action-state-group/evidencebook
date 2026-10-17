@@ -28,7 +28,8 @@ func (r Relation) String() string {
 }
 
 // Requirement is one requirement evaluated against a foreign object, with the
-// native properties it depends on.
+// native checks it rests on, by CheckName. A check it does not list never
+// counts for or against it.
 type Requirement struct {
 	ID        string
 	Relation  Relation
@@ -45,6 +46,9 @@ type Evaluation struct {
 	// Row is the interop-profile-v0 §8.1 row applied, or the adapter mapping
 	// used for a native status the table does not name.
 	Row string `json:"row"`
+	// Status is the eight-value per-requirement status the row gives
+	// (empty when the contract decides, row 7).
+	Status string `json:"status,omitempty"`
 	// Sufficiency and Verdict are empty when the native check does not decide
 	// them (row 7: the contract evaluates the Artifact's content).
 	Sufficiency string `json:"sufficiency,omitempty"`
@@ -61,21 +65,23 @@ type Evaluation struct {
 //   - a FAIL removes the evidence for a requirement it only supports:
 //     INSUFFICIENT, not_evaluable (row 6), unless other evidence settles it,
 //     which is the contract's evaluation, not this function's;
-//   - an absent input is INSUFFICIENT, and a check not run or undecided is
-//     UNKNOWN, both not_evaluable (the profile's rows 3 and 4, applied to the
-//     native properties);
+//   - an absent input (including an object that has no native signature)
+//     is INSUFFICIENT, and a check not run or undecided is UNKNOWN, both
+//     not_evaluable: mapped as profile §8.1 rows 3-4 pending a profile row,
+//     never met or not_met;
 //   - every property PASS decides a requirement that is the check: SATISFIED,
 //     met. For a requirement it only supports, the contract evaluates the
 //     content (row 7) and Evaluate leaves sufficiency and verdict empty.
 //
-// A property the requirement depends on that was not reported counts as
-// NOT_PRESENT. A FAIL never yields met.
+// A check the requirement rests on that was not reported counts as
+// NOT_PRESENT. A FAIL never yields met. Checks are matched by CheckName, so
+// a native_check report counts under the name in its detail.
 func Evaluate(results []PropertyResult, req Requirement) Evaluation {
 	ev := Evaluation{Requirement: req.ID}
 	byStatus := map[Status][]string{}
 	for _, name := range req.DependsOn {
 		st := NotPresent
-		if r, ok := Find(results, name); ok {
+		if r, ok := FindCheck(results, name); ok {
 			st = r.Status
 		}
 		byStatus[st] = append(byStatus[st], name)
@@ -84,20 +90,20 @@ func Evaluate(results []PropertyResult, req Requirement) Evaluation {
 	case len(byStatus[Fail]) > 0:
 		ev.Basis = byStatus[Fail]
 		if req.Relation == IsTheCheck {
-			ev.Row, ev.Sufficiency, ev.Verdict = "5", "SATISFIED", "not_met"
+			ev.Row, ev.Status, ev.Sufficiency, ev.Verdict = "5", "SATISFIED", "SATISFIED", "not_met"
 		} else {
-			ev.Row, ev.Sufficiency, ev.Verdict = "6", "INSUFFICIENT", "not_evaluable"
+			ev.Row, ev.Status, ev.Sufficiency, ev.Verdict = "6", "INSUFFICIENT", "INSUFFICIENT", "not_evaluable"
 		}
 	case len(byStatus[NotPresent]) > 0:
 		ev.Basis = byStatus[NotPresent]
-		ev.Row, ev.Sufficiency, ev.Verdict = "native NOT_PRESENT (as row 3)", "INSUFFICIENT", "not_evaluable"
+		ev.Row, ev.Status, ev.Sufficiency, ev.Verdict = "3 (native NOT_PRESENT; mapped as profile §8.1 rows 3-4 pending a profile row)", "INSUFFICIENT", "INSUFFICIENT", "not_evaluable"
 	case len(byStatus[NotChecked])+len(byStatus[Inconclusive]) > 0:
 		ev.Basis = append(append([]string{}, byStatus[NotChecked]...), byStatus[Inconclusive]...)
-		ev.Row, ev.Sufficiency, ev.Verdict = "native NOT_CHECKED or INCONCLUSIVE (as row 4)", "UNKNOWN", "not_evaluable"
+		ev.Row, ev.Status, ev.Sufficiency, ev.Verdict = "4 (native NOT_CHECKED or INCONCLUSIVE; mapped as profile §8.1 rows 3-4 pending a profile row)", "UNKNOWN", "UNKNOWN", "not_evaluable"
 	default:
 		ev.Basis = byStatus[Pass]
 		if req.Relation == IsTheCheck {
-			ev.Row, ev.Sufficiency, ev.Verdict = "7 (the requirement is the check, and it passed)", "SATISFIED", "met"
+			ev.Row, ev.Status, ev.Sufficiency, ev.Verdict = "7 (the requirement is the check, and it passed)", "SATISFIED", "SATISFIED", "met"
 		} else {
 			ev.Row = "7 (the contract evaluates the content)"
 		}

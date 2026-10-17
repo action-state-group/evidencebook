@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package x402 is the evidencebook adapter for x402 payments: the payer's
-// payment payload (PAYMENT-SIGNATURE, v1 X-PAYMENT) and the settlement
-// response (PAYMENT-RESPONSE, v1 X-PAYMENT-RESPONSE), scheme "exact" on EVM
-// with an EIP-3009 transferWithAuthorization.
+// Package x402 is the evidencebook adapter for x402 payments, implementing
+// the x402 adapter declaration v0 (agent-action-capsule
+// spec/adapters/x402-v0.md) as ruled for its first implementation.
 //
-// The native check of the payment payload is EIP-712 signature recovery over
-// the authorization's members exactly as transmitted, under a domain the
-// relying party pins (chain, token contract, token name and version). The
-// settlement response is not signed by the facilitator; it gets a structure
-// check, and settlement itself is an on-chain lookup that this adapter never
-// performs. An optional payee receipt (the offer-receipt extension) is
-// checked by EIP-712 recovery when present.
+// It reads the payer's payment payload (PAYMENT-SIGNATURE), the
+// facilitator's settlement response (PAYMENT-RESPONSE) and the payee's
+// receipt (offer-and-receipt extension), for x402 version 2, scheme "exact",
+// on EVM, with the EIP-3009 transfer method. Each check of the declaration's
+// §7 table is reported as a native_check report of the object it checks, with
+// the check's name in detail.
 //
-// The adapter makes no network calls.
+// The adapter makes no network calls. An online check (the transaction
+// lookup) reads a recording the relying party supplies in its trust policy,
+// and is NOT_CHECKED without one.
 package x402
 
 import (
@@ -27,54 +27,82 @@ import (
 	"github.com/action-state-group/evidencebook/adapter"
 )
 
-// Property names, in report order.
+// Check names: the rows of the declaration's §7 table.
 const (
-	PropPayloadForm      = "payment_payload_form"
-	PropPayerSignature   = "payer_signature"
-	PropChain            = "chain"
-	PropAsset            = "asset"
-	PropPayeeBinding     = "payee_binding"
-	PropAmountBinding    = "amount_binding"
-	PropValidityWindow   = "validity_window"
-	PropSettleForm       = "settle_response_form"
-	PropSettlement       = "settlement"
-	PropReceiptSignature = "payee_receipt_signature"
+	RowPayloadForm             = "payload_form"
+	RowPayerSignature          = "payer_signature"
+	RowPayerTrust              = "payer_trust"
+	RowAssetTrust              = "asset_trust"
+	RowAuthorizationTerms      = "authorization_terms"
+	RowSettleResponseForm      = "settle_response_form"
+	RowSettleResponseJoin      = "settle_response_join"
+	RowSettleResponseSignature = "settle_response_signature"
+	RowSettlementOnchain       = "settlement_onchain"
+	RowReceiptSignature        = "receipt_signature"
+	RowReceiptSignerAuthorized = "receipt_signer_authorized"
+	RowDeliveryBinding         = "delivery_binding"
 )
 
-// Trust policy pins and key roles this adapter reads.
+// Trust policy names this adapter reads.
 const (
-	// PinChain is the CAIP-2 network the relying party accepts, e.g. eip155:84532.
-	PinChain = "x402.chain"
-	// PinAsset is the token contract address.
-	PinAsset = "x402.asset"
-	// PinAssetName and PinAssetVersion are the token's EIP-712 domain name and version.
+	// PinChain and PinAsset name the one (network, token contract) the
+	// relying party accepts (asset_trust). PinAssetName and PinAssetVersion
+	// are that token's EIP-712 domain name and version. The payer signature
+	// is checked under the domain these pins give, never under transmitted
+	// values.
+	PinChain        = "x402.chain"
+	PinAsset        = "x402.asset"
 	PinAssetName    = "x402.asset.name"
 	PinAssetVersion = "x402.asset.version"
-	// PinPayTo and PinAmount optionally fix the payee and the atomic amount.
-	PinPayTo  = "x402.pay_to"
-	PinAmount = "x402.amount"
-	// PinPayerAccounts is "eoa" (the default) or "eoa-or-contract". Under
-	// "eoa-or-contract" a signature that does not recover to the payer is
-	// INCONCLUSIVE, because a contract account's signature is checked on
-	// chain (EIP-1271), which this adapter does not do.
+	// PinPayerAccounts is "eoa-or-contract" (the default) or "eoa". Under
+	// the default, a signature that does not recover to authorization.from
+	// is INCONCLUSIVE, because the payer may be a contract account whose
+	// signature is checked on chain (EIP-1271). Under "eoa" it is FAIL.
 	PinPayerAccounts = "x402.payer_accounts"
-	// KeyReceiptSigner lists the addresses accepted as signers of payee receipts.
+	// PinPayerTrust, PinAssetTrust and PinReceiptSignerAuthorized set to
+	// "excluded" exclude that check by policy (NOT_CHECKED).
+	PinPayerTrust              = "x402.payer_trust"
+	PinAssetTrust              = "x402.asset_trust"
+	PinReceiptSignerAuthorized = "x402.receipt_signer_authorized"
+	// KeyPayer and KeyPayerRejected list payer addresses the policy binds to
+	// a party, or rejects (payer_trust).
+	KeyPayer         = "x402.payer"
+	KeyPayerRejected = "x402.payer_rejected"
+	// KeyReceiptSigner lists the addresses authorized to sign receipts for
+	// the service (receipt_signer_authorized; extension 4.5.1, external key
+	// registry approach).
 	KeyReceiptSigner = "x402.receipt_signer"
+	// RecordedTxLookup is a recorded transaction lookup (see TxLookup);
+	// RecordedCodeLookup a recorded code lookup at the payer address (see
+	// CodeLookup).
+	RecordedTxLookup   = "x402.tx_lookup"
+	RecordedCodeLookup = "x402.code_lookup"
 )
 
-// Methods, as reported.
+// Methods, as reported. Those of the declaration's §7 table are quoted from
+// it; the rulings add the v normalization and the domain source to
+// payer_signature, and the validity window to settlement_onchain.
 const (
-	MethodPayloadForm = "base64 (RFC 4648 §4) of one JSON object, duplicate members rejected; x402 v2 PaymentPayload members (v1 noted); exact/EVM EIP-3009 authorization members as unsigned decimal, 20-byte address and 32-byte hex strings"
-	MethodPayerSig    = "secp256k1 public-key recovery (EOA) over the EIP-712 digest of EIP-3009 TransferWithAuthorization, members as transmitted, domain {name, version, chainId, verifyingContract} from the trust policy pins; low-s required; recovered address compared to authorization.from"
-	MethodChain       = "transmitted network (CAIP-2) compared to the trust policy pin x402.chain"
-	MethodAsset       = "transmitted asset contract and EIP-712 name/version compared to the trust policy pins"
-	MethodPayee       = "authorization.to compared to accepted.payTo and, when pinned, x402.pay_to"
-	MethodAmount      = "authorization.value compared to accepted.amount and, when pinned, x402.amount"
-	MethodWindow      = "validAfter < now < validBefore (EIP-3009), now from the trust policy clock"
-	MethodSettleForm  = "structure only: x402 v2 SettlementResponse members, success true, transaction 0x and 64 hex digits, network equal to the pinned chain, payer equal to authorization.from; the response is not signed and the facilitator is not authenticated"
-	MethodSettlement  = "tx lookup, not performed offline"
-	MethodReceipt     = "secp256k1 public-key recovery over the EIP-712 digest of the offer-receipt Receipt (domain x402 receipt / 1 / chainId 1; payload.version 1, or 2 per the unmerged upstream delivery-binding revision), payload as transmitted; signer compared to the trust policy key role x402.receipt_signer"
+	MethodPayloadForm     = "x402 v2 PaymentPayload: base64 (RFC 4648 §4) and JSON parse, no duplicate members"
+	MethodPayerSignature  = "EIP-712 TransferWithAuthorization (EIP-3009), secp256k1 recovery, fields from the as-transmitted payload; domain from the relying party's policy for accepted.network and accepted.asset; v 0/1 normalized to 27/28, low s"
+	MethodPayerTrust      = "relying party's policy: trust policy key roles x402.payer (bound) and x402.payer_rejected"
+	MethodAssetTrust      = "relying party's policy: trust policy pins x402.chain and x402.asset"
+	MethodAuthTerms       = "x402 exact: authorization.to = accepted.payTo, authorization.value = accepted.amount, validAfter < validBefore"
+	MethodSettleForm      = "x402 v2 SettlementResponse: base64 and JSON parse, 5.3.2 member types"
+	MethodSettleJoin      = "x402 v2: network = accepted.network, payer = authorization.from"
+	MethodSettleSignature = "none: x402 v2 SettlementResponse is unsigned"
+	MethodReceiptAuth     = "extension 4.5.1, external key registry: relying party's policy key role x402.receipt_signer"
 )
+
+func methodSettlementOnchain(network, source string) string {
+	if network == "" {
+		network = "<network>"
+	}
+	if source == "" {
+		source = "<source named by policy>"
+	}
+	return fmt.Sprintf("transaction lookup on %s via %s: status, Transfer, AuthorizationUsed, validAfter < block timestamp < validBefore", network, source)
+}
 
 // Header names: v2, then v1.
 var (
@@ -93,82 +121,95 @@ func (Adapter) Name() string { return "x402" }
 // NativeObject implements adapter.Adapter: the FR-19 declaration.
 func (Adapter) NativeObject() adapter.NativeObject {
 	return adapter.NativeObject{
-		Protocol: "x402 v2 (v1 X-PAYMENT read), scheme exact, EVM, asset transfer method eip3009",
+		Protocol: "x402 v2, scheme exact, EVM (eip155), asset transfer method eip3009; declaration agent-action-capsule spec/adapters/x402-v0.md",
 		Objects: []adapter.Object{
 			{
 				Name:             "x402.payment-payload",
-				Format:           "PAYMENT-SIGNATURE header: base64 of a JSON PaymentPayload; payload = {signature, authorization}",
-				Octets:           "the base64-decoded header value as sent",
-				Issuer:           "payer: the account in authorization.from",
-				IssuerResolution: "the payer is whoever holds the key the signature recovers to; the relying party resolves no identity beyond that address. Chain, token contract and token EIP-712 name/version are pinned by the trust policy, never taken from the payload",
-				Method:           MethodPayerSig,
+				Format:           "PaymentPayload JSON; payload = {signature, authorization}",
+				Octets:           "the base64-decoded PAYMENT-SIGNATURE header value as sent",
+				Issuer:           "payer: authorization.from",
+				IssuerResolution: "the signer address is recovered; the relying party's policy binds it to a party or not (payer_trust). Chain, token contract and EIP-712 domain come from the policy (asset_trust), never from the payload",
+				Method:           MethodPayerSignature,
 				NativelySigned:   true,
-			},
-			{
-				Name:             "settlement-records leg (optional carrier)",
-				Format:           "an Agent Action Capsule (JSON) with a settlement member whose wrapped[] carries x402.payment-payload and optionally x402.settle-response entries {type, digest_alg, digest, content}",
-				Octets:           "each wrapped entry's content, base64url without padding, decoded",
-				Issuer:           "the leg's sealer; the wrapped objects keep their own issuers",
-				IssuerResolution: "not resolved here: the Capsule envelope (capsule_id, signature) is verified by the Capsule verifier, not by this adapter. A wrapped digest proves possession of the octets only",
-				Method:           MethodWrappedDigest,
-				NativelySigned:   false,
 			},
 			{
 				Name:             "x402.settle-response",
-				Format:           "PAYMENT-RESPONSE header: base64 of a JSON SettlementResponse {success, transaction, network, payer, ...}",
-				Octets:           "the base64-decoded header value as received",
-				Issuer:           "facilitator, relayed by the resource server",
-				IssuerResolution: "none: the response carries no signature, so the facilitator is not cryptographically identified",
-				Method:           MethodSettleForm + "; settlement by " + MethodSettlement,
+				Format:           "SettlementResponse JSON {success, errorReason, transaction, network, payer, amount, extensions}",
+				Octets:           "the base64-decoded PAYMENT-RESPONSE header value as received",
+				Issuer:           "facilitator, delivered by the resource server",
+				IssuerResolution: "none: unsigned, carries no key identifier; possession and transport-level provenance only. Settlement rests on a transaction lookup on the chain it names",
+				Method:           MethodSettleForm + "; " + MethodSettleJoin + "; " + methodSettlementOnchain("", ""),
 				NativelySigned:   false,
 			},
 			{
-				Name:             "x402 offer-receipt receipt (optional, inside the settle response)",
-				Format:           "extensions[\"offer-receipt\"].info.receipt = {format: eip712, payload, signature}; format jws is read but not checked",
-				Octets:           "the receipt payload members as transmitted",
+				Name:             "x402.receipt",
+				Format:           "offer-and-receipt extension receipt {format, payload, signature}, at extensions[\"offer-receipt\"].info.receipt of the settlement response, or wrapped on its own",
+				Octets:           "EIP-712: the RFC 8785 form of the envelope object; JWS: the ASCII compact serialization",
 				Issuer:           "payee (the resource server)",
-				IssuerResolution: "the signer address must be listed under the trust policy key role x402.receipt_signer; how the relying party chose that address (payTo key, DNS TXT, registry) is outside the adapter",
-				Method:           MethodReceipt,
+				IssuerResolution: "EIP-712: the signer address is recovered; the relying party's policy decides whether it is authorized for payload.resourceUrl (receipt_signer_authorized)",
+				Method:           "x402 offer-receipt v1, or v2 under #3186 or #3140 selected by member names, EIP-712 secp256k1 recovery; JWS not checked in v0",
 				NativelySigned:   true,
 			},
+			{
+				Name:             "settlement-records leg (carrier)",
+				Format:           "Agent Action Capsule JSON with a settlement member; settlement.wrapped[] entries {type, digest_alg, digest, content}",
+				Octets:           "each wrapped entry's content, base64url without padding, decoded",
+				Issuer:           "the leg's sealer; each wrapped object keeps its own issuer",
+				IssuerResolution: "not resolved here: the Capsule envelope is a Capsule verifier's check. A wrapped digest proves possession of the octets only",
+				Method:           MethodWrappedContent,
+				NativelySigned:   false,
+			},
 		},
-		Predicate: "The holder of the key for authorization.from authorized a transfer of exactly authorization.value units of the pinned token contract on the pinned chain to authorization.to, valid strictly between validAfter and validBefore, single-use under its nonce. When a receipt check passes: the pinned payee signer stated that payer paid for resourceUrl.",
+		Predicate: "X1: the holder of the key for authorization.from signed an EIP-3009 authorization to transfer value atomic units of the token at accepted.asset on accepted.network to authorization.to, valid between validAfter and validBefore, with its nonce (payload_form, payer_signature). X2: X1, matching the accepted payTo and amount (authorization_terms). X3: that authorization was executed on chain in the named transaction (X1, settle_response_form, settlement_onchain). X4: the payee, through an authorized key, states it received payment from payer for resourceUrl (receipt_signature, receipt_signer_authorized). X5: X4, and the payee signed a digest of the response body the verifier holds (delivery_binding).",
 		NotSupported: []string{
-			"that the transfer settled on chain (settlement is NOT_CHECKED offline)",
-			"who the facilitator is, or that it reported truthfully",
-			"that the resource or service was delivered",
-			"the identity of the payer beyond the recovered address",
-			"a payer authorization under permit2 or ERC-7710, or by a contract account (reported NOT_CHECKED; ERC-7710 has no offline-checkable payer signature and proves possession only)",
+			"that the facilitator issued or agrees with the settlement response: it is unsigned (possession only, FR-20)",
+			"that the resource was delivered or that the payer received any content",
+			"that the amount matched a signed offer (x402.offer is out of scope)",
+			"anything about a party beyond what the relying party's policy binds to an address or key",
+			"x402 v1, other schemes, non-eip155 networks, permit2 and erc7710 (erc7710 carries no offline-checkable payer signature: possession only), contract-account signatures, JWS receipts: NOT_CHECKED",
 		},
 		Properties: []adapter.Property{
-			{Name: PropWrappedDigest, Object: "settlement-records leg", Method: MethodWrappedDigest, Supports: "the leg's wrapped x402.payment-payload content is the octets its digest names (possession only)"},
-			{Name: PropPayloadForm, Object: "x402.payment-payload", Method: MethodPayloadForm, Supports: "the octets are an x402 payment payload this adapter can read"},
-			{Name: PropPayerSignature, Object: "x402.payment-payload", Method: MethodPayerSig, Supports: "the payer's key signed this authorization for the pinned token and chain"},
-			{Name: PropChain, Object: "x402.payment-payload", Method: MethodChain, Supports: "the payment names the chain the relying party accepts"},
-			{Name: PropAsset, Object: "x402.payment-payload", Method: MethodAsset, Supports: "the payment names the token the relying party accepts"},
-			{Name: PropPayeeBinding, Object: "x402.payment-payload", Method: MethodPayee, Supports: "the signed recipient is the payee the requirements named"},
-			{Name: PropAmountBinding, Object: "x402.payment-payload", Method: MethodAmount, Supports: "the signed value is the amount the requirements named"},
-			{Name: PropValidityWindow, Object: "x402.payment-payload", Method: MethodWindow, Supports: "the authorization was usable at the relying party's time"},
-			{Name: PropSettleWrappedDigest, Object: "settlement-records leg", Method: MethodWrappedDigest, Supports: "the leg's wrapped x402.settle-response content is the octets its digest names (possession only)"},
-			{Name: PropSettleForm, Object: "x402.settle-response", Method: MethodSettleForm, Supports: "a well-formed success response naming a transaction; nothing about who sent it"},
-			{Name: PropSettlement, Object: "x402.settle-response", Method: MethodSettlement, Supports: "nothing offline"},
-			{Name: PropReceiptSignature, Object: "x402 offer-receipt receipt", Method: MethodReceipt, Supports: "the pinned payee signer issued this receipt"},
-			{Name: PropLegAmount, Object: "settlement-records leg", Method: MethodLegAmount, Supports: "the leg's amount is the amount the payer accepted"},
-			{Name: PropLegNetwork, Object: "settlement-records leg", Method: MethodLegNetwork, Supports: "the leg's payment reference names the network the payer accepted"},
+			{Name: RowPayloadForm, Object: "x402.payment-payload", Method: MethodPayloadForm, Supports: "X1"},
+			{Name: RowPayerSignature, Object: "x402.payment-payload", Method: MethodPayerSignature, Supports: "X1"},
+			{Name: RowPayerTrust, Object: "x402.payment-payload", Method: MethodPayerTrust, Supports: "a named payer"},
+			{Name: RowAssetTrust, Object: "x402.payment-payload", Method: MethodAssetTrust, Supports: "an accepted asset"},
+			{Name: RowAuthorizationTerms, Object: "x402.payment-payload", Method: MethodAuthTerms, Supports: "X2"},
+			{Name: RowSettleResponseForm, Object: "x402.settle-response", Method: MethodSettleForm, Supports: "X3"},
+			{Name: RowSettleResponseJoin, Object: "x402.settle-response", Method: MethodSettleJoin, Supports: "consistency only, no attribution"},
+			{Name: RowSettleResponseSignature, Object: "x402.settle-response", Method: MethodSettleSignature, Supports: "nothing: always NOT_PRESENT"},
+			{Name: RowSettlementOnchain, Object: "x402.settle-response", Method: methodSettlementOnchain("", ""), Supports: "X3"},
+			{Name: RowReceiptSignature, Object: "x402.receipt", Method: "x402 offer-receipt <payload version>[ <variant and PR head>], <EIP-712 or JWS>", Supports: "X4"},
+			{Name: RowReceiptSignerAuthorized, Object: "x402.receipt", Method: MethodReceiptAuth, Supports: "X4"},
+			{Name: RowDeliveryBinding, Object: "x402.receipt", Method: "#3186 responseHash (raw or jcs) or #3140 contentHash (decoded entity body), SHA-256", Supports: "X5"},
+			{Name: PropWrappedContent, Object: "settlement-records leg", Method: MethodWrappedContent, Supports: "possession of the wrapped octets (not a native check)"},
+			{Name: PropLegAmount, Object: "settlement-records leg", Method: MethodLegAmount, Supports: "the leg's amount is the accepted amount (not a native check)"},
+			{Name: PropLegNetwork, Object: "settlement-records leg", Method: MethodLegNetwork, Supports: "the leg's payment reference names the accepted network (not a native check)"},
 		},
 	}
 }
 
-// exchange is the as-received octets of one x402 exchange.
+// out accumulates results in report order.
+type out struct{ results []adapter.PropertyResult }
+
+func (o *out) native(row string, st adapter.Status, method, explanation string) {
+	o.results = append(o.results, adapter.NativeCheckResult(row, st, method, explanation))
+}
+
+func (o *out) plain(prop string, st adapter.Status, method, detail string) {
+	o.results = append(o.results, adapter.PropertyResult{Property: prop, Status: st, Method: method, Detail: detail})
+}
+
+// exchange is the as-received octets of one x402 exchange, and the error
+// decoding each header value, if any.
 type exchange struct {
-	payload, response             []byte
-	payloadHeader, responseHeader string
+	payload, response       []byte
+	payloadErr, responseErr error
 }
 
 // parseExchange reads an HTTP header block: one "Name: value" per line
-// (CRLF or LF), names case-insensitive, other headers ignored. It returns
-// the base64-decoded payment payload and settlement response, either of
-// which may be absent.
+// (CRLF or LF), names case-insensitive, other headers ignored. The error is
+// about the block itself; a header value that is not base64 is reported in
+// payloadErr or responseErr.
 func parseExchange(raw []byte) (exchange, error) {
 	var ex exchange
 	seen := map[string]string{}
@@ -182,182 +223,259 @@ func parseExchange(raw []byte) (exchange, error) {
 			return ex, fmt.Errorf("line %q is not a header field", line)
 		}
 		name = strings.ToUpper(strings.TrimSpace(name))
-		value = strings.Trim(value, " \t")
 		if _, dup := seen[name]; dup {
 			return ex, fmt.Errorf("header %s appears twice", name)
 		}
-		seen[name] = value
+		seen[name] = strings.Trim(value, " \t")
 	}
-	pick := func(names []string) (string, string, error) {
-		var got, gotName string
+	pick := func(names []string) ([]byte, error, error) {
+		var got []byte
+		var gotName string
+		var decErr error
 		for _, n := range names {
-			if v, ok := seen[n]; ok {
-				if gotName != "" {
-					return "", "", fmt.Errorf("both %s and %s are present", gotName, n)
-				}
-				got, gotName = v, n
+			v, ok := seen[n]
+			if !ok {
+				continue
 			}
+			if gotName != "" {
+				return nil, nil, fmt.Errorf("both %s and %s are present", gotName, n)
+			}
+			gotName = n
+			b, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				decErr = fmt.Errorf("%s is not base64 (RFC 4648 §4): %v", n, err)
+				b = []byte{}
+			}
+			got = b
 		}
-		return got, gotName, nil
+		return got, decErr, nil
 	}
-	pv, pn, err := pick(payloadHeaders)
-	if err != nil {
+	var err error
+	if ex.payload, ex.payloadErr, err = pick(payloadHeaders); err != nil {
 		return ex, err
 	}
-	rv, rn, err := pick(responseHeaders)
-	if err != nil {
+	if ex.response, ex.responseErr, err = pick(responseHeaders); err != nil {
 		return ex, err
-	}
-	ex.payloadHeader, ex.responseHeader = pn, rn
-	if pn != "" {
-		if ex.payload, err = base64.StdEncoding.DecodeString(pv); err != nil {
-			return ex, fmt.Errorf("%s is not base64: %v", pn, err)
-		}
-	}
-	if rn != "" {
-		if ex.response, err = base64.StdEncoding.DecodeString(rv); err != nil {
-			return ex, fmt.Errorf("%s is not base64: %v", rn, err)
-		}
 	}
 	return ex, nil
 }
 
-// payment is a parsed payment payload.
+// Check implements adapter.Adapter. raw is one of three input forms,
+// detected from its content:
+//
+//   - a settlement-records leg: a JSON Capsule with a settlement member
+//     whose wrapped[] carries x402.payment-payload, and optionally
+//     x402.settle-response and x402.receipt, content;
+//   - the bare payment payload: the base64-decoded PAYMENT-SIGNATURE octets
+//     (a JSON object with x402Version), with no settlement response;
+//   - an HTTP header block carrying PAYMENT-SIGNATURE and, optionally,
+//     PAYMENT-RESPONSE, as received.
+//
+// Every row of the declaration's §7 table is reported as a native_check
+// report, in table order; a leg adds its wrapped content checks and leg
+// cross-checks, which are not native checks.
+func (a Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
+	if trimmed := bytes.TrimLeft(raw, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '{' {
+		return checkJSON(raw, policy)
+	}
+	o := &out{}
+	ex, err := parseExchange(raw)
+	if err != nil {
+		ex = exchange{payload: []byte{}, payloadErr: err, response: []byte{}, responseErr: err}
+	}
+	pay := checkPayload(o, ex.payload, ex.payloadErr, policy)
+	resp := checkResponse(o, ex.response, ex.responseErr, pay, policy)
+	checkReceiptOctets(o, nil, resp, pay, policy)
+	return o.results
+}
+
+// notCheckedAfterForm reports the response rows after a response that
+// could not be read.
+func notCheckedAfterForm(o *out, policy adapter.TrustPolicy) {
+	o.native(RowSettleResponseJoin, adapter.NotChecked, MethodSettleJoin, "settlement response not readable")
+	o.native(RowSettleResponseSignature, adapter.NotPresent, MethodSettleSignature, "there is no signature to check")
+	o.native(RowSettlementOnchain, adapter.NotChecked, methodSettlementOnchain("", lookupSource(policy)), "settlement response not readable")
+}
+
+// CheckObjects checks the decoded octets of a payment payload, a settlement
+// response and a receipt (the registered octets of x402.payment-payload,
+// x402.settle-response and x402.receipt). Any may be nil, meaning not held.
+// A receipt inside the settlement response is used when receipt is nil.
+func CheckObjects(payload, response, receipt []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
+	o := &out{}
+	checkObjects(o, payload, response, receipt, policy)
+	return o.results
+}
+
+// checkObjects is CheckObjects appending to o, and returns the payment
+// read (nil when none is usable).
+func checkObjects(o *out, payload, response, receipt []byte, policy adapter.TrustPolicy) *payment {
+	pay := checkPayload(o, payload, nil, policy)
+	resp := checkResponse(o, response, nil, pay, policy)
+	checkReceiptOctets(o, receipt, resp, pay, policy)
+	return pay
+}
+
+// payment is the payment payload as parsed.
 type payment struct {
-	version  int
-	scheme   string
-	network  string // as transmitted (v1: a name such as base-sepolia)
-	caip2    string // network as CAIP-2, "" when a v1 name is unknown
-	accepted obj    // nil for v1
-	method   string // eip3009, permit2, erc7710
-	sig      string
-	auth     authorization
-	authOK   bool
+	root     obj
+	accepted obj
+	body     obj
+	auth     obj
+	// inScope is false when §3 puts the payload out of scope.
+	inScope bool
+	why     string
 }
 
 var v1Networks = map[string]string{"base": "eip155:8453", "base-sepolia": "eip155:84532"}
 
-func parsePayment(octets []byte) (*payment, error) {
-	v, err := decodeStrict(octets)
-	if err != nil {
-		return nil, err
+func checkPayload(o *out, octets []byte, decodeErr error, policy adapter.TrustPolicy) *payment {
+	rows := []struct{ name, method string }{
+		{RowPayerSignature, MethodPayerSignature}, {RowPayerTrust, MethodPayerTrust},
+		{RowAssetTrust, MethodAssetTrust}, {RowAuthorizationTerms, MethodAuthTerms},
 	}
-	root, ok := asObj(v)
-	if !ok {
-		return nil, fmt.Errorf("not a JSON object")
-	}
-	ver, ok := root.num("x402Version")
-	if !ok {
-		return nil, fmt.Errorf("x402Version is missing or not a number")
-	}
-	p := &payment{}
-	body, ok := root.object("payload")
-	if !ok {
-		return nil, fmt.Errorf("payload is missing or not an object")
-	}
-	switch ver.String() {
-	case "2":
-		p.version = 2
-		if p.accepted, ok = root.object("accepted"); !ok {
-			return nil, fmt.Errorf("accepted is missing or not an object")
+	if octets == nil {
+		o.native(RowPayloadForm, adapter.NotPresent, MethodPayloadForm, "no PAYMENT-SIGNATURE octets held")
+		for _, r := range rows {
+			o.native(r.name, adapter.NotPresent, r.method, "no payment payload held")
 		}
-		if p.scheme, ok = p.accepted.str("scheme"); !ok {
-			return nil, fmt.Errorf("accepted.scheme is missing")
-		}
-		if p.network, ok = p.accepted.str("network"); !ok {
-			return nil, fmt.Errorf("accepted.network is missing")
-		}
-		p.caip2 = p.network
-		p.method = "eip3009"
-		if extra, ok := p.accepted.object("extra"); ok && extra.has("assetTransferMethod") {
-			if p.method, ok = extra.str("assetTransferMethod"); !ok {
-				return nil, fmt.Errorf("accepted.extra.assetTransferMethod is not a string")
-			}
-		} else if body.has("permit2Authorization") {
-			p.method = "permit2"
-		} else if body.has("permissionContext") {
-			p.method = "erc7710"
-		}
-	case "1":
-		p.version = 1
-		if p.scheme, ok = root.str("scheme"); !ok {
-			return nil, fmt.Errorf("scheme is missing")
-		}
-		if p.network, ok = root.str("network"); !ok {
-			return nil, fmt.Errorf("network is missing")
-		}
-		p.caip2 = v1Networks[p.network]
-		p.method = "eip3009"
-	default:
-		return nil, fmt.Errorf("x402Version %s is not 1 or 2", ver)
+		return nil
 	}
-	if native, _ := p.checksNatively(); !native {
-		return p, nil // read, but not a payload this adapter checks natively
-	}
-	if p.sig, ok = body.str("signature"); !ok {
-		return nil, fmt.Errorf("payload.signature is missing or not a string")
-	}
-	a, ok := body.object("authorization")
-	if !ok {
-		return nil, fmt.Errorf("payload.authorization is missing or not an object")
-	}
-	field := func(k string) (string, error) {
-		s, ok := a.str(k)
-		if !ok {
-			return "", fmt.Errorf("authorization.%s is missing or not a string", k)
-		}
-		return s, nil
-	}
-	var s string
-	if s, err = field("from"); err == nil {
-		p.auth.From, err = parseAddress(s)
-	}
+	var v any
+	err := decodeErr
 	if err == nil {
-		if s, err = field("to"); err == nil {
-			p.auth.To, err = parseAddress(s)
-		}
+		v, err = decodeStrict(octets)
 	}
-	for _, f := range []struct {
-		k   string
-		dst **big.Int
-	}{{"value", &p.auth.Value}, {"validAfter", &p.auth.ValidAfter}, {"validBefore", &p.auth.ValidBefore}} {
-		if err != nil {
-			break
-		}
-		if s, err = field(f.k); err == nil {
-			*f.dst, err = parseUint256(s)
-		}
-	}
-	if err == nil {
-		if s, err = field("nonce"); err == nil {
-			p.auth.Nonce, err = parseBytes32(s)
-		}
+	root, isObj := asObj(v)
+	if err == nil && !isObj {
+		err = fmt.Errorf("not a JSON object")
 	}
 	if err != nil {
-		return nil, err
+		o.native(RowPayloadForm, adapter.Fail, MethodPayloadForm, err.Error())
+		for _, r := range rows {
+			o.native(r.name, adapter.NotChecked, r.method, "payment payload not readable")
+		}
+		return nil
 	}
-	p.authOK = true
-	return p, nil
+	o.native(RowPayloadForm, adapter.Pass, MethodPayloadForm, fmt.Sprintf("%d octets", len(octets)))
+
+	pay := &payment{root: root}
+	pay.accepted, _ = root.object("accepted")
+	pay.body, _ = root.object("payload")
+	pay.auth, _ = pay.body.object("authorization")
+	pay.inScope, pay.why = pay.scope()
+	if !pay.inScope {
+		for _, r := range rows {
+			o.native(r.name, adapter.NotChecked, r.method, "out of scope: "+pay.why)
+		}
+		return pay
+	}
+	checkPayerSignature(o, pay, policy)
+	checkPayerTrust(o, pay, policy)
+	checkAssetTrust(o, pay, policy)
+	checkAuthorizationTerms(o, pay)
+	return pay
 }
 
-// checksNatively reports whether the payment is one whose payer
-// authorization this adapter verifies, and if not, why.
-func (p *payment) checksNatively() (bool, string) {
+// scope applies the declaration's §3.
+func (p *payment) scope() (bool, string) {
+	ver, _ := p.root.num("x402Version")
 	switch {
-	case p.scheme != "exact":
-		return false, fmt.Sprintf("scheme %q is not implemented by this adapter", p.scheme)
-	case p.method == "erc7710":
-		return false, "ERC-7710 delegation: x402 carries no payer signature a verifier can check offline (the facilitator verifies by on-chain simulation); possession of the octets only"
-	case p.method == "permit2":
-		return false, "permit2 transfer method is not implemented in this revision"
-	case p.method != "eip3009":
-		return false, fmt.Sprintf("asset transfer method %q is not implemented", p.method)
-	case p.caip2 == "":
-		return false, fmt.Sprintf("x402 v1 network %q has no CAIP-2 mapping in this adapter", p.network)
-	case !strings.HasPrefix(p.caip2, "eip155:"):
-		return false, fmt.Sprintf("network %q is not an EVM (eip155) chain", p.caip2)
+	case ver.String() == "1":
+		return false, "x402 version 1"
+	case ver.String() != "2":
+		return false, fmt.Sprintf("x402Version %q", ver.String())
+	case p.accepted == nil:
+		return false, "accepted is missing or not an object"
+	}
+	scheme, _ := p.accepted.str("scheme")
+	network, _ := p.accepted.str("network")
+	method := "eip3009"
+	if extra, ok := p.accepted.object("extra"); ok && extra.has("assetTransferMethod") {
+		method, _ = extra.str("assetTransferMethod")
+	} else if p.body.has("permit2Authorization") {
+		method = "permit2"
+	} else if p.body.has("permissionContext") {
+		method = "erc7710"
+	}
+	switch {
+	case scheme != "exact":
+		return false, fmt.Sprintf("scheme %q", scheme)
+	case !strings.HasPrefix(network, "eip155:"):
+		return false, fmt.Sprintf("network %q is not eip155", network)
+	case method == "erc7710":
+		return false, "transfer method erc7710: x402 carries no payer signature a verifier can check offline (the facilitator verifies by on-chain simulation); possession of the octets only"
+	case method != "eip3009":
+		return false, fmt.Sprintf("transfer method %q", method)
+	}
+	if sigHex, ok := p.body.str("signature"); ok {
+		if sig, err := parseHexBytes(sigHex); err == nil && len(sig) != 65 {
+			kind := "a contract-account signature (verified by an on-chain call)"
+			if strings.HasSuffix(strings.ToLower(sigHex), erc6492Magic) {
+				kind = "an ERC-6492 counterfactual contract-account signature (verified by an on-chain call)"
+			}
+			return false, fmt.Sprintf("%d-byte signature, %s", len(sig), kind)
+		}
 	}
 	return true, ""
+}
+
+func (p *payment) str(o obj, k string) (string, bool) {
+	if o == nil {
+		return "", false
+	}
+	return o.str(k)
+}
+
+// from returns authorization.from as an address when it is present and well formed.
+func (p *payment) from() (address, bool) {
+	if p == nil || !p.inScope {
+		return address{}, false
+	}
+	s, ok := p.str(p.auth, "from")
+	if !ok {
+		return address{}, false
+	}
+	a, err := parseAddress(s)
+	return a, err == nil
+}
+
+// authorization reads the six authorization members. missing names the
+// first absent member; err reports a malformed one.
+func (p *payment) authorization() (m authorization, missing string, err error) {
+	get := func(k string) string {
+		if missing != "" || err != nil {
+			return ""
+		}
+		s, ok := p.str(p.auth, k)
+		if !ok {
+			missing = "authorization." + k
+		}
+		return s
+	}
+	from, to := get("from"), get("to")
+	value, va, vb, nonce := get("value"), get("validAfter"), get("validBefore"), get("nonce")
+	if missing != "" {
+		return m, missing, nil
+	}
+	if m.From, err = parseAddress(from); err != nil {
+		return m, "", fmt.Errorf("authorization.from: %v", err)
+	}
+	if m.To, err = parseAddress(to); err != nil {
+		return m, "", fmt.Errorf("authorization.to: %v", err)
+	}
+	for _, f := range []struct {
+		k, s string
+		dst  **big.Int
+	}{{"value", value, &m.Value}, {"validAfter", va, &m.ValidAfter}, {"validBefore", vb, &m.ValidBefore}} {
+		if *f.dst, err = parseUint256(f.s); err != nil {
+			return m, "", fmt.Errorf("authorization.%s: %v", f.k, err)
+		}
+	}
+	if m.Nonce, err = parseBytes32(nonce); err != nil {
+		return m, "", fmt.Errorf("authorization.nonce: %v", err)
+	}
+	return m, "", nil
 }
 
 // chainID reads the decimal reference of an eip155 CAIP-2 identifier.
@@ -369,353 +487,282 @@ func chainID(caip2 string) (*big.Int, error) {
 	return parseUint256(ref)
 }
 
-var txHashRE = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
-
-// report collects one result per property.
-type report map[string]adapter.PropertyResult
-
-func (r report) set(prop string, st adapter.Status, method, detail string) {
-	r[prop] = adapter.PropertyResult{Property: prop, Status: st, Method: method, Detail: detail}
-}
-
-// Check implements adapter.Adapter. raw is one of three input forms,
-// detected from its content:
-//
-//   - a settlement-records leg: a JSON Capsule with a settlement member whose
-//     wrapped[] carries x402.payment-payload (and optionally
-//     x402.settle-response) content;
-//   - the bare payment payload: the base64-decoded PAYMENT-SIGNATURE octets
-//     (a JSON object with x402Version), with no settlement response;
-//   - an HTTP header block carrying PAYMENT-SIGNATURE (or v1 X-PAYMENT) and,
-//     optionally, PAYMENT-RESPONSE (or v1 X-PAYMENT-RESPONSE), as received.
-//
-// Only the properties that apply to the form are reported: the wrapped_*
-// and leg_* properties for a leg only.
-func (a Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
-	if trimmed := bytes.TrimLeft(raw, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '{' {
-		return checkJSON(raw, policy)
-	}
-	ex, err := parseExchange(raw)
-	if err != nil {
-		r := report{}
-		for _, prop := range a.NativeObject().Properties {
-			if !legOnly[prop.Name] {
-				r.set(prop.Name, adapter.NotChecked, prop.Method, "header block not read: "+err.Error())
-			}
-		}
-		r.set(PropPayloadForm, adapter.Fail, MethodPayloadForm, err.Error())
-		return r.ordered()
-	}
-	return CheckObjects(ex.payload, ex.response, policy)
-}
-
-// CheckObjects checks a payment payload and a settlement response given as
-// their base64-decoded octets (the Settlement Records octets for
-// x402.payment-payload and x402.settle-response). Either may be nil, meaning
-// absent.
-func CheckObjects(payloadOctets, responseOctets []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
-	r := report{}
-	checkAll(r, payloadOctets, responseOctets, policy)
-	return r.ordered()
-}
-
-func checkAll(r report, payloadOctets, responseOctets []byte, policy adapter.TrustPolicy) *payment {
-	pay := checkPayment(r, payloadOctets, policy)
-	checkResponse(r, responseOctets, pay, policy)
-	return pay
-}
-
-func (r report) ordered() []adapter.PropertyResult {
-	var out []adapter.PropertyResult
-	for _, prop := range (Adapter{}).NativeObject().Properties {
-		if res, ok := r[prop.Name]; ok {
-			out = append(out, res)
-		}
-	}
-	return out
-}
-
-func checkPayment(r report, octets []byte, policy adapter.TrustPolicy) *payment {
-	payloadProps := []struct{ name, method string }{
-		{PropPayerSignature, MethodPayerSig}, {PropChain, MethodChain}, {PropAsset, MethodAsset},
-		{PropPayeeBinding, MethodPayee}, {PropAmountBinding, MethodAmount}, {PropValidityWindow, MethodWindow},
-	}
-	if octets == nil {
-		r.set(PropPayloadForm, adapter.NotPresent, MethodPayloadForm, "no payment payload (PAYMENT-SIGNATURE, X-PAYMENT, or a wrapped x402.payment-payload with content)")
-		for _, p := range payloadProps {
-			r.set(p.name, adapter.NotPresent, p.method, "no payment payload")
-		}
-		return nil
-	}
-	pay, err := parsePayment(octets)
-	if err != nil {
-		r.set(PropPayloadForm, adapter.Fail, MethodPayloadForm, err.Error())
-		for _, p := range payloadProps {
-			r.set(p.name, adapter.NotChecked, p.method, "payment payload not readable")
-		}
-		return nil
-	}
-	r.set(PropPayloadForm, adapter.Pass, MethodPayloadForm, fmt.Sprintf("x402 v%d, scheme %s, network %s, method %s", pay.version, pay.scheme, pay.network, pay.method))
-
-	native, why := pay.checksNatively()
-	if !native {
-		for _, p := range payloadProps {
-			r.set(p.name, adapter.NotChecked, p.method, why)
-		}
-		return pay
-	}
-	checkChain(r, pay, policy)
-	checkAsset(r, pay, policy)
-	checkPayerSignature(r, pay, policy)
-	checkBinding(r, PropPayeeBinding, MethodPayee, pay, policy.Pin(PinPayTo), "payTo", func(s string) (bool, error) {
-		want, err := parseAddress(s)
-		return want == pay.auth.To, err
-	}, pay.auth.To.String())
-	checkBinding(r, PropAmountBinding, MethodAmount, pay, policy.Pin(PinAmount), "amount", func(s string) (bool, error) {
-		want, err := parseUint256(s)
-		return err == nil && want.Cmp(pay.auth.Value) == 0, err
-	}, pay.auth.Value.String())
-	checkWindow(r, pay, policy)
-	return pay
-}
-
-func checkChain(r report, pay *payment, policy adapter.TrustPolicy) {
-	pin := policy.Pin(PinChain)
-	switch {
-	case pin == "":
-		r.set(PropChain, adapter.NotChecked, MethodChain, "the trust policy pins no chain ("+PinChain+")")
-	case pay.caip2 == pin:
-		r.set(PropChain, adapter.Pass, MethodChain, pay.caip2)
-	default:
-		r.set(PropChain, adapter.Fail, MethodChain, fmt.Sprintf("transmitted %s, pinned %s", pay.network, pin))
-	}
-}
-
-func checkAsset(r report, pay *payment, policy adapter.TrustPolicy) {
-	if pay.version == 1 {
-		r.set(PropAsset, adapter.NotPresent, MethodAsset, "an x402 v1 payment payload carries no asset")
-		return
-	}
-	pin := policy.Pin(PinAsset)
-	if pin == "" {
-		r.set(PropAsset, adapter.NotChecked, MethodAsset, "the trust policy pins no asset ("+PinAsset+")")
-		return
-	}
-	want, err := parseAddress(pin)
-	if err != nil {
-		r.set(PropAsset, adapter.Inconclusive, MethodAsset, "pinned asset unreadable: "+err.Error())
-		return
-	}
-	s, _ := pay.accepted.str("asset")
-	got, err := parseAddress(s)
-	if err != nil {
-		r.set(PropAsset, adapter.Fail, MethodAsset, "accepted.asset: "+err.Error())
-		return
-	}
-	if got != want {
-		r.set(PropAsset, adapter.Fail, MethodAsset, fmt.Sprintf("transmitted %s, pinned %s", got, want))
-		return
-	}
-	extra, _ := pay.accepted.object("extra")
-	for _, f := range []struct{ member, pin string }{{"name", PinAssetName}, {"version", PinAssetVersion}} {
-		want := policy.Pin(f.pin)
-		if want == "" {
-			continue
-		}
-		if got, _ := extra.str(f.member); got != want {
-			r.set(PropAsset, adapter.Fail, MethodAsset, fmt.Sprintf("accepted.extra.%s %q, pinned %q", f.member, got, want))
-			return
-		}
-	}
-	r.set(PropAsset, adapter.Pass, MethodAsset, want.String())
-}
-
 // ERC-6492 wraps a counterfactual contract wallet's signature and ends with
 // this 32-byte magic value.
 var erc6492Magic = strings.Repeat("6492", 16)
 
-func checkPayerSignature(r report, pay *payment, policy adapter.TrustPolicy) {
-	set := func(st adapter.Status, detail string) { r.set(PropPayerSignature, st, MethodPayerSig, detail) }
-	name, version := policy.Pin(PinAssetName), policy.Pin(PinAssetVersion)
-	pinChain, pinAsset := policy.Pin(PinChain), policy.Pin(PinAsset)
-	if name == "" || version == "" || pinChain == "" || pinAsset == "" {
-		set(adapter.Inconclusive, "the trust policy does not pin the EIP-712 domain ("+strings.Join([]string{PinChain, PinAsset, PinAssetName, PinAssetVersion}, ", ")+")")
+func checkPayerSignature(o *out, pay *payment, policy adapter.TrustPolicy) {
+	set := func(st adapter.Status, d string) { o.native(RowPayerSignature, st, MethodPayerSignature, d) }
+	sigHex, ok := pay.str(pay.body, "signature")
+	if !ok {
+		set(adapter.NotPresent, "payload.signature is absent")
 		return
 	}
-	cid, err := chainID(pinChain)
-	if err != nil {
-		set(adapter.Inconclusive, "pinned chain: "+err.Error())
+	auth, missing, err := pay.authorization()
+	if missing != "" {
+		set(adapter.NotPresent, missing+" is absent")
 		return
 	}
-	contract, err := parseAddress(pinAsset)
-	if err != nil {
-		set(adapter.Inconclusive, "pinned asset: "+err.Error())
+	sig, serr := parseHexBytes(sigHex)
+	if serr != nil {
+		set(adapter.Fail, serr.Error())
 		return
 	}
-	contractAccounts := policy.Pin(PinPayerAccounts) == "eoa-or-contract"
-	sig, err := parseHexBytes(pay.sig)
 	if err != nil {
 		set(adapter.Fail, err.Error())
 		return
 	}
-	if len(sig) != 65 {
-		kind := "a contract-account (EIP-1271) signature"
-		if strings.HasSuffix(strings.ToLower(pay.sig), erc6492Magic) {
-			kind = "an ERC-6492 counterfactual contract-account signature"
-		}
-		if contractAccounts {
-			set(adapter.NotChecked, fmt.Sprintf("%d-byte signature: %s, verified by an on-chain call, not performed offline", len(sig), kind))
-		} else {
-			set(adapter.Fail, fmt.Sprintf("%d-byte signature; the trust policy accepts EOA payers only, whose signatures are 65 bytes", len(sig)))
-		}
+	name, version := policy.Pin(PinAssetName), policy.Pin(PinAssetVersion)
+	pinChain, pinAsset := policy.Pin(PinChain), policy.Pin(PinAsset)
+	if name == "" || version == "" || pinChain == "" || pinAsset == "" {
+		set(adapter.NotChecked, "the policy gives no EIP-712 domain ("+strings.Join([]string{PinChain, PinAsset, PinAssetName, PinAssetVersion}, ", ")+")")
 		return
 	}
-	digest := typedDataDigest(tokenDomainSeparator(name, version, cid, contract), pay.auth.structHash())
+	cid, err := chainID(pinChain)
+	if err != nil {
+		set(adapter.NotChecked, "policy chain: "+err.Error())
+		return
+	}
+	contract, err := parseAddress(pinAsset)
+	if err != nil {
+		set(adapter.NotChecked, "policy asset: "+err.Error())
+		return
+	}
+	digest := typedDataDigest(tokenDomainSeparator(name, version, cid, contract), auth.structHash())
 	got, err := recoverAddress(digest, sig)
 	if err != nil {
 		set(adapter.Fail, err.Error())
 		return
 	}
+	if got == auth.From {
+		set(adapter.Pass, "recovers to authorization.from "+got.String())
+		return
+	}
+	if policy.Pin(PinPayerAccounts) == "eoa" {
+		set(adapter.Fail, fmt.Sprintf("recovers to %s, not authorization.from %s (policy: eoa)", got, auth.From))
+		return
+	}
+	if noCode, src := recordedNoCode(policy, auth.From); noCode {
+		set(adapter.Fail, fmt.Sprintf("recovers to %s, not authorization.from %s; recorded code lookup via %s shows no code at %s", got, auth.From, src, auth.From))
+		return
+	}
+	set(adapter.Inconclusive, fmt.Sprintf("recovered address differs; `from` may be a contract account; EIP-1271 not checked (recovered %s, from %s)", got, auth.From))
+}
+
+func checkPayerTrust(o *out, pay *payment, policy adapter.TrustPolicy) {
+	set := func(st adapter.Status, d string) { o.native(RowPayerTrust, st, MethodPayerTrust, d) }
+	if policy.Pin(PinPayerTrust) == "excluded" {
+		set(adapter.NotChecked, "excluded by policy")
+		return
+	}
+	s, ok := pay.str(pay.auth, "from")
+	if !ok {
+		set(adapter.NotPresent, "authorization.from is absent")
+		return
+	}
+	from, err := parseAddress(s)
+	if err != nil {
+		set(adapter.Fail, "authorization.from: "+err.Error())
+		return
+	}
+	if inList(policy.Keys[KeyPayerRejected], from) {
+		set(adapter.Fail, "the policy rejects "+from.String())
+		return
+	}
+	if inList(policy.Keys[KeyPayer], from) {
+		set(adapter.Pass, "the policy binds "+from.String())
+		return
+	}
+	set(adapter.Inconclusive, "the policy holds no binding for "+from.String())
+}
+
+func inList(list []string, a address) bool {
+	for _, k := range list {
+		if b, err := parseAddress(k); err == nil && b == a {
+			return true
+		}
+	}
+	return false
+}
+
+func checkAssetTrust(o *out, pay *payment, policy adapter.TrustPolicy) {
+	set := func(st adapter.Status, d string) { o.native(RowAssetTrust, st, MethodAssetTrust, d) }
+	if policy.Pin(PinAssetTrust) == "excluded" {
+		set(adapter.NotChecked, "excluded by policy")
+		return
+	}
+	network, _ := pay.accepted.str("network")
+	assetStr, ok := pay.accepted.str("asset")
+	if !ok {
+		set(adapter.Fail, "accepted.asset is absent")
+		return
+	}
+	pinChain, pinAsset := policy.Pin(PinChain), policy.Pin(PinAsset)
+	if pinChain == "" || pinAsset == "" {
+		set(adapter.Inconclusive, "the policy has no entry for an asset ("+PinChain+", "+PinAsset+")")
+		return
+	}
+	want, err := parseAddress(pinAsset)
+	if err != nil {
+		set(adapter.Inconclusive, "policy asset unreadable: "+err.Error())
+		return
+	}
+	got, err := parseAddress(assetStr)
+	if err != nil {
+		set(adapter.Fail, "accepted.asset: "+err.Error())
+		return
+	}
+	if network != pinChain || got != want {
+		set(adapter.Fail, fmt.Sprintf("accepted %s on %s; the policy accepts %s on %s", got, network, want, pinChain))
+		return
+	}
+	set(adapter.Pass, fmt.Sprintf("%s on %s", got, network))
+}
+
+func checkAuthorizationTerms(o *out, pay *payment) {
+	set := func(st adapter.Status, d string) { o.native(RowAuthorizationTerms, st, MethodAuthTerms, d) }
+	auth, missing, err := pay.authorization()
+	payTo, okP := pay.accepted.str("payTo")
+	amount, okA := pay.accepted.str("amount")
 	switch {
-	case got == pay.auth.From:
-		set(adapter.Pass, "recovers to "+got.String())
-	case contractAccounts:
-		set(adapter.Inconclusive, fmt.Sprintf("recovers to %s, not authorization.from %s; a contract account's EIP-1271 check is on chain, not performed offline", got, pay.auth.From))
-	default:
-		set(adapter.Fail, fmt.Sprintf("recovers to %s, not authorization.from %s", got, pay.auth.From))
-	}
-}
-
-// checkBinding compares one authorization member to the accepted
-// requirement member (v2) and to an optional pin.
-func checkBinding(r report, prop, method string, pay *payment, pin, member string, matches func(string) (bool, error), signed string) {
-	var against []string
-	if pay.accepted != nil {
-		s, ok := pay.accepted.str(member)
-		if !ok {
-			r.set(prop, adapter.Fail, method, "accepted."+member+" is missing")
-			return
-		}
-		ok, err := matches(s)
-		if err != nil {
-			r.set(prop, adapter.Fail, method, "accepted."+member+": "+err.Error())
-			return
-		}
-		if !ok {
-			r.set(prop, adapter.Fail, method, fmt.Sprintf("signed %s, accepted.%s %s", signed, member, s))
-			return
-		}
-		against = append(against, "accepted."+member)
-	}
-	if pin != "" {
-		ok, err := matches(pin)
-		if err != nil {
-			r.set(prop, adapter.Inconclusive, method, "pin unreadable: "+err.Error())
-			return
-		}
-		if !ok {
-			r.set(prop, adapter.Fail, method, fmt.Sprintf("signed %s, pinned %s", signed, pin))
-			return
-		}
-		against = append(against, "pin")
-	}
-	if len(against) == 0 {
-		r.set(prop, adapter.NotPresent, method, "an x402 v1 payload carries no "+member+" and the trust policy pins none")
+	case missing != "":
+		set(adapter.NotPresent, missing+" is absent")
+		return
+	case !okP:
+		set(adapter.NotPresent, "accepted.payTo is absent")
+		return
+	case !okA:
+		set(adapter.NotPresent, "accepted.amount is absent")
+		return
+	case err != nil:
+		set(adapter.Fail, err.Error())
 		return
 	}
-	r.set(prop, adapter.Pass, method, signed+" equals "+strings.Join(against, " and "))
-}
-
-func checkWindow(r report, pay *payment, policy adapter.TrustPolicy) {
-	if policy.Now.IsZero() {
-		r.set(PropValidityWindow, adapter.NotChecked, MethodWindow, "the trust policy supplies no clock")
+	var fails []string
+	if p, err := parseAddress(payTo); err != nil || p != auth.To {
+		fails = append(fails, fmt.Sprintf("authorization.to %s, accepted.payTo %s", auth.To, payTo))
+	}
+	if a, err := parseUint256(amount); err != nil || a.Cmp(auth.Value) != 0 {
+		fails = append(fails, fmt.Sprintf("authorization.value %s, accepted.amount %s", auth.Value, amount))
+	}
+	if auth.ValidAfter.Cmp(auth.ValidBefore) >= 0 {
+		fails = append(fails, fmt.Sprintf("validAfter %s is not before validBefore %s", auth.ValidAfter, auth.ValidBefore))
+	}
+	if len(fails) > 0 {
+		set(adapter.Fail, strings.Join(fails, "; "))
 		return
 	}
-	now := big.NewInt(policy.Now.Unix())
-	detail := fmt.Sprintf("validAfter %s, now %s, validBefore %s", pay.auth.ValidAfter, now, pay.auth.ValidBefore)
-	if pay.auth.ValidAfter.Cmp(now) < 0 && now.Cmp(pay.auth.ValidBefore) < 0 {
-		r.set(PropValidityWindow, adapter.Pass, MethodWindow, detail)
-	} else {
-		r.set(PropValidityWindow, adapter.Fail, MethodWindow, detail)
-	}
+	set(adapter.Pass, fmt.Sprintf("to %s, value %s, window (%s, %s)", auth.To, auth.Value, auth.ValidAfter, auth.ValidBefore))
 }
 
-func checkResponse(r report, octets []byte, pay *payment, policy adapter.TrustPolicy) {
+var txHashRE = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
+
+// response is a settlement response that passed its form check.
+type response struct {
+	root               obj
+	network, tx, payer string
+	hasPayer           bool
+}
+
+func checkResponse(o *out, octets []byte, decodeErr error, pay *payment, policy adapter.TrustPolicy) *response {
+	src := lookupSource(policy)
 	if octets == nil {
-		r.set(PropSettleForm, adapter.NotPresent, MethodSettleForm, "no settlement response (PAYMENT-RESPONSE, X-PAYMENT-RESPONSE, or a wrapped x402.settle-response with content)")
-		r.set(PropSettlement, adapter.NotPresent, MethodSettlement, "no settlement response")
-		r.set(PropReceiptSignature, adapter.NotPresent, MethodReceipt, "no settlement response")
-		return
+		o.native(RowSettleResponseForm, adapter.NotPresent, MethodSettleForm, "no PAYMENT-RESPONSE octets held")
+		o.native(RowSettleResponseJoin, adapter.NotPresent, MethodSettleJoin, "no settlement response held")
+		o.native(RowSettleResponseSignature, adapter.NotPresent, MethodSettleSignature, "there is no signature to check")
+		o.native(RowSettlementOnchain, adapter.NotPresent, methodSettlementOnchain("", src), "no settlement response held")
+		return nil
 	}
-	v, err := decodeStrict(octets)
-	resp, ok := asObj(v)
-	if err != nil || !ok {
-		if err == nil {
-			err = fmt.Errorf("not a JSON object")
-		}
-		r.set(PropSettleForm, adapter.Fail, MethodSettleForm, err.Error())
-		r.set(PropSettlement, adapter.NotChecked, MethodSettlement, "settlement response not readable")
-		r.set(PropReceiptSignature, adapter.NotChecked, MethodReceipt, "settlement response not readable")
-		return
+	resp, err := parseResponse(octets)
+	if decodeErr != nil {
+		err = decodeErr
 	}
-	tx, _ := resp.str("transaction")
-	if tx == "" {
-		r.set(PropSettlement, adapter.NotPresent, MethodSettlement, "no transaction hash")
-	} else {
-		r.set(PropSettlement, adapter.NotChecked, MethodSettlement, "transaction "+tx)
+	if err != nil {
+		o.native(RowSettleResponseForm, adapter.Fail, MethodSettleForm, err.Error())
+		notCheckedAfterForm(o, policy)
+		return nil
 	}
-	r.set(settleForm(resp, pay, policy))
-	checkReceipt(r, resp, policy)
+	success, _ := resp.root.boolean("success")
+	formDetail := "well-formed"
+	if !success {
+		reason, _ := resp.root.str("errorReason")
+		formDetail = fmt.Sprintf("well-formed; states success false, errorReason %q", reason)
+	}
+	o.native(RowSettleResponseForm, adapter.Pass, MethodSettleForm, formDetail)
+	checkSettleJoin(o, resp, pay)
+	o.native(RowSettleResponseSignature, adapter.NotPresent, MethodSettleSignature, "there is no signature to check")
+	checkSettlementOnchain(o, resp, pay, policy)
+	return resp
 }
 
-func settleForm(resp obj, pay *payment, policy adapter.TrustPolicy) (string, adapter.Status, string, string) {
-	fail := func(d string) (string, adapter.Status, string, string) {
-		return PropSettleForm, adapter.Fail, MethodSettleForm, d
+// parseResponse applies the 5.3.2 member types.
+func parseResponse(octets []byte) (*response, error) {
+	v, err := decodeStrict(octets)
+	if err != nil {
+		return nil, err
 	}
-	success, ok := resp.boolean("success")
+	root, ok := asObj(v)
 	if !ok {
-		return fail("success is missing or not a boolean")
+		return nil, fmt.Errorf("not a JSON object")
 	}
-	tx, ok := resp.str("transaction")
-	if !ok {
-		return fail("transaction is missing or not a string")
+	r := &response{root: root}
+	if _, ok := root.boolean("success"); !ok {
+		return nil, fmt.Errorf("success is missing or not a boolean")
 	}
-	network, ok := resp.str("network")
-	if !ok {
-		return fail("network is missing or not a string")
+	if r.tx, ok = root.str("transaction"); !ok {
+		return nil, fmt.Errorf("transaction is missing or not a string")
 	}
-	if !success {
-		reason, _ := resp.str("errorReason")
-		return fail("success is false; errorReason " + fmt.Sprintf("%q", reason))
+	if r.tx != "" && !txHashRE.MatchString(r.tx) {
+		return nil, fmt.Errorf("transaction %q is neither empty nor 0x and 64 hex digits", r.tx)
 	}
-	if !txHashRE.MatchString(tx) {
-		return fail(fmt.Sprintf("transaction %q is not 0x and 64 hex digits", tx))
+	if r.network, ok = root.str("network"); !ok {
+		return nil, fmt.Errorf("network is missing or not a string")
 	}
-	caip2 := network
-	if m, ok := v1Networks[network]; ok {
-		caip2 = m
+	if ns, ref, ok := strings.Cut(r.network, ":"); !ok || ns == "" || ref == "" {
+		return nil, fmt.Errorf("network %q is not a CAIP-2 identifier", r.network)
 	}
-	want := policy.Pin(PinChain)
-	if want == "" && pay != nil {
-		want = pay.caip2
-	}
-	if want != "" && caip2 != want {
-		return fail(fmt.Sprintf("network %s, expected %s", network, want))
-	}
-	if resp.has("payer") {
-		s, ok := resp.str("payer")
-		if !ok {
-			return fail("payer is not a string")
-		}
-		if pay != nil && pay.authOK {
-			got, err := parseAddress(s)
-			if err != nil {
-				return fail("payer: " + err.Error())
-			}
-			if got != pay.auth.From {
-				return fail(fmt.Sprintf("payer %s, authorization.from %s", got, pay.auth.From))
+	for _, k := range []string{"errorReason", "payer", "amount"} {
+		if root.has(k) {
+			if _, ok := root.str(k); !ok {
+				return nil, fmt.Errorf("%s is not a string", k)
 			}
 		}
 	}
-	return PropSettleForm, adapter.Pass, MethodSettleForm, "transaction " + tx + " on " + network + " (unsigned facilitator statement)"
+	if root.has("extensions") {
+		if _, ok := root.object("extensions"); !ok {
+			return nil, fmt.Errorf("extensions is not an object")
+		}
+	}
+	r.payer, r.hasPayer = root.str("payer")
+	return r, nil
+}
+
+func checkSettleJoin(o *out, resp *response, pay *payment) {
+	set := func(st adapter.Status, d string) { o.native(RowSettleResponseJoin, st, MethodSettleJoin, d) }
+	if pay == nil || pay.accepted == nil {
+		set(adapter.NotPresent, "the payment payload is not held")
+		return
+	}
+	var fails []string
+	accNet, _ := pay.accepted.str("network")
+	if resp.network != accNet {
+		fails = append(fails, fmt.Sprintf("network %s, accepted.network %s", resp.network, accNet))
+	}
+	if resp.hasPayer {
+		fromStr, _ := pay.str(pay.auth, "from")
+		a, errA := parseAddress(resp.payer)
+		b, errB := parseAddress(fromStr)
+		if errA != nil || errB != nil || a != b {
+			fails = append(fails, fmt.Sprintf("payer %s, authorization.from %s", resp.payer, fromStr))
+		}
+	}
+	if len(fails) > 0 {
+		set(adapter.Fail, strings.Join(fails, "; "))
+		return
+	}
+	if resp.hasPayer {
+		set(adapter.Pass, "network and payer agree")
+	} else {
+		set(adapter.Pass, "network agrees; payer absent")
+	}
 }

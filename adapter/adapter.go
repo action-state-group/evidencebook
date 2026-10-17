@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -64,6 +65,12 @@ type TrustPolicy struct {
 	// Keys lists, per issuer role, the key identifiers the relying party
 	// accepts for that role.
 	Keys map[string][]string `json:"keys,omitempty"`
+	// Recorded holds the relying party's recorded observations, keyed by a
+	// name the adapter documents (for example the result of an on-chain
+	// transaction lookup made earlier through a source the relying party
+	// trusts). An adapter reads a recording instead of making an online
+	// call; without one, the online check is NOT_CHECKED.
+	Recorded map[string]json.RawMessage `json:"recorded,omitempty"`
 }
 
 // Pin returns the pinned value for name, or "".
@@ -133,6 +140,42 @@ type Adapter interface {
 	// property that applies to the input's form, in declaration order. It makes no network calls; an online
 	// check is reported NOT_CHECKED.
 	Check(raw []byte, policy TrustPolicy) []PropertyResult
+}
+
+// NativeCheck is the property name of every report of a foreign object's
+// native check (interop-profile-v0 §7.2). An adapter that decomposes the
+// native check into named checks reports each as a native_check report and
+// puts the check's name in detail (the declaration's open point A-2).
+const NativeCheck = "native_check"
+
+// NativeCheckResult builds a native_check report for the named check. detail
+// is the check's name, followed by ": " and the explanation when there is one.
+func NativeCheckResult(check string, status Status, method, explanation string) PropertyResult {
+	detail := check
+	if explanation != "" {
+		detail += ": " + explanation
+	}
+	return PropertyResult{Property: NativeCheck, Status: status, Method: method, Detail: detail}
+}
+
+// CheckName is the name a result is known by: for a native_check report,
+// the check's name at the start of detail; otherwise the property.
+func CheckName(r PropertyResult) string {
+	if r.Property != NativeCheck {
+		return r.Property
+	}
+	name, _, _ := strings.Cut(r.Detail, ": ")
+	return name
+}
+
+// FindCheck returns the first result whose CheckName is name.
+func FindCheck(results []PropertyResult, name string) (PropertyResult, bool) {
+	for _, r := range results {
+		if CheckName(r) == name {
+			return r, true
+		}
+	}
+	return PropertyResult{}, false
 }
 
 // AnyFail reports whether any result is FAIL.
