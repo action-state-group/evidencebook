@@ -84,7 +84,7 @@ const (
 )
 
 // Methods, as reported: the declaration's §7 table (agent-action-capsule
-// spec/adapters/x402-v0.md at 247d5e4f). The policy rows report
+// spec/adapters/x402-v0.md at 3c778daa). The policy rows report
 // "relying party policy <id>", the id from the pin policy.id.
 const (
 	MethodPayloadForm      = "x402 v2 PaymentPayload: JSON parse of the registered octets, no duplicate members"

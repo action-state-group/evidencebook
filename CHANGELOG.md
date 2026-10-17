@@ -16,7 +16,7 @@
   - `NOT_PRESENT`, `NOT_CHECKED` and `INCONCLUSIVE` as profile §8.1 rows 3-4,
     pending a profile row.
 - `adapter/x402`: the x402 adapter declaration v0 (agent-action-capsule
-  `spec/adapters/x402-v0.md` at `247d5e4f`), reproducing its vectors
+  `spec/adapters/x402-v0.md` at `3c778daa`), reproducing its vectors
   (`vectors/adapters/x402/`) exactly. Each check is a `native_check` report
   with detail `{"check", "object"}` (`adapter.NativeCheckReport`), and the
   table includes `authorization_window`. The recorded chain observation has

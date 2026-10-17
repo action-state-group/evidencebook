@@ -26,4 +26,4 @@ The chain and token are Base Sepolia (`eip155:84532`) USDC
 | `trust-policy.json` | the default policy: payer accounts `eoa-or-contract`, offline |
 | `trust-policy-eoa.json` | the same with `x402.payer_accounts` `eoa`: the policy for the negative fixtures |
 | `trust-policy-recorded-lookup.json` | the default policy with a constructed chain observation under `recorded` (`x402.lookup`, node result shapes; no code at the payer) |
-| `aac-vectors/` | agent-action-capsule `vectors/adapters/x402/` at `247d5e4f` (unmerged; re-pin to the merge commit), byte for byte |
+| `aac-vectors/` | agent-action-capsule `vectors/adapters/x402/` at main `3c778daa`, byte for byte |

@@ -21,12 +21,11 @@ import (
 // The agent-action-capsule vectors for this adapter, vectors/adapters/x402/,
 // vendored byte for byte under testdata/aac-vectors/.
 //
-// PINNED TO AN UNMERGED COMMIT: 247d5e4f is em-spec's branch head, not yet
-// merged. RE-PIN TO THE MERGE SHA when it lands: re-copy the directory from
-// the merge commit, set aacX402Commit, and update aacX402SumsSHA256 (the
-// SHA-256 of SHA256SUMS).
+// Pinned to agent-action-capsule main 3c778daa (#299). To move the pin:
+// re-copy the directory from the new commit, set aacX402Commit, and update
+// aacX402SumsSHA256 (the SHA-256 of SHA256SUMS).
 const (
-	aacX402Commit     = "247d5e4f71b833e50fefc641552e9bd290097ba6" // unmerged: re-pin to the merge SHA
+	aacX402Commit     = "3c778daa6bc3991fce9f2838ffa7a128a2ab13c2"
 	aacX402SumsSHA256 = "f0c7308ef0166477740b0e45fe5c589d9bd71d85cb1a15f23f0c9ff8de5c66d5"
 )
 

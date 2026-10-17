@@ -85,7 +85,7 @@ counts against a requirement that does not rest on that signature.
 ## x402
 
 The adapter implements the x402 adapter declaration v0 (`agent-action-capsule`
-`spec/adapters/x402-v0.md`, at `247d5e4f`, which folds in the rulings on its
+`spec/adapters/x402-v0.md`, at main `3c778daa`, which folds in the rulings on its
 first implementation). It reproduces the declaration's vectors
 (`vectors/adapters/x402/`, the same commit) exactly: `TestAACVectors`.
 
@@ -288,8 +288,7 @@ The agent-action-capsule vectors (`vectors/adapters/x402/`) are vendored byte
 for byte in `adapter/x402/testdata/aac-vectors/`, checked against their
 `SHA256SUMS`. `TestAACVectors` requires every expected report to be
 reproduced exactly, and the §8.1 mapping of each listed requirement. The
-vectors are pinned to commit `247d5e4f`, which is not merged yet: re-pin them
-to the merge commit.
+vectors are pinned to agent-action-capsule main `3c778daa`.
 
 ### Dependencies
 
