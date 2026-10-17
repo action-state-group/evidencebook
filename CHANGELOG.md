@@ -49,6 +49,8 @@ Everything since v0.1.1.
 `docs/THIRD-PARTY-VERIFIER.md` is new in this release. §1 to §5 are a path
 for testing evidencebook's service-evidence responses with your own verifier,
 reproduced by `test/interop/answer`.
+`docs/PRD-EVIDENCE-INTEROP.md`, the evidence interop product requirements
+draft, is new too.
 
 `docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure
 that the third-party verifier test also requires: a History at the Basic level
