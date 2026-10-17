@@ -1,0 +1,41 @@
+{
+  "pins": {
+    "x402.asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "x402.asset.name": "USDC",
+    "x402.asset.version": "2",
+    "x402.chain": "eip155:84532"
+  },
+  "keys": {
+    "x402.payer": [
+      "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    ],
+    "x402.receipt_signer": [
+      "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
+    ]
+  },
+  "recorded": {
+    "x402.tx_lookup": {
+      "source": "constructed fixture (not a recorded lookup)",
+      "network": "eip155:84532",
+      "transaction": "0xe7132a38ef5b3e250c7414c9a75e1714d8e4bdc8b1fa0b026ddf473ebf4b1772",
+      "status": "success",
+      "final": true,
+      "block_timestamp": "1792238400",
+      "logs": [
+        {
+          "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "event": "Transfer",
+          "from": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "to": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+          "value": "10000"
+        },
+        {
+          "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          "event": "AuthorizationUsed",
+          "authorizer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "nonce": "0xaf0cc3625337327a8808a16039b8907a496df6d8f449f5a63ec7fa79f5968206"
+        }
+      ]
+    }
+  }
+}

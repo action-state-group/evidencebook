@@ -1,0 +1,17 @@
+{
+  "pins": {
+    "x402.asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "x402.asset.name": "USDC",
+    "x402.asset.version": "2",
+    "x402.chain": "eip155:84532",
+    "x402.payer_accounts": "eoa"
+  },
+  "keys": {
+    "x402.payer": [
+      "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+    ],
+    "x402.receipt_signer": [
+      "0x70997970c51812dc3a010c7d01b50e0d17dc79c8"
+    ]
+  }
+}

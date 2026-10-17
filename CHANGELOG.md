@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### Added: foreign-evidence adapters, starting with x402
+
+- `adapter`: one interface for every adapter. `Name` and `NativeObject` (the
+  FR-19 declaration as data). `Check(raw, TrustPolicy)` returns profile §7.1
+  reports. A protocol's named native checks are reported as `native_check`
+  with the check's name in `detail` (`NativeCheckResult`, `CheckName`,
+  `FindCheck`). `TrustPolicy` carries pins, keys, a clock and `recorded`
+  observations. `Evaluate` maps the checks a requirement rests on to its
+  status, sufficiency and verdict:
+  - rows 5 and 6 for a FAIL, by whether the requirement is the check or is
+    only supported by it;
+  - `NOT_PRESENT`, `NOT_CHECKED` and `INCONCLUSIVE` as profile §8.1 rows 3-4,
+    pending a profile row.
+- `adapter/x402`: the x402 adapter declaration v0 (agent-action-capsule
+  `spec/adapters/x402-v0.md`), with the rulings on its first implementation.
+  - It reports the twelve checks of the declaration's §7 table.
+  - The payer signature is checked by EIP-712 recovery under the policy's
+    domain. A mismatch is `INCONCLUSIVE` unless the policy says `eoa`.
+  - Settlement is checked from a recorded transaction lookup, including the
+    validity window at block time, and is `NOT_CHECKED` offline.
+  - Payee receipts: version 1, and version 2 under either open proposal.
+  - Three input forms: a settlement-records leg (with the content check of
+    each wrapped object and leg cross-checks), the bare payment payload, and
+    an HTTP header block.
+  - Fixtures are constructed with published development keys.
+- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
+  prints the reports as JSON and exits 1 on any `FAIL`.
+- New dependencies: `golang.org/x/crypto` (Keccak-256) and
+  `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
+
 ### Added: the personal-evidence part of the third-party verifier guide
 
 `docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure
