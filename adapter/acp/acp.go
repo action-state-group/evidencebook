@@ -67,13 +67,13 @@ const (
 	MethodDigest       = "SHA-256 over the octets as delivered, compared with the carried digest"
 	MethodDigestPinned = MethodDigest + ": the relying party's pin " + PinCarriedDigest + " (standalone; no wrapping record)"
 	MethodDigestLeg    = MethodDigest + ": the settlement-records leg's wrapped[] entry digest, over its content (base64url without padding, decoded) (Wrapping Existing Signed Objects rule 2)"
-	MethodObjectForm   = "one JSON value, duplicate members rejected; the ACP 2026-04-17 object identified by its members and validated (JSON Schema 2020-12, formats as annotations, no external references) against ACP's published schema vendored at commit 7fdd78df: JS-CHK $defs/CheckoutSession; a CheckoutSessionWithOrder in two parts per ruling A-4 (the session minus order against JS-CHK $defs/CheckoutSessionBase, order against JS-CHK $defs/Order); JS-DP $defs/DelegatePaymentResponse; or the OAS-WH WebhookEvent body with data as OAS-WH EventDataOrder; the octets are not authenticated"
+	MethodObjectForm   = "one JSON value, duplicate members rejected; the ACP 2026-04-17 object identified by its members and validated (JSON Schema 2020-12, formats as annotations, no external references) against ACP's published schema vendored at commit 7fdd78df: JS-CHK $defs/CheckoutSession or $defs/CheckoutSessionWithOrder (whole object; the adapter never validates against OAS-CHK, so acp-v0 A-4 does not arise), JS-DP $defs/DelegatePaymentResponse; or the OAS-WH WebhookEvent body with data as OAS-WH EventDataOrder; the octets are not authenticated"
 
 	MethodNativeCheckout     = "none: ACP 2026-04-17 defines no issuer signature over CheckoutSession"
 	MethodNativeOrder        = "none: ACP 2026-04-17 defines no issuer signature over Order"
 	MethodNativeOrderWebhook = "not run: HMAC-SHA256 under a shared secret (OAS-WH Merchant-Signature)"
 	// MethodNativeOrderWebhookAbsent is acp-v0 §2.2 (e) for an order event
-	// body received without its Merchant-Signature header (7c7fb4e).
+	// body received without its Merchant-Signature header (7c052d4e).
 	MethodNativeOrderWebhookAbsent = "none: no Merchant-Signature header was received with the order event body"
 	MethodNativeToken              = "none: ACP 2026-04-17 defines no issuer signature over DelegatePaymentResponse"
 )
@@ -177,7 +177,7 @@ func (k kind) String() string {
 	case kindCheckoutSession:
 		return "CheckoutSession (JS-CHK $defs/CheckoutSession)"
 	case kindCheckoutSessionWithOrder:
-		return "CheckoutSessionWithOrder (JS-CHK, in two parts per ruling A-4)"
+		return "CheckoutSessionWithOrder (JS-CHK $defs/CheckoutSessionWithOrder)"
 	case kindDelegatePayment:
 		return "DelegatePaymentResponse (JS-DP $defs/DelegatePaymentResponse)"
 	case kindOrderEvent:
@@ -247,10 +247,7 @@ func (Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyR
 		set(PropDigest, st, MethodDigestPinned, detail)
 	}
 
-	k, note, err := identify(in.octets)
-	if note != "" {
-		note = "; " + note
-	}
+	k, err := identify(in.octets)
 	if err == nil && wantKind != nil && !slices.Contains(wantKind, k) {
 		err = fmt.Errorf("the wrapped entry's type is %s, but the content is a %s", in.entryType, k)
 	}
@@ -259,9 +256,9 @@ func (Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyR
 		set(PropObjectForm, adapter.Fail, MethodObjectForm, in.carrier+": "+err.Error())
 		return out
 	case err != nil:
-		set(PropObjectForm, adapter.Fail, MethodObjectForm, fmt.Sprintf("%s: %s does not validate: %v%s", in.carrier, k, err, note))
+		set(PropObjectForm, adapter.Fail, MethodObjectForm, fmt.Sprintf("%s: %s does not validate: %v", in.carrier, k, err))
 	default:
-		set(PropObjectForm, adapter.Pass, MethodObjectForm, fmt.Sprintf("%s: %s, valid; unsigned%s", in.carrier, k, note))
+		set(PropObjectForm, adapter.Pass, MethodObjectForm, fmt.Sprintf("%s: %s, valid; unsigned", in.carrier, k))
 	}
 
 	// Each native_check report's detail is {"check", "object"}; the
@@ -418,21 +415,21 @@ func parseHTTP(raw []byte) (input, error) {
 // its schema. It returns kindUnknown with the reason when no declared object
 // matches, and the kind with a validation error when one matches by its
 // members but does not validate.
-func identify(octets []byte) (kind, string, error) {
+func identify(octets []byte) (kind, error) {
 	v, err := decodeStrict(octets)
 	if err != nil {
-		return kindUnknown, "", fmt.Errorf("not one JSON value: %w", err)
+		return kindUnknown, fmt.Errorf("not one JSON value: %w", err)
 	}
 	o, ok := asObj(v)
 	if !ok {
-		return kindUnknown, "", errors.New("not a JSON object")
+		return kindUnknown, errors.New("not a JSON object")
 	}
 	var k kind
 	switch {
 	case o.has("type") && o.has("data"):
 		k = kindOrderEvent
 	case o.has("checkout_session_id") || o.has("permalink_url"):
-		return kindUnknown, "", errors.New("an ACP Order on its own: ACP 2026-04-17 delivers an order only inside a completed CheckoutSessionWithOrder or as an order event's data (acp-v0 §2.2 (a)); supply those octets")
+		return kindUnknown, errors.New("an ACP Order on its own: ACP 2026-04-17 delivers an order only inside a completed CheckoutSessionWithOrder or as an order event's data (acp-v0 §2.2 (a)); supply those octets")
 	case o.has("order"):
 		k = kindCheckoutSessionWithOrder
 	case o.has("status") || o.has("line_items") || o.has("totals") || o.has("currency"):
@@ -440,8 +437,7 @@ func identify(octets []byte) (kind, string, error) {
 	case o.has("created") || o.has("metadata"):
 		k = kindDelegatePayment
 	default:
-		return kindUnknown, "", errors.New("a JSON object that is none of CheckoutSession, CheckoutSessionWithOrder, DelegatePaymentResponse or an order event body")
+		return kindUnknown, errors.New("a JSON object that is none of CheckoutSession, CheckoutSessionWithOrder, DelegatePaymentResponse or an order event body")
 	}
-	note, err := validate(k, v)
-	return k, note, err
+	return k, validate(k, v)
 }

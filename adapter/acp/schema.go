@@ -5,7 +5,6 @@ package acp
 import (
 	"bytes"
 	_ "embed"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -85,23 +84,17 @@ var (
 	compileErr  error
 )
 
-// Schema locations.
-const (
-	refCheckoutSession   = idCheckout + "#/$defs/CheckoutSession"
-	refCheckoutBase      = idCheckout + "#/$defs/CheckoutSessionBase"
-	refCheckoutWithOrder = idCheckout + "#/$defs/CheckoutSessionWithOrder"
-	refOrder             = idCheckout + "#/$defs/Order"
-	refDelegatePayment   = idDelegatePayment + "#/$defs/DelegatePaymentResponse"
-)
-
-var allRefs = []string{refCheckoutSession, refCheckoutBase, refCheckoutWithOrder, refOrder, refDelegatePayment, idOrderEvent}
-
-// schemaRef is the schema each object kind is validated against. A
-// CheckoutSessionWithOrder is validated in two parts instead (validate).
+// Schema locations, each object kind's schema. Every one is a JS-CHK or
+// JS-DP definition validated as a whole object, except the order event,
+// which is the OAS-WH transcription above. The adapter never validates a
+// checkout against OAS-CHK, so OAS-CHK's CheckoutSessionWithOrder defect
+// (acp-v0 §6, open point A-4) does not arise: JS-CHK's CheckoutSessionBase
+// lists order, and a completed session validates against JS-CHK whole.
 var schemaRef = map[kind]string{
-	kindCheckoutSession: refCheckoutSession,
-	kindDelegatePayment: refDelegatePayment,
-	kindOrderEvent:      idOrderEvent,
+	kindCheckoutSession:          idCheckout + "#/$defs/CheckoutSession",
+	kindCheckoutSessionWithOrder: idCheckout + "#/$defs/CheckoutSessionWithOrder",
+	kindDelegatePayment:          idDelegatePayment + "#/$defs/DelegatePaymentResponse",
+	kindOrderEvent:               idOrderEvent,
 }
 
 func schemas() (map[string]*jsonschema.Schema, error) {
@@ -125,7 +118,7 @@ func schemas() (map[string]*jsonschema.Schema, error) {
 			}
 		}
 		out := map[string]*jsonschema.Schema{}
-		for _, ref := range allRefs {
+		for _, ref := range schemaRef {
 			s, err := c.Compile(ref)
 			if err != nil {
 				compileErr = fmt.Errorf("schema %s: %w", ref, err)
@@ -138,51 +131,16 @@ func schemas() (map[string]*jsonschema.Schema, error) {
 	return compiled, compileErr
 }
 
-// noteA4 is reported in object_form's detail for every
-// CheckoutSessionWithOrder (m3-adapters ruling A-4; acp-v0 §6, open point
-// A-4).
-const noteA4 = "validated in two parts per ruling A-4: the session minus order against JS-CHK $defs/CheckoutSessionBase, and order against JS-CHK $defs/Order. Upstream defect (acp-v0 A-4): OAS-CHK's CheckoutSessionWithOrder is allOf a closed CheckoutSessionBase that does not list order, so no completed session satisfies it"
-
 // validate checks v, as decoded by decodeStrict, against the schema for k.
-// It returns a note for detail alongside the result. A
-// CheckoutSessionWithOrder is validated in two parts (ruling A-4), and the
-// upstream defect goes in the note, never in the error.
-func validate(k kind, v any) (string, error) {
+func validate(k kind, v any) error {
 	s, err := schemas()
 	if err != nil {
-		return "", err
+		return err
 	}
-	if k != kindCheckoutSessionWithOrder {
-		if err := s[schemaRef[k]].Validate(v); err != nil {
-			return "", fmt.Errorf("%s", flatten(err))
-		}
-		return "", nil
+	if err := s[schemaRef[k]].Validate(v); err != nil {
+		return fmt.Errorf("%s", flatten(err))
 	}
-	o, _ := asObj(v)
-	session := make(map[string]any, len(o))
-	for name, val := range o {
-		if name != "order" {
-			session[name] = val
-		}
-	}
-	var errs []string
-	if err := s[refCheckoutBase].Validate(session); err != nil {
-		errs = append(errs, "session: "+flatten(err))
-	}
-	if err := s[refOrder].Validate(o["order"]); err != nil {
-		errs = append(errs, "order: "+flatten(err))
-	}
-	// JS-CHK's own CheckoutSessionBase lists order, so the whole-object
-	// JS-CHK validation is reported too, for the record.
-	whole := "valid"
-	if s[refCheckoutWithOrder].Validate(v) != nil {
-		whole = "invalid"
-	}
-	note := noteA4 + "; JS-CHK at 7fdd78df lists order in CheckoutSessionBase, and the whole object is " + whole + " against JS-CHK $defs/CheckoutSessionWithOrder"
-	if errs != nil {
-		return note, errors.New(strings.Join(errs, "; "))
-	}
-	return note, nil
+	return nil
 }
 
 // flatten turns a validation error into one line naming each failing

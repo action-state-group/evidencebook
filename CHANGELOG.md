@@ -37,14 +37,14 @@
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
 - `adapter/acp`: the Agentic Commerce Protocol 2026-04-17 checkout session,
   completed session with order, order event and delegated payment token,
-  after agent-action-capsule `spec/adapters/acp-v0.md` (7c7fb4e). ACP signs
+  after agent-action-capsule `spec/adapters/acp-v0.md` (7c052d4e). ACP signs
   none of them, so the adapter supports possession of exact octets only.
   - `octets_digest` is checked against a settlement-records leg's wrapped
     entry digest, or against the relying party's `acp.carried_digest` pin
     for a standalone adapt. The method names which.
   - `object_form` validates against ACP's JSON Schema, vendored by SHA-256.
-    A completed session is validated in two parts (ruling A-4), and an
-    order event's data against OAS-WH `EventDataOrder`.
+    A completed session validates whole against JS-CHK, and an order
+    event's data against OAS-WH `EventDataOrder`.
   - Native checks, each with `detail` `{"check", "object"}`:
     `checkout_session_signature`, `order_signature` and
     `delegate_payment_signature` are `NOT_PRESENT`. `order_event_hmac`, the

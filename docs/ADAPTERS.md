@@ -298,7 +298,7 @@ vectors are pinned to agent-action-capsule main `3c778daa`.
 ## ACP
 
 The Agentic Commerce Protocol, API version 2026-04-17, as declared in
-`agent-action-capsule` `spec/adapters/acp-v0.md` (commit `7c7fb4e`), read at
+`agent-action-capsule` `spec/adapters/acp-v0.md` (commit `7c052d4e`), read at
 ACP commit `7fdd78df677a94dce04c770644b0fbbb1401272b`.
 
 ACP 2026-04-17 defines no signature by the issuer over the checkout session,
@@ -315,7 +315,7 @@ is.
 | Object | Identified by | Validated against |
 |---|---|---|
 | checkout session | a `status`, `line_items`, `totals` or `currency` member, no `order` | JS-CHK `$defs/CheckoutSession` |
-| completed session with its order (order path 1) | as above, with an `order` member | in two parts (ruling A-4): the session minus `order` against JS-CHK `$defs/CheckoutSessionBase`, and `order` against JS-CHK `$defs/Order` |
+| completed session with its order (order path 1) | as above, with an `order` member | JS-CHK `$defs/CheckoutSessionWithOrder`, whole |
 | order event (order path 2) | `type` and `data` members | OAS-WH `WebhookEvent`, `data` as OAS-WH `EventDataOrder` |
 | delegated payment token | `created` or `metadata`, none of the above | JS-DP `$defs/DelegatePaymentResponse` |
 
@@ -353,13 +353,13 @@ OAS-CHK's `Order`, which at 7fdd78df is JS-CHK's `Order` without three optional
 members: `client_reference_id`, `confirmation.order_notes` and
 `fulfillments[].destination.company`. The transcription excludes those three.
 
-**Ruling A-4, `CheckoutSessionWithOrder`.** In OAS-CHK, a
-`CheckoutSessionWithOrder` is `allOf` a closed `CheckoutSessionBase`, and that
-base does not list `order`. So no completed session satisfies it (acp-v0 §6,
-open point A-4). The adapter validates such a session in two parts and puts
-the defect in `object_form`'s `detail`. The defect never turns `object_form`
-into `FAIL`. JS-CHK's `CheckoutSessionBase` at 7fdd78df does list `order`, so
-`detail` also reports the result of the whole-object JS-CHK validation. Validation
+**`CheckoutSessionWithOrder` and open point A-4.** In OAS-CHK a
+`CheckoutSessionWithOrder` cannot be satisfied: it is `allOf` a closed
+`CheckoutSessionBase` that does not list `order` (acp-v0 §6, open point A-4).
+JS-CHK does not have this defect, because its `CheckoutSessionBase` lists
+`order`. The adapter validates checkouts against JS-CHK only, never against
+OAS-CHK. So it validates a completed session as a whole object, and has no
+workaround and no defect note. Validation
 follows JSON Schema 2020-12 with `format` as an annotation, and never loads an
 external reference. Duplicate member names are rejected before validation.
 

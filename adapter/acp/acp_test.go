@@ -41,7 +41,7 @@ func digestPolicy(octets []byte) adapter.TrustPolicy {
 
 // The vendored schemas are ACP's files, byte for byte, with the digests that
 // agent-action-capsule spec/adapters/acp-v0.md §1 records (lines 39-40, at
-// 7c7fb4e).
+// 7c052d4e).
 func TestVendoredSchemaDigests(t *testing.T) {
 	for _, c := range []struct {
 		data       []byte
@@ -61,13 +61,13 @@ func TestVendoredSchemaDigests(t *testing.T) {
 }
 
 // The native_check methods are acp-v0 §2's (e) tables, verbatim (lines 125,
-// 166, 167, 168, 204 at 7c7fb4e).
+// 166, 167, 168, 204 at 7c052d4e).
 func TestDeclaredMethodsVerbatim(t *testing.T) {
 	for got, want := range map[string]string{
 		MethodNativeCheckout:     "none: ACP 2026-04-17 defines no issuer signature over CheckoutSession",
 		MethodNativeOrder:        "none: ACP 2026-04-17 defines no issuer signature over Order",
 		MethodNativeOrderWebhook: "not run: HMAC-SHA256 under a shared secret (OAS-WH Merchant-Signature)",
-		// acp-v0 §2.2 (e) at 7c7fb4e, the row for a body without the header.
+		// acp-v0 §2.2 (e) at 7c052d4e, the row for a body without the header.
 		MethodNativeOrderWebhookAbsent: "none: no Merchant-Signature header was received with the order event body",
 		MethodNativeToken:              "none: ACP 2026-04-17 defines no issuer signature over DelegatePaymentResponse",
 		MethodDigest:                   "SHA-256 over the octets as delivered, compared with the carried digest",
@@ -482,10 +482,11 @@ func TestNativeCheckDetailShape(t *testing.T) {
 	}
 }
 
-// Ruling A-4: a CheckoutSessionWithOrder is validated in two parts, the
-// session minus order against CheckoutSessionBase and the order against
-// JS-CHK Order. The upstream defect is reported in detail and never makes
-// object_form FAIL. A webhook order validates against OAS-WH EventDataOrder.
+// A CheckoutSessionWithOrder validates whole against JS-CHK, whose
+// CheckoutSessionBase lists order; the adapter never uses OAS-CHK, so the
+// A-4 defect (acp-v0 §6 at 7c052d4e) does not arise and no note is made. A
+// session member or an order member that breaks JS-CHK still fails. A
+// webhook order validates against OAS-WH EventDataOrder.
 func TestOrderSchemas(t *testing.T) {
 	completed := string(readFixture(t, "checkout-session-with-order.json"))
 	event := string(readFixture(t, "order-event.json"))
@@ -494,9 +495,9 @@ func TestOrderSchemas(t *testing.T) {
 		form      adapter.Status
 		detail    string
 	}{
-		{"completed session", completed, adapter.Pass, "per ruling A-4"},
-		{"completed session, order without permalink_url", strings.Replace(completed, `"permalink_url"`, `"permalink_uri"`, 1), adapter.Fail, "order: "},
-		{"completed session, unknown session member", strings.Replace(completed, `"currency"`, `"currencyx"`, 1), adapter.Fail, "session: "},
+		{"completed session", completed, adapter.Pass, "$defs/CheckoutSessionWithOrder), valid"},
+		{"completed session, order without permalink_url", strings.Replace(completed, `"permalink_url"`, `"permalink_uri"`, 1), adapter.Fail, "at /order"},
+		{"completed session, unknown session member", strings.Replace(completed, `"currency"`, `"currencyx"`, 1), adapter.Fail, "does not validate"},
 		{"event", event, adapter.Pass, "EventDataOrder"},
 		{"event, data.client_reference_id (JS-CHK only)", strings.Replace(event, `"type": "order",`, `"type": "order", "client_reference_id": "x",`, 1), adapter.Fail, "does not validate"},
 		{"event, data.type missing", strings.Replace(event, `"type": "order",`, ``, 1), adapter.Fail, "does not validate"},
@@ -506,8 +507,8 @@ func TestOrderSchemas(t *testing.T) {
 		if form.Status != c.form || !strings.Contains(form.Detail, c.detail) {
 			t.Errorf("%s: %+v", c.name, form)
 		}
-		if c.form == adapter.Pass && strings.Contains(c.name, "completed") && !strings.Contains(form.Detail, "Upstream defect (acp-v0 A-4)") {
-			t.Errorf("%s: the A-4 defect is not in detail: %s", c.name, form.Detail)
+		if strings.Contains(form.Detail, "A-4") || strings.Contains(form.Detail, "defect") {
+			t.Errorf("%s: no A-4 note is made for JS-CHK: %s", c.name, form.Detail)
 		}
 	}
 }
