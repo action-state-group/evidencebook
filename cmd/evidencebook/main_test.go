@@ -106,6 +106,9 @@ func TestAdaptUCP(t *testing.T) {
 		{"order-webhook-body-mutated.http", 1, 7, "ucp.webhook.content_digest"},
 		{"order-webhook-example-coverage.http", 1, 7, "ucp.webhook.coverage"},
 		{"order-body.json", 0, 8, ""},
+		{"checkout-response-signed.http", 0, 8, ""},
+		{"checkout-response-body-mutated.http", 1, 8, "ucp.response_signature"},
+		{"order-response-signed.http", 0, 9, ""},
 		{filepath.Join("aac-vectors", "positive.checkout.json"), 0, 7, ""},
 		{filepath.Join("aac-vectors", "native-check-fails.checkout.json"), 1, 7, "ucp.merchant_authorization.signature"},
 	}
@@ -136,7 +139,7 @@ func TestAdaptUCP(t *testing.T) {
 				}
 			}
 			for _, p := range got.Properties {
-				if p.Property == adapter.NativeCheck && !strings.HasPrefix(p.DetailFields["object"], "ucp.") {
+				if (p.Property == adapter.NativeCheck || p.Property == "ucp.response_signature") && !strings.HasPrefix(p.DetailFields["object"], "ucp.") {
 					t.Fatalf("%s: detail %v has no object", c.file, p.DetailFields)
 				}
 			}

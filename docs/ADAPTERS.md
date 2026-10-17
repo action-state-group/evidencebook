@@ -299,7 +299,7 @@ vectors are pinned to agent-action-capsule main `3c778daa`.
 ## UCP
 
 The adapter implements the Universal Commerce Protocol adapter declaration
-v0 (`agent-action-capsule` `spec/adapters/ucp-v0.md`, commit `39bf254a`) for
+v0 (`agent-action-capsule` `spec/adapters/ucp-v0.md`, commit `cff71823`) for
 UCP `v2026-08-25` (`Universal-Commerce-Protocol/ucp` commit
 `cd78fb38e819de77d9b527d110476eccb876f1bd`).
 
@@ -315,7 +315,7 @@ message (RFC 9421, with an RFC 9530 `Content-Digest` over the raw body).
 
 ### What it reads
 
-The input is detected as one of three forms.
+The input is detected as one of four forms.
 
 1. **A checkout**: any JSON object without a `checkout_id` member, for
    example a `create_checkout`, `get_checkout` or `complete_checkout`
@@ -341,6 +341,21 @@ The input is detected as one of three forms.
    Signature: sig1=:<base64>:
 
    {"id":"order_abc123","checkout_id":"chk_abc123",...}
+   ```
+4. **An operation response held whole**: the HTTP/1.1 response as received,
+   with the status line, the field lines, an empty line and the raw body
+   (a checkout or an order). The body is checked as in forms 1 and 2, and
+   its RFC 9421 response signature is reported after those checks as
+   `ucp.response_signature`.
+
+   ```
+   HTTP/1.1 200 OK
+   Content-Type: application/json
+   Content-Digest: sha-256=:<base64>:
+   Signature-Input: sig1=("@status" "content-digest" "content-type");created=1760702400;keyid="<kid>"
+   Signature: sig1=:<base64>:
+
+   {"id":"chk_abc123",...}
    ```
 
 ### Declaration
@@ -452,6 +467,20 @@ Order, in report order:
 | `ucp.order` | `none: UCP defines no object signature for this object` | reported only for a body alone: `NOT_PRESENT` |
 | `ucp.business_trust` (own property) | as above | the policy accepts the `UCP-Agent` origin |
 
+An operation response held whole adds one property after the body's checks:
+
+| Property | Method | `PASS` when; other statuses |
+|---|---|---|
+| `ucp.response_signature` (own property; `detail` `{"check": "ucp.response_signature", "object": <body object>}`) | `RFC 9421 <alg> over <covered components>` | `Content-Digest` is the body's SHA-256, and the signature verifies over the rebuilt signature base under a key in the retained `keys[]`; `FAIL` on a digest mismatch, a required component not covered (`@status`, plus `content-digest` and `content-type` with a body), a `keyid` that is not listed, or a bad signature; `NOT_PRESENT` when the response carried no signature or a covered field was not kept; `NOT_CHECKED` with no retained key set |
+
+A response signature is message-level provenance: the holder of the
+business's HTTP signing key sent these response bytes. It is not the
+issuer's signature over the object, and it sits outside the object's
+checks. An order, or a checkout without AP2, stays `NOT_PRESENT` whether or
+not its response signature verified. A `PASS` supports a requirement about
+where the bytes came from, never one that rests on an issuer signature over
+the object.
+
 A `FAIL` of a signature check decides a requirement that *is* that check
 (`SATISFIED`, `not_met`, row 5). It leaves a requirement that only rests on
 the check `INSUFFICIENT` (row 6). A `NOT_PRESENT` for an object that has no
@@ -517,6 +546,14 @@ Signatures are deterministic (RFC 6979), so the fixtures can be reproduced.
   components of the example in UCP's Order Capability. That example does not
   cover `ucp-agent`, so `ucp.webhook.coverage` fails.
 - `order-body.json`: the webhook body alone.
+- `checkout-response-signed.http` and `order-response-signed.http`: signed
+  operation responses. For the order, `ucp.order` stays `NOT_PRESENT` and
+  `ucp.response_signature` is `PASS`.
+  `checkout-response-body-mutated.http` has one octet of whitespace added to
+  the body after signing. The checkout's JCS form, and so its AP2 signature,
+  is unchanged, and only `ucp.response_signature` fails.
+  `checkout-response-unsigned.http` carries no signature, so
+  `ucp.response_signature` is `NOT_PRESENT`.
 
 The tests change, in turn, one member of every class covered by the checkout
 signature: a top-level string and enum, the currency, the `ucp` namespace,
@@ -532,9 +569,8 @@ parameters and the body in turn.
 `TestAACVectors` runs the `agent-action-capsule` vectors
 `vectors/adapters/ucp/`, copied byte for byte into
 `adapter/ucp/testdata/aac-vectors/`, with their `SHA256SUMS` pinned. Every
-report matches the vector's check name, status and method. The vectors write
-`detail` as the check's name in text. This adapter writes the
-`{"check", "object"}` object, and the test compares the check name.
+report matches the vector's property, status, method and whole `detail`
+object.
 
 ### Schema validation
 

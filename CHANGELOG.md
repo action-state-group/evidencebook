@@ -42,6 +42,10 @@
     `native_check` `NOT_PRESENT`: they prove possession only.
   - Objects are validated against UCP's JSON schemas, which are copied
     unchanged and pinned by SHA-256.
+  - An operation response held whole adds `ucp.response_signature`. This
+    is the RFC 9421 signature on the response, reported as its own
+    property and outside the object's checks. An order, or a checkout
+    without AP2, stays `NOT_PRESENT` whatever that signature says.
   - `evidencebook adapt ucp`.
 - `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
   prints the reports as JSON and exits 1 on any `FAIL`.

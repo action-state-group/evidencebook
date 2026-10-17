@@ -232,6 +232,31 @@ func webhookRequest(t testing.TB, body string, components string) []byte {
 	return []byte(strings.Join(lines, "\r\n"))
 }
 
+// responseMessage builds an operation response (UCP Message Signatures
+// §REST Response Signing), signed over components unless components is "".
+func responseMessage(t testing.TB, status, body, components string) []byte {
+	t.Helper()
+	sum := sha256.Sum256([]byte(body))
+	digest := "sha-256=:" + base64.StdEncoding.EncodeToString(sum[:]) + ":"
+	lines := []string{"HTTP/1.1 " + status, "Content-Type: application/json", "Content-Digest: " + digest}
+	if components != "" {
+		params := `(` + components + `);created=1760702400;keyid="` + testKID + `"`
+		fields := map[string]string{"@status": strings.Fields(status)[0], "content-digest": digest, "content-type": "application/json"}
+		var base strings.Builder
+		for _, c := range strings.Fields(components) {
+			name := strings.Trim(c, `"`)
+			base.WriteString(`"` + name + `": ` + fields[name] + "\n")
+		}
+		base.WriteString(`"@signature-params": ` + params)
+		sig := sign(t, testKey(t), crypto.SHA256, []byte(base.String()))
+		lines = append(lines, "Signature-Input: sig1="+params, "Signature: sig1=:"+base64.StdEncoding.EncodeToString(sig)+":")
+	}
+	lines = append(lines, "", body)
+	return []byte(strings.Join(lines, "\r\n"))
+}
+
+const responseComponents = `"@status" "content-digest" "content-type"`
+
 const fullComponents = `"@method" "@authority" "@path" "content-digest" "content-type" "ucp-agent"`
 
 func fixtures(t testing.TB) map[string][]byte {
@@ -247,6 +272,12 @@ func fixtures(t testing.TB) map[string][]byte {
 		"order-webhook-body-mutated.http":     bodyMut,
 		"order-webhook-example-coverage.http": webhookRequest(t, orderBody, `"@method" "@authority" "@path" "content-digest" "content-type"`),
 		"order-body.json":                     []byte(orderBody),
+		"checkout-response-signed.http":       responseMessage(t, "200 OK", string(positiveCheckout(t)), responseComponents),
+		// One octet of whitespace added after signing: the checkout's JCS
+		// form, and so its AP2 signature, is unchanged; the raw body is not.
+		"checkout-response-body-mutated.http": bytes.Replace(responseMessage(t, "200 OK", string(positiveCheckout(t)), responseComponents), []byte(`"id": "chk_abc123"`), []byte(`"id":  "chk_abc123"`), 1),
+		"checkout-response-unsigned.http":     responseMessage(t, "200 OK", string(positiveCheckout(t)), ""),
+		"order-response-signed.http":          responseMessage(t, "200 OK", orderBody, responseComponents),
 	}
 }
 
