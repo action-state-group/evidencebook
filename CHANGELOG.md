@@ -8,6 +8,8 @@ Everything since v0.1.1.
 
 ### Added: foreign-evidence adapters, starting with x402
 
+`docs/ADAPTERS.md` describes the adapter interface and how an adapter reports.
+
 - `adapter`: one interface for every adapter. `Name` and `NativeObject` (the
   FR-19 declaration as data). `Check(raw, TrustPolicy)` returns profile §7.1
   reports. A protocol's named native checks are reported as `native_check`
@@ -42,7 +44,11 @@ Everything since v0.1.1.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
 
-### Added: the personal-evidence part of the third-party verifier guide
+### Added: the third-party verifier guide
+
+`docs/THIRD-PARTY-VERIFIER.md` is new in this release. §1 to §5 are a path
+for testing evidencebook's service-evidence responses with your own verifier,
+reproduced by `test/interop/answer`.
 
 `docs/THIRD-PARTY-VERIFIER.md` §6 covers the personal-evidence disclosure
 that the third-party verifier test also requires: a History at the Basic level
@@ -296,8 +302,9 @@ defines.
 ### Security
 
 - `Respond` now fails closed. Protected subjects (everything except
-  `checkpoints` and the `history_card/1` derivation) are answered only to a requester the transport has
-  authenticated, passed in the new `RespondOptions.AuthenticatedRequester`.
+  `checkpoints` and the `history_card/1` derivation) are answered only to a
+  requester the transport has authenticated, passed in the new
+  `RespondOptions.AuthenticatedRequester`.
   An unauthenticated caller gets only public subjects; every other request is
   answered with a signed refusal, reason `not_authorized`. This holds under
   every `history_segments` tier, including `peers`.
@@ -334,5 +341,6 @@ paths as different modules.
   statement signs (`BundleCheckpoint.LogID`). capsulectl's `verify --bundle`
   up to v0.1.0-rc8 required it and failed every book bundle without it.
 - `VerifyBundle` refuses a stated `checkpoint.log_id` other than the signed
-  one when the checkpoint is authenticated, and one that is present but not a non-empty string (`ErrInvalid`). A
-  bundle that states none reads as before.
+  one when the checkpoint is authenticated, and one that is present but not
+  a non-empty string (`ErrInvalid`). A bundle that states none reads as
+  before.
