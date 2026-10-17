@@ -1,0 +1,9 @@
+{
+  "id": "vt_01J8Z3WXYZ9ABC",
+  "created": "2025-09-29T11:00:00Z",
+  "metadata": {
+    "source": "agent_checkout",
+    "merchant_id": "acme_store",
+    "idempotency_key": "idem_abc123"
+  }
+}

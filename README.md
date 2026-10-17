@@ -97,6 +97,10 @@ and an optional payee receipt):
 go run ./cmd/evidencebook adapt x402 -policy trust-policy.json exchange.http
 ```
 
+The ACP adapter (`adapt acp`) reads the Agentic Commerce Protocol's checkout
+session, order and delegated payment token. ACP signs none of them, so it
+reports possession of the exact octets and never a native `PASS`.
+
 See [docs/ADAPTERS.md](docs/ADAPTERS.md) for the interface, what each adapter
 checks and does not check, and how a failed check maps to a requirement.
 

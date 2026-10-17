@@ -89,3 +89,77 @@ func TestAdaptX402(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptACP(t *testing.T) {
+	td := filepath.Join("..", "..", "adapter", "acp", "testdata")
+	policy := filepath.Join(td, "trust-policy.json")
+	cases := []struct {
+		file   string
+		code   int
+		digest string
+		native string
+	}{
+		{"checkout-session.json", 0, "PASS", "NOT_PRESENT"},
+		{"checkout-session-with-order.json", 1, "FAIL", "NOT_PRESENT,NOT_PRESENT"},
+		{"delegate-payment-response.json", 1, "FAIL", "NOT_PRESENT"},
+		{"order-event.json", 1, "FAIL", "NOT_PRESENT"},
+		{"order-event.http", 1, "FAIL", "NOT_CHECKED"},
+		{"mcp-checkout-session.json", 1, "FAIL", "NOT_PRESENT"},
+		{"leg-checkout-session.json", 0, "PASS", "NOT_PRESENT"},
+	}
+	for _, c := range cases {
+		for _, viaStdin := range []bool{false, true} {
+			var out, errOut bytes.Buffer
+			path := filepath.Join(td, c.file)
+			arg, in := path, []byte(nil)
+			if viaStdin {
+				var err error
+				if in, err = os.ReadFile(path); err != nil {
+					t.Fatal(err)
+				}
+				arg = "-"
+			}
+			// The policy pins checkout-session.json's digest, so every other
+			// fixture's digest is FAIL against it: the octets are not the
+			// ones the pin names.
+			code := run([]string{"adapt", "acp", "-policy", policy, arg}, bytes.NewReader(in), &out, &errOut)
+			if code != c.code {
+				t.Fatalf("%s (stdin %v): exit %d, want %d (%s)", c.file, viaStdin, code, c.code, errOut.String())
+			}
+			var got output
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			var digest string
+			var native []string
+			for _, p := range got.Properties {
+				switch p.Property {
+				case "octets_digest":
+					digest = string(p.Status)
+				case "native_check":
+					native = append(native, string(p.Status))
+				case "object_form":
+					if p.Status != "PASS" {
+						t.Fatalf("%s: %s", c.file, out.String())
+					}
+				}
+			}
+			if got.Adapter != "acp" || digest != c.digest || strings.Join(native, ",") != c.native {
+				t.Fatalf("%s: %s", c.file, out.String())
+			}
+		}
+	}
+	var out, errOut bytes.Buffer
+	out.Reset()
+	if code := run([]string{"adapt", "acp", "-explain", filepath.Join(td, "order-event.http")}, nil, &out, &errOut); code != 0 ||
+		!strings.Contains(out.String(), `"check": "order_event_hmac"`) || !strings.Contains(out.String(), `"explanation": "acp-v0 §2.2`) {
+		t.Fatalf("-explain: exit %d: %s", code, out.String())
+	}
+	out.Reset()
+	if code := run([]string{"adapt", "acp", "-declare"}, nil, &out, &errOut); code != 0 || !json.Valid(out.Bytes()) {
+		t.Fatalf("-declare: exit %d", code)
+	}
+	if code := run([]string{"adapt", "acp", "/nonexistent"}, nil, &out, &errOut); code != 2 {
+		t.Errorf("missing file: exit %d, want 2", code)
+	}
+}

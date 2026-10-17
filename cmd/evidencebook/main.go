@@ -10,11 +10,19 @@
 // calls. Exit status: 0 when no property is FAIL, 1 when any is, 2 on a usage
 // or input error. -declare prints the adapter's FR-19 declaration instead.
 //
-// Adapters: x402. <file> is detected as one of: a settlement-records leg
+// Adapters: acp, x402.
+//
+// x402: <file> is detected as one of: a settlement-records leg
 // (JSON Capsule whose settlement.wrapped[] carries x402.payment-payload
 // content), the bare payment payload (the base64-decoded PAYMENT-SIGNATURE
 // octets), or an HTTP header block carrying PAYMENT-SIGNATURE and optionally
 // PAYMENT-RESPONSE, as received.
+//
+// acp: <file> is a settlement-records leg wrapping one ACP object, or an
+// ACP 2026-04-17 checkout session, completed session with
+// order, delegate payment response or order event, as a JSON body, an MCP
+// JSON-RPC response, or an HTTP message (header fields, empty line, body).
+// ACP defines no issuer signature, so its native_check is never PASS.
 package main
 
 import (
@@ -25,17 +33,19 @@ import (
 	"os"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/acp"
 	"github.com/action-state-group/evidencebook/adapter/x402"
 )
 
 var adapters = map[string]adapter.Adapter{
 	x402.Adapter{}.Name(): x402.Adapter{},
+	acp.Adapter{}.Name():  acp.Adapter{},
 }
 
 const usage = `usage:
   evidencebook adapt <adapter> [-policy trust-policy.json] [-explain] <file | ->
   evidencebook adapt <adapter> -declare
-adapters: x402`
+adapters: acp, x402`
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
