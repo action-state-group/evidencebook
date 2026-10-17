@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-10-17)
+
+Everything since v0.1.1. The adapter drafts for ACP and UCP are not in this
+release.
 
 ### Added: foreign-evidence adapters, starting with x402
 
@@ -313,3 +316,18 @@ defines.
   `requester_ref` they were written with. Operators of books with such
   history should take that into account before serving `full_history` or
   `range` subjects that cover it.
+
+### Changed: the CLL Go module moves to `checkpointed-local-log/go`
+
+evidencebook imports `github.com/action-state-group/checkpointed-local-log/go`
+v0.1.0 instead of `github.com/action-state-group/cll-go`. Go treats the two
+paths as different modules.
+
+### Fixed: a bundle's checkpoint states its log id
+
+- A book's bundle writes `checkpoint.log_id`, the log id its checkpoint
+  statement signs (`BundleCheckpoint.LogID`). capsulectl's `verify --bundle`
+  up to v0.1.0-rc8 required it and failed every book bundle without it.
+- `VerifyBundle` refuses a stated `checkpoint.log_id` other than the signed
+  one, and one that is present but not a non-empty string (`ErrInvalid`). A
+  bundle that states none reads as before.
