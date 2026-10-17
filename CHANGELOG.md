@@ -17,8 +17,12 @@
   policy; validity window against the policy's clock; structure check of the
   unsigned settlement response; settlement `NOT_CHECKED` (no network calls);
   EIP-712 check of an optional payee receipt (versions 1 and 2).
-- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file>` prints
-  the results as JSON and exits 1 on any `FAIL`.
+- Three input forms, detected from the content: a settlement-records leg
+  (the wrapped `x402.payment-payload` and `x402.settle-response` contents,
+  with `wrapped_digest`, `settle_response_wrapped_digest`, `leg_amount` and
+  `leg_network`), the bare payment payload octets, and an HTTP header block.
+- `cmd/evidencebook`: `evidencebook adapt x402 [-policy file] <file | ->`
+  prints the results as JSON and exits 1 on any `FAIL`.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
 

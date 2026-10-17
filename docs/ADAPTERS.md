@@ -60,17 +60,37 @@ establish that a resource was not paid for: that requirement becomes
 
 ### What it reads
 
-An x402 v2 exchange, scheme `exact`, on an EVM chain, with the EIP-3009
-transfer method (the default for tokens such as USDC). The input file is an
-HTTP header block, one `Name: value` per line, as received:
+An x402 v2 payment, scheme `exact`, on an EVM chain, with the EIP-3009
+transfer method (the default for tokens such as USDC). The input is detected
+as one of three forms.
 
-```
-PAYMENT-SIGNATURE: <base64 of the PaymentPayload JSON>
-PAYMENT-RESPONSE: <base64 of the SettlementResponse JSON>
-```
+1. **A settlement-records leg.** A JSON Agent Action Capsule with a
+   `settlement` member (`draft-mih-agent-settlement-records-00`, The Leg
+   Record), typically the `payer_observed` leg. The adapter takes the
+   `settlement.wrapped[]` entry of type `x402.payment-payload`, decodes its
+   `content` (base64url without padding), and checks it against `digest`
+   (SHA-256, lowercase hex) before reading it. It does the same for an
+   `x402.settle-response` entry if one is present. It then compares
+   `settlement.amount.value` with the payload's `accepted.amount` and
+   `settlement.payment_ref.network` with `accepted.network`. The Capsule's
+   own envelope (`capsule_id`, signature) is verified by a Capsule verifier,
+   not by this adapter. An entry that carries a digest but no `content`
+   proves possession of a digest only, and nothing in it is checked natively.
+2. **The bare payment payload.** The base64-decoded `PAYMENT-SIGNATURE`
+   value, a JSON object with `x402Version`. There is no settlement response,
+   so the response properties are `NOT_PRESENT`.
+3. **An HTTP header block**, one `Name: value` per line, as received:
 
-Names are case-insensitive; other headers are ignored; a repeated header is an
-error. `PAYMENT-RESPONSE` is optional. The x402 v1 headers `X-PAYMENT` and
+   ```
+   PAYMENT-SIGNATURE: <base64 of the PaymentPayload JSON>
+   PAYMENT-RESPONSE: <base64 of the SettlementResponse JSON>
+   ```
+
+   Names are case-insensitive; other headers are ignored; a repeated header
+   is an error. `PAYMENT-RESPONSE` is optional.
+
+Input that starts with `{` is read as JSON: a leg if it has a `settlement`
+member, otherwise the bare payload. Anything else is read as a header block. The x402 v1 headers `X-PAYMENT` and
 `X-PAYMENT-RESPONSE` are read too. A v1 payload carries no asset, payee or
 amount of its own, so those properties are `NOT_PRESENT` unless the policy
 pins them.
@@ -148,6 +168,29 @@ possession only.
 | `settlement` | `tx lookup, not performed offline` | always `NOT_CHECKED` when a transaction hash is present |
 | `payee_receipt_signature` | EIP-712 recovery, signer against `x402.receipt_signer` | `NOT_PRESENT` without a receipt; `INCONCLUSIVE` if no signer is pinned |
 
+A leg adds four properties. They are reported for the leg form only.
+
+| Property | Method | Notes |
+|---|---|---|
+| `wrapped_digest` | SHA-256 over the exact decoded `content` octets of the `x402.payment-payload` entry, compared to `digest` | `NOT_PRESENT` without the entry or its `content`. A mismatch is `FAIL`, and the octets held are still checked natively |
+| `settle_response_wrapped_digest` | the same, for an `x402.settle-response` entry | `NOT_PRESENT` when the leg wraps no response |
+| `leg_amount` | `settlement.amount.value` against `accepted.amount` | |
+| `leg_network` | `settlement.payment_ref.network` (the `x402.transaction` qualifier) against `accepted.network` | |
+
+A `wrapped_digest` `PASS` says only that the leg commits to the octets it
+carries. A leg that wraps a payload whose signature was altered, with the
+digest recomputed, reports `wrapped_digest` `PASS` and `payer_signature`
+`FAIL`: the carrier is intact and the native check fails.
+
+Properties per form:
+
+- Header block and bare payload: `payment_payload_form`, `payer_signature`,
+  `chain`, `asset`, `payee_binding`, `amount_binding`, `validity_window`,
+  `settle_response_form`, `settlement`, `payee_receipt_signature`.
+- Leg: `wrapped_digest`, then the ten above, with
+  `settle_response_wrapped_digest` before `settle_response_form`, then
+  `leg_amount` and `leg_network`.
+
 ### Trust policy keys
 
 | Key | Kind | Meaning |
@@ -159,21 +202,55 @@ possession only.
 | `x402.payer_accounts` | pin, optional | `eoa` (default) or `eoa-or-contract`. Under `eoa-or-contract`, a signature that does not recover to the payer is `INCONCLUSIVE` and a non-65-byte signature is `NOT_CHECKED`, because a contract account's signature is checked on chain |
 | `x402.receipt_signer` | keys | addresses accepted as receipt signers |
 
+### A policy for replaying a recorded payment
+
+An authorization is valid only inside its window, which is usually a few
+minutes long. Replaying a recorded payment later therefore needs the clock
+pinned to the time of the payment, for example the leg's `observed_at` or the
+time the resource server received the payment, and not to the time of the
+replay:
+
+```json
+{
+  "now": "2026-10-17T12:00:00Z",
+  "pins": {
+    "x402.chain": "eip155:84532",
+    "x402.asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "x402.asset.name": "USDC",
+    "x402.asset.version": "2",
+    "x402.pay_to": "0x<payee address>",
+    "x402.amount": "10000"
+  },
+  "keys": {
+    "x402.receipt_signer": ["0x<payee receipt signer>"]
+  }
+}
+```
+
+With `now` omitted, `validity_window` is `NOT_CHECKED`. With `now` set to
+the replay time, after the window has closed, it is `FAIL`, which reports
+that the authorization was not usable at that time.
+
 ### Running it
 
 ```
 go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json adapter/x402/testdata/exchange-positive.http
 go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json adapter/x402/testdata/exchange-signature-bit-flip.http
+go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json adapter/x402/testdata/leg-payer-observed.json
+go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json adapter/x402/testdata/payment-payload.json
+go run ./cmd/evidencebook adapt x402 -policy adapter/x402/testdata/trust-policy.json - < adapter/x402/testdata/payment-payload.json
 go run ./cmd/evidencebook adapt x402 -declare
 ```
 
-Flags come before the file. The command prints the per-property results as
+Flags come before the file. `-` reads standard input. The command prints the per-property results as
 JSON and exits 0 when no property is `FAIL`, 1 when any is, and 2 on a usage or
 input error.
 
 The fixtures in `adapter/x402/testdata/` are generated by
 `adapter/x402/fixture_test.go` with throwaway test keys that have never held
-funds (Base Sepolia USDC as the pinned token). `go test ./adapter/x402 -run
+funds (Base Sepolia USDC as the pinned token): one positive file per input
+form, and a `-signature-bit-flip` copy of each with one byte of the payer's
+signature changed (for the leg, with `digest` recomputed). `go test ./adapter/x402 -run
 TestFixturesUpToDate -update` rewrites them; without `-update` the test
 requires them to be byte-identical to the generator's output. The tests change
 one bit of the signature, value, recipient, network, asset, nonce, validity

@@ -2,16 +2,19 @@
 
 // Command evidencebook runs evidencebook's foreign-evidence adapters.
 //
-//	evidencebook adapt <adapter> [-policy trust-policy.json] <file>
+//	evidencebook adapt <adapter> [-policy trust-policy.json] <file | ->
 //	evidencebook adapt <adapter> -declare
 //
-// adapt checks the foreign objects in <file> under the adapter's native
+// adapt checks the foreign objects in <file> ("-" reads standard input) under the adapter's native
 // method and prints the per-property results as JSON. It makes no network
 // calls. Exit status: 0 when no property is FAIL, 1 when any is, 2 on a usage
 // or input error. -declare prints the adapter's FR-19 declaration instead.
 //
-// Adapters: x402 (<file> is an HTTP header block carrying PAYMENT-SIGNATURE
-// and optionally PAYMENT-RESPONSE, as received).
+// Adapters: x402. <file> is detected as one of: a settlement-records leg
+// (JSON Capsule whose settlement.wrapped[] carries x402.payment-payload
+// content), the bare payment payload (the base64-decoded PAYMENT-SIGNATURE
+// octets), or an HTTP header block carrying PAYMENT-SIGNATURE and optionally
+// PAYMENT-RESPONSE, as received.
 package main
 
 import (
@@ -30,15 +33,15 @@ var adapters = map[string]adapter.Adapter{
 }
 
 const usage = `usage:
-  evidencebook adapt <adapter> [-policy trust-policy.json] <file>
+  evidencebook adapt <adapter> [-policy trust-policy.json] <file | ->
   evidencebook adapt <adapter> -declare
 adapters: x402`
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) < 2 || args[0] != "adapt" {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -81,7 +84,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	raw, err := os.ReadFile(fs.Arg(0))
+	var raw []byte
+	var err error
+	if fs.Arg(0) == "-" {
+		raw, err = io.ReadAll(stdin)
+	} else {
+		raw, err = os.ReadFile(fs.Arg(0))
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

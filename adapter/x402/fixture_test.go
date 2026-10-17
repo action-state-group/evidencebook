@@ -4,6 +4,7 @@ package x402
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +77,7 @@ type fixture struct {
 	DuplicateMember                          bool
 	ExtraPayload                             string // raw JSON members appended into payload (e.g. permissionContext)
 	TransferMethod                           string // accepted.extra.assetTransferMethod, "" for absent
+	LegAmount, LegNetwork                    string // settlement.amount.value, settlement.payment_ref.network
 }
 
 func newFixture() *fixture {
@@ -90,6 +93,7 @@ func newFixture() *fixture {
 		Nonce:        hex0x(sum),
 		WithResponse: true, Success: true, Tx: hex0x(tx), RespNetwork: fxNetwork, RespPayer: payer,
 		ReceiptFormat: "eip712", ReceiptVersion: 1, ReceiptNetwork: fxNetwork, ReceiptPayer: payer, ReceiptTx: hex0x(tx),
+		LegAmount: "10000", LegNetwork: fxNetwork,
 	}
 	f.sign()
 	return f
@@ -189,6 +193,51 @@ func (f *fixture) headerBlock() []byte {
 	return b.Bytes()
 }
 
+// legWrappedEntry is a settlement-records wrapped entry for octets.
+func legWrappedEntry(typ string, octets []byte) map[string]any {
+	sum := sha256.Sum256(octets)
+	return map[string]any{
+		"type":       typ,
+		"digest_alg": "SHA-256",
+		"digest":     hex.EncodeToString(sum[:]),
+		"content":    base64.RawURLEncoding.EncodeToString(octets),
+	}
+}
+
+// legJSON is a payer_observed leg (draft-mih-agent-settlement-records-00)
+// wrapping the payment payload and, when present, the settlement response.
+// Only the members the adapter reads are realistic: the Capsule envelope
+// (capsule_id, signature) is out of the adapter's scope and is omitted.
+func (f *fixture) legJSON() []byte {
+	wrapped := []any{legWrappedEntry(wrappedPaymentPayload, f.payloadJSON())}
+	if f.WithResponse {
+		wrapped = append(wrapped, legWrappedEntry(wrappedSettleResponse, f.responseJSON()))
+	}
+	assetCode := "eip155:84532/erc20:" + strings.ToLower(fxAsset)
+	leg := map[string]any{
+		"action_id":           "settle-fixture-payer",
+		"action_type":         "fyi",
+		"canonicalization_id": "jcs",
+		"format_version":      "4",
+		"settlement": map[string]any{
+			"version":     "0",
+			"leg":         "payer_observed",
+			"sealer_role": "payer",
+			"terms_ref":   hex.EncodeToString(keccak256([]byte("fixture terms leg"))),
+			"payment_ref": map[string]any{"type": "x402.transaction", "value": strings.ToLower(f.Tx), "network": f.LegNetwork},
+			"amount":      map[string]any{"value": f.LegAmount, "assetCode": assetCode, "assetScale": 6},
+			"status":      "settled",
+			"observed_at": fxNow.Format(time.RFC3339),
+			"wrapped":     wrapped,
+		},
+	}
+	b, err := json.MarshalIndent(leg, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return append(b, '\n')
+}
+
 func fixturePolicy() adapter.TrustPolicy {
 	return adapter.TrustPolicy{
 		Now: fxNow,
@@ -224,9 +273,13 @@ func TestFixturesUpToDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string][]byte{
-		"exchange-positive.http":           positive.headerBlock(),
-		"exchange-signature-bit-flip.http": mutated.headerBlock(),
-		"trust-policy.json":                append(policy, '\n'),
+		"exchange-positive.http":                     positive.headerBlock(),
+		"exchange-signature-bit-flip.http":           mutated.headerBlock(),
+		"trust-policy.json":                          append(policy, '\n'),
+		"leg-payer-observed.json":                    positive.legJSON(),
+		"leg-payer-observed-signature-bit-flip.json": mutated.legJSON(),
+		"payment-payload.json":                       positive.payloadJSON(),
+		"payment-payload-signature-bit-flip.json":    mutated.payloadJSON(),
 	}
 	for name, want := range files {
 		path := filepath.Join("testdata", name)

@@ -101,7 +101,12 @@ func check(f *fixture, p adapter.TrustPolicy) []adapter.PropertyResult {
 
 func TestPositive(t *testing.T) {
 	results := check(newFixture(), fixturePolicy())
-	decl := Adapter{}.NativeObject().Properties
+	var decl []adapter.Property
+	for _, p := range (Adapter{}).NativeObject().Properties {
+		if !legOnly[p.Name] {
+			decl = append(decl, p)
+		}
+	}
 	if len(results) != len(decl) {
 		t.Fatalf("%d results for %d declared properties", len(results), len(decl))
 	}

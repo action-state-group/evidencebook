@@ -1,0 +1,38 @@
+{
+  "action_id": "settle-fixture-payer",
+  "action_type": "fyi",
+  "canonicalization_id": "jcs",
+  "format_version": "4",
+  "settlement": {
+    "amount": {
+      "assetCode": "eip155:84532/erc20:0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      "assetScale": 6,
+      "value": "10000"
+    },
+    "leg": "payer_observed",
+    "observed_at": "2026-10-17T12:00:00Z",
+    "payment_ref": {
+      "network": "eip155:84532",
+      "type": "x402.transaction",
+      "value": "0xe7132a38ef5b3e250c7414c9a75e1714d8e4bdc8b1fa0b026ddf473ebf4b1772"
+    },
+    "sealer_role": "payer",
+    "status": "settled",
+    "terms_ref": "ed2527a256698c1fd0d8a84a4bb6b441205d65b87c4efdef2eb49cbbe407911c",
+    "version": "0",
+    "wrapped": [
+      {
+        "content": "eyJ4NDAyVmVyc2lvbiI6MiwicmVzb3VyY2UiOnsidXJsIjoiaHR0cHM6Ly9hcGkuZXhhbXBsZS5jb20vcHJlbWl1bS1kYXRhIiwiZGVzY3JpcHRpb24iOiJUZXN0IHJlc291cmNlIiwibWltZVR5cGUiOiJhcHBsaWNhdGlvbi9qc29uIn0sImFjY2VwdGVkIjp7InNjaGVtZSI6ImV4YWN0IiwibmV0d29yayI6ImVpcDE1NTo4NDUzMiIsImFtb3VudCI6IjEwMDAwIiwiYXNzZXQiOiIweDAzNkNiRDUzODQyYzU0MjY2MzRlNzkyOTU0MWVDMjMxOGYzZENGN2UiLCJwYXlUbyI6IjB4Y2NkMWExM2RhODZhYzZiMjA5NGEyYzhiYWE2M2RlOTViMjgyNzJjNCIsIm1heFRpbWVvdXRTZWNvbmRzIjozMDAsImV4dHJhIjp7Im5hbWUiOiJVU0RDIiwidmVyc2lvbiI6IjIifX0sInBheWxvYWQiOnsic2lnbmF0dXJlIjoiMHhlYTY4ODg1Nzg1ODNmYjQ2YWYyMWY3ZjMyMmVhNjA0NzdkODRhMTUwZGNmMjRlMzkyMzE2YTg3YmQ4NmU2OTE0MDZjMjYzZjBlNWJhODQwMmEwMDE1ZGRlYWRjYmNmMGQyNzA3MWExZGIzZWQ3YWZiMjdiMWU0MzAxMDEyMzViYjFjIiwiYXV0aG9yaXphdGlvbiI6eyJmcm9tIjoiMHhlY2NmMTFjMGY0YWY3YTZkOGZmZDU0Y2UwYTA3YzlkMGMzOTViOGMzIiwidG8iOiIweGNjZDFhMTNkYTg2YWM2YjIwOTRhMmM4YmFhNjNkZTk1YjI4MjcyYzQiLCJ2YWx1ZSI6IjEwMDAwIiwidmFsaWRBZnRlciI6IjE3OTIyMzgzNDAiLCJ2YWxpZEJlZm9yZSI6IjE3OTIyMzg2NDAiLCJub25jZSI6IjB4YWYwY2MzNjI1MzM3MzI3YTg4MDhhMTYwMzliODkwN2E0OTZkZjZkOGY0NDlmNWE2M2VjN2ZhNzlmNTk2ODIwNiJ9fX0",
+        "digest": "23366be5bc43cf7559e409bed27115430b9eb828f1e87c5019a1db1744c788c5",
+        "digest_alg": "SHA-256",
+        "type": "x402.payment-payload"
+      },
+      {
+        "content": "eyJzdWNjZXNzIjp0cnVlLCJ0cmFuc2FjdGlvbiI6IjB4ZTcxMzJhMzhlZjViM2UyNTBjNzQxNGM5YTc1ZTE3MTRkOGU0YmRjOGIxZmEwYjAyNmRkZjQ3M2ViZjRiMTc3MiIsIm5ldHdvcmsiOiJlaXAxNTU6ODQ1MzIiLCJwYXllciI6IjB4ZWNjZjExYzBmNGFmN2E2ZDhmZmQ1NGNlMGEwN2M5ZDBjMzk1YjhjMyIsImV4dGVuc2lvbnMiOnsib2ZmZXItcmVjZWlwdCI6eyJpbmZvIjp7InJlY2VpcHQiOnsiZm9ybWF0IjoiZWlwNzEyIiwicGF5bG9hZCI6eyJ2ZXJzaW9uIjoxLCJuZXR3b3JrIjoiZWlwMTU1Ojg0NTMyIiwicmVzb3VyY2VVcmwiOiJodHRwczovL2FwaS5leGFtcGxlLmNvbS9wcmVtaXVtLWRhdGEiLCJwYXllciI6IjB4ZWNjZjExYzBmNGFmN2E2ZDhmZmQ1NGNlMGEwN2M5ZDBjMzk1YjhjMyIsImlzc3VlZEF0IjoxNzkyMjM4NDAwLCJ0cmFuc2FjdGlvbiI6IjB4ZTcxMzJhMzhlZjViM2UyNTBjNzQxNGM5YTc1ZTE3MTRkOGU0YmRjOGIxZmEwYjAyNmRkZjQ3M2ViZjRiMTc3MiJ9LCJzaWduYXR1cmUiOiIweDFhYjZiYzU5YTJlNzc3ZTI5YzRhOGEzMWFhMGFmMTFkZTg4OGQzMjdhMTA0ZDQ3YWMxMGM0NTlhOGZkMWUyMWIxODEzMTQ3YjY4OWY2YzJiZjJmNDFkOTNhYmU3MDA4MTM0MTk4MGNkZjgyYmYxNzRlYjUzMjVhMjljYjFhYmNhMWMifX19fX0",
+        "digest": "e651377d0166dd58f11b4d3ca7087a2f1204fd8dcbaa1d933c74152bca7e5456",
+        "digest_alg": "SHA-256",
+        "type": "x402.settle-response"
+      }
+    ]
+  }
+}

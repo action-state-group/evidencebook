@@ -130,7 +130,7 @@ type Adapter interface {
 	// NativeObject returns the FR-19 declaration.
 	NativeObject() NativeObject
 	// Check parses raw, the octets as received, and reports every declared
-	// property in declaration order. It makes no network calls; an online
+	// property that applies to the input's form, in declaration order. It makes no network calls; an online
 	// check is reported NOT_CHECKED.
 	Check(raw []byte, policy TrustPolicy) []PropertyResult
 }

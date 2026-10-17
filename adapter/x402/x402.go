@@ -17,6 +17,7 @@
 package x402
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"math/big"
@@ -104,6 +105,15 @@ func (Adapter) NativeObject() adapter.NativeObject {
 				NativelySigned:   true,
 			},
 			{
+				Name:             "settlement-records leg (optional carrier)",
+				Format:           "an Agent Action Capsule (JSON) with a settlement member whose wrapped[] carries x402.payment-payload and optionally x402.settle-response entries {type, digest_alg, digest, content}",
+				Octets:           "each wrapped entry's content, base64url without padding, decoded",
+				Issuer:           "the leg's sealer; the wrapped objects keep their own issuers",
+				IssuerResolution: "not resolved here: the Capsule envelope (capsule_id, signature) is verified by the Capsule verifier, not by this adapter. A wrapped digest proves possession of the octets only",
+				Method:           MethodWrappedDigest,
+				NativelySigned:   false,
+			},
+			{
 				Name:             "x402.settle-response",
 				Format:           "PAYMENT-RESPONSE header: base64 of a JSON SettlementResponse {success, transaction, network, payer, ...}",
 				Octets:           "the base64-decoded header value as received",
@@ -131,6 +141,7 @@ func (Adapter) NativeObject() adapter.NativeObject {
 			"a payer authorization under permit2 or ERC-7710, or by a contract account (reported NOT_CHECKED; ERC-7710 has no offline-checkable payer signature and proves possession only)",
 		},
 		Properties: []adapter.Property{
+			{Name: PropWrappedDigest, Object: "settlement-records leg", Method: MethodWrappedDigest, Supports: "the leg's wrapped x402.payment-payload content is the octets its digest names (possession only)"},
 			{Name: PropPayloadForm, Object: "x402.payment-payload", Method: MethodPayloadForm, Supports: "the octets are an x402 payment payload this adapter can read"},
 			{Name: PropPayerSignature, Object: "x402.payment-payload", Method: MethodPayerSig, Supports: "the payer's key signed this authorization for the pinned token and chain"},
 			{Name: PropChain, Object: "x402.payment-payload", Method: MethodChain, Supports: "the payment names the chain the relying party accepts"},
@@ -138,9 +149,12 @@ func (Adapter) NativeObject() adapter.NativeObject {
 			{Name: PropPayeeBinding, Object: "x402.payment-payload", Method: MethodPayee, Supports: "the signed recipient is the payee the requirements named"},
 			{Name: PropAmountBinding, Object: "x402.payment-payload", Method: MethodAmount, Supports: "the signed value is the amount the requirements named"},
 			{Name: PropValidityWindow, Object: "x402.payment-payload", Method: MethodWindow, Supports: "the authorization was usable at the relying party's time"},
+			{Name: PropSettleWrappedDigest, Object: "settlement-records leg", Method: MethodWrappedDigest, Supports: "the leg's wrapped x402.settle-response content is the octets its digest names (possession only)"},
 			{Name: PropSettleForm, Object: "x402.settle-response", Method: MethodSettleForm, Supports: "a well-formed success response naming a transaction; nothing about who sent it"},
 			{Name: PropSettlement, Object: "x402.settle-response", Method: MethodSettlement, Supports: "nothing offline"},
 			{Name: PropReceiptSignature, Object: "x402 offer-receipt receipt", Method: MethodReceipt, Supports: "the pinned payee signer issued this receipt"},
+			{Name: PropLegAmount, Object: "settlement-records leg", Method: MethodLegAmount, Supports: "the leg's amount is the amount the payer accepted"},
+			{Name: PropLegNetwork, Object: "settlement-records leg", Method: MethodLegNetwork, Supports: "the leg's payment reference names the network the payer accepted"},
 		},
 	}
 }
@@ -364,15 +378,30 @@ func (r report) set(prop string, st adapter.Status, method, detail string) {
 	r[prop] = adapter.PropertyResult{Property: prop, Status: st, Method: method, Detail: detail}
 }
 
-// Check implements adapter.Adapter. raw is an HTTP header block carrying
-// PAYMENT-SIGNATURE (or v1 X-PAYMENT) and, optionally, PAYMENT-RESPONSE (or
-// v1 X-PAYMENT-RESPONSE), as received.
+// Check implements adapter.Adapter. raw is one of three input forms,
+// detected from its content:
+//
+//   - a settlement-records leg: a JSON Capsule with a settlement member whose
+//     wrapped[] carries x402.payment-payload (and optionally
+//     x402.settle-response) content;
+//   - the bare payment payload: the base64-decoded PAYMENT-SIGNATURE octets
+//     (a JSON object with x402Version), with no settlement response;
+//   - an HTTP header block carrying PAYMENT-SIGNATURE (or v1 X-PAYMENT) and,
+//     optionally, PAYMENT-RESPONSE (or v1 X-PAYMENT-RESPONSE), as received.
+//
+// Only the properties that apply to the form are reported: the wrapped_*
+// and leg_* properties for a leg only.
 func (a Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
+	if trimmed := bytes.TrimLeft(raw, " \t\r\n"); len(trimmed) > 0 && trimmed[0] == '{' {
+		return checkJSON(raw, policy)
+	}
 	ex, err := parseExchange(raw)
 	if err != nil {
 		r := report{}
 		for _, prop := range a.NativeObject().Properties {
-			r.set(prop.Name, adapter.NotChecked, prop.Method, "header block not read: "+err.Error())
+			if !legOnly[prop.Name] {
+				r.set(prop.Name, adapter.NotChecked, prop.Method, "header block not read: "+err.Error())
+			}
 		}
 		r.set(PropPayloadForm, adapter.Fail, MethodPayloadForm, err.Error())
 		return r.ordered()
@@ -386,9 +415,14 @@ func (a Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.Propert
 // absent.
 func CheckObjects(payloadOctets, responseOctets []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
 	r := report{}
+	checkAll(r, payloadOctets, responseOctets, policy)
+	return r.ordered()
+}
+
+func checkAll(r report, payloadOctets, responseOctets []byte, policy adapter.TrustPolicy) *payment {
 	pay := checkPayment(r, payloadOctets, policy)
 	checkResponse(r, responseOctets, pay, policy)
-	return r.ordered()
+	return pay
 }
 
 func (r report) ordered() []adapter.PropertyResult {
@@ -407,7 +441,7 @@ func checkPayment(r report, octets []byte, policy adapter.TrustPolicy) *payment 
 		{PropPayeeBinding, MethodPayee}, {PropAmountBinding, MethodAmount}, {PropValidityWindow, MethodWindow},
 	}
 	if octets == nil {
-		r.set(PropPayloadForm, adapter.NotPresent, MethodPayloadForm, "no PAYMENT-SIGNATURE or X-PAYMENT header")
+		r.set(PropPayloadForm, adapter.NotPresent, MethodPayloadForm, "no payment payload (PAYMENT-SIGNATURE, X-PAYMENT, or a wrapped x402.payment-payload with content)")
 		for _, p := range payloadProps {
 			r.set(p.name, adapter.NotPresent, p.method, "no payment payload")
 		}
@@ -608,7 +642,7 @@ func checkWindow(r report, pay *payment, policy adapter.TrustPolicy) {
 
 func checkResponse(r report, octets []byte, pay *payment, policy adapter.TrustPolicy) {
 	if octets == nil {
-		r.set(PropSettleForm, adapter.NotPresent, MethodSettleForm, "no PAYMENT-RESPONSE or X-PAYMENT-RESPONSE header")
+		r.set(PropSettleForm, adapter.NotPresent, MethodSettleForm, "no settlement response (PAYMENT-RESPONSE, X-PAYMENT-RESPONSE, or a wrapped x402.settle-response with content)")
 		r.set(PropSettlement, adapter.NotPresent, MethodSettlement, "no settlement response")
 		r.set(PropReceiptSignature, adapter.NotPresent, MethodReceipt, "no settlement response")
 		return
