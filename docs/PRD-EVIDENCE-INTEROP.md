@@ -208,7 +208,7 @@ Also required:
 | Part | Status |
 |---|---|
 | Third-party verifier pack (service evidence) | merged: `evidencebook` #16 `30e3473` ([THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md), which pins `agent-action-capsule` `c86a73a`); this repository's CI runs the regenerated vectors at `agent-action-capsule` `dfc4703` (`evidencebook` #26 `43f3cb1`) |
-| Personal-evidence half | vectors merged: `agent-action-capsule` #296 `0b7b182` (`vectors/personal-history-basic-v0/`, 12 cases); the guide section that points to them is **planned** |
+| Personal-evidence half | vectors merged: `agent-action-capsule` #296 `0b7b182` (`vectors/personal-history-basic-v0/`, 12 cases); the guide section that points to them exists: [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md) §6, #28 `3f68739` |
 | Run by an outside developer | **in progress**, owned by the project lead; not passed |
 
 **How host profiles plug in**
@@ -239,7 +239,7 @@ Every row cites the merged commit it was checked at, as repository, pull request
 | Inference-service history profile | host profile | `Mesh-LLM/capsules` `docs/PRD-SERVICE-EVIDENCE.md` (requirements) | requirements draft exists; the profile is **planned** | `Mesh-LLM/capsules` #24 `b982f8a` |
 | `evidencebook` responder | implementation | this repository | exists: conforming `evidence-interop/0` responder; fails closed without an authenticated requester (NFR-4); MCP carriage (IP §11.4.5); A2A carriage (IP §11.4.4) | responder: #10 `5a86956`; requester gate: #9 `9deaf49`; MCP: #11 `db4e312`; A2A: #13 `59ad618` |
 | `evidencebook` interop CI | conformance run | this repository, `.github/workflows/ci.yml` | exists; runs the reference verifier and vectors pinned to AAC `dfc4703` | pin: #17 `8f655cd`; re-pin to 53 cases: #26 `43f3cb1` |
-| Third-party verifier pack (§8) | guide | [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md) | exists for service evidence; personal-evidence section **planned** | #16 `30e3473` |
+| Third-party verifier pack (§8) | guide | [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md) | exists for service evidence (#16 `30e3473`) and personal evidence (§6, #28 `3f68739`) | #16 `30e3473`; #28 `3f68739` |
 
 Canonical draft pages: `https://datatracker.ietf.org/doc/<draft-name>/`. Tooling note: `capsule-cli` `contract validate` validates a document against a caller-supplied schema and `contract diff` diffs two Evidence Contract versions against the embedded schema (`internal/cli/contract.go`, `contract_diff.go`); neither is required to implement this layer.
 
