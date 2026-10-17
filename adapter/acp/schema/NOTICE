@@ -1,0 +1,31 @@
+The two JSON Schema files in this directory are copied unchanged from the
+Agentic Commerce Protocol repository:
+
+  https://github.com/agentic-commerce-protocol/agentic-commerce-protocol
+  commit 7fdd78df677a94dce04c770644b0fbbb1401272b (API version 2026-04-17)
+
+  spec/2026-04-17/json-schema/schema.agentic_checkout.json
+    SHA-256 d0e4290617d66bf05d002b8ace388732be2b3eb9a92a1003db7a2daa1e0436f2
+  spec/2026-04-17/json-schema/schema.delegate_payment.json
+    SHA-256 307739ae400e7368eaa25c6024d30751348a4af8a516d071565fcd8aa328cf4d
+
+These digests are the ones agent-action-capsule spec/adapters/acp-v0.md §1
+records (JS-CHK, JS-DP). TestVendoredSchemaDigests fails if either file
+changes.
+
+The upstream NOTICE reads:
+
+  Copyright 2025 OpenAI
+  Copyright 2025 Stripe
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.

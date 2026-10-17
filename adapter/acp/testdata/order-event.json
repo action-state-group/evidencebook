@@ -1,0 +1,45 @@
+{
+  "type": "order_create",
+  "data": {
+    "type": "order",
+    "id": "ord_123",
+    "checkout_session_id": "checkout_session_123",
+    "permalink_url": "https://example.com/orders/123",
+    "status": "created",
+    "line_items": [
+      {
+        "id": "li_shoes",
+        "title": "Running Shoes",
+        "quantity": {
+          "ordered": 1,
+          "current": 1,
+          "fulfilled": 0
+        },
+        "unit_price": 9900,
+        "subtotal": 9900
+      }
+    ],
+    "totals": [
+      {
+        "type": "subtotal",
+        "display_text": "Subtotal",
+        "amount": 9900
+      },
+      {
+        "type": "fulfillment",
+        "display_text": "Shipping",
+        "amount": 500
+      },
+      {
+        "type": "tax",
+        "display_text": "Tax",
+        "amount": 860
+      },
+      {
+        "type": "total",
+        "display_text": "Total",
+        "amount": 11260
+      }
+    ]
+  }
+}

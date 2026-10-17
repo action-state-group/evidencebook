@@ -8,7 +8,7 @@ more. A check reaches `PASS` only when the adapter ran the native check and
 the check succeeded.
 
 Adapters live in `adapter/` (the interface) and one package per protocol
-(`adapter/x402`). They make no network calls. A check that needs one reads a
+(`adapter/x402`, `adapter/acp`). They make no network calls. A check that needs one reads a
 recording the relying party supplies, and is `NOT_CHECKED` without one.
 
 ## The interface
@@ -294,3 +294,145 @@ vectors are pinned to agent-action-capsule main `3c778daa`.
 
 `golang.org/x/crypto/sha3` (Keccak-256, BSD-3-Clause) and
 `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery, ISC).
+
+## ACP
+
+The Agentic Commerce Protocol, API version 2026-04-17, as declared in
+`agent-action-capsule` `spec/adapters/acp-v0.md` (commit `7c052d4e`), read at
+ACP commit `7fdd78df677a94dce04c770644b0fbbb1401272b`.
+
+ACP 2026-04-17 defines no signature by the issuer over the checkout session,
+the order, or the delegated payment token. The response reaches its caller over
+TLS, and nothing in the octets authenticates it to anyone else. The order
+webhook's `Merchant-Signature` is an HMAC under a secret the merchant and the
+receiving platform share, so either of them could have produced it. This
+adapter therefore supports **possession of exact octets and nothing more**.
+Its `native_check` is never `PASS` or `FAIL`, and the tests go red if it ever
+is.
+
+### What it reads
+
+| Object | Identified by | Validated against |
+|---|---|---|
+| checkout session | a `status`, `line_items`, `totals` or `currency` member, no `order` | JS-CHK `$defs/CheckoutSession` |
+| completed session with its order (order path 1) | as above, with an `order` member | JS-CHK `$defs/CheckoutSessionWithOrder`, whole |
+| order event (order path 2) | `type` and `data` members | OAS-WH `WebhookEvent`, `data` as OAS-WH `EventDataOrder` |
+| delegated payment token | `created` or `metadata`, none of the above | JS-DP `$defs/DelegatePaymentResponse` |
+
+An `Order` on its own (it has `checkout_session_id` or `permalink_url`) is
+rejected. ACP delivers an order only inside a completed session or as an
+order event's `data` (acp-v0 §2.2 (a)).
+
+The input forms are detected from the content:
+
+- a settlement-records leg (a JSON object with a `settlement` member) whose
+  `settlement.wrapped[]` holds one entry of type `acp.checkout-session`,
+  `acp.order-event` or `acp.delegate-payment-response`. These are the names
+  acp-v0 open point A-3 proposes, and they are not registered. The octets are
+  the entry's `content` (base64url without padding, decoded), and the carried
+  digest is the entry's `digest`. The entry's type must match the object the
+  content turns out to be. An order event in a leg has no header, so
+  `order_event_hmac` is `NOT_PRESENT` there;
+- a JSON body: the octets exactly as received;
+- an MCP JSON-RPC response (`jsonrpc` member): the octets of the `result`
+  member's value as they appear in the response. ACP does not fix the
+  JSON-RPC serialization, so the same session over REST and over MCP has
+  different octets and digests (acp-v0 open point A-2);
+- an HTTP message: an optional request or status line, header fields, an empty
+  line, then the body as received. This is how an order event arrives with its
+  `Merchant-Signature`. A `Content-Encoding` other than `identity`, or any
+  `Transfer-Encoding`, is rejected, because the declared octets are the content
+  after decoding.
+
+The schemas are ACP's own JSON Schema bundles, vendored unchanged in
+`adapter/acp/schema/` with their SHA-256 (see `schema/NOTICE`;
+`TestVendoredSchemaDigests` holds them to acp-v0 §1). ACP publishes the order
+event envelope only in OpenAPI, so `adapter/acp/schema.go` transcribes
+OAS-WH's `WebhookEvent` and `EventDataOrder`. `EventDataOrder` refers to
+OAS-CHK's `Order`, which at 7fdd78df is JS-CHK's `Order` without three optional
+members: `client_reference_id`, `confirmation.order_notes` and
+`fulfillments[].destination.company`. The transcription excludes those three.
+
+**`CheckoutSessionWithOrder` and open point A-4.** In OAS-CHK a
+`CheckoutSessionWithOrder` cannot be satisfied: it is `allOf` a closed
+`CheckoutSessionBase` that does not list `order` (acp-v0 §6, open point A-4).
+JS-CHK does not have this defect, because its `CheckoutSessionBase` lists
+`order`. The adapter validates checkouts against JS-CHK only, never against
+OAS-CHK. So it validates a completed session as a whole object, and has no
+workaround and no defect note. Validation
+follows JSON Schema 2020-12 with `format` as an annotation, and never loads an
+external reference. Duplicate member names are rejected before validation.
+
+### Declaration
+
+Every object is `natively_signed: false`. The predicate is possession only:
+*the presenting party holds octets whose SHA-256 is D, and states they are the
+body ACP returned from operation O at time T*. The operation, the time and the
+merchant are the presenter's statement.
+
+| Property | Status | Method |
+|---|---|---|
+| `octets_digest` | `PASS` or `FAIL` against the carried digest; `NOT_PRESENT` when there is none | `SHA-256 over the octets as delivered, compared with the carried digest`, then `: ` and the digest's source: the leg's wrapped entry digest, or the relying party's pin `acp.carried_digest` for a standalone adapt |
+| `object_form` | `PASS` or `FAIL` | ACP object identified by its members and validated against the vendored schema; the octets are not authenticated |
+| `native_check` `checkout_session_signature` | `NOT_PRESENT` | `none: ACP 2026-04-17 defines no issuer signature over CheckoutSession` |
+| `native_check` `order_signature` (order path 1) | `NOT_PRESENT` | `none: ACP 2026-04-17 defines no issuer signature over Order` |
+| `native_check` `order_event_hmac` (order path 2, header received) | `NOT_CHECKED` | `not run: HMAC-SHA256 under a shared secret (OAS-WH Merchant-Signature)` |
+| `native_check` `order_event_hmac` (order path 2, header absent) | `NOT_PRESENT` | `none: no Merchant-Signature header was received with the order event body` |
+| `native_check` `delegate_payment_signature` | `NOT_PRESENT` | `none: ACP 2026-04-17 defines no issuer signature over DelegatePaymentResponse` |
+
+The `native_check` methods are acp-v0 §2's (e) tables, verbatim. Per ruling S2,
+each named check is reported as a `native_check` report built by
+`adapter.NativeCheckReport`. Its `detail` is the object `{"check", "object"}`,
+for example `{"check": "order_signature", "object": "acp order (path 1)"}`.
+The explanation is not part of the report, and `-explain` shows it. A completed session
+therefore reports two `native_check` results, `checkout_session_signature`
+and `order_signature`. `octets_digest` and `object_form` are not native
+checks and keep their own property names. The webhook HMAC is not run even
+when the relying party holds the secret. A `PASS` by either holder would show
+only that one of the two produced it, and would not attribute the order to the
+merchant (acp-v0 §3.3). The reason is given in `detail`.
+
+### Mapping to a requirement
+
+A `native_check` of `NOT_PRESENT` or `NOT_CHECKED` maps as profile §8.1 rows
+3 and 4 until a profile row exists (m3-adapters ruling S1). `adapter.Evaluate`
+already does this. Requirements rest on checks by
+check name. A requirement that is or rests on a native check ("the merchant
+issued this session", resting on `checkout_session_signature`) is `INSUFFICIENT`, or `UNKNOWN` for the
+webhook, and `not_evaluable`, never `met` or `not_met`. A requirement that
+does not rest on it ("the presenter holds the octets the Artifact cites",
+which depends on `octets_digest` only) is unaffected. `TestS1Mapping` shows
+both cases.
+
+### Trust policy keys
+
+| Key | Kind | Meaning |
+|---|---|---|
+| `acp.carried_digest` | pin | for a standalone adapt only: the SHA-256 (lowercase hex) that the Artifact citing the object states for it. The relying party takes it from that Artifact after verifying its envelope, and never from the ACP octets. In a settlement-records leg the wrapped entry's digest is the carried digest, and the pin is not read |
+
+### Running it
+
+```
+go run ./cmd/evidencebook adapt acp -policy adapter/acp/testdata/trust-policy.json adapter/acp/testdata/checkout-session.json
+go run ./cmd/evidencebook adapt acp adapter/acp/testdata/checkout-session-with-order.json
+go run ./cmd/evidencebook adapt acp adapter/acp/testdata/order-event.http
+go run ./cmd/evidencebook adapt acp adapter/acp/testdata/leg-checkout-session.json
+go run ./cmd/evidencebook adapt acp - < adapter/acp/testdata/delegate-payment-response.json
+go run ./cmd/evidencebook adapt acp -declare
+```
+
+The fixtures in `adapter/acp/testdata/` are built from ACP's published
+examples, not from recorded traffic. The leg fixture is a constructed minimal
+leg around one of them. `testdata/SOURCES` names the example
+each one came from. Some published examples fail ACP's own schema and are not
+used: the order events in `examples.agentic_checkout.json` and the results in
+`examples.mcp.agentic_checkout.json`. There are no conformance vectors: acp-v0
+§6 defers them, and a native-check-fails vector would be a pretend check.
+
+### Dependencies
+
+`github.com/santhosh-tekuri/jsonschema/v6` (JSON Schema 2020-12 validation,
+Apache-2.0), and with it `golang.org/x/text` (BSD-3-Clause). The library is
+pure Go and implements draft 2020-12 `$defs`/`$ref`/`allOf`, which both ACP
+bundles use, and it lets the adapter refuse every external loader. The UCP
+adapter can share it.
