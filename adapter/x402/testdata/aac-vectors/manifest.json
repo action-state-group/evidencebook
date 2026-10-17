@@ -1,0 +1,51 @@
+{
+  "document": "spec/adapters/x402-v0.md",
+  "provenance": "constructed, not recorded",
+  "generator": "python/scripts/generate_adapter_x402_vectors.py",
+  "files": [
+    {
+      "path": "cases.json",
+      "sha256": "97a466ff042133c9f52f44c523932c5fbb992842fee5f5412467e8fb7772aec9"
+    },
+    {
+      "path": "cases/native-check-fails/lookup.json",
+      "sha256": "c3b8affabad9768adbb8ec8eaa75d156e6b8107703f47da17fa12e2c43839c54"
+    },
+    {
+      "path": "cases/native-check-fails/payment-payload.octets",
+      "sha256": "9284361cb6dc76681dc8dfaa04f65b37bf65be8a83ccd7a1fd638762ffc258ce"
+    },
+    {
+      "path": "cases/native-check-fails/payment-response.header",
+      "sha256": "e2ae04bb267a41bfbe547aec3f410fe090904f5e40ec772693f1fded7500c640"
+    },
+    {
+      "path": "cases/native-check-fails/payment-signature.header",
+      "sha256": "4ec9d1a336410d4abd35f2ddaa2f7dc5f441dbd35c0d6dadbd4d34daf673dd19"
+    },
+    {
+      "path": "cases/native-check-fails/settle-response.octets",
+      "sha256": "24c0d6ef21368386529d8c56ecec46f8124f1d744bae658d101969a157d78235"
+    },
+    {
+      "path": "cases/positive/lookup.json",
+      "sha256": "c3b8affabad9768adbb8ec8eaa75d156e6b8107703f47da17fa12e2c43839c54"
+    },
+    {
+      "path": "cases/positive/payment-payload.octets",
+      "sha256": "1d0ef00a4af10b469cf2e612e1767a089314189c471e96ceeba202e583bec5e9"
+    },
+    {
+      "path": "cases/positive/payment-response.header",
+      "sha256": "e2ae04bb267a41bfbe547aec3f410fe090904f5e40ec772693f1fded7500c640"
+    },
+    {
+      "path": "cases/positive/payment-signature.header",
+      "sha256": "54ed4ac870a2f615f1ad60384bd1d598a8209f429dbc818794535eda6bf81219"
+    },
+    {
+      "path": "cases/positive/settle-response.octets",
+      "sha256": "24c0d6ef21368386529d8c56ecec46f8124f1d744bae658d101969a157d78235"
+    }
+  ]
+}

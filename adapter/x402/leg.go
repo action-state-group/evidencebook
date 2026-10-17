@@ -45,22 +45,17 @@ var errNeitherForm = errors.New("a JSON object that is neither a settlement-reco
 // checkJSON handles the two JSON input forms: a settlement-records leg (an
 // object with a settlement member) and the bare payment payload.
 func checkJSON(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
-	o := &out{}
 	v, err := decodeStrict(raw)
 	root, ok := asObj(v)
 	switch {
 	case err == nil && ok && root.has("settlement"):
-		checkLeg(o, root, policy)
+		return checkLeg(root, policy)
 	case err == nil && ok && !root.has("x402Version"):
-		checkPayload(o, raw, errNeitherForm, policy)
-		checkResponse(o, nil, nil, nil, policy)
-		checkReceiptOctets(o, nil, nil, nil, policy)
-	default:
-		// The bare payment payload, or JSON that does not parse (reported by
-		// payload_form).
-		checkObjects(o, raw, nil, nil, policy)
+		return checkSections(objects{payload: raw, payloadErr: errNeitherForm}, policy).all()
 	}
-	return o.results
+	// The bare payment payload, or JSON that does not parse (reported by
+	// payload_form).
+	return checkSections(objects{payload: raw}, policy).all()
 }
 
 // unwrap finds the single wrapped entry of type typ, reports its content
@@ -119,27 +114,37 @@ func unwrap(o *out, wrapped []any, typ string) []byte {
 	return octets
 }
 
-func checkLeg(o *out, root obj, policy adapter.TrustPolicy) {
+func checkLeg(root obj, policy adapter.TrustPolicy) []adapter.PropertyResult {
 	settlement, ok := root.object("settlement")
 	var wrapped []any
 	if ok && settlement.has("wrapped") {
 		wrapped, ok = settlement["wrapped"].([]any)
 	}
-	if !ok {
-		// Nothing can be unwrapped: each content check fails, and the
-		// native checks have no octets.
-		for _, t := range []string{wrappedPaymentPayload, wrappedSettleResponse, wrappedReceipt} {
-			o.plain(PropWrappedContent, adapter.Fail, MethodWrappedContent, t+": settlement or settlement.wrapped is not of the draft's type")
+	var wPay, wResp, wRcpt out
+	var in objects
+	if ok {
+		in.payload = unwrap(&wPay, wrapped, wrappedPaymentPayload)
+		in.response = unwrap(&wResp, wrapped, wrappedSettleResponse)
+		in.receipt = unwrap(&wRcpt, wrapped, wrappedReceipt)
+	} else {
+		for t, w := range map[string]*out{wrappedPaymentPayload: &wPay, wrappedSettleResponse: &wResp, wrappedReceipt: &wRcpt} {
+			w.plain(PropWrappedContent, adapter.Fail, MethodWrappedContent, t+": settlement or settlement.wrapped is not of the draft's type")
 		}
-		checkObjects(o, nil, nil, nil, policy)
-		o.plain(PropLegAmount, adapter.NotChecked, MethodLegAmount, "settlement not readable")
-		o.plain(PropLegNetwork, adapter.NotChecked, MethodLegNetwork, "settlement not readable")
-		return
 	}
-	pay := checkPayload(o, unwrap(o, wrapped, wrappedPaymentPayload), nil, policy)
-	resp := checkResponse(o, unwrap(o, wrapped, wrappedSettleResponse), nil, pay, policy)
-	checkReceiptOctets(o, unwrap(o, wrapped, wrappedReceipt), resp, pay, policy)
-	checkLegCross(o, settlement, pay)
+	s := checkSections(in, policy)
+	var legRows out
+	if ok {
+		checkLegCross(&legRows, settlement, s.pay)
+	} else {
+		legRows.plain(PropLegAmount, adapter.NotChecked, MethodLegAmount, "settlement not readable")
+		legRows.plain(PropLegNetwork, adapter.NotChecked, MethodLegNetwork, "settlement not readable")
+	}
+	var res []adapter.PropertyResult
+	for _, part := range [][]adapter.PropertyResult{wPay.results, s.payment.results, wResp.results, s.response.results,
+		wRcpt.results, s.receipt.results, legRows.results} {
+		res = append(res, part...)
+	}
+	return res
 }
 
 func checkLegCross(o *out, settlement obj, pay *payment) {

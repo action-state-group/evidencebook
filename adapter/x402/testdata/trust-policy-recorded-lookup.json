@@ -14,28 +14,40 @@
     ]
   },
   "recorded": {
-    "x402.tx_lookup": {
-      "source": "constructed fixture (not a recorded lookup)",
+    "x402.lookup": {
+      "provenance": "constructed, not recorded",
       "network": "eip155:84532",
-      "transaction": "0xe7132a38ef5b3e250c7414c9a75e1714d8e4bdc8b1fa0b026ddf473ebf4b1772",
-      "status": "success",
-      "final": true,
-      "block_timestamp": "1792238400",
-      "logs": [
-        {
-          "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          "event": "Transfer",
-          "from": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "to": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
-          "value": "10000"
-        },
-        {
-          "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          "event": "AuthorizationUsed",
-          "authorizer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-          "nonce": "0xaf0cc3625337327a8808a16039b8907a496df6d8f449f5a63ec7fa79f5968206"
-        }
-      ]
+      "source": "constructed fixture (not a recorded lookup)",
+      "transaction_receipt": {
+        "transactionHash": "0xe7132a38ef5b3e250c7414c9a75e1714d8e4bdc8b1fa0b026ddf473ebf4b1772",
+        "blockNumber": "0x1e84800",
+        "status": "0x1",
+        "logs": [
+          {
+            "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "topics": [
+              "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "0xaf0cc3625337327a8808a16039b8907a496df6d8f449f5a63ec7fa79f5968206"
+            ],
+            "data": "0x"
+          },
+          {
+            "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "topics": [
+              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+              "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+              "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+            ],
+            "data": "0x0000000000000000000000000000000000000000000000000000000000002710"
+          }
+        ]
+      },
+      "block": {
+        "number": "0x1e84800",
+        "timestamp": "0x6ad36340"
+      },
+      "code_at_payer": "0x"
     }
   }
 }

@@ -1,0 +1,37 @@
+{
+  "provenance": "constructed, not recorded",
+  "network": "eip155:84532",
+  "source": "constructed observation; no chain endpoint was called",
+  "transaction_receipt": {
+    "transactionHash": "0x768ca5c170716362b0e854d1cad0135a3f881a9612f9d405f9ccfe23da91aba8",
+    "blockNumber": "0x1e84800",
+    "status": "0x1",
+    "from": "0xbD04B5658f609cE565be933957F99545a78a8A35",
+    "to": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "logs": [
+      {
+        "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "topics": [
+          "0x98de503528ee59b575ef0c0a2576a82497bfc029a5685b209e9ec333479b10a5",
+          "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "0x3f6a2671a3eb2be72a05ef3eb8e7659278ffc1957eaaea70fe531037d8a02797"
+        ],
+        "data": "0x"
+      },
+      {
+        "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000000000000002710"
+      }
+    ]
+  },
+  "block": {
+    "number": "0x1e84800",
+    "timestamp": "0x68e7781e"
+  },
+  "code_at_payer": "0x"
+}

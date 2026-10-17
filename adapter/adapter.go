@@ -44,11 +44,56 @@ const (
 
 // PropertyResult is one property report: {property, status, method}, with an
 // optional detail (interop-profile-v0 §7.1).
+//
+// detail is either the text in Detail or, when DetailFields is set, a JSON
+// object of those members (an adapter declaration's structured detail, for
+// example {"check": …, "object": …}). With DetailFields set, Detail holds a
+// human-readable explanation that is not part of the report's JSON.
 type PropertyResult struct {
-	Property string `json:"property"`
-	Status   Status `json:"status"`
-	Method   string `json:"method"`
-	Detail   string `json:"detail,omitempty"`
+	Property     string            `json:"property"`
+	Status       Status            `json:"status"`
+	Method       string            `json:"method"`
+	Detail       string            `json:"-"`
+	DetailFields map[string]string `json:"-"`
+}
+
+// MarshalJSON writes {property, status, method, detail}, detail being the
+// object of DetailFields when set, else the Detail text when non-empty.
+func (r PropertyResult) MarshalJSON() ([]byte, error) {
+	type plain struct {
+		Property string `json:"property"`
+		Status   Status `json:"status"`
+		Method   string `json:"method"`
+		Detail   any    `json:"detail,omitempty"`
+	}
+	p := plain{Property: r.Property, Status: r.Status, Method: r.Method}
+	if r.DetailFields != nil {
+		p.Detail = r.DetailFields
+	} else if r.Detail != "" {
+		p.Detail = r.Detail
+	}
+	return json.Marshal(p)
+}
+
+// UnmarshalJSON reads a report written by MarshalJSON.
+func (r *PropertyResult) UnmarshalJSON(b []byte) error {
+	var p struct {
+		Property string          `json:"property"`
+		Status   Status          `json:"status"`
+		Method   string          `json:"method"`
+		Detail   json.RawMessage `json:"detail"`
+	}
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*r = PropertyResult{Property: p.Property, Status: p.Status, Method: p.Method}
+	if len(p.Detail) == 0 || string(p.Detail) == "null" {
+		return nil
+	}
+	if p.Detail[0] == '{' {
+		return json.Unmarshal(p.Detail, &r.DetailFields)
+	}
+	return json.Unmarshal(p.Detail, &r.Detail)
 }
 
 // TrustPolicy is the relying party's input to a check. It is data, so the
@@ -72,6 +117,10 @@ type TrustPolicy struct {
 	// call; without one, the online check is NOT_CHECKED.
 	Recorded map[string]json.RawMessage `json:"recorded,omitempty"`
 }
+
+// PinPolicyID is the pin naming the relying party's policy, for methods
+// that report "relying party policy <id>".
+const PinPolicyID = "policy.id"
 
 // Pin returns the pinned value for name, or "".
 func (p TrustPolicy) Pin(name string) string { return p.Pins[name] }
@@ -158,11 +207,30 @@ func NativeCheckResult(check string, status Status, method, explanation string) 
 	return PropertyResult{Property: NativeCheck, Status: status, Method: method, Detail: detail}
 }
 
+// NativeCheckReport builds a native_check report whose detail is the object
+// {"check": check, "object": object, …extra}, the shape of the adapter
+// declarations (for example agent-action-capsule spec/adapters/x402-v0.md
+// §7). explanation is kept in Detail and is not part of the report's JSON.
+func NativeCheckReport(check, object string, status Status, method, explanation string, extra map[string]string) PropertyResult {
+	fields := map[string]string{"check": check}
+	if object != "" {
+		fields["object"] = object
+	}
+	for k, v := range extra {
+		fields[k] = v
+	}
+	return PropertyResult{Property: NativeCheck, Status: status, Method: method, Detail: explanation, DetailFields: fields}
+}
+
 // CheckName is the name a result is known by: for a native_check report,
-// the check's name at the start of detail; otherwise the property.
+// detail's check member, or the check's name at the start of a text detail;
+// otherwise the property.
 func CheckName(r PropertyResult) string {
 	if r.Property != NativeCheck {
 		return r.Property
+	}
+	if c, ok := r.DetailFields["check"]; ok {
+		return c
 	}
 	name, _, _ := strings.Cut(r.Detail, ": ")
 	return name

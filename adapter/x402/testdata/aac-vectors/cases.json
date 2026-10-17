@@ -1,0 +1,392 @@
+{
+  "document": "spec/adapters/x402-v0.md",
+  "provenance": "constructed, not recorded",
+  "description": "x402 adapter v0: the wrapped objects' octets, the relying party's policy and recorded lookup, and the expected native_check reports.",
+  "development_key": {
+    "private_key": "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "source": "first default development account of Hardhat Network and Foundry anvil (mnemonic 'test test test test test test test test test test test junk'); foundry-rs/foundry crates/script/src/lib.rs at 131bd9d03941a79836653296d84921e2ab4d9fbb"
+  },
+  "count": 2,
+  "cases": [
+    {
+      "name": "positive",
+      "provenance": "constructed, not recorded",
+      "description": "A constructed exact/eip3009 payment on Base Sepolia, signed by development account 0, settled in a recorded (constructed) transaction. Default signer policy eoa-or-contract. Every check that has an input passes; the settlement response has no signature, and there is no receipt.",
+      "inputs": {
+        "wrapped": [
+          {
+            "type": "x402.payment-payload",
+            "digest_alg": "SHA-256",
+            "digest": "1d0ef00a4af10b469cf2e612e1767a089314189c471e96ceeba202e583bec5e9",
+            "octets": "cases/positive/payment-payload.octets"
+          },
+          {
+            "type": "x402.settle-response",
+            "digest_alg": "SHA-256",
+            "digest": "24c0d6ef21368386529d8c56ecec46f8124f1d744bae658d101969a157d78235",
+            "octets": "cases/positive/settle-response.octets"
+          }
+        ],
+        "informative": {
+          "PAYMENT-SIGNATURE": "cases/positive/payment-signature.header",
+          "PAYMENT-RESPONSE": "cases/positive/payment-response.header"
+        },
+        "lookup": "cases/positive/lookup.json",
+        "online": true
+      },
+      "policy": {
+        "id": "constructed-policy-eoa-or-contract",
+        "signer": "eoa-or-contract",
+        "domains": [
+          {
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "name": "USDC",
+            "version": "2",
+            "chainId": 84532,
+            "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+          }
+        ],
+        "payers": [
+          {
+            "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "party": "constructed payer (development account 0)"
+          }
+        ],
+        "receipt_signers": [],
+        "chain_source": "the case's recorded lookup"
+      },
+      "expect": {
+        "reports": [
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2 PaymentPayload: JSON parse of the registered octets, no duplicate members",
+            "detail": {
+              "check": "payload_form",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "EIP-712 TransferWithAuthorization (EIP-3009), domain from policy, secp256k1 recovery, v 0/1 normalized to 27/28",
+            "detail": {
+              "check": "payer_signature",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "relying party policy constructed-policy-eoa-or-contract",
+            "detail": {
+              "check": "payer_trust",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "relying party policy constructed-policy-eoa-or-contract",
+            "detail": {
+              "check": "asset_trust",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 exact: authorization.to = accepted.payTo, authorization.value = accepted.amount",
+            "detail": {
+              "check": "authorization_terms",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "EIP-3009 validAfter < t < validBefore, t = block timestamp of the settling transaction from the recorded lookup",
+            "detail": {
+              "check": "authorization_window",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2 SettlementResponse: JSON parse, 5.3.2 member types",
+            "detail": {
+              "check": "settle_response_form",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2: network = accepted.network, payer = authorization.from",
+            "detail": {
+              "check": "settle_response_join",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "none: x402 v2 SettlementResponse is unsigned",
+            "detail": {
+              "check": "settle_response_signature",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "transaction lookup on the accepted network: status, Transfer, AuthorizationUsed",
+            "detail": {
+              "check": "settlement_onchain",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "x402 offer-receipt EIP-712 signature: payload version 1, or version 2 under #3186 or #3140 by member names",
+            "detail": {
+              "check": "receipt_signature",
+              "object": "x402.receipt"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "x402 offer-receipt 4.5.1 signer authorization under the relying party's policy",
+            "detail": {
+              "check": "receipt_signer_authorized",
+              "object": "x402.receipt"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "#3186 responseHash or #3140 contentHash, SHA-256",
+            "detail": {
+              "check": "delivery_binding",
+              "object": "x402.receipt"
+            }
+          }
+        ],
+        "requirements": []
+      },
+      "section": [
+        "x402-v0.md §3",
+        "x402-v0.md §4",
+        "x402-v0.md §5",
+        "x402-v0.md §6.1",
+        "x402-v0.md §6.2",
+        "x402-v0.md §6.4",
+        "x402-v0.md §7",
+        "x402-v0.md §8.1"
+      ]
+    },
+    {
+      "name": "native-check-fails",
+      "provenance": "constructed, not recorded",
+      "description": "The positive payment with authorization.value changed from 10000 to 10001 after signing. value is inside the signed EIP-712 message, so recovery yields another address; under signer policy eoa that is FAIL. The value no longer equals accepted.amount, and the recorded Transfer no longer matches the authorization.",
+      "inputs": {
+        "wrapped": [
+          {
+            "type": "x402.payment-payload",
+            "digest_alg": "SHA-256",
+            "digest": "9284361cb6dc76681dc8dfaa04f65b37bf65be8a83ccd7a1fd638762ffc258ce",
+            "octets": "cases/native-check-fails/payment-payload.octets"
+          },
+          {
+            "type": "x402.settle-response",
+            "digest_alg": "SHA-256",
+            "digest": "24c0d6ef21368386529d8c56ecec46f8124f1d744bae658d101969a157d78235",
+            "octets": "cases/native-check-fails/settle-response.octets"
+          }
+        ],
+        "informative": {
+          "PAYMENT-SIGNATURE": "cases/native-check-fails/payment-signature.header",
+          "PAYMENT-RESPONSE": "cases/native-check-fails/payment-response.header"
+        },
+        "lookup": "cases/native-check-fails/lookup.json",
+        "online": true
+      },
+      "policy": {
+        "id": "constructed-policy-eoa",
+        "signer": "eoa",
+        "domains": [
+          {
+            "network": "eip155:84532",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "name": "USDC",
+            "version": "2",
+            "chainId": 84532,
+            "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+          }
+        ],
+        "payers": [
+          {
+            "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "party": "constructed payer (development account 0)"
+          }
+        ],
+        "receipt_signers": [],
+        "chain_source": "the case's recorded lookup"
+      },
+      "expect": {
+        "reports": [
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2 PaymentPayload: JSON parse of the registered octets, no duplicate members",
+            "detail": {
+              "check": "payload_form",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "FAIL",
+            "method": "EIP-712 TransferWithAuthorization (EIP-3009), domain from policy, secp256k1 recovery, v 0/1 normalized to 27/28",
+            "detail": {
+              "check": "payer_signature",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "relying party policy constructed-policy-eoa",
+            "detail": {
+              "check": "payer_trust",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "relying party policy constructed-policy-eoa",
+            "detail": {
+              "check": "asset_trust",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "FAIL",
+            "method": "x402 exact: authorization.to = accepted.payTo, authorization.value = accepted.amount",
+            "detail": {
+              "check": "authorization_terms",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "EIP-3009 validAfter < t < validBefore, t = block timestamp of the settling transaction from the recorded lookup",
+            "detail": {
+              "check": "authorization_window",
+              "object": "x402.payment-payload"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2 SettlementResponse: JSON parse, 5.3.2 member types",
+            "detail": {
+              "check": "settle_response_form",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "PASS",
+            "method": "x402 v2: network = accepted.network, payer = authorization.from",
+            "detail": {
+              "check": "settle_response_join",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "none: x402 v2 SettlementResponse is unsigned",
+            "detail": {
+              "check": "settle_response_signature",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "FAIL",
+            "method": "transaction lookup on the accepted network: status, Transfer, AuthorizationUsed",
+            "detail": {
+              "check": "settlement_onchain",
+              "object": "x402.settle-response"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "x402 offer-receipt EIP-712 signature: payload version 1, or version 2 under #3186 or #3140 by member names",
+            "detail": {
+              "check": "receipt_signature",
+              "object": "x402.receipt"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "x402 offer-receipt 4.5.1 signer authorization under the relying party's policy",
+            "detail": {
+              "check": "receipt_signer_authorized",
+              "object": "x402.receipt"
+            }
+          },
+          {
+            "property": "native_check",
+            "status": "NOT_PRESENT",
+            "method": "#3186 responseHash or #3140 contentHash, SHA-256",
+            "detail": {
+              "check": "delivery_binding",
+              "object": "x402.receipt"
+            }
+          }
+        ],
+        "requirements": [
+          {
+            "requirement": "the payer signed this transfer authorization",
+            "relation": "is the check",
+            "row": 5,
+            "status": "SATISFIED",
+            "sufficiency": "SATISFIED",
+            "verdict": "not_met"
+          },
+          {
+            "requirement": "the resource was paid for",
+            "relation": "supported by the check",
+            "row": 6,
+            "status": "INSUFFICIENT",
+            "sufficiency": "INSUFFICIENT",
+            "verdict": "not_evaluable"
+          }
+        ]
+      },
+      "section": [
+        "x402-v0.md §3",
+        "x402-v0.md §4",
+        "x402-v0.md §5",
+        "x402-v0.md §6.1",
+        "x402-v0.md §6.2",
+        "x402-v0.md §6.4",
+        "x402-v0.md §7",
+        "x402-v0.md §8.1"
+      ]
+    }
+  ]
+}

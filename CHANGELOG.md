@@ -16,7 +16,11 @@
   - `NOT_PRESENT`, `NOT_CHECKED` and `INCONCLUSIVE` as profile §8.1 rows 3-4,
     pending a profile row.
 - `adapter/x402`: the x402 adapter declaration v0 (agent-action-capsule
-  `spec/adapters/x402-v0.md`), with the rulings on its first implementation.
+  `spec/adapters/x402-v0.md` at `3c778daa`), reproducing its vectors
+  (`vectors/adapters/x402/`) exactly. Each check is a `native_check` report
+  with detail `{"check", "object"}` (`adapter.NativeCheckReport`), and the
+  table includes `authorization_window`. The recorded chain observation has
+  the node's result shapes.
   - It reports the twelve checks of the declaration's §7 table.
   - The payer signature is checked by EIP-712 recovery under the policy's
     domain. A mismatch is `INCONCLUSIVE` unless the policy says `eoa`.

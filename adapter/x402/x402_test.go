@@ -5,6 +5,7 @@ package x402
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -127,13 +128,13 @@ func find(t *testing.T, results []adapter.PropertyResult, name string) adapter.P
 }
 
 var tableRows = []string{RowPayloadForm, RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms,
-	RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
+	RowAuthorizationWindow, RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
 	RowReceiptSignature, RowReceiptSignerAuthorized, RowDeliveryBinding}
 
 // positiveStatuses: the positive fixture, offline (no recorded lookup).
 var positiveStatuses = map[string]adapter.Status{
 	RowPayloadForm: adapter.Pass, RowPayerSignature: adapter.Pass, RowPayerTrust: adapter.Pass,
-	RowAssetTrust: adapter.Pass, RowAuthorizationTerms: adapter.Pass,
+	RowAssetTrust: adapter.Pass, RowAuthorizationTerms: adapter.Pass, RowAuthorizationWindow: adapter.NotChecked,
 	RowSettleResponseForm: adapter.Pass, RowSettleResponseJoin: adapter.Pass,
 	RowSettleResponseSignature: adapter.NotPresent, RowSettlementOnchain: adapter.NotChecked,
 	RowReceiptSignature: adapter.Pass, RowReceiptSignerAuthorized: adapter.Pass, RowDeliveryBinding: adapter.NotChecked,
@@ -159,24 +160,31 @@ func TestPositiveShape(t *testing.T) {
 		if r.Method == "" {
 			t.Errorf("%s has no method", key(r))
 		}
+		if r.DetailFields["object"] != objectOf[key(r)] || len(r.DetailFields) < 2 {
+			t.Errorf("%s detail %v", key(r), r.DetailFields)
+		}
 		if r.Status != positiveStatuses[key(r)] {
 			t.Errorf("%s = %s (%s), want %s", key(r), r.Status, r.Detail, positiveStatuses[key(r)])
 		}
 	}
 	for row, method := range map[string]string{
-		RowPayloadForm:             "x402 v2 PaymentPayload: base64 (RFC 4648 §4) and JSON parse, no duplicate members",
-		RowAuthorizationTerms:      "x402 exact: authorization.to = accepted.payTo, authorization.value = accepted.amount, validAfter < validBefore",
-		RowSettleResponseForm:      "x402 v2 SettlementResponse: base64 and JSON parse, 5.3.2 member types",
+		RowPayloadForm:             "x402 v2 PaymentPayload: JSON parse of the registered octets, no duplicate members",
+		RowPayerSignature:          "EIP-712 TransferWithAuthorization (EIP-3009), domain from policy, secp256k1 recovery, v 0/1 normalized to 27/28",
+		RowPayerTrust:              "relying party policy (unnamed)",
+		RowAuthorizationTerms:      "x402 exact: authorization.to = accepted.payTo, authorization.value = accepted.amount",
+		RowAuthorizationWindow:     "EIP-3009 validAfter < t < validBefore, t = block timestamp of the settling transaction from the recorded lookup",
+		RowSettleResponseForm:      "x402 v2 SettlementResponse: JSON parse, 5.3.2 member types",
 		RowSettleResponseJoin:      "x402 v2: network = accepted.network, payer = authorization.from",
 		RowSettleResponseSignature: "none: x402 v2 SettlementResponse is unsigned",
-		RowReceiptSignature:        "x402 offer-receipt v1, EIP-712",
+		RowSettlementOnchain:       "transaction lookup on the accepted network: status, Transfer, AuthorizationUsed",
+		RowReceiptSignature:        "x402 offer-receipt EIP-712 signature: payload version 1, or version 2 under #3186 or #3140 by member names",
 	} {
 		if got := find(t, results, row).Method; got != method {
 			t.Errorf("%s method %q, want %q", row, got, method)
 		}
 	}
-	if m := find(t, results, RowPayerSignature).Method; !strings.HasPrefix(m, "EIP-712 TransferWithAuthorization (EIP-3009), secp256k1 recovery, fields from the as-transmitted payload") || !strings.Contains(m, "v 0/1 normalized to 27/28") {
-		t.Errorf("payer_signature method %q", m)
+	if v := find(t, results, RowReceiptSignature).DetailFields["variant"]; v != "v1" {
+		t.Errorf("receipt variant %q", v)
 	}
 }
 
@@ -195,9 +203,14 @@ func TestMutations(t *testing.T) {
 		{"to", func(f *fixture) { f.To = flipBit(f.To, 19) }, []string{RowAuthorizationTerms, RowPayerSignature}, nil},
 		{"nonce", func(f *fixture) { f.Nonce = flipBit(f.Nonce, 0) }, []string{RowPayerSignature}, nil},
 		{"validBefore", func(f *fixture) { f.ValidBefore = flipDecimal(f.ValidBefore) }, []string{RowPayerSignature}, nil},
-		{"window inverted", func(f *fixture) { f.ValidAfter = f.ValidBefore }, []string{RowAuthorizationTerms, RowPayerSignature}, nil},
-		{"accepted.network", func(f *fixture) { f.Network = "eip155:" + flipDecimal("84532") }, []string{RowAssetTrust, RowSettleResponseJoin}, nil},
-		{"accepted.asset", func(f *fixture) { f.Asset = flipBit(f.Asset, 19) }, []string{RowAssetTrust}, nil},
+		{"validAfter", func(f *fixture) { f.ValidAfter = flipDecimal(f.ValidAfter) }, []string{RowPayerSignature}, nil},
+		// Ruling Q2 / declaration §5.1: a pair the policy has no domain for
+		// is INCONCLUSIVE for asset_trust and NOT_CHECKED for the signature;
+		// a changed network label fails the join.
+		{"accepted.network", func(f *fixture) { f.Network = "eip155:" + flipDecimal("84532") }, []string{RowSettleResponseJoin},
+			map[string]adapter.Status{RowAssetTrust: adapter.Inconclusive, RowPayerSignature: adapter.NotChecked}},
+		{"accepted.asset", func(f *fixture) { f.Asset = flipBit(f.Asset, 19) }, nil,
+			map[string]adapter.Status{RowAssetTrust: adapter.Inconclusive, RowPayerSignature: adapter.NotChecked}},
 		{"response payer", func(f *fixture) { f.RespPayer = flipBit(f.RespPayer, 0) }, []string{RowSettleResponseJoin}, nil},
 		{"response tx shape", func(f *fixture) { f.Tx = f.Tx[:65] }, []string{RowSettleResponseForm},
 			map[string]adapter.Status{RowSettleResponseJoin: adapter.NotChecked, RowSettlementOnchain: adapter.NotChecked,
@@ -242,15 +255,13 @@ func TestDefaultPolicyMismatchInconclusive(t *testing.T) {
 	if adapter.AnyFail(results) {
 		t.Fatalf("FAIL under the default policy: %v", failing(results))
 	}
-	p := fixturePolicy()
-	code, _ := json.Marshal(CodeLookup{Source: "constructed", Network: fxNetwork, Address: f.From, Code: "0x"})
-	p.Recorded = map[string]json.RawMessage{RecordedCodeLookup: code}
-	if r := find(t, check(f, p), RowPayerSignature); r.Status != adapter.Fail {
+	l := f.recordedLookup()
+	if r := find(t, check(f, withLookup(fixturePolicy(), l)), RowPayerSignature); r.Status != adapter.Fail {
 		t.Fatalf("with a recorded no-code lookup: %+v", r)
 	}
-	code, _ = json.Marshal(CodeLookup{Source: "constructed", Network: fxNetwork, Address: f.From, Code: "0x6080"})
-	p.Recorded = map[string]json.RawMessage{RecordedCodeLookup: code}
-	if r := find(t, check(f, p), RowPayerSignature); r.Status != adapter.Inconclusive {
+	code := "0x6080"
+	l.CodeAtPayer = &code
+	if r := find(t, check(f, withLookup(fixturePolicy(), l)), RowPayerSignature); r.Status != adapter.Inconclusive {
 		t.Fatalf("with code at from: %+v", r)
 	}
 }
@@ -279,35 +290,45 @@ func TestVZeroOneNormalized(t *testing.T) {
 	}
 }
 
-// Ruling Q3: the window is checked at the settling block's timestamp from a
-// recorded lookup, inside settlement_onchain; offline it is NOT_CHECKED.
-func TestSettlementOnchainRecorded(t *testing.T) {
+// Ruling Q3 / declaration §6.1, §6.4: settlement_onchain from the recorded
+// lookup, and authorization_window at the settling block's timestamp;
+// offline both are NOT_CHECKED.
+func TestRecordedLookup(t *testing.T) {
+	ts := func(n int64) string { return fmt.Sprintf("0x%x", n) }
+	va, _ := parseUint256(newFixture().ValidAfter)
+	vb, _ := parseUint256(newFixture().ValidBefore)
 	cases := []struct {
-		name string
-		edit func(l *TxLookup)
-		want adapter.Status
+		name           string
+		edit           func(l *Lookup)
+		onchain, wndow adapter.Status
 	}{
-		{"matches", func(l *TxLookup) {}, adapter.Pass},
-		{"block after window", func(l *TxLookup) { l.BlockTimestamp = flipDecimal(l.BlockTimestamp) + "0" }, adapter.Fail},
-		{"block at validBefore", func(l *TxLookup) { l.BlockTimestamp = newFixture().ValidBefore }, adapter.Fail},
-		{"transfer value", func(l *TxLookup) { l.Logs[0].Value = "10001" }, adapter.Fail},
-		{"authorization nonce", func(l *TxLookup) { l.Logs[1].Nonce = flipBit(l.Logs[1].Nonce, 0) }, adapter.Fail},
-		{"other emitter", func(l *TxLookup) { l.Logs[0].Address = flipBit(fxAsset, 19) }, adapter.Fail},
-		{"failed", func(l *TxLookup) { l.Status = "failed" }, adapter.Fail},
-		{"absent", func(l *TxLookup) { l.Status = "absent" }, adapter.Fail},
-		{"not final", func(l *TxLookup) { l.Final = false }, adapter.Inconclusive},
-		{"another transaction", func(l *TxLookup) { l.Transaction = flipBit(l.Transaction, 0) }, adapter.NotChecked},
+		{"matches", func(l *Lookup) {}, adapter.Pass, adapter.Pass},
+		{"block after window", func(l *Lookup) { l.Block.Timestamp = ts(vb.Int64() + 1) }, adapter.Pass, adapter.Fail},
+		{"block at validBefore", func(l *Lookup) { l.Block.Timestamp = ts(vb.Int64()) }, adapter.Pass, adapter.Fail},
+		{"block at validAfter", func(l *Lookup) { l.Block.Timestamp = ts(va.Int64()) }, adapter.Pass, adapter.Fail},
+		{"transfer value", func(l *Lookup) { l.TransactionReceipt.Logs[1].Data = hex0x(wordUint(big.NewInt(10001))) }, adapter.Fail, adapter.Pass},
+		{"authorization nonce", func(l *Lookup) {
+			l.TransactionReceipt.Logs[0].Topics[2] = flipBit(l.TransactionReceipt.Logs[0].Topics[2], 0)
+		}, adapter.Fail, adapter.Pass},
+		{"other emitter", func(l *Lookup) { l.TransactionReceipt.Logs[1].Address = flipBit(fxAsset, 19) }, adapter.Fail, adapter.Pass},
+		{"failed", func(l *Lookup) { l.TransactionReceipt.Status = "0x0" }, adapter.Fail, adapter.Pass},
+		{"absent", func(l *Lookup) { l.TransactionReceipt = nil }, adapter.Fail, adapter.NotChecked},
+		{"not final", func(l *Lookup) { f := false; l.Final = &f }, adapter.Inconclusive, adapter.Pass},
+		{"another transaction", func(l *Lookup) {
+			l.TransactionReceipt.TransactionHash = flipBit(l.TransactionReceipt.TransactionHash, 0)
+		}, adapter.NotChecked, adapter.NotChecked},
+		{"another network", func(l *Lookup) { l.Network = "eip155:8453" }, adapter.NotChecked, adapter.NotChecked},
 	}
 	for _, c := range cases {
 		f := newFixture()
 		l := f.recordedLookup()
 		c.edit(&l)
-		r := find(t, check(f, withLookup(eoaPolicy(), l)), RowSettlementOnchain)
-		if r.Status != c.want {
-			t.Errorf("%s: %+v", c.name, r)
+		results := check(f, withLookup(eoaPolicy(), l))
+		if r := find(t, results, RowSettlementOnchain); r.Status != c.onchain {
+			t.Errorf("%s: settlement_onchain %+v", c.name, r)
 		}
-		if !strings.Contains(r.Method, "constructed fixture") && c.want != adapter.NotChecked {
-			t.Errorf("%s: method does not name the source: %q", c.name, r.Method)
+		if r := find(t, results, RowAuthorizationWindow); r.Status != c.wndow {
+			t.Errorf("%s: authorization_window %+v", c.name, r)
 		}
 	}
 }
@@ -318,7 +339,7 @@ func TestSuccessFalse(t *testing.T) {
 	f := newFixture()
 	f.Success = false
 	st := statuses(check(f, fixturePolicy()))
-	if st[RowSettleResponseForm] != adapter.Pass || st[RowSettlementOnchain] != adapter.NotPresent {
+	if st[RowSettleResponseForm] != adapter.Pass || st[RowSettlementOnchain] != adapter.NotPresent || st[RowAuthorizationWindow] != adapter.NotPresent {
 		t.Fatalf("%v", st)
 	}
 }
@@ -327,7 +348,7 @@ func TestMissingResponse(t *testing.T) {
 	f := newFixture()
 	f.WithResponse = false
 	st := statuses(check(f, fixturePolicy()))
-	for _, row := range []string{RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
+	for _, row := range []string{RowAuthorizationWindow, RowSettleResponseForm, RowSettleResponseJoin, RowSettleResponseSignature, RowSettlementOnchain,
 		RowReceiptSignature, RowReceiptSignerAuthorized, RowDeliveryBinding} {
 		if st[row] != adapter.NotPresent {
 			t.Errorf("%s = %s, want NOT_PRESENT", row, st[row])
@@ -351,7 +372,8 @@ func TestPolicyWithoutEntries(t *testing.T) {
 	st := statuses(check(newFixture(), adapter.TrustPolicy{}))
 	want := map[string]adapter.Status{
 		RowPayerSignature: adapter.NotChecked, RowPayerTrust: adapter.Inconclusive, RowAssetTrust: adapter.Inconclusive,
-		RowAuthorizationTerms: adapter.Pass, RowReceiptSignature: adapter.Pass, RowReceiptSignerAuthorized: adapter.Inconclusive,
+		RowAuthorizationWindow: adapter.NotChecked,
+		RowAuthorizationTerms:  adapter.Pass, RowReceiptSignature: adapter.Pass, RowReceiptSignerAuthorized: adapter.Inconclusive,
 	}
 	for p, w := range want {
 		if st[p] != w {
@@ -390,7 +412,7 @@ func TestOutOfScope(t *testing.T) {
 		if st[RowPayloadForm] != adapter.Pass {
 			t.Errorf("%s: payload_form %s", name, st[RowPayloadForm])
 		}
-		for _, row := range []string{RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms} {
+		for _, row := range []string{RowPayerSignature, RowPayerTrust, RowAssetTrust, RowAuthorizationTerms, RowAuthorizationWindow} {
 			if st[row] != adapter.NotChecked {
 				t.Errorf("%s: %s = %s, want NOT_CHECKED", name, row, st[row])
 			}
@@ -480,13 +502,15 @@ func TestHeaderBlockErrors(t *testing.T) {
 		"not base64":       "PAYMENT-SIGNATURE: ***\r\n",
 		"not a header":     "PAYMENT-SIGNATURE\r\n",
 	} {
-		if r := find(t, Adapter{}.Check([]byte(raw), fixturePolicy()), RowPayloadForm); r.Status != adapter.Fail {
+		// Decoding a header is a transport step: a value that does not
+		// decode yields no octets, and the object is not held (§4).
+		if r := find(t, Adapter{}.Check([]byte(raw), fixturePolicy()), RowPayloadForm); r.Status != adapter.NotPresent || r.Detail == "" {
 			t.Errorf("%s: %+v", name, r)
 		}
 	}
 	bad := "PAYMENT-SIGNATURE: " + strings.SplitN(strings.SplitN(block, "PAYMENT-SIGNATURE: ", 2)[1], "\r\n", 2)[0] + "\r\nPAYMENT-RESPONSE: ***\r\n"
 	st := statuses(Adapter{}.Check([]byte(bad), fixturePolicy()))
-	if st[RowPayerSignature] != adapter.Pass || st[RowSettleResponseForm] != adapter.Fail {
+	if st[RowPayerSignature] != adapter.Pass || st[RowSettleResponseForm] != adapter.NotPresent {
 		t.Errorf("bad response header: %v", st)
 	}
 }
@@ -552,13 +576,15 @@ func TestCommittedFixturesThroughCheck(t *testing.T) {
 		return p
 	}
 	def, eoa, rec := load("trust-policy.json"), load("trust-policy-eoa.json"), load("trust-policy-recorded-lookup.json")
+	// Under the recorded-lookup policy the lookup shows no code at the
+	// payer, so a signature mismatch is FAIL even under the default policy.
 	for file, want := range map[string][3]string{ // FAIL set under default, eoa, recorded
 		"exchange-positive.http":                     {"", "", ""},
-		"exchange-signature-bit-flip.http":           {"", RowPayerSignature, ""},
+		"exchange-signature-bit-flip.http":           {"", RowPayerSignature, RowPayerSignature},
 		"leg-payer-observed.json":                    {"", "", ""},
-		"leg-payer-observed-signature-bit-flip.json": {"", RowPayerSignature, ""},
+		"leg-payer-observed-signature-bit-flip.json": {"", RowPayerSignature, RowPayerSignature},
 		"payment-payload.json":                       {"", "", ""},
-		"payment-payload-signature-bit-flip.json":    {"", RowPayerSignature, ""},
+		"payment-payload-signature-bit-flip.json":    {"", RowPayerSignature, RowPayerSignature},
 	} {
 		raw, err := os.ReadFile(filepath.Join("testdata", file))
 		if err != nil {
