@@ -1,0 +1,41 @@
+Fixtures for adapter/acp. CONSTRUCTED FROM ACP'S PUBLISHED EXAMPLES, NOT
+RECORDED TRAFFIC: no real merchant, buyer, card or token. Every value comes
+from the Agentic Commerce Protocol repository at commit
+7fdd78df677a94dce04c770644b0fbbb1401272b, re-serialized as JSON with
+two-space indentation and a final newline. The bytes of each file are the
+fixture's "octets as delivered".
+
+checkout-session.json
+  examples/2026-04-17/examples.agentic_checkout.json
+  member create_checkout_session_response
+checkout-session-with-order.json
+  examples/2026-04-17/examples.agentic_checkout.json
+  member complete_checkout_session_response
+delegate-payment-response.json
+  examples/2026-04-17/examples.delegate_payment.json
+  member delegate_payment_success_response
+order-event.json
+  spec/2026-04-17/openapi/openapi.agentic_checkout_webhook.yaml
+  postOrderEvents requestBody example order_created (the body only).
+  The order events in examples.agentic_checkout.json are not used: both
+  fail JS-CHK $defs/Order (no id; a refunds member the schema removed).
+order-event.http
+  The same body octets as order-event.json, after a POST request line and
+  header fields. Merchant-Signature is OAS-WH's own parameter example
+  (t=1709123456,v1=e3b0...b855). It is not an HMAC of this body under any
+  secret; the adapter never runs the HMAC, so its value is never checked.
+mcp-checkout-session.json
+  A JSON-RPC 2.0 response {"jsonrpc", "id": 2, "result"} constructed around
+  examples.agentic_checkout.json member get_checkout_session_response, as
+  docs/mcp-binding.md "Response Mapping" describes. The MCP examples in
+  examples.mcp.agentic_checkout.json are not used: their results omit
+  fulfillment_options, which JS-CHK requires.
+trust-policy.json
+  Pins acp.carried_digest to the SHA-256 of checkout-session.json.
+leg-checkout-session.json
+  CONSTRUCTED, not recorded: a minimal settlement-records leg (no envelope
+  signature; the Capsule envelope is not this adapter's to verify) whose
+  settlement.wrapped[] holds one entry of type acp.checkout-session (a type
+  acp-v0 open point A-3 proposes; not registered) with content =
+  checkout-session.json's octets, base64url without padding, and digest =
+  their SHA-256. The settlement members other than wrapped are placeholders.
