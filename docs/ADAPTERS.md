@@ -299,7 +299,7 @@ vectors are pinned to agent-action-capsule main `3c778daa`.
 ## ACP
 
 The Agentic Commerce Protocol, API version 2026-04-17, as declared in
-`agent-action-capsule` `spec/adapters/acp-v0.md` (commit `7c052d4e`), read at
+`agent-action-capsule` `spec/adapters/acp-v0.md` (commit `2ef8aeb4`), read at
 ACP commit `7fdd78df677a94dce04c770644b0fbbb1401272b`.
 
 ACP 2026-04-17 defines no signature by the issuer over the checkout session,
@@ -441,7 +441,7 @@ adapter can share it.
 ## UCP
 
 The adapter implements the Universal Commerce Protocol adapter declaration
-v0 (`agent-action-capsule` `spec/adapters/ucp-v0.md`, commit `cff71823`) for
+v0 (`agent-action-capsule` `spec/adapters/ucp-v0.md`, commit `75009695`) for
 UCP `v2026-08-25` (`Universal-Commerce-Protocol/ucp` commit
 `cd78fb38e819de77d9b527d110476eccb876f1bd`).
 

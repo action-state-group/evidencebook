@@ -6,7 +6,7 @@
 
 - `adapter/acp`: the Agentic Commerce Protocol 2026-04-17 checkout session,
   completed session with order, order event and delegated payment token,
-  after agent-action-capsule `spec/adapters/acp-v0.md` (7c052d4e). ACP signs
+  after agent-action-capsule `spec/adapters/acp-v0.md` (2ef8aeb4). ACP signs
   none of them, so the adapter supports possession of exact octets only.
   - `octets_digest` is checked against a settlement-records leg's wrapped
     entry digest, or against the relying party's `acp.carried_digest` pin

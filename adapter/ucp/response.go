@@ -14,7 +14,7 @@ import (
 )
 
 // PropResponseSignature is the RFC 9421 signature on an operation response
-// (ucp-v0 §5 at cff71823, "A signed response is not the order's
+// (ucp-v0 §5 at 75009695, "A signed response is not the order's
 // signature"). It is message-level provenance, reported as a property of its
 // own beside the object's checks and outside them: a PASS never makes the
 // object's native check PASS.

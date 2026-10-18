@@ -73,7 +73,7 @@ const (
 	MethodNativeOrder        = "none: ACP 2026-04-17 defines no issuer signature over Order"
 	MethodNativeOrderWebhook = "not run: HMAC-SHA256 under a shared secret (OAS-WH Merchant-Signature)"
 	// MethodNativeOrderWebhookAbsent is acp-v0 §2.2 (e) for an order event
-	// body received without its Merchant-Signature header (7c052d4e).
+	// body received without its Merchant-Signature header (2ef8aeb4).
 	MethodNativeOrderWebhookAbsent = "none: no Merchant-Signature header was received with the order event body"
 	MethodNativeToken              = "none: ACP 2026-04-17 defines no issuer signature over DelegatePaymentResponse"
 )

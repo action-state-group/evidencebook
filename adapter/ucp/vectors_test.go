@@ -21,12 +21,9 @@ import (
 // The agent-action-capsule vectors for this adapter, vectors/adapters/ucp/,
 // copied byte for byte into testdata/aac-vectors/.
 //
-// PINNED TO AN UNMERGED HEAD: cff71823 is em-spec's branch head (vectors as
-// of 89a3f47f, detail as {check, object}), not a merge commit. Re-pin to the
-// merge SHA when the vectors merge: copy the directory from the merge
-// commit, then update aacUCPCommit and aacUCPSumsSHA256.
+// Pinned to agent-action-capsule main 75009695 (#300).
 const (
-	aacUCPCommit     = "cff71823f4bffc44d798cfb70936b6116045677d" // re-pin to the merge SHA
+	aacUCPCommit     = "750096953995904c997a41ad6baaaf5d75939947"
 	aacUCPSumsSHA256 = "43814c37195905953e2aec64d20877ec75264459024095bb162e76503dbc5fca"
 )
 
