@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Added: the ACP and UCP adapters
+
+- `adapter/acp`: the Agentic Commerce Protocol 2026-04-17 checkout session,
+  completed session with order, order event and delegated payment token,
+  after agent-action-capsule `spec/adapters/acp-v0.md` (7c052d4e). ACP signs
+  none of them, so the adapter supports possession of exact octets only.
+  - `octets_digest` is checked against a settlement-records leg's wrapped
+    entry digest, or against the relying party's `acp.carried_digest` pin
+    for a standalone adapt. The method names which.
+  - `object_form` validates against ACP's JSON Schema, vendored by SHA-256.
+    A completed session validates whole against JS-CHK, and an order
+    event's data against OAS-WH `EventDataOrder`.
+  - Native checks, each with `detail` `{"check", "object"}`:
+    `checkout_session_signature`, `order_signature` and
+    `delegate_payment_signature` are `NOT_PRESENT`. `order_event_hmac`, the
+    webhook's shared-secret HMAC, is `NOT_CHECKED`, or `NOT_PRESENT` without
+    the header.
+  - It reads a settlement-records leg (wrapped types as proposed by acp-v0
+    A-3, unregistered), a JSON body, an MCP JSON-RPC result, or an HTTP
+    message. `evidencebook adapt acp`.
+- `adapter/ucp`: the UCP adapter declaration v0 (agent-action-capsule
+  `spec/adapters/ucp-v0.md`) for UCP v2026-08-25.
+  - The checkout carrying `ap2.merchant_authorization` is checked natively:
+    a detached JWS (ES256, ES384 or ES512) over the RFC 8785 form of the
+    checkout without `ap2`, under a `keys[]` copy that the relying party
+    retained and supplies in its trust policy.
+  - An Order Event Webhook request held whole is checked with RFC 9421 and
+    RFC 9530. A checkout without AP2, and an order body held alone, report
+    `native_check` `NOT_PRESENT`: they prove possession only.
+  - Objects are validated against UCP's JSON schemas, which are copied
+    unchanged and pinned by SHA-256.
+  - An operation response held whole adds `ucp.response_signature`. This
+    is the RFC 9421 signature on the response, reported as its own
+    property and outside the object's checks. An order, or a checkout
+    without AP2, stays `NOT_PRESENT` whatever that signature says.
+  - `evidencebook adapt ucp`.
+- New dependency: `github.com/santhosh-tekuri/jsonschema/v6` v6.0.3 (JSON Schema
+  2020-12, ACP and UCP schema validation), which brings in `golang.org/x/text`.
+
 ## v0.2.0 (2026-10-17)
 
 Everything since v0.1.1.
@@ -43,26 +82,6 @@ Everything since v0.1.1.
   `-declare` prints the adapter's declaration.
 - New dependencies: `golang.org/x/crypto` (Keccak-256) and
   `github.com/decred/dcrd/dcrec/secp256k1/v4` (public-key recovery).
-- `adapter/acp`: the Agentic Commerce Protocol 2026-04-17 checkout session,
-  completed session with order, order event and delegated payment token,
-  after agent-action-capsule `spec/adapters/acp-v0.md` (7c052d4e). ACP signs
-  none of them, so the adapter supports possession of exact octets only.
-  - `octets_digest` is checked against a settlement-records leg's wrapped
-    entry digest, or against the relying party's `acp.carried_digest` pin
-    for a standalone adapt. The method names which.
-  - `object_form` validates against ACP's JSON Schema, vendored by SHA-256.
-    A completed session validates whole against JS-CHK, and an order
-    event's data against OAS-WH `EventDataOrder`.
-  - Native checks, each with `detail` `{"check", "object"}`:
-    `checkout_session_signature`, `order_signature` and
-    `delegate_payment_signature` are `NOT_PRESENT`. `order_event_hmac`, the
-    webhook's shared-secret HMAC, is `NOT_CHECKED`, or `NOT_PRESENT` without
-    the header.
-  - It reads a settlement-records leg (wrapped types as proposed by acp-v0
-    A-3, unregistered), a JSON body, an MCP JSON-RPC result, or an HTTP
-    message. `evidencebook adapt acp`.
-- New dependency: `github.com/santhosh-tekuri/jsonschema/v6` (and
-  `golang.org/x/text`).
 
 ### Added: the third-party verifier guide
 

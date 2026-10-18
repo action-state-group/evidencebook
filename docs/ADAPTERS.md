@@ -2,13 +2,14 @@
 
 An adapter checks an object produced by another protocol under that
 protocol's own verification method, over the octets as the protocol delivered
-them. It never re-signs, re-encodes or canonicalizes the object. Holding a
+them. It never re-signs or re-encodes the object, and it canonicalizes the
+object only where the native method itself does (UCP's JCS). Holding a
 foreign object, or its digest, proves possession of those octets and nothing
 more. A check reaches `PASS` only when the adapter ran the native check and
 the check succeeded.
 
 Adapters live in `adapter/` (the interface) and one package per protocol
-(`adapter/x402`, `adapter/acp`). They make no network calls. A check that needs one reads a
+(`adapter/x402`, `adapter/acp`, `adapter/ucp`). They make no network calls. A check that needs one reads a
 recording the relying party supplies, and is `NOT_CHECKED` without one.
 
 ## The interface
@@ -436,3 +437,301 @@ Apache-2.0), and with it `golang.org/x/text` (BSD-3-Clause). The library is
 pure Go and implements draft 2020-12 `$defs`/`$ref`/`allOf`, which both ACP
 bundles use, and it lets the adapter refuse every external loader. The UCP
 adapter can share it.
+
+## UCP
+
+The adapter implements the Universal Commerce Protocol adapter declaration
+v0 (`agent-action-capsule` `spec/adapters/ucp-v0.md`, commit `cff71823`) for
+UCP `v2026-08-25` (`Universal-Commerce-Protocol/ucp` commit
+`cd78fb38e819de77d9b527d110476eccb876f1bd`).
+
+UCP has one object that the business (the merchant) signs as an object: the
+checkout carrying `ap2.merchant_authorization`. It exists only when the
+optional AP2 Mandates Extension (`dev.ucp.common.payment.ap2_mandate`) was
+negotiated. Its native method canonicalizes: the signature is a JWS with
+detached content (RFC 7515 Appendix F) over the RFC 8785 (JCS) form of the
+checkout without `ap2`. The adapter rebuilds that form because the native
+method does. It never re-signs the object. The order object is not signed as
+an object. The Order Event Webhook that carries it is signed as an HTTP
+message (RFC 9421, with an RFC 9530 `Content-Digest` over the raw body).
+
+### What it reads
+
+The input is detected as one of four forms.
+
+1. **A checkout**: any JSON object without a `checkout_id` member, for
+   example a `create_checkout`, `get_checkout` or `complete_checkout`
+   response body, an MCP tool result's checkout, or the RFC 8785 octets of a
+   `ucp.checkout` wrapped entry. The input is read as I-JSON (RFC 7493):
+   invalid UTF-8, an escaped lone surrogate or a duplicate member name in
+   any object makes the input unreadable. Any serialization of the same
+   content gives the same results.
+2. **An order body**: a JSON object with `checkout_id`, the webhook body or a
+   `get_order` response held without its request. It has no native check.
+3. **An Order Event Webhook request held whole**: the HTTP/1.1 request as
+   received, with the request line, the field lines, an empty line and the
+   raw body. Lines may end in CRLF or LF. The body is every octet after the
+   empty line, unchanged.
+
+   ```
+   POST /webhooks/ucp/orders HTTP/1.1
+   Host: platform.example
+   Content-Type: application/json
+   UCP-Agent: profile="https://merchant.example/.well-known/ucp"
+   Content-Digest: sha-256=:<base64>:
+   Signature-Input: sig1=("@method" "@authority" "@path" "content-digest" "content-type" "ucp-agent");created=1760702400;keyid="<kid>"
+   Signature: sig1=:<base64>:
+
+   {"id":"order_abc123","checkout_id":"chk_abc123",...}
+   ```
+4. **An operation response held whole**: the HTTP/1.1 response as received,
+   with the status line, the field lines, an empty line and the raw body
+   (a checkout or an order). The body is checked as in forms 1 and 2, and
+   its RFC 9421 response signature is reported after those checks as
+   `ucp.response_signature`.
+
+   ```
+   HTTP/1.1 200 OK
+   Content-Type: application/json
+   Content-Digest: sha-256=:<base64>:
+   Signature-Input: sig1=("@status" "content-digest" "content-type");created=1760702400;keyid="<kid>"
+   Signature: sig1=:<base64>:
+
+   {"id":"chk_abc123",...}
+   ```
+
+### Declaration
+
+**(a) Native objects and format.**
+
+- The checkout with `ap2.merchant_authorization`: a UCP Checkout
+  (`payment_ap2_mandate.json#/$defs/dev.ucp.shopping.checkout`).
+  `merchant_authorization` has the form
+  `<base64url-header>..<base64url-signature>`, and its protected header
+  carries `alg` and `kid`. The octets a wrapper digests are the RFC 8785 form
+  of the whole checkout as received, `ap2` included (proposed wrapped type
+  `ucp.checkout`, not registered).
+- The checkout without AP2, and the order body held alone: the octets as
+  received. These prove possession only.
+- The webhook request held whole: the request with its covered components
+  and its raw body.
+
+**(b) Issuers and how they are resolved.** The issuer is the business. The
+JWS header names only `alg` and `kid`, so the signer is identified by
+context. The business publishes `keys[]` (a JWK Set) in its profile at
+`https://<business-origin>/.well-known/ucp`. The adapter never fetches a
+profile. The relying party supplies a copy of `keys[]` that it retained, the
+origin it came from and the time it was taken. A copy says whether a key was
+listed when the copy was taken. The JWS carries no signing time, and
+businesses remove keys from `keys[]` on rotation and compromise. For a
+webhook, the signer is the profile named in `UCP-Agent`. A key set that was
+retained for another origin is not used for it. Whether the origin is the
+merchant the relying party means is the policy's decision
+(`ucp.business_trust`).
+
+**(c) Native verification method.**
+
+- Checkout: UCP AP2 Mandates Extension §Step 1
+  (`verify_merchant_authorization`). Split `merchant_authorization` at `..`.
+  Decode the header. Require `alg` ∈ {`ES256`, `ES384`, `ES512`} and a
+  `kid`. Remove `ap2` and keep every other member, `ucp` included. Form
+  `header || "." || base64url(JCS(checkout − ap2))`. Find the key for `kid`
+  among the keys usable for verification: a key marked `use:"enc"` is
+  skipped, and so is a key whose `key_ops` lacks `"verify"`. Verify the
+  fixed-width `r||s` signature.
+- Webhook: UCP Message Signatures §REST Request Verification
+  (`verify_rest_request`). Parse `Signature-Input`. Require UCP's covered
+  set: `@method`, `@authority` and `@path`, plus `@query` when there is a
+  query, `content-digest` and `content-type` when there is a body, and each of
+  `ucp-agent`, `signature-agent` and `idempotency-key` that is present. Check
+  `Content-Digest` against the SHA-256 of the raw body. Rebuild the RFC 9421
+  signature base and verify it under the key that `keyid` names. The
+  algorithm follows the key: `ecdsa-p256-sha256`, `ecdsa-p384-sha384` or
+  `ed25519`. When there are several signatures, the first that passes every
+  check is reported. If none does, the first is reported.
+
+**(d) The predicate supported.** When the checkout's checks all pass: the
+holder possesses a UCP checkout, and every member except `ap2` was signed, in
+that exact JSON content, by the key `kid` in the business key set the
+verifier used, as of the time that set was retained. When `status` is
+`completed` and `order` is present, this covers the business's signed
+statement of the order's `id` and `permalink_url`, and nothing else about the
+order. When the webhook's checks all pass: the holder possesses a request
+whose body is this order snapshot, signed over the components listed in
+`Signature-Input` by the key `keyid` in the key set used for the profile in
+`UCP-Agent`. For a checkout without AP2, or an order body alone: the holder
+possesses these octets, and the wrapping party says where it received them.
+
+It does **not** support any of the following: that the origin is the
+merchant the relying party means; that the key was listed when it signed;
+that the buyer authorized the purchase (that is `ap2.checkout_mandate`);
+that payment settled, or that the order was fulfilled or not cancelled
+later; that a checkout is the last state of its session; or, for a webhook,
+that the order state is current, that the events arrived in order, or that
+the signer is the business that took the order. UCP's webhook authorization
+step needs the checkout that created the order, and the adapter does not
+perform it.
+
+### Checks
+
+Each check is a `native_check` report whose `detail` is
+`{"check": <name>, "object": "ucp.checkout"}` (or `"ucp.order"`), built with
+`adapter.NativeCheckReport`. The object's native check passes when each of
+its reports is `PASS`. There is no separate summary report, except for an
+object with no native signature (§5), which gets one `NOT_PRESENT` report.
+`ucp.business_trust` is not a native check. It keeps its own property and is
+reported beside the native checks, as `responder_trust` is reported beside
+the envelope signature.
+
+Checkout, in report order:
+
+| Check | Method | `PASS` when; other statuses |
+|---|---|---|
+| `ucp.checkout.schema` | `ucp-schema validate --response --op <operation>, UCP v2026-08-25` | validates against the AP2-extended checkout schema; `FAIL` on a violation or unreadable input. The operation is the `ucp.operation` pin, else inferred from `status`: `completed` gives `complete`, `canceled` gives `cancel`, and any other status gives `read`. UCP's schemas annotate only requests, so the operation does not change what a response is validated against |
+| `ucp.merchant_authorization.present` | `UCP AP2 Mandates §Business Authorization` | present; `NOT_PRESENT` when absent (`merchant_authorization_missing` when AP2 was negotiated) |
+| `ucp.merchant_authorization.form` | `RFC 7515 Appendix F detached JWS` | matches the pattern, and the header is an I-JSON object with string `alg` and `kid` and no `crit`; `FAIL` otherwise |
+| `ucp.merchant_authorization.alg` | `AP2 v0.2 algorithm rule` | `ES256`, `ES384` or `ES512`, which are all verified here; `FAIL` for any other |
+| `ucp.merchant_authorization.key` | `retained keys[] (<key-set source>)`, with ` as of <time>` when the retention time is known, or `UCP profile keys[] lookup by kid, live` | `kid` names a usable key; `FAIL` when it is not listed, or is listed only as unusable; `NOT_CHECKED` with no retained key set, or for a key type not implemented |
+| `ucp.merchant_authorization.signature` | `<alg> over JWS signing input of JCS(checkout − ap2)` | verifies; `FAIL` (`merchant_authorization_invalid`) when it does not, or when the key's curve does not match `alg` |
+| `ucp.checkout` | `none: UCP defines no object signature for this object` | reported only when AP2 was not negotiated: `NOT_PRESENT` |
+| `ucp.business_trust` (own property) | `relying party policy <policy.id>` | the policy accepts the origin; `FAIL` when it rejects it; `INCONCLUSIVE` when the origin is unknown or not listed; `NOT_CHECKED` with no origin policy |
+
+Order, in report order:
+
+| Check | Method | `PASS` when; other statuses |
+|---|---|---|
+| `ucp.order.schema` | `JSON Schema 2020-12, UCP v2026-08-25` | the body validates against `order.json` |
+| `ucp.webhook.components` | `RFC 9421 §2 component set` | every covered component is held; `NOT_PRESENT` for a body alone, or when a covered field is missing |
+| `ucp.webhook.coverage` | `UCP Identity Resolution Algorithm step 5` | covers UCP's required set; `FAIL` (`coverage_insufficient`) otherwise |
+| `ucp.webhook.content_digest` | `RFC 9530 sha-256 over raw body` | the `sha-256` member equals the body's digest; `FAIL` (`digest_mismatch`) |
+| `ucp.webhook.key` | as `ucp.merchant_authorization.key` | `keyid` names a usable key in the set retained for the `UCP-Agent` origin; `NOT_CHECKED` when the set is for another origin; `FAIL` for a malformed or non-HTTPS `UCP-Agent` |
+| `ucp.webhook.signature` | `RFC 9421 <alg> over signature base` | verifies; `FAIL` (`signature_invalid`); `NOT_CHECKED` for a component with parameters, a derived component other than `@method`, `@authority`, `@path`, `@query` and `@request-target`, or a `tag` other than `web-bot-auth` |
+| `ucp.order` | `none: UCP defines no object signature for this object` | reported only for a body alone: `NOT_PRESENT` |
+| `ucp.business_trust` (own property) | as above | the policy accepts the `UCP-Agent` origin |
+
+An operation response held whole adds one property after the body's checks:
+
+| Property | Method | `PASS` when; other statuses |
+|---|---|---|
+| `ucp.response_signature` (own property; `detail` `{"check": "ucp.response_signature", "object": <body object>}`) | `RFC 9421 <alg> over <covered components>` | `Content-Digest` is the body's SHA-256, and the signature verifies over the rebuilt signature base under a key in the retained `keys[]`; `FAIL` on a digest mismatch, a required component not covered (`@status`, plus `content-digest` and `content-type` with a body), a `keyid` that is not listed, or a bad signature; `NOT_PRESENT` when the response carried no signature or a covered field was not kept; `NOT_CHECKED` with no retained key set |
+
+A response signature is message-level provenance: the holder of the
+business's HTTP signing key sent these response bytes. It is not the
+issuer's signature over the object, and it sits outside the object's
+checks. An order, or a checkout without AP2, stays `NOT_PRESENT` whether or
+not its response signature verified. A `PASS` supports a requirement about
+where the bytes came from, never one that rests on an issuer signature over
+the object.
+
+A `FAIL` of a signature check decides a requirement that *is* that check
+(`SATISFIED`, `not_met`, row 5). It leaves a requirement that only rests on
+the check `INSUFFICIENT` (row 6). A `NOT_PRESENT` for an object that has no
+native signature is mapped as profile §8.1 rows 3-4, pending a profile row.
+It never counts against a requirement that does not rest on that signature.
+
+### Trust policy
+
+| Name | Kind | Meaning |
+|---|---|---|
+| `ucp.keys` | pin | the retained `keys[]`, as a JSON string: a JWK Set `{"keys": [...]}` or a bare array |
+| `ucp.keys.origin` | pin | the business origin (`https://host`) whose `/.well-known/ucp` served that copy. For a checkout, this is also the origin `ucp.business_trust` asks about |
+| `ucp.keys.source` | pin, optional | where the copy came from, named in the key check's method; by default the profile URL of `ucp.keys.origin` |
+| `ucp.keys.retained_at` | pin, optional | when the copy was taken (RFC 3339), named in the key check's method |
+| `ucp.operation` | pin, optional | the operation whose response a checkout is (`create`, `read`, `update`, `complete`, `cancel`), named in the schema check's method |
+| `policy.id` | pin, optional | the policy identifier named in `ucp.business_trust`'s method (shared by every adapter) |
+| `ucp.business_origin` | keys | the business origins the relying party accepts |
+| `ucp.business_origin.rejected` | keys | the business origins the relying party rejects |
+
+```json
+{
+  "pins": {
+    "ucp.keys": "{\"keys\":[{\"kid\":\"rfc7515-appendix-a3\",\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\",\"use\":\"sig\",\"alg\":\"ES256\"}]}",
+    "ucp.keys.origin": "https://merchant.example",
+    "ucp.keys.retained_at": "2026-10-17T12:00:00Z",
+    "policy.id": "fixture-accept-merchant.example"
+  },
+  "keys": {
+    "ucp.business_origin": ["https://merchant.example"]
+  }
+}
+```
+
+### Running it
+
+```
+go run ./cmd/evidencebook adapt ucp -policy adapter/ucp/testdata/trust-policy.json adapter/ucp/testdata/checkout-positive.json
+go run ./cmd/evidencebook adapt ucp -policy adapter/ucp/testdata/trust-policy.json adapter/ucp/testdata/checkout-member-mutated.json
+go run ./cmd/evidencebook adapt ucp -policy adapter/ucp/testdata/trust-policy.json adapter/ucp/testdata/order-webhook.http
+go run ./cmd/evidencebook adapt ucp -declare
+```
+
+The exit status is the same as for x402.
+
+The fixtures in `adapter/ucp/testdata/` are constructed, not recorded.
+`go test ./adapter/ucp -run TestFixturesUpToDate -update` regenerates them,
+and without `-update` the test requires them to be byte-identical. They are
+signed with the **ES256 example key of RFC 7515 Appendix A.3**, a key
+published in the RFC as an example (UCP publishes no test key).
+`TestKnownAnswerRFC7515A3` checks it against the RFC's own A.3 signature.
+Signatures are deterministic (RFC 6979), so the fixtures can be reproduced.
+
+- `checkout-positive.json`: a completed checkout, indented and not in JCS
+  member order, signed.
+- `checkout-member-mutated.json`: the same checkout with the `total` amount
+  changed after signing. It still validates, and only
+  `ucp.merchant_authorization.signature` fails.
+- `checkout-no-ap2.json`: a checkout without AP2, which proves possession only.
+- `order-webhook.http`: a signed webhook request.
+  `order-webhook-body-mutated.http` has one body octet changed, so only
+  `ucp.webhook.content_digest` fails.
+  `order-webhook-example-coverage.http` has a signature that covers the
+  components of the example in UCP's Order Capability. That example does not
+  cover `ucp-agent`, so `ucp.webhook.coverage` fails.
+- `order-body.json`: the webhook body alone.
+- `checkout-response-signed.http` and `order-response-signed.http`: signed
+  operation responses. For the order, `ucp.order` stays `NOT_PRESENT` and
+  `ucp.response_signature` is `PASS`.
+  `checkout-response-body-mutated.http` has one octet of whitespace added to
+  the body after signing. The checkout's JCS form, and so its AP2 signature,
+  is unchanged, and only `ucp.response_signature` fails.
+  `checkout-response-unsigned.http` carries no signature, so
+  `ucp.response_signature` is `NOT_PRESENT`.
+
+The tests change, in turn, one member of every class covered by the checkout
+signature: a top-level string and enum, the currency, the `ucp` namespace,
+nested integers, array order, a removed element, URLs, a non-ASCII string, an
+added or removed member, and the order's `id` and `permalink_url`. Each
+change is required to fail `ucp.merchant_authorization.signature` alone, or
+to fail it together with the schema check when the change also breaks the
+schema. Re-serializing, escaping a character, spelling a number differently
+or adding a member under `ap2` must leave every check `PASS`. The webhook
+tests change the method, path, authority, a covered field, the signature
+parameters and the body in turn.
+
+`TestAACVectors` runs the `agent-action-capsule` vectors
+`vectors/adapters/ucp/`, copied byte for byte into
+`adapter/ucp/testdata/aac-vectors/`, with their `SHA256SUMS` pinned. Every
+report matches the vector's property, status, method and whole `detail`
+object.
+
+### Schema validation
+
+The UCP JSON schemas are copied unchanged from `source/schemas/` at commit
+`cd78fb38` into `adapter/ucp/schema/v2026-08-25/`, with UCP's Apache-2.0
+LICENSE. Only the transitive `$ref` closure of
+`common/payment_ap2_mandate.json` and `shopping/order.json` is copied (47
+files). Each file is checked against `SHA256SUMS`, whose own digest is pinned
+in code. The validator is `github.com/santhosh-tekuri/jsonschema/v6` v6.0.3,
+draft 2020-12, with `format` as an annotation (the 2020-12 default), Go
+regular expressions, and a loader that refuses every `$ref` it does not hold.
+
+### Dependencies
+
+`github.com/santhosh-tekuri/jsonschema/v6` v6.0.3 (Apache-2.0), which pulls
+in `golang.org/x/text`. ECDSA, Ed25519 and SHA-2 come from the Go standard
+library. RFC 8785 is implemented in the package, including number
+serialization. evidencebook's own `canonicalJSON` uses the Agent Action
+Capsule integer-only profile of RFC 8785, which refuses a non-integer number.
+A checkout may carry one, so that profile cannot be used here. For every
+input the profile accepts, the two produce the same bytes. RFC 8941
+Structured Fields are parsed by a minimal reader in the package.
