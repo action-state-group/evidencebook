@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added: the cadence tree, byte for byte capsule-cli's
+
+evidencebook#36 §2 (the heartbeat cadence); the tick and live set come next.
+
+- `cadence_tree.go` ports capsule-cli's cadence tree unchanged: leaf
+  `SHA-256(0x00 ‖ JCS{checkpoint_sha256, log_id, salt, size})`, node
+  `0x01`, empty `0x02`, filler `0x03 ‖ nonce`, depth 16
+  (`CadenceDepth`), the sparse path and fold. `testdata/cadence` holds
+  vectors written by capsule-cli 7a6b101's own code, and the port
+  reproduces them.
+- `TickLeaves` / `TickLeaf` are capsule-cli's stored tick leaves member for
+  member, plus `filler_seed` and `filler_count`. `DerivedFillers` keeps a
+  tick's occupancy at the profile's lifetime log count plus one when ended
+  logs leave the tick, so a bundle's path shows no more than today; a tick
+  stores one seed instead of a filler per ended log. `TickLeaves.Tree`
+  rebuilds any tick's tree from what it stored; ticks a released build
+  stored read unchanged.
+
 ### Changed (breaking): payload bytes live in an artifact store
 
 capsule-cli#236: one originals store, kept per record.
