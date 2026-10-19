@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Changed (breaking): payload bytes live in an artifact store
+
+capsule-cli#236: one originals store, kept per record.
+
+- `Config.Payloads` and `PayloadResolver`/`PayloadDir`/`OpenPayloadDir` are
+  removed. `Config.Originals` is an `ArtifactStore`, capsule-emit's
+  artifact store contract (`Put`, `Get`, `Purge`); `OpenOriginalsFile`
+  opens its JSONL backend, owner-only and synced on every write
+  (`SyncedFile` gives a host's file-backed store the same). A store's `Put`
+  and `Purge` must be durable when they return. A record with payloads is stored there with its
+  capsule and envelope in one `Put`, after it is sealed and before it is
+  stored. `MigratePayloadDir` moves a payload directory's bytes into the
+  artifact store and changes no record, log entry or checkpoint; a record
+  the store already holds without a payload the directory still has is an
+  error, never skipped. It folds lifecycle records as `Retention` does: a
+  record whose latest state is DELETED is not stored, and a payload an
+  earlier per-payload deletion named is left out.
+- Retention is kept per record. `Book.Retention(ctx, record)` and
+  `Book.SetRetention(ctx, record, state, reason)` lose their payload
+  digest, `LifecycleStatement` loses `payload_commitment`, and `DELETED`
+  purges the record's originals. The dedupe-aware deletion is removed: each
+  record keeps its own copy.
+- A retention commitment holds every record it covers at `LEGAL_HOLD` until
+  its `until`, so `SetRetention(..., DELETED, ...)` returns `ErrLegalHold`.
+
+### Added
+
+- `Book.AppendCapsule`: a capsule its caller seals is the record itself,
+  carrying its header in the `evidence_record_header` member
+  (`RecordHeaderMember`), sealed under the book's writer lock and signed by
+  the book's signer. `VerifyBundle` reads such a header from the capsule.
+  A bundle discloses such a record's originals bound to its capsule's
+  `agent_input` or `agent_output` digest as those members, so a neutral
+  verifier matches them against the capsule.
+- `RecordResponse` keeps the reply's octets as the response record's
+  payload; `Book.ReplyOctets` reads them back.
+
 ## v0.4.0 (2026-10-19)
 
 Everything since v0.3.0.

@@ -70,16 +70,16 @@ func open(ctx context.Context, dir string, policy evidencebook.ResponderPolicy, 
 	if err != nil {
 		return nil, err
 	}
-	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
-	if err != nil {
-		return nil, err
-	}
 	signer, err := evidencebook.NewEd25519Signer(seeded(responderLabel))
 	if err != nil {
 		return nil, err
 	}
+	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
+	if err != nil {
+		return nil, err
+	}
 	return evidencebook.Open(ctx, evidencebook.Config{
-		BookID: "responder", Operator: "responder-operator", Store: store, Substrate: substrate, Payloads: payloads, Signer: signer,
+		BookID: "responder", Operator: "responder-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer,
 		Now:       func() time.Time { *clock = clock.Add(time.Second); return *clock },
 		Responder: policy,
 	})

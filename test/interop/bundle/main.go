@@ -49,17 +49,17 @@ func run(ctx context.Context, dir, out, refusalOut string) error {
 	if err != nil {
 		return err
 	}
-	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
+	signer, err := evidencebook.NewEd25519Signer(key(1))
 	if err != nil {
 		return err
 	}
-	signer, err := evidencebook.NewEd25519Signer(key(1))
+	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
 	if err != nil {
 		return err
 	}
 	clock := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	book, err := evidencebook.Open(ctx, evidencebook.Config{
-		BookID: "interop", Operator: "interop-operator", Store: store, Substrate: substrate, Payloads: payloads, Signer: signer,
+		BookID: "interop", Operator: "interop-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer,
 		Now: func() time.Time { clock = clock.Add(time.Second); return clock },
 	})
 	if err != nil {

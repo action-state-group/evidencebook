@@ -20,10 +20,18 @@ import (
 // The agent-action-capsule commit whose vectors/personal-history-basic-v0/
 // this command reproduces, and the SHA-256 of the files the guide relies on
 // there. testdata/vectors.json is that commit's vectors.json, unchanged.
+//
+// producerSHA256 is this repository's main.go. It differs from that commit's
+// producer/main.go (SHA-256 e9054656...f7c38e) only where the book's payload
+// store became its artifact store (Config.Originals, capsule-cli#236): the
+// corpus pins an evidencebook commit from before that change, where its
+// producer builds unchanged. producer.diff is the whole difference, and CI
+// checks it against the corpus. When the corpus next pins evidencebook, its
+// producer/main.go takes this file.
 const (
 	aacCommit      = "0b7b1825965e7f7845cbc70a490a581cbc70bd37"
 	vectorsSHA256  = "8369998d0fb0f118a1f4d6c5469cd93d83885fa6ae2c3b39e1267955001cbccc"
-	producerSHA256 = "e9054656ad2431de9c5cf9bed89cdb2316314039db0eb077148e3e8a20f7c38e"
+	producerSHA256 = "db48bcaa6dcf480c66886f93f164025df5a9a394cae2f6d34ef28b4493f7ac51"
 )
 
 var (
@@ -208,9 +216,9 @@ func TestRunIsThePublishedRun(t *testing.T) {
 	}
 }
 
-// TestProducerIsTheCorpusProducer: main.go is the corpus's producer/main.go,
-// unchanged, so the guide's cmp holds. Its header comment still describes the
-// corpus README's copy step; it is left unedited so the bytes match.
+// TestProducerIsTheCorpusProducer: main.go is the pinned producer (see
+// producerSHA256), so any change to it is deliberate. Its header comment
+// still describes the corpus README's copy step.
 func TestProducerIsTheCorpusProducer(t *testing.T) {
 	if got := sha(readFile(t, "main.go")); got != producerSHA256 {
 		t.Fatalf("main.go has SHA-256 %s, not the corpus producer's %s", got, producerSHA256)

@@ -55,15 +55,15 @@ func (f *bookFixture) config(t *testing.T) Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloads, err := OpenPayloadDir(filepath.Join(f.dir, "payloads"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	signer, err := NewEd25519Signer(seededKey(f.seed))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Config{BookID: f.id, Operator: f.id + "-operator", Store: store, Substrate: substrate, Payloads: payloads, Signer: signer, Now: f.clock.Now}
+	originals, err := OpenOriginalsFile(context.Background(), filepath.Join(f.dir, "originals.jsonl"), "book", signer.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Config{BookID: f.id, Operator: f.id + "-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer, Now: f.clock.Now}
 }
 
 func (f *bookFixture) open(t *testing.T) *Book {

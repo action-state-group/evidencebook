@@ -11,14 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	emit "github.com/action-state-group/capsule-emit/go"
+	"github.com/action-state-group/capsule-emit/go/artifact"
 )
 
 // DefaultDeveloper is the AAC developer value a book writes when none is set.
 const DefaultDeveloper = "evidencebook"
 
-// Config assembles a book. Store, Substrate, Payloads and Signer are required;
-// every index defaults to the reference implementation.
+// Config assembles a book. Store, Substrate, Originals and Signer are
+// required; every index defaults to the reference implementation.
 type Config struct {
 	BookID    string
 	Operator  string
@@ -26,7 +28,9 @@ type Config struct {
 
 	Store     Store
 	Substrate Substrate
-	Payloads  PayloadResolver
+	// Originals is the artifact store that holds every record's payload
+	// bytes (ArtifactStore). It must trust Signer's key.
+	Originals ArtifactStore
 	Signer    Signer
 
 	Operational   OperationalIndex
@@ -60,7 +64,7 @@ type Book struct {
 	index       []AuthenticatedIndex
 	operational OperationalIndex
 	discovery   DiscoveryIndex
-	payloads    PayloadResolver
+	originals   ArtifactStore
 	signer      Signer
 
 	records map[string]Record
@@ -84,8 +88,8 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 	if cfg.BookID == "" || cfg.Operator == "" {
 		return nil, fmt.Errorf("%w: book id and operator are required", ErrInvalid)
 	}
-	if cfg.Store == nil || cfg.Substrate == nil || cfg.Payloads == nil || cfg.Signer == nil {
-		return nil, fmt.Errorf("%w: store, substrate, payloads and signer are required", ErrInvalid)
+	if cfg.Store == nil || cfg.Substrate == nil || cfg.Originals == nil || cfg.Signer == nil {
+		return nil, fmt.Errorf("%w: store, substrate, originals and signer are required", ErrInvalid)
 	}
 	if err := cfg.Responder.validate(); err != nil {
 		return nil, err
@@ -94,7 +98,7 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 		responder: cfg.Responder, derivations: make(map[string]derivationEntry),
 		id: cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
 		checkpointEvery: cfg.CheckpointEvery, now: cfg.Now,
-		store: cfg.Store, commitments: cfg.Substrate, payloads: cfg.Payloads, signer: cfg.Signer,
+		store: cfg.Store, commitments: cfg.Substrate, originals: cfg.Originals, signer: cfg.Signer,
 		operational: cfg.Operational, index: cfg.Authenticated, discovery: cfg.Discovery,
 		records: make(map[string]Record), roots: make(map[string]IndexRoot),
 	}
@@ -258,6 +262,38 @@ type capsuleBinding struct {
 	} `json:"model_attestation"`
 }
 
+// RecordHeaderMember is the top-level Capsule member through which a capsule
+// sealed by the book's caller (AppendCapsule) carries its own record header:
+// the header's JSON, exactly as the book canonicalized it. capsule_id covers
+// it like every member, so the capsule commits its header without a separate
+// digest, and a reader of the capsule reads the header in it. A record the
+// book seals itself (Append) commits its header as the capsule's
+// agent_input_digest instead, and carries no such member.
+const RecordHeaderMember = "evidence_record_header"
+
+// inlineHeader returns the header a caller-sealed capsule carries in
+// RecordHeaderMember, in its canonical form, and whether it carries one.
+func inlineHeader(capsule []byte) ([]byte, bool, error) {
+	decoded, err := decodeJSON(capsule)
+	if err != nil {
+		return nil, false, err
+	}
+	fields, ok := decoded.(map[string]any)
+	if !ok {
+		return nil, false, fmt.Errorf("capsule is not a JSON object")
+	}
+	member, ok := fields[RecordHeaderMember]
+	if !ok {
+		return nil, false, nil
+	}
+	header, err := canonical.JCS(member)
+	return header, true, err
+}
+
+// checkCapsuleCommitsHeader requires the capsule to verify as recordID and to
+// commit header: as its agent_input_digest (a record the book sealed), or by
+// carrying it in RecordHeaderMember (a record its caller sealed). A capsule
+// that does both, or carries a header other than this one, is refused.
 func checkCapsuleCommitsHeader(recordID string, capsule, header []byte) error {
 	result, err := emit.VerifyCapsule(capsule)
 	if err != nil || !result.OK || result.CapsuleID == nil || *result.CapsuleID != recordID {
@@ -267,7 +303,17 @@ func checkCapsuleCommitsHeader(recordID string, capsule, header []byte) error {
 	if err := json.Unmarshal(capsule, &binding); err != nil {
 		return fmt.Errorf("%w: capsule for %s: %v", ErrCorrupt, recordID, err)
 	}
-	if binding.ModelAttestation.ComputeAttestation.AgentInputDigest != digestBytes(header) {
+	carried, inline, err := inlineHeader(capsule)
+	if err != nil {
+		return fmt.Errorf("%w: capsule for %s: %v", ErrCorrupt, recordID, err)
+	}
+	committed := binding.ModelAttestation.ComputeAttestation.AgentInputDigest == digestBytes(header)
+	switch {
+	case inline && committed:
+		return fmt.Errorf("%w: capsule %s commits its header twice", ErrCorrupt, recordID)
+	case inline && !bytes.Equal(carried, header):
+		return fmt.Errorf("%w: capsule %s carries a header other than its record's", ErrCorrupt, recordID)
+	case !inline && !committed:
 		return fmt.Errorf("%w: capsule %s does not commit its header", ErrCorrupt, recordID)
 	}
 	return nil
@@ -316,11 +362,12 @@ func (b *Book) addAuthenticated(record Record) error {
 	return nil
 }
 
-// Append validates entry, commits its payload bytes by digest, seals the
-// header into a record capsule, stores the record, appends its identity to
-// the substrate, and updates every index — in that order. When the record is
-// committed but a later step (indexing, an automatic checkpoint) fails, the
-// committed record is returned together with the error: do not retry it.
+// Append validates entry, seals its header into a record capsule, stores the
+// capsule and its payload bytes in the artifact store (one Put), stores the
+// record, appends its identity to the substrate, and updates every index --
+// in that order. When the record is committed but a later step (indexing, an
+// automatic checkpoint) fails, the committed record is returned together with
+// the error: do not retry it.
 func (b *Book) Append(ctx context.Context, entry Entry) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -328,7 +375,57 @@ func (b *Book) Append(ctx context.Context, entry Entry) (Record, error) {
 }
 
 func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
+	return b.commitEntryLocked(ctx, entry, payloadOriginals(entry.Payloads), nil)
+}
+
+// CapsuleSealer seals a caller's own capsule as a record, under the book's
+// writer lock (AppendCapsule). header is the record's header with its
+// position and commit time assigned, and headerJSON its canonical bytes;
+// the capsule must carry headerJSON as its RecordHeaderMember member and be
+// signed by the book's signer. It returns the sealed capsule and its
+// Producer Envelope. The book's lock is held while it runs and is not
+// reentrant: the sealer must not call back into the Book.
+type CapsuleSealer func(header Header, headerJSON []byte) (emit.Result, error)
+
+// AppendCapsule commits a capsule its caller seals itself as the record:
+// the capsule is the record, its id the log entry, with no wrapper record
+// around it. The book takes the next position under its writer lock, builds
+// the header (payload_commitments are the SHA-256 of each present original,
+// in order; one declared never retained is stored as declared and not
+// committed), and calls seal with it there; the capsule must carry that header
+// in RecordHeaderMember and be signed by the book's signer, or nothing is
+// written. The capsule, its envelope and originals are then stored in the
+// artifact store in one Put, the record in the store, and its id appended
+// to the substrate, as Append does.
+//
+// entry.Payloads must be empty: a caller-sealed record's originals are
+// named, and may be bound to the capsule's own digests (a payload bound to
+// agent_input_digest, say), so they are passed as originals.
+//
+// Crash contract: the position exists only in memory until the record is
+// stored. A crash before that leaves no record, and the next record takes
+// the same position; the artifact store may then hold the abandoned
+// capsule, which no log entry names. A crash after it is the pending-tail
+// case of Append: the next Open commits the stored record at its position.
+func (b *Book) AppendCapsule(ctx context.Context, entry Entry, originals []artifact.Artifact, seal CapsuleSealer) (Record, error) {
+	if seal == nil {
+		return Record{}, fmt.Errorf("%w: a sealer is required", ErrInvalid)
+	}
+	if len(entry.Payloads) > 0 {
+		return Record{}, fmt.Errorf("%w: a caller-sealed record's payloads are passed as originals", ErrInvalid)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.commitEntryLocked(ctx, entry, originals, seal)
+}
+
+// commitEntryLocked is Append and AppendCapsule: callerSeal nil seals the
+// header as a record capsule of the book's own.
+func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []artifact.Artifact, callerSeal CapsuleSealer) (Record, error) {
 	if err := b.flushPendingLocked(ctx); err != nil {
+		return Record{}, err
+	}
+	if err := checkOriginals(originals); err != nil {
 		return Record{}, err
 	}
 	seq := uint64(len(b.order)) + 1
@@ -348,8 +445,10 @@ func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
 		correlation := entry.Correlation
 		header.Correlation = &correlation
 	}
-	for _, payload := range entry.Payloads {
-		header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(payload))
+	for _, original := range originals {
+		if original.State == artifact.Present {
+			header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(original.Content))
+		}
 	}
 	if len(header.PayloadCommitments) > 0 {
 		header.RetentionState = Available
@@ -361,14 +460,22 @@ func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
 	if err != nil {
 		return Record{}, fmt.Errorf("%w: header: %v", ErrInvalid, err)
 	}
-	for i, payload := range entry.Payloads {
-		if err := b.payloads.Put(ctx, header.PayloadCommitments[i], payload); err != nil {
-			return Record{}, fmt.Errorf("store payload: %w", err)
-		}
+	var sealed emit.Result
+	if callerSeal == nil {
+		sealed, err = b.seal(ctx, header, headerBytes, committedAt)
+	} else {
+		sealed, err = b.checkCallerSealed(callerSeal, header, headerBytes)
 	}
-	sealed, err := b.seal(ctx, header, headerBytes, committedAt)
 	if err != nil {
 		return Record{}, err
+	}
+	// Originals are written after sealing, with the record they belong to,
+	// in one Put: the artifact store never holds bytes no record commits.
+	if len(originals) > 0 || callerSeal != nil {
+		held := artifact.Record{CapsuleID: sealed.CapsuleID, Capsule: sealed.Payload, ProducerEnvelope: sealed.Envelope, Artifacts: originals}
+		if err := b.originals.Put(ctx, held); err != nil {
+			return Record{}, fmt.Errorf("store originals: %w", err)
+		}
 	}
 	stored := StoredRecord{Seq: seq, RecordID: sealed.CapsuleID, Header: headerBytes, Capsule: sealed.Payload, Envelope: sealed.Envelope}
 	if err := b.store.PutRecord(ctx, stored); err != nil {
@@ -388,6 +495,30 @@ func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
 		}
 	}
 	return record, nil
+}
+
+// checkCallerSealed runs a caller's sealer and accepts its capsule only if
+// it is a record of this book: it verifies, carries exactly this header, and
+// its envelope is signed by the book's signer.
+func (b *Book) checkCallerSealed(seal CapsuleSealer, header Header, headerBytes []byte) (emit.Result, error) {
+	sealed, err := seal(header, append([]byte{}, headerBytes...))
+	if err != nil {
+		return emit.Result{}, fmt.Errorf("seal record: %w", err)
+	}
+	if err := checkCapsuleCommitsHeader(sealed.CapsuleID, sealed.Payload, headerBytes); err != nil {
+		return emit.Result{}, fmt.Errorf("%w: the sealed capsule is not this record: %v", ErrInvalid, err)
+	}
+	if _, inline, _ := inlineHeader(sealed.Payload); !inline {
+		return emit.Result{}, fmt.Errorf("%w: the sealed capsule does not carry its record header in %s", ErrInvalid, RecordHeaderMember)
+	}
+	envelope, err := emit.VerifyEnvelope(sealed.CapsuleID, sealed.Envelope)
+	if err != nil {
+		return emit.Result{}, fmt.Errorf("%w: the sealed capsule's envelope: %v", ErrInvalid, err)
+	}
+	if !bytes.Equal(envelope.PublicKey, b.signer.PublicKey()) {
+		return emit.Result{}, fmt.Errorf("%w: the sealed capsule is not signed by the book's signer", ErrInvalid)
+	}
+	return sealed, nil
 }
 
 func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at time.Time) (emit.Result, error) {

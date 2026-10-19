@@ -133,43 +133,47 @@ func TestRetentionLifecycle(t *testing.T) {
 	if data, err := book.ResolvePayload(ctx, record.RecordID, digest); err != nil || string(data) != "sensitive" {
 		t.Fatalf("available payload did not resolve: %v", err)
 	}
-	if _, err := book.SetRetention(ctx, record.RecordID, digest, Withheld, "counterparty request"); err != nil {
+	if _, err := book.SetRetention(ctx, record.RecordID, Withheld, "counterparty request"); err != nil {
 		t.Fatal(err)
 	}
 	var unavailable *UnavailableError
 	if _, err := book.ResolvePayload(ctx, record.RecordID, digest); !errors.As(err, &unavailable) || unavailable.State != Withheld {
 		t.Fatalf("withheld payload: %v", err)
 	}
-	if _, err := book.SetRetention(ctx, record.RecordID, digest, LegalHold, "hold"); err != nil {
+	if _, err := book.SetRetention(ctx, record.RecordID, LegalHold, "hold"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := book.SetRetention(ctx, record.RecordID, digest, Deleted, "expiry"); !errors.Is(err, ErrLegalHold) {
+	if _, err := book.SetRetention(ctx, record.RecordID, Deleted, "expiry"); !errors.Is(err, ErrLegalHold) {
 		t.Fatalf("deletion under legal hold: %v", err)
 	}
 	if _, err := book.ResolvePayload(ctx, record.RecordID, digest); err != nil {
 		t.Fatalf("a legal hold does not itself change resolvability: %v", err)
 	}
-	if _, err := book.SetRetention(ctx, record.RecordID, digest, Available, "hold lifted"); err != nil {
+	if _, err := book.SetRetention(ctx, record.RecordID, Available, "hold lifted"); err != nil {
 		t.Fatal(err)
 	}
-	tombstone, err := book.SetRetention(ctx, record.RecordID, digest, Deleted, "expiry")
+	tombstone, err := book.SetRetention(ctx, record.RecordID, Deleted, "expiry")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := book.ResolvePayload(ctx, record.RecordID, digest); !errors.As(err, &unavailable) || unavailable.State != Deleted {
 		t.Fatalf("deleted payload: %v", err)
 	}
-	if _, err := book.payloads.Resolve(ctx, digest); !errors.Is(err, ErrNotFound) {
-		t.Fatal("deleted payload bytes remain in the resolver")
+	held, err := book.originals.Get(ctx, record.RecordID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, present := originalBytes(held, digest); !found || present {
+		t.Fatal("the deleted record's originals were not purged from the artifact store")
 	}
 	original, err := book.Get(ctx, record.RecordID)
 	if err != nil || original.Header.RetentionState != Available || !slices.Equal(original.Header.PayloadCommitments, []string{digest}) {
 		t.Fatal("a deletion must never mutate the original commitment")
 	}
 	if !slices.Contains(tombstone.Header.LinksTo(Cites), record.RecordID) {
-		t.Fatal("the lifecycle record must cite the record whose payload it retires")
+		t.Fatal("the lifecycle record must cite the record it retires")
 	}
-	if _, err := book.SetRetention(ctx, record.RecordID, digest, Available, "undo"); !errors.Is(err, ErrInvalid) {
+	if _, err := book.SetRetention(ctx, record.RecordID, Available, "undo"); !errors.Is(err, ErrInvalid) {
 		t.Fatal("DELETED must be permanent")
 	}
 }
