@@ -25,6 +25,9 @@
 //! }
 //! ```
 
+use crate::record::Header;
+use crate::store::{CheckpointedLog, RecordSource};
+use crate::substrate::SubstrateError;
 use serde::{Deserialize, Serialize};
 
 /// The fields an index sees for one committed record.
@@ -34,6 +37,43 @@ pub struct IndexedRecord {
     pub seq: u64,
     pub record_type: String,
     pub subject_ref: Option<String>,
+}
+
+/// Every committed record of a store as an index sees it, in log order: what
+/// [`OperationalIndex::rebuild`] re-indexes. Each record's octets are its
+/// header's JSON. Padding is a leaf but never a record, so it is left out. A
+/// leaf the store cannot produce, or whose octets are not a header, is an
+/// error: an index rebuilt over a gap would claim a completeness it lacks.
+pub fn committed_records(
+    log: &dyn CheckpointedLog,
+    records: &dyn RecordSource,
+) -> Result<Vec<IndexedRecord>, SubstrateError> {
+    let count = log.leaf_count()?;
+    let mut out = Vec::new();
+    for leaf_index in 0..count {
+        let unreadable = |why: &str| SubstrateError::Record {
+            leaf_index,
+            why: why.to_string(),
+        };
+        let record = records
+            .record_at(leaf_index)
+            .filter(|r| r.leaf_index == leaf_index)
+            .ok_or_else(|| unreadable("the store holds no record there"))?;
+        let value: serde_json::Value = serde_json::from_slice(&record.body)
+            .map_err(|e| unreadable(&format!("not JSON: {e}")))?;
+        if crate::padding::is_padding(&value) {
+            continue;
+        }
+        let header: Header =
+            serde_json::from_value(value).map_err(|e| unreadable(&format!("not a header: {e}")))?;
+        out.push(IndexedRecord {
+            record_id: record.digest,
+            seq: header.seq,
+            record_type: header.record_type,
+            subject_ref: header.subject_ref,
+        });
+    }
+    Ok(out)
 }
 
 /// An operational query. Every set field must match.
