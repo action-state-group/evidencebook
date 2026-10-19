@@ -1,6 +1,6 @@
 # PRD: Evidence Layer — Evidence Interoperability and History Sharing
 
-**Draft · 2026-10-12 · status updated 2026-10-16**
+**Draft · 2026-10-12 · status updated 2026-10-19** (amendments FR-27a, FR-34a, FR-35a, §4.1, §6 items 5 and 8, §8, §9, §11 approved 2026-10-19)
 
 **Status:** product requirements proposal. Not a standard, not a published protocol, and this document supersedes no published spec. The neutral pieces it builds on are individual Internet-Drafts and pre-Internet-Draft specifications, none adopted by any working group.
 
@@ -56,6 +56,20 @@ Everything else (history views, requirement sets, two-sided records, payment rec
 | **Resolve** | What can be verified, accepted, asked about or disputed? | Evidence Request, Evidence Result, lifecycle links | Formal dispute processes |
 
 Flow of one exchange: **Discover** → **Request** → **Authorize and respond** → **Independently verify** → **Evaluate** → **Ask again** for what is not established.
+
+### 4.1 Related standards: what is reused, what is added
+
+This layer does not claim that portable verification is unsolved. It reuses mature pieces and adds the part none of them define: how unrelated agents ask for, disclose, corroborate and independently evaluate evidence of actions and their history.
+
+| Existing system | Reused for | What this layer adds |
+|---|---|---|
+| SCITT / COSE receipts | signed statements, registration receipts, checkpoint witnessing | what agent records mean, requests, disclosure, reconciliation of halves |
+| W3C Verifiable Credentials 2.0 (Recommendation 2025-05-15) and OpenID4VP 1.0 with DCQL (final 2025-07-10) | issuer / holder / verifier roles; presenting already-issued credentials (identity, third-party transaction attestations) | queries over recorded activity in independently kept logs, dynamic evidence production, signed refusal and recorded absence, coverage declarations, per-requirement results. A VC presentation is an **optional outbound projection** of an Artifact; capsules and book records are never required to be wrapped as credentials |
+| A2A (Agent Card `capabilities.extensions`, URI-identified) and MCP | discovery and carriage of the request / response exchange (§6 item 5) | the capability manifest and request / response profile carried in them |
+| ERC-8004 and other registries | a trust root a relying party may choose (FR-30); reputation and validation entries that may cite evidence by URI and hash | the independently checkable evidence those entries point at; no registry of its own (§3) |
+| OpenTelemetry GenAI conventions (status: development) | an upstream activity source a producer may seal from | evidence transferable to a relying party with signatures, disclosure policy and source-specific checks |
+
+Positioning sentence for any public text: *the Open Evidence Layer is the interoperability and evaluation layer between agent-generated claims and the independent parties who need to rely on them*. It competes with none of the rows above and is carried by several of them.
 
 ## 5. Functional requirements
 
@@ -125,6 +139,7 @@ Flow of one exchange: **Discover** → **Request** → **Authorize and respond**
   - for a requirement the check was meant to *support* ("was the service delivered?"), a failed invoice signature removes that evidence but does not establish non-delivery: the requirement is `GAP` or `INSUFFICIENT` with `verdict` `not_evaluable`, unless other evidence settles it.
 
   A verification failure never yields `SATISFIED` + `met` for a requirement that depends on the failed property (consistent with the informative mapping in `draft-mih-agent-evidence-request-00` §Mapping to a Requirement-Satisfaction Status, where a failed artifact verification is "never treated as satisfied").
+- **FR-27a Issuer independence is a reported property.** For every pair of halves or members a verifier compares, it reports `issuer_independence` as one of the FR-27 statuses with its method: `PASS` only with evidence that the issuers are distinct controllers (a controller binding under FR-35a that says so, a registry entry under the relying party's trust policy, or distinct native issuers checked under FR-19); `NOT_CHECKED` when no such evidence was examined; `FAIL` when the same key or a binding shows one controller. Two agreeing members in one custody domain are **redundant, not corroborating**, as the `composed/v1` registry row already states. Two signatures never imply two parties. *(approved 2026-10-19; vector in §6 item 8)*
 
 ### 5.9 Lifecycle links
 
@@ -145,7 +160,14 @@ Flow of one exchange: **Discover** → **Request** → **Authorize and respond**
 
 - **FR-33** A History is a **generic selected-evidence view**: a signed selection over records from one subject, whose **count units are defined by its profile** (e.g. deal, exchange, checkpoint). It is a view, not the transaction protocol.
 - **FR-34** A History profile declares its subject, units, selection/coverage rule, allowed assertions and passing-verification rule. **Completeness is not asserted** unless the profile's coverage rule (e.g. a pinned checkpoint interval) supports it. A History prepared for one recipient is a recipient-specific disclosure under FR-8, not a different version of another History.
+- **FR-34a Coverage declaration.** Every History answer and every Evidence Result aggregate carries exactly one declared coverage kind, and a verifier reports it with the result:
+  - `holder_selected`: examples chosen by the holder; completeness not asserted (the personal-agent history profile's Basic level today);
+  - `stream_interval`: all records matching a declared selection rule within one or more committed streams at a pinned anchor interval; completeness is verifiable **relative to those streams and that rule only**, never relative to the holder's real-world activity. With one log per deal (evidencebook #59), this kind spans the deals' streams under one witnessed anchor and requires the holder to open the anchor's live set;
+  - `source_authoritative`: the population is established by a named external source (merchant, payment network, platform) checked with its own method under FR-19.
+
+  A valid signature never implies completeness. Presenting `holder_selected` evidence as `stream_interval` is a conformance failure. *(approved 2026-10-19; vocabulary and vectors are spec work, `[coverage-declaration-v0]`)*
 - **FR-35** Distinct families (personal agent history, service history) remain separate subjects; composites only by explicit, evidence-backed links.
+- **FR-35a Controller binding.** The evidence-backed link that lets one composite carry a personal history and a service history (or two histories under different keys) is a **signed binding record** between two keys with an explicit claim type, each type naming its verification method, validity window and revocation: `same_controller_asserted` (both keys signed the binding; proves control of both keys at ceremony time and nothing about a person or organization), `delegated_by` (one key acts for the other under a cited authorization, FR-13), `same_organization_credentialed` (an external credential, checked under FR-19, names both). A binding is registered as a `composed/v1` join basis. Verifiers report what the binding proves, never an identity; the relying party decides whether a binding of a given type is enough. No universal identity, no registry of bindings. *(approved 2026-10-19; open decision 9; spec work `[controller-binding-join]`)*
 
 ### 5.12 Proof-cost escalation
 
@@ -160,7 +182,7 @@ A separate, neutral, short normative document from which an unaffiliated develop
 2. **Wire examples** for every message: capability advertisement, request, artifact response envelope and canonical Artifact, signed refusal, absence record, Evidence Contract proposal, acceptance / decline / counter, Evidence Result.
 3. **Canonical bytes:** encoding per object (deterministic CBOR for the `evidence-request/1` stream binding as the draft specifies; JSON with RFC 8785 where JSON is used), and the as-transmitted rule for foreign objects.
 4. **Digest and signature binding:** what each signature covers; the envelope binding of request digest to Artifact digest, responder and issuance (FR-8); request-digest binding of refusals; contract-digest binding of acceptances and results; how recipient-specific disclosures are identified.
-5. **Carriage:** A2A (Agent Card extension, message/task mapping, artifact parts) and MCP (tool names, inputs, outputs). **The native peer-to-peer stream binding and A2A run the same normative exchange; MCP is a third adapter**, not a separate protocol. The draft today defines only a peer-to-peer stream binding and an HTTP binding; A2A and MCP bindings are new.
+5. **Carriage:** A2A (Agent Card extension, message/task mapping, artifact parts) and MCP (tool names, inputs, outputs). **The native peer-to-peer stream binding and A2A run the same normative exchange; MCP is a third adapter**, not a separate protocol. The draft today defines only a peer-to-peer stream binding and an HTTP binding; A2A and MCP bindings are new. **File carrier** *(approved 2026-10-19)*: for recipients with no inbound endpoint, a bundle MAY carry one or more response envelopes verbatim together with their verification material; the envelopes remain the independently verifiable members, the carrier is never the proof, and the carrier adds no claim of its own beyond the holder's selection (FR-34a). The product History `x-history-selection/v0` converges on this shape (capsule-cli #264).
 6. **Result mappings:** request outcomes → per-property statuses (FR-27) → Evidence Result (FR-24, FR-28).
 7. **Error codes:** the draft's refusal registry (`not_authorized`, `no_such_subject`, `coverage_unsatisfiable`, `derivation_unsupported`, `policy_declined`, `deadline_unmet`, `request_malformed`, `retention_expired`) plus any profile-level codes, kept separate from transport errors.
 8. **Conformance vectors**, positive and negative. **Every fixture pins** its trust roots, verification policy, Evidence Contract version, evaluation time and input artifacts, so independent verifiers are compared on correctness, not on differing legitimate policies. At minimum:
@@ -173,7 +195,9 @@ A separate, neutral, short normative document from which an unaffiliated develop
    - foreign object that fails its native check, evaluated against both a requirement that is the check and one it merely supports (FR-28);
    - acceptance absent, or after the action;
    - **backdated acceptance:** an acceptance constructed after execution carrying an earlier claimed timestamp, with no ordering evidence → MUST NOT receive "accepted before action" (FR-11a);
-   - non-issuer `supersedes`.
+   - non-issuer `supersedes`;
+   - **coverage** *(approved 2026-10-19)*: one positive case per coverage kind (FR-34a); a **cherry-picked history** (holder-selected evidence declared `stream_interval`) → conformance failure; a `stream_interval` History with one record missing from the declared rule → `FAIL` on coverage, never `met` on any requirement that relies on completeness;
+   - **same-controller halves** *(approved 2026-10-19)*: two agreeing halves signed by the same key, or by two keys bound as `same_controller_asserted` → `issuer_independence` `FAIL`, members reported redundant, corroboration-dependent requirements `not_evaluable` (FR-27a); the same pair with no binding evidence → `NOT_CHECKED`.
 
 ## 7. Non-functional requirements
 
@@ -203,7 +227,9 @@ Also required:
 - For the same subject and anchor, two requests with different nonces over two transports yield byte-identical canonical Artifacts and distinct envelopes.
 - Success is measured by independent recipients verifying supported claims and counterparties responding without adopting any one implementation.
 
-**Status (2026-10-16): not passed.** The pass of this section remains the precondition for any public interoperability claim.
+**The case this section means** *(named 2026-10-19 so that integration is never counted as interoperability)*: a buyer agent on one platform and a seller agent on another, **one of them running no evidencebook code**, exchanging and evaluating each other's History with a verifier written by a third author, over the file carrier (§6 item 5) and over A2A. Mesh node to Mesh node, or two programs from the same author, prove integration only.
+
+**Status (2026-10-19): not passed.** The pass of this section remains the precondition for any public interoperability claim (reaffirmed by the project lead 2026-10-19; tracked as evidencebook #41).
 
 | Part | Status |
 |---|---|
@@ -235,7 +261,9 @@ Every row cites the merged commit it was checked at, as repository, pull request
 | Per-property verification statuses | profile vocabulary | IP §7 | exists | AAC #231 `3910a79` |
 | Interop Profile v0 + vectors | neutral spec (pre-I-D) | `agent-action-capsule` `spec/interop-profile-v0.md`, `vectors/interop-profile-v0/` | exists; core, then §11.1 to §11.4; vectors and generator (§11.5); errata from the first responder build; vectors regenerated to 53 cases | core: AAC #231 `3910a79`; §11.1 to §11.4: AAC #232 `2e418f1`, #233 `370cc4e`, #234 `11de30a`, #235 `db6fec1`, #236 `6cae247`; vectors: AAC #237 `5beee54`; errata: AAC #243 `c86a73a`; 53 cases: AAC #263 `dfc4703` |
 | Reference verifier | Python, in `agent-action-capsule` | `python/agent_action_capsule/interop_profile/` | exists; in every Python release from `python/v0.8.0`; `python/v0.9.1` is the first release that contains #263 | AAC #238 `dafa5a4` |
-| Personal-agent history profile v0 | host profile (pre-I-D) | `agent-action-capsule` `spec/personal-agent-history-profile-v0.md`, `vectors/personal-history-basic-v0/` | Basic level exists; acceptance vectors exist (12 cases); outcome claims with source labels **planned** (PA-9) | profile: AAC #259 `995c377`; vectors: AAC #296 `0b7b182` |
+| Personal-agent history profile v0 | host profile (pre-I-D) | `agent-action-capsule` `spec/personal-agent-history-profile-v0.md`, `vectors/personal-history-basic-v0/` | Basic level exists; acceptance vectors exist (12 cases); outcome claims with source labels **planned** (PA-9, spec item `[personal-history-outcome-level]`); the §2 one-stream rule is being amended for one log per deal (evidencebook #59, spec item `[history-profile-multi-stream]`). **In this repository `personal_history_basic/1` is registered only by the test program `test/interop/personal-history/main.go`, not by the library** (checked 2026-10-19 at `5d67034`) | profile: AAC #259 `995c377`; vectors: AAC #296 `0b7b182` |
+| Product History (`x-history-selection/v0`) | product carrier, private kind | `capsule-cli` `internal/cli/deal_history.go` (#209) | exists as a private bundle kind read by capsule-cli's verifier only; **not** an Evidence Request answer; convergence on `personal_history_basic/1` envelopes plus the file carrier is **planned** (capsule-cli #264, after 2026-10-22) | capsule-cli #209 (merged 2026-10-14) |
+| Coverage declaration (FR-34a) and controller binding (FR-35a) | neutral spec (pre-I-D) | `agent-action-capsule` `spec/` | **planned**: spec items `[coverage-declaration-v0]`, `[controller-binding-join]` (ops u411, u412); no AAC text defines either today (grep 2026-10-19) | — |
 | Inference-service history profile | host profile | `Mesh-LLM/capsules` `docs/PRD-SERVICE-EVIDENCE.md` (requirements) | requirements draft exists; the profile is **planned** | `Mesh-LLM/capsules` #24 `b982f8a` |
 | `evidencebook` responder | implementation | this repository | exists: conforming `evidence-interop/0` responder; fails closed without an authenticated requester (NFR-4); MCP carriage (IP §11.4.5); A2A carriage (IP §11.4.4) | responder: #10 `5a86956`; requester gate: #9 `9deaf49`; MCP: #11 `db4e312`; A2A: #13 `59ad618` |
 | `evidencebook` interop CI | conformance run | this repository, `.github/workflows/ci.yml` | exists; runs the reference verifier and vectors pinned to AAC `dfc4703` | pin: #17 `8f655cd`; re-pin to 53 cases: #26 `43f3cb1` |
@@ -265,8 +293,10 @@ The layer does not wait on specialized evidence producers: TEE attestation, spli
 4. **`evidence-request/1` naming across encodings:** reconcile the CBOR stream binding's identifiers and map keys with the JSON names used by the HTTP, A2A and MCP bindings. **Resolved** in IP §4 (AAC #231 `3910a79`, P-5): one name table, text keys only; JSON bindings reuse the stream binding's string identifiers verbatim.
 5. **Recipient-specific disclosure identity:** whether a per-recipient projection is identified as a new derivation (by definition digest) or as a distinct subject form. **Resolved** in IP §6.5 (AAC #231 `3910a79`, P-14): a new derivation identified by the digest of its definition, not a new subject form. IP does not fix the definition document's member names (still P-14); the personal-agent history profile fixes them for its Basic level (AAC #259 `995c377`, §4.1).
 6. **Neutral name** for the cross-agent inquiry type over the `exchange` subject. **Resolved** in IP §11.4.6 (AAC #235 `db6fec1`, P-44): "exchange inquiry".
-7. **History commitments:** whether deal-level commitments in a History are salted-digest commitments (opened by revealing nonce and text, checked like the Disclosure Envelope). **Open.** IP §6.5 item 5 (AAC #231 `3910a79`, P-20) makes withheld text in a recipient-specific projection a salted-digest commitment checked with the Disclosure Envelope's DE-3 computation. The personal-agent history profile's Basic level carries no payload commitment and leaves outcome claims to a later level (AAC #259 `995c377`, PA-9). No merged text says whether deal-level commitments in a History use this form.
+7. **History commitments:** whether deal-level commitments in a History are salted-digest commitments (opened by revealing nonce and text, checked like the Disclosure Envelope). **Resolved 2026-10-19** (evidencebook #44, project lead): a History's deal-level commitment is `sha256-jcs-nonce256` (AAC presentation-contract §7.2: SHA-256 over JCS of `{nonce, text}`, fresh 32-byte nonce per field), checked with the DE-3 computation; openings travel in the History or bundle, never in a DE envelope. Implemented on the book by evidencebook #61; the history profile's outcome level carries it (PA-9).
 8. **Evidence Contract prose specification:** standalone pre-I-D document or section of the Interop Profile. **Resolved** as a section of IP: §11.3 (AAC #236 `6cae247`).
+9. **Controller binding shape** (FR-35a): standalone pre-I-D document or a section of the Interop Profile; which claim types ship in v0; whether a binding is a `composed/v1` join basis or a member of its own. **Open**; spec item `[controller-binding-join]`.
+10. **Coverage kinds beyond the three** (FR-34a): whether a profile may define further kinds, or only refine the selection rule inside `stream_interval`. **Open**; spec item `[coverage-declaration-v0]`.
 
 ## Sources checked
 
