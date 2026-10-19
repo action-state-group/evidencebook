@@ -224,6 +224,41 @@ func TestTheWitnessedTickIsFoundByIndex(t *testing.T) {
 	}
 }
 
+// A log that has not grown carries the same checkpoint in every tick. Its
+// index row names the newest witnessed tick carrying it, in whichever order
+// the receipts arrive: a host that changed its witness finds the tick the
+// new one signed.
+func TestAnUnchangedCheckpointIsIndexedToItsNewestWitnessedTick(t *testing.T) {
+	for _, order := range []string{"in order", "late"} {
+		t.Run(order, func(t *testing.T) {
+			ctx := context.Background()
+			shelf := newShelfFixture(t).open(t)
+			c, _ := newCadence(t, shelf)
+			a := mustOpenBook(t, shelf, "deal/a")
+			mustAppend(t, a, observation("s", "1"))
+			first := mustTick(t, c, tickTime)
+			second := mustTick(t, c, tickTime.Add(time.Hour))
+			leaf := first.Leaves.Deals["deal/a"]
+			if second.Leaves.Deals["deal/a"].CheckpointSHA256 != leaf.CheckpointSHA256 {
+				t.Fatal("an unchanged log was checkpointed again")
+			}
+			witness := []uint64{first.N, second.N}
+			if order == "late" {
+				witness = []uint64{second.N, first.N}
+			}
+			for _, n := range witness {
+				if err := c.Witnessed(ctx, n, testReceipt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			extent, tick, _, err := c.WitnessedTick(ctx, "deal/a", leaf.CheckpointSHA256, leaf.Size)
+			if err != nil || extent != "all" || tick.N != second.N {
+				t.Fatalf("got %s tick %d (%v), want all tick %d", extent, tick.N, err, second.N)
+			}
+		})
+	}
+}
+
 // A deal's log from before the upgrade joins the cadence as it is, counts
 // into H, and is written only through the shelf.
 func TestALegacyLogJoinsTheCadence(t *testing.T) {

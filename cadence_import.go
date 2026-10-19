@@ -136,7 +136,7 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 		witness := func(n uint64, tick CadenceTick) error {
 			for id, leaf := range tick.Leaves.Deals {
 				if _, err := tx.ExecContext(ctx,
-					`INSERT OR IGNORE INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)`,
+					indexWitnessed,
 					id, leaf.CheckpointSHA256, leaf.Size, n); err != nil {
 					return err
 				}
