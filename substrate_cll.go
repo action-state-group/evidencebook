@@ -59,6 +59,12 @@ func OpenCLL(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrat
 // SQLite file at path. One file holds many logs, one per log id, as a
 // profile's per-deal logs are held today (capsule-cli deal.db).
 func OpenCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrate, error) {
+	return openCLLSQLite(path, logID, checkpointKey, nil)
+}
+
+// openCLLSQLite is OpenCLLSQLite whose checkpoints also queue a pending
+// delivery to each of witnessIDs (the cadence log's, Cadence).
+func openCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey, witnessIDs []string) (*CLLSubstrate, error) {
 	if err := cll.ValidateIdentifier(logID); err != nil {
 		return nil, fmt.Errorf("%w: log id: %v", ErrInvalid, err)
 	}
@@ -78,7 +84,7 @@ func OpenCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSu
 			return nil, fmt.Errorf("open CLL log %s: %w", logID, err)
 		}
 	}
-	return newCLLSubstrate(log, logID, checkpointKey)
+	return newCLLSubstrateWith(log, logID, checkpointKey, witnessIDs)
 }
 
 // cllSQLiteLogAbsent reports, reading the file only, whether it holds no
@@ -117,6 +123,13 @@ func cllSQLiteLogAbsent(path, logID string) (bool, error) {
 
 // newCLLSubstrate wraps an open CLL backend, which it then owns.
 func newCLLSubstrate(log cll.Backend, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrate, error) {
+	return newCLLSubstrateWith(log, logID, checkpointKey, nil)
+}
+
+// newCLLSubstrateWith is newCLLSubstrate whose checkpoints each queue a
+// pending delivery to every witness in witnessIDs, in the same commit, as
+// capsule-cli's checkpoint runner does for a profile with a witness.
+func newCLLSubstrateWith(log cll.Backend, logID string, checkpointKey ed25519.PrivateKey, witnessIDs []string) (*CLLSubstrate, error) {
 	signer, err := checkpoint.NewEd25519Signer(checkpointKey)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("%w: checkpoint key: %v", ErrInvalid, err), log.Close())
@@ -125,6 +138,7 @@ func newCLLSubstrate(log cll.Backend, logID string, checkpointKey ed25519.Privat
 	// The book, not the runner, decides when to checkpoint: any pending entry
 	// is due the moment the book asks.
 	config.Cadence = checkpoint.Config{CadenceEntries: 1, CadenceAge: time.Hour}
+	config.WitnessIDs = witnessIDs
 	config.ScanLimit = cll.MaxScanLimit
 	runner, err := checkpoint.NewRunner(config, log, signer)
 	if err != nil {

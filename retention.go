@@ -44,7 +44,14 @@ func (b *Book) Retention(_ context.Context, recordID string) (RetentionState, er
 // record (the record itself when there is none) and whether deletion is
 // blocked by a hold.
 func (b *Book) retentionLocked(recordID string) (state RetentionState, latest string, held bool, err error) {
-	record, ok := b.records[recordID]
+	return retentionOf(b.records, b.order, recordID, b.now())
+}
+
+// retentionOf is a record's retention among a book's records (order is
+// their ids in seq order) at now: retentionLocked over any such view, so a
+// shelf can read it without opening the book (Shelf.Records).
+func retentionOf(records map[string]Record, order []string, recordID string, now time.Time) (state RetentionState, latest string, held bool, err error) {
+	record, ok := records[recordID]
 	if !ok {
 		return "", "", false, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
 	}
@@ -52,8 +59,8 @@ func (b *Book) retentionLocked(recordID string) (state RetentionState, latest st
 		return "", "", false, fmt.Errorf("%w: record %s commits no payload or field, so it has no retention state", ErrNotFound, recordID)
 	}
 	state, latest = record.Header.RetentionState, recordID
-	for _, id := range b.order[record.Seq:] {
-		h := b.records[id].Header
+	for _, id := range order[record.Seq:] {
+		h := records[id].Header
 		if h.RecordType != RecordTypeLifecycle || !slices.Contains(h.LinksTo(Cites), recordID) {
 			continue
 		}
@@ -66,19 +73,19 @@ func (b *Book) retentionLocked(recordID string) (state RetentionState, latest st
 	if state == Deleted {
 		return state, latest, false, nil
 	}
-	held = state == LegalHold || b.heldLocked(record, b.now())
+	held = state == LegalHold || heldBy(records, order, record, now)
 	if held && (state == Available || state == Partial) {
 		state = LegalHold
 	}
 	return state, latest, held, nil
 }
 
-// heldLocked reports whether a retention commitment covers record and has
+// heldBy reports whether a retention commitment covers record and has
 // not expired at now. A commitment covers a record it names by id, a range
 // of positions containing it, or an exchange it cites.
-func (b *Book) heldLocked(record Record, now time.Time) bool {
-	for _, id := range b.order {
-		h := b.records[id].Header
+func heldBy(records map[string]Record, order []string, record Record, now time.Time) bool {
+	for _, id := range order {
+		h := records[id].Header
 		if h.RecordType != RecordTypeRetentionCommitment {
 			continue
 		}
