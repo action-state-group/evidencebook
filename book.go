@@ -514,7 +514,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 // it is a record of this book: it verifies, carries exactly this header, and
 // its envelope is signed by the book's signer.
 func (b *Book) checkCallerSealed(seal CapsuleSealer, header Header, headerBytes []byte) (emit.Result, error) {
-	sealed, err := seal(header, append([]byte{}, headerBytes...))
+	// The sealer gets its own copy of the header: one it keeps cannot change
+	// the record the book admits.
+	sealed, err := seal(Record{Header: header}.detached().Header, append([]byte{}, headerBytes...))
 	if err != nil {
 		return emit.Result{}, fmt.Errorf("seal record: %w", err)
 	}

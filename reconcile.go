@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -68,14 +69,15 @@ func SamePayloadCommitments(a, b Half) bool {
 type ContentVerdict int
 
 const (
-	// Agree: the contents agree (MATCHED).
-	Agree ContentVerdict = iota
-	// Disagree: the contents were compared and differ (CONFLICTING).
-	Disagree
 	// Undecided: the content needed to compare is not available
 	// (INSUFFICIENT), for example an unopened field commitment. Missing
-	// content is never disagreement.
-	Undecided
+	// content is never disagreement. It is the zero value, so a check that
+	// returns nothing decided never reports a match.
+	Undecided ContentVerdict = iota
+	// Agree: the contents agree (MATCHED).
+	Agree
+	// Disagree: the contents were compared and differ (CONFLICTING).
+	Disagree
 )
 
 // ContentCheck is a three-way content test: like a Comparator, but it can
@@ -377,7 +379,7 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		}
 		own.Halves = append(own.Halves, OpenHalf(Half{
 			RecordID: id, Seq: record.Seq, Correlation: *record.Header.Correlation,
-			PayloadCommitments: record.Header.PayloadCommitments, FieldCommitments: record.Header.FieldCommitments,
+			PayloadCommitments: slices.Clone(record.Header.PayloadCommitments), FieldCommitments: maps.Clone(record.Header.FieldCommitments),
 			Covered: haveHead && head.Covers(record.Seq), Trusted: true,
 		}, in.OwnOpenings[id]))
 	}

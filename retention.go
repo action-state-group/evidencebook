@@ -126,7 +126,7 @@ func (b *Book) SetRetention(ctx context.Context, recordID string, state Retentio
 	}
 	switch {
 	case current == Deleted && state == Deleted:
-		return b.records[latest], b.purgeLocked(ctx, recordID)
+		return b.records[latest].detached(), b.purgeLocked(ctx, recordID)
 	case current == Deleted:
 		return Record{}, fmt.Errorf("%w: record %s is already deleted", ErrInvalid, recordID)
 	case held && state == Deleted:

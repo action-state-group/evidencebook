@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/capsule-emit/go/artifact"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -401,5 +402,61 @@ func TestATamperedOpeningIsCorrupt(t *testing.T) {
 	good, _ := canonicalJSON(opening)
 	if got, err := openingFrom(artifact.Artifact{Name: "opening.terms", Content: good}, commitment); err != nil || got != opening {
 		t.Fatalf("good: %v", err)
+	}
+}
+
+// A content check or a sealer that keeps the maps it is handed cannot change
+// the book's record afterwards.
+func TestCallbacksGetTheirOwnCopies(t *testing.T) {
+	ctx := context.Background()
+	a := newFixture(t, "book-cb-a", 1).open(t)
+	b := newFixture(t, "book-cb-b", 2).open(t)
+	add := func(book *Book) Record {
+		return mustAppend(t, book, Entry{RecordType: "deal_step", EpistemicType: ProducerClaim, Links: []Link{},
+			Correlation: Correlation{ExchangeID: "deal-9"}, Fields: map[string]string{"terms": "net 30"}})
+	}
+	ra, _ := add(a), add(b)
+	want := ra.Header.FieldCommitments["terms"]
+	if _, err := a.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var kept map[string]string
+	check := func(own, _ Half) ContentVerdict {
+		kept = own.FieldCommitments
+		return Undecided
+	}
+	if _, err := a.Reconcile(ctx, ReconcileInput{Peer: peerBundle(t, b), RecordType: "deal_step", Check: check}); err != nil {
+		t.Fatal(err)
+	}
+	kept["terms"] = strings.Repeat("0", 64)
+	if got, _ := a.Get(ctx, ra.RecordID); got.Header.FieldCommitments["terms"] != want {
+		t.Fatal("a content check changed the book's record")
+	}
+
+	var held Header
+	entry := publishedEntry()
+	entry.Fields = map[string]string{"terms": "net 60"}
+	payload := `{"order":19}`
+	inner := ownSealer(t, 1, payload, nil)
+	sealer := func(header Header, headerJSON []byte) (emit.Result, error) {
+		held = header
+		return inner(header, headerJSON)
+	}
+	record, err := a.AppendCapsule(ctx, entry, boundPayload(payload), sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedWith := record.Header.FieldCommitments["terms"]
+	held.FieldCommitments["terms"] = strings.Repeat("1", 64)
+	if got, _ := a.Get(ctx, record.RecordID); got.Header.FieldCommitments["terms"] != sealedWith {
+		t.Fatal("a sealer changed the book's record")
+	}
+}
+
+// A ContentCheck's zero value never reports a match.
+func TestAnUndecidedCheckIsTheZeroValue(t *testing.T) {
+	var verdict ContentVerdict
+	if verdict != Undecided {
+		t.Fatal("the zero ContentVerdict must be Undecided")
 	}
 }

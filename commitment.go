@@ -165,7 +165,7 @@ func (b *Book) Opening(ctx context.Context, recordID, field string) (Opening, er
 			continue
 		}
 		if original.State != artifact.Present {
-			return Opening{}, fmt.Errorf("%w: the opening of %s field %q is %s but the artifact store holds it purged", ErrCorrupt, recordID, field, state)
+			return Opening{}, fmt.Errorf("%w: record %s is %s, yet the artifact store holds the opening of its field %q purged", ErrCorrupt, recordID, state, field)
 		}
 		return openingFrom(original, commitment)
 	}
