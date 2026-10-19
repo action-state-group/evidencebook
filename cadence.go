@@ -85,8 +85,20 @@ type CadenceTick struct {
 	Checkpoint     []byte
 	Leaves         TickLeaves
 	// Witnessed is set once the host reported the checkpoint's receipt
-	// verified (Witnessed).
+	// verified (Witnessed), and Receipt is that receipt.
 	Witnessed bool
+	Receipt   *WitnessReceipt
+}
+
+// WitnessReceipt is the witness's receipt for a tick's cadence checkpoint,
+// as the host verified it: capsule-cli's chain carries these members
+// (cll.WitnessState's receipt).
+type WitnessReceipt struct {
+	TSURL     string `json:"ts_url"`
+	EntryHash string `json:"entry_hash"`
+	Receipt   []byte `json:"receipt"`
+	LeafIndex uint64 `json:"leaf_index"`
+	TreeSize  uint64 `json:"tree_size"`
 }
 
 // TickResult is what one Tick call did.
@@ -138,6 +150,9 @@ type CadenceLog interface {
 	// checkpoint only if the log grew, and returns the checkpoint's COSE
 	// statement and MMR size. Nothing is sent to a witness.
 	CutLocal(ctx context.Context, at time.Time) (statement []byte, mmrSize uint64, err error)
+	// substrate is the log's own commitments, for a bundle's consistency
+	// proof from an earlier witnessed checkpoint.
+	substrate() Substrate
 }
 
 // mmrSize is the MMR node count of n leaves: 2n minus the number of peaks.
@@ -156,6 +171,8 @@ func (l bookLog) MMRSize(ctx context.Context) (uint64, error) {
 	}
 	return mmrSize(leaves), nil
 }
+
+func (l bookLog) substrate() Substrate { return l.book.commitments }
 
 func (l bookLog) CutLocal(ctx context.Context, at time.Time) ([]byte, uint64, error) {
 	cp, err := l.book.CheckpointAt(ctx, at)
@@ -251,6 +268,8 @@ func (l *LegacyLog) MMRSize(ctx context.Context) (uint64, error) {
 	}
 	return mmrSize(leaves), nil
 }
+
+func (l *LegacyLog) substrate() Substrate { return l.log }
 
 func (l *LegacyLog) CutLocal(ctx context.Context, at time.Time) ([]byte, uint64, error) {
 	cp, err := l.log.Checkpoint(ctx, at)
@@ -478,7 +497,19 @@ func paddingRecordID() (string, error) {
 // has ended and has not grown past its largest witnessed checkpoint leaves
 // the live set. Rows are only inserted and each compares its own size, so a
 // receipt for an older tick reported late never moves a log back.
-func (c *Cadence) Witnessed(ctx context.Context, n uint64) error {
+func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceipt) error {
+	// capsule-cli carries the witness's URL without a trailing slash
+	// (trimEndpoint), and a verifier finds the witness's row by it.
+	for len(receipt.TSURL) > 0 && receipt.TSURL[len(receipt.TSURL)-1] == '/' {
+		receipt.TSURL = receipt.TSURL[:len(receipt.TSURL)-1]
+	}
+	if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
+		return fmt.Errorf("%w: a witnessed tick needs its receipt, its entry hash and its witness's URL", ErrInvalid)
+	}
+	encodedReceipt, err := json.Marshal(receipt)
+	if err != nil {
+		return err
+	}
 	s := c.shelf
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -499,7 +530,7 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64) error {
 		}
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1 WHERE tick = ?`, n); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
 			return err
 		}
 		for id, leaf := range tick.Leaves.Deals {
@@ -552,12 +583,16 @@ func heldSizeTx(ctx context.Context, tx *sql.Tx, logID string) (uint64, error) {
 // (a bundle then adds a consistency proof from it). ErrNotFound when no
 // witnessed tick carries any checkpoint of the log up to that size.
 func (c *Cadence) WitnessedTick(ctx context.Context, logID, checkpointSHA256 string, mmrSize uint64) (extent string, tick CadenceTick, leaf TickLeaf, err error) {
-	s := c.shelf
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.released {
+	c.shelf.mu.Lock()
+	defer c.shelf.mu.Unlock()
+	if c.shelf.released {
 		return "", CadenceTick{}, TickLeaf{}, ErrReleased
 	}
+	return c.witnessedTickLocked(ctx, logID, checkpointSHA256, mmrSize)
+}
+
+func (c *Cadence) witnessedTickLocked(ctx context.Context, logID, checkpointSHA256 string, mmrSize uint64) (extent string, tick CadenceTick, leaf TickLeaf, err error) {
+	s := c.shelf
 	var n uint64
 	err = s.db.QueryRowContext(ctx, `SELECT tick FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, logID, checkpointSHA256).Scan(&n)
 	extent = "all"
@@ -616,9 +651,10 @@ func (c *Cadence) tickLocked(ctx context.Context, n uint64) (CadenceTick, error)
 	tick := CadenceTick{N: n}
 	var at, due, leaves string
 	var witnessed int
+	var receipt sql.NullString
 	err := c.shelf.db.QueryRowContext(ctx,
-		`SELECT at, due_next, entry_seq, checkpoint_size, checkpoint, leaves, witnessed FROM cadence_ticks WHERE tick = ?`, n).
-		Scan(&at, &due, &tick.EntrySeq, &tick.CheckpointSize, &tick.Checkpoint, &leaves, &witnessed)
+		`SELECT at, due_next, entry_seq, checkpoint_size, checkpoint, leaves, witnessed, receipt FROM cadence_ticks WHERE tick = ?`, n).
+		Scan(&at, &due, &tick.EntrySeq, &tick.CheckpointSize, &tick.Checkpoint, &leaves, &witnessed, &receipt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CadenceTick{}, fmt.Errorf("%w: tick %d", ErrNotFound, n)
 	}
@@ -635,6 +671,12 @@ func (c *Cadence) tickLocked(ctx context.Context, n uint64) (CadenceTick, error)
 		return CadenceTick{}, fmt.Errorf("%w: tick %d leaves: %v", ErrCorrupt, n, err)
 	}
 	tick.Witnessed = witnessed != 0
+	if receipt.Valid {
+		tick.Receipt = &WitnessReceipt{}
+		if err := json.Unmarshal([]byte(receipt.String), tick.Receipt); err != nil {
+			return CadenceTick{}, fmt.Errorf("%w: tick %d receipt: %v", ErrCorrupt, n, err)
+		}
+	}
 	return tick, nil
 }
 

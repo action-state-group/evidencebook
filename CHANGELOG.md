@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added: a log's witnessed cadence chain for its bundle
+
+evidencebook#36 §2.
+
+- `Cadence.Chain(ctx, statement)` is capsule-cli's `cadenceChain` for a
+  log's checkpoint, member for member, for the `x-cadence-witness/v0`
+  bundle extension (`CadenceExtension`): `all` from a witnessed tick that
+  carries the checkpoint, else `part` with the newest earlier witnessed
+  checkpoint and a consistency proof to it. A profile adds its own members
+  (a deal's step counts) and its pending states.
+- `Cadence.Witnessed` now takes the receipt the host verified, stored with
+  the tick for the chain.
+- `testdata/cadence/chain-verified-by-capsule-cli-7a6b101.json` holds an
+  `all` and a `part` chain this code built; capsule-cli 7a6b101's own
+  verifier (`cadenceClaim`) passes both up to the witness receipt check,
+  and fails each when its salt or consistency proof is changed.
+
 ### Added: the heartbeat cadence over a shelf, ended logs leaving the tick
 
 evidencebook#36 §2 and §4.

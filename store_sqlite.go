@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS cadence_ticks (
 	checkpoint_size INTEGER NOT NULL,
 	checkpoint      BLOB    NOT NULL,
 	leaves          TEXT    NOT NULL,
-	witnessed       INTEGER NOT NULL DEFAULT 0
+	witnessed       INTEGER NOT NULL DEFAULT 0,
+	receipt         TEXT
 );
 CREATE TABLE IF NOT EXISTS book_checkpoints (
 	book_id       TEXT    NOT NULL,
