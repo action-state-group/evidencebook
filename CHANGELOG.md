@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added: import a pre-shelf cadence; list a shelf's records (#73)
+
+evidencebook#36 §2 and §4, for capsule-cli#242's migration.
+
+- `Cadence.ImportLegacy(ctx, LegacyCadence{Logs, Ticks})` carries a cadence a
+  pre-shelf writer kept (capsule-cli's `deal_cadence` rows, on the same
+  cadence log) into the shelf's, in one transaction: every legacy log counts
+  into H, each tick not already held is stored and numbered after the
+  cadence's last, witnessed ticks are indexed, and the live rule is applied
+  to every registered log. It is re-runnable: a held tick keeps its number
+  and is promoted to witnessed when it now carries a receipt. A tick that
+  would rewrite a held one, or is older than the newest held, is refused.
+- `Shelf.Records(ctx, bookIDs...)` lists the committed records of a shelf's
+  books, with each record's retention state and a count of pending tails,
+  without opening a book.
+- `CadenceConfig.WitnessIDs` queues each cadence checkpoint for those
+  witnesses in the checkpoint's own commit; `CadenceConfig.NoJitter` makes
+  every tick due exactly `Interval` after the last; `Cadence.Last` returns
+  the newest tick.
+
+### Fixed: an unchanged checkpoint is indexed to its newest witnessed tick (#74)
+
+- The witnessed index now keeps the newest witnessed tick that carried a
+  log checkpoint, whatever order receipts arrive in, for `Witnessed` and
+  `ImportLegacy` alike. It kept the first, so after a host changed its
+  witness, `Chain` kept returning the old witness's tick.
+
 ## v0.5.0 (2026-10-19)
 
 Everything since v0.4.0: the originals store and per-record retention (#58),

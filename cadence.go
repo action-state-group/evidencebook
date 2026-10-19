@@ -502,12 +502,19 @@ func paddingRecordID() (string, error) {
 	return digestBytes(encoded), nil
 }
 
+// indexWitnessed records that a witnessed tick carries a log checkpoint. A
+// log that has not grown carries the same checkpoint in several ticks: the
+// row keeps the newest witnessed tick that carried it, whatever order the
+// receipts arrive in.
+const indexWitnessed = `INSERT INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)
+ON CONFLICT (log_id, checkpoint_sha256) DO UPDATE SET tick = excluded.tick WHERE excluded.tick > cadence_witnessed.tick`
+
 // Witnessed records that tick n's cadence checkpoint has a verified witness
 // receipt. In one transaction, under the shelf's lock: each log checkpoint
 // the tick carries gets a cadence_witnessed row, and each of those logs that
 // has ended and has not grown past its largest witnessed checkpoint leaves
-// the live set. Rows are only inserted and each compares its own size, so a
-// receipt for an older tick reported late never moves a log back.
+// the live set. Each log compares its own size, so a receipt for an older
+// tick reported late never moves a log back.
 func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceipt) error {
 	// capsule-cli carries the witness's URL without a trailing slash
 	// (trimEndpoint), and a verifier finds the witness's row by it.
@@ -546,7 +553,7 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 		}
 		for id, leaf := range tick.Leaves.Deals {
 			if _, err := tx.ExecContext(ctx,
-				`INSERT OR IGNORE INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)`,
+				indexWitnessed,
 				id, leaf.CheckpointSHA256, leaf.Size, n); err != nil {
 				return err
 			}

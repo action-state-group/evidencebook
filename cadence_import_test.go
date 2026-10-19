@@ -180,12 +180,32 @@ func TestImportLegacyIsRerunnable(t *testing.T) {
 		t.Fatalf("tick 2 not promoted: %+v %v", second, err)
 	}
 	// Its leaves are indexed. An unchanged log names the same checkpoint in
-	// both ticks, so its row may be tick 1's: the checkpoint is what counts.
-	for id, leaf := range l.ticks[1].Leaves.Deals {
-		if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, id, leaf.CheckpointSHA256); n != 1 {
-			t.Fatalf("%s's checkpoint in the promoted tick is not indexed", id)
+	// both ticks, and its row moves to tick 2, the newest witnessed tick
+	// carrying it, and stays there on a re-run.
+	indexed := func(when string) {
+		t.Helper()
+		unchanged := 0
+		for id, leaf := range l.ticks[1].Leaves.Deals {
+			if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, id, leaf.CheckpointSHA256); n != 1 {
+				t.Fatalf("%s: %s's checkpoint in the promoted tick is not indexed", when, id)
+			}
+			if l.ticks[0].Leaves.Deals[id].CheckpointSHA256 != leaf.CheckpointSHA256 {
+				continue
+			}
+			unchanged++
+			if _, tick, _, err := l.c.WitnessedTick(ctx, id, leaf.CheckpointSHA256, leaf.Size); err != nil || tick.N != 2 {
+				t.Fatalf("%s: %s's unchanged checkpoint is indexed to tick %d (%v), not the newest, 2", when, id, tick.N, err)
+			}
+		}
+		if unchanged == 0 {
+			t.Fatal("the fixture has no log unchanged between the two ticks")
 		}
 	}
+	indexed("promoted")
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
+		t.Fatal(err)
+	}
+	indexed("re-run")
 	if live, _ := l.c.Live(ctx); len(live) != 1 || live[0] != "deal/b" {
 		t.Fatalf("live %v: deal/a ended and its final checkpoint is witnessed", live)
 	}

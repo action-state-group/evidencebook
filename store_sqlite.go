@@ -25,7 +25,8 @@ CREATE INDEX IF NOT EXISTS book_records_seq ON book_records (book_id, seq);
 -- The cadence (evidencebook#36 §2). cadence_logs is every log the profile
 -- has ever appended to (H is its count, and rows are never deleted);
 -- cadence_live the logs the next tick checkpoints; cadence_witnessed one row
--- per log checkpoint carried in a tick whose receipt verified, inserted only.
+-- per log checkpoint carried in a tick whose receipt verified, naming the
+-- newest such tick.
 CREATE TABLE IF NOT EXISTS cadence_logs (log_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS cadence_live (log_id TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS cadence_witnessed (
