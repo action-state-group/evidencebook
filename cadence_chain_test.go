@@ -10,7 +10,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -191,5 +193,98 @@ func TestAChainFromACorruptStatementIsRefused(t *testing.T) {
 	}
 	if _, err := c.Chain(ctx, later.Statement); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("a corrupt earlier statement: %v", err)
+	}
+}
+
+// shape is a JSON value with its values erased: the member names, nesting,
+// array lengths and JSON types a verifier reads, without the salts, hashes
+// and proofs that change from run to run.
+func shape(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		for k, child := range v {
+			out[k] = shape(child)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, child := range v {
+			out[i] = shape(child)
+		}
+		// Proof and path lengths depend on sizes, not on the format; one
+		// element's shape stands for all.
+		if len(out) > 1 {
+			out = out[:1]
+		}
+		return out
+	case string:
+		return "string"
+	case float64, json.Number:
+		return "number"
+	case bool:
+		return "bool"
+	case nil:
+		return "null"
+	}
+	return fmt.Sprintf("%T", v)
+}
+
+// The chains Chain builds today keep the exact shape of the vector that
+// capsule-cli 7a6b101's own verifier passed (testdata), so a change to the
+// chain's members, nesting or types fails here rather than leaving that
+// cross-check stale.
+func TestTheChainKeepsTheShapeCapsuleCLIVerified(t *testing.T) {
+	ctx := context.Background()
+	raw, err := os.ReadFile("testdata/cadence/chain-verified-by-capsule-cli-7a6b101.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var verified map[string]struct {
+		Bundle struct {
+			Extensions map[string]any `json:"extensions"`
+		} `json:"bundle"`
+	}
+	if err := json.Unmarshal(raw, &verified); err != nil {
+		t.Fatal(err)
+	}
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("s", "1"))
+	mustAppend(t, mustOpenBook(t, shelf, "deal/b"), observation("s", "1"))
+	tick := mustTick(t, c, tickTime)
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
+		t.Fatal(err)
+	}
+	statement, _ := base64.RawURLEncoding.DecodeString(tick.Leaves.Deals["deal/a"].Statement)
+	all, err := c.Chain(ctx, statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, a, observation("s", "2"))
+	later, err := a.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part, err := c.Chain(ctx, later.Statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, chain := range map[string]map[string]any{"all": all, "part": part} {
+		encoded, err := json.Marshal(chain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var now any
+		if err := json.Unmarshal(encoded, &now); err != nil {
+			t.Fatal(err)
+		}
+		want := shape(verified[name].Bundle.Extensions[CadenceExtension])
+		if got := shape(now); !reflect.DeepEqual(got, want) {
+			gotJSON, _ := json.Marshal(got)
+			wantJSON, _ := json.Marshal(want)
+			t.Fatalf("%s chain shape drifted from the capsule-cli-verified vector:\n got %s\nwant %s", name, gotJSON, wantJSON)
+		}
 	}
 }
