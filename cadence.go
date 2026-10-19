@@ -114,12 +114,18 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if s.released {
 		return nil, ErrReleased
 	}
+	// One cadence per shelf: two would cut ticks into one table from two
+	// handles on one log.
+	if s.cadence != nil {
+		return nil, fmt.Errorf("%w: the shelf already runs a cadence (%s)", ErrInvalid, s.cadence.cfg.LogID)
+	}
 	log, err := OpenCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey)
 	if err != nil {
 		return nil, err
 	}
 	s.cadenceLogs = append(s.cadenceLogs, log)
-	return &Cadence{shelf: s, cfg: cfg, log: log}, nil
+	s.cadence = &Cadence{shelf: s, cfg: cfg, log: log}
+	return s.cadence, nil
 }
 
 // CadenceLog is what a tick checkpoints: a book, or a deal's log from before
@@ -220,10 +226,13 @@ func (l *LegacyLog) Append(ctx context.Context, write func() error) error {
 	if l.shelf.released {
 		return ErrReleased
 	}
-	if err := write(); err != nil {
+	// The log is live before the write, so no write, finished or not, is
+	// left outside the tick; a log live without a new entry costs only one
+	// unchanged checkpoint in the next tick.
+	if err := l.shelf.inTx(ctx, func(tx *sql.Tx) error { return markLive(ctx, tx, l.id) }); err != nil {
 		return err
 	}
-	return l.shelf.inTx(ctx, func(tx *sql.Tx) error { return markLive(ctx, tx, l.id) })
+	return write()
 }
 
 func (l *LegacyLog) LogID() string { return l.id }
@@ -287,6 +296,11 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	if err != nil {
 		return TickResult{}, err
 	}
+	// A tick stored but not finished (a crash or an error after its row)
+	// is finished first, as the same tick: its root, never a new one.
+	if haveLast && last.CheckpointSize == 0 {
+		return c.finishLocked(ctx, last)
+	}
 	if haveLast && now.Before(last.DueNext) {
 		return TickResult{DueNext: last.DueNext}, nil
 	}
@@ -342,28 +356,6 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 		}
 		leaves.FillerCount = gap
 	}
-	root, _, err := leaves.Tree(leaves.FillerIndex)
-	if err != nil {
-		return TickResult{}, err
-	}
-	entrySeq, err := c.log.Append(ctx, hex.EncodeToString(root), at)
-	if err != nil {
-		return TickResult{}, err
-	}
-	// Padding records bring the leaf count to a multiple of the bucket.
-	for count := entrySeq; count%c.cfg.PadBucket != 0; count++ {
-		id, err := paddingRecordID()
-		if err != nil {
-			return TickResult{}, err
-		}
-		if _, err := c.log.Append(ctx, id, at); err != nil {
-			return TickResult{}, err
-		}
-	}
-	cp, err := c.log.Checkpoint(ctx, at)
-	if err != nil {
-		return TickResult{}, err
-	}
 	jitter := time.Duration(0)
 	if c.cfg.Jitter > 0 {
 		r, err := rand.Int(rand.Reader, big.NewInt(int64(2*c.cfg.Jitter)+1))
@@ -372,15 +364,87 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 		}
 		jitter = time.Duration(r.Int64()) - c.cfg.Jitter
 	}
-	tick := CadenceTick{N: n, At: at, DueNext: now.UTC().Add(c.cfg.Interval + jitter).Truncate(time.Second),
-		EntrySeq: entrySeq, CheckpointSize: cp.TreeSize, Checkpoint: cp.Statement, Leaves: leaves}
+	tick := CadenceTick{N: n, At: at, DueNext: now.UTC().Add(c.cfg.Interval + jitter).Truncate(time.Second), Leaves: leaves}
 	encoded, err := json.Marshal(leaves)
 	if err != nil {
 		return TickResult{}, err
 	}
+	// The tick is stored before its root reaches the cadence log, so a
+	// failure after this point resumes this tick (finishLocked) rather than
+	// cutting another: its leaves, salts and positions are not lost, and the
+	// cadence log never grows by more than one tick's entries per tick. A
+	// zero checkpoint size marks it unfinished.
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		tick.N, tick.At.Format(time.RFC3339), tick.DueNext.Format(time.RFC3339), tick.EntrySeq, tick.CheckpointSize, tick.Checkpoint, string(encoded)); err != nil {
+		`INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+		tick.N, tick.At.Format(time.RFC3339), tick.DueNext.Format(time.RFC3339), string(encoded)); err != nil {
+		return TickResult{}, err
+	}
+	return c.finishLocked(ctx, tick)
+}
+
+// finishLocked puts a stored tick's root in the cadence log (once: a root
+// already appended after the previous tick's entry is found, not appended
+// again), pads the log to the bucket, checkpoints it, and completes the
+// tick's row.
+func (c *Cadence) finishLocked(ctx context.Context, tick CadenceTick) (TickResult, error) {
+	s := c.shelf
+	root, _, err := tick.Leaves.Tree(tick.Leaves.FillerIndex)
+	if err != nil {
+		return TickResult{}, err
+	}
+	rootID := hex.EncodeToString(root)
+	var after uint64
+	if tick.N > 1 {
+		previous, err := c.tickLocked(ctx, tick.N-1)
+		if err != nil {
+			return TickResult{}, err
+		}
+		after = previous.EntrySeq
+	}
+	entrySeq := uint64(0)
+	for seq := after; entrySeq == 0; {
+		entries, err := c.log.Entries(ctx, seq, 1000)
+		if err != nil {
+			return TickResult{}, err
+		}
+		if len(entries) == 0 {
+			break
+		}
+		for _, entry := range entries {
+			if entry.RecordID == rootID {
+				entrySeq = entry.Seq
+				break
+			}
+		}
+		seq = entries[len(entries)-1].Seq
+	}
+	if entrySeq == 0 {
+		if entrySeq, err = c.log.Append(ctx, rootID, tick.At); err != nil {
+			return TickResult{}, err
+		}
+	}
+	// Padding records bring the leaf count to a multiple of the bucket.
+	size, err := c.log.Size(ctx)
+	if err != nil {
+		return TickResult{}, err
+	}
+	for count := size; count%c.cfg.PadBucket != 0; count++ {
+		id, err := paddingRecordID()
+		if err != nil {
+			return TickResult{}, err
+		}
+		if _, err := c.log.Append(ctx, id, tick.At); err != nil {
+			return TickResult{}, err
+		}
+	}
+	cp, err := c.log.Checkpoint(ctx, tick.At)
+	if err != nil {
+		return TickResult{}, err
+	}
+	tick.EntrySeq, tick.CheckpointSize, tick.Checkpoint = entrySeq, cp.TreeSize, cp.Statement
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE cadence_ticks SET entry_seq = ?, checkpoint_size = ?, checkpoint = ? WHERE tick = ?`,
+		tick.EntrySeq, tick.CheckpointSize, tick.Checkpoint, tick.N); err != nil {
 		return TickResult{}, err
 	}
 	return TickResult{Ticked: true, Tick: tick, DueNext: tick.DueNext}, nil
@@ -419,25 +483,11 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64) error {
 	if err != nil {
 		return err
 	}
-	type standing struct {
-		ended bool
-		size  uint64
-	}
-	now := map[string]standing{}
+	ended := map[string]bool{}
 	for id := range tick.Leaves.Deals {
-		ended, err := c.cfg.Ended(ctx, id)
-		if err != nil {
+		if ended[id], err = c.cfg.Ended(ctx, id); err != nil {
 			return err
 		}
-		log, err := s.cadenceLogLocked(ctx, id)
-		if err != nil {
-			return err
-		}
-		size, err := log.MMRSize(ctx)
-		if err != nil {
-			return err
-		}
-		now[id] = standing{ended, size}
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1 WHERE tick = ?`, n); err != nil {
@@ -453,7 +503,15 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64) error {
 			if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(mmr_size), 0) FROM cadence_witnessed WHERE log_id = ?`, id).Scan(&witnessed); err != nil {
 				return err
 			}
-			if st := now[id]; st.ended && st.size <= witnessed {
+			// The log's size is read in this transaction from what it holds:
+			// a book's stored records (stored before their log append, so a
+			// pending append counts) or a legacy log's entries. An append
+			// committed after this transaction re-enters the live set.
+			size, err := heldSizeTx(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if ended[id] && size <= witnessed {
 				if _, err := tx.ExecContext(ctx, `DELETE FROM cadence_live WHERE log_id = ?`, id); err != nil {
 					return err
 				}
@@ -461,6 +519,21 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64) error {
 		}
 		return nil
 	})
+}
+
+// heldSizeTx is the MMR size of everything a log holds, read in tx: a
+// book's stored records, else a legacy log's CLL entries.
+func heldSizeTx(ctx context.Context, tx *sql.Tx, logID string) (uint64, error) {
+	var leaves uint64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, logID).Scan(&leaves); err != nil {
+		return 0, err
+	}
+	if leaves == 0 {
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cll_entries WHERE log_id = ?`, logID).Scan(&leaves); err != nil {
+			return 0, err
+		}
+	}
+	return mmrSize(leaves), nil
 }
 
 // WitnessedTick finds the witnessed tick a bundle of logID's checkpoint

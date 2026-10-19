@@ -62,6 +62,7 @@ type Shelf struct {
 	// cadenceLogs are the cadence logs Cadence opened, released with the
 	// shelf.
 	cadenceLogs []*CLLSubstrate
+	cadence     *Cadence
 	released    bool
 }
 

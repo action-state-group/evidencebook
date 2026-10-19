@@ -296,5 +296,94 @@ func TestATicksSizeDoesNotDependOnActivity(t *testing.T) {
 			t.Fatalf("the cadence log grew by %d at tick %d", sizes[i]-sizes[i-1], i+1)
 		}
 	}
-	_ = ctx
+	if _, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/other", Ended: func(context.Context, string) (bool, error) { return false, nil }}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a second cadence on one shelf: %v", err)
+	}
+}
+
+// A record stored but not yet in its log (an append interrupted between the
+// two writes) keeps the log live: Witnessed measures what the log holds.
+func TestAPendingAppendKeepsALogLive(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, e := newCadence(t, shelf)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("s", "1"))
+	e.set("deal/a")
+	tick := mustTick(t, c, tickTime)
+	// The record row lands; its log append has not happened yet.
+	store := &sqliteStore{db: shelf.db, bookID: "deal/a"}
+	if err := store.PutRecord(ctx, StoredRecord{Seq: 99, RecordID: "pending", Header: []byte(`{}`), Capsule: []byte(`{}`), Envelope: []byte{0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Witnessed(ctx, tick.N); err != nil {
+		t.Fatal(err)
+	}
+	if live, _ := c.Live(ctx); len(live) != 1 {
+		t.Fatalf("a pending append was dropped from the tick: %v", live)
+	}
+}
+
+// A legacy write that fails, or never returns, still leaves the log live.
+func TestALegacyWriteIsLiveBeforeItRuns(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	old, err := OpenCLLSQLite(f.path, "deal/legacy", f.cfg.CheckpointKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Append(ctx, hex.EncodeToString(bytes.Repeat([]byte{5}, 32)), tickTime); err != nil {
+		t.Fatal(err)
+	}
+	_ = old.Release()
+	shelf := f.open(t)
+	c, e := newCadence(t, shelf)
+	legacy, err := shelf.Legacy(ctx, "deal/legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.set("deal/legacy")
+	tick := mustTick(t, c, tickTime)
+	if err := c.Witnessed(ctx, tick.N); err != nil {
+		t.Fatal(err)
+	}
+	if live, _ := c.Live(ctx); len(live) != 0 {
+		t.Fatalf("live %v", live)
+	}
+	boom := errors.New("the step failed after writing")
+	if err := legacy.Append(ctx, func() error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("append: %v", err)
+	}
+	if live, _ := c.Live(ctx); len(live) != 1 {
+		t.Fatalf("a failed legacy write left the log out of the tick: %v", live)
+	}
+}
+
+// A tick that stopped after its row (before or after its root reached the
+// cadence log) is finished as the same tick: one root, one entry per tick.
+func TestAnUnfinishedTickIsResumedNotRepeated(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("s", "1"))
+	first := mustTick(t, c, tickTime)
+	// As if the process stopped after appending the root, before completing
+	// the row.
+	if _, err := shelf.db.Exec(`UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = ?`, first.N); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := c.log.Size(ctx)
+	resumed := mustTick(t, c, tickTime.Add(time.Hour))
+	after, _ := c.log.Size(ctx)
+	if resumed.N != first.N || resumed.EntrySeq != first.EntrySeq || after != before {
+		t.Fatalf("resumed tick %d at entry %d (log %d -> %d), want tick %d at entry %d", resumed.N, resumed.EntrySeq, before, after, first.N, first.EntrySeq)
+	}
+	r1, _, _ := first.Leaves.Tree(first.Leaves.FillerIndex)
+	r2, _, _ := resumed.Leaves.Tree(resumed.Leaves.FillerIndex)
+	if !bytes.Equal(r1, r2) {
+		t.Fatal("a resumed tick keeps its leaves")
+	}
+	if next := mustTick(t, c, resumed.DueNext); next.N != first.N+1 || next.EntrySeq != first.EntrySeq+1 {
+		t.Fatalf("the next tick: %d at %d", next.N, next.EntrySeq)
+	}
 }
