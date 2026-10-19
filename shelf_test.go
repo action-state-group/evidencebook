@@ -196,3 +196,14 @@ func TestSQLiteStoreKeepsFileStoreSemantics(t *testing.T) {
 		t.Fatalf("checkpoints are kept once, in the order kept: %+v %v", cps, err)
 	}
 }
+
+// A shelf waiting for the lock gives up when its context is done.
+func TestAShelfStopsWaitingForTheLockWithItsContext(t *testing.T) {
+	f := newShelfFixture(t)
+	f.open(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := OpenSQLiteShelf(ctx, f.cfg); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a held lock past the deadline: %v", err)
+	}
+}

@@ -54,12 +54,22 @@ type Shelf struct {
 
 // lockWriter takes the shelf's writer lock. It is a unix advisory file lock
 // (shelf_lock_unix.go sets it); elsewhere a shelf cannot be opened.
-var lockWriter = func(string) (func() error, error) {
+var lockWriter = func(context.Context, string) (func() error, error) {
 	return nil, fmt.Errorf("%w: a shelf's writer lock needs a unix advisory file lock", ErrUnsupported)
 }
 
-// OpenSQLiteShelf takes the writer lock, waiting for any other holder, and
-// opens the shelf's SQLite file, creating its tables when absent.
+// OpenSQLiteShelf takes the writer lock, waiting for any other holder until
+// ctx is done, and opens the shelf's SQLite file, creating its tables when
+// absent.
+//
+// The file has two kinds of handle: the shelf's own (records and
+// checkpoints of every book) and one per book's CLL log. Both use WAL and a
+// busy timeout, and CLL writes take an immediate transaction, so two writers
+// wait rather than fail. A record's append spans two handles (its log leaf,
+// then its row) and is not one transaction; that is the shape of the JSONL
+// journal and FileStore too, and Open's recovery reconciles a crash between
+// them. Do not fold the handles into one connection to "fix" it: the CLL
+// store owns its own.
 func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if cfg.Path == "" || cfg.Operator == "" || cfg.Signer == nil || cfg.Originals == nil || len(cfg.CheckpointKey) == 0 {
 		return nil, fmt.Errorf("%w: path, operator, signer, checkpoint key and originals are required", ErrInvalid)
@@ -67,7 +77,7 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if cfg.LockPath == "" {
 		cfg.LockPath = cfg.Path + ".lock"
 	}
-	unlock, err := lockWriter(cfg.LockPath)
+	unlock, err := lockWriter(ctx, cfg.LockPath)
 	if err != nil {
 		return nil, err
 	}
