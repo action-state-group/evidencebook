@@ -506,9 +506,12 @@ func paddingRecordID() (string, error) {
 // log that has not grown carries the same checkpoint in every tick, so one
 // checkpoint can be in several witnessed ticks: the row names the newest,
 // whatever order their receipts arrive in. A host that changes its witness
-// then finds the tick the new witness signed, as capsule-cli's verifier
-// read "the newest tick whose receipt verifies" before the cadence moved
-// here.
+// then finds the tick the new witness signed once that witness has signed
+// one. capsule-cli's released verifier read "the newest tick whose receipt
+// verifies"; one row per checkpoint cannot hold that exactly: after a
+// change back to an earlier witness the row names the newest tick, which
+// the host rejects until the current witness signs a later one. A live log
+// is in every tick, so that is the next witnessed tick.
 const indexWitnessed = `INSERT INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)
 ON CONFLICT (log_id, checkpoint_sha256) DO UPDATE SET tick = excluded.tick WHERE excluded.tick > cadence_witnessed.tick`
 
