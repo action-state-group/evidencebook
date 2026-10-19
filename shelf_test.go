@@ -320,3 +320,27 @@ func TestTwoBooksOfAShelfAppendConcurrently(t *testing.T) {
 		}
 	}
 }
+
+// A shelf can give its books no authenticated index: their checkpoints then
+// append no index_root records, and a deal's log holds its steps only.
+func TestAShelfChoosesItsBooksIndexes(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	f.cfg.AuthenticatedIndexes = func(string) []AuthenticatedIndex { return []AuthenticatedIndex{} }
+	shelf := f.open(t)
+	book := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, book, observation("s", "1"))
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cp.Entries != 1 {
+		t.Fatalf("the checkpoint covers %d entries; index roots were appended", cp.Entries)
+	}
+	all, _ := book.Query(ctx, Filter{})
+	for _, record := range all {
+		if record.Header.RecordType == RecordTypeIndexRoot {
+			t.Fatal("an index_root record in a book with no index")
+		}
+	}
+}

@@ -38,6 +38,12 @@ type ShelfConfig struct {
 	// record id, which is unique across books.
 	Originals ArtifactStore
 	Now       func() time.Time
+	// AuthenticatedIndexes gives a book its authenticated indexes when the
+	// shelf opens it. Nil gives every book the defaults (NewRecordIDIndex,
+	// NewSubjectIndex). Returning an empty, non-nil slice gives a book none,
+	// so its checkpoints commit no index_root records: a deal's log then
+	// holds its own steps only.
+	AuthenticatedIndexes func(logID string) []AuthenticatedIndex
 }
 
 // Shelf is one profile's books, each its own log (evidencebook#36 §1): a
@@ -138,12 +144,23 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 		BookID: logID, Operator: s.cfg.Operator, Developer: s.cfg.Developer,
 		Store: &sqliteStore{db: s.db, bookID: logID}, Substrate: substrate,
 		Originals: s.cfg.Originals, Signer: s.cfg.Signer, Now: s.cfg.Now,
+		Authenticated: s.authenticated(logID),
 	})
 	if err != nil {
 		return nil, errors.Join(err, substrate.Release())
 	}
 	s.books[logID] = book
 	return book, nil
+}
+
+func (s *Shelf) authenticated(logID string) []AuthenticatedIndex {
+	if s.cfg.AuthenticatedIndexes == nil {
+		return nil
+	}
+	if indexes := s.cfg.AuthenticatedIndexes(logID); indexes != nil {
+		return indexes
+	}
+	return []AuthenticatedIndex{}
 }
 
 // Books lists the ids of the books that hold records, in id order.
