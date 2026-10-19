@@ -39,8 +39,8 @@ pub struct Record {
     /// 0-based position in the log.
     pub leaf_index: u64,
     /// The entry the log commits for this record, 64 lowercase hex: the
-    /// SHA-256 of `body` for a book, the `capsule_id` for a capsule ledger
-    /// (see [`RecordSource::entry_of`]).
+    /// SHA-256 of `body` under the default [`RecordSource::entry_of`], the
+    /// `capsule_id` for a capsule ledger or a Go book.
     pub digest: String,
     /// The record's octets.
     pub body: Vec<u8>,

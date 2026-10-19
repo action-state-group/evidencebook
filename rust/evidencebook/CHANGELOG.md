@@ -13,7 +13,8 @@
   without reading it (a record subject's selection uses it), and
   `RecordSource::entry_of` says what the log commits for a
   record: the SHA-256 of its octets by default, a `capsule_id` for a capsule
-  ledger or a Go book (whose record id is its record capsule's id). A caller with its own checkpointer implements both over its own
+  ledger or a Go book (whose record id is its record capsule's
+  id). A caller with its own checkpointer implements both over its own
   index and the crate opens none of its files.
 - **`answer` reads the store traits** instead of a concrete `CllSubstrate`,
   and is split into `select` (the serving checkpoint and the records) and
