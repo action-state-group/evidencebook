@@ -5,7 +5,9 @@ package evidencebook
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -133,21 +135,28 @@ func (c Correlation) empty() bool {
 // Its canonical JSON is committed as the record capsule's agent_input_digest,
 // so every field below is fixed at commit.
 type Header struct {
-	Version            int             `json:"v"`
-	BookID             string          `json:"book_id"`
-	Seq                uint64          `json:"seq"`
-	RecordType         string          `json:"record_type"`
-	EpistemicType      EpistemicType   `json:"epistemic_type"`
-	CommittedAt        string          `json:"committed_at"`
-	EventTimeClaim     string          `json:"event_time_claim,omitempty"`
-	PayloadCommitments []string        `json:"payload_commitments,omitempty"`
-	RetentionState     RetentionState  `json:"retention_state,omitempty"`
-	Links              []Link          `json:"links"`
-	SubjectRef         string          `json:"subject_ref,omitempty"`
-	PrincipalRef       string          `json:"principal_ref,omitempty"`
-	CounterpartyRef    string          `json:"counterparty_ref,omitempty"`
-	Correlation        *Correlation    `json:"correlation,omitempty"`
-	Statement          json.RawMessage `json:"statement,omitempty"`
+	Version            int           `json:"v"`
+	BookID             string        `json:"book_id"`
+	Seq                uint64        `json:"seq"`
+	RecordType         string        `json:"record_type"`
+	EpistemicType      EpistemicType `json:"epistemic_type"`
+	CommittedAt        string        `json:"committed_at"`
+	EventTimeClaim     string        `json:"event_time_claim,omitempty"`
+	PayloadCommitments []string      `json:"payload_commitments,omitempty"`
+	// FieldCommitments are the record's salted per-field commitments, by
+	// field name, under CommitAlg (CommitAlgNonce256). Their openings are
+	// originals in the artifact store, never in the record. Presentation
+	// contract §7.2 records carry the same values as `<name>_commitment`
+	// members; here they are one map, and the values are identical.
+	FieldCommitments map[string]string `json:"field_commitments,omitempty"`
+	CommitAlg        string            `json:"commit_alg,omitempty"`
+	RetentionState   RetentionState    `json:"retention_state,omitempty"`
+	Links            []Link            `json:"links"`
+	SubjectRef       string            `json:"subject_ref,omitempty"`
+	PrincipalRef     string            `json:"principal_ref,omitempty"`
+	CounterpartyRef  string            `json:"counterparty_ref,omitempty"`
+	Correlation      *Correlation      `json:"correlation,omitempty"`
+	Statement        json.RawMessage   `json:"statement,omitempty"`
 }
 
 // Record is one committed entry: its identity, position, and header.
@@ -159,13 +168,33 @@ type Record struct {
 	Header   Header
 }
 
+// detached returns r with its own copies of the header's maps and slices, so
+// a caller holding it cannot change the book's record: the book trusts its
+// own records' commitments (reconcile marks its own halves trusted).
+func (r Record) detached() Record {
+	h := &r.Header
+	h.PayloadCommitments = slices.Clone(h.PayloadCommitments)
+	h.FieldCommitments = maps.Clone(h.FieldCommitments)
+	h.Links = slices.Clone(h.Links)
+	h.Statement = slices.Clone(h.Statement)
+	if h.Correlation != nil {
+		correlation := *h.Correlation
+		h.Correlation = &correlation
+	}
+	return r
+}
+
 // Entry is what a caller asks the book to record. Seq, CommittedAt, BookID and
 // the record identity are assigned by the book.
 type Entry struct {
-	RecordType      string
-	EpistemicType   EpistemicType
-	EventTimeClaim  time.Time
-	Payloads        [][]byte
+	RecordType     string
+	EpistemicType  EpistemicType
+	EventTimeClaim time.Time
+	Payloads       [][]byte
+	// Fields are texts committed with a fresh nonce each (CommitAlgNonce256),
+	// by field name: the header carries the commitments, the artifact store
+	// the openings.
+	Fields          map[string]string
 	Links           []Link
 	SubjectRef      string
 	PrincipalRef    string
@@ -184,8 +213,19 @@ func validateHeader(h Header) error {
 	if !h.EpistemicType.Valid() {
 		return fmt.Errorf("%w: epistemic_type %q is not registered", ErrInvalid, h.EpistemicType)
 	}
-	if len(h.PayloadCommitments) > 0 && !h.RetentionState.Valid() {
-		return fmt.Errorf("%w: retention_state is required with payload_commitments", ErrInvalid)
+	if (len(h.PayloadCommitments) > 0 || len(h.FieldCommitments) > 0) && !h.RetentionState.Valid() {
+		return fmt.Errorf("%w: retention_state is required with payload_commitments or field_commitments", ErrInvalid)
+	}
+	if (len(h.FieldCommitments) > 0) != (h.CommitAlg != "") {
+		return fmt.Errorf("%w: commit_alg is present exactly when field_commitments are", ErrInvalid)
+	}
+	if h.CommitAlg != "" && h.CommitAlg != CommitAlgNonce256 {
+		return fmt.Errorf("%w: commit_alg %q is not %s", ErrInvalid, h.CommitAlg, CommitAlgNonce256)
+	}
+	for name, digest := range h.FieldCommitments {
+		if !fieldName.MatchString(name) || !hex64.MatchString(digest) {
+			return fmt.Errorf("%w: field commitment %q is not a field name with a lowercase SHA-256 digest", ErrInvalid, name)
+		}
 	}
 	for _, digest := range h.PayloadCommitments {
 		if !hex64.MatchString(digest) {
