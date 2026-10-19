@@ -16,8 +16,8 @@
 //! store says which: a book commits the SHA-256 of the record's octets (the
 //! default of [`RecordSource::entry_of`]); a capsule ledger commits each
 //! line's `capsule_id`, which is not the SHA-256 of the line. Every lookup by
-//! id ([`RecordSource::record_by_digest`], [`RecordSource::correlation`],
-//! [`RecordSource::citing`]) uses that committed entry, and every record an
+//! id ([`RecordSource::record_by_digest`], [`RecordSource::leaf_index_of`],
+//! [`RecordSource::correlation`], [`RecordSource::citing`]) uses that committed entry, and every record an
 //! answer serves is checked against it with [`RecordSource::entry_of`].
 //!
 //! Every method is read-only (`&self`) and none blocks on another writer: an
@@ -47,6 +47,14 @@ pub trait RecordSource {
     fn record_by_digest(&self, digest: &str) -> Option<Record>;
     /// The record at this leaf index.
     fn record_at(&self, leaf_index: u64) -> Option<Record>;
+    /// The leaf index of the record whose committed entry is exactly
+    /// `digest`, without reading it. The default reads it; an index that
+    /// knows positions answers from them.
+    fn leaf_index_of(&self, digest: &str) -> Option<u64> {
+        self.record_by_digest(digest)
+            .filter(|r| r.digest == digest)
+            .map(|r| r.leaf_index)
+    }
     /// The committed entries of the records carrying exactly this
     /// correlation identifier.
     fn correlation(&self, id: &str) -> Vec<String>;

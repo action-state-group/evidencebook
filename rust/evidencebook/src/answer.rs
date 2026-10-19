@@ -251,11 +251,11 @@ pub fn select(
         }
         (None, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
         (None, Subject::Record(d)) => {
-            let record = records
-                .record_by_digest(d)
-                .filter(|r| r.leaf_index < covered && r.digest == *d)
+            let leaf = records
+                .leaf_index_of(d)
+                .filter(|&i| i < covered)
                 .ok_or(AnswerError::RecordNotFound)?;
-            vec![record.leaf_index]
+            vec![leaf]
         }
         (None, Subject::Range(a, b)) => range_leaves(*a, *b, covered, limit)?,
         (None, Subject::FullHistory) => {
@@ -504,8 +504,7 @@ fn citing_anchor(
     let Some(last_citing) = records
         .citing(half)
         .iter()
-        .filter_map(|d| records.record_by_digest(d))
-        .map(|r| r.leaf_index)
+        .filter_map(|d| records.leaf_index_of(d))
         .filter(|&i| i < latest)
         .max()
     else {
@@ -538,8 +537,7 @@ fn leaves_under(
 ) -> Result<Vec<u64>, AnswerError> {
     let mut found: Vec<u64> = digests
         .iter()
-        .filter_map(|d| records.record_by_digest(d))
-        .map(|r| r.leaf_index)
+        .filter_map(|d| records.leaf_index_of(d))
         .filter(|&i| i < covered)
         .collect();
     found.sort_unstable();

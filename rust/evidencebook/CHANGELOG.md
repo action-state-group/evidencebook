@@ -7,7 +7,9 @@
   statements, inclusion paths and consistency parts), which `CllSubstrate`
   implements in place, and `RecordSource` (records by committed entry and by
   leaf index, correlation, citing records), moved here from `answer` and
-  re-exported there. `RecordSource::entry_of` says what the log commits for a
+  re-exported there. `RecordSource::leaf_index_of` finds a record's position
+  without reading it (selection and the citing-records anchor use it), and
+  `RecordSource::entry_of` says what the log commits for a
   record: the SHA-256 of its octets by default, a `capsule_id` for a capsule
   ledger. A caller with its own checkpointer implements both over its own
   index and the crate opens none of its files.
@@ -24,7 +26,7 @@
 - `index::committed_records` and `reconcile::HalfSet::from_store` build an
   operational index's rebuild input and one side's halves from a store.
   `SubstrateError::Record` reports a leaf a store cannot produce.
-- **`received`**: the "asked of you" log, ported from the Mesh-LLM evidence
+- **`received`**: the "asked of you" log, ported from the evidence
   plugin with its line shape, requester-id cut and byte cap. The caller
   decides the directory and whether it may write it.
 - **`served_summary`**: the `served_summary/1` fold, ported from the same
