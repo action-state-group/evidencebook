@@ -166,7 +166,12 @@ func (used positions) random() (uint64, error) {
 // it. used is updated. The same seed, count and used positions give the
 // same fillers, so a tick's tree is rebuilt from what it stored.
 func DerivedFillers(seed []byte, count uint64, used map[uint64]bool) (map[uint64][]byte, error) {
-	if uint64(len(used))+count > 1<<CadenceDepth {
+	const capacity = uint64(1) << CadenceDepth
+	if used == nil {
+		return nil, fmt.Errorf("%w: the used positions are required", ErrInvalid)
+	}
+	// Compared without adding, so no count can wrap past the check.
+	if taken := uint64(len(used)); taken > capacity || count > capacity-taken {
 		return nil, fmt.Errorf("%w: %d fillers do not fit beside %d leaves", ErrInvalid, count, len(used))
 	}
 	out := make(map[uint64][]byte, count)
@@ -196,6 +201,12 @@ func DerivedFillers(seed []byte, count uint64, used map[uint64]bool) (map[uint64
 // Tree rebuilds the tick's tree from its stored leaves and returns the root
 // and the path of the leaf at index.
 func (l TickLeaves) Tree(index uint64) (root []byte, path [][]byte, err error) {
+	const capacity = uint64(1) << CadenceDepth
+	// A position past the tree would fold into another one, and its leaf
+	// would silently leave the root.
+	if index >= capacity || l.FillerIndex >= capacity {
+		return nil, nil, fmt.Errorf("%w: a cadence position is under %d", ErrCorrupt, capacity)
+	}
 	leaves := map[uint64][]byte{}
 	used := map[uint64]bool{}
 	nonce, err := hex.DecodeString(l.FillerNonce)
@@ -204,6 +215,9 @@ func (l TickLeaves) Tree(index uint64) (root []byte, path [][]byte, err error) {
 	}
 	leaves[l.FillerIndex], used[l.FillerIndex] = cadenceFillerLeaf(nonce), true
 	for _, leaf := range l.Deals {
+		if leaf.Index >= capacity {
+			return nil, nil, fmt.Errorf("%w: position %d of %s is past the tree", ErrCorrupt, leaf.Index, leaf.LogID)
+		}
 		if used[leaf.Index] {
 			return nil, nil, fmt.Errorf("%w: two leaves at position %d", ErrCorrupt, leaf.Index)
 		}
