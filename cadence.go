@@ -209,6 +209,13 @@ func (s *Shelf) legacyLocked(ctx context.Context, logID string, register bool) (
 	if legacy, ok := s.legacy[logID]; ok {
 		return legacy, nil
 	}
+	var records int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, logID).Scan(&records); err != nil {
+		return nil, err
+	}
+	if records > 0 {
+		return nil, fmt.Errorf("%w: %s is a book, not a legacy log", ErrInvalid, logID)
+	}
 	backend, err := cllsqlite.Open(s.cfg.Path, logID)
 	if err != nil {
 		return nil, fmt.Errorf("open legacy log %s: %w", logID, err)
@@ -234,8 +241,8 @@ func (s *Shelf) legacyLocked(ctx context.Context, logID string, register bool) (
 }
 
 // Append runs write, the profile's own step for this log (it opens its own
-// handle on the log), under the shelf's lock, and then puts the log back in
-// the live set: an append to a closed deal (later evidence) re-enters the
+// handle on the log), under the shelf's lock. write must not call the shelf
+// or its cadence: the lock is held. Append puts the log back in the live set: an append to a closed deal (later evidence) re-enters the
 // tick like any append.
 func (l *LegacyLog) Append(ctx context.Context, write func() error) error {
 	l.shelf.mu.Lock()
@@ -578,6 +585,9 @@ func heldSizeTx(ctx context.Context, tx *sql.Tx, logID string) (uint64, error) {
 func (c *Cadence) WitnessedTick(ctx context.Context, logID, checkpointSHA256 string, mmrSize uint64) (extent string, tick CadenceTick, leaf TickLeaf, err error) {
 	c.shelf.mu.Lock()
 	defer c.shelf.mu.Unlock()
+	if c.shelf.released {
+		return "", CadenceTick{}, TickLeaf{}, ErrReleased
+	}
 	return c.witnessedTickLocked(ctx, logID, checkpointSHA256, mmrSize)
 }
 

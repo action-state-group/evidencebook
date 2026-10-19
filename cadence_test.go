@@ -482,4 +482,13 @@ func TestAnUnfinishedTickCannotBeWitnessed(t *testing.T) {
 	}
 }
 
+// Legacy refuses a log that is a book.
+func TestLegacyRefusesABook(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("s", "1"))
+	if _, err := shelf.Legacy(context.Background(), "deal/a"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a book as a legacy log: %v", err)
+	}
+}
+
 var testReceipt = WitnessReceipt{TSURL: "https://witness.example", EntryHash: "e1", Receipt: []byte("receipt"), LeafIndex: 3, TreeSize: 4}
