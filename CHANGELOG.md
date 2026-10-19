@@ -29,10 +29,13 @@ evidencebook#36 §2 and §4, for capsule-cli#242's migration.
   changed its witness, `Chain` kept returning the old witness's tick. The
   index now names the newest witnessed tick, whatever order receipts arrive
   in, for `Witnessed` and `ImportLegacy` alike.
-- A store written by v0.5.0 keeps its existing rows: a live log moves to its
-  next witnessed tick, and an ended log, never re-ticked, stays on the tick
-  its last witness signed. No capsule-cli store ran this cadence before
-  capsule-cli#242, so none has such rows.
+- A store written by v0.5.0 keeps its rows, each naming the first witnessed
+  tick that carried its checkpoint. A row moves on when a newer witnessed
+  tick carries the same checkpoint: a live log's does at its next witnessed
+  tick. A log out of the live set (ended, and not grown past its largest
+  witnessed checkpoint) is in no tick, so its row keeps that tick until a
+  write puts the log back. capsule-cli's released builds keep their own
+  cadence table; capsule-cli#242 is the first to use this one.
 
 ## v0.5.0 (2026-10-19)
 
