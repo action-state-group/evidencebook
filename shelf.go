@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -19,9 +21,10 @@ type ShelfConfig struct {
 	// profile's per-deal logs in one deal.db.
 	Path string
 	// LockPath is the profile's writer lock file. A host that already has
-	// a writer lock for the store (capsule-cli's "<deal.db>.deal.lock")
-	// passes that path, so its own writers and the shelf exclude each
-	// other. Empty means Path + ".lock".
+	// a writer lock for the store passes that path, so its own writers and
+	// the shelf exclude each other: capsule-cli's deal store must pass
+	// "<deal.db>.deal.lock" (lockDealStore). Empty means Path + ".lock",
+	// which excludes only other shelves.
 	LockPath string
 
 	Operator  string
@@ -43,6 +46,12 @@ type ShelfConfig struct {
 // Release and is the profile's only writer. It keeps one Book per log id
 // for its lifetime: a Book allocates positions from its own in-memory order,
 // so two instances of one log could give two records one position.
+//
+// Each book keeps its own mutex; books of one shelf do not share one. Their
+// positions are per log, so they need no common order, and their writes to
+// the shared file are serialized by SQLite (WAL, a busy timeout, immediate
+// CLL transactions). Operations across books, such as a cadence tick, take
+// the shelf's mutex.
 type Shelf struct {
 	mu       sync.Mutex
 	cfg      ShelfConfig
@@ -81,7 +90,11 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+cfg.Path)
+	absolute, err := filepath.Abs(cfg.Path)
+	if err != nil {
+		return nil, errors.Join(err, unlock())
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute}).String())
 	if err != nil {
 		return nil, errors.Join(err, unlock())
 	}

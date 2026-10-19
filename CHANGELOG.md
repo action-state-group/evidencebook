@@ -15,9 +15,12 @@ evidencebook#59).
   records.
 - A shelf is the profile's only writer: it holds an exclusive advisory lock
   (`LockPath`, which a host points at its own writer lock) from open to
-  `Release`, and `Shelf.Open` returns one `*Book` per log id for its
-  lifetime. After `Release`, the shelf and its books refuse writes
-  (`ErrReleased`; `Book.Release` now does the same for any book).
+  `Release`, waiting for it until the context is done, and `Shelf.Open`
+  returns one `*Book` per log id for its lifetime. After `Release`, the
+  shelf and its books refuse writes (`ErrReleased`; `Book.Release` now does
+  the same for any book, `SetRetention`'s purge retry included).
+  `OpenCLLSQLite` provisions only a log the file holds nothing of: a log
+  with state that fails to open is reported, never initialized over.
 
 ### Changed (breaking): payload bytes live in an artifact store
 

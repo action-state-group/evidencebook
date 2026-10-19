@@ -5,12 +5,15 @@ package evidencebook
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,14 +64,55 @@ func OpenCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSu
 	}
 	log, err := cllsqlite.Open(path, logID)
 	if err != nil {
-		if initErr := cllsqlite.Init(path, logID); initErr != nil {
-			return nil, fmt.Errorf("init CLL log %s: %w", logID, errors.Join(err, initErr))
+		// Provision only a log the file holds nothing of. A log with any
+		// state that fails to open is reported, never re-provisioned over:
+		// Init would write an empty state beside its entries.
+		fresh, checkErr := cllSQLiteLogAbsent(path, logID)
+		if checkErr != nil || !fresh {
+			return nil, fmt.Errorf("open CLL log %s: %w", logID, errors.Join(err, checkErr))
+		}
+		if err := cllsqlite.Init(path, logID); err != nil {
+			return nil, fmt.Errorf("init CLL log %s: %w", logID, err)
 		}
 		if log, err = cllsqlite.Open(path, logID); err != nil {
 			return nil, fmt.Errorf("open CLL log %s: %w", logID, err)
 		}
 	}
 	return newCLLSubstrate(log, logID, checkpointKey)
+}
+
+// cllSQLiteLogAbsent reports, reading the file only, whether it holds no
+// state at all for logID: no file, or no meta row, entry or node of that log.
+func cllSQLiteLogAbsent(path, logID string) (bool, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return false, err
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "mode=ro"}).String())
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	for _, table := range []string{"cll_meta", "cll_entries", "cll_nodes"} {
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&exists); err != nil {
+			return false, err
+		}
+		if exists == 0 {
+			continue
+		}
+		var rows int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE log_id = ?`, logID).Scan(&rows); err != nil {
+			return false, err
+		}
+		if rows > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // newCLLSubstrate wraps an open CLL backend, which it then owns.

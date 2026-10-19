@@ -4,7 +4,9 @@ package evidencebook
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -205,5 +207,116 @@ func TestAShelfStopsWaitingForTheLockWithItsContext(t *testing.T) {
 	defer cancel()
 	if _, err := OpenSQLiteShelf(ctx, f.cfg); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("a held lock past the deadline: %v", err)
+	}
+}
+
+// A released book refuses every write, whether or not a shelf opened it,
+// including a purge retry (SetRetention DELETED on a deleted record).
+func TestAReleasedBookRefusesEveryWrite(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-released", 1).open(t)
+	record := mustAppend(t, book, observation("s", "p"))
+	if _, err := book.SetRetention(ctx, record.RecordID, Deleted, "expiry"); err != nil {
+		t.Fatal(err)
+	}
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := book.Release(); err != nil {
+		t.Fatalf("Release is idempotent: %v", err)
+	}
+	if _, err := book.Append(ctx, observation("s", "late")); !errors.Is(err, ErrReleased) {
+		t.Fatalf("append: %v", err)
+	}
+	if _, err := book.Checkpoint(ctx); !errors.Is(err, ErrReleased) {
+		t.Fatalf("checkpoint: %v", err)
+	}
+	if _, err := book.SetRetention(ctx, record.RecordID, Deleted, "retry"); !errors.Is(err, ErrReleased) {
+		t.Fatalf("a purge retry after release: %v", err)
+	}
+}
+
+// A host's own lock path is the shelf's: a holder of it keeps the shelf out.
+func TestAShelfTakesTheHostsLockPath(t *testing.T) {
+	f := newShelfFixture(t)
+	f.cfg.LockPath = f.path + ".deal.lock"
+	unlock, err := lockWriter(context.Background(), f.cfg.LockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := OpenSQLiteShelf(ctx, f.cfg); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("the host holds the lock: %v", err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	f.open(t)
+}
+
+// A log that has state but fails to open is reported, never provisioned
+// over: OpenCLLSQLite does not write to it.
+func TestACorruptLogIsNeverReprovisioned(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "deal.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An entry with no meta row: not a log anyone provisioned this way.
+	for _, statement := range []string{
+		`CREATE TABLE cll_entries (log_id TEXT NOT NULL, seq INTEGER NOT NULL, value BLOB NOT NULL, appended_at TEXT NOT NULL, PRIMARY KEY(log_id, seq))`,
+		`INSERT INTO cll_entries VALUES ('deal/x', 1, x'00', '2026-10-19T00:00:00Z')`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenCLLSQLite(path, "deal/x", seededKey(9)); err == nil {
+		t.Fatal("a log with entries and no state must not open")
+	}
+	db, _ = sql.Open("sqlite", "file:"+path)
+	defer db.Close()
+	var tables int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'cll_meta'`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("OpenCLLSQLite wrote to the store: %d meta tables (%v)", tables, err)
+	}
+	// A log the file holds nothing of is provisioned beside it.
+	if s, err := OpenCLLSQLite(path, "deal/y", seededKey(9)); err != nil {
+		t.Fatalf("a fresh log: %v", err)
+	} else {
+		_ = s.Release()
+	}
+}
+
+// Two books of one shelf append at once; each keeps its own positions.
+func TestTwoBooksOfAShelfAppendConcurrently(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	a, b := mustOpenBook(t, shelf, "deal/a"), mustOpenBook(t, shelf, "deal/b")
+	errs := make(chan error, 2)
+	for _, book := range []*Book{a, b} {
+		go func(book *Book) {
+			for i := 0; i < 20; i++ {
+				if _, err := book.Append(context.Background(), observation("s", fmt.Sprintf("p%d", i))); err != nil {
+					errs <- err
+					return
+				}
+			}
+			errs <- nil
+		}(book)
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, book := range []*Book{a, b} {
+		all, err := book.Query(context.Background(), Filter{})
+		if err != nil || len(all) != 20 || all[19].Seq != 20 {
+			t.Fatalf("%d records, %v", len(all), err)
+		}
 	}
 }

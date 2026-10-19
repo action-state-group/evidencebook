@@ -670,7 +670,9 @@ func (b *Book) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 	return b.store.Checkpoints(ctx)
 }
 
-// Release closes the store, substrate and operational index.
+// Release closes the store, substrate and operational index. It is
+// idempotent, and afterwards every write (Append, AppendCapsule, Checkpoint,
+// SetRetention) refuses with ErrReleased.
 func (b *Book) Release() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
