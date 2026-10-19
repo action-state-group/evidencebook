@@ -481,3 +481,12 @@ func TestAnUnfinishedTickCannotBeWitnessed(t *testing.T) {
 		t.Fatalf("witnessing an unfinished tick: %v", err)
 	}
 }
+
+// Legacy refuses a log that is a book.
+func TestLegacyRefusesABook(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("s", "1"))
+	if _, err := shelf.Legacy(context.Background(), "deal/a"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a book as a legacy log: %v", err)
+	}
+}
