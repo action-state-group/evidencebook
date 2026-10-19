@@ -28,8 +28,8 @@ fn key(label: &str) -> SigningKey {
 struct Book {
     substrate: CllSubstrate,
     records: Vec<Record>,
-    correlation: BTreeMap<String, Vec<String>>,
-    citing: BTreeMap<String, Vec<String>>,
+    correlation: BTreeMap<String, Vec<u64>>,
+    citing: BTreeMap<String, Vec<u64>>,
     _dir: tempfile::TempDir,
 }
 
@@ -65,13 +65,10 @@ fn book_with(n: u64, cuts: &[u64], citing: &[u64]) -> Book {
         assert_eq!(b.substrate.append_leaf(&id).unwrap(), i);
         let digest = hex::encode(id);
         if i == 1 || i == 5 {
-            b.correlation
-                .entry("c-1".into())
-                .or_default()
-                .push(digest.clone());
+            b.correlation.entry("c-1".into()).or_default().push(i);
         }
         if citing.contains(&i) {
-            b.citing.entry(half()).or_default().push(digest.clone());
+            b.citing.entry(half()).or_default().push(i);
         }
         b.records.push(Record {
             leaf_index: i,
@@ -104,10 +101,10 @@ impl RecordSource for Book {
     fn record_at(&self, leaf_index: u64) -> Option<Record> {
         self.records.get(leaf_index as usize).cloned()
     }
-    fn correlation(&self, id: &str) -> Vec<String> {
+    fn correlation(&self, id: &str) -> Vec<u64> {
         self.correlation.get(id).cloned().unwrap_or_default()
     }
-    fn citing(&self, half_digest: &str) -> Vec<String> {
+    fn citing(&self, half_digest: &str) -> Vec<u64> {
         self.citing.get(half_digest).cloned().unwrap_or_default()
     }
 }
@@ -495,4 +492,115 @@ fn limits_count_only_records_under_the_anchor() {
         Err(AnswerError::OverLimit)
     ));
     assert!(go(json!({"record": b.records[0].digest}), 0, 1).is_ok());
+}
+
+/// Every answer form but the citing-records one (its subject member is a
+/// wire token the vocabulary gate cannot exempt inside a JSON fixture; the
+/// verifying tests above cover it), byte for byte as the crate built it before the store
+/// traits (evidencebook main 6558c39, crate 0.0.5): the envelope's JSON
+/// binding. `EVIDENCEBOOK_WRITE_ANSWER_FIXTURE=1` rewrites the fixture
+/// (only ever from that commit); the fixture's SHA-256 is pinned so a rewrite
+/// anywhere else fails here.
+#[test]
+fn every_answer_form_is_byte_for_byte_the_pre_store_trait_answer() {
+    const FIXTURE_SHA256: &str = "af2a028d4c1541961278dba1be3623550708982a81a1b40eb0d5b5f85ed01470";
+    let b = book();
+    let cases: Vec<(&str, Value, Value, Value)> = vec![
+        (
+            "record_0_at_0",
+            json!({"record": b.records[0].digest}),
+            pin(&b, 0),
+            json!({}),
+        ),
+        (
+            "record_3_at_1",
+            json!({"record": b.records[3].digest}),
+            pin(&b, 1),
+            json!({}),
+        ),
+        (
+            "record_9_at_2",
+            json!({"record": b.records[9].digest}),
+            pin(&b, 2),
+            json!({}),
+        ),
+        ("range", json!({"range": [0, 4]}), pin(&b, 2), json!({})),
+        (
+            "full_history",
+            json!({"full_history": null}),
+            pin(&b, 1),
+            json!({}),
+        ),
+        (
+            "correlation",
+            json!({"correlation": "c-1"}),
+            pin(&b, 2),
+            json!({}),
+        ),
+        (
+            "checkpoints",
+            json!({"checkpoints": null}),
+            pin(&b, 2),
+            json!({}),
+        ),
+        (
+            "history_card",
+            json!({"full_history": null}),
+            pin(&b, 2),
+            json!({"derivation": "history_card/1"}),
+        ),
+        (
+            "history_card_checkpoints",
+            json!({"checkpoints": null}),
+            pin(&b, 1),
+            json!({"derivation": "history_card/1"}),
+        ),
+        (
+            "fresh_size",
+            json!({"range": [1, 2]}),
+            json!({"min_freshness": 1}),
+            json!({}),
+        ),
+        (
+            "fresh_time",
+            json!({"checkpoints": null}),
+            json!({"min_freshness": "2026-01-01T00:00:00Z"}),
+            json!({}),
+        ),
+    ];
+    let mut got = serde_json::Map::new();
+    for (name, subject, coverage, extra) in cases {
+        let (bytes, req) = request(subject, coverage, extra);
+        let env = round_trip(&b, &bytes, &req);
+        let wire: Value = serde_json::from_slice(&env.encode(Binding::Json)).unwrap();
+        got.insert(name.to_string(), wire);
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/answer_envelopes_6558c39.json");
+    if std::env::var_os("EVIDENCEBOOK_WRITE_ANSWER_FIXTURE").is_some() {
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&Value::Object(got)).unwrap() + "\n",
+        )
+        .unwrap();
+        return;
+    }
+    let text = std::fs::read(&path).unwrap();
+    assert_eq!(
+        hex::encode(Sha256::digest(&text)),
+        FIXTURE_SHA256,
+        "the fixture was rewritten"
+    );
+    let want: serde_json::Map<String, Value> = serde_json::from_slice(&text).unwrap();
+    assert_eq!(
+        got.keys().collect::<Vec<_>>(),
+        want.keys().collect::<Vec<_>>()
+    );
+    for (name, wire) in &want {
+        assert_eq!(
+            serde_json::to_string(&got[name]).unwrap(),
+            serde_json::to_string(wire).unwrap(),
+            "{name}"
+        );
+    }
 }

@@ -25,6 +25,7 @@
 //! [`CllSubstrate::commit_checkpoint`] persists it. Checkpoint time is the
 //! caller's: coarsening it is a privacy decision of the store, not of the log.
 
+use crate::store::{CheckpointedLog, ConsistencyParts};
 use cll::checkpoint::{
     checkpoint_to_cose, try_sign_checkpoint_digest, CheckpointRecord, CheckpointSigner,
     Signature as CllSignature, SignerError, WitnessRecord,
@@ -339,15 +340,16 @@ pub enum SubstrateError {
     },
     #[error("cutting at {requested} leaves, but only {available} are committed")]
     CutBeyondLog { requested: u64, available: u64 },
+    /// A store could not produce the record at a leaf, or its octets are not
+    /// a record of the expected form.
+    #[error("the record at leaf {leaf_index} cannot be read: {why}")]
+    Record { leaf_index: u64, why: String },
     #[error(
         "prepared checkpoint chains to size {prev_size}, but the latest committed checkpoint \
          is at size {latest_size} -- prepare it again"
     )]
     StalePrepared { prev_size: u64, latest_size: u64 },
 }
-
-/// Old peaks, their paths into the new MMR, and the new peaks.
-pub(crate) type ConsistencyParts = (Vec<[u8; 32]>, Vec<Vec<[u8; 32]>>, Vec<[u8; 32]>);
 
 fn hashes(hex_list: &[String]) -> Result<Vec<[u8; 32]>, SubstrateError> {
     hex_list
@@ -706,6 +708,30 @@ impl CllSubstrate {
             .iter()
             .map(|&p| self.node_store.node(p))
             .collect())
+    }
+}
+
+/// The reference store's commitment side: its checkpoint file and node store,
+/// read in place.
+impl CheckpointedLog for CllSubstrate {
+    fn leaf_count(&self) -> Result<u64, SubstrateError> {
+        CllSubstrate::leaf_count(self)
+    }
+
+    fn stated_checkpoints(&self) -> Result<Vec<StatedCheckpoint>, SubstrateError> {
+        CllSubstrate::stated_checkpoints(self)
+    }
+
+    fn inclusion_path(
+        &self,
+        leaf_index: u64,
+        mmr_size: u64,
+    ) -> Result<Vec<[u8; 32]>, SubstrateError> {
+        CllSubstrate::inclusion_path(self, leaf_index, mmr_size)
+    }
+
+    fn consistency_parts(&self, from: u64, to: u64) -> Result<ConsistencyParts, SubstrateError> {
+        CllSubstrate::consistency_parts(self, from, to)
     }
 }
 

@@ -21,7 +21,9 @@
 //! Go and Python both check. Result member names (`group`) are this
 //! crate's own.
 
-use crate::record::LinkType;
+use crate::record::{Header, LinkType};
+use crate::store::{CheckpointedLog, RecordSource};
+use crate::substrate::SubstrateError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -104,6 +106,51 @@ impl Half {
 pub struct HalfSet {
     pub halves: Vec<Half>,
     pub complete: bool,
+}
+
+impl HalfSet {
+    /// One side's halves read from its store: the records whose committed
+    /// entries are `ids`, in that order (an id the store does not hold is no
+    /// half). A half is `covered` when the store's latest stated checkpoint
+    /// covers its leaf, and `trusted` when its octets recompute its entry
+    /// ([`RecordSource::entry_of`]) and are a header that validates; an
+    /// untrusted half keeps no correlation keys or commitments, so it can
+    /// pair with nothing. `complete` is the caller's judgment of the account
+    /// as a whole.
+    pub fn from_store(
+        log: &dyn CheckpointedLog,
+        records: &dyn RecordSource,
+        ids: &[String],
+        complete: bool,
+    ) -> Result<Self, SubstrateError> {
+        let covered = match log.stated_checkpoints()?.last() {
+            Some(cp) => cp.checkpoint.leaf_count()?,
+            None => 0,
+        };
+        let halves = ids
+            .iter()
+            .filter_map(|id| records.record_by_digest(id).filter(|r| r.digest == *id))
+            .map(|r| {
+                let header = (records.entry_of(&r.body).as_deref() == Some(r.digest.as_str()))
+                    .then(|| serde_json::from_slice::<Header>(&r.body).ok())
+                    .flatten()
+                    .filter(|h| h.validate().is_ok());
+                let (seq, correlation, payload_commitments, trusted) = match header {
+                    Some(h) => (h.seq, h.correlation, h.payload_commitments, true),
+                    None => (0, BTreeMap::new(), Vec::new(), false),
+                };
+                Half {
+                    record_id: r.digest,
+                    seq,
+                    correlation,
+                    payload_commitments,
+                    covered: r.leaf_index < covered,
+                    trusted,
+                }
+            })
+            .collect();
+        Ok(Self { halves, complete })
+    }
 }
 
 /// The profile's content test. Runs only on covered, trusted, correlated

@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 var b64url = base64.RawURLEncoding.Strict()
@@ -31,8 +33,8 @@ func (k jwk) str(name string) string { s, _ := k.raw[name].(string); return s }
 type keySet []jwk
 
 // parseKeySet reads a JWK Set ({"keys": [...]}) or a bare keys[] array.
-func parseKeySet(text string) (keySet, error) {
-	v, err := parseIJSON([]byte(text))
+func parseKeySet(text []byte) (keySet, error) {
+	v, err := ijson.Parse(text)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +158,7 @@ func (k jwk) thumbprint() (string, error) {
 	default:
 		return "", fmt.Errorf("%w: kty %q", errUnsupportedKey, k.str("kty"))
 	}
-	c, err := jcs(members)
+	c, err := ijson.JCS(members)
 	if err != nil {
 		return "", err
 	}

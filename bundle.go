@@ -234,7 +234,7 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		// A caller-sealed record's originals bound to its capsule's
 		// agent_input or agent_output digest are also disclosed as those
 		// members, so a neutral verifier matches them against the capsule.
-		var members map[string]string
+		var members map[string][]string
 		if inline[id] {
 			if members, err = b.boundMembersLocked(ctx, id); err != nil {
 				return Bundle{}, err
@@ -261,7 +261,10 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 				return Bundle{}, err
 			}
 			payloads[digest] = base64.RawURLEncoding.EncodeToString(data)
-			if member, ok := members[digest]; ok && !slices.Contains(req.Suppress, member) && json.Valid(data) {
+			for _, member := range members[digest] {
+				if slices.Contains(req.Suppress, member) || !json.Valid(data) {
+					continue
+				}
 				if wire.Disclosures[id] == nil {
 					wire.Disclosures[id] = map[string]json.RawMessage{}
 				}
@@ -642,8 +645,8 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 
 // boundMembersLocked maps each original of a caller-sealed record that is
 // bound to its capsule's agent_input or agent_output digest to that member
-// name, by the original's digest.
-func (b *Book) boundMembersLocked(ctx context.Context, recordID string) (map[string]string, error) {
+// names, by the original's digest (input and output may be the same bytes).
+func (b *Book) boundMembersLocked(ctx context.Context, recordID string) (map[string][]string, error) {
 	held, err := b.originals.Get(ctx, recordID)
 	if errors.Is(err, artifact.ErrNotFound) {
 		return nil, nil
@@ -652,10 +655,10 @@ func (b *Book) boundMembersLocked(ctx context.Context, recordID string) (map[str
 		return nil, err
 	}
 	names := map[artifact.DigestField]string{artifact.PayloadDigest: "agent_input", artifact.AgentOutputDigest: "agent_output"}
-	members := map[string]string{}
+	members := map[string][]string{}
 	for _, a := range held.Artifacts {
 		if name, ok := names[a.Binding]; ok && a.ContentSHA256 != "" {
-			members[a.ContentSHA256] = name
+			members[a.ContentSHA256] = append(members[a.ContentSHA256], name)
 		}
 	}
 	return members, nil

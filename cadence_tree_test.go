@@ -145,3 +145,30 @@ func TestATicksOccupancyIsTheLifetimeCountPlusOne(t *testing.T) {
 		t.Fatal("the filler count is part of the tree")
 	}
 }
+
+// Stored ticks are data: a filler count that would overflow, a nil used set
+// and a position past the tree are refused, never a panic or a silently
+// smaller tree.
+func TestTickLeavesRefuseOutOfRangeInput(t *testing.T) {
+	seed := bytes.Repeat([]byte{7}, 32)
+	if _, err := DerivedFillers(seed, ^uint64(0), map[uint64]bool{0: true}); err == nil {
+		t.Fatal("a filler count that wraps must be refused")
+	}
+	if _, err := DerivedFillers(seed, 1, nil); err == nil {
+		t.Fatal("a nil used set must be refused")
+	}
+	nonce := hex.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	leaf := TickLeaf{LogID: "deal/a", Size: 1, CheckpointSHA256: nonce, Salt: nonce, Index: 1 << CadenceDepth}
+	for name, l := range map[string]TickLeaves{
+		"a leaf past the tree":   {Deals: map[string]TickLeaf{"deal/a": leaf}, FillerNonce: nonce},
+		"the filler past it":     {Deals: map[string]TickLeaf{}, FillerIndex: 1 << CadenceDepth, FillerNonce: nonce},
+		"a filler count wrapped": {Deals: map[string]TickLeaf{}, FillerNonce: nonce, FillerSeed: nonce, FillerCount: ^uint64(0)},
+	} {
+		if _, _, err := l.Tree(0); err == nil {
+			t.Fatalf("%s must be refused", name)
+		}
+	}
+	if _, _, err := (TickLeaves{Deals: map[string]TickLeaf{}, FillerNonce: nonce}).Tree(1 << CadenceDepth); err == nil {
+		t.Fatal("a path for a position past the tree must be refused")
+	}
+}
