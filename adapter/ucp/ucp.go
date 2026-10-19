@@ -22,6 +22,7 @@ import (
 	"bytes"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Adapter is the UCP adapter.
@@ -53,7 +54,7 @@ func (Adapter) Check(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyR
 	if looksLikeRequest(trimmed) {
 		return asReports(CheckOrder, checkWebhook(trimmed, policy))
 	}
-	v, err := parseIJSON(raw)
+	v, err := ijson.Parse(raw)
 	if err == nil {
 		o, isObj := v.(map[string]any)
 		if !isObj {
@@ -82,7 +83,7 @@ func (Adapter) NativeObject() adapter.NativeObject {
 				Format:           "UCP Checkout JSON (payment_ap2_mandate.json#/$defs/dev.ucp.shopping.checkout); ap2.merchant_authorization = <base64url-header>..<base64url-signature>, protected header {alg, kid}",
 				Octets:           "the RFC 8785 form of the complete checkout as received, ap2 included (the input is read as I-JSON; any serialization of it gives the same octets)",
 				Issuer:           "the business (merchant); the header names only alg and kid, so the signer is identified by context",
-				IssuerResolution: "kid is looked up in a copy of the business profile's keys[] (served at <business-origin>/.well-known/ucp) that the relying party retained and supplies in its trust policy (" + PinKeys + ", " + PinKeysOrigin + ", " + PinKeysSource + ", " + PinKeysRetainedAt + "); never fetched. Whether that origin is the merchant meant is the policy's decision (" + KeyBusinessOrigin + ", " + KeyBusinessOriginRejected + ")",
+				IssuerResolution: "kid is looked up in a copy of the business profile's keys[] (served at <business-origin>/.well-known/ucp) that the relying party retained and supplies in its trust policy (" + KeySetName + ", " + PinKeysOrigin + ", " + PinKeysSource + ", " + PinKeysRetainedAt + "); never fetched. Whether that origin is the merchant meant is the policy's decision (" + KeyBusinessOrigin + ", " + KeyBusinessOriginRejected + ")",
 				Method:           methodMANative,
 				NativelySigned:   true,
 			},
@@ -100,7 +101,7 @@ func (Adapter) NativeObject() adapter.NativeObject {
 				Format:           "an HTTP/1.1 request as received: request line, field lines (Host, Content-Type, UCP-Agent, Content-Digest, Signature-Input, Signature), empty line, the order JSON body",
 				Octets:           "the raw request; the body octets unchanged",
 				Issuer:           "the business named by UCP-Agent: profile=\"https://<origin>/.well-known/ucp\"",
-				IssuerResolution: "keyid is looked up in the retained keys[] of that origin (trust policy " + PinKeys + "); a key set retained for another origin is not used. UCP's authorization step (the order was created with this business) needs the creating checkout and is not performed",
+				IssuerResolution: "keyid is looked up in the retained keys[] of that origin (trust policy " + KeySetName + "); a key set retained for another origin is not used. UCP's authorization step (the order was created with this business) needs the creating checkout and is not performed",
 				Method:           methodWebhookNative,
 				NativelySigned:   true,
 			},
@@ -118,7 +119,7 @@ func (Adapter) NativeObject() adapter.NativeObject {
 				Format:           "an HTTP/1.1 response as received: status line, field lines (Content-Type, Content-Digest, Signature-Input, Signature), empty line, the checkout or order JSON body",
 				Octets:           "the raw response; the body octets unchanged",
 				Issuer:           "the holder of the business's HTTP signing key",
-				IssuerResolution: "keyid is looked up in the retained keys[] (trust policy " + PinKeys + "). The signature is message-level provenance for one response, not the issuer's signature over the object: the body's object keeps its own checks, and a checkout without AP2 or an order stays NOT_PRESENT",
+				IssuerResolution: "keyid is looked up in the retained keys[] (trust policy " + KeySetName + "). The signature is message-level provenance for one response, not the issuer's signature over the object: the body's object keeps its own checks, and a checkout without AP2 or an order stays NOT_PRESENT",
 				Method:           "UCP Message Signatures §REST Response Verification (verify_rest_response): RFC 9421 over @status and, with a body, content-digest and content-type; RFC 9530 Content-Digest",
 				NativelySigned:   false,
 			},

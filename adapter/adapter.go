@@ -59,6 +59,8 @@ type PropertyResult struct {
 
 // MarshalJSON writes {property, status, method, detail}, detail being the
 // object of DetailFields when set, else the Detail text when non-empty.
+// Methods and details are plain text such as "relying party policy <id>", so
+// '<', '>' and '&' are written as themselves, not HTML-escaped.
 func (r PropertyResult) MarshalJSON() ([]byte, error) {
 	type plain struct {
 		Property string `json:"property"`
@@ -72,7 +74,13 @@ func (r PropertyResult) MarshalJSON() ([]byte, error) {
 	} else if r.Detail != "" {
 		p.Detail = r.Detail
 	}
-	return json.Marshal(p)
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(p); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 // UnmarshalJSON reads a report written by MarshalJSON.
@@ -110,6 +118,11 @@ type TrustPolicy struct {
 	// Keys lists, per issuer role, the key identifiers the relying party
 	// accepts for that role.
 	Keys map[string][]string `json:"keys,omitempty"`
+	// KeySets holds the key sets the relying party retained, keyed by a name
+	// the adapter documents, each as the JSON value it was served as (for
+	// example a JWK Set object). LoadTrustPolicy keeps the octets as written;
+	// the adapter reads them with its own strict reader.
+	KeySets map[string]json.RawMessage `json:"key_sets,omitempty"`
 	// Recorded holds the relying party's recorded observations, keyed by a
 	// name the adapter documents (for example the result of an on-chain
 	// transaction lookup made earlier through a source the relying party

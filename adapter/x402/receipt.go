@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Receipt variants. Payload version 2 has two open upstream proposals with
@@ -44,8 +45,8 @@ func receiptDomain(version string) []byte {
 }
 
 // selectVariant picks the schema for a receipt payload as transmitted.
-func selectVariant(payload obj) (receiptVariant, error) {
-	vn, ok := payload.num("version")
+func selectVariant(payload ijson.Obj) (receiptVariant, error) {
+	vn, ok := payload.Num("version")
 	if !ok {
 		return receiptVariant{}, fmt.Errorf("payload.version is missing or not a number")
 	}
@@ -55,7 +56,7 @@ func selectVariant(payload obj) (receiptVariant, error) {
 	case "2":
 		has := func(names []string) bool {
 			for _, n := range names {
-				if payload.has(n) {
+				if payload.Has(n) {
 					return true
 				}
 			}
@@ -80,21 +81,21 @@ func (e errUnsupportedReceipt) Error() string { return "unsupported receipt: " +
 // receiptStructHash hashes a receipt payload as transmitted under variant v.
 // An absent optional string member is the empty string and an absent
 // settlementUnbound is false, as the extension requires.
-func receiptStructHash(payload obj, v receiptVariant) ([]byte, error) {
-	vn, _ := payload.num("version")
+func receiptStructHash(payload ijson.Obj, v receiptVariant) ([]byte, error) {
+	vn, _ := payload.Num("version")
 	version, err := parseUint256(vn.String())
 	if err != nil {
 		return nil, fmt.Errorf("payload.version: %v", err)
 	}
 	words := [][]byte{keccak256([]byte(v.typ)), wordUint(version)}
 	for _, k := range []string{"network", "resourceUrl", "payer"} {
-		s, ok := payload.str(k)
+		s, ok := payload.Str(k)
 		if !ok {
 			return nil, fmt.Errorf("payload.%s is missing or not a string", k)
 		}
 		words = append(words, wordString(s))
 	}
-	in, ok := payload.num("issuedAt")
+	in, ok := payload.Num("issuedAt")
 	if !ok {
 		return nil, fmt.Errorf("payload.issuedAt is missing or not a number")
 	}
@@ -106,8 +107,8 @@ func receiptStructHash(payload obj, v receiptVariant) ([]byte, error) {
 	for _, k := range append([]string{"transaction"}, v.extra...) {
 		if k == "settlementUnbound" {
 			b := false
-			if payload.has(k) {
-				if b, ok = payload.boolean(k); !ok {
+			if payload.Has(k) {
+				if b, ok = payload.Bool(k); !ok {
 					return nil, fmt.Errorf("payload.%s is not a boolean", k)
 				}
 			}
@@ -119,8 +120,8 @@ func receiptStructHash(payload obj, v receiptVariant) ([]byte, error) {
 			continue
 		}
 		s := ""
-		if payload.has(k) {
-			if s, ok = payload.str(k); !ok {
+		if payload.Has(k) {
+			if s, ok = payload.Str(k); !ok {
 				return nil, fmt.Errorf("payload.%s is not a string", k)
 			}
 		}
@@ -133,12 +134,12 @@ func receiptStructHash(payload obj, v receiptVariant) ([]byte, error) {
 // else the one inside the settlement response) and reports the three
 // receipt rows.
 func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, policy adapter.TrustPolicy) {
-	var env obj
+	var env ijson.Obj
 	switch {
 	case octets != nil:
 		if len(octets) > 0 && octets[0] == '{' {
-			v, err := decodeStrict(octets)
-			e, ok := asObj(v)
+			v, err := ijson.Parse(octets)
+			e, ok := ijson.AsObj(v)
 			if err != nil || !ok {
 				if err == nil {
 					err = fmt.Errorf("not a JSON object")
@@ -150,14 +151,14 @@ func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, pol
 			}
 			env = e
 		} else {
-			env = obj{"format": "jws", "signature": string(octets)}
+			env = ijson.Obj{"format": "jws", "signature": string(octets)}
 		}
 	case resp != nil:
-		ext, _ := resp.root.object("extensions")
-		or, _ := ext.object("offer-receipt")
-		info, _ := or.object("info")
-		if info.has("receipt") {
-			e, ok := info.object("receipt")
+		ext, _ := resp.root.Object("extensions")
+		or, _ := ext.Object("offer-receipt")
+		info, _ := or.Object("info")
+		if info.Has("receipt") {
+			e, ok := info.Object("receipt")
 			if !ok {
 				o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, "receipt is not an object")
 				o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "receipt not readable")
@@ -176,8 +177,8 @@ func checkReceiptOctets(o *out, octets []byte, resp *response, pay *payment, pol
 	checkReceipt(o, env, policy)
 }
 
-func checkReceipt(o *out, env obj, policy adapter.TrustPolicy) {
-	format, _ := env.str("format")
+func checkReceipt(o *out, env ijson.Obj, policy adapter.TrustPolicy) {
+	format, _ := env.Str("format")
 	if format == "jws" {
 		o.native(RowReceiptSignature, adapter.NotChecked, MethodReceiptSignature, "JWS receipts are not checked in v0")
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established (JWS not checked)")
@@ -190,8 +191,8 @@ func checkReceipt(o *out, env obj, policy adapter.TrustPolicy) {
 		o.native(RowDeliveryBinding, adapter.NotChecked, MethodDeliveryBinding, "receipt not readable")
 		return
 	}
-	payload, okP := env.object("payload")
-	sigHex, okS := env.str("signature")
+	payload, okP := env.Object("payload")
+	sigHex, okS := env.Str("signature")
 	if !okP || !okS {
 		o.native(RowReceiptSignature, adapter.Fail, MethodReceiptSignature, "an eip712 receipt needs payload and signature")
 		o.native(RowReceiptSignerAuthorized, adapter.NotChecked, MethodReceiptAuth, "no signer established")
@@ -248,20 +249,20 @@ func checkReceiptSigner(o *out, signer address, policy adapter.TrustPolicy, vx m
 // checkDeliveryBinding reports delivery_binding. The adapter holds no
 // response body in v0, so a v2 receipt with a hash is NOT_PRESENT (body
 // octets not held).
-func checkDeliveryBinding(o *out, payload obj, v receiptVariant, vx map[string]string) {
+func checkDeliveryBinding(o *out, payload ijson.Obj, v receiptVariant, vx map[string]string) {
 	set := func(st adapter.Status, d string) { o.nativeX(RowDeliveryBinding, st, MethodDeliveryBinding, d, vx) }
 	switch v.label {
 	case receiptV1.label:
 		set(adapter.NotChecked, "version 1 receipt: no content hash")
 	case receiptV23186.label:
-		enc, _ := payload.str("responseHashEncoding")
-		if h, _ := payload.str("responseHash"); h == "" {
+		enc, _ := payload.Str("responseHashEncoding")
+		if h, _ := payload.Str("responseHash"); h == "" {
 			set(adapter.NotPresent, "no hash in the receipt")
 			return
 		}
 		set(adapter.NotPresent, "responseHash ("+enc+") present; the response body octets are not held")
 	case receiptV23140.label:
-		if h, _ := payload.str("contentHash"); h == "" {
+		if h, _ := payload.Str("contentHash"); h == "" {
 			set(adapter.NotPresent, "no hash in the receipt")
 			return
 		}

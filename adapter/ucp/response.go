@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // PropResponseSignature is the RFC 9421 signature on an operation response
@@ -30,7 +31,7 @@ func checkResponse(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyRes
 	}
 	object := CheckCheckout
 	var out []adapter.PropertyResult
-	v, perr := parseIJSON(h.body)
+	v, perr := ijson.Parse(h.body)
 	if o, ok := v.(map[string]any); perr == nil && ok && o["checkout_id"] != nil {
 		object = CheckOrder
 		out = asReports(object, checkOrderBody(o, policy))
