@@ -24,19 +24,10 @@ evidencebook#36 §2 and §4, for capsule-cli#242's migration.
 
 ### Fixed: an unchanged checkpoint is indexed to its newest witnessed tick (#74)
 
-- A log that has not grown carries the same checkpoint in every tick. The
-  witnessed index kept the first witnessed tick for it, so after a host
-  changed its witness, `Chain` kept returning the old witness's tick. The
-  index now names the newest witnessed tick, whatever order receipts arrive
-  in, for `Witnessed` and `ImportLegacy` alike.
-- A store written by v0.5.0 keeps its rows, each naming the first witnessed
-  tick that carried its checkpoint. A row moves on when a newer witnessed
-  tick carries the same checkpoint: a live log's does at its next witnessed
-  tick. A log out of the live set (ended, and not grown past its largest
-  witnessed checkpoint) is in no newly cut tick, so its row moves on only
-  when a receipt arrives for a newer stored tick already carrying that
-  checkpoint, or after a write puts the log back. capsule-cli's released builds keep their own
-  cadence table; capsule-cli#242 is the first to use this one.
+- The witnessed index now keeps the newest witnessed tick that carried a
+  log checkpoint, whatever order receipts arrive in, for `Witnessed` and
+  `ImportLegacy` alike. It kept the first, so after a host changed its
+  witness, `Chain` kept returning the old witness's tick.
 
 ## v0.5.0 (2026-10-19)
 
