@@ -37,8 +37,17 @@ type CadenceConfig struct {
 	// ("deal-cadence/<16hex>" for a deal profile).
 	LogID string
 	// Interval is at least 1m; Jitter is under half of it. Zero values take
-	// the defaults (5m, 1m).
+	// the defaults (5m, 1m), unless NoJitter says the jitter is zero.
 	Interval, Jitter time.Duration
+	// NoJitter makes every tick due exactly Interval after the last (a
+	// profile configured with no jitter).
+	NoJitter bool
+	// WitnessIDs are the witnesses each cadence checkpoint is queued for:
+	// the checkpoint and a pending delivery to each are one commit of the
+	// cadence log, as capsule-cli's checkpoint runner does. The host
+	// delivers them (cll's PendingWitnesses on the cadence log) and reports
+	// a verified receipt with Witnessed. None queues nothing.
+	WitnessIDs []string
 	// PadBucket pads the cadence log to a multiple of this many entries per
 	// tick, at most 1024; zero is 1 (no padding).
 	PadBucket uint64
@@ -52,7 +61,7 @@ func (c *CadenceConfig) defaults() error {
 	if c.Interval == 0 {
 		c.Interval = 5 * time.Minute
 	}
-	if c.Jitter == 0 {
+	if c.Jitter == 0 && !c.NoJitter {
 		c.Jitter = time.Minute
 	}
 	if c.PadBucket == 0 {
@@ -65,6 +74,8 @@ func (c *CadenceConfig) defaults() error {
 		return fmt.Errorf("%w: a cadence needs the profile's Ended predicate", ErrInvalid)
 	case c.Interval < time.Minute:
 		return fmt.Errorf("%w: the cadence interval must be at least 1m", ErrInvalid)
+	case c.NoJitter && c.Jitter != 0:
+		return fmt.Errorf("%w: a cadence with NoJitter has no jitter", ErrInvalid)
 	case c.Jitter < 0 || 2*c.Jitter >= c.Interval:
 		return fmt.Errorf("%w: the cadence jitter must be at least 0 and under half the interval", ErrInvalid)
 	case c.PadBucket > 1024:
@@ -131,7 +142,7 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if s.cadence != nil {
 		return nil, fmt.Errorf("%w: the shelf already runs a cadence (%s)", ErrInvalid, s.cadence.cfg.LogID)
 	}
-	log, err := OpenCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey)
+	log, err := openCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -678,6 +689,19 @@ func (c *Cadence) tickLocked(ctx context.Context, n uint64) (CadenceTick, error)
 		}
 	}
 	return tick, nil
+}
+
+// Last returns the cadence's newest stored tick; ok is false when it has
+// none. A host reads a log's pending standing from it (the newest tick
+// holding the log, capsule-cli#242 §2.5) and maps a delivered cadence
+// checkpoint back to its tick, walking back with Get.
+func (c *Cadence) Last(ctx context.Context) (tick CadenceTick, ok bool, err error) {
+	c.shelf.mu.Lock()
+	defer c.shelf.mu.Unlock()
+	if c.shelf.released {
+		return CadenceTick{}, false, ErrReleased
+	}
+	return c.lastLocked(ctx)
 }
 
 // Get returns stored tick n.

@@ -10,6 +10,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/checkpointed-local-log/go/cll"
+	cllsqlite "github.com/action-state-group/checkpointed-local-log/go/store/sqlite"
 )
 
 // legacyFixture is a profile cut over from a pre-shelf writer: legacy logs
@@ -106,6 +109,9 @@ func TestImportLegacyContinuesTheCadence(t *testing.T) {
 	early, err := l.c.Tick(ctx, l.ticks[1].DueNext.Add(-1))
 	if err != nil || early.Ticked || !early.DueNext.Equal(l.ticks[1].DueNext) {
 		t.Fatalf("before the imported due time: %+v %v", early, err)
+	}
+	if last, ok, err := l.c.Last(ctx); err != nil || !ok || last.N != 2 || last.EntrySeq != l.ticks[1].EntrySeq {
+		t.Fatalf("last after import: %+v %v %v", last, ok, err)
 	}
 	next := mustTick(t, l.c, l.ticks[1].DueNext)
 	if next.N != 3 || next.EntrySeq <= l.ticks[1].EntrySeq {
@@ -398,5 +404,51 @@ func TestShelfRecordsReadsWithoutOpening(t *testing.T) {
 	only, err := shelf.Records(ctx, "deal/b")
 	if err != nil || len(only.Records) != 1 || only.Records[0].RecordID != other.RecordID {
 		t.Fatalf("filtered %+v %v", only, err)
+	}
+}
+
+// A cadence configured with a witness queues each cadence checkpoint for it
+// in the same commit, so the host can deliver it (cll's PendingWitnesses);
+// one without queues nothing.
+func TestACadenceQueuesItsCheckpointForTheWitness(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf := f.open(t)
+	e := &ended{logs: map[string]bool{}}
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: e.check, WitnessIDs: []string{"witness-a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick := mustTick(t, c, tickTime)
+	log, err := cllsqlite.Open(f.path, "deal-cadence/0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	pending, err := log.PendingWitnesses(ctx, tickTime.Add(24*time.Hour), cll.MaxWitnesses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].WitnessID != "witness-a" || pending[0].CheckpointSize != tick.CheckpointSize || !bytes.Equal(pending[0].Checkpoint, tick.Checkpoint) {
+		t.Fatalf("pending deliveries %+v, want one for tick %d at size %d", pending, tick.N, tick.CheckpointSize)
+	}
+}
+
+// NoJitter makes each tick due exactly the interval after the last; it
+// cannot be combined with a jitter.
+func TestNoJitterIsExact(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	e := &ended{logs: map[string]bool{}}
+	if _, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: e.check, NoJitter: true, Jitter: time.Second}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("NoJitter with a jitter: %v", err)
+	}
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: e.check, Interval: time.Minute, NoJitter: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := mustTick(t, c, tickTime)
+	if want := tickTime.Add(time.Minute).Truncate(time.Second); !first.DueNext.Equal(want) {
+		t.Fatalf("due %s, want %s", first.DueNext, want)
 	}
 }
