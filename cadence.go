@@ -420,9 +420,12 @@ func (c *Cadence) finishLocked(ctx context.Context, tick CadenceTick) (TickResul
 		}
 		after = previous.EntrySeq
 	}
-	entrySeq := uint64(0)
-	for seq := after; entrySeq == 0; {
-		entries, err := c.log.Entries(ctx, seq, 1000)
+	// Read only what follows the previous tick's entry: at most this
+	// tick's root and padding, never the log's whole history. end is the
+	// log's last position.
+	entrySeq, end := uint64(0), after
+	for {
+		entries, err := c.log.Entries(ctx, end, 1000)
 		if err != nil {
 			return TickResult{}, err
 		}
@@ -430,24 +433,20 @@ func (c *Cadence) finishLocked(ctx context.Context, tick CadenceTick) (TickResul
 			break
 		}
 		for _, entry := range entries {
-			if entry.RecordID == rootID {
+			if entry.RecordID == rootID && entrySeq == 0 {
 				entrySeq = entry.Seq
-				break
 			}
 		}
-		seq = entries[len(entries)-1].Seq
+		end = entries[len(entries)-1].Seq
 	}
 	if entrySeq == 0 {
 		if entrySeq, err = c.log.Append(ctx, rootID, tick.At); err != nil {
 			return TickResult{}, err
 		}
+		end = entrySeq
 	}
 	// Padding records bring the leaf count to a multiple of the bucket.
-	size, err := c.log.Size(ctx)
-	if err != nil {
-		return TickResult{}, err
-	}
-	for count := size; count%c.cfg.PadBucket != 0; count++ {
+	for count := end; count%c.cfg.PadBucket != 0; count++ {
 		id, err := paddingRecordID()
 		if err != nil {
 			return TickResult{}, err
@@ -513,6 +512,9 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	tick, err := c.tickLocked(ctx, n)
 	if err != nil {
 		return err
+	}
+	if tick.CheckpointSize == 0 {
+		return fmt.Errorf("%w: tick %d is not finished, so no witness has seen its root", ErrInvalid, n)
 	}
 	ended := map[string]bool{}
 	for id := range tick.Leaves.Deals {

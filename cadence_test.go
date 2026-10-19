@@ -472,4 +472,14 @@ func TestATickStoppedInItsPaddingPadsOnlyToTheBucket(t *testing.T) {
 	}
 }
 
+// An unfinished tick is never witnessed: no witness saw its root.
+func TestAnUnfinishedTickCannotBeWitnessed(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	pendingTick(t, shelf, 1)
+	if err := c.Witnessed(context.Background(), 1, testReceipt); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("witnessing an unfinished tick: %v", err)
+	}
+}
+
 var testReceipt = WitnessReceipt{TSURL: "https://witness.example", EntryHash: "e1", Receipt: []byte("receipt"), LeafIndex: 3, TreeSize: 4}
