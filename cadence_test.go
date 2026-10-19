@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -313,7 +314,7 @@ func TestAPendingAppendKeepsALogLive(t *testing.T) {
 	tick := mustTick(t, c, tickTime)
 	// The record row lands; its log append has not happened yet.
 	store := &sqliteStore{db: shelf.db, bookID: "deal/a"}
-	if err := store.PutRecord(ctx, StoredRecord{Seq: 99, RecordID: "pending", Header: []byte(`{}`), Capsule: []byte(`{}`), Envelope: []byte{0}}); err != nil {
+	if err := store.PutRecord(ctx, StoredRecord{Seq: 2, RecordID: "pending", Header: []byte(`{}`), Capsule: []byte(`{}`), Envelope: []byte{0}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
@@ -385,6 +386,89 @@ func TestAnUnfinishedTickIsResumedNotRepeated(t *testing.T) {
 	}
 	if next := mustTick(t, c, resumed.DueNext); next.N != first.N+1 || next.EntrySeq != first.EntrySeq+1 {
 		t.Fatalf("the next tick: %d at %d", next.N, next.EntrySeq)
+	}
+}
+
+// pendingTick stores tick n as a crash would leave it: its row, with leaves,
+// and nothing in the cadence log yet.
+func pendingTick(t *testing.T, shelf *Shelf, n uint64) TickLeaves {
+	t.Helper()
+	nonce, _ := randomHex(32)
+	leaves := TickLeaves{Deals: map[string]TickLeaf{}, FillerIndex: 7, FillerNonce: nonce}
+	encoded, _ := json.Marshal(leaves)
+	if _, err := shelf.db.Exec(`INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
+		n, tickTime.Format(time.RFC3339), tickTime.Add(5*time.Minute).Format(time.RFC3339), string(encoded)); err != nil {
+		t.Fatal(err)
+	}
+	return leaves
+}
+
+// A tick stored before its root was appended gets its root, once, when the
+// next Tick runs, also after the shelf is reopened.
+func TestATickStoppedBeforeItsRootIsFinishedAfterReopen(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf, err := OpenSQLiteShelf(ctx, f.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := newCadence(t, shelf)
+	first := mustTick(t, c, tickTime)
+	leaves := pendingTick(t, shelf, first.N+1)
+	if err := shelf.Release(); err != nil {
+		t.Fatal(err)
+	}
+	shelf = f.open(t)
+	c, _ = newCadence(t, shelf)
+	resumed := mustTick(t, c, tickTime)
+	root, _, _ := leaves.Tree(leaves.FillerIndex)
+	entries, err := c.log.Entries(ctx, first.EntrySeq, 10)
+	if err != nil || len(entries) != 1 || entries[0].RecordID != hex.EncodeToString(root) {
+		t.Fatalf("after the resumed tick the log holds %+v (%v)", entries, err)
+	}
+	if resumed.N != first.N+1 || resumed.EntrySeq != first.EntrySeq+1 {
+		t.Fatalf("resumed %d at %d", resumed.N, resumed.EntrySeq)
+	}
+}
+
+// With a pad bucket, a tick stopped partway through its padding finds its
+// root and pads only to the bucket: the log grows by exactly one bucket.
+func TestATickStoppedInItsPaddingPadsOnlyToTheBucket(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	e := &ended{logs: map[string]bool{}}
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", PadBucket: 4, Ended: e.check})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := mustTick(t, c, tickTime)
+	if size, _ := c.log.Size(ctx); size != 4 || first.EntrySeq != 1 {
+		t.Fatalf("first tick: size %d, entry %d", size, first.EntrySeq)
+	}
+	leaves := pendingTick(t, shelf, 2)
+	root, _, _ := leaves.Tree(leaves.FillerIndex)
+	// The root and one padding record reached the log before the stop.
+	if _, err := c.log.Append(ctx, hex.EncodeToString(root), tickTime); err != nil {
+		t.Fatal(err)
+	}
+	padding, _ := paddingRecordID()
+	if _, err := c.log.Append(ctx, padding, tickTime); err != nil {
+		t.Fatal(err)
+	}
+	resumed := mustTick(t, c, tickTime)
+	size, _ := c.log.Size(ctx)
+	if resumed.N != 2 || resumed.EntrySeq != 5 || size != 8 || resumed.CheckpointSize != mmrSize(8) {
+		t.Fatalf("resumed tick %d at entry %d, log size %d, checkpoint %d", resumed.N, resumed.EntrySeq, size, resumed.CheckpointSize)
+	}
+	entries, _ := c.log.Entries(ctx, 4, 10)
+	roots := 0
+	for _, entry := range entries {
+		if entry.RecordID == hex.EncodeToString(root) {
+			roots++
+		}
+	}
+	if roots != 1 {
+		t.Fatalf("the root is in the log %d times", roots)
 	}
 }
 
