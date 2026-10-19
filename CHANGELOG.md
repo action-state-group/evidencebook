@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-10-18)
+
+Everything since v0.2.0.
 
 ### Added: the ACP and UCP adapters
 
@@ -40,6 +42,13 @@
   - `evidencebook adapt ucp`.
 - New dependency: `github.com/santhosh-tekuri/jsonschema/v6` v6.0.3 (JSON Schema
   2020-12, ACP and UCP schema validation), which brings in `golang.org/x/text`.
+
+### Changed
+
+- The ACP and UCP adapters, `docs/ADAPTERS.md` and the UCP vector pin cite the
+  merged agent-action-capsule declarations (#300 `75009695`, #301 `2ef8aeb4`).
+  The vendored UCP vectors are byte-identical to that commit.
+- `docs/PRD-EVIDENCE-INTEROP.md` records M3 as landed for x402, UCP and ACP.
 
 ## v0.2.0 (2026-10-17)
 
