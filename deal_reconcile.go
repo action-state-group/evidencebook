@@ -197,6 +197,8 @@ type DealReconcile struct {
 	Result    DealReconcileResult `json:"result"`
 }
 
+var arrayIndex = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
+
 var resultTime = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$`)
 
 func parseResultTime(s string) (time.Time, bool) {
@@ -216,8 +218,17 @@ type mappedHalf struct {
 }
 
 // RecomputeDealReconcile recomputes a reconcile under ec:deal-reconcile@1.
-// A malformed input, or a half malformed by DR §4.2, is an error: the claim
-// fails, and no Result is produced.
+//
+// It reads each half only after its own format's checks have passed (DR
+// §4.1, last paragraph): the caller verifies each half's signature, that it
+// comes from the book it is given with, and that it is covered, and admits
+// only halves that pass. This function checks the contract's structure only
+// and treats every half it is given as admitted.
+//
+// A malformed input, or a half malformed by DR §4.2, refuses the reconcile
+// with ErrInvalid and no Result. Every half given is read through its
+// book's mapping before the period and the two books scope it, so a
+// malformed half refuses the reconcile even when it would be left out.
 func RecomputeDealReconcile(in DealReconcileInput) (DealReconcile, error) {
 	if in.SideA == "" || in.Peer == "" || in.SideA == in.Peer {
 		return DealReconcile{}, fmt.Errorf("%w: a deal reconcile names two different books", ErrInvalid)
@@ -570,11 +581,16 @@ func resolvePointer(doc any, pointer string) (value any, found bool, err error) 
 	if !strings.HasPrefix(pointer, "/") {
 		return nil, false, fmt.Errorf("%w: JSON Pointer %q does not start with /", ErrInvalid, pointer)
 	}
-	value = doc
-	for _, token := range strings.Split(pointer[1:], "/") {
+	tokens := strings.Split(pointer[1:], "/")
+	// The whole pointer is checked before any of it is followed, so an
+	// ill-formed escape is refused even past a member that is absent.
+	for _, token := range tokens {
 		if strings.Contains(strings.NewReplacer("~0", "", "~1", "").Replace(token), "~") {
 			return nil, false, fmt.Errorf("%w: JSON Pointer %q has a bad escape", ErrInvalid, pointer)
 		}
+	}
+	value = doc
+	for _, token := range tokens {
 		token = strings.NewReplacer("~1", "/", "~0", "~").Replace(token)
 		switch node := value.(type) {
 		case map[string]any:
@@ -582,8 +598,13 @@ func resolvePointer(doc any, pointer string) (value any, found bool, err error) 
 				return nil, false, nil
 			}
 		case []any:
+			// RFC 6901 array-index: "0", or digits with no leading zero. A
+			// sign, "-" or any other token names no element.
+			if !arrayIndex.MatchString(token) {
+				return nil, false, nil
+			}
 			index, err := strconv.Atoi(token)
-			if err != nil || index < 0 || index >= len(node) || (len(token) > 1 && token[0] == '0') {
+			if err != nil || index >= len(node) {
 				return nil, false, nil
 			}
 			value = node[index]

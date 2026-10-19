@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -375,12 +376,12 @@ func TestResolvePointer(t *testing.T) {
 			t.Fatalf("%s: got %s, want %s", pointer, s, want)
 		}
 	}
-	for _, pointer := range []string{"/x", "/a~1b/c~0d/2", "/a~1b/c~0d/01", "/a~1b/c~0d/-"} {
+	for _, pointer := range []string{"/x", "/a~1b/c~0d/2", "/a~1b/c~0d/01", "/a~1b/c~0d/-", "/a~1b/c~0d/+0", "/a~1b/c~0d/-0", "/a~1b/c~0d/+1", "/a~1b/c~0d/0/x"} {
 		if _, found, err := resolvePointer(doc, pointer); err != nil || found {
 			t.Fatalf("%s: found %v, err %v; want absent", pointer, found, err)
 		}
 	}
-	for _, pointer := range []string{"a", "/a~2b"} {
+	for _, pointer := range []string{"a", "/a~2b", "/missing/~2bad", "/a~1b/c~0d/0/~"} {
 		if _, _, err := resolvePointer(doc, pointer); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: got %v, want ErrInvalid", pointer, err)
 		}
@@ -393,4 +394,169 @@ func jsonText(v any) string {
 	}
 	encoded, _ := json.Marshal(v)
 	return string(encoded)
+}
+
+// copyHalf adds a copy of half i, changed, keeping the original and copying
+// its openings to the copy's digest.
+func copyHalf(t *testing.T, in *DealReconcileInput, i int, change func(map[string]any)) string {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(in.Halves[i].Octets, &doc); err != nil {
+		t.Fatal(err)
+	}
+	change(doc)
+	octets, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := digestBytes(octets)
+	openings := map[string]Opening{}
+	for field, o := range in.FieldOpenings[digestBytes(in.Halves[i].Octets)] {
+		openings[field] = o
+	}
+	in.FieldOpenings[digest] = openings
+	in.Halves = append(in.Halves, DealHalf{Book: in.Halves[i].Book, Octets: octets})
+	return digest
+}
+
+// Two deals, one INSUFFICIENT and one UNRESOLVED: GAP wins (DR §7.2), and
+// the tallies, verdict, evidence and aggregate count both deals.
+func TestDealReconcileGapOutranksUnknownAcrossDeals(t *testing.T) {
+	in := pairedInput(t)
+	b1 := digestBytes(in.Halves[1].Octets)
+	toDeal2 := func(doc map[string]any) { doc["deal_ref"] = "deal-2" }
+	copyHalf(t, &in, 0, toDeal2)
+	b2 := copyHalf(t, &in, 1, toDeal2)
+	delete(in.FieldOpenings[b1], "amount")
+	wrong := in.FieldOpenings[b2]["amount"]
+	wrong.Text = "1.00"
+	in.FieldOpenings[b2]["amount"] = wrong
+	got, err := RecomputeDealReconcile(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := "amount-commitment-matched"
+	if got.Pairings[req]["deal-1"] != Insufficient || got.Pairings[req]["deal-2"] != Unresolved {
+		t.Fatalf("pairings %v", got.Pairings[req])
+	}
+	if want := (ResultTallies{Insufficient: 1, Unresolved: 1}); got.Tallies[req] != want {
+		t.Fatalf("tallies %+v, want %+v", got.Tallies[req], want)
+	}
+	if got.Sufficiency[req] != "GAP" || got.Verdict[req] != "not_evaluable" {
+		t.Fatalf("amount is %s/%s, want GAP/not_evaluable", got.Sufficiency[req], got.Verdict[req])
+	}
+	if want := (ResultTallies{Matched: 2}); got.Tallies["currency-commitment-matched"] != want {
+		t.Fatalf("currency tallies %+v", got.Tallies["currency-commitment-matched"])
+	}
+	claim := got.Result.Claims[0]
+	if claim.Presentation.Status != "INSUFFICIENT" || len(claim.Evidence) != 4 || claim.Reconcile.Tallies != got.Tallies[req] {
+		t.Fatalf("claim %+v", claim)
+	}
+	if got.Result.Aggregate.Coverage.UnknownCount != 0 || !slices.Equal(got.Result.Aggregate.Buckets.NotEvaluable, []string{"reconcile-amount"}) || !slices.Equal(got.Result.Aggregate.Buckets.Met, []string{"reconcile-currency"}) {
+		t.Fatalf("aggregate %+v", got.Result.Aggregate)
+	}
+	if got.DealState["deal-1"] != "not_reconciled" || got.DealState["deal-2"] != "not_reconciled" {
+		t.Fatalf("deal state %v", got.DealState)
+	}
+}
+
+// A period holding no half groups no deal: every tally is zero, and DR
+// §7.2 makes that SATISFIED and not_met, with no evidence.
+func TestDealReconcileEmptyPopulation(t *testing.T) {
+	in := pairedInput(t)
+	in.Period = ResultPeriod{Start: "2026-09-01T00:00:00Z", End: "2026-10-01T00:00:00Z"}
+	got, err := RecomputeDealReconcile(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, claim := range got.Result.Claims {
+		if claim.Reconcile.Tallies != (ResultTallies{}) || claim.Sufficiency != "SATISFIED" || claim.Verdict != "not_met" || len(claim.Evidence) != 0 {
+			t.Fatalf("claim %+v", claim)
+		}
+	}
+	if len(got.DealState) != 0 || len(got.FieldOpenings) != 0 {
+		t.Fatalf("deal state %v, openings %v", got.DealState, got.FieldOpenings)
+	}
+}
+
+// A half recorded before the period's start is not in the reconcile.
+func TestDealReconcileHalfBeforeTheStart(t *testing.T) {
+	in := pairedInput(t)
+	in.Period.Start = "2026-10-15T00:00:01Z"
+	got, err := RecomputeDealReconcile(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := got.Pairings["amount-commitment-matched"]["deal-1"]; state != Insufficient {
+		t.Fatalf("with side A's half before the start, amount is %s, want INSUFFICIENT (side A NOT_SHOWN)", state)
+	}
+	if len(got.Result.Claims[0].Evidence) != 1 {
+		t.Fatalf("evidence %v", got.Result.Claims[0].Evidence)
+	}
+}
+
+// A carried opening whose nonce is not 64 lowercase hex does not open its
+// commitment: FAIL, and the pairing is UNRESOLVED (rule 4).
+func TestDealReconcileMalformedNonceFails(t *testing.T) {
+	in := pairedInput(t)
+	b := digestBytes(in.Halves[1].Octets)
+	o := in.FieldOpenings[b]["amount"]
+	o.Nonce = strings.ToUpper(o.Nonce)
+	in.FieldOpenings[b]["amount"] = o
+	got, err := RecomputeDealReconcile(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FieldOpenings[b]["amount"] != "FAIL" || got.Pairings["amount-commitment-matched"]["deal-1"] != Unresolved {
+		t.Fatalf("opening %s, pairing %s", got.FieldOpenings[b]["amount"], got.Pairings["amount-commitment-matched"]["deal-1"])
+	}
+}
+
+// §6.1 cases the vectors leave out: a stream_interval whose rule is not
+// all_records, and INCONCLUSIVE beside a failing property, are NOT_SHOWN;
+// INCONCLUSIVE alone is UNDECIDED; and B_ONLY over an UNDECIDED side A is
+// UNRESOLVED.
+func TestDealReconcileSetStatusCases(t *testing.T) {
+	period := ResultPeriod{Start: "2026-10-01T00:00:00Z", End: "2026-11-01T00:00:00Z"}
+	stream := func(rule string, properties map[string]string) map[string]CoverageGiven {
+		return map[string]CoverageGiven{"book-a": {Period: period, Declaration: map[string]any{"kind": "stream_interval", "rule": rule}, Properties: properties}}
+	}
+	pass := map[string]string{"coverage_declaration_form": "PASS", "coverage_declaration_anchor": "PASS", "coverage_declaration_population": "PASS", "coverage_declaration_commitment": "INCONCLUSIVE"}
+	failing := map[string]string{"coverage_declaration_form": "PASS", "coverage_declaration_anchor": "FAIL", "coverage_declaration_population": "PASS", "coverage_declaration_commitment": "INCONCLUSIVE"}
+	for name, c := range map[string]struct {
+		coverage map[string]CoverageGiven
+		status   string
+		state    ExchangeState
+	}{
+		"rule not all_records":     {stream("holder_choice", pass), SetNotShown, Insufficient},
+		"inconclusive with a FAIL": {stream("all_records", failing), SetNotShown, Insufficient},
+		"inconclusive alone":       {stream("all_records", pass), SetUndecided, Unresolved},
+	} {
+		t.Run(name, func(t *testing.T) {
+			in := pairedInput(t)
+			in.Halves = in.Halves[1:]
+			in.Coverage = c.coverage
+			got, err := RecomputeDealReconcile(in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.SetCompleteness["book-a"].Status != c.status || got.SetCompleteness["book-a"].Kind == nil || *got.SetCompleteness["book-a"].Kind != "stream_interval" {
+				t.Fatalf("set %+v", got.SetCompleteness["book-a"])
+			}
+			if state := got.Pairings["amount-commitment-matched"]["deal-1"]; state != c.state {
+				t.Fatalf("side B's lone half is %s, want %s", state, c.state)
+			}
+		})
+	}
+}
+
+// A malformed half is refused even when the period or the books would leave
+// it out: every half given is read through its book's mapping first.
+func TestDealReconcileRefusesAMalformedHalfOutOfScope(t *testing.T) {
+	in := pairedInput(t)
+	in.HalfMappings["book-c"] = in.HalfMappings["book-b"]
+	in.Halves = append(in.Halves, DealHalf{Book: "book-c", Octets: []byte(`{"book":"book-c","recorded_at":"2026-12-01T00:00:00Z"}`)})
+	if _, err := RecomputeDealReconcile(in); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
 }
