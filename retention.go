@@ -117,6 +117,9 @@ func (b *Book) heldLocked(record Record, now time.Time) bool {
 func (b *Book) SetRetention(ctx context.Context, recordID string, state RetentionState, reason string) (Record, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.released {
+		return Record{}, ErrReleased
+	}
 	if !state.Valid() {
 		return Record{}, fmt.Errorf("%w: retention state %q", ErrInvalid, state)
 	}
