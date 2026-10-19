@@ -1,6 +1,6 @@
 # Changelog: evidencebook (Rust)
 
-## Unreleased
+## 0.0.6
 
 - **`store`: the read-only store an answer reads** (evidencebook#35). Two
   traits: `CheckpointedLog` (leaf count, stated checkpoints with their COSE
