@@ -389,8 +389,9 @@ type CapsuleSealer func(header Header, headerJSON []byte) (emit.Result, error)
 // AppendCapsule commits a capsule its caller seals itself as the record:
 // the capsule is the record, its id the log entry, with no wrapper record
 // around it. The book takes the next position under its writer lock, builds
-// the header (payload_commitments are the SHA-256 of each original, in
-// order), and calls seal with it there; the capsule must carry that header
+// the header (payload_commitments are the SHA-256 of each present original,
+// in order; one declared never retained is stored as declared and not
+// committed), and calls seal with it there; the capsule must carry that header
 // in RecordHeaderMember and be signed by the book's signer, or nothing is
 // written. The capsule, its envelope and originals are then stored in the
 // artifact store in one Put, the record in the store, and its id appended
@@ -444,7 +445,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		header.Correlation = &correlation
 	}
 	for _, original := range originals {
-		header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(original.Content))
+		if original.State == artifact.Present {
+			header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(original.Content))
+		}
 	}
 	if len(header.PayloadCommitments) > 0 {
 		header.RetentionState = Available

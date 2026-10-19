@@ -67,12 +67,16 @@ func payloadOriginals(payloads [][]byte) []artifact.Artifact {
 }
 
 // checkOriginals refuses originals the book could not commit and later
-// resolve: each must be present, with content, under a distinct name.
+// resolve: each is present with content, or declared never retained with
+// none, under a distinct name. Only present originals are committed.
 func checkOriginals(originals []artifact.Artifact) error {
 	names := make(map[string]bool, len(originals))
 	for _, original := range originals {
-		if original.State != artifact.Present || original.Content == nil {
-			return fmt.Errorf("%w: original %q must be present with content", ErrInvalid, original.Name)
+		switch {
+		case original.State == artifact.Present && original.Content != nil:
+		case original.State == artifact.NeverRetained && original.Content == nil:
+		default:
+			return fmt.Errorf("%w: original %q must be present with content, or never retained without", ErrInvalid, original.Name)
 		}
 		if names[original.Name] {
 			return fmt.Errorf("%w: original %q is given more than once", ErrInvalid, original.Name)

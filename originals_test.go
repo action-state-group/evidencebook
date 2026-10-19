@@ -130,14 +130,37 @@ func TestAppendCapsuleRefusesOtherCapsules(t *testing.T) {
 	if _, err := book.AppendCapsule(ctx, Entry{RecordType: "published_capsule", EpistemicType: ProducerClaim, Payloads: [][]byte{[]byte("x")}}, nil, ownSealer(t, 1, payload, nil)); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bare payloads on a caller-sealed record: %v", err)
 	}
-	if _, err := book.AppendCapsule(ctx, publishedEntry(), []artifact.Artifact{{Name: "payload", State: artifact.NeverRetained}}, ownSealer(t, 1, payload, nil)); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("an original without content: %v", err)
+	if _, err := book.AppendCapsule(ctx, publishedEntry(), []artifact.Artifact{{Name: "payload", State: artifact.Present}}, ownSealer(t, 1, payload, nil)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a present original without content: %v", err)
+	}
+	if _, err := book.AppendCapsule(ctx, publishedEntry(), []artifact.Artifact{{Name: "payload", State: artifact.Purged, ContentSHA256: digestBytes([]byte(payload))}}, ownSealer(t, 1, payload, nil)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a purged original: %v", err)
 	}
 	if book.Size() != 0 {
 		t.Fatalf("a refused capsule left %d records", book.Size())
 	}
 	if next := mustAppend(t, book, observation("s", "x")); next.Seq != 1 {
 		t.Fatalf("a refused capsule consumed a position: %d", next.Seq)
+	}
+}
+
+// TestAppendCapsuleKeepsNeverRetainedDeclarations: an original the caller
+// declares never retained is stored as declared and not committed.
+func TestAppendCapsuleKeepsNeverRetainedDeclarations(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-a", 1).open(t)
+	payload := `{"order":17}`
+	originals := append(boundPayload(payload), artifact.Artifact{Name: "receipt", State: artifact.NeverRetained})
+	record, err := book.AppendCapsule(ctx, publishedEntry(), originals, ownSealer(t, 1, payload, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(record.Header.PayloadCommitments) != 1 {
+		t.Fatalf("a never-retained original was committed: %v", record.Header.PayloadCommitments)
+	}
+	held, err := book.originals.Get(ctx, record.RecordID)
+	if err != nil || len(held.Artifacts) != 2 || held.Artifacts[1].State != artifact.NeverRetained {
+		t.Fatalf("the declaration was not stored: %+v %v", held.Artifacts, err)
 	}
 }
 
