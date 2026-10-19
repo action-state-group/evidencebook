@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added: the Deal Reconcile Contract's recompute (#79)
+
+evidencebook#36's last acceptance item, for capsule-cli#242 (note §2.10).
+
+- `RecomputeDealReconcile(DealReconcileInput)` recomputes a reconcile
+  under agent-action-capsule's Deal Reconcile Contract, `ec:deal-reconcile@1`
+  (`DealReconcileContractRef`). It reads each half through its book's
+  `HalfMapping` (JSON Pointers onto the six abstract members) and opens
+  `field_openings` by half digest. It returns the opening statuses, each
+  side's set status, the per-deal states, the tallies, sufficiency and
+  verdict per requirement, the optional deal state, and the Evidence Result
+  with one `type: reconcile` claim per requirement, which cites no Close.
+- Each pairing is decided by `ReconcileHalvesWith` on the two halves
+  projected onto the requirement's one field, so a failed opening fails only
+  that requirement. The contract's rule 1 (more than one half on a side),
+  rule 3's precedence (a missing algorithm, commitment or opening before a
+  failed opening; an unsupported algorithm or malformed commitment counts as
+  missing) and the set status of a coverage declaration are applied around
+  that call.
+- A half that is malformed by the contract (an absent or ill-formed
+  `deal_id`, `book_id` or `recorded_at`, or a `book_id` that is not its book)
+  is an `ErrInvalid` error, never a claim.
+- The contract's 14 conformance vectors are vendored from
+  agent-action-capsule `2cf9037` with their upstream SHA256SUMS, and every
+  expected member is checked.
+
 ### Added: import a pre-shelf cadence; list a shelf's records (#73)
 
 evidencebook#36 §2 and §4, for capsule-cli#242's migration.
