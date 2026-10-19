@@ -136,7 +136,7 @@ func TestEndedLogsLeaveTheTickOnceWitnessed(t *testing.T) {
 	// deal/d grows after the tick: its final checkpoint is not the one
 	// witnessed.
 	mustAppend(t, d, observation("s", "2"))
-	if err := c.Witnessed(ctx, first.N); err != nil {
+	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	live, err := c.Live(ctx)
@@ -152,7 +152,7 @@ func TestEndedLogsLeaveTheTickOnceWitnessed(t *testing.T) {
 		t.Fatalf("occupancy %d (fillers %d), want H+1 = 4", occupied, second.Leaves.FillerCount)
 	}
 	// A late receipt for the first tick changes nothing.
-	if err := c.Witnessed(ctx, first.N); err != nil {
+	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 2 {
@@ -177,13 +177,13 @@ func TestALateReceiptNeverMovesStandingBack(t *testing.T) {
 	mustAppend(t, a, observation("s", "2"))
 	e.set("deal/a")
 	second := mustTick(t, c, first.DueNext)
-	if err := c.Witnessed(ctx, second.N); err != nil {
+	if err := c.Witnessed(ctx, second.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 0 {
 		t.Fatalf("live after the final checkpoint's receipt: %v", live)
 	}
-	if err := c.Witnessed(ctx, first.N); err != nil {
+	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 0 {
@@ -200,7 +200,7 @@ func TestTheWitnessedTickIsFoundByIndex(t *testing.T) {
 	a := mustOpenBook(t, shelf, "deal/a")
 	mustAppend(t, a, observation("s", "1"))
 	first := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, first.N); err != nil {
+	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	leaf := first.Leaves.Deals["deal/a"]
@@ -253,7 +253,7 @@ func TestALegacyLogJoinsTheCadence(t *testing.T) {
 		t.Fatalf("the legacy log is not in the tick: %+v", tick.Leaves.Deals)
 	}
 	e.set("deal/legacy")
-	if err := c.Witnessed(ctx, tick.N); err != nil {
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 0 {
@@ -298,3 +298,5 @@ func TestATicksSizeDoesNotDependOnActivity(t *testing.T) {
 	}
 	_ = ctx
 }
+
+var testReceipt = WitnessReceipt{TSURL: "https://witness.example", EntryHash: "e1", Receipt: []byte("receipt"), LeafIndex: 3, TreeSize: 4}
