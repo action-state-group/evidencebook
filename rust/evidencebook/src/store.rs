@@ -13,9 +13,12 @@
 //! file of that caller's.
 //!
 //! **What a record's id is.** The log commits one entry per record, and the
-//! store says which: a book commits the SHA-256 of the record's octets (the
-//! default of [`RecordSource::entry_of`]); a capsule ledger commits each
-//! line's `capsule_id`, which is not the SHA-256 of the line. A lookup by id
+//! store says which. The default of [`RecordSource::entry_of`] is the
+//! SHA-256 of the record's octets, the record id this crate's answer path
+//! has always used. A capsule ledger commits each line's `capsule_id`, which
+//! is not the SHA-256 of the line, and so does the Go book, whose record id
+//! is its record capsule's id (evidencebook Go `record.go`, `Record`): such a
+//! store overrides `entry_of`. A lookup by id
 //! ([`RecordSource::record_by_digest`], [`RecordSource::leaf_index_of`]) uses
 //! that committed entry, and every record an answer serves is checked against
 //! it with [`RecordSource::entry_of`]. The set lookups
@@ -66,7 +69,7 @@ pub trait RecordSource {
     /// The entry the log commits for a record with these octets, recomputed
     /// from them. An implementation returns `None` for octets that are not a
     /// record of its format, and every record it would serve then fails its
-    /// check. The default is the book's, defined for any octets: the SHA-256,
+    /// check. The default, defined for any octets, is their SHA-256 in
     /// lowercase hex.
     fn entry_of(&self, body: &[u8]) -> Option<String> {
         Some(hex::encode(Sha256::digest(body)))
