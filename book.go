@@ -425,6 +425,16 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Record{}, err
 	}
+	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
+	if err != nil {
+		return Record{}, err
+	}
+	for _, original := range originals {
+		if isOpening(original) {
+			return Record{}, fmt.Errorf("%w: original %q uses the name of a field opening", ErrInvalid, original.Name)
+		}
+	}
+	originals = append(append([]artifact.Artifact{}, originals...), fieldOpenings...)
 	if err := checkOriginals(originals); err != nil {
 		return Record{}, err
 	}
@@ -446,11 +456,14 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		header.Correlation = &correlation
 	}
 	for _, original := range originals {
-		if original.State == artifact.Present {
+		if original.State == artifact.Present && !isOpening(original) {
 			header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(original.Content))
 		}
 	}
-	if len(header.PayloadCommitments) > 0 {
+	if len(fieldCommitments) > 0 {
+		header.FieldCommitments, header.CommitAlg = fieldCommitments, CommitAlgNonce256
+	}
+	if len(header.PayloadCommitments) > 0 || len(header.FieldCommitments) > 0 {
 		header.RetentionState = Available
 	}
 	if err := validateHeader(header); err != nil {
@@ -487,21 +500,23 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		return Record{}, fmt.Errorf("record %s is stored but not yet committed; it keeps seq %d and is retried first: %w", record.RecordID, seq, err)
 	}
 	if err := b.admitLocked(ctx, record); err != nil {
-		return record, err
+		return record.detached(), err
 	}
 	if b.checkpointEvery > 0 && !b.checkpointing && seq%b.checkpointEvery == 0 {
 		if _, err := b.checkpointLocked(ctx); err != nil {
-			return record, fmt.Errorf("record committed; automatic checkpoint failed: %w", err)
+			return record.detached(), fmt.Errorf("record committed; automatic checkpoint failed: %w", err)
 		}
 	}
-	return record, nil
+	return record.detached(), nil
 }
 
 // checkCallerSealed runs a caller's sealer and accepts its capsule only if
 // it is a record of this book: it verifies, carries exactly this header, and
 // its envelope is signed by the book's signer.
 func (b *Book) checkCallerSealed(seal CapsuleSealer, header Header, headerBytes []byte) (emit.Result, error) {
-	sealed, err := seal(header, append([]byte{}, headerBytes...))
+	// The sealer gets its own copy of the header: one it keeps cannot change
+	// the record the book admits.
+	sealed, err := seal(Record{Header: header}.detached().Header, append([]byte{}, headerBytes...))
 	if err != nil {
 		return emit.Result{}, fmt.Errorf("seal record: %w", err)
 	}
@@ -559,7 +574,7 @@ func (b *Book) Get(_ context.Context, recordID string) (Record, error) {
 	if !ok {
 		return Record{}, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
 	}
-	return record, nil
+	return record.detached(), nil
 }
 
 // Query answers from the operational index. Its result is a local lookup,
@@ -577,7 +592,7 @@ func (b *Book) queryLocked(ctx context.Context, filter Filter) ([]Record, error)
 	}
 	out := make([]Record, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, b.records[id])
+		out = append(out, b.records[id].detached())
 	}
 	return out, nil
 }
