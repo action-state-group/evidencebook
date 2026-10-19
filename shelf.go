@@ -59,12 +59,17 @@ type ShelfConfig struct {
 // CLL transactions). Operations across books, such as a cadence tick, take
 // the shelf's mutex.
 type Shelf struct {
-	mu       sync.Mutex
-	cfg      ShelfConfig
-	db       *sql.DB
-	unlock   func() error
-	books    map[string]*Book
-	released bool
+	mu     sync.Mutex
+	cfg    ShelfConfig
+	db     *sql.DB
+	unlock func() error
+	books  map[string]*Book
+	legacy map[string]*LegacyLog
+	// cadenceLogs are the cadence logs Cadence opened, released with the
+	// shelf.
+	cadenceLogs []*CLLSubstrate
+	cadence     *Cadence
+	released    bool
 }
 
 // lockWriter takes the shelf's writer lock. It is a unix advisory file lock
@@ -113,7 +118,7 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if err := initSQLiteStore(db); err != nil {
 		return nil, errors.Join(err, db.Close(), unlock())
 	}
-	return &Shelf{cfg: cfg, db: db, unlock: unlock, books: make(map[string]*Book)}, nil
+	return &Shelf{cfg: cfg, db: db, unlock: unlock, books: make(map[string]*Book), legacy: make(map[string]*LegacyLog)}, nil
 }
 
 // Open returns the book whose log id is logID, creating it on first use. It
@@ -121,6 +126,10 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 func (s *Shelf) Open(ctx context.Context, logID string) (*Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.openLocked(ctx, logID)
+}
+
+func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	if s.released {
 		return nil, ErrReleased
 	}
@@ -187,6 +196,12 @@ func (s *Shelf) Release() error {
 	var errs []error
 	for _, book := range s.books {
 		errs = append(errs, book.Release())
+	}
+	for _, legacy := range s.legacy {
+		errs = append(errs, legacy.log.Release())
+	}
+	for _, log := range s.cadenceLogs {
+		errs = append(errs, log.Release())
 	}
 	errs = append(errs, s.db.Close(), s.unlock())
 	return errors.Join(errs...)

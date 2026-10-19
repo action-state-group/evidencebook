@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added: the heartbeat cadence over a shelf, ended logs leaving the tick
+
+evidencebook#36 §2 and §4.
+
+- `Shelf.Cadence(ctx, CadenceConfig)` runs a profile's heartbeat ticks,
+  ported from capsule-cli's `deal tick`. A tick is due on time alone
+  (`Interval` 5m ± `Jitter` 1m by default, the next due time drawn after
+  each tick). It checkpoints every live log locally at the tick's minute,
+  commits the checkpoints as salted leaves of the cadence tree, appends the
+  root (and padding to `PadBucket`) to the profile's cadence log, and
+  checkpoints that log; the host delivers it to the witness and reports a
+  verified receipt with `Cadence.Witnessed`.
+- The live set: a log is checkpointed while it has not ended (the profile's
+  `Ended` predicate, evaluated when needed) or has grown past the largest
+  checkpoint of it a witnessed tick carries. Appends put a log back in the
+  same transaction as its record; `Witnessed` takes logs out in one
+  transaction, and a late receipt never moves a log back. Tick work is per
+  live log; each tick keeps the lifetime count plus one occupied positions
+  with seed-derived fillers.
+- `Cadence.WitnessedTick` finds a bundle's tick from an index of witnessed
+  log checkpoints (the very checkpoint, or the newest earlier one), not by
+  scanning ticks. `Book.CheckpointAt` cuts a checkpoint at a given time.
+- `Shelf.Legacy` joins a deal log from before the upgrade to the cadence as
+  it is (never provisioning one); `LegacyLog.Append` runs the profile's own
+  write under the shelf's lock and puts the log back in the live set.
+
 ### Added: salted per-field commitments and a three-way reconcile check
 
 evidencebook#36 §3 (the deal profile on the book); the construction is the
