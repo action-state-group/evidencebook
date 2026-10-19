@@ -22,6 +22,32 @@ CREATE TABLE IF NOT EXISTS book_records (
 	PRIMARY KEY (book_id, record_id)
 );
 CREATE INDEX IF NOT EXISTS book_records_seq ON book_records (book_id, seq);
+-- The cadence (evidencebook#36 §2). cadence_logs is every log the profile
+-- has ever appended to (H is its count, and rows are never deleted);
+-- cadence_live the logs the next tick checkpoints; cadence_witnessed one row
+-- per log checkpoint carried in a tick whose receipt verified, inserted only.
+CREATE TABLE IF NOT EXISTS cadence_logs (log_id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS cadence_live (log_id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS cadence_witnessed (
+	log_id            TEXT    NOT NULL,
+	checkpoint_sha256 TEXT    NOT NULL,
+	mmr_size          INTEGER NOT NULL,
+	tick              INTEGER NOT NULL,
+	PRIMARY KEY (log_id, checkpoint_sha256)
+);
+CREATE INDEX IF NOT EXISTS cadence_witnessed_size ON cadence_witnessed (log_id, mmr_size);
+-- capsule-cli's deal_cadence columns, plus whether the tick's receipt
+-- verified.
+CREATE TABLE IF NOT EXISTS cadence_ticks (
+	tick            INTEGER PRIMARY KEY,
+	at              TEXT    NOT NULL,
+	due_next        TEXT    NOT NULL,
+	entry_seq       INTEGER NOT NULL,
+	checkpoint_size INTEGER NOT NULL,
+	checkpoint      BLOB    NOT NULL,
+	leaves          TEXT    NOT NULL,
+	witnessed       INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS book_checkpoints (
 	book_id       TEXT    NOT NULL,
 	n             INTEGER NOT NULL,
@@ -58,10 +84,37 @@ func (s *sqliteStore) PutRecord(ctx context.Context, record StoredRecord) error 
 	case !errors.Is(err, ErrNotFound):
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	// The record and the book's cadence standing are one transaction: a
+	// log that grows is live for the next tick, and its first record counts
+	// it into the profile's lifetime log count.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES (?, ?, ?, ?, ?, ?)`,
-		s.bookID, record.Seq, record.RecordID, []byte(record.Header), []byte(record.Capsule), record.Envelope)
-	return err
+		s.bookID, record.Seq, record.RecordID, []byte(record.Header), []byte(record.Capsule), record.Envelope); err != nil {
+		return err
+	}
+	if err := markLive(ctx, tx, s.bookID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// markLive puts logID in the live set and counts it into the lifetime log
+// count on its first append.
+func markLive(ctx context.Context, tx *sql.Tx, logID string) error {
+	for _, statement := range []string{
+		`INSERT OR IGNORE INTO cadence_logs (log_id) VALUES (?)`,
+		`INSERT OR IGNORE INTO cadence_live (log_id) VALUES (?)`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, logID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *sqliteStore) GetRecord(ctx context.Context, recordID string) (StoredRecord, error) {

@@ -629,7 +629,23 @@ func (b *Book) Checkpoint(ctx context.Context) (Checkpoint, error) {
 	return b.checkpointLocked(ctx)
 }
 
+// CheckpointAt is Checkpoint with the checkpoint's time given: a cadence cuts
+// every log at the tick's time, coarsened to the minute, so no checkpoint
+// says when within the minute its log grew.
+func (b *Book) CheckpointAt(ctx context.Context, at time.Time) (Checkpoint, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.checkpointAtLocked(ctx, &at)
+}
+
 func (b *Book) checkpointLocked(ctx context.Context) (Checkpoint, error) {
+	return b.checkpointAtLocked(ctx, nil)
+}
+
+// checkpointAtLocked checkpoints at at, or, when at is nil, at the book's
+// clock read after any index roots are committed (as it always was, so a
+// book's checkpoint times are unchanged).
+func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoint, error) {
 	if b.released {
 		return Checkpoint{}, ErrReleased
 	}
@@ -655,7 +671,11 @@ func (b *Book) checkpointLocked(ctx context.Context) (Checkpoint, error) {
 		}
 		b.roots[root.Index] = root
 	}
-	cp, err := b.commitments.Checkpoint(ctx, b.now())
+	when := b.now()
+	if at != nil {
+		when = *at
+	}
+	cp, err := b.commitments.Checkpoint(ctx, when)
 	if err != nil {
 		return Checkpoint{}, err
 	}
