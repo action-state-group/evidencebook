@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"os"
@@ -420,5 +421,58 @@ func TestMigratePayloadDirKeepsEveryProof(t *testing.T) {
 	}
 	if after, err := reopened.Checkpoint(ctx); err != nil || after.Entries < before.Entries {
 		t.Fatalf("the log did not continue from its checkpoint: %v", err)
+	}
+}
+
+// A record already in the artifact store without a payload the directory
+// still holds is not skipped: the directory is that payload's only copy.
+func TestMigratePayloadDirRefusesAHeldRecordMissingAPayload(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	book := f.open(t)
+	kept := mustAppend(t, book, observation("a", "kept"))
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(f.dir, "payloads")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, kept.Header.PayloadCommitments[0]), []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The store holds the record with no payload (written by hand: the
+	// book never stores one so).
+	if err := os.Remove(filepath.Join(f.dir, "originals.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.config(t)
+	stored, err := cfg.Store.GetRecord(ctx, kept.RecordID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Originals.Put(ctx, artifact.Record{CapsuleID: kept.RecordID, Capsule: stored.Capsule, ProducerEnvelope: stored.Envelope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("a held record missing a payload the directory holds was skipped: %v", err)
+	}
+	if err := errors.Join(cfg.Store.Release(), cfg.Substrate.Release()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The reference artifact store is owner-only and durable.
+func TestOpenOriginalsFileIsOwnerOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "originals.jsonl")
+	if _, err := OpenOriginalsFile(context.Background(), path, "book", seededKey(1).Public().(ed25519.PublicKey)); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("originals file mode %v", info.Mode().Perm())
 	}
 }

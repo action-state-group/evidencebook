@@ -9,10 +9,14 @@ capsule-cli#236: one originals store, kept per record.
 - `Config.Payloads` and `PayloadResolver`/`PayloadDir`/`OpenPayloadDir` are
   removed. `Config.Originals` is an `ArtifactStore`, capsule-emit's
   artifact store contract (`Put`, `Get`, `Purge`); `OpenOriginalsFile`
-  opens its JSONL backend. A record with payloads is stored there with its
+  opens its JSONL backend, owner-only and synced on every write
+  (`SyncedFile` gives a host's file-backed store the same). A store's `Put`
+  and `Purge` must be durable when they return. A record with payloads is stored there with its
   capsule and envelope in one `Put`, after it is sealed and before it is
   stored. `MigratePayloadDir` moves a payload directory's bytes into the
-  artifact store and changes no record, log entry or checkpoint.
+  artifact store and changes no record, log entry or checkpoint; a record
+  the store already holds without a payload the directory still has is an
+  error, never skipped.
 - Retention is kept per record. `Book.Retention(ctx, record)` and
   `Book.SetRetention(ctx, record, state, reason)` lose their payload
   digest, `LifecycleStatement` loses `payload_commitment`, and `DELETED`

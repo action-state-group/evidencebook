@@ -29,6 +29,11 @@ import (
 // original is found by the digest its record commits. Each record keeps its
 // own copy: two records committing identical bytes hold two copies, and
 // destroying one record's originals never touches the other's.
+//
+// Put and Purge must be durable when they return: the book stores a record
+// only after its originals' Put returns, so a record that survives a crash
+// has originals that survived it too. OpenOriginalsFile's store syncs its
+// file; a host supplying its own store makes the same guarantee.
 type ArtifactStore interface {
 	Put(ctx context.Context, record artifact.Record) error
 	Get(ctx context.Context, id string) (artifact.Record, error)
@@ -39,7 +44,8 @@ type ArtifactStore interface {
 // OpenOriginalsFile opens, creating it when absent, the reference
 // ArtifactStore: capsule-emit's JSONL artifact store at path, under
 // namespace, trusting the given keys (the book's signer key among them). It
-// suits a single writer, as the book is.
+// suits a single writer, as the book is. The file is kept owner-only, and
+// every Put and Purge is synced to stable storage before it returns.
 func OpenOriginalsFile(ctx context.Context, path, namespace string, trusted ...ed25519.PublicKey) (ArtifactStore, error) {
 	store, err := artifactjsonl.New(path, namespace, trusted)
 	if err != nil {
@@ -48,7 +54,51 @@ func OpenOriginalsFile(ctx context.Context, path, namespace string, trusted ...e
 	if err := store.Init(ctx); err != nil {
 		return nil, err
 	}
-	return store, nil
+	if err := os.Chmod(path, 0o600); err != nil {
+		return nil, err
+	}
+	return SyncedFile(store, path), nil
+}
+
+// SyncedFile makes a file-backed ArtifactStore durable as the book requires:
+// after each successful Put or Purge it syncs the file at path and the
+// directory holding it.
+func SyncedFile(store ArtifactStore, path string) ArtifactStore {
+	return syncedFile{ArtifactStore: store, path: path}
+}
+
+type syncedFile struct {
+	ArtifactStore
+	path string
+}
+
+func (s syncedFile) Put(ctx context.Context, record artifact.Record) error {
+	if err := s.ArtifactStore.Put(ctx, record); err != nil {
+		return err
+	}
+	return syncPath(s.path)
+}
+
+func (s syncedFile) Purge(ctx context.Context, id string) error {
+	if err := s.ArtifactStore.Purge(ctx, id); err != nil {
+		return err
+	}
+	return syncPath(s.path)
+}
+
+// syncPath syncs a file and then its directory, so neither its contents nor
+// its directory entry (a rewrite renames over it) is lost to a crash.
+func syncPath(path string) error {
+	for _, p := range []string{path, filepath.Dir(path)} {
+		f, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		if err := errors.Join(f.Sync(), f.Close()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // payloadName is the artifact name of a record's n-th payload (from 1) when
@@ -129,7 +179,18 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 		if len(record.Header.PayloadCommitments) == 0 {
 			continue
 		}
-		if _, err := originals.Get(ctx, sr.RecordID); err == nil {
+		if existing, err := originals.Get(ctx, sr.RecordID); err == nil {
+			// Held already (an earlier run stored it). The store's records are
+			// immutable, so it must already hold every payload the directory
+			// still has, or the directory is the only copy and must stay.
+			for _, digest := range record.Header.PayloadCommitments {
+				if _, _, present := originalBytes(existing, digest); present {
+					continue
+				}
+				if _, err := os.Stat(filepath.Join(dir, digest)); err == nil {
+					return moved, fmt.Errorf("%w: record %s is in the artifact store without payload %s, which the payload directory still holds", ErrCorrupt, sr.RecordID, digest)
+				}
+			}
 			continue
 		} else if !errors.Is(err, artifact.ErrNotFound) {
 			return moved, fmt.Errorf("record %s: %w", sr.RecordID, err)
