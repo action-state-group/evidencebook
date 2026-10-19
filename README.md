@@ -30,12 +30,14 @@ go get github.com/action-state-group/evidencebook
 ```go
 store, _ := evidencebook.OpenFileStore("book/records")
 substrate, _ := evidencebook.OpenCLL("book/cll.jsonl", "orders-log", checkpointKey)
-payloads, _ := evidencebook.OpenPayloadDir("book/payloads")
 signer, _ := evidencebook.NewEd25519Signer(recordKey)
+// Payload bytes live in an artifact store (capsule-emit's artifact.Store
+// contract); this is its JSONL backend, trusting the book's signer.
+originals, _ := evidencebook.OpenOriginalsFile(ctx, "artifacts.jsonl", "orders", signer.PublicKey())
 
 book, err := evidencebook.Open(ctx, evidencebook.Config{
 	BookID: "orders", Operator: "example-operator",
-	Store: store, Substrate: substrate, Payloads: payloads, Signer: signer,
+	Store: store, Substrate: substrate, Originals: originals, Signer: signer,
 })
 
 observed, err := book.Append(ctx, evidencebook.Entry{

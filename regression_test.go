@@ -217,14 +217,16 @@ func TestRetentionBelongsToTheRecordNotTheBytes(t *testing.T) {
 	first := mustAppend(t, book, observation("a", "SAME"))
 	second := mustAppend(t, book, observation("b", "SAME"))
 	digest := first.Header.PayloadCommitments[0]
-	if _, err := book.SetRetention(ctx, second.RecordID, digest, Deleted, "expiry"); err != nil {
+	if _, err := book.SetRetention(ctx, second.RecordID, Deleted, "expiry"); err != nil {
 		t.Fatal(err)
 	}
-	if state, err := book.Retention(ctx, first.RecordID, digest); err != nil || state != Available {
-		t.Fatalf("deleting one record's payload changed another's: %s %v", state, err)
+	if state, err := book.Retention(ctx, first.RecordID); err != nil || state != Available {
+		t.Fatalf("deleting one record's originals changed another's: %s %v", state, err)
 	}
+	// Each record keeps its own copy: no reference count decides whether the
+	// bytes may go, because the other record's copy is not these bytes.
 	if data, err := book.ResolvePayload(ctx, first.RecordID, digest); err != nil || string(data) != "SAME" {
-		t.Fatalf("bytes still held by a live record were destroyed: %v", err)
+		t.Fatalf("the live record's own copy was destroyed: %v", err)
 	}
 	if _, err := book.ResolvePayload(ctx, second.RecordID, digest); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("the deleted record's payload still resolves")

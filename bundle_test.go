@@ -181,7 +181,7 @@ func TestBundleWithholdsUnavailablePayloads(t *testing.T) {
 	ctx := context.Background()
 	book, records := linkedBook(t)
 	digest := records[0].Header.PayloadCommitments[0]
-	if _, err := book.SetRetention(ctx, records[0].RecordID, digest, Deleted, "retention period ended"); err != nil {
+	if _, err := book.SetRetention(ctx, records[0].RecordID, Deleted, "retention period ended"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := book.Bundle(ctx, BundleRequest{Root: records[0].RecordID, Payloads: PayloadsAll}); !errors.Is(err, ErrInvalid) {

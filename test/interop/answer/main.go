@@ -167,11 +167,11 @@ func seed(ctx context.Context, policy evidencebook.ResponderPolicy, issue func()
 	if err != nil {
 		return nil, err
 	}
-	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
+	signer, err := evidencebook.NewEd25519Signer(seeded(responderLabel))
 	if err != nil {
 		return nil, err
 	}
-	signer, err := evidencebook.NewEd25519Signer(seeded(responderLabel))
+	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func seed(ctx context.Context, policy evidencebook.ResponderPolicy, issue func()
 		return clock
 	}
 	if s.book, err = evidencebook.Open(ctx, evidencebook.Config{
-		BookID: "answer", Operator: "answer-operator", Store: store, Substrate: substrate, Payloads: payloads, Signer: signer,
+		BookID: "answer", Operator: "answer-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer,
 		Now: now, Responder: policy,
 	}); err != nil {
 		return nil, err

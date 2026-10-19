@@ -33,8 +33,7 @@ answer, and authenticated-index proofs through `ProveKeyRange`.
 `Append`:
 
 1. validates the entry against the record model (§4, §4.1, §5);
-2. commits each payload by the SHA-256 of its bytes and stores the bytes
-   through the `PayloadResolver` (§6);
+2. commits each payload by the SHA-256 of its bytes (§6);
 3. canonicalizes the header (JCS) and seals it as an Agent Action Capsule
    whose `agent_input_digest` is the digest of the header bytes, with every
    link also carried as a `references[]` entry by digest. The entry carries
@@ -44,10 +43,27 @@ answer, and authenticated-index proofs through `ProveKeyRange`.
    where it is read. Records sealed before this rule carry the link type as
    `citation_purpose`; they verify as before, since a verifier treats an
    unregistered value as informational and nothing here reads it back;
-4. writes the complete record to the `Store`;
-5. appends the capsule ID, the record ID, to the substrate and requires the
+4. stores the record capsule, its Producer Envelope and its payload bytes
+   in the artifact store, in one `Put` (only a record with payloads, or one
+   its caller sealed);
+5. writes the complete record to the `Store`;
+6. appends the capsule ID, the record ID, to the substrate and requires the
    position it gets back to equal the header's `seq`;
-6. updates the operational, authenticated and discovery indexes.
+7. updates the operational, authenticated and discovery indexes.
+
+`AppendCapsule` commits a capsule its caller seals itself as the record,
+with no wrapper record around it: a host's own capsule, signed by the book's
+signer, becomes a record of the book. Under its writer lock the book takes
+the position, builds the header and hands it to the caller's sealer, which
+must carry it as the capsule's `evidence_record_header` member
+(`RecordHeaderMember`); capsule_id covers that member like every other, so
+the capsule commits its header without a digest. The book refuses a capsule
+that does not carry exactly that header or is signed by another key, and
+then continues at step 4. The caller's originals may be bound to the
+capsule's own digests (its payload to `agent_input_digest`, say). The
+position exists only in memory until step 5: a failure before it leaves no
+record and the next record takes the same position, while the artifact
+store may keep the abandoned capsule, which no log entry names.
 
 Because a record is an ordinary capsule, a bundle this module produces is
 checked by the neutral Evidence Bundle verifier with nothing from this module.
@@ -68,7 +84,7 @@ with the error so the caller does not append it twice.
 | §4 Record Model | `Header`, `Record`, `Entry`, `HeaderVersion`, `StoredRecord` (durable form), `Book.Append`, `Book.Get` |
 | §4.1 Epistemic Type | `EpistemicType` and its eight constants, `EpistemicTypes`; `schemas/vendor/epistemic-types.json` (vendored set), `schemas/record-header.schema.json` |
 | §5 Typed Links | `Link`, `LinkType` and its six constants, `LinkTypes`, `Header.LinksTo` |
-| §6 Record/Payload Separation | `PayloadResolver`, `PayloadDir`, `Book.ResolvePayload`, `UnavailableError` |
+| §6 Record/Payload Separation | `ArtifactStore`, `OpenOriginalsFile`, `MigratePayloadDir`, `Book.ResolvePayload`, `Book.ReplyOctets`, `UnavailableError`, `Book.AppendCapsule`, `CapsuleSealer`, `RecordHeaderMember` |
 | §6.1 Retention States | `RetentionState` and its five constants, `LifecycleStatement`, `Book.SetRetention`, `Book.Retention` |
 | §6.2 Disclosure Records | `DisclosureStatement`, `WithheldItem`, `PayloadsMode`, `Bundle.Disclosure` |
 | §7 Index Classes, operational | `OperationalIndex`, `SQLiteIndex`, `Filter`, `RecordSource`, `Book.Query`, `Book.Rebuild`, `Book.IndexState` |
@@ -104,13 +120,24 @@ payload of the selected set and is refused if any is unavailable;
 `payloads: selected` carries those not withheld; `WithholdPayloads` carries
 headers only.
 
-**Retention belongs to the record.** Retention state is kept per (record,
-payload) pair, folded from lifecycle records that cite the record. Two records
-that commit identical bytes have independent retention. Bytes are destroyed
-only when no record still holds them in a resolvable state, and a failed
-deletion is retried by asking for `DELETED` again. A later record that commits
-the same bytes stores them again for itself; the earlier record stays
-`DELETED`.
+**Retention belongs to the record.** A record has one `retention_state`,
+the one its header committed, changed only by later records: a lifecycle
+record citing it, or a retention commitment covering it. There is no
+per-payload state. A record keeps its own copy of its originals in the
+artifact store, so two records committing identical bytes hold two copies
+and there is no reference count. `DELETED` purges the record's originals
+(`Purge`); its commitments stay, and a failed purge is retried by asking for
+`DELETED` again. A retention commitment (`CommitRetention`) holds every
+record its subject covers (the record, a range of positions, or the records
+citing an exchange) until its `until`: an `AVAILABLE` or `PARTIAL` record
+reads as `LEGAL_HOLD`, a `WITHHELD` one stays `WITHHELD`, and `DELETED` is
+refused for all of them, as it is under a `LEGAL_HOLD` a lifecycle record
+set. A lifecycle record written while state was kept per payload also names
+a `payload_commitment`; it is read as applying to its whole record.
+
+**Where a reply is kept.** `RecordResponse` keeps the reply's octets, as
+received, as the response record's one payload, so the record that observes
+a reply is where its bytes are read back (`ReplyOctets`).
 
 **Record types the book writes.** `close`, `disclosure`, `lifecycle`,
 `index_root`, `evidence_request`, `evidence_request_answered`,

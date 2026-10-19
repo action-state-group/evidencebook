@@ -139,11 +139,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
+	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
 	if err != nil {
 		return err
 	}
-	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
+	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func run(ctx context.Context) error {
 		return clock
 	}
 	book, err := evidencebook.Open(ctx, evidencebook.Config{
-		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Payloads: payloads,
+		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Originals: originals,
 		Signer: signer, Now: now,
 	})
 	if err != nil {

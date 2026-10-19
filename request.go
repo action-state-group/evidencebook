@@ -151,7 +151,8 @@ type ResponderKeys struct {
 }
 
 // RecordResponse verifies and records the reply that came back for the
-// request recorded as requestRecordID. Both responder keys are required. A
+// request recorded as requestRecordID, keeping the reply's octets as the
+// response record's payload (ReplyOctets reads them back). Both responder keys are required. A
 // reply that is not signed under the pinned signer key for this request's
 // digest is refused and is not recorded: an unauthenticated message can
 // neither become an outcome nor foreclose the real one. A reply genuinely
@@ -215,7 +216,10 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 	if b.outcomeRecordedLocked(requestRecordID) {
 		return Record{}, fmt.Errorf("%w: an outcome is already recorded for request %s", ErrInvalid, sent.digest)
 	}
-	return b.appendLocked(ctx, Entry{RecordType: RecordTypeResponse, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body})
+	// The reply's octets, exactly as received, are the record's one original:
+	// the record that observes them keeps them in the artifact store, so
+	// whoever later composes or re-checks the answer reads them from there.
+	return b.appendLocked(ctx, Entry{RecordType: RecordTypeResponse, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body, Payloads: [][]byte{reply.Octets}})
 }
 
 // verifyEnvelopeContent runs the checks of profile §7.3 that follow the
@@ -491,4 +495,19 @@ func (b *Book) RecordAbsence(ctx context.Context, requestRecordID string, window
 		return Record{}, err
 	}
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypeAbsence, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body})
+}
+
+// ReplyOctets returns the reply a response record observed, as received, from
+// the artifact store. It is the response record's one payload.
+func (b *Book) ReplyOctets(ctx context.Context, responseRecordID string) ([]byte, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	record, ok := b.records[responseRecordID]
+	if !ok || record.Header.RecordType != RecordTypeResponse {
+		return nil, fmt.Errorf("%w: %s is not a response this book recorded", ErrNotFound, responseRecordID)
+	}
+	if len(record.Header.PayloadCommitments) == 0 {
+		return nil, fmt.Errorf("%w: response %s was recorded without its reply octets", ErrNotFound, responseRecordID)
+	}
+	return b.resolveLocked(ctx, responseRecordID, record.Header.PayloadCommitments[0])
 }

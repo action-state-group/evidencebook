@@ -25,7 +25,6 @@ var (
 	_ Substrate          = (*CLLSubstrate)(nil)
 	_ Substrate          = (*SCITTReceiptSubstrate)(nil)
 	_ Store              = (*FileStore)(nil)
-	_ PayloadResolver    = (*PayloadDir)(nil)
 	_ OperationalIndex   = (*SQLiteIndex)(nil)
 	_ AuthenticatedIndex = (*SortedMerkleIndex)(nil)
 	_ DiscoveryIndex     = (*TokenIndex)(nil)

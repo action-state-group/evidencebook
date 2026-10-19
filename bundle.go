@@ -198,13 +198,20 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	disclosed := slices.DeleteFunc(slices.Clone(carried), func(id string) bool { _, ok := selected[id]; return !ok })
 	statement := DisclosureStatement{Anchor: anchor.ID, Payloads: req.Payloads, SuppressedFields: append([]string{}, req.Suppress...), Withheld: []WithheldItem{}}
 	payloads := make(map[string]string)
+	// A record its caller sealed (AppendCapsule) carries its header inside
+	// its capsule, so the header travels with the capsule: it is neither
+	// disclosed in the overlay nor listed as withheld.
+	inline := make(map[string]bool)
 	for _, id := range carried {
 		stored, err := b.storedLocked(ctx, id)
 		if err != nil {
 			return Bundle{}, err
 		}
 		wire.Records = append(wire.Records, stored.Capsule)
-		if !slices.Contains(disclosed, id) {
+		if _, inline[id], err = inlineHeader(stored.Capsule); err != nil {
+			return Bundle{}, fmt.Errorf("%w: capsule %s: %v", ErrCorrupt, id, err)
+		}
+		if !slices.Contains(disclosed, id) && !inline[id] {
 			statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, Member: HeaderMember, Digest: digestBytes(stored.Header)})
 		}
 	}
@@ -213,9 +220,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		if err != nil {
 			return Bundle{}, err
 		}
-		if slices.Contains(req.Suppress, HeaderMember) {
+		switch {
+		case inline[id]:
+		case slices.Contains(req.Suppress, HeaderMember):
 			statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, Member: HeaderMember, Digest: digestBytes(stored.Header)})
-		} else {
+		default:
 			wire.Disclosures[id] = map[string]json.RawMessage{HeaderMember: stored.Header}
 		}
 		for _, digest := range b.records[id].Header.PayloadCommitments {
@@ -363,7 +372,8 @@ func strictHeader(raw json.RawMessage) (Header, error) {
 
 // PeerRecord is one record read from a verified bundle. Header is nil when
 // the bundle withheld it; HeaderVerified is true only when the disclosed
-// header hashes to the digest the record's capsule commits.
+// header hashes to the digest the record's capsule commits, or the capsule,
+// verified, carries the header itself (RecordHeaderMember).
 type PeerRecord struct {
 	RecordID       string
 	Seq            uint64
@@ -575,7 +585,17 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		}
 		peer := PeerRecord{RecordID: id, CapsuleOK: result.CapsuleResults[id].OK}
 		peer.Seq, _ = certificate.get("memberships").get(id).get("log_coordinates").get("seq").uint()
-		if header := tree.get("disclosures").get(id).get(HeaderMember); header.present() && matched[id] {
+		if header := record.get(RecordHeaderMember); header.present() {
+			// capsule_id covers the member, so it is the record's header
+			// exactly when the capsule verifies.
+			raw, err := header.canonical()
+			if err != nil {
+				return out, fmt.Errorf("%w: carried header: %v", ErrInvalid, err)
+			}
+			if parsed, err := strictHeader(raw); err == nil && peer.CapsuleOK {
+				peer.Header, peer.HeaderVerified = &parsed, true
+			}
+		} else if header := tree.get("disclosures").get(id).get(HeaderMember); header.present() && matched[id] {
 			raw, err := header.canonical()
 			if err != nil {
 				return out, fmt.Errorf("%w: disclosed header: %v", ErrInvalid, err)
