@@ -59,7 +59,10 @@ type BundleRequest struct {
 	// Suppress names disclosure members left out of the overlay; suppressing
 	// HeaderMember leaves every disclosed header as withheld-with-digest. A
 	// header carried inside its capsule (RecordHeaderMember) is part of the
-	// capsule's committed bytes, so it travels whatever Suppress says.
+	// capsule's committed bytes, so it travels whatever Suppress says. For
+	// such a record, suppressing agent_input or agent_output also withholds
+	// the original bound to it (unless another, unsuppressed member is bound
+	// to the same bytes).
 	Suppress []string
 	// Withhold names payload digests this disclosure does not carry.
 	Withhold []string
@@ -241,7 +244,10 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 			}
 		}
 		for _, digest := range b.records[id].Header.PayloadCommitments {
-			if req.WithholdPayloads || slices.Contains(req.Withhold, digest) {
+			// Suppressing every member an original is bound to withholds its
+			// bytes too, not only the overlay member.
+			suppressed := len(members[digest]) > 0 && !slices.ContainsFunc(members[digest], func(m string) bool { return !slices.Contains(req.Suppress, m) })
+			if req.WithholdPayloads || slices.Contains(req.Withhold, digest) || suppressed {
 				if req.Payloads == PayloadsAll {
 					return Bundle{}, fmt.Errorf("%w: payloads=all cannot withhold payloads", ErrInvalid)
 				}
