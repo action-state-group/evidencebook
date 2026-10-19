@@ -45,23 +45,36 @@ evidencebook#36 §2 and §4.
   it is (never provisioning one); `LegacyLog.Append` runs the profile's own
   write under the shelf's lock and puts the log back in the live set.
 
-### Added: the cadence tree, byte for byte capsule-cli's
+### Added: salted per-field commitments and a three-way reconcile check
 
-evidencebook#36 §2 (the heartbeat cadence); the tick and live set come next.
+evidencebook#36 §3 (the deal profile on the book); the construction is the
+one evidencebook#44 rules a History's deal-level commitments use.
 
-- `cadence_tree.go` ports capsule-cli's cadence tree unchanged: leaf
-  `SHA-256(0x00 ‖ JCS{checkpoint_sha256, log_id, salt, size})`, node
-  `0x01`, empty `0x02`, filler `0x03 ‖ nonce`, depth 16
-  (`CadenceDepth`), the sparse path and fold. `testdata/cadence` holds
-  vectors written by capsule-cli 7a6b101's own code, and the port
-  reproduces them.
-- `TickLeaves` / `TickLeaf` are capsule-cli's stored tick leaves member for
-  member, plus `filler_seed` and `filler_count`. `DerivedFillers` keeps a
-  tick's occupancy at the profile's lifetime log count plus one when ended
-  logs leave the tick, so a bundle's path shows no more than today; a tick
-  stores one seed instead of a filler per ended log. `TickLeaves.Tree`
-  rebuilds any tick's tree from what it stored; ticks a released build
-  stored read unchanged.
+- `Entry.Fields` commits texts by field name, each with a fresh 32-byte
+  nonce, as `sha256-jcs-nonce256` (`CommitAlgNonce256`): SHA-256 over
+  RFC 8785 of `{"nonce", "text"}`, agent-action-capsule
+  presentation-contract §7.2 and capsule-cli's deal records. The header
+  carries `field_commitments` (by field name; §7.2's records carry the same
+  values as `<name>_commitment` members, so the placement differs and the
+  values do not) and `commit_alg`; the openings
+  (`{nonce, text}`) are originals in the artifact store, under the
+  record's retention, never in the record. `Book.Opening` reads one;
+  `VerifyOpening` checks one. Openings are not payloads:
+  `payload_commitments` and `ResolvePayload` never include them.
+  `schemas/record-header.schema.json` declares `field_commitments` and
+  `commit_alg` (and requires them together, with `retention_state`).
+  `Get`, `Query` and `Append` return records with their own copies of the
+  header's maps and slices, so a caller cannot change what the book trusts.
+- Reconcile: `Half` gains `FieldCommitments` and `Opened`. `OpenHalf`
+  checks openings against a half's own commitments, and an opening that
+  does not open makes the half untrusted (`UNRESOLVED`).
+  `ReconcileHalvesWith` takes a `ContentCheck` returning `Agree`,
+  `Disagree` or `Undecided`; `Undecided` is `INSUFFICIENT`, so a missing
+  opening is never disagreement. `OpenedFieldsAgree(fields...)` needs both
+  halves' openings, since each record's nonce is its own.
+  `ReconcileHalves` and `Comparator` keep their meaning
+  (`Comparator.Check`). `ReconcileInput` gains `Check` beside `Compare`
+  (exactly one is set) and `OwnOpenings`/`PeerOpenings`.
 
 ### Added: a shelf of books, one log per deal
 
@@ -84,6 +97,24 @@ evidencebook#59).
   the same for any book, `SetRetention`'s purge retry included).
   `OpenCLLSQLite` provisions only a log the file holds nothing of: a log
   with state that fails to open is reported, never initialized over.
+
+### Added: the cadence tree, byte for byte capsule-cli's
+
+evidencebook#36 §2 (the heartbeat cadence); the tick and live set come next.
+
+- `cadence_tree.go` ports capsule-cli's cadence tree unchanged: leaf
+  `SHA-256(0x00 ‖ JCS{checkpoint_sha256, log_id, salt, size})`, node
+  `0x01`, empty `0x02`, filler `0x03 ‖ nonce`, depth 16
+  (`CadenceDepth`), the sparse path and fold. `testdata/cadence` holds
+  vectors written by capsule-cli 7a6b101's own code, and the port
+  reproduces them.
+- `TickLeaves` / `TickLeaf` are capsule-cli's stored tick leaves member for
+  member, plus `filler_seed` and `filler_count`. `DerivedFillers` keeps a
+  tick's occupancy at the profile's lifetime log count plus one when ended
+  logs leave the tick, so a bundle's path shows no more than today; a tick
+  stores one seed instead of a filler per ended log. `TickLeaves.Tree`
+  rebuilds any tick's tree from what it stored; ticks a released build
+  stored read unchanged.
 
 ### Changed (breaking): payload bytes live in an artifact store
 
