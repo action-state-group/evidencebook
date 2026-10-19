@@ -111,6 +111,14 @@ func TestImportLegacyContinuesTheCadence(t *testing.T) {
 	if next.N != 3 || next.EntrySeq <= l.ticks[1].EntrySeq {
 		t.Fatalf("next tick %d at entry %d after entry %d", next.N, next.EntrySeq, l.ticks[1].EntrySeq)
 	}
+	// The imported ticks have a released build's shape: every log was in
+	// every tick, so only the one stored filler and no derived ones
+	// (capsule-cli 7a6b101 dealTickLeaves), and Chain rebuilds them.
+	for _, tick := range l.ticks {
+		if tick.Leaves.FillerSeed != "" || tick.Leaves.FillerCount != 0 || tick.Leaves.FillerNonce == "" {
+			t.Fatalf("tick at entry %d is not a released build's shape: %+v", tick.EntrySeq, tick.Leaves)
+		}
+	}
 	leaf := l.ticks[0].Leaves.Deals["deal/a"]
 	statement, err := base64.RawURLEncoding.DecodeString(leaf.Statement)
 	if err != nil {
