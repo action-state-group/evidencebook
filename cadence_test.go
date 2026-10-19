@@ -471,3 +471,13 @@ func TestATickStoppedInItsPaddingPadsOnlyToTheBucket(t *testing.T) {
 		t.Fatalf("the root is in the log %d times", roots)
 	}
 }
+
+// An unfinished tick is never witnessed: no witness saw its root.
+func TestAnUnfinishedTickCannotBeWitnessed(t *testing.T) {
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	pendingTick(t, shelf, 1)
+	if err := c.Witnessed(context.Background(), 1); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("witnessing an unfinished tick: %v", err)
+	}
+}
