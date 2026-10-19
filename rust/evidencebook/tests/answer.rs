@@ -28,8 +28,8 @@ fn key(label: &str) -> SigningKey {
 struct Book {
     substrate: CllSubstrate,
     records: Vec<Record>,
-    correlation: BTreeMap<String, Vec<String>>,
-    citing: BTreeMap<String, Vec<String>>,
+    correlation: BTreeMap<String, Vec<u64>>,
+    citing: BTreeMap<String, Vec<u64>>,
     _dir: tempfile::TempDir,
 }
 
@@ -65,13 +65,10 @@ fn book_with(n: u64, cuts: &[u64], citing: &[u64]) -> Book {
         assert_eq!(b.substrate.append_leaf(&id).unwrap(), i);
         let digest = hex::encode(id);
         if i == 1 || i == 5 {
-            b.correlation
-                .entry("c-1".into())
-                .or_default()
-                .push(digest.clone());
+            b.correlation.entry("c-1".into()).or_default().push(i);
         }
         if citing.contains(&i) {
-            b.citing.entry(half()).or_default().push(digest.clone());
+            b.citing.entry(half()).or_default().push(i);
         }
         b.records.push(Record {
             leaf_index: i,
@@ -104,10 +101,10 @@ impl RecordSource for Book {
     fn record_at(&self, leaf_index: u64) -> Option<Record> {
         self.records.get(leaf_index as usize).cloned()
     }
-    fn correlation(&self, id: &str) -> Vec<String> {
+    fn correlation(&self, id: &str) -> Vec<u64> {
         self.correlation.get(id).cloned().unwrap_or_default()
     }
-    fn citing(&self, half_digest: &str) -> Vec<String> {
+    fn citing(&self, half_digest: &str) -> Vec<u64> {
         self.citing.get(half_digest).cloned().unwrap_or_default()
     }
 }

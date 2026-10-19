@@ -94,6 +94,9 @@ pub enum AnswerError {
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
     OverLimit,
+    /// The artifact has no RFC 8785 form (a derived value holds a fraction).
+    #[error("the artifact cannot be canonicalized: {0}")]
+    Artifact(String),
     #[error("the envelope could not be signed: {0}")]
     Sign(#[from] evidence_request::envelope::SignError),
     #[error(transparent)]
@@ -264,13 +267,11 @@ pub fn select(
             }
             range_leaves(0, covered - 1, covered, limit)?
         }
-        (None, Subject::Correlation(id)) => {
-            leaves_under(records, records.correlation(id), covered, limit)?
-        }
+        (None, Subject::Correlation(id)) => leaves_under(records.correlation(id), covered, limit)?,
         // The one form left: records citing the requester's half.
         (None, _) => {
             let half = citing_half(&request.subject).expect("every other form is matched above");
-            leaves_under(records, records.citing(half), covered, limit)?
+            leaves_under(records.citing(half), covered, limit)?
         }
     };
     Ok(Selection {
@@ -339,7 +340,7 @@ pub fn build(
             }
             head.insert("derivation".into(), json!(DERIVATION_HISTORY_CARD));
             head.insert("history".into(), Value::Array(history));
-            jcs(head)
+            jcs(head)?
         }
         (Some(_), _) => {
             let (token, (member, value)) = derived.ok_or(AnswerError::DerivationUnsupported)?;
@@ -348,7 +349,7 @@ pub fn build(
             if options.prove_beyond_profile {
                 material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
             }
-            jcs(head)
+            jcs(head)?
         }
         (None, Subject::Checkpoints) => {
             let list = chain
@@ -356,7 +357,7 @@ pub fn build(
                 .map(|cp| json!(hex::encode(&cp.statement)))
                 .collect();
             head.insert("checkpoints".into(), Value::Array(list));
-            jcs(head)
+            jcs(head)?
         }
         (None, Subject::Record(d)) => {
             let [leaf] = selection.records[..] else {
@@ -394,7 +395,7 @@ pub fn build(
                 }
             }
             head.insert("records".into(), records_value(&set));
-            jcs(head)
+            jcs(head)?
         }
     };
 
@@ -436,10 +437,13 @@ fn profile_time(timestamp: &str) -> String {
     }
 }
 
-fn jcs(object: Map<String, Value>) -> Vec<u8> {
+/// RFC 8785 of an artifact. The crate's own members are text, maps, arrays
+/// and integers; a [`Derive`]d value may hold what the profile's JCS refuses
+/// (a fraction), which is [`AnswerError::Artifact`], never a panic.
+fn jcs(object: Map<String, Value>) -> Result<Vec<u8>, AnswerError> {
     evidence_request::jcs::to_string(&Value::Object(object))
-        .expect("an artifact holds only text, maps, arrays and integers")
-        .into_bytes()
+        .map(String::into_bytes)
+        .map_err(|e| AnswerError::Artifact(e.to_string()))
 }
 
 fn consistency(log: &dyn CheckpointedLog, from: u64, to: u64) -> Result<Vec<u8>, AnswerError> {
@@ -503,8 +507,7 @@ fn citing_anchor(
     let latest = latest.checkpoint.leaf_count()?;
     let Some(last_citing) = records
         .citing(half)
-        .iter()
-        .filter_map(|d| records.leaf_index_of(d))
+        .into_iter()
         .filter(|&i| i < latest)
         .max()
     else {
@@ -529,17 +532,8 @@ fn range_leaves(a: u64, b: u64, covered: u64, limit: u64) -> Result<Vec<u64>, An
     Ok((a..=b).collect())
 }
 
-fn leaves_under(
-    records: &dyn RecordSource,
-    digests: Vec<String>,
-    covered: u64,
-    limit: u64,
-) -> Result<Vec<u64>, AnswerError> {
-    let mut found: Vec<u64> = digests
-        .iter()
-        .filter_map(|d| records.leaf_index_of(d))
-        .filter(|&i| i < covered)
-        .collect();
+fn leaves_under(leaves: Vec<u64>, covered: u64, limit: u64) -> Result<Vec<u64>, AnswerError> {
+    let mut found: Vec<u64> = leaves.into_iter().filter(|&i| i < covered).collect();
     found.sort_unstable();
     found.dedup();
     if found.is_empty() {

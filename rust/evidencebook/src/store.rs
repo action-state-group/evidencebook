@@ -15,10 +15,12 @@
 //! **What a record's id is.** The log commits one entry per record, and the
 //! store says which: a book commits the SHA-256 of the record's octets (the
 //! default of [`RecordSource::entry_of`]); a capsule ledger commits each
-//! line's `capsule_id`, which is not the SHA-256 of the line. Every lookup by
-//! id ([`RecordSource::record_by_digest`], [`RecordSource::leaf_index_of`],
-//! [`RecordSource::correlation`], [`RecordSource::citing`]) uses that committed entry, and every record an
-//! answer serves is checked against it with [`RecordSource::entry_of`].
+//! line's `capsule_id`, which is not the SHA-256 of the line. A lookup by id
+//! ([`RecordSource::record_by_digest`], [`RecordSource::leaf_index_of`]) uses
+//! that committed entry, and every record an answer serves is checked against
+//! it with [`RecordSource::entry_of`]. The set lookups
+//! ([`RecordSource::correlation`], [`RecordSource::citing`]) answer with leaf
+//! positions, so an entry committed twice keeps both occurrences.
 //!
 //! Every method is read-only (`&self`) and none blocks on another writer: an
 //! implementation answers from what it has already committed.
@@ -55,12 +57,12 @@ pub trait RecordSource {
             .filter(|r| r.digest == digest)
             .map(|r| r.leaf_index)
     }
-    /// The committed entries of the records carrying exactly this
-    /// correlation identifier.
-    fn correlation(&self, id: &str) -> Vec<String>;
-    /// The committed entries of the records citing exactly this interaction
-    /// half.
-    fn citing(&self, half_digest: &str) -> Vec<String>;
+    /// The leaf indices of the records carrying exactly this correlation
+    /// identifier. Positions, not entries: a log may commit the same entry
+    /// twice, and each occurrence is its own record.
+    fn correlation(&self, id: &str) -> Vec<u64>;
+    /// The leaf indices of the records citing exactly this interaction half.
+    fn citing(&self, half_digest: &str) -> Vec<u64>;
     /// The entry the log commits for a record with these octets, recomputed
     /// from them; `None` when they are not a record of this store's format.
     /// The default is the book's: the SHA-256 of the octets, lowercase hex.
@@ -108,10 +110,10 @@ mod tests {
         fn record_at(&self, _: u64) -> Option<Record> {
             None
         }
-        fn correlation(&self, _: &str) -> Vec<String> {
+        fn correlation(&self, _: &str) -> Vec<u64> {
             Vec::new()
         }
-        fn citing(&self, _: &str) -> Vec<String> {
+        fn citing(&self, _: &str) -> Vec<u64> {
             Vec::new()
         }
     }

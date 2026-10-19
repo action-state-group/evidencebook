@@ -30,6 +30,11 @@ fn key(label: &str) -> SigningKey {
     SigningKey::from_bytes(&Sha256::digest(label.as_bytes()).into())
 }
 
+/// The interaction half records cite in these tests.
+fn half() -> String {
+    hex::encode(Sha256::digest(b"h"))
+}
+
 /// This store's committed entry for a record: not the SHA-256 of its octets.
 fn entry(body: &[u8]) -> String {
     let mut h = Sha256::new();
@@ -42,6 +47,7 @@ fn entry(body: &[u8]) -> String {
 /// in-memory MMR over the same leaves.
 struct Foreign {
     records: RefCell<Vec<Record>>,
+    citing: std::collections::BTreeMap<String, Vec<u64>>,
     stated: Vec<StatedCheckpoint>,
     nodes: MemoryNodeStore,
 }
@@ -57,19 +63,11 @@ impl RecordSource for Foreign {
     fn record_at(&self, leaf_index: u64) -> Option<Record> {
         self.records.borrow().get(leaf_index as usize).cloned()
     }
-    fn correlation(&self, _: &str) -> Vec<String> {
+    fn correlation(&self, _: &str) -> Vec<u64> {
         Vec::new()
     }
-    fn citing(&self, half: &str) -> Vec<String> {
-        // Records 1 and 3 cite the half "h".
-        if half == "h" {
-            [1, 3]
-                .iter()
-                .map(|&i| self.records.borrow()[i].digest.clone())
-                .collect()
-        } else {
-            Vec::new()
-        }
+    fn citing(&self, half: &str) -> Vec<u64> {
+        self.citing.get(half).cloned().unwrap_or_default()
     }
     fn entry_of(&self, body: &[u8]) -> Option<String> {
         Some(entry(body))
@@ -106,8 +104,14 @@ impl CheckpointedLog for Foreign {
 }
 
 /// Six records, checkpoints after 2 and 5, cut by a checkpointer that then
-/// goes away with its files.
+/// goes away with its files. Records 1 and 3 cite [`half`].
 fn foreign() -> Foreign {
+    foreign_with(|i| i, &[1, 3])
+}
+
+/// [`foreign`], record `i` being the `body_of(i)`-th distinct body (so two
+/// positions can commit the same entry), the records at `citing` citing [`half`].
+fn foreign_with(body_of: impl Fn(u64) -> u64, citing: &[u64]) -> Foreign {
     let dir = tempfile::tempdir().unwrap();
     let (mut s, _) = CllSubstrate::open(
         &dir.path().join("mmr_nodes.dat"),
@@ -117,9 +121,10 @@ fn foreign() -> Foreign {
     let mut nodes = MemoryNodeStore::new();
     let mut records = Vec::new();
     for i in 0..6u64 {
-        let body = json!({"v": 1, "book_id": "b", "seq": i + 1, "record_type": "claim",
+        let n = body_of(i);
+        let body = json!({"v": 1, "book_id": "b", "seq": n + 1, "record_type": "claim",
             "epistemic_type": "producer_claim", "committed_at": "2026-10-19T00:00:00Z",
-            "links": [], "correlation": {"k": format!("c-{i}")}})
+            "links": [], "correlation": {"k": format!("c-{n}")}})
         .to_string()
         .into_bytes();
         let digest = entry(&body);
@@ -144,6 +149,7 @@ fn foreign() -> Foreign {
     drop(dir);
     Foreign {
         records: RefCell::new(records),
+        citing: [(half(), citing.to_vec())].into(),
         stated,
         nodes,
     }
@@ -318,8 +324,8 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
 #[test]
 fn the_citing_anchor_reads_the_callers_index() {
     let f = foreign();
-    let half = ResolvedAnchor::ExchangeHalf("h".into());
-    assert_eq!(serving_checkpoint(&f, &f.stated, &half).unwrap(), 1);
+    let pin = ResolvedAnchor::ExchangeHalf(half());
+    assert_eq!(serving_checkpoint(&f, &f.stated, &pin).unwrap(), 1);
     let none = ResolvedAnchor::ExchangeHalf("other".into());
     assert!(matches!(
         serving_checkpoint(&f, &f.stated, &none),
@@ -358,4 +364,57 @@ fn the_index_and_reconcile_read_the_same_store() {
         committed_records(&f, &f),
         Err(SubstrateError::Record { leaf_index: 3, .. })
     ));
+}
+
+#[test]
+fn an_entry_committed_twice_is_cited_at_each_position() {
+    // Records 1 and 4 are the same record committed twice; both cite the half.
+    // The later one is what the latest checkpoint must cover, so the answer
+    // is served under the second checkpoint, not the first.
+    let f = foreign_with(|i| if i == 4 { 1 } else { i }, &[1, 4]);
+    assert_eq!(f.leaf_index_of(&f.records.borrow()[4].digest), Some(1));
+    let pin = ResolvedAnchor::ExchangeHalf(half());
+    assert_eq!(serving_checkpoint(&f, &f.stated, &pin).unwrap(), 1);
+    let (_, req) = request(json!({"exchange": half()}), json!({"expected_pin": half()})); // vocabulary-gate: request-draft wire token
+    let selection = select(&f, &f, &req, &pin, 100).unwrap();
+    assert_eq!(
+        selection,
+        Selection {
+            at: 1,
+            records: vec![1, 4]
+        }
+    );
+}
+
+#[test]
+fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
+    let f = foreign();
+    let at = pinned(&f, 1);
+    let (bytes, mut req) = request(
+        json!({"full_history": null}),
+        json!({"expected_pin": at.digest()}),
+    );
+    req.derivation = Some(evidence_request::request::Derivation::Token(
+        "ratio/1".into(),
+    ));
+    let derive =
+        |_: &str, _: &Subject, _: &StatedCheckpoint| Some(("ratio".to_string(), json!(1.5)));
+    let r = build(
+        &f,
+        &f,
+        &req,
+        &bytes,
+        &at,
+        &Selection {
+            at: 1,
+            records: vec![],
+        },
+        Options {
+            prove_beyond_profile: false,
+            derive: Some(&derive),
+        },
+        &key("responder") as &dyn EnvelopeSigner,
+        ISSUED_AT,
+    );
+    assert!(matches!(r, Err(AnswerError::Artifact(_))));
 }
