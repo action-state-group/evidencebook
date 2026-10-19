@@ -574,6 +574,9 @@ func TestMigratePayloadDirFollowsTheLatestLegacyState(t *testing.T) {
 	if moved, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || moved != 2 {
 		t.Fatalf("migration moved %d records: %v", moved, err)
 	}
+	if again, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || again != 0 {
+		t.Fatalf("a repeated migration moved %d records: %v", again, err)
+	}
 	held, err := cfg.Originals.Get(ctx, both.RecordID)
 	if err != nil {
 		t.Fatalf("the record whose latest state is WITHHELD was not stored: %v", err)
