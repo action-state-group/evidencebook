@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 (2026-10-19)
+
+Everything since v0.5.0: the APIs capsule-cli#242 needs to move deals onto
+shelf books (#73, #74) and the Deal Reconcile Contract's recompute (#79),
+which completes evidencebook#36. No exported identifier is removed or
+changed; this release only adds API and fixes the witnessed index.
 
 ### Added: the Deal Reconcile Contract's recompute (#79)
 
