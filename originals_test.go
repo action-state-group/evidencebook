@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"os"
 	"path/filepath"
 	"slices"
@@ -255,8 +256,37 @@ func TestCallerSealedRecordInABundle(t *testing.T) {
 		if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
 			t.Fatal(err)
 		}
-		if _, disclosed := wire.Disclosures[own.RecordID]; disclosed {
-			t.Fatal("a caller-sealed header was disclosed as agent_input")
+		// The header travels in the capsule. agent_input is the capsule's
+		// own member: the bound original, disclosed when the record is
+		// selected with its payloads and agent_input is not suppressed.
+		members, disclosed := wire.Disclosures[own.RecordID]
+		want := req.Root == citing.RecordID
+		if disclosed != want {
+			t.Fatalf("root %s: own capsule's members disclosed = %v, want %v", req.Root, disclosed, want)
+		}
+		if !disclosed {
+			continue
+		}
+		if string(members["agent_input"]) != payload {
+			t.Fatalf("agent_input disclosed as %s, want the bound original", members["agent_input"])
+		}
+		var capsule any
+		for _, raw := range wire.Records {
+			c, err := decodeJSON(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.(map[string]any)["capsule_id"] == own.RecordID {
+				capsule = c
+			}
+		}
+		input, err := decodeJSON(members["agent_input"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		checked := disclosure.Verify(map[string]any{"capsule": capsule, "disclosures": map[string]any{"agent_input": input}}, nil)
+		if checked.DisclosuresMatched() != 1 {
+			t.Fatalf("the neutral disclosure check: %+v", checked.DisclosureFindings)
 		}
 	}
 }

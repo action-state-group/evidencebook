@@ -31,6 +31,9 @@ capsule-cli#236: one originals store, kept per record.
   carrying its header in the `evidence_record_header` member
   (`RecordHeaderMember`), sealed under the book's writer lock and signed by
   the book's signer. `VerifyBundle` reads such a header from the capsule.
+  A bundle discloses such a record's originals bound to its capsule's
+  `agent_input` or `agent_output` digest as those members, so a neutral
+  verifier matches them against the capsule.
 - `RecordResponse` keeps the reply's octets as the response record's
   payload; `Book.ReplyOctets` reads them back.
 
