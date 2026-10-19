@@ -16,7 +16,7 @@ import (
 
 // A signed response is reported beside the body's checks, never inside
 // them: an order or a checkout without AP2 stays NOT_PRESENT whatever the
-// response signature says (ucp-v0 §5 at cff71823).
+// response signature says (ucp-v0 §5 at 75009695).
 func TestResponseFixtures(t *testing.T) {
 	p := fixturePolicy(t)
 	cases := []struct {
