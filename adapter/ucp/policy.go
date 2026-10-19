@@ -105,6 +105,13 @@ func retainedMethod(policy adapter.TrustPolicy) string {
 func resolveKey(policy adapter.TrustPolicy, kid, signerOrigin, prop string) (crypto.PublicKey, adapter.PropertyResult) {
 	row := adapter.PropertyResult{Property: prop}
 	text := policy.KeySets[KeySetName]
+	if len(text) == 0 && policy.Pin(KeySetName) != "" {
+		// A v0.3.0 policy carried the key set as a pin. Say so, rather than
+		// report it as the offline verdict of a policy that retained none.
+		row.Status, row.Method = adapter.NotChecked, retainedMethod(policy)
+		row.Detail = "the trust policy gives " + KeySetName + " as a pin; a retained key set is read only from key_sets." + KeySetName
+		return nil, row
+	}
 	if len(text) == 0 {
 		row.Status, row.Method, row.Detail = adapter.NotChecked, methodKeyLive, "no key set was retained, and the verifier is offline"
 		return nil, row

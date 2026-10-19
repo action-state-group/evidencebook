@@ -641,7 +641,7 @@ It never counts against a requirement that does not rest on that signature.
 
 | Name | Kind | Meaning |
 |---|---|---|
-| `ucp.keys` | key_sets | the retained `keys[]`: a JWK Set `{"keys": [...]}` or a bare array |
+| `ucp.keys` | key_sets | the retained `keys[]`: a JWK Set `{"keys": [...]}` or a bare array. A `ucp.keys` pin (the v0.3.0 shape) is not read: the key check is `NOT_CHECKED` and its explanation names `key_sets` |
 | `ucp.keys.origin` | pin | the business origin (`https://host`) whose `/.well-known/ucp` served that copy. For a checkout, this is also the origin `ucp.business_trust` asks about |
 | `ucp.keys.source` | pin, optional | where the copy came from, named in the key check's method; by default the profile URL of `ucp.keys.origin` |
 | `ucp.keys.retained_at` | pin, optional | when the copy was taken (RFC 3339), named in the key check's method |

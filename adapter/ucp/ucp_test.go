@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -554,4 +555,32 @@ func Example() {
 	// native_check ucp.merchant_authorization.key PASS
 	// native_check ucp.merchant_authorization.signature FAIL
 	// ucp.business_trust ucp.business_trust PASS
+}
+
+// A v0.3.0 policy file, with the key set as the ucp.keys pin, is not read as
+// one that retained no key set: the key row names the move to key_sets.
+func TestKeySetAsPinIsReported(t *testing.T) {
+	old := `{"pins":{"ucp.keys":` + strconv.Quote(testJWKSet()) + `,"ucp.keys.origin":"` + fxOrigin + `","ucp.keys.retained_at":"` + fxRetainedAt + `"},"keys":{"ucp.business_origin":["` + fxOrigin + `"]}}`
+	path := filepath.Join(t.TempDir(), "trust-policy.json")
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := adapter.LoadTrustPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string][]byte{
+		"checkout": positiveCheckout(t),
+		"webhook":  webhookRequest(t, orderBody, fullComponents),
+	} {
+		rs := check(raw, p)
+		prop := PropMAKey
+		if name == "webhook" {
+			prop = PropWebhookKey
+		}
+		k, ok := adapter.FindCheck(rs, prop)
+		if !ok || k.Status != adapter.NotChecked || k.Method == methodKeyLive || !strings.Contains(k.Detail, "key_sets."+KeySetName) {
+			t.Errorf("%s: %+v", name, k)
+		}
+	}
 }
