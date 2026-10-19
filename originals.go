@@ -3,12 +3,15 @@
 package evidencebook
 
 import (
+	"cmp"
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/action-state-group/capsule-emit/go/artifact"
@@ -158,10 +161,14 @@ func originalBytes(record artifact.Record, digest string) (data []byte, found, h
 // reads the records from store and changes none of them: no header, record
 // id, log entry or checkpoint moves, so every existing proof still holds.
 // A record whose originals are already in the artifact store is skipped, so
-// an interrupted migration is resumed by running it again. A payload whose
-// file is missing (one deleted under the earlier per-payload retention) is
-// stored as never retained rather than invented. It returns how many
-// records it stored.
+// an interrupted migration is resumed by running it again. Retention is
+// now per record, so a record whose lifecycle ends DELETED (under the
+// earlier per-payload retention, a deletion of any of its payloads) is not
+// stored, even when a file survived because another record shares the
+// digest: the book reads it as DELETED before it looks for originals. A
+// payload whose file is missing is left out of the record, so reading it
+// reports the store does not hold it rather than claiming it was never
+// kept. It returns how many records it stored.
 //
 // The directory itself is left for the caller to remove once the call
 // returns without error.
@@ -170,13 +177,22 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 	if err != nil {
 		return 0, err
 	}
-	moved := 0
+	decoded := make([]Record, 0, len(records))
 	for _, sr := range records {
 		record, err := decodeStored(sr)
 		if err != nil {
-			return moved, err
+			return 0, err
 		}
-		if len(record.Header.PayloadCommitments) == 0 {
+		decoded = append(decoded, record)
+	}
+	deleted, err := deletedRecords(decoded)
+	if err != nil {
+		return 0, err
+	}
+	moved := 0
+	for i, sr := range records {
+		record := decoded[i]
+		if len(record.Header.PayloadCommitments) == 0 || deleted[sr.RecordID] {
 			continue
 		}
 		if existing, err := originals.Get(ctx, sr.RecordID); err == nil {
@@ -200,7 +216,6 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 			data, err := os.ReadFile(filepath.Join(dir, digest))
 			switch {
 			case errors.Is(err, os.ErrNotExist):
-				held.Artifacts = append(held.Artifacts, artifact.Artifact{Name: payloadName(i + 1), State: artifact.NeverRetained})
 				continue
 			case err != nil:
 				return moved, err
@@ -215,4 +230,35 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 		moved++
 	}
 	return moved, nil
+}
+
+// deletedRecords folds every lifecycle record, in log order, into the set of
+// records whose retention ends DELETED. A lifecycle record that also names a
+// payload_commitment (written under per-payload retention) applies to the
+// whole record, as Retention reads it.
+func deletedRecords(records []Record) (map[string]bool, error) {
+	ordered := slices.Clone(records)
+	slices.SortFunc(ordered, func(a, b Record) int { return cmp.Compare(a.Seq, b.Seq) })
+	state := map[string]RetentionState{}
+	for _, r := range ordered {
+		if r.Header.RecordType != RecordTypeLifecycle {
+			continue
+		}
+		var statement LifecycleStatement
+		if err := json.Unmarshal(r.Header.Statement, &statement); err != nil {
+			return nil, fmt.Errorf("%w: lifecycle record %s: %v", ErrCorrupt, r.RecordID, err)
+		}
+		for _, cited := range r.Header.LinksTo(Cites) {
+			if state[cited] != Deleted {
+				state[cited] = statement.RetentionState
+			}
+		}
+	}
+	deleted := map[string]bool{}
+	for id, s := range state {
+		if s == Deleted {
+			deleted[id] = true
+		}
+	}
+	return deleted, nil
 }

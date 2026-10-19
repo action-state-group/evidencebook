@@ -462,6 +462,51 @@ func TestMigratePayloadDirRefusesAHeldRecordMissingAPayload(t *testing.T) {
 	}
 }
 
+// Under the earlier dedupe rule a deleted record's file survived when
+// another record shared its digest. Migration must not bring those bytes
+// back as the deleted record's originals.
+func TestMigratePayloadDirLeavesADeletedRecordDeleted(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	book := f.open(t)
+	kept := mustAppend(t, book, observation("a", "shared"))
+	gone := mustAppend(t, book, observation("b", "shared"))
+	if _, err := book.SetRetention(ctx, gone.RecordID, Deleted, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(f.dir, "payloads")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, kept.Header.PayloadCommitments[0]), []byte("shared"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(f.dir, "originals.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.config(t)
+	if moved, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || moved != 1 {
+		t.Fatalf("migration moved %d records: %v", moved, err)
+	}
+	if _, err := cfg.Originals.Get(ctx, gone.RecordID); !errors.Is(err, artifact.ErrNotFound) {
+		t.Fatalf("the deleted record's originals were stored: %v", err)
+	}
+	if err := errors.Join(cfg.Store.Release(), cfg.Substrate.Release()); err != nil {
+		t.Fatal(err)
+	}
+	reopened := f.open(t)
+	if data, err := reopened.ResolvePayload(ctx, kept.RecordID, kept.Header.PayloadCommitments[0]); err != nil || string(data) != "shared" {
+		t.Fatalf("the kept record's original does not resolve: %v", err)
+	}
+	var unavailable *UnavailableError
+	if _, err := reopened.ResolvePayload(ctx, gone.RecordID, gone.Header.PayloadCommitments[0]); !errors.As(err, &unavailable) || unavailable.State != Deleted {
+		t.Fatalf("the deleted record resolved: %v", err)
+	}
+}
+
 // The reference artifact store is owner-only and durable.
 func TestOpenOriginalsFileIsOwnerOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "originals.jsonl")

@@ -55,7 +55,9 @@ type BundleRequest struct {
 	// set is withheld with its digest.
 	WithholdPayloads bool
 	// Suppress names disclosure members left out of the overlay; suppressing
-	// HeaderMember leaves every header as withheld-with-digest.
+	// HeaderMember leaves every disclosed header as withheld-with-digest. A
+	// header carried inside its capsule (RecordHeaderMember) is part of the
+	// capsule's committed bytes, so it travels whatever Suppress says.
 	Suppress []string
 	// Withhold names payload digests this disclosure does not carry.
 	Withhold []string
