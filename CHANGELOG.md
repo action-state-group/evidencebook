@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Added: the Deal Reconcile Contract's recompute
+### Added: the Deal Reconcile Contract's recompute (#79)
 
 evidencebook#36's last acceptance item, for capsule-cli#242 (note §2.10).
 
