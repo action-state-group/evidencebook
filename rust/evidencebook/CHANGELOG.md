@@ -1,5 +1,43 @@
 # Changelog: evidencebook (Rust)
 
+## 0.0.6
+
+- **`store`: the read-only store an answer reads** (evidencebook#35). Two
+  traits: `CheckpointedLog` (leaf count, stated checkpoints with their COSE
+  statements, inclusion paths and consistency parts), which `CllSubstrate`
+  implements in place, and `RecordSource` (records by committed entry and by
+  leaf index, correlation, citing records), moved here from `answer` and
+  re-exported there. `correlation` and `citing` now answer with leaf
+  positions, not entries, so an entry a log commits twice keeps both.
+  `RecordSource::leaf_index_of` finds a record's position
+  without reading it (a record subject's selection uses it), and
+  `RecordSource::entry_of` says what the log commits for a
+  record: the SHA-256 of its octets by default, a `capsule_id` for a capsule
+  ledger or a Go book (whose record id is its record capsule's
+  id). A caller with its own checkpointer implements both over its own
+  index and the crate opens none of its files.
+- **`answer` reads the store traits** instead of a concrete `CllSubstrate`,
+  and is split into `select` (the serving checkpoint and the records) and
+  `build` (prove and sign), so a responder can apply its own policy to the
+  selection in between. `answer` is both and answers exactly as before.
+  `serving_checkpoint` is the citing-records anchor rule on its own.
+  `build` takes `Options`: `prove_beyond_profile` adds the anchor checkpoint
+  and one inclusion proof per record to a record set (the profile defines
+  none, P-13), and `derive` answers the caller's own derivations. Every
+  served record is checked against `entry_of`; `AnswerError::RecordDigest`
+  now means its octets do not recompute its committed entry, and
+  `AnswerError::Artifact` is a derived value with no RFC 8785 form (it was
+  a panic path once callers could derive).
+- `index::committed_records` and `reconcile::HalfSet::from_store` build an
+  operational index's rebuild input and one side's halves from a store.
+  `SubstrateError::Record` reports a leaf a store cannot produce.
+- **`received`**: the "asked of you" log, ported from the evidence
+  plugin with its line shape, requester-id cut and byte cap. The caller
+  decides the directory and whether it may write it.
+- **`served_summary`**: the `served_summary/1` fold, ported from the same
+  plugin (floor, percentiles, coverage block). What a group and a variant
+  are, and the published labels, are the caller's (`Labels`).
+
 ## 0.0.5
 
 - **`answer`: the artifact response to an evidence request, built from the

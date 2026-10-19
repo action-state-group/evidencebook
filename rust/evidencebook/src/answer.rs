@@ -27,15 +27,33 @@
 //!   (-00 §8.1), the consistency proof in hex or null.
 //!
 //! The profile defines no material for record sets, the checkpoint list or a
-//! derivation (P-13), so those envelopes carry none: their records carry
-//! their bodies, which hash to their digests.
+//! derivation (P-13), so by default those envelopes carry none: their records
+//! carry their bodies, which hash to their digests. A requester that checks
+//! more than the profile asks for can be sent more with
+//! [`Options::prove_beyond_profile`]: the anchor checkpoint statement for a
+//! record set and a profile derivation, plus one inclusion proof per record
+//! of a set in the artifact's order. A profile verifier reports those
+//! subjects `NOT_CHECKED` before it reads any material (§6.2.1 step 1), so
+//! the extra items change nothing for it.
 //!
 //! An anchor is a checkpoint with a COSE wire statement
-//! ([`CllSubstrate::stated_checkpoints`]), identified by the SHA-256 of that
-//! statement, the value a requester pins. [`anchors`] lists them for
+//! ([`CheckpointedLog::stated_checkpoints`]), identified by the SHA-256 of
+//! that statement, the value a requester pins. [`anchors`] lists them for
 //! `evidence_request::resolve`.
+//!
+//! **Two steps.** [`select`] finds the serving checkpoint and the records the
+//! artifact carries; [`build`] proves and signs that selection. [`answer`] is
+//! both. A responder that applies its own policy to the records first (who
+//! may have them, its own limits) selects, decides, then builds.
+//!
+//! Everything is read through the store traits ([`CheckpointedLog`] and
+//! [`RecordSource`]), so a caller whose checkpointer owns the log files
+//! answers from its own index; [`crate::substrate::CllSubstrate`] is the
+//! reference [`CheckpointedLog`].
 
-use crate::substrate::{CllSubstrate, StatedCheckpoint, SubstrateError};
+use crate::store::CheckpointedLog;
+pub use crate::store::{Record, RecordSource};
+use crate::substrate::{StatedCheckpoint, SubstrateError};
 use evidence_request::cll_material::{
     encode_consistency_proof, encode_inclusion_proof, KIND_CHECKPOINT, KIND_CONSISTENCY,
     KIND_INCLUSION,
@@ -53,31 +71,6 @@ pub const DERIVATION_HISTORY_CARD: &str = "history_card/1";
 /// caller passes: answer a larger subject with a `policy_declined` refusal.
 pub const MAX_RECORDS: u64 = 10_000;
 
-/// One record of the book, as the answer serves it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Record {
-    /// 0-based position in the log.
-    pub leaf_index: u64,
-    /// The record id, 64 lowercase hex: the SHA-256 of `body`, the entry the
-    /// log commits.
-    pub digest: String,
-    /// The record's octets.
-    pub body: Vec<u8>,
-}
-
-/// The records an answer is built from. The book's record store implements
-/// it; the substrate holds only their ids.
-pub trait RecordSource {
-    /// The record with exactly this id.
-    fn record_by_digest(&self, digest: &str) -> Option<Record>;
-    /// The record at this leaf index.
-    fn record_at(&self, leaf_index: u64) -> Option<Record>;
-    /// The ids of the records carrying exactly this correlation identifier.
-    fn correlation(&self, id: &str) -> Vec<String>;
-    /// The ids of the records citing exactly this interaction half.
-    fn citing(&self, half_digest: &str) -> Vec<String>;
-}
-
 /// Why no envelope was built. Each is answered with a refusal, not an
 /// artifact.
 #[derive(Debug, thiserror::Error)]
@@ -93,18 +86,51 @@ pub enum AnswerError {
     RecordNotFound,
     #[error("the subject resolves to no records under the anchor")]
     NoRecords,
-    #[error("a record's octets do not hash to its id")]
+    #[error("a record's octets do not recompute its committed entry")]
     RecordDigest,
-    #[error("only the history_card/1 derivation has an answer path")]
+    #[error("the derivation has no answer path")]
     DerivationUnsupported,
     /// The subject covers more records (or checkpoints) than the limit.
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
     OverLimit,
+    /// The artifact has no RFC 8785 form (a derived value holds a fraction).
+    #[error("the artifact cannot be canonicalized: {0}")]
+    Artifact(String),
     #[error("the envelope could not be signed: {0}")]
     Sign(#[from] evidence_request::envelope::SignError),
     #[error(transparent)]
     Substrate(#[from] SubstrateError),
+}
+
+/// A derivation the calling profile answers beyond `history_card/1`: given
+/// the derivation token, the subject and the serving checkpoint, the
+/// artifact member that carries the derived value and the value, or `None`
+/// when the profile has no answer for that token and subject. The artifact
+/// is RFC 8785 of `{anchor, derivation, evidence_stream, <member>, subject}`.
+pub type Derive<'a> = &'a dyn Fn(&str, &Subject, &StatedCheckpoint) -> Option<(String, Value)>;
+
+/// How [`build`] proves and what it answers beyond the profile. The default
+/// is the profile alone, as the Go responder answers.
+#[derive(Clone, Copy, Default)]
+pub struct Options<'a> {
+    /// Also send material for what the profile defines none for (P-13): the
+    /// anchor checkpoint statement for a record set and a [`Derive`]d
+    /// artifact, and one inclusion proof per record of a set, in the
+    /// artifact's order.
+    pub prove_beyond_profile: bool,
+    /// The calling profile's own derivations.
+    pub derive: Option<Derive<'a>>,
+}
+
+/// What an answer is served under and carries: the position of the serving
+/// checkpoint in [`CheckpointedLog::stated_checkpoints`], and the leaf
+/// indices of the records the artifact carries, ascending and distinct, all
+/// under that checkpoint (empty for a checkpoint list or a derivation).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Selection {
+    pub at: usize,
+    pub records: Vec<u64>,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -118,9 +144,8 @@ pub fn anchor_digest(checkpoint: &StatedCheckpoint) -> String {
 
 /// The book's anchors as `evidence_request::resolve` sees them: one per
 /// stated checkpoint, sized by the records it covers.
-pub fn anchors(substrate: &CllSubstrate) -> Result<Vec<resolve::Anchor>, SubstrateError> {
-    substrate
-        .stated_checkpoints()?
+pub fn anchors(log: &dyn CheckpointedLog) -> Result<Vec<resolve::Anchor>, SubstrateError> {
+    log.stated_checkpoints()?
         .iter()
         .map(|cp| {
             Ok(resolve::Anchor {
@@ -134,14 +159,14 @@ pub fn anchors(substrate: &CllSubstrate) -> Result<Vec<resolve::Anchor>, Substra
 
 /// Build and sign the envelope answering `request` (received as
 /// `request_bytes`) under `anchor`, as `evidence_request::resolve::resolve`
-/// resolved it. For a citing-records subject pinned by the requester's own half,
-/// the records are proven under the earliest checkpoint covering every
-/// checkpointed record citing the half, never simply the latest, so growth
-/// that adds no citing record does not change the artifact (-00 §5). Its
-/// envelope names the pin, the half, as its anchor (profile §7.1
-/// `anchor_match`); the artifact names the serving checkpoint. When no
-/// stated checkpoint covers a citing record yet,
-/// [`AnswerError::CitingNotAnchored`].
+/// resolved it: [`select`], then [`build`] under the profile alone. For a
+/// citing-records subject pinned by the requester's own half, the records
+/// are proven under the earliest checkpoint covering every checkpointed
+/// record citing the half, never simply the latest, so growth that adds no
+/// citing record does not change the artifact (-00 §5). Its envelope names
+/// the pin, the half, as its anchor (profile §7.1 `anchor_match`); the
+/// artifact names the serving checkpoint. When no stated checkpoint covers a
+/// citing record yet, [`AnswerError::CitingNotAnchored`].
 ///
 /// `limit` caps the records (or checkpoints) the answer carries, clamped to
 /// [`MAX_RECORDS`]; over it, [`AnswerError::OverLimit`]. It counts the
@@ -149,7 +174,7 @@ pub fn anchors(substrate: &CllSubstrate) -> Result<Vec<resolve::Anchor>, Substra
 /// a pinned answer unavailable.
 #[allow(clippy::too_many_arguments)]
 pub fn answer(
-    substrate: &CllSubstrate,
+    log: &dyn CheckpointedLog,
     records: &dyn RecordSource,
     request: &Request,
     request_bytes: &[u8],
@@ -158,20 +183,125 @@ pub fn answer(
     signer: &dyn Signer,
     issued_at: &str,
 ) -> Result<Envelope, AnswerError> {
-    let checkpoints = substrate.stated_checkpoints()?;
-    let anchor_index = match anchor {
+    let selection = select(log, records, request, anchor, limit)?;
+    build(
+        log,
+        records,
+        request,
+        request_bytes,
+        anchor,
+        &selection,
+        Options::default(),
+        signer,
+        issued_at,
+    )
+}
+
+/// The position of the checkpoint an answer to `anchor` is served under, in
+/// `checkpoints` (the store's stated checkpoints). For an anchor, the
+/// checkpoint it names ([`AnswerError::AnchorNotFound`] when none). For a
+/// citing-records subject pinned by the requester's own half, the earliest
+/// checkpoint covering the last record citing the half among those any
+/// checkpoint covers: a citing record no checkpoint covers yet cannot be
+/// proven, so it does not move the anchor ([`AnswerError::CitingNotAnchored`]
+/// when no checkpointed record cites the half).
+pub fn serving_checkpoint(
+    records: &dyn RecordSource,
+    checkpoints: &[StatedCheckpoint],
+    anchor: &ResolvedAnchor,
+) -> Result<usize, AnswerError> {
+    match anchor {
         ResolvedAnchor::Anchor(a) => checkpoints
             .iter()
-            .position(|cp| anchor_digest(cp) == a.digest),
-        ResolvedAnchor::ExchangeHalf(half) => Some(
-            citing_anchor(records, &checkpoints, half)?.ok_or(AnswerError::CitingNotAnchored)?,
-        ),
+            .position(|cp| anchor_digest(cp) == a.digest)
+            .ok_or(AnswerError::AnchorNotFound),
+        ResolvedAnchor::ExchangeHalf(half) => {
+            citing_anchor(records, checkpoints, half)?.ok_or(AnswerError::CitingNotAnchored)
+        }
     }
-    .ok_or(AnswerError::AnchorNotFound)?;
-    let at = &checkpoints[anchor_index];
-    let covered = at.checkpoint.leaf_count()?;
+}
+
+/// The serving checkpoint and the records an answer to `request` under
+/// `anchor` carries, checked against `limit` (clamped to [`MAX_RECORDS`]) as
+/// [`answer`] describes. A derivation selects no records; whether it has an
+/// answer path is [`build`]'s to say.
+pub fn select(
+    log: &dyn CheckpointedLog,
+    records: &dyn RecordSource,
+    request: &Request,
+    anchor: &ResolvedAnchor,
+    limit: u64,
+) -> Result<Selection, AnswerError> {
+    let checkpoints = log.stated_checkpoints()?;
+    let at = serving_checkpoint(records, &checkpoints, anchor)?;
+    let covered = checkpoints[at].checkpoint.leaf_count()?;
     let limit = limit.min(MAX_RECORDS);
-    let chain = &checkpoints[..=anchor_index];
+    let listed = at as u64 + 1;
+
+    let leaves = match (&request.derivation, &request.subject) {
+        (Some(Derivation::Token(t)), _) if t == DERIVATION_HISTORY_CARD => {
+            if listed > limit {
+                return Err(AnswerError::OverLimit);
+            }
+            Vec::new()
+        }
+        (Some(_), _) => Vec::new(),
+        (None, Subject::Checkpoints) => {
+            if listed > limit {
+                return Err(AnswerError::OverLimit);
+            }
+            Vec::new()
+        }
+        (None, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
+        (None, Subject::Record(d)) => {
+            let leaf = records
+                .leaf_index_of(d)
+                .filter(|&i| i < covered)
+                .ok_or(AnswerError::RecordNotFound)?;
+            vec![leaf]
+        }
+        (None, Subject::Range(a, b)) => range_leaves(*a, *b, covered, limit)?,
+        (None, Subject::FullHistory) => {
+            if covered == 0 {
+                return Err(AnswerError::NoRecords);
+            }
+            range_leaves(0, covered - 1, covered, limit)?
+        }
+        (None, Subject::Correlation(id)) => leaves_under(records.correlation(id), covered, limit)?,
+        // The one form left: records citing the requester's half.
+        (None, _) => {
+            let half = citing_half(&request.subject).expect("every other form is matched above");
+            leaves_under(records.citing(half), covered, limit)?
+        }
+    };
+    Ok(Selection {
+        at,
+        records: leaves,
+    })
+}
+
+/// Build and sign the envelope for a [`select`]ed answer to `request`
+/// (received as `request_bytes`), resolved to `anchor`. Every record is read
+/// again and checked against its committed entry
+/// ([`RecordSource::entry_of`]); one that does not hold is
+/// [`AnswerError::RecordDigest`], never served.
+#[allow(clippy::too_many_arguments)]
+pub fn build(
+    log: &dyn CheckpointedLog,
+    records: &dyn RecordSource,
+    request: &Request,
+    request_bytes: &[u8],
+    anchor: &ResolvedAnchor,
+    selection: &Selection,
+    options: Options<'_>,
+    signer: &dyn Signer,
+    issued_at: &str,
+) -> Result<Envelope, AnswerError> {
+    let checkpoints = log.stated_checkpoints()?;
+    let at = checkpoints
+        .get(selection.at)
+        .ok_or(AnswerError::AnchorNotFound)?;
+    let chain = &checkpoints[..=selection.at];
 
     let mut head = Map::new();
     head.insert("anchor".into(), json!(anchor_digest(at)));
@@ -182,17 +312,21 @@ pub fn answer(
     );
     let mut material: Vec<(String, Vec<u8>)> = Vec::new();
 
+    let derived = match (&request.derivation, options.derive) {
+        (Some(Derivation::Token(t)), Some(derive)) if t != DERIVATION_HISTORY_CARD => {
+            derive(t, &request.subject, at).map(|d| (t.clone(), d))
+        }
+        _ => None,
+    };
+
     let artifact = match (&request.derivation, &request.subject) {
         (Some(Derivation::Token(t)), _) if t == DERIVATION_HISTORY_CARD => {
-            if chain.len() as u64 > limit {
-                return Err(AnswerError::OverLimit);
-            }
             let mut history = Vec::with_capacity(chain.len());
             for (i, cp) in chain.iter().enumerate() {
                 let consistency = match i.checked_sub(1).map(|p| &chain[p]) {
                     Some(prev) if prev.checkpoint.mmr_size < cp.checkpoint.mmr_size => {
                         json!(hex::encode(consistency(
-                            substrate,
+                            log,
                             prev.checkpoint.mmr_size,
                             cp.checkpoint.mmr_size
                         )?))
@@ -206,88 +340,62 @@ pub fn answer(
             }
             head.insert("derivation".into(), json!(DERIVATION_HISTORY_CARD));
             head.insert("history".into(), Value::Array(history));
-            jcs(head)
+            jcs(head)?
         }
-        (Some(_), _) => return Err(AnswerError::DerivationUnsupported),
-        (None, Subject::Checkpoints) => {
-            if chain.len() as u64 > limit {
-                return Err(AnswerError::OverLimit);
+        (Some(_), _) => {
+            let (token, (member, value)) = derived.ok_or(AnswerError::DerivationUnsupported)?;
+            head.insert("derivation".into(), json!(token));
+            head.insert(member, value);
+            if options.prove_beyond_profile {
+                material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
             }
+            jcs(head)?
+        }
+        (None, Subject::Checkpoints) => {
             let list = chain
                 .iter()
                 .map(|cp| json!(hex::encode(&cp.statement)))
                 .collect();
             head.insert("checkpoints".into(), Value::Array(list));
-            jcs(head)
+            jcs(head)?
         }
-        (None, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
         (None, Subject::Record(d)) => {
-            let record = records
-                .record_by_digest(d)
-                .filter(|r| r.leaf_index < covered && r.digest == *d)
-                .ok_or(AnswerError::RecordNotFound)?;
-            if sha256_hex(&record.body) != record.digest {
-                return Err(AnswerError::RecordDigest);
+            let [leaf] = selection.records[..] else {
+                return Err(AnswerError::RecordNotFound);
+            };
+            let record = record_at(records, leaf)?;
+            if record.digest != *d {
+                return Err(AnswerError::RecordNotFound);
             }
-            let path = substrate.inclusion_path(record.leaf_index, at.checkpoint.mmr_size)?;
+            let path = log.inclusion_path(record.leaf_index, at.checkpoint.mmr_size)?;
             material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
-            let inclusion = encode_inclusion_proof(record.leaf_index, &path).ok_or_else(|| {
-                AnswerError::Substrate(SubstrateError::Mmr(format!(
-                    "leaf {} has no inclusion proof the profile can carry",
-                    record.leaf_index
-                )))
-            })?;
-            material.push((KIND_INCLUSION.into(), inclusion));
+            material.push((KIND_INCLUSION.into(), inclusion(record.leaf_index, &path)?));
             if at.checkpoint.prev_size > 0 {
                 material.push((
                     KIND_CONSISTENCY.into(),
-                    consistency(substrate, at.checkpoint.prev_size, at.checkpoint.mmr_size)?,
+                    consistency(log, at.checkpoint.prev_size, at.checkpoint.mmr_size)?,
                 ));
             }
             record.body
         }
-        (None, Subject::Range(a, b)) => {
-            head.insert(
-                "records".into(),
-                records_value(&range_records(records, *a, *b, covered, limit)?)?,
-            );
-            jcs(head)
-        }
-        (None, Subject::FullHistory) => {
-            if covered == 0 {
+        (None, _) => {
+            if selection.records.is_empty() {
                 return Err(AnswerError::NoRecords);
             }
-            head.insert(
-                "records".into(),
-                records_value(&range_records(records, 0, covered - 1, covered, limit)?)?,
-            );
-            jcs(head)
-        }
-        (None, Subject::Correlation(id)) => {
-            head.insert(
-                "records".into(),
-                records_value(&records_under(
-                    records,
-                    records.correlation(id),
-                    covered,
-                    limit,
-                )?)?,
-            );
-            jcs(head)
-        }
-        // The one form left: records citing the requester's half.
-        (None, _) => {
-            let half = citing_half(&request.subject).expect("every other form is matched above");
-            head.insert(
-                "records".into(),
-                records_value(&records_under(
-                    records,
-                    records.citing(half),
-                    covered,
-                    limit,
-                )?)?,
-            );
-            jcs(head)
+            let set = selection
+                .records
+                .iter()
+                .map(|&i| record_at(records, i))
+                .collect::<Result<Vec<_>, _>>()?;
+            if options.prove_beyond_profile {
+                material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
+                for r in &set {
+                    let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
+                    material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
+                }
+            }
+            head.insert("records".into(), records_value(&set));
+            jcs(head)?
         }
     };
 
@@ -329,14 +437,17 @@ fn profile_time(timestamp: &str) -> String {
     }
 }
 
-fn jcs(object: Map<String, Value>) -> Vec<u8> {
+/// RFC 8785 of an artifact. The crate's own members are text, maps, arrays
+/// and integers; a [`Derive`]d value may hold what the profile's JCS refuses
+/// (a fraction), which is [`AnswerError::Artifact`], never a panic.
+fn jcs(object: Map<String, Value>) -> Result<Vec<u8>, AnswerError> {
     evidence_request::jcs::to_string(&Value::Object(object))
-        .expect("an artifact holds only text, maps, arrays and integers")
-        .into_bytes()
+        .map(String::into_bytes)
+        .map_err(|e| AnswerError::Artifact(e.to_string()))
 }
 
-fn consistency(substrate: &CllSubstrate, from: u64, to: u64) -> Result<Vec<u8>, AnswerError> {
-    let (old_peaks, paths, new_peaks) = substrate.consistency_parts(from, to)?;
+fn consistency(log: &dyn CheckpointedLog, from: u64, to: u64) -> Result<Vec<u8>, AnswerError> {
+    let (old_peaks, paths, new_peaks) = log.consistency_parts(from, to)?;
     encode_consistency_proof(from, to, &old_peaks, &paths, &new_peaks).ok_or_else(|| {
         AnswerError::Substrate(SubstrateError::Mmr(format!(
             "the log's consistency proof from {from} to {to} does not reach its own peaks"
@@ -344,18 +455,33 @@ fn consistency(substrate: &CllSubstrate, from: u64, to: u64) -> Result<Vec<u8>, 
     })
 }
 
-fn records_value(records: &[Record]) -> Result<Value, AnswerError> {
-    for r in records {
-        if sha256_hex(&r.body) != r.digest {
-            return Err(AnswerError::RecordDigest);
-        }
+fn inclusion(leaf_index: u64, path: &[[u8; 32]]) -> Result<Vec<u8>, AnswerError> {
+    encode_inclusion_proof(leaf_index, path).ok_or_else(|| {
+        AnswerError::Substrate(SubstrateError::Mmr(format!(
+            "leaf {leaf_index} has no inclusion proof the profile can carry"
+        )))
+    })
+}
+
+/// The record at `leaf_index`, checked against its committed entry.
+fn record_at(records: &dyn RecordSource, leaf_index: u64) -> Result<Record, AnswerError> {
+    let record = records
+        .record_at(leaf_index)
+        .filter(|r| r.leaf_index == leaf_index)
+        .ok_or(AnswerError::RecordNotFound)?;
+    if records.entry_of(&record.body).as_deref() != Some(record.digest.as_str()) {
+        return Err(AnswerError::RecordDigest);
     }
-    Ok(Value::Array(
+    Ok(record)
+}
+
+fn records_value(records: &[Record]) -> Value {
+    Value::Array(
         records
             .iter()
             .map(|r| json!({"body": hex::encode(&r.body), "digest": r.digest, "leaf_index": r.leaf_index}))
             .collect(),
-    ))
+    )
 }
 
 /// The half a citing-records subject names (the request draft's subject form
@@ -381,9 +507,7 @@ fn citing_anchor(
     let latest = latest.checkpoint.leaf_count()?;
     let Some(last_citing) = records
         .citing(half)
-        .iter()
-        .filter_map(|d| records.record_by_digest(d))
-        .map(|r| r.leaf_index)
+        .into_iter()
         .filter(|&i| i < latest)
         .max()
     else {
@@ -397,13 +521,7 @@ fn citing_anchor(
     Ok(None)
 }
 
-fn range_records(
-    records: &dyn RecordSource,
-    a: u64,
-    b: u64,
-    covered: u64,
-    limit: u64,
-) -> Result<Vec<Record>, AnswerError> {
+fn range_leaves(a: u64, b: u64, covered: u64, limit: u64) -> Result<Vec<u64>, AnswerError> {
     if b >= covered || a > b {
         return Err(AnswerError::RecordNotFound);
     }
@@ -411,29 +529,13 @@ fn range_records(
     if b - a >= limit {
         return Err(AnswerError::OverLimit);
     }
-    (a..=b)
-        .map(|i| {
-            records
-                .record_at(i)
-                .filter(|r| r.leaf_index == i)
-                .ok_or(AnswerError::RecordNotFound)
-        })
-        .collect()
+    Ok((a..=b).collect())
 }
 
-fn records_under(
-    records: &dyn RecordSource,
-    digests: Vec<String>,
-    covered: u64,
-    limit: u64,
-) -> Result<Vec<Record>, AnswerError> {
-    let mut found: Vec<Record> = digests
-        .iter()
-        .filter_map(|d| records.record_by_digest(d))
-        .filter(|r| r.leaf_index < covered)
-        .collect();
-    found.sort_by_key(|r| r.leaf_index);
-    found.dedup_by_key(|r| r.leaf_index);
+fn leaves_under(leaves: Vec<u64>, covered: u64, limit: u64) -> Result<Vec<u64>, AnswerError> {
+    let mut found: Vec<u64> = leaves.into_iter().filter(|&i| i < covered).collect();
+    found.sort_unstable();
+    found.dedup();
     if found.is_empty() {
         return Err(AnswerError::NoRecords);
     }
