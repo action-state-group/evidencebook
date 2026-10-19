@@ -33,8 +33,9 @@ evidencebook#36 §2 and §4, for capsule-cli#242's migration.
   tick that carried its checkpoint. A row moves on when a newer witnessed
   tick carries the same checkpoint: a live log's does at its next witnessed
   tick. A log out of the live set (ended, and not grown past its largest
-  witnessed checkpoint) is in no tick, so its row keeps that tick until a
-  write puts the log back. capsule-cli's released builds keep their own
+  witnessed checkpoint) is in no newly cut tick, so its row moves on only
+  when a receipt arrives for a newer stored tick already carrying that
+  checkpoint, or after a write puts the log back. capsule-cli's released builds keep their own
   cadence table; capsule-cli#242 is the first to use this one.
 
 ## v0.5.0 (2026-10-19)

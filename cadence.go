@@ -513,8 +513,9 @@ func paddingRecordID() (string, error) {
 // the host rejects until the current witness signs a later one. A live log
 // is in every tick, so that is the next witnessed tick. A log that has left
 // the live set (ended, and not grown past its largest witnessed checkpoint)
-// is in no tick, so its row keeps the tick it names until a write puts the
-// log back in the live set.
+// is in no newly cut tick, so its row moves on only when a receipt arrives
+// for a newer stored tick already carrying that checkpoint, or after a
+// write puts the log back.
 const indexWitnessed = `INSERT INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)
 ON CONFLICT (log_id, checkpoint_sha256) DO UPDATE SET tick = excluded.tick WHERE excluded.tick > cadence_witnessed.tick`
 
