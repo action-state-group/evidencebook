@@ -201,7 +201,7 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 			// immutable, so it must already hold every payload the directory
 			// still has, or the directory is the only copy and must stay.
 			for _, digest := range record.Header.PayloadCommitments {
-				if _, _, present := originalBytes(existing, digest); present {
+				if _, _, present := originalBytes(existing, digest); present || deletedPayloads[sr.RecordID][digest] {
 					continue
 				}
 				if _, err := os.Stat(filepath.Join(dir, digest)); err == nil {

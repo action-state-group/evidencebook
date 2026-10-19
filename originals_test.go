@@ -3,8 +3,10 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
@@ -259,6 +261,20 @@ func TestCallerSealedRecordInABundle(t *testing.T) {
 		// The header travels in the capsule. agent_input is the capsule's
 		// own member: the bound original, disclosed when the record is
 		// selected with its payloads and agent_input is not suppressed.
+		if req.Root == own.RecordID {
+			// agent_input suppressed: the original bound to it is withheld,
+			// not shipped as a payload.
+			if bytes.Contains(bundle.JSON, []byte(base64.RawURLEncoding.EncodeToString([]byte(payload)))) {
+				t.Fatal("a suppressed member's original shipped as a payload")
+			}
+			withheld := false
+			for _, w := range statement.Withheld {
+				withheld = withheld || (w.RecordID == own.RecordID && w.PayloadCommitment != "")
+			}
+			if !withheld {
+				t.Fatal("the suppressed original is not listed as withheld")
+			}
+		}
 		members, disclosed := wire.Disclosures[own.RecordID]
 		want := req.Root == citing.RecordID
 		if disclosed != want {
@@ -574,6 +590,9 @@ func TestMigratePayloadDirFollowsTheLatestLegacyState(t *testing.T) {
 	if moved, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || moved != 2 {
 		t.Fatalf("migration moved %d records: %v", moved, err)
 	}
+	if again, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || again != 0 {
+		t.Fatalf("a repeated migration moved %d records: %v", again, err)
+	}
 	held, err := cfg.Originals.Get(ctx, both.RecordID)
 	if err != nil {
 		t.Fatalf("the record whose latest state is WITHHELD was not stored: %v", err)
@@ -644,6 +663,10 @@ func TestIdenticalInputAndOutputAreBothDisclosed(t *testing.T) {
 		slices.Sort(got)
 		if !slices.Equal(got, want) {
 			t.Fatalf("suppress %q: disclosed %v, want %v", suppress, got, want)
+		}
+		// The shared bytes still ship: one member bound to them is disclosed.
+		if !bytes.Contains(bundle.JSON, []byte(base64.RawURLEncoding.EncodeToString([]byte(value)))) {
+			t.Fatalf("suppress %q: the bytes another member discloses were withheld", suppress)
 		}
 	}
 }
