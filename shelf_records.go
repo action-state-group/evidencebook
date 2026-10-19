@@ -36,8 +36,8 @@ type ShelfRecords struct {
 
 // Records lists the committed records of the shelf's books, in book id then
 // seq order, without opening a book: nothing is recovered, verified or
-// written, so a reader across every deal of a profile costs one query, not
-// one book opened per deal. A record is committed when 1 <= seq <= its
+// written, so a reader across every deal of a profile costs two queries
+// (the records, and every log's entry count), not one book opened per deal. A record is committed when 1 <= seq <= its
 // book's log entry count (an entry count, not an MMR size). bookIDs narrows
 // the listing to those books; none lists every book.
 //
@@ -81,6 +81,22 @@ func (s *Shelf) Records(ctx context.Context, bookIDs ...string) (ShelfRecords, e
 	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return ShelfRecords{}, err
 	}
+	entries := map[string]uint64{}
+	counts, err := s.db.QueryContext(ctx, `SELECT log_id, COUNT(*) FROM cll_entries GROUP BY log_id`)
+	if err != nil {
+		return ShelfRecords{}, err
+	}
+	for counts.Next() {
+		var id string
+		var n uint64
+		if err := counts.Scan(&id, &n); err != nil {
+			return ShelfRecords{}, errors.Join(err, counts.Close())
+		}
+		entries[id] = n
+	}
+	if err := errors.Join(counts.Err(), counts.Close()); err != nil {
+		return ShelfRecords{}, err
+	}
 
 	now := time.Now()
 	if s.cfg.Now != nil {
@@ -89,10 +105,7 @@ func (s *Shelf) Records(ctx context.Context, bookIDs ...string) (ShelfRecords, e
 	out := ShelfRecords{Records: []ShelfRecord{}, Pending: map[string]int{}}
 	for i := 0; i < len(all); {
 		book := all[i].book
-		var committed uint64
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cll_entries WHERE log_id = ?`, book).Scan(&committed); err != nil {
-			return ShelfRecords{}, err
-		}
+		committed := entries[book]
 		records := map[string]Record{}
 		var order []string
 		var listed []Record

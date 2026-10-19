@@ -47,8 +47,11 @@ type LegacyCadence struct {
 // delivered it since); a later run imports only ticks a pre-shelf writer
 // added since, after the cadence's own. A tick at a held position
 // with another checkpoint, or older than the newest tick held, is refused:
-// it would rewrite what bundles may already name. Ended is evaluated before
-// the transaction, as for Witnessed, and must not call the shelf.
+// it would rewrite what bundles may already name. So is any import while
+// the cadence's own last tick is unfinished (a crash after its row): Tick
+// resumes only the last tick, so a later tick would strand it; the host
+// ticks first, which finishes it. Ended is evaluated before the
+// transaction, as for Witnessed, and must not call the shelf.
 func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error {
 	logs := map[string]bool{}
 	for _, id := range legacy.Logs {
@@ -118,6 +121,13 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(tick), 0), COALESCE(MAX(entry_seq), 0) FROM cadence_ticks`).Scan(&last, &lastEntry); err != nil {
 			return err
 		}
+		var unfinished int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_ticks WHERE checkpoint_size = 0`).Scan(&unfinished); err != nil {
+			return err
+		}
+		if unfinished > 0 {
+			return fmt.Errorf("%w: the cadence's last tick is unfinished; tick first, which finishes it, then import", ErrInvalid)
+		}
 		for id := range logs {
 			if err := markLive(ctx, tx, id); err != nil {
 				return err
@@ -137,7 +147,8 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			var held []byte
 			var heldN uint64
 			var heldWitnessed int
-			err := tx.QueryRowContext(ctx, `SELECT tick, checkpoint, witnessed FROM cadence_ticks WHERE entry_seq = ? AND checkpoint_size > 0`, tick.EntrySeq).Scan(&heldN, &held, &heldWitnessed)
+			var heldLeaves string
+			err := tx.QueryRowContext(ctx, `SELECT tick, checkpoint, witnessed, leaves FROM cadence_ticks WHERE entry_seq = ? AND checkpoint_size > 0`, tick.EntrySeq).Scan(&heldN, &held, &heldWitnessed, &heldLeaves)
 			switch {
 			case err == nil:
 				if !bytes.Equal(held, tick.Checkpoint) {
@@ -149,7 +160,13 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 					if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, receipts[i], heldN); err != nil {
 						return err
 					}
-					if err := witness(heldN, tick); err != nil {
+					// The held tick's own leaves are what is indexed: the
+					// incoming copy only says it was delivered.
+					var stored CadenceTick
+					if err := json.Unmarshal([]byte(heldLeaves), &stored.Leaves); err != nil {
+						return fmt.Errorf("%w: tick %d leaves: %v", ErrCorrupt, heldN, err)
+					}
+					if err := witness(heldN, stored); err != nil {
 						return err
 					}
 				}

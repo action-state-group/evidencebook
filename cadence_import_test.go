@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
+	"time"
 )
 
 // legacyFixture is a profile cut over from a pre-shelf writer: legacy logs
@@ -229,56 +230,157 @@ func TestImportLegacyRefuses(t *testing.T) {
 	}
 }
 
-// Records lists committed records in book then seq order, without opening a
-// book: a record stored above its book's entry count is counted as pending
-// and not listed, and a book filter narrows the listing.
+// An import never strands the cadence's own unfinished tick: it is refused
+// until a tick finishes it, then imports after it.
+func TestImportLegacyWaitsForAnUnfinishedTick(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyFixture(t, "deal/a")
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
+		t.Fatal(err)
+	}
+	native := mustTick(t, l.c, l.ticks[1].DueNext)
+	// A crash after the native tick's row: unfinished.
+	if _, err := l.shelf.db.Exec(`UPDATE cadence_ticks SET checkpoint_size = 0, entry_seq = 0, checkpoint = x'' WHERE tick = ?`, native.N); err != nil {
+		t.Fatal(err)
+	}
+	foreign := native
+	foreign.EntrySeq = native.EntrySeq + 5
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: append(l.ticks, foreign)}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("import over an unfinished tick: %v", err)
+	}
+	resumed, err := l.c.Tick(ctx, native.DueNext)
+	if err != nil || !resumed.Ticked || resumed.Tick.N != native.N {
+		t.Fatalf("resume: %+v %v", resumed, err)
+	}
+	foreign.EntrySeq = resumed.Tick.EntrySeq + 5
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: append(l.ticks, foreign)}); err != nil {
+		t.Fatal(err)
+	}
+	if last, err := l.c.Get(ctx, native.N+1); err != nil || last.EntrySeq != foreign.EntrySeq {
+		t.Fatalf("after the finished tick: %+v %v", last, err)
+	}
+}
+
+// Promotion indexes the held tick's own leaves, whatever the incoming copy
+// of it carries.
+func TestImportLegacyPromotesTheHeldLeaves(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyFixture(t, "deal/a", "deal/b")
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
+		t.Fatal(err)
+	}
+	held := l.ticks[1]
+	incoming := held
+	incoming.Witnessed, incoming.Receipt = true, &testReceipt
+	incoming.Leaves = TickLeaves{Deals: map[string]TickLeaf{}}
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: []CadenceTick{l.ticks[0], incoming}}); err != nil {
+		t.Fatal(err)
+	}
+	for id, leaf := range held.Leaves.Deals {
+		if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, id, leaf.CheckpointSHA256); n != 1 {
+			t.Fatalf("%s's held checkpoint is not indexed", id)
+		}
+	}
+	stored, err := l.c.Get(ctx, 2)
+	if err != nil || len(stored.Leaves.Deals) != 2 {
+		t.Fatalf("the held tick's leaves changed: %+v %v", stored.Leaves, err)
+	}
+}
+
+// Records reads a shelf whose books are not open: it lists committed
+// records in book then seq order with the retention Book.Retention gives
+// (a lifecycle record, an active and an expired hold, a field-only
+// commitment), leaves a pending tail pending and unlisted, changes nothing
+// stored, and a book filter narrows it.
 func TestShelfRecordsReadsWithoutOpening(t *testing.T) {
 	ctx := context.Background()
 	f := newShelfFixture(t)
+	writer := f.open(t)
+	a, b := mustOpenBook(t, writer, "deal/a"), mustOpenBook(t, writer, "deal/b")
+	withheld := mustAppend(t, a, observation("s", "1"))
+	held := mustAppend(t, a, observation("s", "2"))
+	expired := mustAppend(t, a, observation("s", "3"))
+	fields := mustAppend(t, a, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "s", Fields: map[string]string{"amount": "12.00"}})
+	other := mustAppend(t, b, observation("s", "4"))
+	if _, err := a.SetRetention(ctx, withheld.RecordID, Withheld, "not shared"); err != nil {
+		t.Fatal(err)
+	}
+	now := f.clock.Now()
+	if _, err := a.CommitRetention(ctx, Subject{Kind: SubjectRecord, Digest: held.RecordID}, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CommitRetention(ctx, Subject{Kind: SubjectRecord, Digest: expired.RecordID}, now.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]RetentionState{}
+	for _, r := range []Record{withheld, held, expired, fields} {
+		state, err := a.Retention(ctx, r.RecordID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[r.RecordID] = state
+	}
+	if want[withheld.RecordID] != Withheld || want[held.RecordID] != LegalHold || want[expired.RecordID] != Available || want[fields.RecordID] != Available {
+		t.Fatalf("fixture retention %v", want)
+	}
+	if err := writer.Release(); err != nil {
+		t.Fatal(err)
+	}
+
 	shelf := f.open(t)
-	a, b := mustOpenBook(t, shelf, "deal/a"), mustOpenBook(t, shelf, "deal/b")
-	ra := mustAppend(t, a, observation("s", "1"))
-	mustAppend(t, a, observation("s", "2"))
-	rb := mustAppend(t, b, observation("s", "3"))
-	// A pending tail: a record stored past the log, as a crash between
-	// PutRecord and the append leaves it.
-	header, err := shelf.db.Query(`SELECT header FROM book_records WHERE record_id = ?`, ra.RecordID)
-	if err != nil {
+	// A pending tail on deal/a: a record stored past the log, as a crash
+	// between PutRecord and the append leaves it. It is neither listed nor
+	// recovered.
+	var header []byte
+	if err := shelf.db.QueryRow(`SELECT header FROM book_records WHERE record_id = ?`, withheld.RecordID).Scan(&header); err != nil {
 		t.Fatal(err)
 	}
-	var h []byte
-	if !header.Next() {
-		t.Fatal("no stored header")
-	}
-	if err := header.Scan(&h); err != nil {
+	pendingSeq := countRows(t, shelf, `SELECT COUNT(*) FROM book_records WHERE book_id = 'deal/a'`) + 1
+	if _, err := shelf.db.Exec(`INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES ('deal/a', ?, 'pending', ?, x'', x'')`, pendingSeq, header); err != nil {
 		t.Fatal(err)
 	}
-	_ = header.Close()
-	if _, err := shelf.db.Exec(`INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES ('deal/a', 3, 'pending', ?, x'', x'')`, h); err != nil {
-		t.Fatal(err)
+	snapshot := func() [3]int {
+		return [3]int{
+			countRows(t, shelf, `SELECT COUNT(*) FROM book_records`),
+			countRows(t, shelf, `SELECT COUNT(*) FROM cll_entries`),
+			countRows(t, shelf, `SELECT COUNT(*) FROM cadence_live`),
+		}
 	}
+	before := snapshot()
 	all, err := shelf.Records(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []string
-	for _, r := range all.Records {
-		got = append(got, r.BookID+"#"+string(rune('0'+r.Seq)))
+	if after := snapshot(); after != before {
+		t.Fatalf("Records changed the store: %v -> %v", before, after)
 	}
-	if len(got) != 3 || got[0] != "deal/a#1" || got[1] != "deal/a#2" || got[2] != "deal/b#1" {
-		t.Fatalf("records %v", got)
+	if len(shelf.books) != 0 {
+		t.Fatalf("Records opened %d books", len(shelf.books))
 	}
 	if all.Pending["deal/a"] != 1 || len(all.Pending) != 1 {
 		t.Fatalf("pending %v", all.Pending)
 	}
-	if all.Records[0].RecordID != ra.RecordID || all.Records[0].Header.BookID != "deal/a" {
-		t.Fatalf("first record %+v", all.Records[0])
+	var lastA uint64
+	byID := map[string]ShelfRecord{}
+	for i, r := range all.Records {
+		if i > 0 && (r.BookID < all.Records[i-1].BookID || (r.BookID == all.Records[i-1].BookID && r.Seq != all.Records[i-1].Seq+1)) {
+			t.Fatalf("out of order at %d: %+v", i, r)
+		}
+		if r.BookID == "deal/a" {
+			lastA = r.Seq
+		}
+		byID[r.RecordID] = r
 	}
-	if all.Records[0].Retention != Available {
-		t.Fatalf("retention %q, want AVAILABLE", all.Records[0].Retention)
+	if lastA != uint64(pendingSeq-1) {
+		t.Fatalf("deal/a lists through seq %d, want %d", lastA, pendingSeq-1)
+	}
+	for id, state := range want {
+		if byID[id].Retention != state {
+			t.Errorf("%s: Records says %q, Book.Retention %q", id, byID[id].Retention, state)
+		}
 	}
 	only, err := shelf.Records(ctx, "deal/b")
-	if err != nil || len(only.Records) != 1 || only.Records[0].RecordID != rb.RecordID {
+	if err != nil || len(only.Records) != 1 || only.Records[0].RecordID != other.RecordID {
 		t.Fatalf("filtered %+v %v", only, err)
 	}
 }
