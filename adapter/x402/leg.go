@@ -11,6 +11,7 @@ import (
 	"regexp"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Properties reported only for a settlement-records leg. They are not
@@ -45,12 +46,12 @@ var errNeitherForm = errors.New("a JSON object that is neither a settlement-reco
 // checkJSON handles the two JSON input forms: a settlement-records leg (an
 // object with a settlement member) and the bare payment payload.
 func checkJSON(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult {
-	v, err := decodeStrict(raw)
-	root, ok := asObj(v)
+	v, err := ijson.Parse(raw)
+	root, ok := ijson.AsObj(v)
 	switch {
-	case err == nil && ok && root.has("settlement"):
+	case err == nil && ok && root.Has("settlement"):
 		return checkLeg(root, policy)
-	case err == nil && ok && !root.has("x402Version"):
+	case err == nil && ok && !root.Has("x402Version"):
 		return checkSections(objects{payload: raw, payloadErr: errNeitherForm}, policy).all()
 	}
 	// The bare payment payload, or JSON that does not parse (reported by
@@ -62,10 +63,10 @@ func checkJSON(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResult 
 // check, and returns the content octets (nil when absent or unusable).
 func unwrap(o *out, wrapped []any, typ string) []byte {
 	set := func(st adapter.Status, d string) { o.plain(PropWrappedContent, st, MethodWrappedContent, typ+": "+d) }
-	var entries []obj
+	var entries []ijson.Obj
 	for _, e := range wrapped {
-		if eo, ok := asObj(e); ok {
-			if t, _ := eo.str("type"); t == typ {
+		if eo, ok := ijson.AsObj(e); ok {
+			if t, _ := eo.Str("type"); t == typ {
 				entries = append(entries, eo)
 			}
 		}
@@ -80,20 +81,20 @@ func unwrap(o *out, wrapped []any, typ string) []byte {
 		return nil
 	}
 	e := entries[0]
-	if alg, _ := e.str("digest_alg"); alg != "SHA-256" {
+	if alg, _ := e.Str("digest_alg"); alg != "SHA-256" {
 		set(adapter.NotChecked, fmt.Sprintf("digest_alg %q is not SHA-256", alg))
 		return nil
 	}
-	digest, _ := e.str("digest")
+	digest, _ := e.Str("digest")
 	if !digestRE.MatchString(digest) {
 		set(adapter.Fail, fmt.Sprintf("digest %q is not 64 lowercase hex digits", digest))
 		return nil
 	}
-	if !e.has("content") {
+	if !e.Has("content") {
 		set(adapter.NotPresent, "the entry carries the digest only: possession of a digest, nothing to check natively")
 		return nil
 	}
-	content, ok := e.str("content")
+	content, ok := e.Str("content")
 	if !ok {
 		set(adapter.Fail, "content is not a string")
 		return nil
@@ -114,10 +115,10 @@ func unwrap(o *out, wrapped []any, typ string) []byte {
 	return octets
 }
 
-func checkLeg(root obj, policy adapter.TrustPolicy) []adapter.PropertyResult {
-	settlement, ok := root.object("settlement")
+func checkLeg(root ijson.Obj, policy adapter.TrustPolicy) []adapter.PropertyResult {
+	settlement, ok := root.Object("settlement")
 	var wrapped []any
-	if ok && settlement.has("wrapped") {
+	if ok && settlement.Has("wrapped") {
 		wrapped, ok = settlement["wrapped"].([]any)
 	}
 	var wPay, wResp, wRcpt out
@@ -147,8 +148,8 @@ func checkLeg(root obj, policy adapter.TrustPolicy) []adapter.PropertyResult {
 	return res
 }
 
-func checkLegCross(o *out, settlement obj, pay *payment) {
-	var accepted obj
+func checkLegCross(o *out, settlement ijson.Obj, pay *payment) {
+	var accepted ijson.Obj
 	if pay != nil && pay.inScope {
 		accepted = pay.accepted
 	}
@@ -159,7 +160,7 @@ func checkLegCross(o *out, settlement obj, pay *payment) {
 		case accepted == nil:
 			o.plain(prop, adapter.NotChecked, method, "no in-scope x402 v2 payment payload to compare with")
 		default:
-			want, ok := accepted.str(member)
+			want, ok := accepted.Str(member)
 			switch {
 			case !ok:
 				o.plain(prop, adapter.Fail, method, "accepted."+member+" is missing")
@@ -170,13 +171,13 @@ func checkLegCross(o *out, settlement obj, pay *payment) {
 			}
 		}
 	}
-	amount, _ := settlement.object("amount")
-	value, ok := amount.str("value")
+	amount, _ := settlement.Object("amount")
+	value, ok := amount.Str("value")
 	cross(PropLegAmount, MethodLegAmount, "settlement.amount.value", value, ok, "amount")
 
-	ref, _ := settlement.object("payment_ref")
-	network, ok := ref.str("network")
-	if t, _ := ref.str("type"); ok && t != "x402.transaction" {
+	ref, _ := settlement.Object("payment_ref")
+	network, ok := ref.Str("network")
+	if t, _ := ref.Str("type"); ok && t != "x402.transaction" {
 		o.plain(PropLegNetwork, adapter.NotChecked, MethodLegNetwork, fmt.Sprintf("payment_ref type %q is not x402.transaction", t))
 		return
 	}
