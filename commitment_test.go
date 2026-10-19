@@ -3,10 +3,15 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/action-state-group/capsule-emit/go/artifact"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // The construction is capsule-cli's commitText, byte for byte: SHA-256 over
@@ -264,5 +269,137 @@ func TestRetentionReachesOpenings(t *testing.T) {
 		if original.Content != nil {
 			t.Fatalf("the opening's bytes must be purged: %+v", original)
 		}
+	}
+}
+
+// The published header schema accepts the headers the book seals, with and
+// without field commitments, and refuses commit_alg without them.
+func TestTheHeaderSchemaAcceptsFieldCommitments(t *testing.T) {
+	raw, err := os.ReadFile("schemas/record-header.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := jsonschema.NewCompiler()
+	c.DefaultDraft(jsonschema.Draft2020)
+	if err := c.AddResource("record-header.schema.json", doc); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := c.Compile("record-header.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	validate := func(header []byte) error {
+		value, err := jsonschema.UnmarshalJSON(bytes.NewReader(header))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return schema.Validate(value)
+	}
+	book := newFixture(t, "book-schema", 1).open(t)
+	plain := mustAppend(t, book, observation("s", "p"))
+	entry := observation("s", "p")
+	entry.Fields = map[string]string{"terms": "net 30"}
+	salted := mustAppend(t, book, entry)
+	for _, record := range []Record{plain, salted} {
+		header, err := canonicalJSON(record.Header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := validate(header); err != nil {
+			t.Fatalf("a sealed header fails the schema: %v\n%s", err, header)
+		}
+	}
+	bad := salted.Header
+	bad.FieldCommitments = nil
+	header, _ := canonicalJSON(bad)
+	if validate(header) == nil {
+		t.Fatal("commit_alg without field_commitments must fail the schema")
+	}
+}
+
+// A record a caller holds is its own copy: changing its maps cannot change
+// what the book commits or trusts.
+func TestARecordsMapsAreTheCallersOwn(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-alias", 1).open(t)
+	entry := observation("s", "p")
+	entry.Fields = map[string]string{"terms": "net 30"}
+	appended := mustAppend(t, book, entry)
+	want := appended.Header.FieldCommitments["terms"]
+	appended.Header.FieldCommitments["terms"] = strings.Repeat("0", 64)
+	got, err := book.Get(ctx, appended.RecordID)
+	if err != nil || got.Header.FieldCommitments["terms"] != want {
+		t.Fatalf("Append's result aliases the book's record: %v", err)
+	}
+	got.Header.FieldCommitments["terms"] = strings.Repeat("1", 64)
+	got.Header.PayloadCommitments[0] = strings.Repeat("2", 64)
+	all, err := book.Query(ctx, Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	all[0].Header.FieldCommitments["terms"] = strings.Repeat("3", 64)
+	again, _ := book.Get(ctx, appended.RecordID)
+	if again.Header.FieldCommitments["terms"] != want || again.Header.PayloadCommitments[0] == strings.Repeat("2", 64) {
+		t.Fatal("Get or Query results alias the book's record")
+	}
+}
+
+// A caller-sealed record commits its fields the same way.
+func TestACallerSealedRecordCommitsItsFields(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-caller-fields", 1).open(t)
+	entry := publishedEntry()
+	entry.Fields = map[string]string{"terms": "net 30"}
+	payload := `{"order":18}`
+	record, err := book.AppendCapsule(ctx, entry, boundPayload(payload), ownSealer(t, 1, payload, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Header.CommitAlg != CommitAlgNonce256 || len(record.Header.FieldCommitments) != 1 {
+		t.Fatalf("header %+v", record.Header)
+	}
+	opening, err := book.Opening(ctx, record.RecordID, "terms")
+	if err != nil || opening.Text != "net 30" {
+		t.Fatalf("opening %+v %v", opening, err)
+	}
+}
+
+// Openings survive a reopen: they are read from the artifact store.
+func TestAnOpeningSurvivesAReopen(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-reopen-opening", 1)
+	book := f.open(t)
+	entry := observation("s", "p")
+	entry.Fields = map[string]string{"terms": "net 30"}
+	record := mustAppend(t, book, entry)
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := f.open(t)
+	opening, err := reopened.Opening(ctx, record.RecordID, "terms")
+	if err != nil || opening.Text != "net 30" || !VerifyOpening(record.Header.FieldCommitments["terms"], opening) {
+		t.Fatalf("opening after reopen: %+v %v", opening, err)
+	}
+}
+
+// Bytes in the artifact store that do not open the header's commitment are
+// corruption, never served as the opening.
+func TestATamperedOpeningIsCorrupt(t *testing.T) {
+	opening, _ := NewOpening("net 30")
+	commitment, _ := opening.Commitment()
+	tampered, _ := canonicalJSON(Opening{Nonce: opening.Nonce, Text: "net 60"})
+	if _, err := openingFrom(artifact.Artifact{Name: "opening.terms", Content: tampered}, commitment); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("tampered: %v", err)
+	}
+	if _, err := openingFrom(artifact.Artifact{Name: "opening.terms", Content: []byte("not json")}, commitment); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("garbage: %v", err)
+	}
+	good, _ := canonicalJSON(opening)
+	if got, err := openingFrom(artifact.Artifact{Name: "opening.terms", Content: good}, commitment); err != nil || got != opening {
+		t.Fatalf("good: %v", err)
 	}
 }

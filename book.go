@@ -500,14 +500,14 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		return Record{}, fmt.Errorf("record %s is stored but not yet committed; it keeps seq %d and is retried first: %w", record.RecordID, seq, err)
 	}
 	if err := b.admitLocked(ctx, record); err != nil {
-		return record, err
+		return record.detached(), err
 	}
 	if b.checkpointEvery > 0 && !b.checkpointing && seq%b.checkpointEvery == 0 {
 		if _, err := b.checkpointLocked(ctx); err != nil {
-			return record, fmt.Errorf("record committed; automatic checkpoint failed: %w", err)
+			return record.detached(), fmt.Errorf("record committed; automatic checkpoint failed: %w", err)
 		}
 	}
-	return record, nil
+	return record.detached(), nil
 }
 
 // checkCallerSealed runs a caller's sealer and accepts its capsule only if
@@ -572,7 +572,7 @@ func (b *Book) Get(_ context.Context, recordID string) (Record, error) {
 	if !ok {
 		return Record{}, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
 	}
-	return record, nil
+	return record.detached(), nil
 }
 
 // Query answers from the operational index. Its result is a local lookup,
@@ -590,7 +590,7 @@ func (b *Book) queryLocked(ctx context.Context, filter Filter) ([]Record, error)
 	}
 	out := make([]Record, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, b.records[id])
+		out = append(out, b.records[id].detached())
 	}
 	return out, nil
 }

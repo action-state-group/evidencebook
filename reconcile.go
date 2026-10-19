@@ -118,7 +118,9 @@ func OpenHalf(h Half, openings map[string]Opening) Half {
 // commits with its own fresh nonce, so two halves of the same text carry
 // different commitments and only both openings can show agreement: a
 // required field not opened on either half is Undecided; otherwise equal
-// texts on every required field Agree, and any difference Disagrees.
+// texts on every required field Agree, and any difference Disagrees. With no
+// required field there is nothing to compare, so every pair is Undecided
+// (INSUFFICIENT): name the fields the profile compares.
 func OpenedFieldsAgree(required ...string) ContentCheck {
 	return func(a, b Half) ContentVerdict {
 		if len(required) == 0 {

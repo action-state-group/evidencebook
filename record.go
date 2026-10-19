@@ -5,7 +5,9 @@ package evidencebook
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"time"
 )
 
@@ -164,6 +166,22 @@ type Record struct {
 	RecordID string
 	Seq      uint64
 	Header   Header
+}
+
+// detached returns r with its own copies of the header's maps and slices, so
+// a caller holding it cannot change the book's record: the book trusts its
+// own records' commitments (reconcile marks its own halves trusted).
+func (r Record) detached() Record {
+	h := &r.Header
+	h.PayloadCommitments = slices.Clone(h.PayloadCommitments)
+	h.FieldCommitments = maps.Clone(h.FieldCommitments)
+	h.Links = slices.Clone(h.Links)
+	h.Statement = slices.Clone(h.Statement)
+	if h.Correlation != nil {
+		correlation := *h.Correlation
+		h.Correlation = &correlation
+	}
+	return r
 }
 
 // Entry is what a caller asks the book to record. Seq, CommittedAt, BookID and

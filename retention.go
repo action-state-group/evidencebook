@@ -32,7 +32,7 @@ type LifecycleStatement struct {
 // an AVAILABLE or PARTIAL record reads as LEGAL_HOLD: the hold blocks
 // deletion and changes no resolvability. A WITHHELD record stays WITHHELD
 // under a hold, which still blocks its deletion. A record that commits no
-// payload has no retention state and is refused.
+// payload and no field has no retention state and is refused.
 func (b *Book) Retention(_ context.Context, recordID string) (RetentionState, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

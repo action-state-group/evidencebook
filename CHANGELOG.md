@@ -18,6 +18,10 @@ one evidencebook#44 rules a History's deal-level commitments use.
   record's retention, never in the record. `Book.Opening` reads one;
   `VerifyOpening` checks one. Openings are not payloads:
   `payload_commitments` and `ResolvePayload` never include them.
+  `schemas/record-header.schema.json` declares `field_commitments` and
+  `commit_alg` (and requires them together, with `retention_state`).
+  `Get`, `Query` and `Append` return records with their own copies of the
+  header's maps and slices, so a caller cannot change what the book trusts.
 - Reconcile: `Half` gains `FieldCommitments` and `Opened`. `OpenHalf`
   checks openings against a half's own commitments, and an opening that
   does not open makes the half untrusted (`UNRESOLVED`).
