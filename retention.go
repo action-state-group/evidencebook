@@ -48,8 +48,8 @@ func (b *Book) retentionLocked(recordID string) (state RetentionState, latest st
 	if !ok {
 		return "", "", false, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
 	}
-	if len(record.Header.PayloadCommitments) == 0 {
-		return "", "", false, fmt.Errorf("%w: record %s commits no payload, so it has no retention state", ErrNotFound, recordID)
+	if len(record.Header.PayloadCommitments) == 0 && len(record.Header.FieldCommitments) == 0 {
+		return "", "", false, fmt.Errorf("%w: record %s commits no payload or field, so it has no retention state", ErrNotFound, recordID)
 	}
 	state, latest = record.Header.RetentionState, recordID
 	for _, id := range b.order[record.Seq:] {

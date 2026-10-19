@@ -424,6 +424,16 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Record{}, err
 	}
+	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
+	if err != nil {
+		return Record{}, err
+	}
+	for _, original := range originals {
+		if isOpening(original) {
+			return Record{}, fmt.Errorf("%w: original %q uses the name of a field opening", ErrInvalid, original.Name)
+		}
+	}
+	originals = append(append([]artifact.Artifact{}, originals...), fieldOpenings...)
 	if err := checkOriginals(originals); err != nil {
 		return Record{}, err
 	}
@@ -445,11 +455,14 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		header.Correlation = &correlation
 	}
 	for _, original := range originals {
-		if original.State == artifact.Present {
+		if original.State == artifact.Present && !isOpening(original) {
 			header.PayloadCommitments = append(header.PayloadCommitments, digestBytes(original.Content))
 		}
 	}
-	if len(header.PayloadCommitments) > 0 {
+	if len(fieldCommitments) > 0 {
+		header.FieldCommitments, header.CommitAlg = fieldCommitments, CommitAlgNonce256
+	}
+	if len(header.PayloadCommitments) > 0 || len(header.FieldCommitments) > 0 {
 		header.RetentionState = Available
 	}
 	if err := validateHeader(header); err != nil {

@@ -35,8 +35,13 @@ type Half struct {
 	Seq                uint64
 	Correlation        Correlation
 	PayloadCommitments []string
-	Covered            bool
-	Trusted            bool
+	// FieldCommitments are the record's salted field commitments, by name.
+	FieldCommitments map[string]string
+	// Opened holds the texts of the fields whose openings verified against
+	// this half's own commitments (OpenHalf).
+	Opened  map[string]string
+	Covered bool
+	Trusted bool
 }
 
 // HalfSet is one side's account of a period. Complete means that account is
@@ -56,6 +61,83 @@ type Comparator func(a, b Half) bool
 // needs a comparator over the disclosed content instead.
 func SamePayloadCommitments(a, b Half) bool {
 	return len(a.PayloadCommitments) > 0 && slices.Equal(a.PayloadCommitments, b.PayloadCommitments)
+}
+
+// ContentVerdict is what a content check concludes about a covered, trusted,
+// correlated pair.
+type ContentVerdict int
+
+const (
+	// Agree: the contents agree (MATCHED).
+	Agree ContentVerdict = iota
+	// Disagree: the contents were compared and differ (CONFLICTING).
+	Disagree
+	// Undecided: the content needed to compare is not available
+	// (INSUFFICIENT), for example an unopened field commitment. Missing
+	// content is never disagreement.
+	Undecided
+)
+
+// ContentCheck is a three-way content test: like a Comparator, but it can
+// say the content needed is not there.
+type ContentCheck func(a, b Half) ContentVerdict
+
+// Check lifts a Comparator to a ContentCheck: true agrees, false disagrees.
+func (c Comparator) Check() ContentCheck {
+	return func(a, b Half) ContentVerdict {
+		if c(a, b) {
+			return Agree
+		}
+		return Disagree
+	}
+}
+
+// OpenHalf checks each opening given for h against h's own field
+// commitments. One that opens records its text in Opened; one that does not
+// (a wrong nonce, a changed text, a field h does not commit) makes h
+// untrusted, so its pair is UNRESOLVED whatever else holds. A missing
+// opening changes nothing here: OpenedFieldsAgree reads it as Undecided.
+func OpenHalf(h Half, openings map[string]Opening) Half {
+	opened := make(map[string]string, len(h.Opened)+len(openings))
+	for name, text := range h.Opened {
+		opened[name] = text
+	}
+	for name, opening := range openings {
+		commitment, committed := h.FieldCommitments[name]
+		if !committed || !VerifyOpening(commitment, opening) {
+			h.Trusted = false
+			continue
+		}
+		opened[name] = opening.Text
+	}
+	h.Opened = opened
+	return h
+}
+
+// OpenedFieldsAgree compares the required fields' opened texts. Each record
+// commits with its own fresh nonce, so two halves of the same text carry
+// different commitments and only both openings can show agreement: a
+// required field not opened on either half is Undecided; otherwise equal
+// texts on every required field Agree, and any difference Disagrees.
+func OpenedFieldsAgree(required ...string) ContentCheck {
+	return func(a, b Half) ContentVerdict {
+		if len(required) == 0 {
+			return Undecided
+		}
+		for _, name := range required {
+			_, inA := a.Opened[name]
+			_, inB := b.Opened[name]
+			if !inA || !inB {
+				return Undecided
+			}
+		}
+		for _, name := range required {
+			if a.Opened[name] != b.Opened[name] {
+				return Disagree
+			}
+		}
+		return Agree
+	}
 }
 
 // PairResult classifies one exchange.
@@ -108,6 +190,15 @@ func (t *Tallies) add(state ExchangeState) {
 // B_ONLY when the other side's account is complete, INSUFFICIENT otherwise,
 // and never CONFLICTING.
 func ReconcileHalves(a, b HalfSet, compare Comparator) ([]PairResult, Tallies) {
+	return ReconcileHalvesWith(a, b, compare.Check())
+}
+
+// ReconcileHalvesWith is ReconcileHalves with a three-way content check: on
+// a covered, trusted, correlated pair, Agree is MATCHED, Disagree is
+// CONFLICTING and Undecided is INSUFFICIENT. The precedence is unchanged:
+// a key conflict, then an uncovered half (INSUFFICIENT), then an untrusted
+// half (UNRESOLVED), then the content check.
+func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallies) {
 	partner := make([]int, len(a.Halves))
 	keys := make([]string, len(a.Halves))
 	used := make([]bool, len(b.Halves))
@@ -176,10 +267,15 @@ func ReconcileHalves(a, b HalfSet, compare Comparator) ([]PairResult, Tallies) {
 			result.State = Insufficient
 		case !own.Trusted || !peer.Trusted:
 			result.State = Unresolved
-		case compare(own, peer):
-			result.State = Matched
 		default:
-			result.State = Conflicting
+			switch check(own, peer) {
+			case Agree:
+				result.State = Matched
+			case Undecided:
+				result.State = Insufficient
+			default:
+				result.State = Conflicting
+			}
 		}
 		results = append(results, result)
 	}
@@ -211,7 +307,13 @@ type ReconcileInput struct {
 	FromSeq, ToSeq uint64
 	// PeerFromSeq and PeerToSeq bound the peer's window the same way.
 	PeerFromSeq, PeerToSeq uint64
-	Compare                Comparator
+	// Compare or Check is the content test; exactly one is set. Check can
+	// answer Undecided (OpenedFieldsAgree, for salted field commitments).
+	Compare Comparator
+	Check   ContentCheck
+	// OwnOpenings and PeerOpenings are field openings by record id, checked
+	// against each half's own commitments (OpenHalf) before comparison.
+	OwnOpenings, PeerOpenings map[string]map[string]Opening
 }
 
 // Reconciliation is the result of comparing this book (side A) with a peer's
@@ -247,8 +349,12 @@ func (b *Book) Reconcile(ctx context.Context, in ReconcileInput) (Reconciliation
 // header; a withheld or unverifiable header could be any record's
 // counterpart, so it makes absence unprovable rather than disappearing.
 func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconciliation, error) {
-	if in.Compare == nil {
-		return Reconciliation{}, fmt.Errorf("%w: a content comparator is required", ErrInvalid)
+	if (in.Compare == nil) == (in.Check == nil) {
+		return Reconciliation{}, fmt.Errorf("%w: exactly one content test, Compare or Check, is required", ErrInvalid)
+	}
+	check := in.Check
+	if check == nil {
+		check = in.Compare.Check()
 	}
 	head, haveHead, err := b.latestLocked(ctx)
 	if err != nil {
@@ -267,11 +373,11 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		if !inWindow(record.Seq, in.FromSeq, in.ToSeq) || !isHalf(record.Header, in.RecordType) {
 			continue
 		}
-		own.Halves = append(own.Halves, Half{
+		own.Halves = append(own.Halves, OpenHalf(Half{
 			RecordID: id, Seq: record.Seq, Correlation: *record.Header.Correlation,
-			PayloadCommitments: record.Header.PayloadCommitments,
-			Covered:            haveHead && head.Covers(record.Seq), Trusted: true,
-		})
+			PayloadCommitments: record.Header.PayloadCommitments, FieldCommitments: record.Header.FieldCommitments,
+			Covered: haveHead && head.Covers(record.Seq), Trusted: true,
+		}, in.OwnOpenings[id]))
 	}
 	peer := HalfSet{Complete: in.Peer.AnchorAuthenticated && in.Peer.IntervalFirst <= max(in.PeerFromSeq, 1) &&
 		(in.PeerToSeq == 0 || in.Peer.IntervalLast >= in.PeerToSeq)}
@@ -289,14 +395,14 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		if !isHalf(*record.Header, in.RecordType) {
 			continue
 		}
-		peer.Halves = append(peer.Halves, Half{
+		peer.Halves = append(peer.Halves, OpenHalf(Half{
 			RecordID: record.RecordID, Seq: record.Seq, Correlation: *record.Header.Correlation,
-			PayloadCommitments: record.Header.PayloadCommitments,
-			Covered:            in.Peer.Covers(record.Seq), Trusted: record.CapsuleOK && record.HeaderVerified,
-		})
+			PayloadCommitments: record.Header.PayloadCommitments, FieldCommitments: record.Header.FieldCommitments,
+			Covered: in.Peer.Covers(record.Seq), Trusted: record.CapsuleOK && record.HeaderVerified,
+		}, in.PeerOpenings[record.RecordID]))
 	}
 	out.PeerComplete = peer.Complete
-	out.Pairs, out.Tallies = ReconcileHalves(own, peer, in.Compare)
+	out.Pairs, out.Tallies = ReconcileHalvesWith(own, peer, check)
 	return out, nil
 }
 
