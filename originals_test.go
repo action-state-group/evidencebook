@@ -537,6 +537,120 @@ func TestMigratePayloadDirLeavesADeletedRecordDeleted(t *testing.T) {
 	}
 }
 
+// A legacy per-payload deletion followed by a later state leaves the record
+// readable, as Retention reads it: migration stores its other payload and
+// leaves the deleted one out, even when a shared digest kept its file.
+func TestMigratePayloadDirFollowsTheLatestLegacyState(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	book := f.open(t)
+	sharer := mustAppend(t, book, observation("s", "gone"))
+	both := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "b", Payloads: [][]byte{[]byte("gone"), []byte("kept")}})
+	gone, kept := both.Header.PayloadCommitments[0], both.Header.PayloadCommitments[1]
+	for _, statement := range []string{
+		`{"retention_state":"DELETED","payload_commitment":"` + gone + `"}`,
+		`{"retention_state":"WITHHELD"}`,
+	} {
+		if _, err := book.Append(ctx, Entry{RecordType: RecordTypeLifecycle, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: both.RecordID}}, Statement: json.RawMessage(statement)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(f.dir, "payloads")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for digest, data := range map[string]string{gone: "gone", kept: "kept"} {
+		if err := os.WriteFile(filepath.Join(dir, digest), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(f.dir, "originals.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.config(t)
+	if moved, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || moved != 2 {
+		t.Fatalf("migration moved %d records: %v", moved, err)
+	}
+	if again, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || again != 0 {
+		t.Fatalf("a repeated migration moved %d records: %v", again, err)
+	}
+	held, err := cfg.Originals.Get(ctx, both.RecordID)
+	if err != nil {
+		t.Fatalf("the record whose latest state is WITHHELD was not stored: %v", err)
+	}
+	if _, _, present := originalBytes(held, kept); !present {
+		t.Fatal("the payload no lifecycle deleted was not stored")
+	}
+	if _, found, _ := originalBytes(held, gone); found {
+		t.Fatal("a payload deleted under per-payload retention came back")
+	}
+	if _, _, present := originalBytes(mustGet(t, cfg.Originals, sharer.RecordID), gone); !present {
+		t.Fatal("the record sharing the digest lost its original")
+	}
+	if err := errors.Join(cfg.Store.Release(), cfg.Substrate.Release()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustGet(t *testing.T, store ArtifactStore, id string) artifact.Record {
+	t.Helper()
+	held, err := store.Get(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return held
+}
+
+// An own capsule whose input and output are the same bytes discloses both
+// members; suppressing one leaves the other.
+func TestIdenticalInputAndOutputAreBothDisclosed(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-a", 1).open(t)
+	value := `{"same":true}`
+	seal := func(header Header, headerJSON []byte) (emit.Result, error) {
+		identity, err := emit.NewEd25519SigningIdentity(seededKey(1))
+		if err != nil {
+			return emit.Result{}, err
+		}
+		input := emit.Input{
+			ActionID: "own-action", ActionType: emit.ActionTypeFYI,
+			Operator: "caller", Developer: "caller", Timestamp: time.Date(2026, 9, 26, 11, 0, 0, 0, time.UTC),
+			Extensions: []emit.Extension{{Name: RecordHeaderMember, Value: headerJSON}},
+		}
+		return emit.Seal(emit.SealInput{Capsule: input, Payload: json.RawMessage(value), AgentOutput: json.RawMessage(value), Identity: identity})
+	}
+	originals := append(boundPayload(value), artifact.Artifact{Name: "agent_output", Binding: artifact.AgentOutputDigest, State: artifact.Present, Content: []byte(value)})
+	own, err := book.AppendCapsule(ctx, publishedEntry(), originals, seal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for suppress, want := range map[string][]string{"": {"agent_input", "agent_output"}, "agent_output": {"agent_input"}, "agent_input": {"agent_output"}} {
+		req := BundleRequest{Root: own.RecordID, Payloads: PayloadsSelected}
+		if suppress != "" {
+			req.Suppress = []string{suppress}
+		}
+		bundle, err := book.Bundle(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire bundleWire
+		if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for member := range wire.Disclosures[own.RecordID] {
+			got = append(got, member)
+		}
+		slices.Sort(got)
+		if !slices.Equal(got, want) {
+			t.Fatalf("suppress %q: disclosed %v, want %v", suppress, got, want)
+		}
+	}
+}
+
 // The reference artifact store is owner-only and durable.
 func TestOpenOriginalsFileIsOwnerOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "originals.jsonl")

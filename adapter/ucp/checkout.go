@@ -13,6 +13,7 @@ import (
 	"regexp"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // The §3(e) properties of the AP2-signed checkout, in declaration order.
@@ -148,7 +149,7 @@ func checkCheckout(v any, parseErr error, policy adapter.TrustPolicy) []adapter.
 				payload[k] = val
 			}
 		}
-		canon, err := jcs(payload)
+		canon, err := ijson.JCS(payload)
 		switch {
 		case err != nil:
 			r.add(PropMASignature, adapter.NotChecked, sigMethod, "RFC 8785: "+err.Error())
@@ -229,7 +230,7 @@ func parseDetachedJWS(v any) (hdr map[string]any, encHeader string, sig []byte, 
 	if err != nil {
 		return nil, "", nil, errors.New("protected header is not base64url without padding")
 	}
-	hv, err := parseIJSON(hb)
+	hv, err := ijson.Parse(hb)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("protected header is not I-JSON: %v", err)
 	}

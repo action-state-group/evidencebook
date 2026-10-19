@@ -512,3 +512,19 @@ func TestOrderSchemas(t *testing.T) {
 		}
 	}
 }
+
+// The body is read as I-JSON, as UCP's checkout is: a lone surrogate escape
+// or invalid UTF-8 fails object_form instead of reading as U+FFFD.
+func TestObjectFormIsIJSON(t *testing.T) {
+	raw := readFixture(t, "checkout-session.json")
+	for bad, why := range map[string]string{
+		`"usd\udc00"`: "lone low surrogate",
+		"\"usd\xff\"": "not valid UTF-8",
+	} {
+		mutated := bytes.Replace(raw, []byte(`"usd"`), []byte(bad), 1)
+		got, ok := adapter.Find(Adapter{}.Check(mutated, fixturePolicy(t)), PropObjectForm)
+		if !ok || got.Status != adapter.Fail || !strings.Contains(got.Detail, why) {
+			t.Errorf("%s: %+v", why, got)
+		}
+	}
+}

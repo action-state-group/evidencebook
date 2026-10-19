@@ -76,7 +76,7 @@ func TestResponseSignatureMutations(t *testing.T) {
 		return strings.Replace(s, m[1], base64.StdEncoding.EncodeToString(b), 1)
 	}
 	noKeys := fixturePolicy(t)
-	delete(noKeys.Pins, PinKeys)
+	delete(noKeys.KeySets, KeySetName)
 	cases := []struct {
 		name string
 		raw  string

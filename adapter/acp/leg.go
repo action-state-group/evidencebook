@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Wrapped entry types for ACP objects in a settlement-records leg. These are
@@ -32,13 +33,13 @@ var wrappedKinds = map[string][]kind{
 
 // legRoot reports whether raw is a settlement-records leg: one JSON object
 // with a settlement member.
-func legRoot(raw []byte) (obj, bool) {
-	v, err := decodeStrict(raw)
+func legRoot(raw []byte) (ijson.Obj, bool) {
+	v, err := ijson.Parse(raw)
 	if err != nil {
 		return nil, false
 	}
-	root, ok := asObj(v)
-	return root, ok && root.has("settlement")
+	root, ok := ijson.AsObj(v)
+	return root, ok && root.Has("settlement")
 }
 
 // unwrapLeg finds the leg's single wrapped ACP entry and checks its content
@@ -46,17 +47,17 @@ func legRoot(raw []byte) (obj, bool) {
 // (nil when there are none to read), the object kinds the entry type admits,
 // and the octets_digest result. The relying party's pin is not read: the
 // wrapping record carries the digest.
-func unwrapLeg(root obj) (input, []kind, adapter.Status, string) {
+func unwrapLeg(root ijson.Obj) (input, []kind, adapter.Status, string) {
 	in := input{carrier: "settlement-records leg wrapped content"}
-	settlement, _ := root.object("settlement")
+	settlement, _ := root.Object("settlement")
 	wrapped, ok := settlement["wrapped"].([]any)
 	if !ok {
 		return in, nil, adapter.Fail, "settlement.wrapped is missing or not an array"
 	}
-	var entries []obj
+	var entries []ijson.Obj
 	for _, e := range wrapped {
-		if eo, ok := asObj(e); ok {
-			if t, _ := eo.str("type"); wrappedKinds[t] != nil {
+		if eo, ok := ijson.AsObj(e); ok {
+			if t, _ := eo.Str("type"); wrappedKinds[t] != nil {
 				entries = append(entries, eo)
 			}
 		}
@@ -70,20 +71,20 @@ func unwrapLeg(root obj) (input, []kind, adapter.Status, string) {
 		return in, nil, adapter.Fail, fmt.Sprintf("%d wrapped ACP entries; which one is meant is ambiguous", len(entries))
 	}
 	e := entries[0]
-	in.entryType, _ = e.str("type")
+	in.entryType, _ = e.Str("type")
 	want := wrappedKinds[in.entryType]
 	prefix := in.entryType + ": "
-	if alg, _ := e.str("digest_alg"); alg != "SHA-256" {
+	if alg, _ := e.Str("digest_alg"); alg != "SHA-256" {
 		return in, nil, adapter.NotChecked, prefix + fmt.Sprintf("digest_alg %q is not SHA-256", alg)
 	}
-	digest, _ := e.str("digest")
+	digest, _ := e.Str("digest")
 	if !digestRE.MatchString(digest) {
 		return in, nil, adapter.Fail, prefix + fmt.Sprintf("digest %q is not 64 lowercase hex digits", digest)
 	}
-	if !e.has("content") {
+	if !e.Has("content") {
 		return in, nil, adapter.NotPresent, prefix + "the entry carries the digest only: possession of a digest, no octets to read"
 	}
-	content, ok := e.str("content")
+	content, ok := e.Str("content")
 	if !ok {
 		return in, nil, adapter.Fail, prefix + "content is not a string"
 	}

@@ -13,10 +13,11 @@ import (
 
 // Trust policy names this adapter reads (adapter.TrustPolicy is shared data).
 const (
-	// PinKeys is the relying party's retained copy of the business profile's
-	// keys[]: a JWK Set ({"keys": [...]}) or a bare array, as a JSON string.
-	// The adapter never fetches /.well-known/ucp.
-	PinKeys = "ucp.keys"
+	// KeySetName names, under the trust policy's key_sets, the relying
+	// party's retained copy of the business profile's keys[]: a JWK Set
+	// ({"keys": [...]}) or a bare array. The adapter never fetches
+	// /.well-known/ucp.
+	KeySetName = "ucp.keys"
 	// PinKeysOrigin is the business origin (https://host[:port]) whose
 	// /.well-known/ucp served that copy. For a checkout it is also the origin
 	// the relying party's policy is asked about: the checkout does not name
@@ -87,7 +88,7 @@ func retainedMethod(policy adapter.TrustPolicy) string {
 		if o := policy.Pin(PinKeysOrigin); o != "" {
 			src = o + "/.well-known/ucp"
 		} else {
-			src = "trust policy " + PinKeys
+			src = "trust policy " + KeySetName
 		}
 	}
 	m := "retained keys[] (" + src + ")"
@@ -103,8 +104,15 @@ func retainedMethod(policy adapter.TrustPolicy) string {
 // origin is not the signer's.
 func resolveKey(policy adapter.TrustPolicy, kid, signerOrigin, prop string) (crypto.PublicKey, adapter.PropertyResult) {
 	row := adapter.PropertyResult{Property: prop}
-	text := policy.Pin(PinKeys)
-	if text == "" {
+	text := policy.KeySets[KeySetName]
+	if len(text) == 0 && policy.Pin(KeySetName) != "" {
+		// A v0.3.0 policy carried the key set as a pin. Say so, rather than
+		// report it as the offline verdict of a policy that retained none.
+		row.Status, row.Method = adapter.NotChecked, retainedMethod(policy)
+		row.Detail = "the trust policy gives " + KeySetName + " as a pin; a retained key set is read only from key_sets." + KeySetName
+		return nil, row
+	}
+	if len(text) == 0 {
 		row.Status, row.Method, row.Detail = adapter.NotChecked, methodKeyLive, "no key set was retained, and the verifier is offline"
 		return nil, row
 	}
@@ -115,7 +123,7 @@ func resolveKey(policy adapter.TrustPolicy, kid, signerOrigin, prop string) (cry
 	}
 	ks, err := parseKeySet(text)
 	if err != nil {
-		row.Status, row.Detail = adapter.NotChecked, "the trust policy's "+PinKeys+" is unreadable: "+err.Error()
+		row.Status, row.Detail = adapter.NotChecked, "the trust policy's "+KeySetName+" is unreadable: "+err.Error()
 		return nil, row
 	}
 	k, ok, skipped := ks.lookup(kid)

@@ -120,7 +120,7 @@ func loadSchemas() {
 	orderSchema, schemaErr = c.Compile(orderSchemaURL)
 }
 
-// validate validates a value returned by parseIJSON against the checkout
+// validate validates a value returned by ijson.Parse against the checkout
 // (AP2-extended) or order schema. It returns a one-line reason on a
 // violation.
 func validate(order bool, v any) (ok bool, reason string, err error) {

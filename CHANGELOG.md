@@ -36,7 +36,9 @@ capsule-cli#236: one originals store, kept per record.
   stored. `MigratePayloadDir` moves a payload directory's bytes into the
   artifact store and changes no record, log entry or checkpoint; a record
   the store already holds without a payload the directory still has is an
-  error, never skipped.
+  error, never skipped. It folds lifecycle records as `Retention` does: a
+  record whose latest state is DELETED is not stored, and a payload an
+  earlier per-payload deletion named is left out.
 - Retention is kept per record. `Book.Retention(ctx, record)` and
   `Book.SetRetention(ctx, record, state, reason)` lose their payload
   digest, `LifecycleStatement` loses `payload_commitment`, and `DELETED`
@@ -56,6 +58,38 @@ capsule-cli#236: one originals store, kept per record.
   verifier matches them against the capsule.
 - `RecordResponse` keeps the reply's octets as the response record's
   payload; `Book.ReplyOctets` reads them back.
+
+## v0.4.0 (2026-10-19)
+
+Everything since v0.3.0.
+
+### Changed: one I-JSON reader and JCS, typed key sets, plain methods (#57)
+
+- **BREAKING:** the UCP adapter reads its retained JWK Set from the new
+  trust-policy field `key_sets`, not from `pins`.
+  - `adapter.TrustPolicy` gains `KeySets map[string]json.RawMessage`
+    (`key_sets`), one retained key set per name the adapter documents, kept
+    as the JSON value it was written as.
+  - Policy files must move `"pins": {"ucp.keys": "<JSON string>"}` to
+    `"key_sets": {"ucp.keys": {...}}`, the JWK Set (or bare array) as a JSON
+    value. A v0.3.0 `ucp.keys` pin is not read: the key check reports
+    `NOT_CHECKED` with a detail that names `key_sets`.
+  - Go callers: the exported constant `ucp.PinKeys` is renamed
+    `ucp.KeySetName` (value unchanged, `"ucp.keys"`), and a policy built in
+    code sets `KeySets["ucp.keys"]` instead of `Pins["ucp.keys"]`.
+- x402 `payload_form` and ACP `object_form` now FAIL on invalid UTF-8 and on
+  an escaped lone surrogate, instead of reading them as U+FFFD. All adapters
+  share one I-JSON (RFC 7493) reader and one RFC 8785 serializer in
+  `adapter/internal/ijson`, which adds no public API.
+- Report JSON is no longer HTML-escaped: `PropertyResult.MarshalJSON` and
+  `evidencebook adapt -explain` write `<`, `>` and `&` as themselves, so a
+  method such as `relying party policy <id>` matches `-declare`.
+- `docs/ADAPTERS.md` documents `key_sets` and the shared reader.
+
+### Not in the Go module
+
+- The Rust crate's store traits, received log and served summary (#56)
+  shipped separately as `crates/evidencebook-v0.0.6`.
 
 ## v0.3.0 (2026-10-18)
 
