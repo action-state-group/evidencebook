@@ -11,7 +11,9 @@ one evidencebook#44 rules a History's deal-level commitments use.
   nonce, as `sha256-jcs-nonce256` (`CommitAlgNonce256`): SHA-256 over
   RFC 8785 of `{"nonce", "text"}`, agent-action-capsule
   presentation-contract §7.2 and capsule-cli's deal records. The header
-  carries `field_commitments` and `commit_alg`; the openings
+  carries `field_commitments` (by field name; §7.2's records carry the same
+  values as `<name>_commitment` members, so the placement differs and the
+  values do not) and `commit_alg`; the openings
   (`{nonce, text}`) are originals in the artifact store, under the
   record's retention, never in the record. `Book.Opening` reads one;
   `VerifyOpening` checks one. Openings are not payloads:
@@ -24,8 +26,8 @@ one evidencebook#44 rules a History's deal-level commitments use.
   opening is never disagreement. `OpenedFieldsAgree(fields...)` needs both
   halves' openings, since each record's nonce is its own.
   `ReconcileHalves` and `Comparator` keep their meaning
-  (`Comparator.Check`). `ReconcileInput` takes `Check` instead of
-  `Compare`, and `OwnOpenings`/`PeerOpenings`.
+  (`Comparator.Check`). `ReconcileInput` gains `Check` beside `Compare`
+  (exactly one is set) and `OwnOpenings`/`PeerOpenings`.
 
 ### Changed (breaking): payload bytes live in an artifact store
 

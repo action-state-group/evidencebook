@@ -143,7 +143,9 @@ type Header struct {
 	PayloadCommitments []string      `json:"payload_commitments,omitempty"`
 	// FieldCommitments are the record's salted per-field commitments, by
 	// field name, under CommitAlg (CommitAlgNonce256). Their openings are
-	// originals in the artifact store, never in the record.
+	// originals in the artifact store, never in the record. Presentation
+	// contract §7.2 records carry the same values as `<name>_commitment`
+	// members; here they are one map, and the values are identical.
 	FieldCommitments map[string]string `json:"field_commitments,omitempty"`
 	CommitAlg        string            `json:"commit_alg,omitempty"`
 	RetentionState   RetentionState    `json:"retention_state,omitempty"`
