@@ -8,8 +8,9 @@
   implements in place, and `RecordSource` (records by committed entry and by
   leaf index, correlation, citing records), moved here from `answer` and
   re-exported there. `correlation` and `citing` now answer with leaf
-  positions, not entries, so an entry a log commits twice keeps both. `RecordSource::leaf_index_of` finds a record's position
-  without reading it (selection and the citing-records anchor use it), and
+  positions, not entries, so an entry a log commits twice keeps both.
+  `RecordSource::leaf_index_of` finds a record's position
+  without reading it (a record subject's selection uses it), and
   `RecordSource::entry_of` says what the log commits for a
   record: the SHA-256 of its octets by default, a `capsule_id` for a capsule
   ledger. A caller with its own checkpointer implements both over its own
