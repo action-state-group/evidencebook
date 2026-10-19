@@ -31,6 +31,14 @@ type legacyFixture struct {
 
 func newLegacyFixture(t *testing.T, logs ...string) *legacyFixture {
 	t.Helper()
+	return newPaddedLegacyFixture(t, 1, logs...)
+}
+
+// newPaddedLegacyFixture is newLegacyFixture with the cadence log padded to
+// padBucket entries per tick, so ticks' roots are not at consecutive
+// entries.
+func newPaddedLegacyFixture(t *testing.T, padBucket uint64, logs ...string) *legacyFixture {
+	t.Helper()
 	ctx := context.Background()
 	f := newShelfFixture(t)
 	for i, id := range logs {
@@ -45,8 +53,12 @@ func newLegacyFixture(t *testing.T, logs ...string) *legacyFixture {
 			t.Fatal(err)
 		}
 	}
-	l := &legacyFixture{shelf: f.open(t), legacy: map[string]*LegacyLog{}}
-	l.c, l.ended = newCadence(t, l.shelf)
+	l := &legacyFixture{shelf: f.open(t), legacy: map[string]*LegacyLog{}, ended: &ended{logs: map[string]bool{}}}
+	c, err := l.shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: l.ended.check, PadBucket: padBucket})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.c = c
 	for _, id := range logs {
 		legacy, err := l.shelf.Legacy(ctx, id)
 		if err != nil {
@@ -207,7 +219,8 @@ func TestImportLegacyIsRerunnable(t *testing.T) {
 // receiptless tick, or treat a book as a legacy log.
 func TestImportLegacyRefuses(t *testing.T) {
 	ctx := context.Background()
-	l := newLegacyFixture(t, "deal/a")
+	// Padded to 2: the ticks' roots are at entries 1 and 3, padding at 2.
+	l := newPaddedLegacyFixture(t, 2, "deal/a")
 	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,6 +234,9 @@ func TestImportLegacyRefuses(t *testing.T) {
 	older := l.ticks[1]
 	older.EntrySeq = l.ticks[0].EntrySeq + 1
 	older.Checkpoint = []byte("not held")
+	if older.EntrySeq >= l.ticks[1].EntrySeq {
+		t.Fatalf("fixture: entry %d is not between the held ticks' entries %d and %d", older.EntrySeq, l.ticks[0].EntrySeq, l.ticks[1].EntrySeq)
+	}
 	cases := map[string]LegacyCadence{
 		"another checkpoint at a held position": {Logs: l.logs(), Ticks: []CadenceTick{other}},
 		"an unregistered log":                   {Logs: nil, Ticks: l.ticks},
@@ -228,14 +244,15 @@ func TestImportLegacyRefuses(t *testing.T) {
 		"a witnessed tick without a receipt":    {Logs: l.logs(), Ticks: []CadenceTick{receiptless}},
 		"out of order":                          {Logs: l.logs(), Ticks: []CadenceTick{l.ticks[1], l.ticks[0]}},
 		"the cadence log itself":                {Logs: []string{"deal-cadence/0123456789abcdef"}},
-	}
-	if older.EntrySeq < l.ticks[1].EntrySeq {
-		cases["older than the newest held tick"] = LegacyCadence{Logs: l.logs(), Ticks: []CadenceTick{older}}
+		"older than the newest held tick":       {Logs: l.logs(), Ticks: []CadenceTick{older}},
 	}
 	for name, legacy := range cases {
 		if err := l.c.ImportLegacy(ctx, legacy); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_ticks`); n != 2 {
+		t.Fatalf("a refused import changed the cadence: %d ticks", n)
 	}
 	book := mustOpenBook(t, l.shelf, "deal/book")
 	mustAppend(t, book, observation("s", "1"))

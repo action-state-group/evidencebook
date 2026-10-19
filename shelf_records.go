@@ -36,10 +36,12 @@ type ShelfRecords struct {
 
 // Records lists the committed records of the shelf's books, in book id then
 // seq order, without opening a book: nothing is recovered, verified or
-// written, so a reader across every deal of a profile costs two queries
-// (the records, and every log's entry count), not one book opened per deal. A record is committed when 1 <= seq <= its
-// book's log entry count (an entry count, not an MMR size). bookIDs narrows
-// the listing to those books; none lists every book.
+// written. A reader across every deal of a profile costs two queries (the
+// records, and every log's entry count), not one book opened per deal.
+//
+// A record is committed when 1 <= seq <= its book's log entry count (an
+// entry count, not an MMR size). bookIDs narrows the listing to those
+// books; none lists every book.
 //
 // The headers are as stored. Records is for readers on the device that
 // wrote them; a book's Open is what checks them against its log.

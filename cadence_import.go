@@ -203,15 +203,15 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			if !ended[id] {
 				continue
 			}
-			var witnessed uint64
-			if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(mmr_size), 0) FROM cadence_witnessed WHERE log_id = ?`, id).Scan(&witnessed); err != nil {
+			var witnessedSize uint64
+			if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(mmr_size), 0) FROM cadence_witnessed WHERE log_id = ?`, id).Scan(&witnessedSize); err != nil {
 				return err
 			}
 			size, err := heldSizeTx(ctx, tx, id)
 			if err != nil {
 				return err
 			}
-			if witnessed > 0 && size <= witnessed {
+			if witnessedSize > 0 && size <= witnessedSize {
 				if _, err := tx.ExecContext(ctx, `DELETE FROM cadence_live WHERE log_id = ?`, id); err != nil {
 					return err
 				}
