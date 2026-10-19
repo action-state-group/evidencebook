@@ -321,26 +321,41 @@ func TestTwoBooksOfAShelfAppendConcurrently(t *testing.T) {
 	}
 }
 
-// A shelf can give its books no authenticated index: their checkpoints then
-// append no index_root records, and a deal's log holds its steps only.
+// A shelf chooses each book's authenticated indexes by log id: an empty
+// list gives none (its checkpoints append no index_root records), a nil
+// result the defaults.
 func TestAShelfChoosesItsBooksIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newShelfFixture(t)
-	f.cfg.AuthenticatedIndexes = func(string) []AuthenticatedIndex { return []AuthenticatedIndex{} }
-	shelf := f.open(t)
-	book := mustOpenBook(t, shelf, "deal/a")
-	mustAppend(t, book, observation("s", "1"))
-	cp, err := book.Checkpoint(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cp.Entries != 1 {
-		t.Fatalf("the checkpoint covers %d entries; index roots were appended", cp.Entries)
-	}
-	all, _ := book.Query(ctx, Filter{})
-	for _, record := range all {
-		if record.Header.RecordType == RecordTypeIndexRoot {
-			t.Fatal("an index_root record in a book with no index")
+	f.cfg.AuthenticatedIndexes = func(logID string) []AuthenticatedIndex {
+		if logID == "deal/none" {
+			return []AuthenticatedIndex{}
 		}
+		return nil
+	}
+	shelf := f.open(t)
+	roots := func(logID string) int {
+		book := mustOpenBook(t, shelf, logID)
+		mustAppend(t, book, observation("s", "1"))
+		if _, err := book.Checkpoint(ctx); err != nil {
+			t.Fatal(err)
+		}
+		all, err := book.Query(ctx, Filter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, record := range all {
+			if record.Header.RecordType == RecordTypeIndexRoot {
+				n++
+			}
+		}
+		return n
+	}
+	if n := roots("deal/none"); n != 0 {
+		t.Fatalf("a book with no index committed %d index roots", n)
+	}
+	if n := roots("deal/defaults"); n != 2 {
+		t.Fatalf("a book with the default indexes committed %d index roots, want 2", n)
 	}
 }

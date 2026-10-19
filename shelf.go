@@ -39,10 +39,10 @@ type ShelfConfig struct {
 	Originals ArtifactStore
 	Now       func() time.Time
 	// AuthenticatedIndexes gives a book its authenticated indexes when the
-	// shelf opens it. Nil gives every book the defaults (NewRecordIDIndex,
-	// NewSubjectIndex). Returning an empty, non-nil slice gives a book none,
-	// so its checkpoints commit no index_root records: a deal's log then
-	// holds its own steps only.
+	// shelf opens it. A nil function, or a nil result for a log, gives that
+	// book the defaults (NewRecordIDIndex, NewSubjectIndex). An empty,
+	// non-nil result gives it none, so its checkpoints commit no index_root
+	// records: a deal's log then holds its own steps only.
 	AuthenticatedIndexes func(logID string) []AuthenticatedIndex
 }
 
@@ -157,10 +157,7 @@ func (s *Shelf) authenticated(logID string) []AuthenticatedIndex {
 	if s.cfg.AuthenticatedIndexes == nil {
 		return nil
 	}
-	if indexes := s.cfg.AuthenticatedIndexes(logID); indexes != nil {
-		return indexes
-	}
-	return []AuthenticatedIndex{}
+	return s.cfg.AuthenticatedIndexes(logID)
 }
 
 // Books lists the ids of the books that hold records, in id order.

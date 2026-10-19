@@ -63,8 +63,7 @@ evidencebook#59).
   returns one `*Book` per log id for its lifetime.
   `AuthenticatedIndexes` chooses each book's authenticated indexes (an
   empty list gives none, so a deal's log holds no `index_root` records).
-  After `Release`, the
-  shelf and its books refuse writes (`ErrReleased`; `Book.Release` now does
+  After `Release`, the shelf and its books refuse writes (`ErrReleased`; `Book.Release` now does
   the same for any book, `SetRetention`'s purge retry included).
   `OpenCLLSQLite` provisions only a log the file holds nothing of: a log
   with state that fails to open is reported, never initialized over.
