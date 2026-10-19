@@ -32,6 +32,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -119,7 +120,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *explain {
 		var ex []json.RawMessage
 		for _, r := range results {
-			b, err := json.Marshal(r)
+			b, err := marshalPlain(r)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return 2
@@ -128,7 +129,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				var m map[string]any
 				_ = json.Unmarshal(b, &m)
 				m["explanation"] = r.Detail
-				b, _ = json.Marshal(m)
+				b, _ = marshalPlain(m)
 			}
 			ex = append(ex, b)
 		}
@@ -146,4 +147,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// marshalPlain is json.Marshal without HTML escaping, as enc writes: a
+// method such as "relying party policy <id>" keeps its '<' and '>'.
+func marshalPlain(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }

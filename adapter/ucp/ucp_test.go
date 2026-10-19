@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 func fixturePolicy(t testing.TB) adapter.TrustPolicy {
@@ -101,7 +103,7 @@ func TestKnownAnswerRFC7515A3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ks, _ := parseKeySet(testJWKSet())
+	ks, _ := parseKeySet([]byte(testJWKSet()))
 	pub, err := ks[0].publicKey()
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +181,7 @@ func TestFixtures(t *testing.T) {
 // Serialization does not matter: the signature covers the RFC 8785 form.
 func mutate(t *testing.T, f func(co map[string]any)) []byte {
 	t.Helper()
-	v, err := parseIJSON(positiveCheckout(t))
+	v, err := ijson.Parse(positiveCheckout(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +382,7 @@ func TestCheckoutPolicy(t *testing.T) {
 		key, sig, trust    adapter.Status
 		native, keyMethodP string
 	}{
-		{"no key set (offline)", with(func(p *adapter.TrustPolicy) { delete(p.Pins, PinKeys) }), adapter.NotChecked, adapter.NotChecked, adapter.Pass, "NOT_CHECKED", methodKeyLive},
+		{"no key set (offline)", with(func(p *adapter.TrustPolicy) { delete(p.KeySets, KeySetName) }), adapter.NotChecked, adapter.NotChecked, adapter.Pass, "NOT_CHECKED", methodKeyLive},
 		{"key-set source named", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeysSource] = "key-set.json" }), adapter.Pass, adapter.Pass, adapter.Pass, "PASS", "retained keys[] (key-set.json) as of " + fxRetainedAt},
 		{"origin rejected", with(func(p *adapter.TrustPolicy) {
 			p.Keys = map[string][]string{KeyBusinessOriginRejected: {fxOrigin}}
@@ -389,20 +391,24 @@ func TestCheckoutPolicy(t *testing.T) {
 		{"only a rejection list, origin not on it", with(func(p *adapter.TrustPolicy) {
 			p.Keys = map[string][]string{KeyBusinessOriginRejected: {"https://other.example"}}
 		}), adapter.Pass, adapter.Pass, adapter.Inconclusive, "PASS", ""},
-		{"use enc", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeys] = jwk(`,"use":"enc"`) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", "retained keys[] (" + fxOrigin + "/.well-known/ucp) as of " + fxRetainedAt},
-		{"key_ops without verify", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeys] = jwk(`,"key_ops":["sign"]`) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
+		{"use enc", with(func(p *adapter.TrustPolicy) { p.KeySets[KeySetName] = json.RawMessage(jwk(`,"use":"enc"`)) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", "retained keys[] (" + fxOrigin + "/.well-known/ucp) as of " + fxRetainedAt},
+		{"key_ops without verify", with(func(p *adapter.TrustPolicy) { p.KeySets[KeySetName] = json.RawMessage(jwk(`,"key_ops":["sign"]`)) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
 		{"key_ops verify, bare array", with(func(p *adapter.TrustPolicy) {
-			p.Pins[PinKeys] = strings.TrimSuffix(strings.TrimPrefix(jwk(`,"key_ops":["verify"]`), `{"keys":`), "}")
+			p.KeySets[KeySetName] = json.RawMessage(strings.TrimSuffix(strings.TrimPrefix(jwk(`,"key_ops":["verify"]`), `{"keys":`), "}"))
 		}), adapter.Pass, adapter.Pass, adapter.Pass, "PASS", ""},
-		{"kid not listed", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeys] = strings.Replace(jwk(""), testKID, "k2", 1) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
-		{"point not on curve", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeys] = strings.Replace(jwk(""), testY, testX, 1) }), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
+		{"kid not listed", with(func(p *adapter.TrustPolicy) {
+			p.KeySets[KeySetName] = json.RawMessage(strings.Replace(jwk(""), testKID, "k2", 1))
+		}), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
+		{"point not on curve", with(func(p *adapter.TrustPolicy) {
+			p.KeySets[KeySetName] = json.RawMessage(strings.Replace(jwk(""), testY, testX, 1))
+		}), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
 		{"P-384 key", with(func(p *adapter.TrustPolicy) {
-			p.Pins[PinKeys] = `{"keys":[{"kid":"` + testKID + `","kty":"EC","crv":"P-384","x":"` + strings.Repeat("A", 64) + `","y":"` + strings.Repeat("A", 64) + `"}]}`
+			p.KeySets[KeySetName] = json.RawMessage(`{"keys":[{"kid":"` + testKID + `","kty":"EC","crv":"P-384","x":"` + strings.Repeat("A", 64) + `","y":"` + strings.Repeat("A", 64) + `"}]}`)
 		}), adapter.Fail, adapter.NotChecked, adapter.Pass, "FAIL", ""},
 		{"RSA key", with(func(p *adapter.TrustPolicy) {
-			p.Pins[PinKeys] = `{"keys":[{"kid":"` + testKID + `","kty":"RSA","n":"AQAB","e":"AQAB"}]}`
+			p.KeySets[KeySetName] = json.RawMessage(`{"keys":[{"kid":"` + testKID + `","kty":"RSA","n":"AQAB","e":"AQAB"}]}`)
 		}), adapter.NotChecked, adapter.NotChecked, adapter.Pass, "NOT_CHECKED", ""},
-		{"unreadable key set", with(func(p *adapter.TrustPolicy) { p.Pins[PinKeys] = `{"keys":` }), adapter.NotChecked, adapter.NotChecked, adapter.Pass, "NOT_CHECKED", ""},
+		{"unreadable key set", with(func(p *adapter.TrustPolicy) { p.KeySets[KeySetName] = json.RawMessage(`{"keys":`) }), adapter.NotChecked, adapter.NotChecked, adapter.Pass, "NOT_CHECKED", ""},
 		{"no retention time", with(func(p *adapter.TrustPolicy) { delete(p.Pins, PinKeysRetainedAt) }), adapter.Pass, adapter.Pass, adapter.Pass, "PASS", "retained keys[] (" + fxOrigin + "/.well-known/ucp)"},
 		{"no origin policy", with(func(p *adapter.TrustPolicy) { p.Keys = nil }), adapter.Pass, adapter.Pass, adapter.NotChecked, "PASS", ""},
 		{"origin not accepted", with(func(p *adapter.TrustPolicy) { p.Keys[KeyBusinessOrigin] = []string{"https://other.example"} }), adapter.Pass, adapter.Pass, adapter.Inconclusive, "PASS", ""},
@@ -469,6 +475,7 @@ func TestS1Mapping(t *testing.T) {
 	schemaOnly := adapter.Requirement{ID: "the object is a UCP checkout", Relation: adapter.SupportedByTheCheck, DependsOn: []string{PropCheckoutSchema}}
 	offline := p
 	offline.Pins = map[string]string{}
+	offline.KeySets = nil
 	cases := []struct {
 		name     string
 		raw      []byte
@@ -548,4 +555,32 @@ func Example() {
 	// native_check ucp.merchant_authorization.key PASS
 	// native_check ucp.merchant_authorization.signature FAIL
 	// ucp.business_trust ucp.business_trust PASS
+}
+
+// A v0.3.0 policy file, with the key set as the ucp.keys pin, is not read as
+// one that retained no key set: the key row names the move to key_sets.
+func TestKeySetAsPinIsReported(t *testing.T) {
+	old := `{"pins":{"ucp.keys":` + strconv.Quote(testJWKSet()) + `,"ucp.keys.origin":"` + fxOrigin + `","ucp.keys.retained_at":"` + fxRetainedAt + `"},"keys":{"ucp.business_origin":["` + fxOrigin + `"]}}`
+	path := filepath.Join(t.TempDir(), "trust-policy.json")
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := adapter.LoadTrustPolicy(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string][]byte{
+		"checkout": positiveCheckout(t),
+		"webhook":  webhookRequest(t, orderBody, fullComponents),
+	} {
+		rs := check(raw, p)
+		prop := PropMAKey
+		if name == "webhook" {
+			prop = PropWebhookKey
+		}
+		k, ok := adapter.FindCheck(rs, prop)
+		if !ok || k.Status != adapter.NotChecked || k.Method == methodKeyLive || !strings.Contains(k.Detail, "key_sets."+KeySetName) {
+			t.Errorf("%s: %+v", name, k)
+		}
+	}
 }

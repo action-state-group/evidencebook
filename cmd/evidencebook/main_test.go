@@ -75,9 +75,21 @@ func TestAdaptX402(t *testing.T) {
 	if code := run([]string{"adapt", "x402", "-policy", filepath.Join(td, "trust-policy.json"), filepath.Join(td, "leg-payer-observed-signature-bit-flip.json")}, nil, &out, &errOut); code != 0 {
 		t.Errorf("default policy, signature flip: exit %d, want 0 (INCONCLUSIVE)", code)
 	}
-	out.Reset()
-	if code := run([]string{"adapt", "x402", "-explain", "-policy", policy, filepath.Join(td, "payment-payload-signature-bit-flip.json")}, nil, &out, &errOut); code != 1 || !strings.Contains(out.String(), `"explanation": "recovers to`) {
-		t.Errorf("-explain: exit %d\n%s", code, out.String())
+	// Method templates print as written ("relying party policy <id>"),
+	// with and without -explain, not HTML-escaped.
+	for _, explain := range []bool{false, true} {
+		out.Reset()
+		args := []string{"adapt", "x402", "-policy", policy, filepath.Join(td, "payment-payload-signature-bit-flip.json")}
+		if explain {
+			args = append(args[:2], append([]string{"-explain"}, args[2:]...)...)
+		}
+		code := run(args, nil, &out, &errOut)
+		if code != 1 || (explain && !strings.Contains(out.String(), `"explanation": "recovers to`)) {
+			t.Errorf("%v: exit %d\n%s", args, code, out.String())
+		}
+		if s := out.String(); !strings.Contains(s, "validAfter < t < validBefore") || strings.Contains(s, `\u003c`) {
+			t.Errorf("%v: method HTML-escaped or missing\n%s", args, s)
+		}
 	}
 	out.Reset()
 	if code := run([]string{"adapt", "x402", "-declare"}, nil, &out, &errOut); code != 0 || !json.Valid(out.Bytes()) {

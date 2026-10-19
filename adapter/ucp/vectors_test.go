@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // The agent-action-capsule vectors for this adapter, vectors/adapters/ucp/,
@@ -99,15 +100,18 @@ func TestAACVectors(t *testing.T) {
 			if s := sha256.Sum256(content); c.Wrapped.Type != "ucp.checkout" || c.Wrapped.DigestAlg != "SHA-256" || hex.EncodeToString(s[:]) != c.Wrapped.Digest {
 				t.Errorf("wrapped entry: type %s, digest does not match content", c.Wrapped.Type)
 			}
-			v, err := parseIJSON(raw)
+			v, err := ijson.Parse(raw)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if canon, err := jcs(v); err != nil || !bytes.Equal(canon, content) {
+			if canon, err := ijson.JCS(v); err != nil || !bytes.Equal(canon, content) {
 				t.Errorf("wrapped content is not JCS(checkout)")
 			}
 			// The wrapped octets give the same results as the file.
-			policy := adapter.TrustPolicy{Pins: map[string]string{PinKeys: string(keys), PinKeysSource: c.KeySet}}
+			policy := adapter.TrustPolicy{
+				Pins:    map[string]string{PinKeysSource: c.KeySet},
+				KeySets: map[string]json.RawMessage{KeySetName: keys},
+			}
 			fromWrapped := check(content, policy)
 
 			// The vectors supply a key set and no trust policy.

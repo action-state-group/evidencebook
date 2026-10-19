@@ -601,3 +601,22 @@ func TestCommittedFixturesThroughCheck(t *testing.T) {
 		t.Errorf("recorded lookup: %+v", r)
 	}
 }
+
+// The payment payload is read as I-JSON, as UCP's checkout is: a lone
+// surrogate escape or invalid UTF-8 is not silently replaced with U+FFFD.
+func TestPayloadIsIJSON(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "payment-payload.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for bad, why := range map[string]string{
+		`"Test resource\ud800"`: "lone high surrogate",
+		"\"Test resource\xff\"": "not valid UTF-8",
+	} {
+		mutated := strings.Replace(string(raw), `"Test resource"`, bad, 1)
+		results := Adapter{}.Check([]byte(mutated), fixturePolicy())
+		if got, ok := adapter.FindCheck(results, RowPayloadForm); !ok || got.Status != adapter.Fail || !strings.Contains(got.Detail, why) {
+			t.Errorf("%s: %+v", why, got)
+		}
+	}
+}
