@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // The §4(e) properties of the Order Event Webhook, in declaration order.
@@ -249,7 +250,7 @@ func checkWebhook(raw []byte, policy adapter.TrustPolicy) []adapter.PropertyResu
 		return r.out
 	}
 	r := newRows()
-	body, perr := parseIJSON(h.body)
+	body, perr := ijson.Parse(h.body)
 	r.orderSchema(body, perr)
 
 	origin, agentErr := ucpAgentOrigin(h)
@@ -548,7 +549,7 @@ func checkLabel(h *httpRequest, label string, in sfMember, sigs map[string]sfMem
 }
 
 func mustKeySet(policy adapter.TrustPolicy) keySet {
-	ks, _ := parseKeySet(policy.Pin(PinKeys))
+	ks, _ := parseKeySet(policy.KeySets[KeySetName])
 	return ks
 }
 

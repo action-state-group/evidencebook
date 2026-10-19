@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package ucp
+// Package ijson is the adapters' one JSON reader and their one RFC 8785
+// serializer. Every adapter reads foreign octets with Parse, so x402, ACP and
+// UCP accept and reject the same JSON text, and UCP signs and verifies over
+// JCS of what Parse returned.
+package ijson
 
 import (
 	"bytes"
@@ -16,14 +20,14 @@ import (
 	"unicode/utf8"
 )
 
-// parseIJSON parses one JSON value as I-JSON (RFC 7493), the input RFC 8785
+// Parse parses one JSON value as I-JSON (RFC 7493), the input RFC 8785
 // requires: valid UTF-8, no escaped lone surrogate, no duplicate member name
 // in any object, and nothing after the value. Numbers stay json.Number so the
 // schema validator and the canonicalizer each read the text as written.
 // encoding/json alone would replace a lone surrogate with U+FFFD and let the
 // last duplicate win, so two readers of the same octets could sign or verify
 // different content.
-func parseIJSON(data []byte) (any, error) {
+func Parse(data []byte) (any, error) {
 	if !utf8.Valid(data) {
 		return nil, errors.New("not valid UTF-8")
 	}
@@ -151,17 +155,17 @@ func hex4(data []byte, at int) (rune, bool) {
 	return rune(n), true
 }
 
-// jcs returns the RFC 8785 JSON Canonicalization Scheme form of a value
-// returned by parseIJSON. It is a full RFC 8785 serializer: numbers are read
+// JCS returns the RFC 8785 JSON Canonicalization Scheme form of a value
+// returned by Parse. It is a full RFC 8785 serializer: numbers are read
 // as IEEE 754 doubles and written as ECMAScript Number.prototype.toString
 // writes them (RFC 8785 §3.2.2.3), so 1.0 becomes 1 and 1e21 stays 1e+21.
 //
 // evidencebook's own canonicalJSON uses agent-action-capsule's integer-only
 // profile of RFC 8785, which refuses a non-integer number. UCP signs
-// arbitrary checkout content, so the adapter cannot refuse what RFC 8785
+// arbitrary checkout content, so an adapter cannot refuse what RFC 8785
 // accepts; for every input that profile accepts the two produce the same
-// bytes (TestJCSAgreesWithCapsuleProfile).
-func jcs(v any) ([]byte, error) {
+// bytes (adapter/ucp TestJCSAgreesWithCapsuleProfile).
+func JCS(v any) ([]byte, error) {
 	var b bytes.Buffer
 	if err := writeJCS(&b, v); err != nil {
 		return nil, err
@@ -291,4 +295,32 @@ func jcsNumber(text string) (string, error) {
 		s = mant + "e" + expSign + digits
 	}
 	return sign + s, nil
+}
+
+// Obj is a decoded JSON object read by exact member name.
+type Obj map[string]any
+
+// AsObj returns v as an Obj when it is a decoded JSON object.
+func AsObj(v any) (Obj, bool) {
+	m, ok := v.(map[string]any)
+	return Obj(m), ok
+}
+
+func (o Obj) Has(k string) bool { _, ok := o[k]; return ok }
+
+func (o Obj) Str(k string) (string, bool) {
+	s, ok := o[k].(string)
+	return s, ok
+}
+
+func (o Obj) Object(k string) (Obj, bool) { return AsObj(o[k]) }
+
+func (o Obj) Num(k string) (json.Number, bool) {
+	n, ok := o[k].(json.Number)
+	return n, ok
+}
+
+func (o Obj) Bool(k string) (bool, bool) {
+	b, ok := o[k].(bool)
+	return b, ok
 }

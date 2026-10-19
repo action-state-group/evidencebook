@@ -22,6 +22,11 @@
 //! (`tests/public_api.rs` enforces this). Callers ask the book's substrate for
 //! checkpoints and inclusion evidence in this crate's own types.
 //!
+//! Answers, reconcile inputs and index rebuilds read a book through the
+//! read-only [`store`] traits, which the substrate implements. A caller whose
+//! own checkpointer owns the log files implements them over its own index
+//! instead, and this crate never opens those files.
+//!
 //! The crate carries no deployment vocabulary. Record kinds, correlation key
 //! names and content comparators belong to the calling profile and are
 //! supplied by it.
@@ -32,9 +37,9 @@
 //! | Record/Payload Separation; Retention States | [`retention`] |
 //! | Disclosure Records | [`disclosure`] |
 //! | Index Classes | [`index`] |
-//! | The Commitment-Substrate Interface | [`substrate`] |
+//! | The Commitment-Substrate Interface | [`substrate`]; the read-only store an answer reads, [`store`] |
 //! | Answering a Request; Three Kinds of "No" | [`request`] |
-//! | Answering a Request: the artifact response | [`answer`] |
+//! | Answering a Request: the artifact response | [`answer`]; the requests a book was asked, [`received`]; the served-summary derivation, [`served_summary`] |
 //! | Reconcile and Close | [`reconcile`] |
 //! | Privacy Considerations: What a Checkpoint Reveals | [`padding`] |
 //! | (record identity: JCS and JSON-DIGEST) | [`canonical`] |
@@ -44,8 +49,11 @@ pub mod canonical;
 pub mod disclosure;
 pub mod index;
 pub mod padding;
+pub mod received;
 pub mod reconcile;
 pub mod record;
 pub mod request;
 pub mod retention;
+pub mod served_summary;
+pub mod store;
 pub mod substrate;
