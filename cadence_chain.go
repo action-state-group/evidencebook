@@ -37,10 +37,20 @@ func (c *Cadence) Chain(ctx context.Context, statement []byte) (map[string]any, 
 	if err != nil {
 		return nil, err
 	}
+	// The whole chain is built under the shelf's lock, as every other
+	// cadence call is, so a concurrent Release is ErrReleased.
+	c.shelf.mu.Lock()
+	defer c.shelf.mu.Unlock()
+	if c.shelf.released {
+		return nil, ErrReleased
+	}
 	sum := sha256.Sum256(statement)
-	extent, tick, leaf, err := c.WitnessedTick(ctx, current.LogID, hex.EncodeToString(sum[:]), current.TreeSize)
+	extent, tick, leaf, err := c.witnessedTickLocked(ctx, current.LogID, hex.EncodeToString(sum[:]), current.TreeSize)
 	if err != nil {
 		return nil, err
+	}
+	if leaf.LogID != current.LogID {
+		return nil, fmt.Errorf("%w: witnessed tick %d holds no leaf of %s", ErrCorrupt, tick.N, current.LogID)
 	}
 	if tick.Receipt == nil {
 		return nil, fmt.Errorf("%w: witnessed tick %d holds no receipt", ErrCorrupt, tick.N)
@@ -87,9 +97,7 @@ func (c *Cadence) Chain(ctx context.Context, statement []byte) (map[string]any, 
 	if err != nil || hex.EncodeToString(earlierSum[:]) != leaf.CheckpointSHA256 || earlier.LogID != current.LogID || earlier.TreeSize != leaf.Size {
 		return nil, fmt.Errorf("%w: tick %d's statement of %s is not its leaf's checkpoint", ErrCorrupt, tick.N, leaf.LogID)
 	}
-	c.shelf.mu.Lock()
 	log, err := c.shelf.cadenceLogLocked(ctx, current.LogID)
-	c.shelf.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}

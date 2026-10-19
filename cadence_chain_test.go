@@ -26,7 +26,7 @@ func TestAChainIsCapsuleCLIsCadenceChain(t *testing.T) {
 	mustAppend(t, a, observation("s", "1"))
 	mustAppend(t, mustOpenBook(t, shelf, "deal/b"), observation("s", "1"))
 	tick := mustTick(t, c, tickTime)
-	if _, err := c.Chain(ctx, tick.Checkpoint); !errors.Is(err, ErrCorrupt) && !errors.Is(err, ErrNotFound) {
+	if _, err := c.Chain(ctx, tick.Checkpoint); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("an unwitnessed tick: %v", err)
 	}
 	statement, _ := base64.RawURLEncoding.DecodeString(tick.Leaves.Deals["deal/a"].Statement)
@@ -97,5 +97,99 @@ func checkChain(t *testing.T, chain map[string]any, statement []byte, tick Caden
 	var proof MMRInclusion
 	if err := json.Unmarshal(inner["inclusion_proof"].(json.RawMessage), &proof); err != nil || proof.LeafIndex != tick.EntrySeq-1 || proof.Size != tick.CheckpointSize {
 		t.Fatalf("inclusion proof %+v %v", proof, err)
+	}
+}
+
+// Witnessed takes the receipt as a verifier will read it: an entry hash is
+// required, the witness's URL loses a trailing slash, and the first receipt
+// reported for a tick is the one kept.
+func TestWitnessedKeepsTheReceiptAVerifierReads(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	tick := mustTick(t, c, tickTime)
+	for name, receipt := range map[string]WitnessReceipt{
+		"no entry hash": {TSURL: "https://w.example", Receipt: []byte("r")},
+		"no receipt":    {TSURL: "https://w.example", EntryHash: "e"},
+		"no URL":        {EntryHash: "e", Receipt: []byte("r")},
+	} {
+		if err := c.Witnessed(ctx, tick.N, receipt); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if err := c.Witnessed(ctx, tick.N, WitnessReceipt{TSURL: "https://w.example//", EntryHash: "e1", Receipt: []byte("first")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Witnessed(ctx, tick.N, WitnessReceipt{TSURL: "https://other.example", EntryHash: "e2", Receipt: []byte("second")}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Get(ctx, tick.N)
+	if err != nil || got.Receipt == nil || got.Receipt.TSURL != "https://w.example" || string(got.Receipt.Receipt) != "first" {
+		t.Fatalf("receipt %+v %v", got.Receipt, err)
+	}
+}
+
+// A legacy log's later checkpoint gets a part chain from its own log.
+func TestALegacyLogsChainIsPartFromItsOwnLog(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	old, err := OpenCLLSQLite(f.path, "deal/legacy", f.cfg.CheckpointKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Append(ctx, hex.EncodeToString(bytes.Repeat([]byte{5}, 32)), tickTime); err != nil {
+		t.Fatal(err)
+	}
+	_ = old.Release()
+	shelf := f.open(t)
+	c, _ := newCadence(t, shelf)
+	legacy, err := shelf.Legacy(ctx, "deal/legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick := mustTick(t, c, tickTime)
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.log.Append(ctx, hex.EncodeToString(bytes.Repeat([]byte{6}, 32)), tickTime); err != nil {
+		t.Fatal(err)
+	}
+	later, err := legacy.log.Checkpoint(ctx, tickTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain, err := c.Chain(ctx, later.Statement)
+	if err != nil || chain["extent"] != "part" || chain["earlier"] == nil {
+		t.Fatalf("legacy part chain: %v %v", chain["extent"], err)
+	}
+}
+
+// A tick whose stored statement is not its leaf's checkpoint is corrupt,
+// never a chain.
+func TestAChainFromACorruptStatementIsRefused(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("s", "1"))
+	tick := mustTick(t, c, tickTime)
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
+		t.Fatal(err)
+	}
+	leaves := tick.Leaves
+	leaf := leaves.Deals["deal/a"]
+	leaf.Statement = base64.RawURLEncoding.EncodeToString([]byte("not the checkpoint"))
+	leaves.Deals["deal/a"] = leaf
+	encoded, _ := json.Marshal(leaves)
+	if _, err := shelf.db.Exec(`UPDATE cadence_ticks SET leaves = ? WHERE tick = ?`, string(encoded), tick.N); err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, a, observation("s", "2"))
+	later, err := a.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Chain(ctx, later.Statement); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("a corrupt earlier statement: %v", err)
 	}
 }

@@ -492,8 +492,13 @@ func paddingRecordID() (string, error) {
 // the live set. Rows are only inserted and each compares its own size, so a
 // receipt for an older tick reported late never moves a log back.
 func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceipt) error {
-	if receipt.TSURL == "" || len(receipt.Receipt) == 0 {
-		return fmt.Errorf("%w: a witnessed tick needs its receipt", ErrInvalid)
+	// capsule-cli carries the witness's URL without a trailing slash
+	// (trimEndpoint), and a verifier finds the witness's row by it.
+	for len(receipt.TSURL) > 0 && receipt.TSURL[len(receipt.TSURL)-1] == '/' {
+		receipt.TSURL = receipt.TSURL[:len(receipt.TSURL)-1]
+	}
+	if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
+		return fmt.Errorf("%w: a witnessed tick needs its receipt, its entry hash and its witness's URL", ErrInvalid)
 	}
 	encodedReceipt, err := json.Marshal(receipt)
 	if err != nil {
@@ -569,9 +574,13 @@ func heldSizeTx(ctx context.Context, tx *sql.Tx, logID string) (uint64, error) {
 // (a bundle then adds a consistency proof from it). ErrNotFound when no
 // witnessed tick carries any checkpoint of the log up to that size.
 func (c *Cadence) WitnessedTick(ctx context.Context, logID, checkpointSHA256 string, mmrSize uint64) (extent string, tick CadenceTick, leaf TickLeaf, err error) {
+	c.shelf.mu.Lock()
+	defer c.shelf.mu.Unlock()
+	return c.witnessedTickLocked(ctx, logID, checkpointSHA256, mmrSize)
+}
+
+func (c *Cadence) witnessedTickLocked(ctx context.Context, logID, checkpointSHA256 string, mmrSize uint64) (extent string, tick CadenceTick, leaf TickLeaf, err error) {
 	s := c.shelf
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var n uint64
 	err = s.db.QueryRowContext(ctx, `SELECT tick FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, logID, checkpointSHA256).Scan(&n)
 	extent = "all"
