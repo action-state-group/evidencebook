@@ -316,7 +316,7 @@ func TestAPendingAppendKeepsALogLive(t *testing.T) {
 	if err := store.PutRecord(ctx, StoredRecord{Seq: 99, RecordID: "pending", Header: []byte(`{}`), Capsule: []byte(`{}`), Envelope: []byte{0}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Witnessed(ctx, tick.N); err != nil {
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 1 {
@@ -344,7 +344,7 @@ func TestALegacyWriteIsLiveBeforeItRuns(t *testing.T) {
 	}
 	e.set("deal/legacy")
 	tick := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, tick.N); err != nil {
+	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
 		t.Fatal(err)
 	}
 	if live, _ := c.Live(ctx); len(live) != 0 {
