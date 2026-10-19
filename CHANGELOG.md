@@ -1,8 +1,26 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 (2026-10-19)
 
-### Added: a log's witnessed cadence chain for its bundle
+Everything since v0.4.0: the originals store and per-record retention (#58),
+and the deal features of evidencebook#36 (#61, #63, #65, #67, #68). #36's
+end-to-end acceptance (a deal on the new book passing
+`capsulectl verify --bundle`, an older deal store still verifying, a two-book
+reconcile reaching `reconciled`) lands with capsule-cli#242.
+
+- **BREAKING (#58)** for Go callers:
+  - `Config.Payloads`, `PayloadResolver`, `PayloadDir` and `OpenPayloadDir`
+    are removed. Set `Config.Originals` to an `ArtifactStore` instead
+    (`OpenOriginalsFile` opens the JSONL backend), and move an existing
+    payload directory's bytes into it once with `MigratePayloadDir`.
+  - `Book.Retention(ctx, recordID)` and
+    `Book.SetRetention(ctx, recordID, state, reason)` drop their payload
+    digest argument: retention applies to the whole record.
+  - `LifecycleStatement` drops `PayloadCommitment` (`payload_commitment`);
+    a lifecycle record written before that names one is read as applying to
+    the whole record.
+
+### Added: a log's witnessed cadence chain for its bundle (#68)
 
 evidencebook#36 §2.
 
@@ -19,7 +37,7 @@ evidencebook#36 §2.
   verifier (`cadenceClaim`) passes both up to the witness receipt check,
   and fails each when its salt or consistency proof is changed.
 
-### Added: the heartbeat cadence over a shelf, ended logs leaving the tick
+### Added: the heartbeat cadence over a shelf, ended logs leaving the tick (#67)
 
 evidencebook#36 §2 and §4.
 
@@ -45,7 +63,7 @@ evidencebook#36 §2 and §4.
   it is (never provisioning one); `LegacyLog.Append` runs the profile's own
   write under the shelf's lock and puts the log back in the live set.
 
-### Added: salted per-field commitments and a three-way reconcile check
+### Added: salted per-field commitments and a three-way reconcile check (#61)
 
 evidencebook#36 §3 (the deal profile on the book); the construction is the
 one evidencebook#44 rules a History's deal-level commitments use.
@@ -76,7 +94,7 @@ one evidencebook#44 rules a History's deal-level commitments use.
   (`Comparator.Check`). `ReconcileInput` gains `Check` beside `Compare`
   (exactly one is set) and `OwnOpenings`/`PeerOpenings`.
 
-### Added: a shelf of books, one log per deal
+### Added: a shelf of books, one log per deal (#63)
 
 evidencebook#36 §1 (the deal profile on the book; one log per deal,
 evidencebook#59).
@@ -98,7 +116,7 @@ evidencebook#59).
   `OpenCLLSQLite` provisions only a log the file holds nothing of: a log
   with state that fails to open is reported, never initialized over.
 
-### Added: the cadence tree, byte for byte capsule-cli's
+### Added: the cadence tree, byte for byte capsule-cli's (#65)
 
 evidencebook#36 §2 (the heartbeat cadence); the tick and live set come next.
 
@@ -116,7 +134,7 @@ evidencebook#36 §2 (the heartbeat cadence); the tick and live set come next.
   rebuilds any tick's tree from what it stored; ticks a released build
   stored read unchanged.
 
-### Changed (breaking): payload bytes live in an artifact store
+### Changed (breaking): payload bytes live in an artifact store (#58)
 
 capsule-cli#236: one originals store, kept per record.
 
@@ -141,7 +159,7 @@ capsule-cli#236: one originals store, kept per record.
 - A retention commitment holds every record it covers at `LEGAL_HOLD` until
   its `until`, so `SetRetention(..., DELETED, ...)` returns `ErrLegalHold`.
 
-### Added
+### Added: caller-sealed records and kept replies (#58)
 
 - `Book.AppendCapsule`: a capsule its caller seals is the record itself,
   carrying its header in the `evidence_record_header` member
