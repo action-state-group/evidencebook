@@ -266,8 +266,13 @@ func TestImportLegacyWaitsForAnUnfinishedTick(t *testing.T) {
 func TestImportLegacyPromotesTheHeldLeaves(t *testing.T) {
 	ctx := context.Background()
 	l := newLegacyFixture(t, "deal/a", "deal/b")
+	// Nothing witnessed yet: the index starts empty.
+	l.ticks[0].Witnessed, l.ticks[0].Receipt = false, nil
 	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
 		t.Fatal(err)
+	}
+	if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed`); n != 0 {
+		t.Fatalf("index before promotion: %d rows", n)
 	}
 	held := l.ticks[1]
 	incoming := held
@@ -276,14 +281,17 @@ func TestImportLegacyPromotesTheHeldLeaves(t *testing.T) {
 	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: []CadenceTick{l.ticks[0], incoming}}); err != nil {
 		t.Fatal(err)
 	}
+	if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE tick = 2`); n != len(held.Leaves.Deals) || n != 2 {
+		t.Fatalf("tick 2's held leaves indexed: %d rows", n)
+	}
 	for id, leaf := range held.Leaves.Deals {
-		if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, id, leaf.CheckpointSHA256); n != 1 {
-			t.Fatalf("%s's held checkpoint is not indexed", id)
+		if n := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ? AND tick = 2`, id, leaf.CheckpointSHA256); n != 1 {
+			t.Fatalf("%s's held checkpoint is not indexed at tick 2", id)
 		}
 	}
 	stored, err := l.c.Get(ctx, 2)
-	if err != nil || len(stored.Leaves.Deals) != 2 {
-		t.Fatalf("the held tick's leaves changed: %+v %v", stored.Leaves, err)
+	if err != nil || len(stored.Leaves.Deals) != 2 || !stored.Witnessed {
+		t.Fatalf("the held tick: %+v %v", stored, err)
 	}
 }
 
