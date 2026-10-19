@@ -359,6 +359,11 @@ fn the_index_and_reconcile_read_the_same_store() {
     f.records.borrow_mut()[0].body.push(b' ');
     let set = HalfSet::from_store(&f, &f, &ids, true).unwrap();
     assert!(!set.halves[0].trusted && set.halves[0].correlation.is_empty());
+    assert!(matches!(
+        committed_records(&f, &f),
+        Err(SubstrateError::Record { leaf_index: 0, .. })
+    ));
+    f.records.borrow_mut()[0].body.pop();
     f.records.borrow_mut().remove(3);
     assert!(matches!(
         committed_records(&f, &f),

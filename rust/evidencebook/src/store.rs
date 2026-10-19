@@ -64,8 +64,10 @@ pub trait RecordSource {
     /// The leaf indices of the records citing exactly this interaction half.
     fn citing(&self, half_digest: &str) -> Vec<u64>;
     /// The entry the log commits for a record with these octets, recomputed
-    /// from them; `None` when they are not a record of this store's format.
-    /// The default is the book's: the SHA-256 of the octets, lowercase hex.
+    /// from them. An implementation returns `None` for octets that are not a
+    /// record of its format, and every record it would serve then fails its
+    /// check. The default is the book's, defined for any octets: the SHA-256,
+    /// lowercase hex.
     fn entry_of(&self, body: &[u8]) -> Option<String> {
         Some(hex::encode(Sha256::digest(body)))
     }

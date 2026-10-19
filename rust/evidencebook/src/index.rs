@@ -42,7 +42,8 @@ pub struct IndexedRecord {
 /// Every committed record of a store as an index sees it, in log order: what
 /// [`OperationalIndex::rebuild`] re-indexes. Each record's octets are its
 /// header's JSON. Padding is a leaf but never a record, so it is left out. A
-/// leaf the store cannot produce, or whose octets are not a header, is an
+/// leaf the store cannot produce, whose octets do not recompute its committed
+/// entry ([`RecordSource::entry_of`]), or whose octets are not a header, is an
 /// error: an index rebuilt over a gap would claim a completeness it lacks.
 pub fn committed_records(
     log: &dyn CheckpointedLog,
@@ -59,6 +60,11 @@ pub fn committed_records(
             .record_at(leaf_index)
             .filter(|r| r.leaf_index == leaf_index)
             .ok_or_else(|| unreadable("the store holds no record there"))?;
+        if records.entry_of(&record.body).as_deref() != Some(record.digest.as_str()) {
+            return Err(unreadable(
+                "its octets do not recompute its committed entry",
+            ));
+        }
         let value: serde_json::Value = serde_json::from_slice(&record.body)
             .map_err(|e| unreadable(&format!("not JSON: {e}")))?;
         if crate::padding::is_padding(&value) {
