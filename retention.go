@@ -32,7 +32,7 @@ type LifecycleStatement struct {
 // an AVAILABLE or PARTIAL record reads as LEGAL_HOLD: the hold blocks
 // deletion and changes no resolvability. A WITHHELD record stays WITHHELD
 // under a hold, which still blocks its deletion. A record that commits no
-// payload has no retention state and is refused.
+// payload and no field has no retention state and is refused.
 func (b *Book) Retention(_ context.Context, recordID string) (RetentionState, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -48,8 +48,8 @@ func (b *Book) retentionLocked(recordID string) (state RetentionState, latest st
 	if !ok {
 		return "", "", false, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
 	}
-	if len(record.Header.PayloadCommitments) == 0 {
-		return "", "", false, fmt.Errorf("%w: record %s commits no payload, so it has no retention state", ErrNotFound, recordID)
+	if len(record.Header.PayloadCommitments) == 0 && len(record.Header.FieldCommitments) == 0 {
+		return "", "", false, fmt.Errorf("%w: record %s commits no payload or field, so it has no retention state", ErrNotFound, recordID)
 	}
 	state, latest = record.Header.RetentionState, recordID
 	for _, id := range b.order[record.Seq:] {
@@ -129,7 +129,7 @@ func (b *Book) SetRetention(ctx context.Context, recordID string, state Retentio
 	}
 	switch {
 	case current == Deleted && state == Deleted:
-		return b.records[latest], b.purgeLocked(ctx, recordID)
+		return b.records[latest].detached(), b.purgeLocked(ctx, recordID)
 	case current == Deleted:
 		return Record{}, fmt.Errorf("%w: record %s is already deleted", ErrInvalid, recordID)
 	case held && state == Deleted:

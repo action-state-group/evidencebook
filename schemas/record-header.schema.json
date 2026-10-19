@@ -14,6 +14,14 @@
     "committed_at": { "type": "string", "format": "date-time" },
     "event_time_claim": { "type": "string", "format": "date-time" },
     "payload_commitments": { "type": "array", "items": { "$ref": "#/$defs/digest" } },
+    "field_commitments": {
+      "description": "Salted per-field commitments by field name, under commit_alg (agent-action-capsule spec/presentation-contract-v0.md section 7.2, whose records carry the same values as <name>_commitment members). The openings are never in the header.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9_]{0,55}$" },
+      "additionalProperties": { "$ref": "#/$defs/digest" }
+    },
+    "commit_alg": { "const": "sha256-jcs-nonce256" },
     "retention_state": { "$ref": "#/$defs/retentionState" },
     "links": { "type": "array", "items": { "$ref": "#/$defs/link" } },
     "subject_ref": { "type": "string" },
@@ -30,7 +38,11 @@
     },
     "statement": {}
   },
-  "dependentRequired": { "payload_commitments": ["retention_state"] },
+  "dependentRequired": {
+    "payload_commitments": ["retention_state"],
+    "field_commitments": ["retention_state", "commit_alg"],
+    "commit_alg": ["field_commitments"]
+  },
   "$defs": {
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "epistemicType": {

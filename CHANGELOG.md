@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Added: salted per-field commitments and a three-way reconcile check
+
+evidencebook#36 §3 (the deal profile on the book); the construction is the
+one evidencebook#44 rules a History's deal-level commitments use.
+
+- `Entry.Fields` commits texts by field name, each with a fresh 32-byte
+  nonce, as `sha256-jcs-nonce256` (`CommitAlgNonce256`): SHA-256 over
+  RFC 8785 of `{"nonce", "text"}`, agent-action-capsule
+  presentation-contract §7.2 and capsule-cli's deal records. The header
+  carries `field_commitments` (by field name; §7.2's records carry the same
+  values as `<name>_commitment` members, so the placement differs and the
+  values do not) and `commit_alg`; the openings
+  (`{nonce, text}`) are originals in the artifact store, under the
+  record's retention, never in the record. `Book.Opening` reads one;
+  `VerifyOpening` checks one. Openings are not payloads:
+  `payload_commitments` and `ResolvePayload` never include them.
+  `schemas/record-header.schema.json` declares `field_commitments` and
+  `commit_alg` (and requires them together, with `retention_state`).
+  `Get`, `Query` and `Append` return records with their own copies of the
+  header's maps and slices, so a caller cannot change what the book trusts.
+- Reconcile: `Half` gains `FieldCommitments` and `Opened`. `OpenHalf`
+  checks openings against a half's own commitments, and an opening that
+  does not open makes the half untrusted (`UNRESOLVED`).
+  `ReconcileHalvesWith` takes a `ContentCheck` returning `Agree`,
+  `Disagree` or `Undecided`; `Undecided` is `INSUFFICIENT`, so a missing
+  opening is never disagreement. `OpenedFieldsAgree(fields...)` needs both
+  halves' openings, since each record's nonce is its own.
+  `ReconcileHalves` and `Comparator` keep their meaning
+  (`Comparator.Check`). `ReconcileInput` gains `Check` beside `Compare`
+  (exactly one is set) and `OwnOpenings`/`PeerOpenings`.
+
 ### Added: a shelf of books, one log per deal
 
 evidencebook#36 §1 (the deal profile on the book; one log per deal,
