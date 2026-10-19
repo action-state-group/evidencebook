@@ -511,7 +511,8 @@ func paddingRecordID() (string, error) {
 // verifies"; one row per checkpoint cannot hold that exactly: after a
 // change back to an earlier witness the row names the newest tick, which
 // the host rejects until the current witness signs a later one. A live log
-// is in every tick, so that is the next witnessed tick.
+// is in every tick, so that is the next witnessed tick. An ended log is
+// ticked no more: it stays indexed to the tick its last witness signed.
 const indexWitnessed = `INSERT INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)
 ON CONFLICT (log_id, checkpoint_sha256) DO UPDATE SET tick = excluded.tick WHERE excluded.tick > cadence_witnessed.tick`
 
