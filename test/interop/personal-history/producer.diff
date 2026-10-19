@@ -1,0 +1,12 @@
+142c142
+< 	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
+---
+> 	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
+146c146
+< 	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
+---
+> 	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
+156c156
+< 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Payloads: payloads,
+---
+> 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Originals: originals,

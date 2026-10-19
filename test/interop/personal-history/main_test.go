@@ -25,7 +25,8 @@ import (
 // producer/main.go (SHA-256 e9054656...f7c38e) only where the book's payload
 // store became its artifact store (Config.Originals, capsule-cli#236): the
 // corpus pins an evidencebook commit from before that change, where its
-// producer builds unchanged. When the corpus next pins evidencebook, its
+// producer builds unchanged. producer.diff is the whole difference, and CI
+// checks it against the corpus. When the corpus next pins evidencebook, its
 // producer/main.go takes this file.
 const (
 	aacCommit      = "0b7b1825965e7f7845cbc70a490a581cbc70bd37"

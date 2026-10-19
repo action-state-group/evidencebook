@@ -189,7 +189,12 @@ jobs:
           corpus=agent-action-capsule/vectors/personal-history-basic-v0
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
-          cmp "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go
+          # main.go is the corpus producer with the book's payload directory
+          # replaced by its originals store (Config.Originals,
+          # capsule-cli#236): exactly the change producer.diff records, until
+          # the corpus pins an evidencebook with it.
+          diff "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go > "$work/producer.diff" || true
+          cmp evidencebook/test/interop/personal-history/producer.diff "$work/producer.diff"
           go -C evidencebook run ./test/interop/personal-history > "$work/responder-run.json"
           want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
           got=$(sha256sum "$work/responder-run.json" | cut -d' ' -f1)
