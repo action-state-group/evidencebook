@@ -131,7 +131,7 @@ func schemas() (map[string]*jsonschema.Schema, error) {
 	return compiled, compileErr
 }
 
-// validate checks v, as decoded by decodeStrict, against the schema for k.
+// validate checks v, as decoded by ijson.Parse, against the schema for k.
 func validate(k kind, v any) error {
 	s, err := schemas()
 	if err != nil {

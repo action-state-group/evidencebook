@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // RecordedLookup is the TrustPolicy.Recorded key of the relying party's
@@ -67,7 +68,7 @@ func recordedLookup(policy adapter.TrustPolicy) (*Lookup, error) {
 	if !ok {
 		return nil, nil
 	}
-	if _, err := decodeStrict(raw); err != nil {
+	if _, err := ijson.Parse(raw); err != nil {
 		return nil, fmt.Errorf("recorded %s: %v", RecordedLookup, err)
 	}
 	var l Lookup
@@ -144,8 +145,8 @@ func checkSettlementOnchain(o *out, resp *response, pay *payment, policy adapter
 	}
 	if resp.tx == "" {
 		d := "transaction is empty"
-		if success, _ := resp.root.boolean("success"); !success {
-			reason, _ := resp.root.str("errorReason")
+		if success, _ := resp.root.Bool("success"); !success {
+			reason, _ := resp.root.Str("errorReason")
 			d += fmt.Sprintf("; the response states success false, errorReason %q", reason)
 		}
 		set(adapter.NotPresent, d)
@@ -179,7 +180,7 @@ func checkSettlementOnchain(o *out, resp *response, pay *payment, policy adapter
 		return
 	}
 	auth, missing, aerr := pay.authorization()
-	assetStr, _ := pay.accepted.str("asset")
+	assetStr, _ := pay.accepted.Str("asset")
 	asset, perr := parseAddress(assetStr)
 	if missing != "" || aerr != nil || perr != nil {
 		set(adapter.Inconclusive, "the authorization or accepted.asset is not readable: the events cannot be matched")

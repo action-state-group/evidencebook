@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Check names: the rows of the declaration's §7 table.
@@ -360,10 +361,10 @@ func parseResponseHeld(octets []byte) (*response, error) {
 
 // payment is the payment payload as parsed.
 type payment struct {
-	root     obj
-	accepted obj
-	body     obj
-	auth     obj
+	root     ijson.Obj
+	accepted ijson.Obj
+	body     ijson.Obj
+	auth     ijson.Obj
 	// inScope is false when §3 puts the payload out of scope.
 	inScope bool
 	why     string
@@ -389,9 +390,9 @@ func checkPayload(o *out, octets []byte, note string, decodeErr error, policy ad
 	var v any
 	err := decodeErr
 	if err == nil {
-		v, err = decodeStrict(octets)
+		v, err = ijson.Parse(octets)
 	}
-	root, isObj := asObj(v)
+	root, isObj := ijson.AsObj(v)
 	if err == nil && !isObj {
 		err = fmt.Errorf("not a JSON object")
 	}
@@ -405,9 +406,9 @@ func checkPayload(o *out, octets []byte, note string, decodeErr error, policy ad
 	o.native(RowPayloadForm, adapter.Pass, MethodPayloadForm, fmt.Sprintf("%d octets", len(octets)))
 
 	pay := &payment{root: root}
-	pay.accepted, _ = root.object("accepted")
-	pay.body, _ = root.object("payload")
-	pay.auth, _ = pay.body.object("authorization")
+	pay.accepted, _ = root.Object("accepted")
+	pay.body, _ = root.Object("payload")
+	pay.auth, _ = pay.body.Object("authorization")
 	pay.inScope, pay.why = pay.scope()
 	if !pay.inScope {
 		for _, r := range rows {
@@ -424,7 +425,7 @@ func checkPayload(o *out, octets []byte, note string, decodeErr error, policy ad
 
 // scope applies the declaration's §3.
 func (p *payment) scope() (bool, string) {
-	ver, _ := p.root.num("x402Version")
+	ver, _ := p.root.Num("x402Version")
 	switch {
 	case ver.String() == "1":
 		return false, "x402 version 1"
@@ -433,14 +434,14 @@ func (p *payment) scope() (bool, string) {
 	case p.accepted == nil:
 		return false, "accepted is missing or not an object"
 	}
-	scheme, _ := p.accepted.str("scheme")
-	network, _ := p.accepted.str("network")
+	scheme, _ := p.accepted.Str("scheme")
+	network, _ := p.accepted.Str("network")
 	method := "eip3009"
-	if extra, ok := p.accepted.object("extra"); ok && extra.has("assetTransferMethod") {
-		method, _ = extra.str("assetTransferMethod")
-	} else if p.body.has("permit2Authorization") {
+	if extra, ok := p.accepted.Object("extra"); ok && extra.Has("assetTransferMethod") {
+		method, _ = extra.Str("assetTransferMethod")
+	} else if p.body.Has("permit2Authorization") {
 		method = "permit2"
-	} else if p.body.has("permissionContext") {
+	} else if p.body.Has("permissionContext") {
 		method = "erc7710"
 	}
 	switch {
@@ -453,7 +454,7 @@ func (p *payment) scope() (bool, string) {
 	case method != "eip3009":
 		return false, fmt.Sprintf("transfer method %q", method)
 	}
-	if sigHex, ok := p.body.str("signature"); ok {
+	if sigHex, ok := p.body.Str("signature"); ok {
 		if sig, err := parseHexBytes(sigHex); err == nil && len(sig) != 65 {
 			kind := "a contract-account signature (verified by an on-chain call)"
 			if strings.HasSuffix(strings.ToLower(sigHex), erc6492Magic) {
@@ -465,11 +466,11 @@ func (p *payment) scope() (bool, string) {
 	return true, ""
 }
 
-func (p *payment) str(o obj, k string) (string, bool) {
+func (p *payment) str(o ijson.Obj, k string) (string, bool) {
 	if o == nil {
 		return "", false
 	}
-	return o.str(k)
+	return o.Str(k)
 }
 
 // from returns authorization.from as an address when it is present and well formed.
@@ -632,8 +633,8 @@ type domain struct {
 // x402.asset.version. Its chainId is the reference of x402.chain and its
 // verifyingContract is x402.asset.
 func policyDomain(pay *payment, policy adapter.TrustPolicy) (*domain, string) {
-	network, _ := pay.accepted.str("network")
-	assetStr, _ := pay.accepted.str("asset")
+	network, _ := pay.accepted.Str("network")
+	assetStr, _ := pay.accepted.Str("asset")
 	pinChain, pinAsset := policy.Pin(PinChain), policy.Pin(PinAsset)
 	name, version := policy.Pin(PinAssetName), policy.Pin(PinAssetVersion)
 	if pinChain == "" || pinAsset == "" || name == "" || version == "" {
@@ -660,8 +661,8 @@ func checkAssetTrust(o *out, pay *payment, policy adapter.TrustPolicy) {
 		set(adapter.NotChecked, "excluded by policy")
 		return
 	}
-	network, _ := pay.accepted.str("network")
-	assetStr, _ := pay.accepted.str("asset")
+	network, _ := pay.accepted.Str("network")
+	assetStr, _ := pay.accepted.Str("asset")
 	for _, r := range policy.Keys[KeyAssetRejected] {
 		n, a, _ := strings.Cut(r, "/")
 		if x, err := parseAddress(a); err == nil && n == network {
@@ -681,8 +682,8 @@ func checkAssetTrust(o *out, pay *payment, policy adapter.TrustPolicy) {
 func checkAuthorizationTerms(o *out, pay *payment) {
 	set := func(st adapter.Status, d string) { o.native(RowAuthorizationTerms, st, MethodAuthTerms, d) }
 	auth, missing, err := pay.authorization()
-	payTo, okP := pay.accepted.str("payTo")
-	amount, okA := pay.accepted.str("amount")
+	payTo, okP := pay.accepted.Str("payTo")
+	amount, okA := pay.accepted.Str("amount")
 	switch {
 	case missing != "":
 		set(adapter.NotPresent, missing+" is absent")
@@ -715,7 +716,7 @@ var txHashRE = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
 
 // response is a settlement response that passed its form check.
 type response struct {
-	root               obj
+	root               ijson.Obj
 	network, tx, payer string
 	hasPayer           bool
 }
@@ -740,10 +741,10 @@ func emitResponse(o *out, octets []byte, note string, resp *response, respErr er
 		o.nativeX(RowSettlementOnchain, adapter.NotChecked, MethodSettleOnchain, "settlement response not readable", nil)
 		return
 	}
-	success, _ := resp.root.boolean("success")
+	success, _ := resp.root.Bool("success")
 	formDetail := "well-formed"
 	if !success {
-		reason, _ := resp.root.str("errorReason")
+		reason, _ := resp.root.Str("errorReason")
 		formDetail = fmt.Sprintf("well-formed; states success false, errorReason %q", reason)
 	}
 	o.native(RowSettleResponseForm, adapter.Pass, MethodSettleForm, formDetail)
@@ -754,43 +755,43 @@ func emitResponse(o *out, octets []byte, note string, resp *response, respErr er
 
 // parseResponse applies the 5.3.2 member types.
 func parseResponse(octets []byte) (*response, error) {
-	v, err := decodeStrict(octets)
+	v, err := ijson.Parse(octets)
 	if err != nil {
 		return nil, err
 	}
-	root, ok := asObj(v)
+	root, ok := ijson.AsObj(v)
 	if !ok {
 		return nil, fmt.Errorf("not a JSON object")
 	}
 	r := &response{root: root}
-	if _, ok := root.boolean("success"); !ok {
+	if _, ok := root.Bool("success"); !ok {
 		return nil, fmt.Errorf("success is missing or not a boolean")
 	}
-	if r.tx, ok = root.str("transaction"); !ok {
+	if r.tx, ok = root.Str("transaction"); !ok {
 		return nil, fmt.Errorf("transaction is missing or not a string")
 	}
 	if r.tx != "" && !txHashRE.MatchString(r.tx) {
 		return nil, fmt.Errorf("transaction %q is neither empty nor 0x and 64 hex digits", r.tx)
 	}
-	if r.network, ok = root.str("network"); !ok {
+	if r.network, ok = root.Str("network"); !ok {
 		return nil, fmt.Errorf("network is missing or not a string")
 	}
 	if ns, ref, ok := strings.Cut(r.network, ":"); !ok || ns == "" || ref == "" {
 		return nil, fmt.Errorf("network %q is not a CAIP-2 identifier", r.network)
 	}
 	for _, k := range []string{"errorReason", "payer", "amount"} {
-		if root.has(k) {
-			if _, ok := root.str(k); !ok {
+		if root.Has(k) {
+			if _, ok := root.Str(k); !ok {
 				return nil, fmt.Errorf("%s is not a string", k)
 			}
 		}
 	}
-	if root.has("extensions") {
-		if _, ok := root.object("extensions"); !ok {
+	if root.Has("extensions") {
+		if _, ok := root.Object("extensions"); !ok {
 			return nil, fmt.Errorf("extensions is not an object")
 		}
 	}
-	r.payer, r.hasPayer = root.str("payer")
+	r.payer, r.hasPayer = root.Str("payer")
 	return r, nil
 }
 
@@ -801,7 +802,7 @@ func checkSettleJoin(o *out, resp *response, pay *payment) {
 		return
 	}
 	var fails []string
-	accNet, _ := pay.accepted.str("network")
+	accNet, _ := pay.accepted.Str("network")
 	if resp.network != accNet {
 		fails = append(fails, fmt.Sprintf("network %s, accepted.network %s", resp.network, accNet))
 	}

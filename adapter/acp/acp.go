@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 // Property names, in report order.
@@ -322,13 +323,13 @@ func locate(raw []byte) (input, error) {
 	if trimmed[0] != '{' {
 		return parseHTTP(raw)
 	}
-	v, err := decodeStrict(raw)
+	v, err := ijson.Parse(raw)
 	if err != nil {
 		// Reported by object_form; the digest is still over raw.
 		return input{octets: raw, carrier: "JSON body"}, nil
 	}
-	if root, ok := asObj(v); ok && root.has("jsonrpc") {
-		if root.has("error") {
+	if root, ok := ijson.AsObj(v); ok && root.Has("jsonrpc") {
+		if root.Has("error") {
 			return input{}, errors.New("a JSON-RPC error response carries no ACP object")
 		}
 		result, err := memberOctets(raw, "result")
@@ -341,7 +342,7 @@ func locate(raw []byte) (input, error) {
 }
 
 // memberOctets returns the octets of the top-level member name's value
-// exactly as they appear in raw, which decodeStrict has already accepted.
+// exactly as they appear in raw, which ijson.Parse has already accepted.
 func memberOctets(raw []byte, name string) ([]byte, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if _, err := dec.Token(); err != nil { // '{'
@@ -416,25 +417,25 @@ func parseHTTP(raw []byte) (input, error) {
 // matches, and the kind with a validation error when one matches by its
 // members but does not validate.
 func identify(octets []byte) (kind, error) {
-	v, err := decodeStrict(octets)
+	v, err := ijson.Parse(octets)
 	if err != nil {
 		return kindUnknown, fmt.Errorf("not one JSON value: %w", err)
 	}
-	o, ok := asObj(v)
+	o, ok := ijson.AsObj(v)
 	if !ok {
 		return kindUnknown, errors.New("not a JSON object")
 	}
 	var k kind
 	switch {
-	case o.has("type") && o.has("data"):
+	case o.Has("type") && o.Has("data"):
 		k = kindOrderEvent
-	case o.has("checkout_session_id") || o.has("permalink_url"):
+	case o.Has("checkout_session_id") || o.Has("permalink_url"):
 		return kindUnknown, errors.New("an ACP Order on its own: ACP 2026-04-17 delivers an order only inside a completed CheckoutSessionWithOrder or as an order event's data (acp-v0 §2.2 (a)); supply those octets")
-	case o.has("order"):
+	case o.Has("order"):
 		k = kindCheckoutSessionWithOrder
-	case o.has("status") || o.has("line_items") || o.has("totals") || o.has("currency"):
+	case o.Has("status") || o.Has("line_items") || o.Has("totals") || o.Has("currency"):
 		k = kindCheckoutSession
-	case o.has("created") || o.has("metadata"):
+	case o.Has("created") || o.Has("metadata"):
 		k = kindDelegatePayment
 	default:
 		return kindUnknown, errors.New("a JSON object that is none of CheckoutSession, CheckoutSessionWithOrder, DelegatePaymentResponse or an order event body")

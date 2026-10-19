@@ -20,9 +20,8 @@ import (
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 
-	"github.com/action-state-group/agent-action-capsule/go/canonical"
-
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata fixtures")
@@ -134,8 +133,8 @@ func (f *fixture) sign() {
 	d := typedDataDigest(tokenDomainSeparator(f.Name, f.TokenVersion, cid, contract), f.authorization().structHash())
 	f.Signature = hex0x(sign65(testPayerKey, d))
 	if f.ReceiptFormat == "eip712" {
-		v, _ := decodeStrict(f.receiptPayloadJSON())
-		payload := obj(v.(map[string]any))
+		v, _ := ijson.Parse(f.receiptPayloadJSON())
+		payload := ijson.Obj(v.(map[string]any))
 		variant, err := selectVariant(payload)
 		if err != nil {
 			variant = receiptV1 // an unsupported receipt: sign anything
@@ -200,11 +199,11 @@ func (f *fixture) receiptEnvelope() []byte {
 // receiptOctets is the registered octets of x402.receipt (EIP-712 format):
 // the RFC 8785 form of the envelope.
 func (f *fixture) receiptOctets() []byte {
-	v, err := decodeStrict(f.receiptEnvelope())
+	v, err := ijson.Parse(f.receiptEnvelope())
 	if err != nil {
 		panic(err)
 	}
-	b, err := canonical.JCS(v)
+	b, err := ijson.JCS(v)
 	if err != nil {
 		panic(err)
 	}

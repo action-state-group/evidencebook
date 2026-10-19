@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/evidencebook/adapter"
+	"github.com/action-state-group/evidencebook/adapter/internal/ijson"
 )
 
 var update = flag.Bool("update", false, "rewrite testdata fixtures")
@@ -79,12 +80,12 @@ func testJWKSet() string {
 func testPolicyJSON() string {
 	p := map[string]any{
 		"pins": map[string]string{
-			PinKeys:             testJWKSet(),
 			PinKeysOrigin:       fxOrigin,
 			PinKeysRetainedAt:   fxRetainedAt,
 			adapter.PinPolicyID: "fixture-accept-merchant.example",
 		},
-		"keys": map[string][]string{KeyBusinessOrigin: {fxOrigin}},
+		"keys":     map[string][]string{KeyBusinessOrigin: {fxOrigin}},
+		"key_sets": map[string]json.RawMessage{KeySetName: json.RawMessage(testJWKSet())},
 	}
 	b, _ := json.MarshalIndent(p, "", "  ")
 	return string(b) + "\n"
@@ -135,7 +136,7 @@ const checkoutTemplate = `{
 }
 `
 
-// signCheckout signs a checkout (a parseIJSON value) as AP2 §Business
+// signCheckout signs a checkout (a ijson.Parse value) as AP2 §Business
 // Authorization does, and returns the merchant_authorization value.
 func signCheckout(t testing.TB, co map[string]any, header string) string {
 	t.Helper()
@@ -145,7 +146,7 @@ func signCheckout(t testing.TB, co map[string]any, header string) string {
 			payload[k] = v
 		}
 	}
-	canon, err := jcs(payload)
+	canon, err := ijson.JCS(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +159,7 @@ const testHeader = `{"alg":"ES256","kid":"` + testKID + `"}`
 
 func positiveCheckout(t testing.TB) []byte {
 	t.Helper()
-	v, err := parseIJSON([]byte(fmt.Sprintf(checkoutTemplate, "x..y")))
+	v, err := ijson.Parse([]byte(fmt.Sprintf(checkoutTemplate, "x..y")))
 	if err != nil {
 		t.Fatal(err)
 	}

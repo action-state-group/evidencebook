@@ -31,7 +31,12 @@ type Adapter interface {
   `{property, status, method, detail}` (Minimum Evidence Interoperability
   Profile, `agent-action-capsule` `spec/interop-profile-v0.md` §7.1). The
   status is one of `PASS`, `FAIL`, `NOT_PRESENT`, `NOT_CHECKED` and
-  `INCONCLUSIVE`.
+  `INCONCLUSIVE`. A method or detail is plain text: a template such as
+  `relying party policy <id>` keeps its `<` and `>` in the JSON.
+- Every adapter reads foreign JSON with one reader, `adapter/internal/ijson`,
+  as I-JSON (RFC 7493): invalid UTF-8, an escaped lone surrogate, a
+  duplicate member name in any object or trailing data makes the input
+  unreadable. The same package holds the adapters' one RFC 8785 serializer.
 - **Report shape.** The profile defines one property per foreign object,
   `native_check` (§7.2). An adapter that splits the native check into named
   checks reports each one as a `native_check` report, with the check's name
@@ -54,6 +59,9 @@ type Adapter interface {
 - `TrustPolicy` is data:
   - `pins`: values the relying party fixes in advance;
   - `keys`: accepted key identifiers per issuer role;
+  - `key_sets`: key sets the relying party retained, each as the JSON value
+    it was served as (for example a JWK Set), kept as written so the
+    adapter's strict reader sees the octets;
   - `recorded`: the relying party's own recorded observations, such as an
     on-chain lookup made earlier through a source it trusts;
   - `now`: a clock.
@@ -633,7 +641,7 @@ It never counts against a requirement that does not rest on that signature.
 
 | Name | Kind | Meaning |
 |---|---|---|
-| `ucp.keys` | pin | the retained `keys[]`, as a JSON string: a JWK Set `{"keys": [...]}` or a bare array |
+| `ucp.keys` | key_sets | the retained `keys[]`: a JWK Set `{"keys": [...]}` or a bare array. A `ucp.keys` pin (the v0.3.0 shape) is not read: the key check is `NOT_CHECKED` and its explanation names `key_sets` |
 | `ucp.keys.origin` | pin | the business origin (`https://host`) whose `/.well-known/ucp` served that copy. For a checkout, this is also the origin `ucp.business_trust` asks about |
 | `ucp.keys.source` | pin, optional | where the copy came from, named in the key check's method; by default the profile URL of `ucp.keys.origin` |
 | `ucp.keys.retained_at` | pin, optional | when the copy was taken (RFC 3339), named in the key check's method |
@@ -644,8 +652,14 @@ It never counts against a requirement that does not rest on that signature.
 
 ```json
 {
+  "key_sets": {
+    "ucp.keys": {
+      "keys": [
+        {"kid": "rfc7515-appendix-a3", "kty": "EC", "crv": "P-256", "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU", "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0", "use": "sig", "alg": "ES256"}
+      ]
+    }
+  },
   "pins": {
-    "ucp.keys": "{\"keys\":[{\"kid\":\"rfc7515-appendix-a3\",\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\",\"use\":\"sig\",\"alg\":\"ES256\"}]}",
     "ucp.keys.origin": "https://merchant.example",
     "ucp.keys.retained_at": "2026-10-17T12:00:00Z",
     "policy.id": "fixture-accept-merchant.example"

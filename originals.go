@@ -162,10 +162,11 @@ func originalBytes(record artifact.Record, digest string) (data []byte, found, h
 // id, log entry or checkpoint moves, so every existing proof still holds.
 // A record whose originals are already in the artifact store is skipped, so
 // an interrupted migration is resumed by running it again. Retention is
-// now per record, so a record whose lifecycle ends DELETED (under the
-// earlier per-payload retention, a deletion of any of its payloads) is not
-// stored, even when a file survived because another record shares the
-// digest: the book reads it as DELETED before it looks for originals. A
+// now per record, folded as Retention folds it: a record whose latest
+// lifecycle state is DELETED is not stored, even when a file survived
+// because another record shares the digest (the book reads it as DELETED
+// before it looks for originals), and a payload an earlier per-payload
+// deletion named is left out of a record that stays readable. A
 // payload whose file is missing is left out of the record, so reading it
 // reports the store does not hold it rather than claiming it was never
 // kept. It returns how many records it stored.
@@ -185,7 +186,7 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 		}
 		decoded = append(decoded, record)
 	}
-	deleted, err := deletedRecords(decoded)
+	deleted, deletedPayloads, err := legacyDeletions(decoded)
 	if err != nil {
 		return 0, err
 	}
@@ -200,7 +201,7 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 			// immutable, so it must already hold every payload the directory
 			// still has, or the directory is the only copy and must stay.
 			for _, digest := range record.Header.PayloadCommitments {
-				if _, _, present := originalBytes(existing, digest); present {
+				if _, _, present := originalBytes(existing, digest); present || deletedPayloads[sr.RecordID][digest] {
 					continue
 				}
 				if _, err := os.Stat(filepath.Join(dir, digest)); err == nil {
@@ -213,6 +214,9 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 		}
 		held := artifact.Record{CapsuleID: sr.RecordID, Capsule: sr.Capsule, ProducerEnvelope: sr.Envelope}
 		for i, digest := range record.Header.PayloadCommitments {
+			if deletedPayloads[sr.RecordID][digest] {
+				continue
+			}
 			data, err := os.ReadFile(filepath.Join(dir, digest))
 			switch {
 			case errors.Is(err, os.ErrNotExist):
@@ -232,33 +236,42 @@ func MigratePayloadDir(ctx context.Context, store Store, originals ArtifactStore
 	return moved, nil
 }
 
-// deletedRecords folds every lifecycle record, in log order, into the set of
-// records whose retention ends DELETED. A lifecycle record that also names a
-// payload_commitment (written under per-payload retention) applies to the
-// whole record, as Retention reads it.
-func deletedRecords(records []Record) (map[string]bool, error) {
+// legacyDeletions folds every lifecycle record, in log order, the way
+// Retention does: the latest statement citing a record is its state. It
+// returns the records whose state ends DELETED and, for the others, the
+// payloads a lifecycle record written under per-payload retention deleted
+// (it names a payload_commitment), whose bytes must not come back.
+func legacyDeletions(records []Record) (deleted map[string]bool, payloads map[string]map[string]bool, err error) {
 	ordered := slices.Clone(records)
 	slices.SortFunc(ordered, func(a, b Record) int { return cmp.Compare(a.Seq, b.Seq) })
 	state := map[string]RetentionState{}
+	payloads = map[string]map[string]bool{}
 	for _, r := range ordered {
 		if r.Header.RecordType != RecordTypeLifecycle {
 			continue
 		}
-		var statement LifecycleStatement
+		var statement struct {
+			LifecycleStatement
+			PayloadCommitment string `json:"payload_commitment"`
+		}
 		if err := json.Unmarshal(r.Header.Statement, &statement); err != nil {
-			return nil, fmt.Errorf("%w: lifecycle record %s: %v", ErrCorrupt, r.RecordID, err)
+			return nil, nil, fmt.Errorf("%w: lifecycle record %s: %v", ErrCorrupt, r.RecordID, err)
 		}
 		for _, cited := range r.Header.LinksTo(Cites) {
-			if state[cited] != Deleted {
-				state[cited] = statement.RetentionState
+			state[cited] = statement.RetentionState
+			if statement.RetentionState == Deleted && statement.PayloadCommitment != "" {
+				if payloads[cited] == nil {
+					payloads[cited] = map[string]bool{}
+				}
+				payloads[cited][statement.PayloadCommitment] = true
 			}
 		}
 	}
-	deleted := map[string]bool{}
+	deleted = map[string]bool{}
 	for id, s := range state {
 		if s == Deleted {
 			deleted[id] = true
 		}
 	}
-	return deleted, nil
+	return deleted, payloads, nil
 }
