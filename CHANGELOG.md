@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added: a shelf of books, one log per deal
+
+evidencebook#36 §1 (the deal profile on the book; one log per deal,
+evidencebook#59).
+
+- `OpenSQLiteShelf` opens one profile's books in one SQLite file: each book
+  its own CLL log (`OpenCLLSQLite`, many logs in one file, as capsule-cli
+  keeps a profile's deal logs) and its records and checkpoints in tables
+  keyed by book id, with the profile's one artifact store shared. A deal's
+  bundle is built from its book alone, so it carries no other deal's
+  records.
+- A shelf is the profile's only writer: it holds an exclusive advisory lock
+  (`LockPath`, which a host points at its own writer lock) from open to
+  `Release`, and `Shelf.Open` returns one `*Book` per log id for its
+  lifetime. After `Release`, the shelf and its books refuse writes
+  (`ErrReleased`; `Book.Release` now does the same for any book).
+
 ### Changed (breaking): payload bytes live in an artifact store
 
 capsule-cli#236: one originals store, kept per record.

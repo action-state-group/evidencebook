@@ -27,4 +27,7 @@ var (
 	ErrUnavailable = errors.New("evidencebook: payload unavailable")
 	// ErrLegalHold reports a deletion blocked by a legal hold.
 	ErrLegalHold = errors.New("evidencebook: legal hold")
+	// ErrReleased reports a write to a book, or a call on a shelf, after it
+	// was released.
+	ErrReleased = errors.New("evidencebook: released")
 )

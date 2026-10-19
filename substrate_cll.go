@@ -18,6 +18,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/checkpointed-local-log/go/mmr"
 	"github.com/action-state-group/checkpointed-local-log/go/store/jsonl"
+	cllsqlite "github.com/action-state-group/checkpointed-local-log/go/store/sqlite"
 )
 
 // SubstrateKindCLL labels checkpoints and proofs produced by the CLL binding.
@@ -28,7 +29,7 @@ const SubstrateKindCLL = "cll"
 type CLLSubstrate struct {
 	mu     sync.Mutex
 	logID  string
-	log    *jsonl.Store
+	log    cll.Backend
 	runner *checkpoint.Runner
 }
 
@@ -48,6 +49,30 @@ func OpenCLL(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrat
 	if err != nil {
 		return nil, fmt.Errorf("open CLL journal: %w", err)
 	}
+	return newCLLSubstrate(log, logID, checkpointKey)
+}
+
+// OpenCLLSQLite opens (initializing if absent) the CLL log logID in the
+// SQLite file at path. One file holds many logs, one per log id, as a
+// profile's per-deal logs are held today (capsule-cli deal.db).
+func OpenCLLSQLite(path, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrate, error) {
+	if err := cll.ValidateIdentifier(logID); err != nil {
+		return nil, fmt.Errorf("%w: log id: %v", ErrInvalid, err)
+	}
+	log, err := cllsqlite.Open(path, logID)
+	if err != nil {
+		if initErr := cllsqlite.Init(path, logID); initErr != nil {
+			return nil, fmt.Errorf("init CLL log %s: %w", logID, errors.Join(err, initErr))
+		}
+		if log, err = cllsqlite.Open(path, logID); err != nil {
+			return nil, fmt.Errorf("open CLL log %s: %w", logID, err)
+		}
+	}
+	return newCLLSubstrate(log, logID, checkpointKey)
+}
+
+// newCLLSubstrate wraps an open CLL backend, which it then owns.
+func newCLLSubstrate(log cll.Backend, logID string, checkpointKey ed25519.PrivateKey) (*CLLSubstrate, error) {
 	signer, err := checkpoint.NewEd25519Signer(checkpointKey)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("%w: checkpoint key: %v", ErrInvalid, err), log.Close())

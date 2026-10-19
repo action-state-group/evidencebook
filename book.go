@@ -80,6 +80,8 @@ type Book struct {
 
 	responder   ResponderPolicy
 	derivations map[string]derivationEntry
+	// released is set by Release; every write refuses with ErrReleased.
+	released bool
 }
 
 // Open validates cfg, reconciles the record store with the substrate, and
@@ -422,6 +424,9 @@ func (b *Book) AppendCapsule(ctx context.Context, entry Entry, originals []artif
 // commitEntryLocked is Append and AppendCapsule: callerSeal nil seals the
 // header as a record capsule of the book's own.
 func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []artifact.Artifact, callerSeal CapsuleSealer) (Record, error) {
+	if b.released {
+		return Record{}, ErrReleased
+	}
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Record{}, err
 	}
@@ -625,6 +630,9 @@ func (b *Book) Checkpoint(ctx context.Context) (Checkpoint, error) {
 }
 
 func (b *Book) checkpointLocked(ctx context.Context) (Checkpoint, error) {
+	if b.released {
+		return Checkpoint{}, ErrReleased
+	}
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Checkpoint{}, err
 	}
@@ -666,6 +674,10 @@ func (b *Book) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 func (b *Book) Release() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.released {
+		return nil
+	}
+	b.released = true
 	return errors.Join(b.store.Release(), b.commitments.Release(), b.operational.Release())
 }
 
