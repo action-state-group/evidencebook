@@ -104,7 +104,11 @@ with the error so the caller does not append it twice.
 carried inside the capsule. A bundle discloses headers as the `agent_input`
 member of its disclosure overlay, and the neutral verifier reports each one as
 matched against its commitment or as withheld. Suppressing `agent_input`
-leaves every header withheld with its digest (§6.2). `VerifyBundle` reads
+leaves every header withheld with its digest (§6.2). A record its caller
+sealed (`AppendCapsule`) is the exception: its header travels inside its
+capsule, and its overlay members are the capsule's own (`agent_input` its
+payload, `agent_output` its output), disclosed from the originals bound to
+them and suppressed by the same names. `VerifyBundle` reads
 every member from the one decoded tree the neutral verifier checked, by
 exact key, and refuses a bundle holding two keys that differ only by case
 anywhere in it, so the verifier and the reader can never see different

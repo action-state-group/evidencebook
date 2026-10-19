@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"os"
 	"path/filepath"
 	"slices"
@@ -255,8 +256,37 @@ func TestCallerSealedRecordInABundle(t *testing.T) {
 		if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
 			t.Fatal(err)
 		}
-		if _, disclosed := wire.Disclosures[own.RecordID]; disclosed {
-			t.Fatal("a caller-sealed header was disclosed as agent_input")
+		// The header travels in the capsule. agent_input is the capsule's
+		// own member: the bound original, disclosed when the record is
+		// selected with its payloads and agent_input is not suppressed.
+		members, disclosed := wire.Disclosures[own.RecordID]
+		want := req.Root == citing.RecordID
+		if disclosed != want {
+			t.Fatalf("root %s: own capsule's members disclosed = %v, want %v", req.Root, disclosed, want)
+		}
+		if !disclosed {
+			continue
+		}
+		if string(members["agent_input"]) != payload {
+			t.Fatalf("agent_input disclosed as %s, want the bound original", members["agent_input"])
+		}
+		var capsule any
+		for _, raw := range wire.Records {
+			c, err := decodeJSON(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.(map[string]any)["capsule_id"] == own.RecordID {
+				capsule = c
+			}
+		}
+		input, err := decodeJSON(members["agent_input"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		checked := disclosure.Verify(map[string]any{"capsule": capsule, "disclosures": map[string]any{"agent_input": input}}, nil)
+		if checked.DisclosuresMatched() != 1 {
+			t.Fatalf("the neutral disclosure check: %+v", checked.DisclosureFindings)
 		}
 	}
 }
@@ -459,6 +489,51 @@ func TestMigratePayloadDirRefusesAHeldRecordMissingAPayload(t *testing.T) {
 	}
 	if err := errors.Join(cfg.Store.Release(), cfg.Substrate.Release()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Under the earlier dedupe rule a deleted record's file survived when
+// another record shared its digest. Migration must not bring those bytes
+// back as the deleted record's originals.
+func TestMigratePayloadDirLeavesADeletedRecordDeleted(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	book := f.open(t)
+	kept := mustAppend(t, book, observation("a", "shared"))
+	gone := mustAppend(t, book, observation("b", "shared"))
+	if _, err := book.SetRetention(ctx, gone.RecordID, Deleted, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(f.dir, "payloads")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, kept.Header.PayloadCommitments[0]), []byte("shared"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(f.dir, "originals.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := f.config(t)
+	if moved, err := MigratePayloadDir(ctx, cfg.Store, cfg.Originals, dir); err != nil || moved != 1 {
+		t.Fatalf("migration moved %d records: %v", moved, err)
+	}
+	if _, err := cfg.Originals.Get(ctx, gone.RecordID); !errors.Is(err, artifact.ErrNotFound) {
+		t.Fatalf("the deleted record's originals were stored: %v", err)
+	}
+	if err := errors.Join(cfg.Store.Release(), cfg.Substrate.Release()); err != nil {
+		t.Fatal(err)
+	}
+	reopened := f.open(t)
+	if data, err := reopened.ResolvePayload(ctx, kept.RecordID, kept.Header.PayloadCommitments[0]); err != nil || string(data) != "shared" {
+		t.Fatalf("the kept record's original does not resolve: %v", err)
+	}
+	var unavailable *UnavailableError
+	if _, err := reopened.ResolvePayload(ctx, gone.RecordID, gone.Header.PayloadCommitments[0]); !errors.As(err, &unavailable) || unavailable.State != Deleted {
+		t.Fatalf("the deleted record resolved: %v", err)
 	}
 }
 

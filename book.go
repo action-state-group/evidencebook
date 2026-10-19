@@ -383,7 +383,8 @@ func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
 // position and commit time assigned, and headerJSON its canonical bytes;
 // the capsule must carry headerJSON as its RecordHeaderMember member and be
 // signed by the book's signer. It returns the sealed capsule and its
-// Producer Envelope.
+// Producer Envelope. The book's lock is held while it runs and is not
+// reentrant: the sealer must not call back into the Book.
 type CapsuleSealer func(header Header, headerJSON []byte) (emit.Result, error)
 
 // AppendCapsule commits a capsule its caller seals itself as the record:

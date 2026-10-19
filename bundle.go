@@ -15,6 +15,8 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
+
+	"github.com/action-state-group/capsule-emit/go/artifact"
 )
 
 // PayloadsMode is the disclosure record's payloads claim.
@@ -55,7 +57,9 @@ type BundleRequest struct {
 	// set is withheld with its digest.
 	WithholdPayloads bool
 	// Suppress names disclosure members left out of the overlay; suppressing
-	// HeaderMember leaves every header as withheld-with-digest.
+	// HeaderMember leaves every disclosed header as withheld-with-digest. A
+	// header carried inside its capsule (RecordHeaderMember) is part of the
+	// capsule's committed bytes, so it travels whatever Suppress says.
 	Suppress []string
 	// Withhold names payload digests this disclosure does not carry.
 	Withhold []string
@@ -227,6 +231,15 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		default:
 			wire.Disclosures[id] = map[string]json.RawMessage{HeaderMember: stored.Header}
 		}
+		// A caller-sealed record's originals bound to its capsule's
+		// agent_input or agent_output digest are also disclosed as those
+		// members, so a neutral verifier matches them against the capsule.
+		var members map[string]string
+		if inline[id] {
+			if members, err = b.boundMembersLocked(ctx, id); err != nil {
+				return Bundle{}, err
+			}
+		}
 		for _, digest := range b.records[id].Header.PayloadCommitments {
 			if req.WithholdPayloads || slices.Contains(req.Withhold, digest) {
 				if req.Payloads == PayloadsAll {
@@ -248,6 +261,12 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 				return Bundle{}, err
 			}
 			payloads[digest] = base64.RawURLEncoding.EncodeToString(data)
+			if member, ok := members[digest]; ok && !slices.Contains(req.Suppress, member) && json.Valid(data) {
+				if wire.Disclosures[id] == nil {
+					wire.Disclosures[id] = map[string]json.RawMessage{}
+				}
+				wire.Disclosures[id][member] = data
+			}
 		}
 	}
 	if len(payloads) > 0 {
@@ -619,4 +638,25 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 		out.Payloads[digest] = data
 	}
 	return out, nil
+}
+
+// boundMembersLocked maps each original of a caller-sealed record that is
+// bound to its capsule's agent_input or agent_output digest to that member
+// name, by the original's digest.
+func (b *Book) boundMembersLocked(ctx context.Context, recordID string) (map[string]string, error) {
+	held, err := b.originals.Get(ctx, recordID)
+	if errors.Is(err, artifact.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	names := map[artifact.DigestField]string{artifact.PayloadDigest: "agent_input", artifact.AgentOutputDigest: "agent_output"}
+	members := map[string]string{}
+	for _, a := range held.Artifacts {
+		if name, ok := names[a.Binding]; ok && a.ContentSHA256 != "" {
+			members[a.ContentSHA256] = name
+		}
+	}
+	return members, nil
 }
