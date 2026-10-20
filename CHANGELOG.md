@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.7.0 (2026-10-20)
+
+Everything since v0.6.0, with two breaking changes. A record that carries a
+correlation identifier is answered under it (#81). A CLL book's `Book.Bundle`
+builds through agent-action-capsule's producer, so its bundles carry each
+record's Producer Envelope and read VALID under strict verification; a SCITT
+receipt book keeps the book's own assembly, so its records carry no Producer
+Envelope (#89). JSON with trailing data is now refused: `ErrCorrupt` for
+stored capsules and headers, `ErrInvalid` for bundles, bundle extensions and
+reconcile halves (#89). The module now requires agent-action-capsule Go
+v0.11.0.
+
 ### Changed (breaking): a correlation subject reads the header's correlation identifier
 
 For capsule-cli#264, following Steven's direction of 2026-10-19 (PT); the
