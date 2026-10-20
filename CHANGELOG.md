@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.7.0 (2026-10-20)
+
+Everything since v0.6.0, with two breaking changes. A record that carries a
+correlation identifier is answered under it (#81). `Book.Bundle` builds
+through agent-action-capsule's producer, so its bundles carry each record's
+Producer Envelope and read VALID under strict verification (#89). The module
+now requires agent-action-capsule Go v0.11.0.
+
 ### Changed (breaking): a correlation subject reads the header's correlation identifier
 
 For capsule-cli#264, following Steven's direction of 2026-10-19 (PT); the
