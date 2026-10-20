@@ -56,6 +56,13 @@ disclosure record. A SCITT receipt book keeps the book's own assembly.
 - The `checkpoint` member also states `key_id`, `timestamp`, `prev_size` and
   `prev_root` from the signed statement.
 
+### Fixed: JSON with trailing data is refused
+
+JSON the book reads (a bundle in `VerifyBundle`, reconcile halves, bundle
+extensions, stored capsules and headers) with trailing data after the value,
+such as a stray `]` or `}`, is now refused as `ErrInvalid`. Before, it was
+read as the leading value.
+
 ## v0.6.0 (2026-10-19)
 
 Everything since v0.5.0: the APIs capsule-cli#242 needs to move deals onto
