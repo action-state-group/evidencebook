@@ -58,10 +58,10 @@ disclosure record. A SCITT receipt book keeps the book's own assembly.
 
 ### Fixed: JSON with trailing data is refused
 
-JSON the book reads (a bundle in `VerifyBundle`, reconcile halves, bundle
-extensions, stored capsules and headers) with trailing data after the value,
-such as a stray `]` or `}`, is now refused as `ErrInvalid`. Before, it was
-read as the leading value.
+JSON the book reads with trailing data after the value, such as a stray `]`
+or `}`, is now refused: as `ErrInvalid` for a bundle in `VerifyBundle`,
+reconcile halves and bundle extensions, and as `ErrCorrupt` for stored
+capsules and headers. Before, it was read as the leading value.
 
 ## v0.6.0 (2026-10-19)
 
