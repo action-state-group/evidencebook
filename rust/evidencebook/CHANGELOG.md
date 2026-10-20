@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.7
+
 - **`derivation`: definition-digest derivations** (evidencebook#62), at
   parity with the Go book's `Book.RegisterDerivation`. `Derivations::register`
   takes a `DerivationDefinition` (the definition document, an optional
