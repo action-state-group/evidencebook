@@ -249,6 +249,19 @@ answered only to its recipient, carries each record's digest and position
 and only its declared header fields, and is never listed in the manifest. The
 canonical Artifact of the underived subject is never varied per recipient.
 
+**Which records a correlation subject names.** A record is held under its
+header's correlation identifier (`correlation.exchange_id`) when it carries
+one, and under its `subject_ref` only when it carries none. So a host can
+keep `subject_ref` for its own use, for example one value per step of a deal
+for retries, and still answer for the deal as a whole. The two key spaces
+answer the same requested identifier: a record filed under `subject_ref`
+`deal-a` with no `exchange_id` is answered with records whose `exchange_id`
+is `deal-a`. The `subject_ref` authenticated index proves `subject_ref`
+membership only, and does not establish that a correlation answer is
+complete (Personal-Agent History Profile v0 §1). This follows Steven's
+direction of 2026-10-19 (PT); the spec reading is agent-action-capsule#328
+O2, still open.
+
 **What an answer may disclose.** Every artifact is scanned before release
 against its form's declared field set, and refused `policy_declined` if it
 carries a member outside it, or if any record it carries mentions a principal
