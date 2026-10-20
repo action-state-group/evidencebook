@@ -3,7 +3,7 @@ module github.com/action-state-group/evidencebook
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.8.0
+	github.com/action-state-group/agent-action-capsule/go v0.11.0
 	github.com/action-state-group/capsule-emit/go v0.3.0
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1

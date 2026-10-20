@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/checkpointed-local-log/go/mmr"
@@ -34,6 +35,9 @@ type CLLSubstrate struct {
 	logID  string
 	log    cll.Backend
 	runner *checkpoint.Runner
+	// treeLoads counts MMR restores, so a test can see that one bundle
+	// restores the tree once.
+	treeLoads int
 }
 
 // OpenCLL opens (initializing if absent) a CLL journal at path. checkpointKey
@@ -258,6 +262,9 @@ func (s *CLLSubstrate) tree(ctx context.Context, at Checkpoint) (*mmr.Tree, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: restore MMR: %v", ErrCorrupt, err)
 	}
+	s.mu.Lock()
+	s.treeLoads++
+	s.mu.Unlock()
 	if at.TreeSize > tree.Size() {
 		return nil, fmt.Errorf("%w: checkpoint size %d exceeds indexed tree %d", ErrNotCovered, at.TreeSize, tree.Size())
 	}
@@ -376,6 +383,56 @@ func (s *CLLSubstrate) ProveConsistency(ctx context.Context, older, newer Checkp
 
 func (s *CLLSubstrate) Release() error {
 	return s.log.Close()
+}
+
+// proofSnapshot is the log at checkpoint at, read once: its leaves and its
+// MMR, from which every proof of one Evidence Bundle is served. It is what
+// agent-action-capsule's producer reads (bookProofSource), in the producer's
+// wire types, so no CLL type leaves this file.
+type proofSnapshot struct {
+	at     Checkpoint
+	tree   *mmr.Tree
+	leaves [][]byte
+}
+
+// proofSnapshot restores the MMR once and checks it reaches at, as every
+// proof method does, and reads the leaves through at.Entries.
+func (s *CLLSubstrate) proofSnapshot(ctx context.Context, at Checkpoint) (*proofSnapshot, error) {
+	tree, err := s.tree(ctx, at)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := s.entriesThrough(ctx, at.Entries)
+	if err != nil {
+		return nil, err
+	}
+	leaves := make([][]byte, len(entries))
+	for i, entry := range entries {
+		leaves[i] = append([]byte(nil), entry.Value...)
+	}
+	return &proofSnapshot{at: at, tree: tree, leaves: leaves}, nil
+}
+
+func (p *proofSnapshot) inclusionProof(seq uint64) (aacbundle.InclusionProof, error) {
+	if !p.at.Covers(seq) {
+		return aacbundle.InclusionProof{}, fmt.Errorf("%w: seq %d under checkpoint %s", ErrNotCovered, seq, p.at.ID)
+	}
+	proof, err := p.tree.InclusionProof(seq-1, p.at.TreeSize)
+	if err != nil {
+		return aacbundle.InclusionProof{}, err
+	}
+	return aacbundle.InclusionProof{V: proof.V, Kind: proof.Kind, Size: proof.Size, LeafIndex: proof.LeafIndex, Witness: hexList(proof.Witness), PeaksLeft: hexList(proof.PeaksLeft), PeaksRight: hexList(proof.PeaksRight)}, nil
+}
+
+func (p *proofSnapshot) rangeProof(firstSeq uint64) (aacbundle.RangeProof, error) {
+	if !p.at.Covers(firstSeq) {
+		return aacbundle.RangeProof{}, fmt.Errorf("%w: seq %d under checkpoint %s", ErrNotCovered, firstSeq, p.at.ID)
+	}
+	proof, err := p.tree.RangeProof(firstSeq-1, p.at.Entries-1, p.at.TreeSize)
+	if err != nil {
+		return aacbundle.RangeProof{}, err
+	}
+	return aacbundle.RangeProof{FromSeq: firstSeq, ToSeq: p.at.Entries, Size: p.at.TreeSize, FromIndex: firstSeq - 1, ToIndex: p.at.Entries - 1, Witness: hexList(proof.Witness)}, nil
 }
 
 func portableInclusion(proof mmr.InclusionProof) MMRInclusion {

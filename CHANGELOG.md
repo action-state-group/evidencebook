@@ -23,6 +23,39 @@ spec reading is agent-action-capsule#328 O2, still open (#81).
   establish a correlation answer's completeness, and a correlation answer
   carries no verification material, underived or derived.
 
+### Changed (breaking): `Book.Bundle` builds through agent-action-capsule's producer
+
+capsule-emit#338's step for this repository; design note on #84. A CLL
+book's bundle is now built by agent-action-capsule's
+`bundle.BuildEvidenceBundle` (Go v0.11.0, the new minimum), over an
+unexported proof source on the book's own log. The book keeps the disclosure
+act: its closure picks the range start and the disclosed records, and it
+still builds the overlay and `evidencebook/payloads` and commits the
+disclosure record. A SCITT receipt book keeps the book's own assembly.
+
+- **Producer signatures.** Every carried record, ride-alongs included, carries
+  its Producer Envelope as `signature` and `key_id`, so a book bundle reads
+  VALID under strict verification instead of INCOMPLETE. The recipient sees
+  the key of each record's signer, every signer key the book holds included
+  (Steven's ruling on #84 §4, Buzz `09333a69`).
+- **Closure.** `records_mode` and `missing` are the verifier's: the capsule's
+  chain parent and `references[]`. `missing` is in first-seen order. A
+  citation below the range start is `ErrCorrupt`.
+- **`BundleRequest.ProducerKey`** declares the producer key
+  (`producer-key/v1`). The extension itself is now refused in `Extensions`, as
+  is `composed/v1`.
+- **Refused as `ErrInvalid` before the build:** a `Suppress` name other than
+  `agent_input` or `agent_output` (the list is now stated sorted and without
+  repeats, in the bundle and the disclosure record alike), a negative
+  `ClosureDepth`, a `ProducerKey` that is not 32 bytes, and an extension that
+  is not JSON, has no canonical form or nests too deeply for the bundle.
+- **`payloads=all`** is refused when a disclosed capsule commits an eligible,
+  unsuppressed member the bundle does not reveal (an output with no original,
+  or one declared never retained); the error says to use `selected` or to
+  suppress that member.
+- The `checkpoint` member also states `key_id`, `timestamp`, `prev_size` and
+  `prev_root` from the signed statement.
+
 ## v0.6.0 (2026-10-19)
 
 Everything since v0.5.0: the APIs capsule-cli#242 needs to move deals onto
