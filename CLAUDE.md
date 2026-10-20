@@ -36,8 +36,8 @@ python test/interop/python-cll/verify_bundle.py "$dir/bundle.json"
 CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
-`rust.yml` runs only when `rust/`, `testdata/refusal-interop/` or its own
-files change. `leak-lint.yml` scans public material for internal workflow
+`rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
+`.github/scripts/check_crate_metadata.py` or the workflow itself changes. `leak-lint.yml` scans public material for internal workflow
 text.
 
 ## Layout

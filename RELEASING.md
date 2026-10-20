@@ -61,8 +61,8 @@ itself.
 
 1. Merge a `chore(release): v<version>` pull request that moves the
    CHANGELOG's Unreleased entries under `## v<version> (<date>)`.
-2. An admin pushes `v<version>` on that merge commit. Nobody else creates `v*`
-   tags, and no workflow does.
+2. An admin pushes `v<version>` on that merge commit. Only an admin pushes
+   `v*` tags, and no workflow creates them.
 
 The version is fetchable through the Go module proxy as soon as the tag
 exists, so a bad release can only be withdrawn with a `retract` directive in a
@@ -76,7 +76,10 @@ later version. CI on `main` covers the module's tests.
   version, crates.io availability and crate metadata.
 - **Environment.** `crates-io` accepts deployments only from `crates/*-v*`
   tags, so a job started from a branch or another tag cannot upload.
-- **Tags.** The `release tags` ruleset lets only admins move or delete tags.
+- **Tags.** No ruleset protects tags in this repository, so "only an admin
+  pushes `v*` tags" and never moving or deleting a release tag are rules
+  contributors follow, not settings GitHub enforces. capsule-emit enforces
+  both with its `release tags` and `go release tags` rulesets.
 
 ## Registry configuration
 
