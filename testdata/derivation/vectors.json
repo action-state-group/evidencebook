@@ -376,6 +376,122 @@
       ]
     }
   ],
+  "reregistered": [
+    {
+      "name": "same-declarations",
+      "definition": "for-alice",
+      "document": "{ \"recipient\": \"alice\",\n  \"computation\": \"project\", \"fields\": [\"record_type\", \"committed_at\", \"links\"] }",
+      "recipient": "alice",
+      "forms": [
+        "correlation",
+        "record"
+      ],
+      "fields": [
+        "record_type",
+        "committed_at",
+        "links"
+      ],
+      "outcome": "registered"
+    },
+    {
+      "name": "same-sets-other-order",
+      "definition": "for-alice",
+      "document": "{\"computation\":\"project\",\"fields\":[\"record_type\",\"committed_at\",\"links\"],\"recipient\":\"alice\"}",
+      "recipient": "alice",
+      "forms": [
+        "record",
+        "correlation",
+        "record"
+      ],
+      "fields": [
+        "links",
+        "record_type",
+        "committed_at"
+      ],
+      "outcome": "registered"
+    },
+    {
+      "name": "other-recipient",
+      "definition": "for-alice",
+      "document": "{ \"recipient\": \"alice\",\n  \"computation\": \"project\", \"fields\": [\"record_type\", \"committed_at\", \"links\"] }",
+      "recipient": "bob",
+      "forms": [
+        "correlation",
+        "record"
+      ],
+      "fields": [
+        "record_type",
+        "committed_at",
+        "links"
+      ],
+      "outcome": "refused"
+    },
+    {
+      "name": "no-recipient",
+      "definition": "for-alice",
+      "document": "{ \"recipient\": \"alice\",\n  \"computation\": \"project\", \"fields\": [\"record_type\", \"committed_at\", \"links\"] }",
+      "forms": [
+        "correlation",
+        "record"
+      ],
+      "fields": [
+        "record_type",
+        "committed_at",
+        "links"
+      ],
+      "outcome": "refused"
+    },
+    {
+      "name": "fewer-forms",
+      "definition": "for-alice",
+      "document": "{ \"recipient\": \"alice\",\n  \"computation\": \"project\", \"fields\": [\"record_type\", \"committed_at\", \"links\"] }",
+      "recipient": "alice",
+      "forms": [
+        "record"
+      ],
+      "fields": [
+        "record_type",
+        "committed_at",
+        "links"
+      ],
+      "outcome": "refused"
+    },
+    {
+      "name": "more-fields",
+      "definition": "for-alice",
+      "document": "{ \"recipient\": \"alice\",\n  \"computation\": \"project\", \"fields\": [\"record_type\", \"committed_at\", \"links\"] }",
+      "recipient": "alice",
+      "forms": [
+        "correlation",
+        "record"
+      ],
+      "fields": [
+        "record_type",
+        "committed_at",
+        "links",
+        "seq"
+      ],
+      "outcome": "refused"
+    },
+    {
+      "name": "recipient-for-shared",
+      "definition": "shared",
+      "document": "{\"fields\":[\"seq\",\"subject_ref\",\"epistemic_type\",\"event_time_claim\"],\"computation\":\"project\",\"note\":\"café 😀\"}",
+      "recipient": "alice",
+      "forms": [
+        "range",
+        "full_history",
+        "correlation"
+      ],
+      "fields": [
+        "seq",
+        "subject_ref",
+        "epistemic_type",
+        "event_time_claim"
+      ],
+      "outcome": "refused"
+    }
+  ],
   "cases": [
     {
       "name": "recipient-correlation",

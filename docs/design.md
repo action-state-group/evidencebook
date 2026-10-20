@@ -262,7 +262,9 @@ it takes no A2A SDK dependency.
 **Recipient-specific disclosure is a derivation.** A projection prepared for
 one recipient is registered with `RegisterDerivation` and named by the
 SHA-256 of the JCS of its definition document; the recipient is part of the
-definition, so two recipients' projections have two identities. It is
+definition, so two recipients' projections have two identities. Registering
+a definition again never changes what it declares: the same recipient, forms
+and fields return the same identifier, and anything different is refused. It is
 answered only to its recipient, carries each record's digest and position
 and only its declared header fields, and is never listed in the manifest. The
 canonical Artifact of the underived subject is never varied per recipient.

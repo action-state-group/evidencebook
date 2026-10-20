@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Breaking: `Derivations::register` refuses to change a registration**
+  (evidencebook#86), as the Go book does. Registering a document again with
+  the same recipient and the same sets of forms and fields returns the same
+  identifier; with anything different it is the new
+  `DerivationError::Redeclared`, and the first registration stands. Before,
+  it replaced what was declared.
+
 ## 0.0.7
 
 - **`derivation`: definition-digest derivations** (evidencebook#62), at

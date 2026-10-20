@@ -27,7 +27,22 @@ struct Vectors {
     definitions: Vec<Definition>,
     book: Book,
     rejected: Vec<Definition>,
+    reregistered: Vec<Reregistration>,
     cases: Vec<Case>,
+}
+
+/// A registered definition's document registered again (#86): `outcome` is
+/// `registered` (the same identifier) or `refused`.
+#[derive(Deserialize)]
+struct Reregistration {
+    name: String,
+    definition: String,
+    document: String,
+    #[serde(default)]
+    recipient: Option<String>,
+    forms: Option<Vec<Value>>,
+    fields: Vec<String>,
+    outcome: String,
 }
 
 #[derive(Deserialize)]
@@ -273,6 +288,90 @@ fn a_definition_go_refuses_is_refused_for_the_same_reason() {
     assert_eq!(checked.len(), v.rejected.len() - 1);
 }
 
+/// Registers each of the fixture's re-registrations, requiring Go's outcome.
+fn reregister(v: &Vectors, derivations: &mut Derivations) {
+    assert!(!v.reregistered.is_empty());
+    for r in &v.reregistered {
+        let first = &v
+            .definitions
+            .iter()
+            .find(|d| d.name == r.definition)
+            .unwrap()
+            .id;
+        let got = derivations.register(DerivationDefinition {
+            document: r.document.as_bytes().to_vec(),
+            recipient: r.recipient.clone(),
+            forms: forms(&r.forms).unwrap(),
+            fields: r.fields.clone(),
+        });
+        match r.outcome.as_str() {
+            "registered" => assert_eq!(got.as_ref(), Ok(first), "{}", r.name),
+            "refused" => assert_eq!(
+                got,
+                Err(DerivationError::Redeclared(first.clone())),
+                "{}",
+                r.name
+            ),
+            other => panic!("{}: no outcome {other}", r.name),
+        }
+        assert_eq!(derivations.get(first).unwrap().id(), first);
+    }
+}
+
+/// The issue's example (#86): `{}` registered for alice, then for bob, is
+/// refused, and alice is still the one it is answered to. A re-registration
+/// whose declarations are themselves invalid is refused for that first.
+#[test]
+fn registering_a_document_again_never_changes_it() {
+    let mut derivations = Derivations::new();
+    let def =
+        |recipient: Option<&str>, forms: Vec<SubjectKind>, fields: &[&str]| DerivationDefinition {
+            document: b"{}".to_vec(),
+            recipient: recipient.map(Into::into),
+            forms,
+            fields: fields.iter().map(|f| f.to_string()).collect(),
+        };
+    let id = derivations
+        .register(def(Some("alice"), vec![SubjectKind::Correlation], &["seq"]))
+        .unwrap();
+    let mut same = def(
+        Some("alice"),
+        vec![SubjectKind::Correlation, SubjectKind::Correlation],
+        &["seq", "seq"],
+    );
+    same.document = b" { } ".to_vec();
+    assert_eq!(derivations.register(same), Ok(id.clone()));
+    for other in [
+        def(Some("bob"), vec![SubjectKind::Correlation], &["seq"]),
+        def(None, vec![SubjectKind::Correlation], &["seq"]),
+        def(Some(""), vec![SubjectKind::Correlation], &["seq"]),
+        def(
+            Some("alice"),
+            vec![SubjectKind::Correlation, SubjectKind::Record],
+            &["seq"],
+        ),
+        def(Some("alice"), vec![SubjectKind::Correlation], &["v"]),
+    ] {
+        assert_eq!(
+            derivations.register(other),
+            Err(DerivationError::Redeclared(id.clone()))
+        );
+    }
+    assert_eq!(
+        derivations.register(def(
+            Some("alice"),
+            vec![SubjectKind::Correlation],
+            &["payload"]
+        )),
+        Err(DerivationError::NotAHeaderMember("payload".into()))
+    );
+    let registered = derivations.get(&id).unwrap();
+    assert_eq!(registered.authorizes(Some("alice")), Some(true));
+    assert_eq!(registered.authorizes(Some("bob")), Some(false));
+    assert_eq!(registered.forms(), [SubjectKind::Correlation]);
+    assert_eq!(registered.fields(), ["seq"]);
+}
+
 /// Every case answered as the Go responder answers it: the derivation
 /// steps with Go's default share policy, resolution, then the artifact or
 /// the signed refusal, reply octets for reply octets.
@@ -290,6 +389,9 @@ fn every_case_is_the_go_answer_byte_for_byte() {
             })
             .unwrap();
     }
+    // Go registers these before answering the cases, so a refused one must
+    // leave each case answered as the first registration declared.
+    reregister(&v, &mut s.derivations);
     let responder =
         SigningKey::from_bytes(&hex::decode(&v.responder_seed).unwrap().try_into().unwrap());
     let (mut answered, mut refused) = (0, 0);

@@ -75,3 +75,40 @@ func TestRecipientSpecificDerivation(t *testing.T) {
 	}
 	_ = records
 }
+
+// #86: the identifier binds only the document, so registering it again may
+// repeat what it declares but never change it. The issue's example: `{}`
+// registered for alice, then for bob, still answers alice and not bob.
+func TestRegisterDerivationAgain(t *testing.T) {
+	book, _ := linkedBook(t)
+	pin := anchorPin(t, book)
+	def := DerivationDefinition{Document: []byte(`{}`), Recipient: "alice", Forms: []SubjectKind{SubjectCorrelation}, Fields: []string{"seq"}}
+	id, err := book.RegisterDerivation(def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(` { } `), Recipient: "alice", Forms: []SubjectKind{SubjectCorrelation}, Fields: []string{"seq", "seq"}})
+	if err != nil || again != id {
+		t.Fatalf("the same declarations: %q, %v", again, err)
+	}
+	for _, other := range []DerivationDefinition{
+		{Document: []byte(`{}`), Recipient: "bob", Forms: def.Forms, Fields: def.Fields},
+		{Document: []byte(`{}`), Forms: def.Forms, Fields: def.Fields},
+		{Document: []byte(`{}`), Recipient: "alice", Forms: []SubjectKind{SubjectCorrelation, SubjectRecord}, Fields: def.Fields},
+		{Document: []byte(`{}`), Recipient: "alice", Forms: def.Forms, Fields: []string{"v"}},
+	} {
+		if got, err := book.RegisterDerivation(other); !errors.Is(err, ErrInvalid) || got != "" {
+			t.Fatalf("%+v: %q, %v", other, got, err)
+		}
+	}
+	// A registration whose declarations are invalid is refused for that
+	// first, as it would be for a new document.
+	if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{}`), Recipient: "alice", Forms: def.Forms, Fields: []string{"payload"}}); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "record header member") {
+		t.Fatalf("an invalid re-registration: %v", err)
+	}
+	ask := func(requester string) Reply {
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "order-17"}, Derivation: id, Coverage: Coverage{ExpectedPin: pin}}), requester)
+	}
+	mustEnvelope(t, ask("alice"))
+	mustRefusal(t, ask("bob"), ReasonNotAuthorized)
+}
