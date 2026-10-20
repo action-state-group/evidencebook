@@ -103,6 +103,11 @@ pub enum DerivationError {
     OverCheckpoints,
     #[error("{0:?} is not a record header member")]
     NotAHeaderMember(String),
+    /// The document is registered already with a different recipient, or
+    /// different sets of forms or fields. Its identifier binds only the
+    /// document, so registering it again must not change what it answers.
+    #[error("derivation {0} is registered with a different recipient, forms or fields")]
+    Redeclared(String),
 }
 
 /// One registered derivation.
@@ -162,7 +167,10 @@ impl Derivations {
     }
 
     /// Make `definition` answerable by its identifier, which is returned.
-    /// Registering a definition again replaces what was declared for it.
+    /// Registering a document again with the same recipient and the same
+    /// sets of forms and fields returns the same identifier and changes
+    /// nothing; with anything else it is [`DerivationError::Redeclared`],
+    /// and the first registration stands.
     pub fn register(
         &mut self,
         definition: DerivationDefinition,
@@ -187,9 +195,20 @@ impl Derivations {
             return Err(DerivationError::NotAHeaderMember(field.clone()));
         }
         let id = hex::encode(Sha256::digest(&canonical));
+        let recipient = definition.recipient.filter(|r| !r.is_empty());
+        if let Some(prev) = self.by_id.get(&id) {
+            return if prev.recipient == recipient
+                && same_set(&prev.forms, &definition.forms)
+                && same_set(&prev.fields, &definition.fields)
+            {
+                Ok(id)
+            } else {
+                Err(DerivationError::Redeclared(id))
+            };
+        }
         let registered = Registered {
             id: id.clone(),
-            recipient: definition.recipient.filter(|r| !r.is_empty()),
+            recipient,
             forms: definition.forms,
             fields: definition.fields,
         };
@@ -250,6 +269,12 @@ impl Derivations {
         }
         Ok(Some(registered))
     }
+}
+
+/// Whether `a` and `b` hold the same members, in any order and with any
+/// repetition.
+fn same_set<T: PartialEq>(a: &[T], b: &[T]) -> bool {
+    a.iter().all(|x| b.contains(x)) && b.iter().all(|x| a.contains(x))
 }
 
 /// The request draft's subject form for a subject kind: the registry form

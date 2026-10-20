@@ -45,6 +45,11 @@ var headerFields = []string{"book_id", "committed_at", "correlation", "counterpa
 // definitions each time it opens the book, and they are never written into
 // the book's history, because a recipient-specific definition names its
 // recipient.
+//
+// The identifier binds the document only, so registering it again must not
+// change what it answers: a registration that declares the same recipient
+// and the same sets of forms and fields returns the same identifier and
+// changes nothing, and one that declares anything else is ErrInvalid.
 func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
 	decoded, err := evidencerequest.DecodeJSON(def.Document)
 	if err != nil {
@@ -76,7 +81,29 @@ func (b *Book) RegisterDerivation(def DerivationDefinition) (string, error) {
 	if b.derivations == nil {
 		b.derivations = make(map[string]derivationEntry)
 	}
+	if prev, ok := b.derivations[id]; ok {
+		if prev.def.Recipient == def.Recipient && sameSet(prev.def.Forms, def.Forms) && sameSet(prev.def.Fields, def.Fields) {
+			return id, nil
+		}
+		return "", fmt.Errorf("%w: derivation %s is registered with a different recipient, forms or fields", ErrInvalid, id)
+	}
 	def.Forms, def.Fields = slices.Clone(def.Forms), slices.Clone(def.Fields)
 	b.derivations[id] = derivationEntry{id: id, def: def}
 	return id, nil
+}
+
+// sameSet reports whether a and b hold the same members, in any order and
+// with any repetition.
+func sameSet[T comparable](a, b []T) bool {
+	for _, x := range a {
+		if !slices.Contains(b, x) {
+			return false
+		}
+	}
+	for _, x := range b {
+		if !slices.Contains(a, x) {
+			return false
+		}
+	}
+	return true
 }

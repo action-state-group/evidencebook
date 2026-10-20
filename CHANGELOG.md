@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed (breaking): a derivation cannot be registered again with other declarations
+
+- `Book.RegisterDerivation` no longer replaces a registration whose
+  definition document has the same identifier (#86). Registering it again
+  with the same recipient and the same sets of forms and fields returns the
+  same identifier and changes nothing; with a different recipient, forms or
+  fields it is `ErrInvalid`, and the first registration stands. Before, `{}`
+  registered for alice and then for bob answered bob, not alice.
+- `testdata/derivation/vectors.json` gains `reregistered`, which both
+  implementations check.
+
 ## v0.7.0 (2026-10-20)
 
 Everything since v0.6.0, with two breaking changes. A record that carries a

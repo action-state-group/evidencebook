@@ -7,8 +7,10 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +32,19 @@ type derivationVectorDefinition struct {
 	Recipient   string        `json:"recipient,omitempty"`
 	Forms       []SubjectKind `json:"forms"`
 	Fields      []string      `json:"fields"`
+}
+
+// derivationVectorReregistration registers Definition's document again with
+// the declarations given here. Outcome is "registered" (the same
+// identifier, nothing changed) or "refused" (ErrInvalid).
+type derivationVectorReregistration struct {
+	Name       string        `json:"name"`
+	Definition string        `json:"definition"`
+	Document   string        `json:"document"`
+	Recipient  string        `json:"recipient,omitempty"`
+	Forms      []SubjectKind `json:"forms"`
+	Fields     []string      `json:"fields"`
+	Outcome    string        `json:"outcome"`
 }
 
 type derivationVectorRecord struct {
@@ -66,8 +81,9 @@ type derivationVectors struct {
 		IssuedAt       string                   `json:"issued_at"`
 		Records        []derivationVectorRecord `json:"records"`
 	} `json:"book"`
-	Rejected []derivationVectorDefinition `json:"rejected"`
-	Cases    []derivationVectorCase       `json:"cases"`
+	Rejected     []derivationVectorDefinition     `json:"rejected"`
+	Reregistered []derivationVectorReregistration `json:"reregistered"`
+	Cases        []derivationVectorCase           `json:"cases"`
 }
 
 // TestDerivationVectors builds the shared derivation fixture from a real
@@ -176,6 +192,38 @@ func TestDerivationVectors(t *testing.T) {
 	for _, def := range v.Rejected {
 		if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(def.Document), Forms: def.Forms, Fields: def.Fields}); err == nil {
 			t.Fatalf("%s: registered", def.Name)
+		}
+	}
+
+	// A definition registered again (#86), before the cases: they are
+	// answered as the first registration declared, so a refused one changed
+	// nothing.
+	alice := defs[0]
+	v.Reregistered = []derivationVectorReregistration{
+		{Name: "same-declarations", Document: alice.Document, Recipient: "alice", Forms: alice.Forms, Fields: alice.Fields, Outcome: "registered"},
+		{Name: "same-sets-other-order", Document: alice.DocumentJCS, Recipient: "alice", Forms: []SubjectKind{SubjectRecord, SubjectCorrelation, SubjectRecord}, Fields: []string{"links", "record_type", "committed_at"}, Outcome: "registered"},
+		{Name: "other-recipient", Document: alice.Document, Recipient: "bob", Forms: alice.Forms, Fields: alice.Fields, Outcome: "refused"},
+		{Name: "no-recipient", Document: alice.Document, Forms: alice.Forms, Fields: alice.Fields, Outcome: "refused"},
+		{Name: "fewer-forms", Document: alice.Document, Recipient: "alice", Forms: []SubjectKind{SubjectRecord}, Fields: alice.Fields, Outcome: "refused"},
+		{Name: "more-fields", Document: alice.Document, Recipient: "alice", Forms: alice.Forms, Fields: append(slices.Clone(alice.Fields), "seq"), Outcome: "refused"},
+		{Name: "recipient-for-shared", Document: defs[1].Document, Recipient: "alice", Forms: defs[1].Forms, Fields: defs[1].Fields, Outcome: "refused"},
+	}
+	for i := range v.Reregistered {
+		r := &v.Reregistered[i]
+		r.Definition = "for-alice"
+		if r.Name == "recipient-for-shared" {
+			r.Definition = "shared"
+		}
+		id, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(r.Document), Recipient: r.Recipient, Forms: r.Forms, Fields: r.Fields})
+		switch r.Outcome {
+		case "registered":
+			if err != nil || id != byName[r.Definition] {
+				t.Fatalf("%s: %q, %v", r.Name, id, err)
+			}
+		default:
+			if !errors.Is(err, ErrInvalid) || id != "" {
+				t.Fatalf("%s: %q, %v", r.Name, id, err)
+			}
 		}
 	}
 
