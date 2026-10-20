@@ -106,7 +106,11 @@ func NewRecordIDIndex() *SortedMerkleIndex {
 }
 
 // NewSubjectIndex indexes records under subject_ref, so the book can prove the
-// complete set of records it holds for one correlation subject.
+// complete set of records it holds under one subject_ref. That is a
+// correlation subject's set only when no record carries a correlation
+// identifier (correlation.exchange_id): a record that carries one is
+// answered under it (bookView.Correlated), so a key range proof over
+// subject_ref never proves a correlation set's completeness.
 func NewSubjectIndex() *SortedMerkleIndex {
 	return &SortedMerkleIndex{name: "subject_ref", keyOf: func(r Record) (string, bool) {
 		return r.Header.SubjectRef, r.Header.SubjectRef != ""

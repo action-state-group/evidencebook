@@ -474,8 +474,22 @@ func (v *bookView) matching(match func(Header) bool) []uint64 {
 	return out
 }
 
+// Correlated is a correlation subject's records. A record that carries the
+// header's correlation identifier (correlation.exchange_id) is held under
+// that identifier and no other. Only a record that carries none is held
+// under its subject_ref, as before. A host can then keep subject_ref for
+// its own use, for example one value per step of a deal, and still answer
+// for the deal as a whole (Personal-Agent History Profile v0 §1).
 func (v *bookView) Correlated(id string) []uint64 {
-	return v.matching(func(h Header) bool { return h.SubjectRef == id })
+	return v.matching(func(h Header) bool { return correlationOf(h) == id })
+}
+
+// correlationOf is the correlation identifier a record is held under.
+func correlationOf(h Header) string {
+	if h.Correlation != nil && h.Correlation.ExchangeID != "" {
+		return h.Correlation.ExchangeID
+	}
+	return h.SubjectRef
 }
 
 func (v *bookView) Citing(half string) []uint64 {
