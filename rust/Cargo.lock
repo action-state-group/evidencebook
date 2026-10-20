@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "evidencebook"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "checkpointed-local-log",
  "ed25519-dalek",
