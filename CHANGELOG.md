@@ -37,7 +37,7 @@ disclosure record. A SCITT receipt book keeps the book's own assembly.
   its Producer Envelope as `signature` and `key_id`, so a book bundle reads
   VALID under strict verification instead of INCOMPLETE. The recipient sees
   the key of each record's signer, every signer key the book holds included
-  (Steven's ruling on #84 §4, Buzz `09333a69`).
+  (ruled on #84 §4).
 - **Closure.** `records_mode` and `missing` are the verifier's: the capsule's
   chain parent and `references[]`. `missing` is in first-seen order. A
   citation below the range start is `ErrCorrupt`.

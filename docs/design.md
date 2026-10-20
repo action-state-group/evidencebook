@@ -115,12 +115,30 @@ anywhere in it, so the verifier and the reader can never see different
 members. It reads a disclosed header only if re-encoding it reproduces the
 disclosed JSON exactly.
 
+**How a bundle is built.** On a CLL book, agent-action-capsule's producer
+(`bundle.BuildEvidenceBundle`) builds the bundle from the book's own log,
+through an unexported proof source that restores the MMR once per bundle; a
+SCITT receipt book keeps the book's own assembly. The book keeps the
+disclosure act: its closure over header links picks the range start and the
+records it discloses, it builds the overlay and `evidencebook/payloads`, and
+it commits the disclosure record. The bundle's closure claims
+(`records_mode`, `missing`) are the verifier's, over each capsule's
+`chain.parent_capsule_id` and `references[]`; a citation below the range
+start is refused as `ErrCorrupt`. Request inputs the producer would refuse are
+refused first as `ErrInvalid`, so a refusal it still returns is about the
+book's data.
+
 **What a bundle discloses.** Only the selected set (the root's closure plus
-`Include`) is ever disclosed. Other records in the interval ride along as
-digest-only capsules, because Evidence Bundle v2 needs a membership for every
-position up to the checkpoint's tip, and the disclosure record lists each of
-their headers as withheld with its digest. `payloads: all` carries every
-payload of the selected set and is refused if any is unavailable;
+`Include`) has its headers and payloads disclosed. Other records in the
+interval ride along without them, because Evidence Bundle v2 needs a
+membership for every position up to the checkpoint's tip, and the disclosure
+record lists each of their headers as withheld with its digest (unless the
+record carries its header inside its capsule). Every carried record, ride-alongs
+included, carries its Producer Envelope (`signature`, `key_id`), so a
+recipient learns the key of each record's signer, every signer key the book
+holds included (ruled on #84 §4). `payloads: all` carries every payload of
+the selected set and is refused if any is unavailable, or if a disclosed
+capsule commits an eligible, unsuppressed member the bundle does not reveal;
 `payloads: selected` carries those not withheld; `WithholdPayloads` carries
 headers only.
 

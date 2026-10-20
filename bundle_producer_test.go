@@ -366,6 +366,9 @@ func TestBundleRequestChecks(t *testing.T) {
 	for name, req := range map[string]BundleRequest{
 		"ineligible suppress":     {Root: root, Suppress: []string{"agent_input", "header"}},
 		"negative closure depth":  {Root: root, ClosureDepth: -1},
+		"unsafe closure depth":    {Root: root, ClosureDepth: 1 << 53},
+		"trailing ] extension":    {Root: root, Extensions: map[string]json.RawMessage{"x/trail": json.RawMessage(`{}]`)}},
+		"trailing } extension":    {Root: root, Extensions: map[string]json.RawMessage{"x/trail": json.RawMessage(`{}}`)}},
 		"short producer key":      {Root: root, ProducerKey: make([]byte, 31)},
 		"producer-key extension":  {Root: root, Extensions: map[string]json.RawMessage{"producer-key/v1": json.RawMessage(`{"public_key":"00"}`)}},
 		"composed extension":      {Root: root, Extensions: map[string]json.RawMessage{"composed/v1": json.RawMessage(`{}`)}},
@@ -397,5 +400,68 @@ func TestBundleRequestChecks(t *testing.T) {
 	declared := tree["extensions"].(map[string]any)["producer-key/v1"].(map[string]any)["public_key"]
 	if declared != hex.EncodeToString(key) {
 		t.Fatalf("producer-key/v1 declares %v", declared)
+	}
+}
+
+// scittBook is a fixture book on the SCITT receipt substrate, which keeps the
+// book's own bundle assembly.
+func scittBook(t *testing.T) *Book {
+	t.Helper()
+	cfg := newFixture(t, "book-a", 1).config(t)
+	if err := cfg.Substrate.Release(); err != nil {
+		t.Fatal(err)
+	}
+	substrate, err := NewSCITTReceiptSubstrate("ts.example", &fakeTransparencyService{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Substrate = substrate
+	book, err := Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	return book
+}
+
+// TestSCITTBundleDeclaresTheProducerKeyAndChecksPayloadsAll: the receipt
+// book's own assembly states ProducerKey as producer-key/v1 the way the
+// producer does, and applies the same payloads=all rule.
+func TestSCITTBundleDeclaresTheProducerKeyAndChecksPayloadsAll(t *testing.T) {
+	ctx := context.Background()
+	book := scittBook(t)
+	observed := mustAppend(t, book, observation("order-17", `{"status":"approved"}`))
+	key := seededKey(5).Public().(ed25519.PublicKey)
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: observed.RecordID, ProducerKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if declared := bundleTree(t, bundle.JSON)["extensions"].(map[string]any)["producer-key/v1"]; !equalJSON(declared, map[string]any{"public_key": hex.EncodeToString(key)}) {
+		t.Fatalf("producer-key/v1 is %v", declared)
+	}
+	payload, output := `{"order":17}`, `{"ok":true}`
+	record, err := book.AppendCapsule(ctx, publishedEntry(), boundPayload(payload), outputSealer(t, payload, output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: record.RecordID, Payloads: PayloadsAll}); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "agent_output") {
+		t.Fatalf("payloads=all with an unrevealed output: %v", err)
+	}
+}
+
+func equalJSON(a, b any) bool {
+	x, errX := json.Marshal(a)
+	y, errY := json.Marshal(b)
+	return errX == nil && errY == nil && string(x) == string(y)
+}
+
+func TestDecodeJSONRefusesTrailingData(t *testing.T) {
+	for _, text := range []string{`{}]`, `{}}`, `{} {}`, `1 2`} {
+		if _, err := decodeJSON([]byte(text)); err == nil {
+			t.Fatalf("%q decoded", text)
+		}
+	}
+	if _, err := decodeJSON([]byte(" {} \n")); err != nil {
+		t.Fatalf("trailing whitespace: %v", err)
 	}
 }
