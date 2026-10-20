@@ -56,7 +56,7 @@ jobs:
               # Anything beyond major.minor.patch (0.8.0rc1, 0.8.0-rc.1).
               case "$version" in *[!0-9.]*) prerelease=(--prerelease) ;; esac
               gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" "${prerelease[@]}" \
-                --notes "$package $version. See CHANGELOG.md."
+                --notes "$package $version. See rust/evidencebook/CHANGELOG.md."
             fi
             gh workflow run "$workflow" --ref "$tag"
             echo "Tagged $tag and dispatched $workflow." >> "$GITHUB_STEP_SUMMARY"
