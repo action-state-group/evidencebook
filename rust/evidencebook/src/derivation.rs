@@ -37,11 +37,9 @@
 use crate::request::SubjectKind;
 use evidence_request::registry::{Reason, SubjectForm};
 use evidence_request::request::{Derivation, Request};
-use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
+use std::collections::BTreeMap;
 
 /// The record header members a projection may declare, as the Go book names
 /// them (`headerFields`).
@@ -266,42 +264,280 @@ pub(crate) fn subject_form(kind: SubjectKind) -> SubjectForm {
 }
 
 /// One JSON value, read as the Go request reader reads it
-/// (`evidencerequest.DecodeJSON`) and canonicalized as the Go JCS
-/// canonicalizes it: a duplicate member, invalid UTF-8, an unpaired
-/// surrogate escape, trailing data or nesting deeper than [`MAX_NESTING`]
-/// is refused; a number written with a fraction or an exponent, or an
-/// integer outside +/-(2^53 - 1), has no canonical form and is refused;
-/// `-0` is the integer 0.
+/// (`evidencerequest.DecodeJSON`) and then canonicalized as the Go JCS
+/// canonicalizes it (`evidencerequest.EncodeJCS`).
 ///
-/// The numbers are checked as text, and the value is read by `serde_json`
-/// itself, so the result does not depend on whether a crate in the build
-/// enables `serde_json`'s `arbitrary_precision`.
+/// Reading refuses ([`DerivationError::NotJson`]) invalid UTF-8, an
+/// unpaired surrogate escape, a duplicate member (after unescaping), any
+/// value deeper than [`MAX_NESTING`] (the document is depth 0), text that is
+/// not RFC 8259 JSON, and trailing data. Then a number written with a
+/// fraction or an exponent, or an integer outside +/-(2^53 - 1), has no
+/// canonical form ([`DerivationError::Canonical`]); `-0` is the integer 0.
+///
+/// The reader is this module's own rather than `serde_json`'s, so what it
+/// accepts does not depend on `serde_json`'s features (`arbitrary_precision`
+/// reads numbers through a private member name a document may also use).
 fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
-    // Read first, then canonicalize, as Go's DecodeJSON then EncodeJCS do,
-    // so a document both malformed and uncanonicalizable is NotJson.
-    let mut reader = serde_json::Deserializer::from_str(text);
-    Shape { depth: 0 }
-        .deserialize(&mut reader)
-        .and_then(|()| reader.end())
-        .map_err(|e| DerivationError::NotJson(e.to_string()))?;
-    for token in number_tokens(text) {
-        if token.contains(['.', 'e', 'E']) {
-            return Err(DerivationError::Canonical(
-                "a number that is not an integer has no canonical form".into(),
-            ));
-        }
-        if unsafe_integer(token) {
-            return Err(DerivationError::Canonical(format!(
-                "integer {token} is outside +/-(2^53 - 1)"
-            )));
+    let mut reader = Reader {
+        text: text.as_bytes(),
+        at: 0,
+        canonical: None,
+    };
+    reader.space();
+    let value = reader.value(0)?;
+    reader.space();
+    if reader.at != reader.text.len() {
+        return Err(reader.malformed("trailing data after the JSON value"));
+    }
+    match reader.canonical {
+        Some(reason) => Err(DerivationError::Canonical(reason)),
+        None => Ok(value),
+    }
+}
+
+/// A strict RFC 8259 reader over valid UTF-8.
+struct Reader<'a> {
+    text: &'a [u8],
+    at: usize,
+    /// The first number with no canonical form: reported only once the
+    /// whole document reads, as Go reads before it canonicalizes.
+    canonical: Option<String>,
+}
+
+impl Reader<'_> {
+    fn malformed(&self, what: &str) -> DerivationError {
+        DerivationError::NotJson(format!("{what} at byte {}", self.at))
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.text.get(self.at).copied()
+    }
+
+    fn space(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.at += 1;
         }
     }
-    let mut value: Value =
-        serde_json::from_str(text).map_err(|e| DerivationError::NotJson(e.to_string()))?;
-    negative_zero_is_zero(&mut value);
-    Ok(value)
+
+    fn expect(&mut self, byte: u8) -> Result<(), DerivationError> {
+        if self.peek() != Some(byte) {
+            return Err(self.malformed(&format!("expected {:?}", byte as char)));
+        }
+        self.at += 1;
+        Ok(())
+    }
+
+    fn value(&mut self, depth: usize) -> Result<Value, DerivationError> {
+        if depth > MAX_NESTING {
+            return Err(self.malformed("nested too deeply"));
+        }
+        match self.peek() {
+            Some(b'{') => self.object(depth),
+            Some(b'[') => self.array(depth),
+            Some(b'"') => self.string().map(Value::String),
+            Some(b't') => self.literal("true", Value::Bool(true)),
+            Some(b'f') => self.literal("false", Value::Bool(false)),
+            Some(b'n') => self.literal("null", Value::Null),
+            Some(b'-' | b'0'..=b'9') => self.number(),
+            _ => Err(self.malformed("expected a JSON value")),
+        }
+    }
+
+    fn literal(&mut self, word: &str, value: Value) -> Result<Value, DerivationError> {
+        if !self.text[self.at..].starts_with(word.as_bytes()) {
+            return Err(self.malformed("expected a JSON value"));
+        }
+        self.at += word.len();
+        Ok(value)
+    }
+
+    fn object(&mut self, depth: usize) -> Result<Value, DerivationError> {
+        self.expect(b'{')?;
+        let mut members = serde_json::Map::new();
+        self.space();
+        if self.peek() == Some(b'}') {
+            self.at += 1;
+            return Ok(Value::Object(members));
+        }
+        loop {
+            self.space();
+            let name = self.string()?;
+            if members.contains_key(&name) {
+                return Err(self.malformed(&format!("duplicate member {name:?}")));
+            }
+            self.space();
+            self.expect(b':')?;
+            self.space();
+            let value = self.value(depth + 1)?;
+            members.insert(name, value);
+            self.space();
+            match self.peek() {
+                Some(b',') => self.at += 1,
+                Some(b'}') => {
+                    self.at += 1;
+                    return Ok(Value::Object(members));
+                }
+                _ => return Err(self.malformed("expected ',' or '}'")),
+            }
+        }
+    }
+
+    fn array(&mut self, depth: usize) -> Result<Value, DerivationError> {
+        self.expect(b'[')?;
+        let mut items = Vec::new();
+        self.space();
+        if self.peek() == Some(b']') {
+            self.at += 1;
+            return Ok(Value::Array(items));
+        }
+        loop {
+            self.space();
+            items.push(self.value(depth + 1)?);
+            self.space();
+            match self.peek() {
+                Some(b',') => self.at += 1,
+                Some(b']') => {
+                    self.at += 1;
+                    return Ok(Value::Array(items));
+                }
+                _ => return Err(self.malformed("expected ',' or ']'")),
+            }
+        }
+    }
+
+    fn string(&mut self) -> Result<String, DerivationError> {
+        self.expect(b'"')?;
+        let mut out = String::new();
+        loop {
+            let start = self.at;
+            while matches!(self.peek(), Some(c) if c != b'"' && c != b'\\' && c >= 0x20) {
+                self.at += 1;
+            }
+            // The text is valid UTF-8 and the run ends at an ASCII byte, so
+            // the run is valid UTF-8 on its own.
+            out.push_str(std::str::from_utf8(&self.text[start..self.at]).expect("valid UTF-8"));
+            match self.peek() {
+                Some(b'"') => {
+                    self.at += 1;
+                    return Ok(out);
+                }
+                Some(b'\\') => {
+                    self.at += 1;
+                    out.push(self.escape()?);
+                }
+                Some(_) => return Err(self.malformed("control character in a string")),
+                None => return Err(self.malformed("unterminated string")),
+            }
+        }
+    }
+
+    /// One escape after its backslash; a surrogate escape must pair.
+    fn escape(&mut self) -> Result<char, DerivationError> {
+        let c = self
+            .peek()
+            .ok_or_else(|| self.malformed("unterminated string"))?;
+        self.at += 1;
+        Ok(match c {
+            b'"' => '"',
+            b'\\' => '\\',
+            b'/' => '/',
+            b'b' => '\u{8}',
+            b'f' => '\u{c}',
+            b'n' => '\n',
+            b'r' => '\r',
+            b't' => '\t',
+            b'u' => {
+                let unit = self.hex4()?;
+                match unit {
+                    0xd800..=0xdbff => {
+                        if !self.text[self.at..].starts_with(b"\\u") {
+                            return Err(self.malformed("unpaired high surrogate escape"));
+                        }
+                        self.at += 2;
+                        let low = self.hex4()?;
+                        if !(0xdc00..=0xdfff).contains(&low) {
+                            return Err(self.malformed("unpaired high surrogate escape"));
+                        }
+                        let scalar = 0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00);
+                        char::from_u32(scalar).expect("a surrogate pair is a scalar value")
+                    }
+                    0xdc00..=0xdfff => return Err(self.malformed("unpaired low surrogate escape")),
+                    _ => char::from_u32(unit).expect("a non-surrogate unit is a scalar value"),
+                }
+            }
+            _ => return Err(self.malformed("invalid escape")),
+        })
+    }
+
+    fn hex4(&mut self) -> Result<u32, DerivationError> {
+        let digits = self
+            .text
+            .get(self.at..self.at + 4)
+            .and_then(|d| std::str::from_utf8(d).ok())
+            .filter(|d| d.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or_else(|| self.malformed("invalid \\u escape"))?;
+        self.at += 4;
+        Ok(u32::from_str_radix(digits, 16).expect("four hex digits"))
+    }
+
+    /// A number token by RFC 8259's grammar. One with a fraction or an
+    /// exponent, or an integer outside +/-(2^53 - 1), reads (as Go reads
+    /// it), but has no canonical form.
+    fn number(&mut self) -> Result<Value, DerivationError> {
+        let start = self.at;
+        let digits = |r: &mut Self| {
+            let from = r.at;
+            while matches!(r.peek(), Some(b'0'..=b'9')) {
+                r.at += 1;
+            }
+            r.at - from
+        };
+        if self.peek() == Some(b'-') {
+            self.at += 1;
+        }
+        match self.peek() {
+            Some(b'0') => self.at += 1,
+            Some(b'1'..=b'9') => {
+                digits(self);
+            }
+            _ => return Err(self.malformed("invalid number")),
+        }
+        let mut integer = true;
+        if self.peek() == Some(b'.') {
+            self.at += 1;
+            integer = false;
+            if digits(self) == 0 {
+                return Err(self.malformed("invalid number"));
+            }
+        }
+        if matches!(self.peek(), Some(b'e' | b'E')) {
+            self.at += 1;
+            integer = false;
+            if matches!(self.peek(), Some(b'+' | b'-')) {
+                self.at += 1;
+            }
+            if digits(self) == 0 {
+                return Err(self.malformed("invalid number"));
+            }
+        }
+        let token = std::str::from_utf8(&self.text[start..self.at]).expect("ASCII");
+        let reason = if !integer {
+            Some(format!(
+                "{token} is not an integer and has no canonical form"
+            ))
+        } else if unsafe_integer(token) {
+            Some(format!("integer {token} is outside +/-(2^53 - 1)"))
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            self.canonical.get_or_insert(reason);
+            return Ok(Value::Null);
+        }
+        Ok(Value::from(token.parse::<i64>().expect("a safe integer")))
+    }
 }
 
 /// Whether an integer token's magnitude exceeds 2^53 - 1, compared as text
@@ -312,132 +548,6 @@ fn unsafe_integer(token: &str) -> bool {
         std::cmp::Ordering::Greater => true,
         std::cmp::Ordering::Less => false,
         std::cmp::Ordering::Equal => digits > "9007199254740991",
-    }
-}
-
-/// Every number left after [`decode_strict`]'s checks is a safe integer;
-/// the one `serde_json` may hold as a float is `-0`, which is 0.
-fn negative_zero_is_zero(value: &mut Value) {
-    match value {
-        Value::Number(n) if !n.is_i64() && !n.is_u64() => *value = Value::from(0),
-        Value::Array(items) => items.iter_mut().for_each(negative_zero_is_zero),
-        Value::Object(members) => members.values_mut().for_each(negative_zero_is_zero),
-        _ => {}
-    }
-}
-
-/// The number tokens of a JSON text, outside its strings.
-fn number_tokens(text: &str) -> impl Iterator<Item = &str> {
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    let mut in_string = false;
-    std::iter::from_fn(move || {
-        while i < bytes.len() {
-            let c = bytes[i];
-            if in_string {
-                match c {
-                    b'\\' => i += 1,
-                    b'"' => in_string = false,
-                    _ => {}
-                }
-                i += 1;
-            } else if c == b'"' {
-                in_string = true;
-                i += 1;
-            } else if c == b'-' || c.is_ascii_digit() {
-                let start = i;
-                while i < bytes.len()
-                    && matches!(bytes[i], b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E')
-                {
-                    i += 1;
-                }
-                return Some(&text[start..i]);
-            } else {
-                i += 1;
-            }
-        }
-        None
-    })
-}
-
-/// `serde_json`'s private member name for a number under
-/// `arbitrary_precision`: such a number reaches a visitor as a one-member
-/// map, and is a scalar here.
-const ARBITRARY_PRECISION_NUMBER: &str = "$serde_json::private::Number";
-
-/// The shape checks of a JSON value: no duplicate member, and no value
-/// deeper than [`MAX_NESTING`] (the document is depth 0). It builds nothing.
-struct Shape {
-    depth: usize,
-}
-
-impl<'de> DeserializeSeed<'de> for Shape {
-    type Value = ();
-
-    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
-        if self.depth > MAX_NESTING {
-            return Err(de::Error::custom("nested too deeply"));
-        }
-        deserializer.deserialize_any(self)
-    }
-}
-
-impl<'de> Visitor<'de> for Shape {
-    type Value = ();
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a JSON value")
-    }
-
-    fn visit_unit<E>(self) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_bool<E>(self, _: bool) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_i64<E>(self, _: i64) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_u64<E>(self, _: u64) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_f64<E>(self, _: f64) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_str<E>(self, _: &str) -> Result<(), E> {
-        Ok(())
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        while seq
-            .next_element_seed(Shape {
-                depth: self.depth + 1,
-            })?
-            .is_some()
-        {}
-        Ok(())
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        let mut names = BTreeSet::new();
-        while let Some(name) = map.next_key::<String>()? {
-            if name == ARBITRARY_PRECISION_NUMBER && names.is_empty() {
-                map.next_value::<de::IgnoredAny>()?;
-                return Ok(());
-            }
-            if !names.insert(name.clone()) {
-                return Err(de::Error::custom(format!("duplicate member {name:?}")));
-            }
-            map.next_value_seed(Shape {
-                depth: self.depth + 1,
-            })?;
-        }
-        Ok(())
     }
 }
 
@@ -482,6 +592,46 @@ mod tests {
             "\"text\"",
         ] {
             assert!(d.register(define(bad)).is_err(), "{bad}");
+        }
+        // A member may be named as serde_json names its private number:
+        // it is an ordinary member here, read, checked and kept.
+        let private = "$serde_json::private::Number";
+        assert!(d
+            .register(define(&format!(r#"{{"{private}":1,"b":2}}"#)))
+            .is_ok());
+        assert!(d
+            .register(define(&format!(r#"{{"x":{{"{private}":"1.5"}}}}"#)))
+            .is_ok());
+        assert_eq!(
+            d.register(define(&format!(r#"{{"x":{{"{private}":"1.5"}}}}"#)))
+                .unwrap(),
+            hex::encode(Sha256::digest(format!(r#"{{"x":{{"{private}":"1.5"}}}}"#)))
+        );
+        for bad in [
+            format!(r#"{{"{private}":{{"a":1,"a":2}}}}"#),
+            format!(r#"{{"{private}":{}0{}}}"#, "[".repeat(40), "]".repeat(40)),
+        ] {
+            assert!(
+                matches!(d.register(define(&bad)), Err(DerivationError::NotJson(_))),
+                "{bad}"
+            );
+        }
+        // Grammar Go's decoder refuses.
+        for bad in [
+            r#"{"a":01}"#,
+            r#"{"a":1.}"#,
+            r#"{"a":-}"#,
+            r#"{"a":tru}"#,
+            r#"{"a":1,}"#,
+            "{\"a\":\"\t\"}",
+            r#"{"a":"\x"}"#,
+            "{'a':1}",
+            "",
+        ] {
+            assert!(
+                matches!(d.register(define(bad)), Err(DerivationError::NotJson(_))),
+                "{bad}"
+            );
         }
         // Read before canonicalized, as in Go: malformed is NotJson even
         // when it also holds a fraction.

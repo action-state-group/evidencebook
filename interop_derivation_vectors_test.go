@@ -124,6 +124,14 @@ func TestDerivationVectors(t *testing.T) {
 			Forms:    []SubjectKind{SubjectRecord},
 			Fields:   []string{"v"},
 		},
+		{
+			// A member named as serde_json names its private number is an
+			// ordinary member.
+			Name:     "private-member",
+			Document: `{"x":{"$serde_json::private::Number":"1.5"},"$serde_json::private::Number":1}`,
+			Forms:    []SubjectKind{SubjectRecord},
+			Fields:   []string{"v"},
+		},
 	}
 	byName := map[string]string{}
 	for i, def := range defs {
@@ -155,6 +163,8 @@ func TestDerivationVectors(t *testing.T) {
 		{Name: "duplicate-member-escaped", Document: `{"a":1,"\u0061":2}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "too-deep", Document: `{"deep":` + strings.Repeat("[", 33) + strings.Repeat("]", 33) + `}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "trailing-data", Document: `{} {}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		{Name: "leading-zero", Document: `{"a":01}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		{Name: "duplicate-in-private-member", Document: `{"$serde_json::private::Number":{"a":1,"a":2}}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "fraction", Document: `{"weight":1.5}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "unsafe-integer", Document: `{"n":9007199254740992}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "no-forms", Document: `{}`, Fields: []string{"seq"}},

@@ -46,6 +46,18 @@
       "fields": [
         "v"
       ]
+    },
+    {
+      "name": "private-member",
+      "document": "{\"x\":{\"$serde_json::private::Number\":\"1.5\"},\"$serde_json::private::Number\":1}",
+      "document_jcs": "{\"$serde_json::private::Number\":1,\"x\":{\"$serde_json::private::Number\":\"1.5\"}}",
+      "id": "92741683a8d220b9d424c7bc1d5f21b578df32b60857b7c5a89467784e1df8a1",
+      "forms": [
+        "record"
+      ],
+      "fields": [
+        "v"
+      ]
     }
   ],
   "book": {
@@ -250,6 +262,30 @@
     {
       "name": "trailing-data",
       "document": "{} {}",
+      "document_jcs": "",
+      "id": "",
+      "forms": [
+        "record"
+      ],
+      "fields": [
+        "seq"
+      ]
+    },
+    {
+      "name": "leading-zero",
+      "document": "{\"a\":01}",
+      "document_jcs": "",
+      "id": "",
+      "forms": [
+        "record"
+      ],
+      "fields": [
+        "seq"
+      ]
+    },
+    {
+      "name": "duplicate-in-private-member",
+      "document": "{\"$serde_json::private::Number\":{\"a\":1,\"a\":2}}",
       "document_jcs": "",
       "id": "",
       "forms": [

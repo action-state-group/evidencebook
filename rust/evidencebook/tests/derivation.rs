@@ -256,7 +256,11 @@ fn a_definition_go_refuses_is_refused_for_the_same_reason() {
             | "duplicate-member"
             | "duplicate-member-escaped"
             | "too-deep"
-            | "trailing-data" => matches!(got, DerivationError::NotJson(_)),
+            | "trailing-data"
+            | "leading-zero"
+            | "duplicate-in-private-member" => {
+                matches!(got, DerivationError::NotJson(_))
+            }
             "fraction" | "unsafe-integer" => matches!(got, DerivationError::Canonical(_)),
             "no-forms" | "no-fields" => got == DerivationError::Undeclared,
             "over-checkpoints" => got == DerivationError::OverCheckpoints,
