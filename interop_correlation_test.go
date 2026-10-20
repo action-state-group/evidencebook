@@ -61,6 +61,53 @@ func TestCorrelationSubjectReadsTheHeadersCorrelation(t *testing.T) {
 // subject_ref, its proof is a proof of absence, while the correlation
 // subject is answered with both steps. So that proof cannot stand for the
 // completeness of the set a correlation subject is answered with.
+// The fallback reads a record's subject_ref only when it carries no
+// exchange_id: a record whose correlation has only a request digest or a
+// twin bracket is still held under its subject_ref, and never under those.
+// Both key spaces answer the same requested identifier, so a record filed
+// before under subject_ref deal-a is answered with steps whose exchange_id
+// is deal-a.
+func TestCorrelationFallbackAndSharedKeySpace(t *testing.T) {
+	book, records := correlatedBook(t)
+	first, second := records[0], records[1]
+	byDigest := mustAppend(t, book, Entry{RecordType: "half", EpistemicType: ObservedEvent, SubjectRef: "order-18", Correlation: Correlation{RequestDigest: digestBytes([]byte("r"))}})
+	byTwin := mustAppend(t, book, Entry{RecordType: "half", EpistemicType: ObservedEvent, SubjectRef: "order-19", Correlation: Correlation{TwinBracketID: "twin-1"}})
+	before := mustAppend(t, book, observation("deal-a", `{"filed":"before"}`))
+	if got := correlationDigests(t, book, "order-18"); !slices.Equal(got, []string{byDigest.RecordID}) {
+		t.Fatalf("a record with only a request digest is held under its subject_ref: %v", got)
+	}
+	if got := correlationDigests(t, book, "order-19"); !slices.Equal(got, []string{byTwin.RecordID}) {
+		t.Fatalf("a record with only a twin bracket is held under its subject_ref: %v", got)
+	}
+	pin := anchorPin(t, book)
+	for _, id := range []string{digestBytes([]byte("r")), "twin-1"} {
+		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: id}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNoSuchSubject)
+	}
+	if got := correlationDigests(t, book, "deal-a"); !slices.Equal(got, []string{first.RecordID, second.RecordID, before.RecordID}) {
+		t.Fatalf("an exchange_id and a subject_ref of one value answer together: %v", got)
+	}
+}
+
+// A correlation answer carries no proof that its set is complete: no
+// verification material at all, whether underived or under a derivation
+// (profile v0 has no material for record sets, P-13), so no index proof
+// can stand in for one.
+func TestCorrelationAnswerCarriesNoCompletenessMaterial(t *testing.T) {
+	book, _ := correlatedBook(t)
+	id, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"d":1}`), Recipient: "peer-1",
+		Forms: []SubjectKind{SubjectCorrelation}, Fields: []string{"record_type"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := anchorPin(t, book)
+	for _, derivation := range []string{"", id} {
+		e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+		if len(e.Verification) != 0 || len(e.VerificationContent) != 0 {
+			t.Fatalf("derivation %q: a correlation answer carries verification material", derivation)
+		}
+	}
+}
+
 func TestSubjectIndexProofIsNotACorrelationSetsCompleteness(t *testing.T) {
 	book, records := correlatedBook(t)
 	first, second := records[0], records[1]

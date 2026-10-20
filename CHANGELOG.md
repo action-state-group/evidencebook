@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-### Changed: a correlation subject reads the header's correlation identifier
+### Changed (breaking): a correlation subject reads the header's correlation identifier
 
-For capsule-cli#264 (agent-action-capsule#328 O2, ruled by Steven on
-2026-10-20).
+For capsule-cli#264, following Steven's direction of 2026-10-19 (PT); the
+spec reading is agent-action-capsule#328 O2, still open (#81).
 
 - `Book.Respond` answers a `correlation` subject with the records whose
   header carries that identifier as `correlation.exchange_id`. A record with
@@ -15,10 +15,13 @@ For capsule-cli#264 (agent-action-capsule#328 O2, ruled by Steven on
   no longer answered under its `subject_ref`. For example, a reconcile half
   filed under `subject_ref` `order-17` with `exchange_id` `ex-9` is now
   answered for `ex-9`, not for `order-17`.
+- A record whose correlation carries only a request digest or a twin bracket
+  is still held under its `subject_ref`. The two key spaces answer the same
+  requested identifier.
 - The `subject_ref` authenticated index (`NewSubjectIndex`) still proves the
-  records under one `subject_ref`. Its documentation now says that is never
-  a correlation set when records carry a correlation identifier, and a test
-  pins that the two sets differ.
+  records under one `subject_ref`. Its documentation now says that does not
+  establish a correlation answer's completeness, and a correlation answer
+  carries no verification material, underived or derived.
 
 ## v0.6.0 (2026-10-19)
 
