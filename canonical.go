@@ -7,7 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 )
@@ -35,7 +37,10 @@ func decodeJSON(data []byte) (any, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return nil, err
 	}
-	if decoder.More() {
+	// More reports false before a stray ] or }, so only a second read that
+	// ends the input proves nothing follows the value.
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("trailing data after JSON value")
 	}
 	return value, nil

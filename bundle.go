@@ -5,7 +5,9 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,8 +69,14 @@ type BundleRequest struct {
 	// Withhold names payload digests this disclosure does not carry.
 	Withhold []string
 	// At pins the coverage anchor; nil checkpoints the book now.
-	At         *Checkpoint
+	At *Checkpoint
+	// Extensions are further extension blocks, by kind. producer-key/v1
+	// is set through ProducerKey and composed/v1 is agent-action-capsule's
+	// own, so both are refused here.
 	Extensions map[string]json.RawMessage
+	// ProducerKey, a raw 32-byte Ed25519 public key, declares the bundle's
+	// producer key (the producer-key/v1 extension).
+	ProducerKey ed25519.PublicKey
 }
 
 // Bundle is a portable, self-verifying Evidence Bundle v2 plus the disclosure
@@ -147,6 +155,10 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if req.Payloads == PayloadsAll && len(req.Withhold) > 0 {
 		return Bundle{}, fmt.Errorf("%w: payloads=all cannot withhold payloads", ErrInvalid)
 	}
+	callerExtensions, err := checkBundleRequest(&req)
+	if err != nil {
+		return Bundle{}, err
+	}
 	selected, missing, err := b.closureLocked(req.Root, req.ClosureDepth)
 	if err != nil {
 		return Bundle{}, err
@@ -176,28 +188,43 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		Extensions:   make(map[string]json.RawMessage),
 		Verification: producerReport{Producer: DefaultDeveloper, Checks: []string{"graph_closure", "interval_coverage", "per_record_membership"}},
 	}
+	// A CLL book's bundle is built by agent-action-capsule's producer, which
+	// carries every record in [first, tip]. Any other substrate (a SCITT
+	// receipt book) has no ordered log for it to read and keeps the book's
+	// own assembly.
 	var carried []string
-	interval, err := b.commitments.ProveInterval(ctx, first, anchor)
-	switch {
-	case err == nil:
-		wire.Certificate, wire.Checkpoint = &interval.Certificate, &interval.Checkpoint
-		for seq := first; seq <= anchor.Entries; seq++ {
-			carried = append(carried, b.order[seq-1])
-		}
-	case errors.Is(err, ErrUnsupported):
-		inclusion := make(map[string]InclusionEvidence)
-		for id := range selected {
-			if inclusion[id], err = b.commitments.ProveInclusion(ctx, b.records[id].Seq, anchor); err != nil {
-				return Bundle{}, err
-			}
-			carried = append(carried, id)
-		}
-		sort.Slice(carried, func(i, j int) bool { return b.records[carried[i]].Seq < b.records[carried[j]].Seq })
-		if wire.Extensions[ExtensionInclusion], err = json.Marshal(inclusion); err != nil {
+	snapshotter, viaProducer := b.commitments.(interface {
+		proofSnapshot(context.Context, Checkpoint) (*proofSnapshot, error)
+	})
+	var snapshot *proofSnapshot
+	if viaProducer {
+		if snapshot, err = snapshotter.proofSnapshot(ctx, anchor); err != nil {
 			return Bundle{}, err
 		}
-	default:
-		return Bundle{}, err
+		carried = append(carried, b.order[first-1:anchor.Entries]...)
+	} else {
+		interval, err := b.commitments.ProveInterval(ctx, first, anchor)
+		switch {
+		case err == nil:
+			wire.Certificate, wire.Checkpoint = &interval.Certificate, &interval.Checkpoint
+			for seq := first; seq <= anchor.Entries; seq++ {
+				carried = append(carried, b.order[seq-1])
+			}
+		case errors.Is(err, ErrUnsupported):
+			inclusion := make(map[string]InclusionEvidence)
+			for id := range selected {
+				if inclusion[id], err = b.commitments.ProveInclusion(ctx, b.records[id].Seq, anchor); err != nil {
+					return Bundle{}, err
+				}
+				carried = append(carried, id)
+			}
+			sort.Slice(carried, func(i, j int) bool { return b.records[carried[i]].Seq < b.records[carried[j]].Seq })
+			if wire.Extensions[ExtensionInclusion], err = json.Marshal(inclusion); err != nil {
+				return Bundle{}, err
+			}
+		default:
+			return Bundle{}, err
+		}
 	}
 
 	// Only the selected set is ever disclosed. Other records in the interval
@@ -209,11 +236,13 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	// its capsule, so the header travels with the capsule: it is neither
 	// disclosed in the overlay nor listed as withheld.
 	inline := make(map[string]bool)
+	capsules := make(map[string]json.RawMessage, len(carried))
 	for _, id := range carried {
 		stored, err := b.storedLocked(ctx, id)
 		if err != nil {
 			return Bundle{}, err
 		}
+		capsules[id] = stored.Capsule
 		wire.Records = append(wire.Records, stored.Capsule)
 		if _, inline[id], err = inlineHeader(stored.Capsule); err != nil {
 			return Bundle{}, fmt.Errorf("%w: capsule %s: %v", ErrCorrupt, id, err)
@@ -222,6 +251,7 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 			statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, Member: HeaderMember, Digest: digestBytes(stored.Header)})
 		}
 	}
+	bound := make(map[string]map[string][]string)
 	for _, id := range disclosed {
 		stored, err := b.storedLocked(ctx, id)
 		if err != nil {
@@ -243,6 +273,7 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 				return Bundle{}, err
 			}
 		}
+		bound[id] = members
 		for _, digest := range b.records[id].Header.PayloadCommitments {
 			// Suppressing every member an original is bound to withholds its
 			// bytes too, not only the overlay member.
@@ -278,6 +309,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 			}
 		}
 	}
+	if req.Payloads == PayloadsAll {
+		if err := revealsEveryMember(disclosed, capsules, wire.Disclosures, bound, req.Suppress); err != nil {
+			return Bundle{}, err
+		}
+	}
 	if len(payloads) > 0 {
 		if wire.Extensions[ExtensionPayloads], err = json.Marshal(payloads); err != nil {
 			return Bundle{}, err
@@ -286,16 +322,27 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	for key, value := range req.Extensions {
 		wire.Extensions[key] = value
 	}
-	if len(wire.Extensions) == 0 {
-		wire.Extensions = nil
-	}
-	wire.Completeness = completenessClaim{ClosureDepth: req.ClosureDepth, RecordsMode: "complete", PayloadsMode: req.Payloads, SuppressedFields: statement.SuppressedFields, Missing: missing}
-	if len(missing) > 0 {
-		wire.Completeness.RecordsMode = "declared_incomplete"
-	}
-	data, err := canonicalJSON(wire)
-	if err != nil {
-		return Bundle{}, err
+	var data []byte
+	if viaProducer {
+		if data, err = b.produceLocked(ctx, snapshot, req, first, wire, callerExtensions); err != nil {
+			return Bundle{}, err
+		}
+	} else {
+		if req.ProducerKey != nil {
+			if wire.Extensions[producerKeyKind], err = json.Marshal(map[string]string{"public_key": hex.EncodeToString(req.ProducerKey)}); err != nil {
+				return Bundle{}, err
+			}
+		}
+		if len(wire.Extensions) == 0 {
+			wire.Extensions = nil
+		}
+		wire.Completeness = completenessClaim{ClosureDepth: req.ClosureDepth, RecordsMode: "complete", PayloadsMode: req.Payloads, SuppressedFields: statement.SuppressedFields, Missing: missing}
+		if len(missing) > 0 {
+			wire.Completeness.RecordsMode = "declared_incomplete"
+		}
+		if data, err = canonicalJSON(wire); err != nil {
+			return Bundle{}, err
+		}
 	}
 	statement.BundleDigest = digestBytes(data)
 	body, err := json.Marshal(statement)
