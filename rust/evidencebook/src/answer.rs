@@ -24,7 +24,11 @@
 //!   subject}`, each checkpoint its signed statement in hex;
 //! - `history_card/1`: RFC 8785 of `{anchor, derivation, evidence_stream,
 //!   history, subject}`, each entry `{checkpoint, consistency_from_previous}`
-//!   (-00 §8.1), the consistency proof in hex or null.
+//!   (-00 §8.1), the consistency proof in hex or null;
+//! - a registered definition-digest derivation ([`crate::derivation`]):
+//!   RFC 8785 of `{anchor, derivation, evidence_stream, records, subject}`,
+//!   each record carrying only its `digest`, its `leaf_index` and the
+//!   declared header members it has (profile §6.5).
 //!
 //! The profile defines no material for record sets, the checkpoint list or a
 //! derivation (P-13), so by default those envelopes carry none: their records
@@ -32,7 +36,7 @@
 //! more than the profile asks for can be sent more with
 //! [`Options::prove_beyond_profile`]: the anchor checkpoint statement for a
 //! record set and a profile derivation, plus one inclusion proof per record
-//! of a set in the artifact's order. A profile verifier reports those
+//! of a set or of a registered derivation, in the artifact's order. A profile verifier reports those
 //! subjects `NOT_CHECKED` before it reads any material (§6.2.1 step 1), so
 //! the extra items change nothing for it.
 //!
@@ -51,6 +55,7 @@
 //! answers from its own index; [`crate::substrate::CllSubstrate`] is the
 //! reference [`CheckpointedLog`].
 
+use crate::derivation::{Derivations, Registered};
 use crate::store::CheckpointedLog;
 pub use crate::store::{Record, RecordSource};
 use crate::substrate::{StatedCheckpoint, SubstrateError};
@@ -90,6 +95,14 @@ pub enum AnswerError {
     RecordDigest,
     #[error("the derivation has no answer path")]
     DerivationUnsupported,
+    /// A registered derivation projects a record whose header the store
+    /// does not hold ([`RecordSource::header_of`]).
+    #[error("the store holds no header for a record the derivation projects")]
+    RecordHeader,
+    /// The derivation is prepared for a recipient other than
+    /// [`Options::requester`]. Answer with a `not_authorized` refusal.
+    #[error("the derivation is prepared for another recipient")]
+    NotAuthorized,
     /// The subject covers more records (or checkpoints) than the limit.
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
@@ -115,18 +128,29 @@ pub type Derive<'a> = &'a dyn Fn(&str, &Subject, &StatedCheckpoint) -> Option<(S
 #[derive(Clone, Copy, Default)]
 pub struct Options<'a> {
     /// Also send material for what the profile defines none for (P-13): the
-    /// anchor checkpoint statement for a record set and a [`Derive`]d
-    /// artifact, and one inclusion proof per record of a set, in the
-    /// artifact's order.
+    /// anchor checkpoint statement for a record set, a [`Derive`]d artifact
+    /// and a registered derivation, and one inclusion proof per record of a
+    /// set or a registered derivation, in the artifact's order.
     pub prove_beyond_profile: bool,
     /// The calling profile's own derivations.
     pub derive: Option<Derive<'a>>,
+    /// The definition-digest derivations registered with the responder
+    /// ([`crate::derivation`]). Whether the requester may have one is the
+    /// caller's to decide first ([`Derivations::check`]).
+    pub derivations: Option<&'a Derivations>,
+    /// The authenticated requester (`None` when unauthenticated). A
+    /// registered derivation prepared for a recipient is built for that
+    /// recipient only, whatever the caller decided before:
+    /// [`AnswerError::NotAuthorized`] for anyone else.
+    pub requester: Option<&'a str>,
 }
 
 /// What an answer is served under and carries: the position of the serving
 /// checkpoint in [`CheckpointedLog::stated_checkpoints`], and the leaf
 /// indices of the records the artifact carries, ascending and distinct, all
-/// under that checkpoint (empty for a checkpoint list or a derivation).
+/// under that checkpoint (empty for a checkpoint list or a token
+/// derivation; a definition-digest derivation carries its subject's
+/// records).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
     pub at: usize,
@@ -223,8 +247,13 @@ pub fn serving_checkpoint(
 
 /// The serving checkpoint and the records an answer to `request` under
 /// `anchor` carries, checked against `limit` (clamped to [`MAX_RECORDS`]) as
-/// [`answer`] describes. A derivation selects no records; whether it has an
-/// answer path is [`build`]'s to say.
+/// [`answer`] describes. A token derivation selects no records; a
+/// definition-digest derivation is defined over records and selects its
+/// subject's, as the subject without it would, whether or not it is
+/// registered: decide the derivation first ([`Derivations::check`] and
+/// `evidence_request::resolve`), so an unknown digest is refused
+/// `derivation_unsupported` before any record is read. Whether a token
+/// derivation has an answer path is [`build`]'s to say.
 pub fn select(
     log: &dyn CheckpointedLog,
     records: &dyn RecordSource,
@@ -245,31 +274,35 @@ pub fn select(
             }
             Vec::new()
         }
-        (Some(_), _) => Vec::new(),
-        (None, Subject::Checkpoints) => {
+        (Some(Derivation::Token(_)), _) => Vec::new(),
+        // No derivation is defined over checkpoints ([`crate::derivation`]).
+        (Some(Derivation::Digest(_)), Subject::Checkpoints) => Vec::new(),
+        // From here on: no derivation, or a definition-digest one, which
+        // carries the same records.
+        (_, Subject::Checkpoints) => {
             if listed > limit {
                 return Err(AnswerError::OverLimit);
             }
             Vec::new()
         }
-        (None, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
-        (None, Subject::Record(d)) => {
+        (_, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
+        (_, Subject::Record(d)) => {
             let leaf = records
                 .leaf_index_of(d)
                 .filter(|&i| i < covered)
                 .ok_or(AnswerError::RecordNotFound)?;
             vec![leaf]
         }
-        (None, Subject::Range(a, b)) => range_leaves(*a, *b, covered, limit)?,
-        (None, Subject::FullHistory) => {
+        (_, Subject::Range(a, b)) => range_leaves(*a, *b, covered, limit)?,
+        (_, Subject::FullHistory) => {
             if covered == 0 {
                 return Err(AnswerError::NoRecords);
             }
             range_leaves(0, covered - 1, covered, limit)?
         }
-        (None, Subject::Correlation(id)) => leaves_under(records.correlation(id), covered, limit)?,
+        (_, Subject::Correlation(id)) => leaves_under(records.correlation(id), covered, limit)?,
         // The one form left: records citing the requester's half.
-        (None, _) => {
+        (_, _) => {
             let half = citing_half(&request.subject).expect("every other form is matched above");
             leaves_under(records.citing(half), covered, limit)?
         }
@@ -342,6 +375,20 @@ pub fn build(
             head.insert("history".into(), Value::Array(history));
             jcs(head)?
         }
+        (Some(Derivation::Digest(id)), subject) => {
+            let registered = options
+                .derivations
+                .and_then(|d| d.get(id))
+                .filter(|r| r.declares(subject.form()))
+                .ok_or(AnswerError::DerivationUnsupported)?;
+            if registered.authorizes(options.requester) == Some(false) {
+                return Err(AnswerError::NotAuthorized);
+            }
+            let set = record_set(log, records, selection, at, options, &mut material)?;
+            head.insert("derivation".into(), json!(registered.id()));
+            head.insert("records".into(), projection(records, &set, registered)?);
+            jcs(head)?
+        }
         (Some(_), _) => {
             let (token, (member, value)) = derived.ok_or(AnswerError::DerivationUnsupported)?;
             head.insert("derivation".into(), json!(token));
@@ -379,21 +426,7 @@ pub fn build(
             record.body
         }
         (None, _) => {
-            if selection.records.is_empty() {
-                return Err(AnswerError::NoRecords);
-            }
-            let set = selection
-                .records
-                .iter()
-                .map(|&i| record_at(records, i))
-                .collect::<Result<Vec<_>, _>>()?;
-            if options.prove_beyond_profile {
-                material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
-                for r in &set {
-                    let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
-                    material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
-                }
-            }
+            let set = record_set(log, records, selection, at, options, &mut material)?;
             head.insert("records".into(), records_value(&set));
             jcs(head)?
         }
@@ -463,6 +496,36 @@ fn inclusion(leaf_index: u64, path: &[[u8; 32]]) -> Result<Vec<u8>, AnswerError>
     })
 }
 
+/// The selected records of a record set or a registered derivation, each
+/// checked against its committed entry, and beyond the profile their
+/// material: the anchor checkpoint and one inclusion proof per record, in
+/// the artifact's order.
+fn record_set(
+    log: &dyn CheckpointedLog,
+    records: &dyn RecordSource,
+    selection: &Selection,
+    at: &StatedCheckpoint,
+    options: Options<'_>,
+    material: &mut Vec<(String, Vec<u8>)>,
+) -> Result<Vec<Record>, AnswerError> {
+    if selection.records.is_empty() {
+        return Err(AnswerError::NoRecords);
+    }
+    let set = selection
+        .records
+        .iter()
+        .map(|&i| record_at(records, i))
+        .collect::<Result<Vec<_>, _>>()?;
+    if options.prove_beyond_profile {
+        material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
+        for r in &set {
+            let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
+            material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
+        }
+    }
+    Ok(set)
+}
+
 /// The record at `leaf_index`, checked against its committed entry.
 fn record_at(records: &dyn RecordSource, leaf_index: u64) -> Result<Record, AnswerError> {
     let record = records
@@ -473,6 +536,29 @@ fn record_at(records: &dyn RecordSource, leaf_index: u64) -> Result<Record, Answ
         return Err(AnswerError::RecordDigest);
     }
     Ok(record)
+}
+
+/// A registered derivation's records: each record's digest, its position,
+/// and the declared header members it has.
+fn projection(
+    source: &dyn RecordSource,
+    set: &[Record],
+    registered: &Registered,
+) -> Result<Value, AnswerError> {
+    let mut out = Vec::with_capacity(set.len());
+    for record in set {
+        let header = source.header_of(record).ok_or(AnswerError::RecordHeader)?;
+        let mut entry = Map::new();
+        entry.insert("digest".into(), json!(record.digest));
+        entry.insert("leaf_index".into(), json!(record.leaf_index));
+        for name in registered.fields() {
+            if let Some(value) = header.get(name) {
+                entry.insert(name.clone(), value.clone());
+            }
+        }
+        out.push(Value::Object(entry));
+    }
+    Ok(Value::Array(out))
 }
 
 fn records_value(records: &[Record]) -> Value {
