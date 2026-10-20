@@ -63,6 +63,22 @@ jobs:
       - name: Race test
         run: go test -race ./...
 
+  release-helper:
+    name: Release helper tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Test .github/release.py
+        run: python -m pytest -q .github/test_release.py
+
   python-cll-interop:
     name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)
     runs-on: ubuntu-latest

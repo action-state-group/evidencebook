@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Adapted from agent-action-capsule publish-rust.yml at 9c10641.
-# Publish the evidencebook crate to crates.io for its release tag, pushed by an
-# admin: crates/evidencebook-v<version>. The tag must point at a commit on
-# main, <version> must equal the crate's Cargo.toml version, and that version
-# must not be on crates.io yet. The Go module's v* tags are a separate route.
+# Publish the evidencebook crate to crates.io for its release tag,
+# crates/evidencebook-v<version>: tag-release.yml dispatches this on the tag it
+# creates when a version bump merges (see RELEASING.md), and an admin-pushed
+# tag also triggers it. The tag must point at a commit on main, <version> must
+# equal the crate's Cargo.toml version, and that version must not be on
+# crates.io yet. The Go module's v* tags are a separate route.
 #
 # Authentication is crates.io Trusted Publishing (OIDC): the publish job
 # exchanges GitHub's short-lived identity token for a crates.io token scoped
@@ -17,8 +19,8 @@ name: Release · Publish Rust
 on:
   push:
     tags: ["crates/*-v*"]
-  # Dispatched on a crates/*-v* tag, it publishes that tag; on a branch it
-  # does nothing.
+  # A tag created with GITHUB_TOKEN does not fire `push`, so tag-release.yml
+  # dispatches this on the tag instead. Dispatched on a branch, it does nothing.
   workflow_dispatch: {}
 
 permissions: {}
