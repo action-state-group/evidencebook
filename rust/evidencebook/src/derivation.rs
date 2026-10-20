@@ -38,9 +38,9 @@ use crate::request::SubjectKind;
 use evidence_request::registry::{Reason, SubjectForm};
 use evidence_request::request::{Derivation, Request};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// The record header members a projection may declare, as the Go book names
@@ -216,16 +216,18 @@ impl Derivations {
         }
     }
 
-    /// The derivation steps of a responder's decision, in the request
-    /// draft's order, as the Go responder takes them: a definition digest
-    /// not registered here is `derivation_unsupported`; a registered one not
-    /// defined over the subject's form is `no_such_subject`; one prepared
-    /// for a recipient other than `requester` (`None` when unauthenticated)
-    /// is `not_authorized`. Otherwise the registered derivation, which the
-    /// caller answers after its own remaining checks (a derivation naming
-    /// no recipient still passes its share policy). A request with no
-    /// derivation, or a token derivation, is `Ok(None)`: not this
-    /// registry's to decide.
+    /// The derivation steps of a responder's decision, in the order the Go
+    /// responder takes them (`evidencerequest.Decide`): a definition digest
+    /// not registered here is `derivation_unsupported`; then authorization,
+    /// which for a definition naming a recipient is whether `requester`
+    /// (`None` when unauthenticated) is that recipient, and for one naming
+    /// none is `share_policy_allows`, the caller's own share policy for this
+    /// requester; anyone not authorized is `not_authorized`. Only then is a
+    /// subject form the definition does not declare `no_such_subject`.
+    /// Otherwise the registered derivation, which the caller answers after
+    /// its remaining checks. A request with no derivation, or a token
+    /// derivation, is `Ok(None)`: not this registry's to decide, and
+    /// `share_policy_allows` is not read.
     ///
     /// A responder with the uniform refusal policy maps the reason as it
     /// maps every other.
@@ -233,16 +235,20 @@ impl Derivations {
         &self,
         request: &Request,
         requester: Option<&str>,
+        share_policy_allows: bool,
     ) -> Result<Option<&Registered>, Reason> {
         let Some(Derivation::Digest(id)) = &request.derivation else {
             return Ok(None);
         };
         let registered = self.get(id).ok_or(Reason::DerivationUnsupported)?;
+        if !registered
+            .authorizes(requester)
+            .unwrap_or(share_policy_allows)
+        {
+            return Err(Reason::NotAuthorized);
+        }
         if !registered.declares(request.subject.form()) {
             return Err(Reason::NoSuchSubject);
-        }
-        if registered.authorizes(requester) == Some(false) {
-            return Err(Reason::NotAuthorized);
         }
         Ok(Some(registered))
     }
@@ -260,30 +266,64 @@ pub(crate) fn subject_form(kind: SubjectKind) -> SubjectForm {
 }
 
 /// One JSON value, read as the Go request reader reads it
-/// (`evidencerequest.DecodeJSON`): a duplicate member, invalid UTF-8, an
-/// unpaired surrogate escape, trailing data or nesting deeper than
-/// [`MAX_NESTING`] is refused; a number that is not an integer (any number
-/// written with a fraction or an exponent) has no canonical form and is
-/// refused; `-0` is the integer 0.
+/// (`evidencerequest.DecodeJSON`) and canonicalized as the Go JCS
+/// canonicalizes it: a duplicate member, invalid UTF-8, an unpaired
+/// surrogate escape, trailing data or nesting deeper than [`MAX_NESTING`]
+/// is refused; a number written with a fraction or an exponent, or an
+/// integer outside +/-(2^53 - 1), has no canonical form and is refused;
+/// `-0` is the integer 0.
+///
+/// The numbers are checked as text, and the value is read by `serde_json`
+/// itself, so the result does not depend on whether a crate in the build
+/// enables `serde_json`'s `arbitrary_precision`.
 fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
-    // serde_json reads `-0` as a float and a fraction as a float alike, so
-    // the number tokens are read here first, as text, as the Go JCS reads
-    // them: a fraction or exponent is no integer.
-    if number_tokens(text).any(|t| t.contains(['.', 'e', 'E'])) {
-        return Err(DerivationError::Canonical(
-            "a number that is not an integer has no canonical form".into(),
-        ));
-    }
+    // Read first, then canonicalize, as Go's DecodeJSON then EncodeJCS do,
+    // so a document both malformed and uncanonicalizable is NotJson.
     let mut reader = serde_json::Deserializer::from_str(text);
-    let value = Strict { depth: 0 }
+    Shape { depth: 0 }
         .deserialize(&mut reader)
+        .and_then(|()| reader.end())
         .map_err(|e| DerivationError::NotJson(e.to_string()))?;
-    reader
-        .end()
-        .map_err(|e| DerivationError::NotJson(e.to_string()))?;
+    for token in number_tokens(text) {
+        if token.contains(['.', 'e', 'E']) {
+            return Err(DerivationError::Canonical(
+                "a number that is not an integer has no canonical form".into(),
+            ));
+        }
+        if unsafe_integer(token) {
+            return Err(DerivationError::Canonical(format!(
+                "integer {token} is outside +/-(2^53 - 1)"
+            )));
+        }
+    }
+    let mut value: Value =
+        serde_json::from_str(text).map_err(|e| DerivationError::NotJson(e.to_string()))?;
+    negative_zero_is_zero(&mut value);
     Ok(value)
+}
+
+/// Whether an integer token's magnitude exceeds 2^53 - 1, compared as text
+/// as the Go canonicalizer compares it (`IsUnsafeInt`).
+fn unsafe_integer(token: &str) -> bool {
+    let digits = token.strip_prefix('-').unwrap_or(token);
+    match digits.len().cmp(&16) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        std::cmp::Ordering::Equal => digits > "9007199254740991",
+    }
+}
+
+/// Every number left after [`decode_strict`]'s checks is a safe integer;
+/// the one `serde_json` may hold as a float is `-0`, which is 0.
+fn negative_zero_is_zero(value: &mut Value) {
+    match value {
+        Value::Number(n) if !n.is_i64() && !n.is_u64() => *value = Value::from(0),
+        Value::Array(items) => items.iter_mut().for_each(negative_zero_is_zero),
+        Value::Object(members) => members.values_mut().for_each(negative_zero_is_zero),
+        _ => {}
+    }
 }
 
 /// The number tokens of a JSON text, outside its strings.
@@ -320,16 +360,21 @@ fn number_tokens(text: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// A JSON value with no duplicate member and no value deeper than
-/// [`MAX_NESTING`].
-struct Strict {
+/// `serde_json`'s private member name for a number under
+/// `arbitrary_precision`: such a number reaches a visitor as a one-member
+/// map, and is a scalar here.
+const ARBITRARY_PRECISION_NUMBER: &str = "$serde_json::private::Number";
+
+/// The shape checks of a JSON value: no duplicate member, and no value
+/// deeper than [`MAX_NESTING`] (the document is depth 0). It builds nothing.
+struct Shape {
     depth: usize,
 }
 
-impl<'de> DeserializeSeed<'de> for Strict {
-    type Value = Value;
+impl<'de> DeserializeSeed<'de> for Shape {
+    type Value = ();
 
-    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+    fn deserialize<D: de::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
         if self.depth > MAX_NESTING {
             return Err(de::Error::custom("nested too deeply"));
         }
@@ -337,71 +382,62 @@ impl<'de> DeserializeSeed<'de> for Strict {
     }
 }
 
-impl<'de> Visitor<'de> for Strict {
-    type Value = Value;
+impl<'de> Visitor<'de> for Shape {
+    type Value = ();
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("a JSON value")
     }
 
-    fn visit_unit<E>(self) -> Result<Value, E> {
-        Ok(Value::Null)
+    fn visit_unit<E>(self) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_bool<E>(self, v: bool) -> Result<Value, E> {
-        Ok(Value::Bool(v))
+    fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_i64<E>(self, v: i64) -> Result<Value, E> {
-        Ok(Value::from(v))
+    fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_u64<E>(self, v: u64) -> Result<Value, E> {
-        Ok(Value::from(v))
+    fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+        Ok(())
     }
 
-    /// Every fraction was refused before parsing, so a float here is `-0`
-    /// (the integer 0) or an integer too large for 64 bits, which keeps its
-    /// float form and is refused as unsafe by the canonical encoder.
-    fn visit_f64<E: de::Error>(self, v: f64) -> Result<Value, E> {
-        if v == 0.0 {
-            return Ok(Value::from(0));
-        }
-        serde_json::Number::from_f64(v)
-            .map(Value::Number)
-            .ok_or_else(|| E::custom("a number with no JSON form"))
+    fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_str<E>(self, v: &str) -> Result<Value, E> {
-        Ok(Value::String(v.to_owned()))
+    fn visit_str<E>(self, _: &str) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_string<E>(self, v: String) -> Result<Value, E> {
-        Ok(Value::String(v))
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        while seq
+            .next_element_seed(Shape {
+                depth: self.depth + 1,
+            })?
+            .is_some()
+        {}
+        Ok(())
     }
 
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
-        let mut items = Vec::new();
-        while let Some(item) = seq.next_element_seed(Strict {
-            depth: self.depth + 1,
-        })? {
-            items.push(item);
-        }
-        Ok(Value::Array(items))
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-        let mut members = Map::new();
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        let mut names = BTreeSet::new();
         while let Some(name) = map.next_key::<String>()? {
-            if members.contains_key(&name) {
+            if name == ARBITRARY_PRECISION_NUMBER && names.is_empty() {
+                map.next_value::<de::IgnoredAny>()?;
+                return Ok(());
+            }
+            if !names.insert(name.clone()) {
                 return Err(de::Error::custom(format!("duplicate member {name:?}")));
             }
-            let value = map.next_value_seed(Strict {
+            map.next_value_seed(Shape {
                 depth: self.depth + 1,
             })?;
-            members.insert(name, value);
         }
-        Ok(Value::Object(members))
+        Ok(())
     }
 }
 
@@ -438,11 +474,22 @@ mod tests {
             r#"{"a":9007199254740992}"#,
             r#"{"a":123456789012345678901234567890}"#,
             r#"{"a":"\ud800"}"#,
+            r#"{"a":-9007199254740992}"#,
+            r#"{"a":18446744073709551616}"#,
+            r#"{"a":1,"a":2.5}"#,
             r#"{} {}"#,
             "[1]",
             "\"text\"",
         ] {
             assert!(d.register(define(bad)).is_err(), "{bad}");
+        }
+        // Read before canonicalized, as in Go: malformed is NotJson even
+        // when it also holds a fraction.
+        for malformed in [r#"{"a":1,"a":2.5}"#, r#"{"a":1.5"#] {
+            assert!(matches!(
+                d.register(define(malformed)),
+                Err(DerivationError::NotJson(_))
+            ));
         }
         // Inside a string, a dot or an exponent letter is text.
         assert!(d.register(define(r#"{"a":"1.5e3","b\"":"-0.1"}"#)).is_ok());
@@ -498,5 +545,56 @@ mod tests {
         def.recipient = Some(String::new());
         let open = d.register(def).unwrap();
         assert_eq!(d.get(&open).unwrap().authorizes(None), None);
+    }
+
+    /// Authorization comes before the declared forms, as in
+    /// `evidencerequest.Decide`; with no recipient it is the share policy.
+    #[test]
+    fn check_authorizes_before_it_reads_the_form() {
+        let mut d = Derivations::new();
+        let mut def = define(r#"{"recipient":"alice"}"#);
+        def.recipient = Some("alice".into());
+        let named = d.register(def).unwrap();
+        let open = d.register(define(r#"{"open":true}"#)).unwrap();
+        let ask = |id: &str, subject: &str| {
+            let wire = format!(
+                r#"{{"subject":{subject},"coverage":{{"min_freshness":1}},"derivation":"{id}"}}"#
+            );
+            evidence_request::request::parse_json(wire.as_bytes()).unwrap()
+        };
+        let record = format!(r#"{{"record":"{}"}}"#, "ab".repeat(32));
+        let range = r#"{"range":[0,1]}"#;
+        let refused = |r: Result<Option<&Registered>, Reason>| r.err();
+        assert_eq!(
+            refused(d.check(&ask(&named, range), Some("bob"), true)),
+            Some(Reason::NotAuthorized)
+        );
+        assert_eq!(
+            refused(d.check(&ask(&named, range), Some("alice"), false)),
+            Some(Reason::NoSuchSubject)
+        );
+        assert!(d
+            .check(&ask(&named, &record), Some("alice"), false)
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            refused(d.check(&ask(&open, range), None, false)),
+            Some(Reason::NotAuthorized)
+        );
+        assert_eq!(
+            refused(d.check(&ask(&open, range), None, true)),
+            Some(Reason::NoSuchSubject)
+        );
+        assert!(d.check(&ask(&open, &record), None, true).unwrap().is_some());
+        let unknown = "cd".repeat(32);
+        assert_eq!(
+            refused(d.check(&ask(&unknown, &record), None, true)),
+            Some(Reason::DerivationUnsupported)
+        );
+        let plain = evidence_request::request::parse_json(
+            br#"{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}"#,
+        )
+        .unwrap();
+        assert!(d.check(&plain, None, false).unwrap().is_none());
     }
 }

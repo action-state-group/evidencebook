@@ -10,10 +10,13 @@
   the document must be a JSON object, read as the Go request reader reads it.
   A definition is never over `checkpoints` and declares only `HEADER_FIELDS`.
   Registrations are held in memory only. `Derivations::check` takes the
-  derivation steps of a decision as the Go responder does
-  (`derivation_unsupported`, then `no_such_subject` for an undeclared form,
-  then `not_authorized` for anyone but a named recipient), and
-  `Derivations::forms_of` answers `Responder::derivation_forms`. The crate
+  derivation steps of a decision in the Go responder's order
+  (`evidencerequest.Decide`): `derivation_unsupported`, then `not_authorized`
+  for anyone but a named recipient (or, with no recipient, anyone the
+  caller's share policy refuses), then `no_such_subject` for an undeclared
+  form. It returns the plain reason: a responder under the uniform refusal
+  policy maps it as it maps every other. `Derivations::forms_of` answers
+  `Responder::derivation_forms`. The crate
   reads none of the definition's members (P-14).
 - **`answer` answers a registered derivation** with `Options::derivations`
   set: RFC 8785 of `{anchor, derivation, evidence_stream, records, subject}`,
@@ -23,9 +26,11 @@
   derivation's subject records, as the subject without it; the underived
   artifact is unchanged. `testdata/derivation/vectors.json`, generated from a
   real Go book, is answered byte for byte by both implementations.
-- **Breaking:** `Options` has a new field, `derivations` (add
-  `derivations: None` or `..Options::default()` to a struct literal), and
-  `AnswerError` a new variant, `RecordHeader`.
+  A derivation prepared for a recipient is built for `Options::requester`
+  only, whatever the caller decided before (`AnswerError::NotAuthorized`).
+- **Breaking:** `Options` has two new fields, `derivations` and `requester`
+  (add `..Options::default()` to a struct literal), and `AnswerError` two
+  new variants, `RecordHeader` and `NotAuthorized`.
 
 ## 0.0.6
 

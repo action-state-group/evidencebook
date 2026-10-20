@@ -6,13 +6,14 @@
 
 use ed25519_dalek::SigningKey;
 use evidence_request::envelope::{Binding, Signer as EnvelopeSigner};
+use evidence_request::refusal;
 use evidence_request::registry::{Reason, SubjectForm};
 use evidence_request::request::{parse_json, Derivation};
 use evidence_request::resolve::{self, resolve, Resolution, Responder};
 use evidencebook::answer::{
     anchors, build, select, AnswerError, Options, Record, RecordSource, MAX_RECORDS,
 };
-use evidencebook::derivation::{DerivationDefinition, Derivations};
+use evidencebook::derivation::{DerivationDefinition, DerivationError, Derivations};
 use evidencebook::request::SubjectKind;
 use evidencebook::store::{CheckpointedLog, ConsistencyParts};
 use evidencebook::substrate::{Checkpoint, StatedCheckpoint, SubstrateError};
@@ -230,29 +231,47 @@ fn a_definition_has_the_go_identifier() {
 }
 
 #[test]
-fn a_definition_go_refuses_is_refused() {
+fn a_definition_go_refuses_is_refused_for_the_same_reason() {
     let v = vectors();
     let mut derivations = Derivations::new();
+    let mut checked = Vec::new();
     for def in &v.rejected {
         // A form outside the subject registry has no `SubjectKind`: it
         // cannot be declared at all.
         let Some(forms) = forms(&def.forms) else {
+            assert_eq!(def.name, "unknown-form");
             continue;
         };
-        let registered = derivations.register(DerivationDefinition {
-            document: def.document.as_bytes().to_vec(),
-            recipient: def.recipient.clone(),
-            forms,
-            fields: def.fields.clone().unwrap_or_default(),
-        });
-        assert!(registered.is_err(), "{} was registered", def.name);
+        let got = derivations
+            .register(DerivationDefinition {
+                document: def.document.as_bytes().to_vec(),
+                recipient: def.recipient.clone(),
+                forms,
+                fields: def.fields.clone().unwrap_or_default(),
+            })
+            .expect_err(&def.name);
+        let want = match def.name.as_str() {
+            "not-an-object" => matches!(got, DerivationError::NotAnObject),
+            "not-json"
+            | "duplicate-member"
+            | "duplicate-member-escaped"
+            | "too-deep"
+            | "trailing-data" => matches!(got, DerivationError::NotJson(_)),
+            "fraction" | "unsafe-integer" => matches!(got, DerivationError::Canonical(_)),
+            "no-forms" | "no-fields" => got == DerivationError::Undeclared,
+            "over-checkpoints" => got == DerivationError::OverCheckpoints,
+            "not-a-header-member" => got == DerivationError::NotAHeaderMember("payload".into()),
+            other => panic!("no expected reason for {other}"),
+        };
+        assert!(want, "{}: {got:?}", def.name);
+        checked.push(def.name.as_str());
     }
+    assert_eq!(checked.len(), v.rejected.len() - 1);
 }
 
 /// Every case answered as the Go responder answers it: the derivation
-/// steps, the share policy (here, every requester may have an unprotected
-/// subject, as under the Go test's policy for these subjects), resolution,
-/// then the artifact.
+/// steps with Go's default share policy, resolution, then the artifact or
+/// the signed refusal, reply octets for reply octets.
 #[test]
 fn every_case_is_the_go_answer_byte_for_byte() {
     let v = vectors();
@@ -269,27 +288,37 @@ fn every_case_is_the_go_answer_byte_for_byte() {
     }
     let responder =
         SigningKey::from_bytes(&hex::decode(&v.responder_seed).unwrap().try_into().unwrap());
-    let mut answered = 0;
+    let (mut answered, mut refused) = (0, 0);
     for case in &v.cases {
         let request = parse_json(case.request.as_bytes()).unwrap();
         let requester = case.requester.as_deref();
         let outcome = (|| {
-            s.derivations.check(&request, requester)?;
+            // Go's default share policy: an authenticated requester may
+            // have a protected subject, an unauthenticated one may not.
+            s.derivations
+                .check(&request, requester, requester.is_some())?;
             let anchor = match resolve(&request, &s) {
                 Resolution::Artifact(anchor) => anchor,
                 Resolution::Refuse(reason) => return Err(reason),
             };
             Ok(anchor)
         })();
+        let go: Value = serde_json::from_str(&case.reply).unwrap();
+        let issued_at = go["issued_at"].as_str().unwrap();
         let anchor = match outcome {
             Err(reason) => {
                 assert_eq!(reason.token(), case.outcome, "{}", case.name);
+                let request_digest = hex::encode(Sha256::digest(case.request.as_bytes()));
+                let refusal =
+                    refusal::sign(&request_digest, reason, issued_at, &responder).unwrap();
+                let octets = evidence_request::jcs::to_string(&refusal.to_json()).unwrap();
+                assert_eq!(octets, case.reply, "{}", case.name);
+                refused += 1;
                 continue;
             }
             Ok(anchor) => anchor,
         };
         assert_eq!(case.outcome, "artifact", "{}", case.name);
-        let go: Value = serde_json::from_str(&case.reply).unwrap();
         let selection = select(&s, &s, &request, &anchor, MAX_RECORDS).unwrap();
         let env = build(
             &s,
@@ -300,10 +329,11 @@ fn every_case_is_the_go_answer_byte_for_byte() {
             &selection,
             Options {
                 derivations: Some(&s.derivations),
+                requester,
                 ..Options::default()
             },
             &responder as &dyn EnvelopeSigner,
-            go["issued_at"].as_str().unwrap(),
+            issued_at,
         )
         .unwrap();
         assert_eq!(
@@ -323,7 +353,7 @@ fn every_case_is_the_go_answer_byte_for_byte() {
             .unwrap();
         answered += 1;
     }
-    assert_eq!(answered, 5);
+    assert_eq!((answered, refused), (5, 7));
 }
 
 /// The underived subject's artifact is the same with and without
@@ -387,14 +417,14 @@ fn a_derivation_needs_its_registry_and_its_headers() {
     let request = parse_json(case.request.as_bytes()).unwrap();
     assert_eq!(
         s.derivations
-            .check(&request, Some("alice"))
+            .check(&request, Some("alice"), false)
             .unwrap()
             .unwrap()
             .id(),
         def.id
     );
     assert_eq!(
-        s.derivations.check(&request, Some("bob")),
+        s.derivations.check(&request, Some("bob"), true),
         Err(Reason::NotAuthorized)
     );
     let Resolution::Artifact(anchor) = resolve(&request, &s) else {
@@ -420,6 +450,21 @@ fn a_derivation_needs_its_registry_and_its_headers() {
         go(&s, Options::default()),
         Err(AnswerError::DerivationUnsupported)
     ));
+    // The recipient is enforced by `build` itself: a caller that skipped
+    // `check` still cannot hand alice's projection to anyone else.
+    for requester in [None, Some("bob")] {
+        assert!(matches!(
+            go(
+                &s,
+                Options {
+                    derivations: Some(&s.derivations),
+                    requester,
+                    ..Options::default()
+                }
+            ),
+            Err(AnswerError::NotAuthorized)
+        ));
+    }
     let mut headless = store(&v);
     for r in &mut headless.records {
         r.1.clear();
@@ -450,6 +495,7 @@ fn a_derivation_needs_its_registry_and_its_headers() {
         &selection,
         Options {
             derivations: Some(&s.derivations),
+            requester: Some("alice"),
             ..Options::default()
         },
         &responder as &dyn EnvelopeSigner,
@@ -460,6 +506,7 @@ fn a_derivation_needs_its_registry_and_its_headers() {
         &headless,
         Options {
             derivations: Some(&s.derivations),
+            requester: Some("alice"),
             ..Options::default()
         },
     )

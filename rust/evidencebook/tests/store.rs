@@ -14,8 +14,10 @@ use evidence_request::resolve::{self, ResolvedAnchor};
 use evidencebook::answer::{
     anchor_digest, build, select, serving_checkpoint, AnswerError, Options, Selection,
 };
+use evidencebook::derivation::{DerivationDefinition, Derivations};
 use evidencebook::index::committed_records;
 use evidencebook::reconcile::HalfSet;
+use evidencebook::request::SubjectKind;
 use evidencebook::store::{CheckpointedLog, ConsistencyParts, Record, RecordSource};
 use evidencebook::substrate::{
     CllSubstrate, Signer as CheckpointSigner, StatedCheckpoint, SubstrateError,
@@ -71,6 +73,10 @@ impl RecordSource for Foreign {
     }
     fn entry_of(&self, body: &[u8]) -> Option<String> {
         Some(entry(body))
+    }
+    /// Each record's octets are its header.
+    fn header_of(&self, record: &Record) -> Option<serde_json::Map<String, Value>> {
+        serde_json::from_slice(&record.body).ok()
     }
 }
 
@@ -249,6 +255,7 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
         prove_beyond_profile: true,
         derive: None,
         derivations: None,
+        requester: None,
     };
     let env = go(&f, json!({"range": [1, 3]}), &at, beyond).unwrap();
     assert_eq!(
@@ -266,6 +273,80 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
     // the artifact and no material.
     let card = go(&f, json!({"checkpoints": null}), &at, beyond).unwrap();
     assert!(card.verification.is_empty());
+}
+
+/// Beyond the profile, a registered derivation carries the material its
+/// subject's record set would: the serving checkpoint and one inclusion
+/// proof per record, in the artifact's order, under an anchor or a half pin.
+#[test]
+fn beyond_the_profile_a_registered_derivation_carries_its_records_material() {
+    let f = foreign();
+    let mut derivations = Derivations::new();
+    let id = derivations
+        .register(DerivationDefinition {
+            document: br#"{"project":["seq"]}"#.to_vec(),
+            recipient: None,
+            forms: vec![SubjectKind::Range, SubjectKind::CitingRecords],
+            fields: vec!["seq".into()],
+        })
+        .unwrap();
+    let at = pinned(&f, 1);
+    let half_pin = ResolvedAnchor::ExchangeHalf(half());
+    #[rustfmt::skip]
+    let cases = [(json!({"range": [1, 3]}), &at, 3), (json!({"exchange": half()}), &half_pin, 2)]; // vocabulary-gate: request-draft wire token
+    for (subject, anchor, n) in cases {
+        let ask = |derived: bool, prove: bool| {
+            let mut wire =
+                json!({"subject": subject, "coverage": {"expected_pin": anchor.digest()}});
+            if derived {
+                wire["derivation"] = json!(id);
+            }
+            let bytes = serde_json::to_vec(&wire).unwrap();
+            let req = parse_json(&bytes).unwrap();
+            let selection = select(&f, &f, &req, anchor, 100).unwrap();
+            build(
+                &f,
+                &f,
+                &req,
+                &bytes,
+                anchor,
+                &selection,
+                Options {
+                    prove_beyond_profile: prove,
+                    derivations: Some(&derivations),
+                    ..Options::default()
+                },
+                &key("responder") as &dyn EnvelopeSigner,
+                ISSUED_AT,
+            )
+            .unwrap()
+        };
+        assert!(
+            ask(true, false).verification.is_empty(),
+            "P-13: none by default"
+        );
+        let derived = ask(true, true);
+        let set = ask(false, true);
+        let mut want = vec![KIND_CHECKPOINT];
+        want.extend(std::iter::repeat_n(KIND_INCLUSION, n));
+        assert_eq!(kinds(&derived), want);
+        assert_eq!(derived.verification_content, set.verification_content);
+        let art: Value = serde_json::from_slice(&derived.artifact).unwrap();
+        let leaves: Vec<u64> = art["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["leaf_index"].as_u64().unwrap())
+            .collect();
+        let seqs: Vec<u64> = art["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["seq"].as_u64().unwrap())
+            .collect();
+        assert_eq!(seqs, leaves.iter().map(|l| l + 1).collect::<Vec<_>>());
+        assert_eq!(leaves.len(), n);
+    }
 }
 
 #[test]
@@ -314,6 +395,7 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
         prove_beyond_profile: true,
         derive: Some(&derive),
         derivations: None,
+        requester: None,
     })
     .unwrap();
     let art: Value = serde_json::from_slice(&env.artifact).unwrap();
@@ -420,6 +502,7 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
             prove_beyond_profile: false,
             derive: Some(&derive),
             derivations: None,
+            requester: None,
         },
         &key("responder") as &dyn EnvelopeSigner,
         ISSUED_AT,

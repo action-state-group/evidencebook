@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -44,7 +45,8 @@ type derivationVectorCase struct {
 	Definition string `json:"definition,omitempty"`
 	Requester  string `json:"requester,omitempty"`
 	Request    string `json:"request"`
-	// Outcome is "artifact" or the refusal reason.
+	// Outcome is "artifact" or the refusal reason; Reply is the reply
+	// octets either way.
 	Outcome        string `json:"outcome"`
 	Artifact       string `json:"artifact,omitempty"`
 	ArtifactDigest string `json:"artifact_digest,omitempty"`
@@ -114,6 +116,14 @@ func TestDerivationVectors(t *testing.T) {
 			Forms:    []SubjectKind{SubjectRange, SubjectFullHistory, SubjectCorrelation},
 			Fields:   []string{"seq", "subject_ref", "epistemic_type", "event_time_claim"},
 		},
+		{
+			// At the reader's limits: -0 is the integer 0, and a value at
+			// depth 32 (the document is depth 0) is read.
+			Name:     "limits",
+			Document: `{"zero":-0,"deep":` + strings.Repeat("[", 32) + strings.Repeat("]", 32) + `}`,
+			Forms:    []SubjectKind{SubjectRecord},
+			Fields:   []string{"v"},
+		},
 	}
 	byName := map[string]string{}
 	for i, def := range defs {
@@ -142,6 +152,9 @@ func TestDerivationVectors(t *testing.T) {
 		{Name: "not-an-object", Document: `["project"]`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "not-json", Document: `{"computation":`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "duplicate-member", Document: `{"a":1,"a":2}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		{Name: "duplicate-member-escaped", Document: `{"a":1,"\u0061":2}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		{Name: "too-deep", Document: `{"deep":` + strings.Repeat("[", 33) + strings.Repeat("]", 33) + `}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		{Name: "trailing-data", Document: `{} {}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "fraction", Document: `{"weight":1.5}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "unsafe-integer", Document: `{"n":9007199254740992}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "no-forms", Document: `{}`, Fields: []string{"seq"}},
@@ -166,9 +179,14 @@ func TestDerivationVectors(t *testing.T) {
 		{"other-requester", "for-alice", "bob", correlation},
 		{"unauthenticated", "for-alice", "", correlation},
 		{"undeclared-form", "for-alice", "alice", Subject{Kind: SubjectRange, Range: [2]uint64{0, 1}}},
+		// Authorization comes before the form (evidencerequest.Decide).
+		{"other-requester-undeclared-form", "for-alice", "bob", Subject{Kind: SubjectRange, Range: [2]uint64{0, 1}}},
 		{"shared-range", "shared", "carol", Subject{Kind: SubjectRange, Range: [2]uint64{0, 2}}},
 		{"shared-correlation", "shared", "alice", correlation},
 		{"shared-checkpoints", "shared", "alice", Subject{Kind: SubjectCheckpoints}},
+		// The share policy refuses an unauthenticated requester before the
+		// form is read.
+		{"shared-unauthenticated-checkpoints", "shared", "", Subject{Kind: SubjectCheckpoints}},
 		{"underived-correlation", "", "alice", correlation},
 		{"unregistered", digestBytes([]byte("no such definition")), "alice", correlation},
 	}
@@ -184,7 +202,7 @@ func TestDerivationVectors(t *testing.T) {
 			e := mustEnvelope(t, reply)
 			out.Outcome, out.Artifact, out.ArtifactDigest, out.Reply = "artifact", string(e.Artifact), e.ArtifactDigest, string(reply.Octets)
 		} else {
-			out.Outcome = reply.Refusal.Reason
+			out.Outcome, out.Reply = reply.Refusal.Reason, string(reply.Octets)
 		}
 		v.Cases = append(v.Cases, out)
 	}

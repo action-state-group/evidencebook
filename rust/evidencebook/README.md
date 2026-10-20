@@ -18,7 +18,9 @@ profile's signed envelope (agent-action-capsule `spec/interop-profile-v0.md`
 §6.2): the canonical artifact for each subject form, the Checkpointed Local
 Log material that proves a record under its anchor (§6.2.1), and the
 signature. `derivation` registers the derivations a responder serves by the
-digest of their definition, which `answer` builds as the Go book does. The
+digest of their definition, which `answer` builds as the Go book does.
+`Derivations::check` refuses as the Go responder's decision does, with the
+plain reason; a responder under the uniform refusal policy maps it. The
 request protocol itself, and checking a received envelope and
 its material, is the `evidence-request` crate's.
 

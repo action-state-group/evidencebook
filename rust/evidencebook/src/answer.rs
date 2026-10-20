@@ -99,6 +99,10 @@ pub enum AnswerError {
     /// does not hold ([`RecordSource::header_of`]).
     #[error("the store holds no header for a record the derivation projects")]
     RecordHeader,
+    /// The derivation is prepared for a recipient other than
+    /// [`Options::requester`]. Answer with a `not_authorized` refusal.
+    #[error("the derivation is prepared for another recipient")]
+    NotAuthorized,
     /// The subject covers more records (or checkpoints) than the limit.
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
@@ -134,6 +138,11 @@ pub struct Options<'a> {
     /// ([`crate::derivation`]). Whether the requester may have one is the
     /// caller's to decide first ([`Derivations::check`]).
     pub derivations: Option<&'a Derivations>,
+    /// The authenticated requester (`None` when unauthenticated). A
+    /// registered derivation prepared for a recipient is built for that
+    /// recipient only, whatever the caller decided before:
+    /// [`AnswerError::NotAuthorized`] for anyone else.
+    pub requester: Option<&'a str>,
 }
 
 /// What an answer is served under and carries: the position of the serving
@@ -240,8 +249,11 @@ pub fn serving_checkpoint(
 /// `anchor` carries, checked against `limit` (clamped to [`MAX_RECORDS`]) as
 /// [`answer`] describes. A token derivation selects no records; a
 /// definition-digest derivation is defined over records and selects its
-/// subject's, as the subject without it would. Whether either has an answer
-/// path is [`build`]'s to say.
+/// subject's, as the subject without it would, whether or not it is
+/// registered: decide the derivation first ([`Derivations::check`] and
+/// `evidence_request::resolve`), so an unknown digest is refused
+/// `derivation_unsupported` before any record is read. Whether a token
+/// derivation has an answer path is [`build`]'s to say.
 pub fn select(
     log: &dyn CheckpointedLog,
     records: &dyn RecordSource,
@@ -369,21 +381,10 @@ pub fn build(
                 .and_then(|d| d.get(id))
                 .filter(|r| r.declares(subject.form()))
                 .ok_or(AnswerError::DerivationUnsupported)?;
-            if selection.records.is_empty() {
-                return Err(AnswerError::NoRecords);
+            if registered.authorizes(options.requester) == Some(false) {
+                return Err(AnswerError::NotAuthorized);
             }
-            let set = selection
-                .records
-                .iter()
-                .map(|&i| record_at(records, i))
-                .collect::<Result<Vec<_>, _>>()?;
-            if options.prove_beyond_profile {
-                material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
-                for r in &set {
-                    let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
-                    material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
-                }
-            }
+            let set = record_set(log, records, selection, at, options, &mut material)?;
             head.insert("derivation".into(), json!(registered.id()));
             head.insert("records".into(), projection(records, &set, registered)?);
             jcs(head)?
@@ -425,21 +426,7 @@ pub fn build(
             record.body
         }
         (None, _) => {
-            if selection.records.is_empty() {
-                return Err(AnswerError::NoRecords);
-            }
-            let set = selection
-                .records
-                .iter()
-                .map(|&i| record_at(records, i))
-                .collect::<Result<Vec<_>, _>>()?;
-            if options.prove_beyond_profile {
-                material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
-                for r in &set {
-                    let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
-                    material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
-                }
-            }
+            let set = record_set(log, records, selection, at, options, &mut material)?;
             head.insert("records".into(), records_value(&set));
             jcs(head)?
         }
@@ -507,6 +494,36 @@ fn inclusion(leaf_index: u64, path: &[[u8; 32]]) -> Result<Vec<u8>, AnswerError>
             "leaf {leaf_index} has no inclusion proof the profile can carry"
         )))
     })
+}
+
+/// The selected records of a record set or a registered derivation, each
+/// checked against its committed entry, and beyond the profile their
+/// material: the anchor checkpoint and one inclusion proof per record, in
+/// the artifact's order.
+fn record_set(
+    log: &dyn CheckpointedLog,
+    records: &dyn RecordSource,
+    selection: &Selection,
+    at: &StatedCheckpoint,
+    options: Options<'_>,
+    material: &mut Vec<(String, Vec<u8>)>,
+) -> Result<Vec<Record>, AnswerError> {
+    if selection.records.is_empty() {
+        return Err(AnswerError::NoRecords);
+    }
+    let set = selection
+        .records
+        .iter()
+        .map(|&i| record_at(records, i))
+        .collect::<Result<Vec<_>, _>>()?;
+    if options.prove_beyond_profile {
+        material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
+        for r in &set {
+            let path = log.inclusion_path(r.leaf_index, at.checkpoint.mmr_size)?;
+            material.push((KIND_INCLUSION.into(), inclusion(r.leaf_index, &path)?));
+        }
+    }
+    Ok(set)
 }
 
 /// The record at `leaf_index`, checked against its committed entry.
