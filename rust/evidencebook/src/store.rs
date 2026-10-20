@@ -31,6 +31,7 @@
 //! [`CllSubstrate`]: crate::substrate::CllSubstrate
 
 use crate::substrate::{StatedCheckpoint, SubstrateError};
+use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 /// One record, as a store serves it.
@@ -73,6 +74,16 @@ pub trait RecordSource {
     /// lowercase hex.
     fn entry_of(&self, body: &[u8]) -> Option<String> {
         Some(hex::encode(Sha256::digest(body)))
+    }
+    /// The record's header members (the I-D's record header), as the store
+    /// holds them: what a definition-digest derivation projects
+    /// ([`crate::derivation`]). A Go book keeps each record's header beside
+    /// its capsule, and a record its caller sealed may carry it inline, so
+    /// where it is read from is the store's. The default holds none, and a
+    /// derivation over such a store is [`crate::answer::AnswerError::RecordHeader`].
+    fn header_of(&self, record: &Record) -> Option<Map<String, Value>> {
+        let _ = record;
+        None
     }
 }
 

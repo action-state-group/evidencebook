@@ -1,5 +1,32 @@
 # Changelog: evidencebook (Rust)
 
+## Unreleased
+
+- **`derivation`: definition-digest derivations** (evidencebook#62), at
+  parity with the Go book's `Book.RegisterDerivation`. `Derivations::register`
+  takes a `DerivationDefinition` (the definition document, an optional
+  recipient, the subject forms and the record header members it declares)
+  and returns its identifier, the SHA-256 of the document's RFC 8785 form;
+  the document must be a JSON object, read as the Go request reader reads it.
+  A definition is never over `checkpoints` and declares only `HEADER_FIELDS`.
+  Registrations are held in memory only. `Derivations::check` takes the
+  derivation steps of a decision as the Go responder does
+  (`derivation_unsupported`, then `no_such_subject` for an undeclared form,
+  then `not_authorized` for anyone but a named recipient), and
+  `Derivations::forms_of` answers `Responder::derivation_forms`. The crate
+  reads none of the definition's members (P-14).
+- **`answer` answers a registered derivation** with `Options::derivations`
+  set: RFC 8785 of `{anchor, derivation, evidence_stream, records, subject}`,
+  each record its `digest`, `leaf_index` and the declared header members it
+  has, read through the new `RecordSource::header_of` (default: no header,
+  `AnswerError::RecordHeader`). `select` now selects a definition-digest
+  derivation's subject records, as the subject without it; the underived
+  artifact is unchanged. `testdata/derivation/vectors.json`, generated from a
+  real Go book, is answered byte for byte by both implementations.
+- **Breaking:** `Options` has a new field, `derivations` (add
+  `derivations: None` or `..Options::default()` to a struct literal), and
+  `AnswerError` a new variant, `RecordHeader`.
+
 ## 0.0.6
 
 - **`store`: the read-only store an answer reads** (evidencebook#35). Two

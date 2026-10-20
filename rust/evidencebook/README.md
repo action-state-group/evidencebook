@@ -17,7 +17,9 @@ The substrate keeps one sequence commitment, the MMR.
 profile's signed envelope (agent-action-capsule `spec/interop-profile-v0.md`
 §6.2): the canonical artifact for each subject form, the Checkpointed Local
 Log material that proves a record under its anchor (§6.2.1), and the
-signature. The request protocol itself, and checking a received envelope and
+signature. `derivation` registers the derivations a responder serves by the
+digest of their definition, which `answer` builds as the Go book does. The
+request protocol itself, and checking a received envelope and
 its material, is the `evidence-request` crate's.
 
 The crate carries no deployment vocabulary. Record kinds, correlation key
@@ -33,6 +35,10 @@ names and content comparators come from the calling profile.
 - `testdata/refusal-interop/refusal.json` (at the repository root) is a
   refusal signed by the Python implementation. The Go implementation verifies
   it, and `tests/refusal_interop.rs` reads the same file in place.
+- `testdata/derivation/vectors.json` (at the repository root) is a book's
+  definition-digest derivations as the Go implementation answers them
+  (`TestDerivationVectors`). `tests/derivation.rs` answers the same requests
+  and gives the same identifiers, refusals and reply octets.
 
 ## Changes
 

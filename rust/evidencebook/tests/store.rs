@@ -248,6 +248,7 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
     let beyond = Options {
         prove_beyond_profile: true,
         derive: None,
+        derivations: None,
     };
     let env = go(&f, json!({"range": [1, 3]}), &at, beyond).unwrap();
     assert_eq!(
@@ -312,6 +313,7 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
     let env = ask(Options {
         prove_beyond_profile: true,
         derive: Some(&derive),
+        derivations: None,
     })
     .unwrap();
     let art: Value = serde_json::from_slice(&env.artifact).unwrap();
@@ -417,6 +419,7 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
         Options {
             prove_beyond_profile: false,
             derive: Some(&derive),
+            derivations: None,
         },
         &key("responder") as &dyn EnvelopeSigner,
         ISSUED_AT,
