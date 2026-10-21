@@ -460,22 +460,17 @@ func TestDealReconcileGapOutranksUnknownAcrossDeals(t *testing.T) {
 	}
 }
 
-// A period holding no half groups no deal: every tally is zero, and DR
-// §7.2 makes that SATISFIED and not_met, with no evidence.
+// A period holding no half has nothing for a claim to cite (RES §1, DR
+// §7.3): the reconcile is refused, with no Result.
 func TestDealReconcileEmptyPopulation(t *testing.T) {
 	in := pairedInput(t)
 	in.Period = ResultPeriod{Start: "2026-09-01T00:00:00Z", End: "2026-10-01T00:00:00Z"}
 	got, err := RecomputeDealReconcile(in)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "no half") {
+		t.Fatalf("err = %v, want ErrInvalid naming no half", err)
 	}
-	for _, claim := range got.Result.Claims {
-		if claim.Reconcile.Tallies != (ResultTallies{}) || claim.Sufficiency != "SATISFIED" || claim.Verdict != "not_met" || len(claim.Evidence) != 0 {
-			t.Fatalf("claim %+v", claim)
-		}
-	}
-	if len(got.DealState) != 0 || len(got.FieldOpenings) != 0 {
-		t.Fatalf("deal state %v, openings %v", got.DealState, got.FieldOpenings)
+	if len(got.Result.Claims) != 0 {
+		t.Fatalf("a refused reconcile made claims %+v", got.Result.Claims)
 	}
 }
 

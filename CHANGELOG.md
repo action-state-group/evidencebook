@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed (breaking): a deal reconcile over a period with no half is refused
+
+- `RecomputeDealReconcile` returns `ErrInvalid`, and no Result, when the
+  period holds no half of either book. Before, it sealed both reconcile
+  claims with an empty `evidence`, tallies of zero and verdict `not_met`.
+  Evidence Result v0 requires every claim to cite at least one record
+  (agent-action-capsule#353).
+
 ### Changed (breaking): a derivation cannot be registered again with other declarations
 
 - `Book.RegisterDerivation` no longer replaces a registration whose
