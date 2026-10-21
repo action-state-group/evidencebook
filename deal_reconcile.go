@@ -229,6 +229,8 @@ type mappedHalf struct {
 // with ErrInvalid and no Result. Every half given is read through its
 // book's mapping before the period and the two books scope it, so a
 // malformed half refuses the reconcile even when it would be left out.
+// A period holding no half of either book is refused with ErrInvalid too:
+// a claim cites at least one record (RES §1, DR §7.3), and there is none.
 func RecomputeDealReconcile(in DealReconcileInput) (DealReconcile, error) {
 	if in.SideA == "" || in.Peer == "" || in.SideA == in.Peer {
 		return DealReconcile{}, fmt.Errorf("%w: a deal reconcile names two different books", ErrInvalid)
@@ -253,6 +255,9 @@ func RecomputeDealReconcile(in DealReconcileInput) (DealReconcile, error) {
 			continue
 		}
 		halves = append(halves, m)
+	}
+	if len(halves) == 0 {
+		return DealReconcile{}, fmt.Errorf("%w: the period holds no half of either book, so there is nothing to reconcile", ErrInvalid)
 	}
 	out := DealReconcile{
 		FieldOpenings:   map[string]map[string]string{},
