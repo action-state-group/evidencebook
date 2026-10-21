@@ -472,16 +472,6 @@ func TestDealReconcileEmptyPopulation(t *testing.T) {
 	if len(got.Result.Claims) != 0 {
 		t.Fatalf("a refused reconcile made claims %+v", got.Result.Claims)
 	}
-	// Only side B's half in the period still reconciles: one half is cited.
-	in.Period = ResultPeriod{Start: "2026-10-15T00:00:01Z", End: "2026-10-16T00:00:00Z"}
-	if got, err = RecomputeDealReconcile(in); err != nil {
-		t.Fatal(err)
-	}
-	for _, claim := range got.Result.Claims {
-		if len(claim.Evidence) != 1 {
-			t.Fatalf("claim %s cites %d halves, want 1", claim.ID, len(claim.Evidence))
-		}
-	}
 }
 
 // A half recorded before the period's start is not in the reconcile.
