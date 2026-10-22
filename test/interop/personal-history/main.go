@@ -22,6 +22,13 @@
 // key is an Ed25519 test key whose seed is the SHA-256 of a public label, so
 // the output is the same on every run and every machine.
 //
+// With -correlated it files each step the way capsule-cli#264's deal steps
+// are filed: subject_ref is the deal and the step's number in it
+// ("<deal>/<n>") and correlation.exchange_id is the deal, so Respond answers
+// a correlation subject by exchange_id rather than its subject_ref fallback.
+// That run is not the corpus's: its record digests, and so its anchors and
+// replies, differ. Without the flag the output is the corpus run.
+//
 // The keys are test keys. Never use them for anything else.
 package main
 
@@ -31,6 +38,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -101,8 +109,10 @@ type checkpoint struct {
 }
 
 type record struct {
-	Digest     string `json:"digest"`
-	Deal       string `json:"deal"`
+	Digest string `json:"digest"`
+	Deal   string `json:"deal"`
+	// SubjectRef is set only in a -correlated run, where it differs from Deal.
+	SubjectRef string `json:"subject_ref,omitempty"`
 	RecordType string `json:"record_type"`
 }
 
@@ -119,13 +129,15 @@ type output struct {
 }
 
 func main() {
-	if err := run(context.Background()); err != nil {
+	correlated := flag.Bool("correlated", false, "file each step under correlation.exchange_id, as capsule-cli#264 does")
+	flag.Parse()
+	if err := run(context.Background(), *correlated); err != nil {
 		fmt.Fprintln(os.Stderr, "personal-history:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, correlated bool) error {
 	dir, err := os.MkdirTemp("", "personal-history-")
 	if err != nil {
 		return err
@@ -183,15 +195,26 @@ func run(ctx context.Context) error {
 		Definitions: map[string]string{},
 	}
 	slices.Sort(out.Selection) // §4.1: sorted by code point
+	numbered := map[string]int{}
 	for i, s := range steps {
-		r, err := book.Append(ctx, evidencebook.Entry{
+		entry := evidencebook.Entry{
 			RecordType: s.kind, EpistemicType: evidencebook.ProducerClaim, SubjectRef: s.deal,
 			EventTimeClaim: clock.Add(time.Second - s.claimed),
-		})
+		}
+		if correlated {
+			numbered[s.deal]++
+			entry.SubjectRef = fmt.Sprintf("%s/%d", s.deal, numbered[s.deal])
+			entry.Correlation = evidencebook.Correlation{ExchangeID: s.deal}
+		}
+		r, err := book.Append(ctx, entry)
 		if err != nil {
 			return err
 		}
-		out.Records = append(out.Records, record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind})
+		rec := record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind}
+		if correlated {
+			rec.SubjectRef = entry.SubjectRef
+		}
+		out.Records = append(out.Records, rec)
 		if i == 5 || i == 7 {
 			cp, err := book.Checkpoint(ctx)
 			if err != nil {

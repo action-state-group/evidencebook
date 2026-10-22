@@ -128,7 +128,9 @@ the A2A carriage (`Book.A2A`) and the MCP carriage (`Book.MCP`), and checks
 that all three carry a byte-identical canonical Artifact. CI also reproduces
 the responder run of the Personal-Agent History vectors byte for byte
 (`test/interop/personal-history`), rebuilds the corpus from it, and runs the
-corpus's own test.
+corpus's own test. It does the same for a run that files each step under
+`correlation.exchange_id`, as capsule-cli#264's deal steps are filed
+(`-correlated`), and the History built from that run passes the same test.
 
 ## Other implementations and parity
 

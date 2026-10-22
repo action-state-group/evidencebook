@@ -207,8 +207,9 @@ jobs:
           trap 'rm -rf "$work"' EXIT
           # main.go is the corpus producer with the book's payload directory
           # replaced by its originals store (Config.Originals,
-          # capsule-cli#236): exactly the change producer.diff records, until
-          # the corpus pins an evidencebook with it.
+          # capsule-cli#236) and a -correlated mode (#82): exactly the change
+          # producer.diff records, until the corpus pins an evidencebook with
+          # it.
           diff "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go > "$work/producer.diff" || true
           cmp evidencebook/test/interop/personal-history/producer.diff "$work/producer.diff"
           go -C evidencebook run ./test/interop/personal-history > "$work/responder-run.json"
@@ -233,6 +234,31 @@ jobs:
             agent-action-capsule/python/tests/test_personal_history_basic_v0_vectors.py
           python evidencebook/test/interop/python-personal/count_by_class.py "$junit" \
             agent-action-capsule/vectors/personal-history-basic-v0/vectors.json
+      # capsule-cli#264 files each deal step with subject_ref <deal>/<n> and
+      # correlation.exchange_id = the deal, so Respond answers a deal by
+      # exchange_id, not the subject_ref fallback the corpus run takes. The
+      # corpus is rebuilt from that run in a copy of the AAC checkout and
+      # its test run there. The registration test is left out, since it
+      # checks the committed corpus's digests in vectors/SHA256SUMS; the
+      # rebuilt corpus's own SHA256SUMS is checked instead.
+      - name: Rebuild the corpus from a run filed under correlation.exchange_id, then run its test
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          cp -R agent-action-capsule "$work/aac"
+          corpus="$work/aac/vectors/personal-history-basic-v0"
+          go -C evidencebook run ./test/interop/personal-history -correlated > "$work/correlated-run.json"
+          find "$corpus" -mindepth 1 -maxdepth 1 ! -name README.md ! -name producer -exec rm -rf {} +
+          python "$work/aac/python/scripts/generate_personal_history_basic_v0_vectors.py" --out "$corpus" --run "$work/correlated-run.json"
+          if cmp -s "$corpus/vectors.json" agent-action-capsule/vectors/personal-history-basic-v0/vectors.json; then
+            echo "the correlated run rebuilt the committed corpus: -correlated changed nothing" >&2
+            exit 1
+          fi
+          (cd "$corpus" && sha256sum -c --quiet SHA256SUMS)
+          PYTHONPATH="$work/aac/python" python -m pytest -p no:cacheprovider -rA \
+            "$work/aac/python/tests/test_personal_history_basic_v0_vectors.py" \
+            -k "not test_sha256sums_and_registration"
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
