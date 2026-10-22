@@ -222,7 +222,7 @@ func TestRunIsThePublishedRun(t *testing.T) {
 // still describes the corpus README's copy step.
 func TestProducerIsTheCorpusProducer(t *testing.T) {
 	if got := sha(readFile(t, "main.go")); got != producerSHA256 {
-		t.Fatalf("main.go has SHA-256 %s, not the corpus producer's %s", got, producerSHA256)
+		t.Fatalf("main.go has SHA-256 %s, not the pinned %s: update producerSHA256 and producer.diff together", got, producerSHA256)
 	}
 }
 

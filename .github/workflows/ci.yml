@@ -238,8 +238,9 @@ jobs:
       # correlation.exchange_id = the deal, so Respond answers a deal by
       # exchange_id, not the subject_ref fallback the corpus run takes. The
       # corpus is rebuilt from that run in a copy of the AAC checkout and
-      # its test run there; only the registration test is left out, since it
-      # checks the committed corpus's digests in vectors/SHA256SUMS.
+      # its test run there. The registration test is left out, since it
+      # checks the committed corpus's digests in vectors/SHA256SUMS; the
+      # rebuilt corpus's own SHA256SUMS is checked instead.
       - name: Rebuild the corpus from a run filed under correlation.exchange_id, then run its test
         shell: bash
         run: |
@@ -254,6 +255,7 @@ jobs:
             echo "the correlated run rebuilt the committed corpus: -correlated changed nothing" >&2
             exit 1
           fi
+          (cd "$corpus" && sha256sum -c --quiet SHA256SUMS)
           PYTHONPATH="$work/aac/python" python -m pytest -p no:cacheprovider -rA \
             "$work/aac/python/tests/test_personal_history_basic_v0_vectors.py" \
             -k "not test_sha256sums_and_registration"
