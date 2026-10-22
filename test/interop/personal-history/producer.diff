@@ -1,12 +1,64 @@
-142c142
+24a25,31
+> // With -correlated it files each step the way capsule-cli#264's deal steps
+> // are filed: subject_ref is the deal and the step's number in it
+> // ("<deal>/<n>") and correlation.exchange_id is the deal, so Respond answers
+> // a correlation subject by exchange_id rather than its subject_ref fallback.
+> // That run is not the corpus's: its record digests, and so its anchors and
+> // replies, differ. Without the flag the output is the corpus run.
+> //
+33a41
+> 	"flag"
+104,105c112,115
+< 	Digest     string `json:"digest"`
+< 	Deal       string `json:"deal"`
+---
+> 	Digest string `json:"digest"`
+> 	Deal   string `json:"deal"`
+> 	// SubjectRef is set only in a -correlated run, where it differs from Deal.
+> 	SubjectRef string `json:"subject_ref,omitempty"`
+122c132,134
+< 	if err := run(context.Background()); err != nil {
+---
+> 	correlated := flag.Bool("correlated", false, "file each step under correlation.exchange_id, as capsule-cli#264 does")
+> 	flag.Parse()
+> 	if err := run(context.Background(), *correlated); err != nil {
+128c140
+< func run(ctx context.Context) error {
+---
+> func run(ctx context.Context, correlated bool) error {
+142c154
 < 	payloads, err := evidencebook.OpenPayloadDir(filepath.Join(dir, "payloads"))
 ---
 > 	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
-146c146
+146c158
 < 	signer, err := evidencebook.NewEd25519Signer(seeded(holderLabel))
 ---
 > 	originals, err := evidencebook.OpenOriginalsFile(ctx, filepath.Join(dir, "originals.jsonl"), "interop", signer.PublicKey())
-156c156
+156c168
 < 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Payloads: payloads,
 ---
 > 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Originals: originals,
+185a198
+> 	numbered := map[string]int{}
+187c200
+< 		r, err := book.Append(ctx, evidencebook.Entry{
+---
+> 		entry := evidencebook.Entry{
+190c203,209
+< 		})
+---
+> 		}
+> 		if correlated {
+> 			numbered[s.deal]++
+> 			entry.SubjectRef = fmt.Sprintf("%s/%d", s.deal, numbered[s.deal])
+> 			entry.Correlation = evidencebook.Correlation{ExchangeID: s.deal}
+> 		}
+> 		r, err := book.Append(ctx, entry)
+194c213,217
+< 		out.Records = append(out.Records, record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind})
+---
+> 		rec := record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind}
+> 		if correlated {
+> 			rec.SubjectRef = entry.SubjectRef
+> 		}
+> 		out.Records = append(out.Records, rec)

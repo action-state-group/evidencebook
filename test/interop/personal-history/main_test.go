@@ -22,16 +22,16 @@ import (
 // there. testdata/vectors.json is that commit's vectors.json, unchanged.
 //
 // producerSHA256 is this repository's main.go. It differs from that commit's
-// producer/main.go (SHA-256 e9054656...f7c38e) only where the book's payload
-// store became its artifact store (Config.Originals, capsule-cli#236): the
-// corpus pins an evidencebook commit from before that change, where its
-// producer builds unchanged. producer.diff is the whole difference, and CI
+// producer/main.go (SHA-256 e9054656...f7c38e) where the book's payload store
+// became its artifact store (Config.Originals, capsule-cli#236), which the
+// corpus's evidencebook commit predates, and in its -correlated mode (#82),
+// which leaves the default run unchanged. producer.diff is the whole difference, and CI
 // checks it against the corpus. When the corpus next pins evidencebook, its
 // producer/main.go takes this file.
 const (
 	aacCommit      = "0b7b1825965e7f7845cbc70a490a581cbc70bd37"
 	vectorsSHA256  = "8369998d0fb0f118a1f4d6c5469cd93d83885fa6ae2c3b39e1267955001cbccc"
-	producerSHA256 = "db48bcaa6dcf480c66886f93f164025df5a9a394cae2f6d34ef28b4493f7ac51"
+	producerSHA256 = "99e9f3e7e43de6d879c7730155aae8f14f081c0f2e528e5a21cfda1da0f9ace9"
 )
 
 var (
@@ -43,14 +43,15 @@ var (
 // produce runs the command once, as `go run` would, and returns its stdout.
 func produce(t *testing.T) []byte {
 	t.Helper()
-	runOnce.Do(func() { runBytes, runErr = capture() })
+	runOnce.Do(func() { runBytes, runErr = capture(false) })
 	if runErr != nil {
 		t.Fatal(runErr)
 	}
 	return runBytes
 }
 
-func capture() ([]byte, error) {
+// capture runs the command, with -correlated or without, and returns its stdout.
+func capture(correlated bool) ([]byte, error) {
 	f, err := os.CreateTemp("", "personal-history-run-")
 	if err != nil {
 		return nil, err
@@ -59,7 +60,7 @@ func capture() ([]byte, error) {
 	defer f.Close()
 	stdout := os.Stdout
 	os.Stdout = f
-	err = run(context.Background())
+	err = run(context.Background(), correlated)
 	os.Stdout = stdout
 	if err != nil {
 		return nil, err
@@ -207,7 +208,7 @@ func TestRunIsThePublishedRun(t *testing.T) {
 	if got := sha(first); got != c.Responder.RunSHA256 {
 		t.Fatalf("the run has SHA-256 %s, not the corpus's run_sha256 %s: Respond's output drifted from the published vectors", got, c.Responder.RunSHA256)
 	}
-	again, err := capture()
+	again, err := capture(false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,4 +594,85 @@ func orNone(xs []string) string {
 		return "none"
 	}
 	return strings.Join(xs, ", ")
+}
+
+// TestCorrelatedRunAnswersTheSameRecords: filed under correlation.exchange_id
+// with subject_ref <deal>/<n>, as capsule-cli#264 files steps, every request
+// is answered with the same records as the corpus run, which Respond can
+// answer only through the subject_ref fallback. The record digests, and so
+// the anchors and replies, differ; sequence numbers and the projected fields
+// do not.
+func TestCorrelatedRunAnswersTheSameRecords(t *testing.T) {
+	base := loadRun(t)
+	data, err := capture(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var correlated output
+	if err := json.Unmarshal(data, &correlated); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range base.Records {
+		if r.SubjectRef != "" {
+			t.Errorf("the corpus run carries subject_ref %q", r.SubjectRef)
+		}
+	}
+	numbered := map[string]int{}
+	for i, r := range correlated.Records {
+		numbered[r.Deal]++
+		if want := fmt.Sprintf("%s/%d", r.Deal, numbered[r.Deal]); r.SubjectRef != want {
+			t.Errorf("record %d: subject_ref %q, want %q", i, r.SubjectRef, want)
+		}
+		if r.Digest == base.Records[i].Digest {
+			t.Errorf("record %d: the digest is the corpus run's, so the header did not change", i)
+		}
+	}
+	if len(correlated.Exchanges) != len(base.Exchanges) {
+		t.Fatalf("%d exchanges, the corpus run has %d", len(correlated.Exchanges), len(base.Exchanges))
+	}
+	for i, e := range correlated.Exchanges {
+		b := base.Exchanges[i]
+		if e.Name != b.Name || e.Reply.MediaType != b.Reply.MediaType {
+			t.Fatalf("exchange %d: %s (%s), the corpus run has %s (%s)", i, e.Name, e.Reply.MediaType, b.Name, b.Reply.MediaType)
+		}
+		got, want := answered(t, e.Reply.OctetsText), answered(t, b.Reply.OctetsText)
+		if len(want) == 0 {
+			t.Fatalf("%s: the corpus run answers no record", b.Name)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: records\n%s\nwant\n%s", e.Name, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
+}
+
+// answered is a reply's records without their digests, as JSON, or its
+// refusal reason when it is not an envelope.
+func answered(t *testing.T, reply string) []string {
+	t.Helper()
+	var env struct {
+		Artifact string `json:"artifact"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(reply), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Artifact == "" {
+		return []string{"refused: " + env.Reason}
+	}
+	var artifact struct {
+		Records []map[string]any `json:"records"`
+	}
+	if err := json.Unmarshal([]byte(decodedArtifact(t, reply)), &artifact); err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, r := range artifact.Records {
+		delete(r, "digest")
+		b, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, string(b))
+	}
+	return out
 }
