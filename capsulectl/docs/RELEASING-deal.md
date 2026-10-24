@@ -1,21 +1,18 @@
 # Releasing capsulectl-deal
 
-A release is a pushed `v*` tag, built and published by the release workflow
-through [`scripts/release-build.sh`](scripts/release-build.sh), after a
-release reviewer approves the run.
+A release is a pushed `v*` tag, built and published by
+[`release.yml`](.github/workflows/release.yml) through
+[`scripts/release-build.sh`](scripts/release-build.sh), after a release
+reviewer approves the run. CI runs the same build as a dry run on every
+change.
 
-**Not yet releasable.** The release workflow lands in its own pull request,
-after three things, in this order:
+A release's sealed records name it as their producer,
+`capsulectl-deal <tag> (<commit>)`, and a shared copy keeps a producer only
+in a fixed shape, so the workflow refuses any other tag: `v<n>.<n>.<n>`, with
+at most four digits each, optionally followed by `-rc`, `-alpha`, `-beta`
+or `-dev` and up to three digits.
 
-1. a repository admin applies the release settings below, so a pushed tag
-   waits for a reviewer;
-2. sealed records name the plugin's own build as their producer,
-   `capsulectl-deal <tag> (<commit>)`, and capsule-cli's deal page compares
-   producers by name (capsule-cli#326, design note section 4.2);
-3. the workflow refuses a tag outside the producer shape a shared copy keeps
-   (`v<n>.<n>.<n>`, optionally `-rc<n>`, `-alpha<n>`, `-beta<n>` or `-dev<n>`).
-
-Until then `scripts/release-build.sh` runs only as CI's dry run. It follows capsule-cli's release process
+The process follows capsule-cli's release process
 ([docs/RELEASING.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/RELEASING.md))
 and its rules: agents never approve a release run, and a pushed tag or a
 published release never changes.
@@ -38,7 +35,8 @@ first-party check compares the plugin's `core_version` with its own version
 2. A release reviewer approves the run (Actions, Release, Review deployments).
 3. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
    `gh attestation verify` on each asset with
-   `--bundle capsulectl-deal-vX.Y.Z.sigstore.json`.
+   `--bundle capsulectl-deal-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook-deal
+   --signer-workflow action-state-group/evidencebook-deal/.github/workflows/release.yml`.
 4. The install page pins the plugin asset, the skill archive
    (`deal-skill-vX.Y.Z.tar.gz`) and its `skills/deal/SKILL.md`.
 

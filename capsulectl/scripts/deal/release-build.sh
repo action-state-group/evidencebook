@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # release-build.sh VERSION COMMIT OUTDIR -- the one build command for release
-# assets, used by the release workflow (to come, RELEASING.md) and for local
+# assets, used by .github/workflows/release.yml, CI's dry run and local
 # rebuilds.
 #
 # Reproducible, as capsule-cli's: CGO off, -trimpath, no VCS stamping, empty

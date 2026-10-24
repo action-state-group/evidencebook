@@ -225,12 +225,12 @@ func TestInstallCheckNeedsTheProfilesPlugin(t *testing.T) {
 	dealPluginAt(t, "v0.1.0-rc2")
 	check, _, err = installCheckRun(t, dir)
 	require.ErrorIs(t, err, cli.ErrPartial)
-	assert.Contains(t, check["issues"], "capsulectl-deal is built for capsulectl v0.1.0-rc2, this capsulectl is v0.1.0-rc3: run capsulectl plugin install deal")
+	assert.Contains(t, check["issues"], "capsulectl-deal is built for capsulectl v0.1.0-rc2, this capsulectl is v0.1.0-rc3: install the plugin file built for this release, then run capsulectl plugin install ./capsulectl-deal")
 
 	dealPluginAt(t, "")
 	check, _, err = installCheckRun(t, dir)
 	require.ErrorIs(t, err, cli.ErrPartial)
-	assert.Contains(t, check["issues"], "capsulectl-deal is not installed: run capsulectl plugin install deal")
+	assert.Contains(t, check["issues"], "capsulectl-deal is not installed: install the plugin file from its release, then run capsulectl plugin install ./capsulectl-deal")
 
 	// A development build reports the version without checking it.
 	dealPluginAt(t, "0.1.0-dev")
