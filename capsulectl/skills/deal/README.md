@@ -630,13 +630,22 @@ verifier, not evidence: of a 221,847-byte page for the 5-step deal,
 ## Which build made a record, and what is never collected
 
 Every sealed step names the build that sealed it, in the record itself
-(`x-deal-v0.producer`: name, version, commit). A development build says so.
-The report's `produced_by`, the assurance line ("Produced by capsulectl
-<version> (<commit>)") and the receipt page show it. The page compares it
-with the version of the capsulectl that made the page, from data already in
-the file. If the record is older it says so ("Produced by an older version
-... What changed:") and links the release notes. It fetches nothing to
-decide.
+(`x-deal-v0.producer`: name, version, commit). A release of this plugin
+seals `capsulectl-deal <tag> (<commit>)`; a build without a release, and
+every build before the plugins left capsule-cli, seals `capsulectl
+<version> (<commit>)`. A development build says so. The report's
+`produced_by`, the assurance line ("Produced by ...") and the receipt page
+show it.
+
+The page compares those builds with the build that made the page, from data
+already in the file, and only between builds of the same name. A step from
+an older version of the page's build gets "Produced by an older version ...
+than the capsulectl-deal that made this page". On a capsulectl-deal page a
+step capsulectl sealed is an earlier build, not an older version: "Some
+steps were sealed by capsulectl vX, the build that sealed deals before
+capsulectl-deal did; ...". Either note links the release notes: this
+plugin's release for a page a release made, otherwise capsule-cli's
+releases. It fetches nothing to decide.
 
 Nothing phones home. capsulectl collects nothing and sends no version, usage
 or error data anywhere. The only things that leave the device are what the

@@ -262,6 +262,7 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		}
 		return out
 	}
+	builtBy := currentProducer()
 	ext := map[string]interface{}{
 		"deal_id": events[0].Event.DealID, "steps": steps, "asked": report.Asked, "asked_step": report.AskedStep,
 		// The opening of the user's own words, so the page can check them
@@ -290,8 +291,11 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		// the page compares the two from data it already holds. Nothing
 		// is fetched to do it.
 		"instructions": report.Instructions,
-		"produced_by":  stringList(dealProducers(events)), "page_built_by": currentProducer().String(), "page_version": cli.CLIVersion,
-		"scope": dealScopeLine, "audience": cli.DealAudienceKeep, "verify_command": verifyCommand,
+		"produced_by":  stringList(dealProducers(events)), "page_built_by": builtBy.String(), "page_version": cli.CLIVersion,
+		// The page's build as structured data, so the page compares names
+		// without parsing page_built_by (capsule-cli#326).
+		"page_producer": map[string]interface{}{"name": builtBy.Name, "version": builtBy.Version, "commit": builtBy.Commit},
+		"scope":         dealScopeLine, "audience": cli.DealAudienceKeep, "verify_command": verifyCommand,
 		// The errand's moves (capsule-cli#370), worded on the page from the
 		// pack the page carries: a shared copy has none, its labels name the
 		// merchant, the item and what was told.
@@ -309,6 +313,9 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 	}
 	ext["merchant"] = merchant
 	ext["email_scope"] = emailScopeLine
+	if notes := dealReleaseNotes(); notes != "" {
+		ext["release_notes"] = notes
+	}
 	if opening := saleAuthorityOpening(events); opening != nil {
 		ext["sale_authority_opening"] = opening
 	}

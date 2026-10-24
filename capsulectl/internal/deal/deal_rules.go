@@ -857,8 +857,26 @@ func dealProducers(events []sealedEvent) []string {
 	return out
 }
 
+// currentProducer names the build that seals a record. A release build of
+// this plugin sets cli.PluginVersion, and its records name it, not the core it
+// embeds: two deal releases on one core would otherwise seal the same stamp,
+// and sealed records keep it (capsule-cli#326 design note section 4.2). A
+// build without it names the embedded core, as builds inside capsule-cli did.
 func currentProducer() *dealProducer {
+	if cli.PluginVersion != "" {
+		return &dealProducer{Name: "capsulectl-deal", Version: cli.PluginVersion, Commit: cli.FirstNonEmpty(cli.PluginCommit, "unknown")}
+	}
 	return &dealProducer{Name: "capsulectl", Version: cli.CLIVersion, Commit: cli.CLICommit}
+}
+
+// dealReleaseNotes is where a page sends its reader for what changed between
+// builds: this plugin's release, or nothing for a build without one, whose
+// page links capsule-cli's releases as before.
+func dealReleaseNotes() string {
+	if cli.PluginVersion == "" {
+		return ""
+	}
+	return "https://github.com/action-state-group/evidencebook-deal/releases/tag/" + cli.PluginVersion
 }
 
 func (p *dealProducer) String() string {

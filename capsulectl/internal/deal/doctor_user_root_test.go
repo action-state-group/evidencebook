@@ -87,7 +87,7 @@ func TestInstallCheckFailsWhenTheProfilePluginIsRefused(t *testing.T) {
 	require.Error(t, err, out)
 	assert.Equal(t, false, check["ok"])
 	assert.Equal(t, "refused", userRootState(check))
-	assert.Equal(t, []any{"capsulectl-deal is not installed: run capsulectl plugin install deal"}, check["issues"], "the plugin check's issue, and none of user_root's own")
+	assert.Equal(t, []any{"capsulectl-deal is not installed: install the plugin file from its release, then run capsulectl plugin install ./capsulectl-deal"}, check["issues"], "the plugin check's issue, and none of user_root's own")
 }
 
 func TestInstallCheckPassesWithAValidSystemPluginAndARefusedUserRoot(t *testing.T) {
