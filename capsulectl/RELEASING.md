@@ -16,8 +16,8 @@ runs.
 The plugin embeds the `capsulectl` core it builds against, and the core's
 first-party check compares the plugin's `core_version` with its own version
 (capsule-cli#326, design note section 4.2). `go.mod` requires capsule-cli at
-a published release tag and this repository's library at a version, with no
-`replace`; the publish workflow refuses anything else. Every capsule-cli
+a published release tag, which the publish workflow checks, and this
+repository's library at a version; it refuses a `replace` of either. Every capsule-cli
 release that users install needs a capsulectl-book release built against it.
 
 ## The cut
