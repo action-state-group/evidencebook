@@ -13,7 +13,7 @@
   they move here so the two plugins, which leave capsule-cli for separate
   repositories, keep one sealing path (capsule-cli#326).
   `RecordTypeEvidenceResult` names the record type they seal, which the
-  caller's append writes. Go only: they compose existing book operations
+  caller's `add` writes (`Book.Append` or `AppendCapsule`). Go only: they compose existing book operations
   and add no wire format.
 
 ### Changed (breaking): a deal reconcile over a period with no half is refused
