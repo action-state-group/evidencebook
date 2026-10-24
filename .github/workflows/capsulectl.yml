@@ -50,7 +50,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: The release build, dry run
-        # publish-capsulectl.yml's build and handshake check, on every change.
+        # release.yml's build and handshake check, on every change.
         run: |
           scripts/release-build.sh v0.0.0-ci "$GITHUB_SHA" "$RUNNER_TEMP/dist"
           meta="$("$RUNNER_TEMP/dist/capsulectl-book-v0.0.0-ci-linux-amd64" cli-plugin-metadata)"

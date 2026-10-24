@@ -9,7 +9,7 @@ Go module `capsulectl/`. They are versioned and tagged independently.
 |---|---|---|---|---|
 | Go module `github.com/action-state-group/evidencebook` | `CHANGELOG.md` heading | `CHANGELOG.md` | `v<version>` | an admin pushing the tag |
 | crate `evidencebook` | `rust/evidencebook/Cargo.toml` and `rust/Cargo.lock` | `rust/evidencebook/CHANGELOG.md` | `crates/evidencebook-v<version>` | `publish-rust.yml`, environment `crates-io` (tag rule `crates/*-v*`) |
-| Go module `github.com/action-state-group/evidencebook/capsulectl` (capsulectl-book) | the tag | `CHANGELOG.md` | `capsulectl/v<version>` | a maintainer pushing the tag; `publish-capsulectl.yml`, environments `capsulectl-release` and `capsulectl-release-candidate`. See [capsulectl/RELEASING.md](capsulectl/RELEASING.md) |
+| Go module `github.com/action-state-group/evidencebook/capsulectl` (capsulectl-book) | the tag | `CHANGELOG.md` | `capsulectl/v<version>` | a maintainer pushing the tag; `release.yml`, environments `capsulectl-release` and `capsulectl-release-candidate`. See [capsulectl/RELEASING.md](capsulectl/RELEASING.md) |
 
 The crate releases the same way as the packages of capsule-emit,
 agent-action-capsule and checkpointed-local-log: a release is a merged version

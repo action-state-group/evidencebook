@@ -2,7 +2,7 @@
 
 A release is a pushed `capsulectl/vX.Y.Z` tag (Go's tag form for this nested
 module), built and published by
-[`publish-capsulectl.yml`](../.github/workflows/publish-capsulectl.yml)
+[`release.yml`](../.github/workflows/release.yml)
 through [`scripts/release-build.sh`](scripts/release-build.sh), after a
 release reviewer approves the run. It follows capsule-cli's release process
 ([docs/RELEASING.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/RELEASING.md))

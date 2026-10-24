@@ -7,7 +7,7 @@ name: Release · capsulectl-book
 # with the same Go version and compared against SHA256SUMS. The binaries get a
 # GitHub build provenance attestation, verifiable with
 #   gh attestation verify FILE --repo action-state-group/evidencebook \
-#     --signer-workflow action-state-group/evidencebook/.github/workflows/publish-capsulectl.yml
+#     --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml
 # and the attestation bundle is published as capsulectl-book-<version>.sigstore.json.
 #
 # Not part of release.py and tag-release.yml: those handle manifest-versioned
@@ -136,5 +136,5 @@ jobs:
           else
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" \
               --title "capsulectl-book $VERSION" \
-              --notes "Prebuilt capsulectl-book plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/publish-capsulectl.yml"
+              --notes "Prebuilt capsulectl-book plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml"
           fi

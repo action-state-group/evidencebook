@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # release-build.sh VERSION COMMIT OUTDIR -- the one build command for
-# capsulectl-book's release assets, used by publish-capsulectl.yml and for
+# capsulectl-book's release assets, used by release.yml and for
 # local rebuilds. VERSION is the module version (v1.2.3), the tag without its
 # capsulectl/ prefix.
 #
