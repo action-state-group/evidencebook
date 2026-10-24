@@ -109,6 +109,8 @@ const (
 	RecordTypeAbsence         = "recorded_absence"
 	RecordTypeAcknowledgement = "acknowledgement"
 	RecordTypeRebuttal        = "rebuttal"
+	// RecordTypeEvidenceResult is a sealed Evidence Result v0 (SealResult).
+	RecordTypeEvidenceResult = "evidence_result"
 )
 
 // Link is a typed, directed reference to another record by its record id.
