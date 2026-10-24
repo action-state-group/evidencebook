@@ -81,3 +81,62 @@ func TestSealResultErrors(t *testing.T) {
 		t.Fatalf("reuse error: %v", err)
 	}
 }
+
+// checkpointsFail is a store whose checkpoint history cannot be read.
+type checkpointsFail struct{ Store }
+
+func (checkpointsFail) Checkpoints(context.Context) ([]Checkpoint, error) {
+	return nil, errors.New("checkpoint history unreadable")
+}
+
+// A checkpoint that cannot be read (here) or cut (below) returns the sealed
+// record and already as they were, with no checkpoint and the error.
+func TestSealResultKeepsTheRecordWhenTheCheckpointLookupFails(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "results", 10)
+	config := f.config(t)
+	config.Store = checkpointsFail{config.Store}
+	book, err := Open(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	for _, reused := range []bool{false, true} {
+		var committed Record
+		add := func(e Entry) (Record, error) {
+			committed, err = book.Append(ctx, e)
+			return committed, err
+		}
+		reuse := func() (Record, bool, error) { return committed, reused && committed.RecordID != "", nil }
+		if reused {
+			committed = mustAppend(t, book, Entry{RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "c", Statement: json.RawMessage(`{}`)})
+		}
+		sealed, already, cut, err := book.SealResult(ctx, json.RawMessage(`{}`), "c", nil, reuse, add)
+		if err == nil || !strings.Contains(err.Error(), "unreadable") {
+			t.Fatalf("reused %v: %v; want the lookup's error", reused, err)
+		}
+		if sealed.RecordID == "" || sealed.RecordID != committed.RecordID || already != reused || cut != 0 {
+			t.Fatalf("reused %v: id %q already %v checkpoint %d", reused, sealed.RecordID, already, cut)
+		}
+	}
+}
+
+func TestSealResultKeepsTheRecordWhenTheCheckpointCutFails(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "results", 9).open(t)
+	committed := mustAppend(t, book, Entry{RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "c", Statement: json.RawMessage(`{}`)})
+	if err := book.Release(); err != nil {
+		t.Fatal(err)
+	}
+	for _, reused := range []bool{false, true} {
+		reuse := func() (Record, bool, error) { return committed, reused, nil }
+		add := func(Entry) (Record, error) { return committed, nil }
+		sealed, already, cut, err := book.SealResult(ctx, json.RawMessage(`{}`), "c", nil, reuse, add)
+		if err == nil {
+			t.Fatalf("reused %v: a released book's checkpoint failed silently", reused)
+		}
+		if sealed.RecordID != committed.RecordID || already != reused || cut != 0 {
+			t.Fatalf("reused %v: id %q already %v checkpoint %d", reused, sealed.RecordID, already, cut)
+		}
+	}
+}
