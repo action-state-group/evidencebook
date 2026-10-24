@@ -1,14 +1,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Releasing
 
-This repository releases two packages: the Go module at the repository root
-and the Rust crate in `rust/evidencebook/`. They are versioned and tagged
-independently.
+This repository releases three packages: the Go module at the repository
+root, the Rust crate in `rust/evidencebook/`, and capsulectl-book, the nested
+Go module `capsulectl/`. They are versioned and tagged independently.
 
 | Package | Manifest | Changelog | Tag | Released by |
 |---|---|---|---|---|
 | Go module `github.com/action-state-group/evidencebook` | `CHANGELOG.md` heading | `CHANGELOG.md` | `v<version>` | an admin pushing the tag |
 | crate `evidencebook` | `rust/evidencebook/Cargo.toml` and `rust/Cargo.lock` | `rust/evidencebook/CHANGELOG.md` | `crates/evidencebook-v<version>` | `publish-rust.yml`, environment `crates-io` (tag rule `crates/*-v*`) |
+| Go module `github.com/action-state-group/evidencebook/capsulectl` (capsulectl-book) | the tag | `CHANGELOG.md` | `capsulectl/v<version>` | a maintainer pushing the tag; `publish-capsulectl.yml`, environments `capsulectl-release` and `capsulectl-release-candidate`. See [capsulectl/RELEASING.md](capsulectl/RELEASING.md) |
 
 The crate releases the same way as the packages of capsule-emit,
 agent-action-capsule and checkpointed-local-log: a release is a merged version
@@ -76,10 +77,16 @@ later version. CI on `main` covers the module's tests.
   version, crates.io availability and crate metadata.
 - **Environment.** `crates-io` accepts deployments only from `crates/*-v*`
   tags, so a job started from a branch or another tag cannot upload.
-- **Tags.** No ruleset protects tags in this repository, so "only an admin
-  pushes `v*` tags" and never moving or deleting a release tag are rules
-  contributors follow, not settings GitHub enforces. capsule-emit enforces
-  both with its `release tags` and `go release tags` rulesets.
+- **Tags.** No ruleset protects `v*` or `crates/*` tags in this repository,
+  so "only an admin pushes `v*` tags" and never moving or deleting a release
+  tag are rules contributors follow, not settings GitHub enforces.
+  capsule-emit enforces both with its `release tags` and `go release tags`
+  rulesets. `capsulectl/v*` tags get two rulesets of their own once an admin
+  runs `capsulectl/scripts/release-settings.sh --apply`: only maintainers
+  create one, and nobody moves or deletes one.
+- **Immutable releases.** The same script turns on immutable releases for the
+  whole repository: once published, a release's assets, the crate's
+  releases' included, cannot be replaced or removed.
 
 ## Registry configuration
 

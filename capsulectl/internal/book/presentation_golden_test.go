@@ -48,7 +48,7 @@ func TestReportBuildGoldens(t *testing.T) {
 				require.NoError(t, os.WriteFile(pageFile, page, 0o644))
 				return
 			}
-			// The browser checks (capsulectl-deal's TestPresentationGoldens)
+			// The browser checks (evidencebook-deal's TestPresentationGoldens)
 			// measure the committed page, so it must be exactly what this
 			// build writes: a page from an older viewer fails here, and
 			// CAPSULECTL_UPDATE_PRESENTATION_PAGES=1 rewrites it.

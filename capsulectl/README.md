@@ -26,6 +26,7 @@ capsulectl plugin install ./capsulectl-book
 go test ./...
 ```
 
-CI (`.github/workflows/capsulectl.yml`) also runs the Go and Python interop
+`backfill` is documented in [BACKFILL.md](BACKFILL.md). CI
+(`.github/workflows/capsulectl.yml`) also runs the Go and Python interop
 round trip at the versions this module resolves, and a dry run of the release
 build. Releases: [RELEASING.md](RELEASING.md).
