@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added: sealing an Evidence Result into a book
+
+- `Book.SealResult` seals a checked Evidence Result v0 as one
+  `RecordTypeEvidenceResult` (`evidence_result`) record about its contract,
+  reusing a record an earlier run sealed, and cuts a checkpoint when none
+  covers it yet. `Book.CheckpointCovers` reports whether the latest
+  checkpoint covers a sequence number. Both were capsule-cli's, shared by
+  `capsulectl book result build` and the deal plugin's sealed terms Result;
+  they move here so the two plugins, which leave capsule-cli for separate
+  repositories, keep one sealing path (capsule-cli#326).
+  `RecordTypeEvidenceResult` names the record type they seal, which the
+  caller's `add` writes (`Book.Append` or `AppendCapsule`). Go only: they compose existing book operations
+  and add no wire format.
+
 ### Changed (breaking): a deal reconcile over a period with no half is refused
 
 - `RecomputeDealReconcile` returns `ErrInvalid`, and no Result, when the

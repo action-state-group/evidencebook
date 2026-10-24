@@ -111,6 +111,10 @@ const (
 	RecordTypeRebuttal        = "rebuttal"
 )
 
+// RecordTypeEvidenceResult is a sealed Evidence Result v0. SealResult names
+// it; the caller's add writes it.
+const RecordTypeEvidenceResult = "evidence_result"
+
 // Link is a typed, directed reference to another record by its record id.
 // A link is committed inside the carrying record and never mutates its target.
 type Link struct {
