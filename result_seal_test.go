@@ -18,9 +18,17 @@ func TestSealResultSealsOnceAndCovers(t *testing.T) {
 	reuse := func() (Record, bool, error) { return first, first.RecordID != "", nil }
 	add := func(e Entry) (Record, error) { return book.Append(ctx, e) }
 
-	sealed, already, cut, err := book.SealResult(ctx, statement, "contract-1", nil, reuse, add)
+	cited := mustAppend(t, book, observation("contract-1", "daily report"))
+	links := []Link{{Type: Cites, Target: cited.RecordID}}
+	sealed, already, cut, err := book.SealResult(ctx, statement, "contract-1", links, reuse, add)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(sealed.Header.Links) != 1 || sealed.Header.Links[0] != links[0] {
+		t.Fatalf("sealed links %+v; want %+v", sealed.Header.Links, links)
+	}
+	if got, err := book.Get(ctx, sealed.RecordID); err != nil || string(got.Header.Statement) != string(statement) {
+		t.Fatalf("sealed statement %s, %v; want %s", got.Header.Statement, err, statement)
 	}
 	if already || cut == 0 {
 		t.Fatalf("first seal: already %v, checkpoint %d; want a new record and a checkpoint", already, cut)

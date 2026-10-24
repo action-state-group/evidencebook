@@ -23,6 +23,9 @@ import (
 // A failure after add committed the record (an index or automatic
 // checkpoint failure) returns the record with the error, so the caller never
 // loses its id. Errors from reuse and add are returned as they are.
+//
+// It is not atomic: reuse, add and the checkpoint run one after another, so
+// callers that may seal the same Result concurrently must serialize.
 func (b *Book) SealResult(ctx context.Context, statement json.RawMessage, subject string, links []Link, reuse func() (Record, bool, error), add func(Entry) (Record, error)) (sealed Record, already bool, checkpoint uint64, err error) {
 	if sealed, already, err = reuse(); err != nil {
 		return Record{}, false, 0, err

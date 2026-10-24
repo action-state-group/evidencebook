@@ -11,8 +11,10 @@
   checkpoint covers a sequence number. Both were capsule-cli's, shared by
   `capsulectl book result build` and the deal plugin's sealed terms Result;
   they move here so the two plugins, which leave capsule-cli for separate
-  repositories, keep one sealing path (capsule-cli#326). Go only: they
-  compose existing book operations and add no record semantics.
+  repositories, keep one sealing path (capsule-cli#326).
+  `RecordTypeEvidenceResult` names the record type they seal, which the
+  caller's append writes. Go only: they compose existing book operations
+  and add no wire format.
 
 ### Changed (breaking): a deal reconcile over a period with no half is refused
 
