@@ -271,6 +271,10 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		// committed in the records (label_commitment): the user's own
 		// copy says which predicate decided, a shared copy only its digest.
 		"materiality_openings": materialityOpenings(events),
+		// The openings of the cards the user answered on (each approval's
+		// card_commitment, under its check's card nonce), in this copy only:
+		// a card can hold the counterparty's raw values.
+		"card_openings": cardOpenings(events),
 		// The openings of the claims' words and source notes, committed in
 		// the records (text_commitment, source_ref_commitment).
 		"claim_openings": claimOpenings(events, func(dealClaim) bool { return true }),
@@ -713,6 +717,25 @@ func boundsOpenings(events []sealedEvent) []interface{} {
 			continue
 		}
 		out = append(out, map[string]interface{}{"step": se.CapsuleID, "nonce": se.Event.Nonces["bounds"], "document": doc})
+	}
+	return out
+}
+
+// cardOpenings opens each approval's card_commitment: the step, and the card
+// shown when the answer was given under the card nonce of the check it
+// answered.
+func cardOpenings(events []sealedEvent) []interface{} {
+	out := []interface{}{}
+	for _, se := range events {
+		a := se.Event.Approval
+		if a == nil || a.ShownCard == "" {
+			continue
+		}
+		verdict, _, ok := checkedCard(events, a.Check)
+		if !ok {
+			continue
+		}
+		out = append(out, map[string]interface{}{"step": se.CapsuleID, "nonce": verdict.Event.Nonces["card"], "text": a.ShownCard})
 	}
 	return out
 }

@@ -447,10 +447,15 @@ typed record, in its header), next to the fingerprints' `fp_alg`. What it states
   uses no store secret or deal key.
 - **Recomputable by:** whoever holds the opening `{N, T}`, and nobody else. A record alone
   never lets anyone recompute or test a commitment.
-- **Where openings travel:** nowhere by default. The user's own report carries three:
+- **Where openings travel:** nowhere by default. The user's own report carries four, besides
+  the floor's `bounds_openings` (section 6, rule 6):
   - `asked_opening` (the baseline's `verbatim_commitment`);
   - `materiality_openings` (each verdict's `label_commitment`);
-  - `claim_openings` (each claim's `text_commitment` and `source_ref_commitment`).
+  - `claim_openings` (each claim's `text_commitment` and `source_ref_commitment`);
+  - `card_openings` (each approval's `card_commitment`, or in a typed record its
+    `rendering_commitment`): `{step, nonce, text}`, the card the answer was given on under its
+    verdict's card nonce. A card can hold the counterparty's raw values, so no shared copy
+    carries these.
 
   An adjudicator's copy carries the `claim_openings` of claims whose words and source note hold
   none of the user's private details. A counterparty's copy carries none, except where the user
