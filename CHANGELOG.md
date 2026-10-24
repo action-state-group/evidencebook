@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## v0.8.0 (2026-10-24)
+
 ### Added: capsulectl-book, as the nested module capsulectl/
 
-- The `capsulectl` plugin over evidence books moved here from capsule-cli
+- Released separately, as `capsulectl/v*`: not part of this module's v0.8.0.
+  The `capsulectl` plugin over evidence books moved here from capsule-cli
   (capsule-cli#326), imported at capsule-cli commit e0511c4 (capsule-cli#446), as the
   nested Go module `github.com/action-state-group/evidencebook/capsulectl`
   with its own `capsulectl/v*` releases (`capsulectl/RELEASING.md`). It
@@ -24,6 +27,11 @@
   `RecordTypeEvidenceResult` names the record type they seal, which the
   caller's `add` writes (`Book.Append` or `AppendCapsule`). Go only: they compose existing book operations
   and add no wire format.
+- `SealResult` is not atomic: reuse, add and the checkpoint run one after
+  another, so callers that may seal the same Result concurrently must
+  serialize. A failure after the record is committed (an index or automatic
+  checkpoint failure) returns the record with the error, so its id is never
+  lost.
 
 ### Changed (breaking): a deal reconcile over a period with no half is refused
 
