@@ -1,0 +1,115 @@
+name: capsulectl-book
+
+# The nested module capsulectl/ (github.com/action-state-group/evidencebook/capsulectl):
+# capsulectl-book, the capsulectl plugin over evidence books, moved here from
+# capsule-cli (capsule-cli#326). It requires this repository's library at a
+# version, never the working tree, so it runs on its own.
+
+on:
+  push:
+    branches: [main]
+    paths: ["capsulectl/**", ".github/workflows/capsulectl.yml"]
+  pull_request:
+    paths: ["capsulectl/**", ".github/workflows/capsulectl.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capsulectl-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: capsulectl
+
+jobs:
+  quality:
+    name: capsulectl quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: Formatting and module files
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Its modules are required at versions, never replaced
+        # The plugin embeds the capsulectl core it is built with
+        # (capsule-cli#326, design note section 4.2).
+        run: |
+          if grep -n '^replace\|=> ' go.mod; then
+            echo "::error::capsulectl/go.mod replaces a module; require it at a version instead"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: The release build, dry run
+        # publish-capsulectl.yml's build and handshake check, on every change.
+        run: |
+          scripts/release-build.sh v0.0.0-ci "$GITHUB_SHA" "$RUNNER_TEMP/dist"
+          meta="$("$RUNNER_TEMP/dist/capsulectl-book-v0.0.0-ci-linux-amd64" cli-plugin-metadata)"
+          core=$(go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli)
+          test "$(jq -r .version <<<"$meta")" = v0.0.0-ci || { echo "unexpected version: $meta"; exit 1; }
+          test "$(jq -r .core_version <<<"$meta")" = "$core" || { echo "unexpected core_version: $meta"; exit 1; }
+
+  test:
+    name: capsulectl tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: Tests
+        run: go test -count=1 ./...
+      - name: Tests under the race detector
+        run: go test -race -count=1 ./...
+
+  interop-at-resolved-versions:
+    # The Go <-> Python round trip at the versions this module resolves,
+    # which can differ from the library's own pins (scripts/interop-resolved.sh).
+    name: capsulectl interop at the resolved versions (Go <-> Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: The evidencebook version this module resolves
+        id: resolved
+        run: |
+          version=$(go list -m -f '{{.Version}}' github.com/action-state-group/evidencebook)
+          commit=$(go mod download -json "github.com/action-state-group/evidencebook@$version" | jq -er '.Origin.Hash')
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "evidencebook=$commit" >> "$GITHUB_OUTPUT"
+      - name: Check out evidencebook at that version (its Python verifier scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.resolved.outputs.evidencebook }}
+          path: .interop/evidencebook
+      - name: Check out Python CLL (as the library's CI pins it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/checkpointed-local-log
+          ref: 88e99d405241aee790f6795fda612527679114ba
+          path: .interop/checkpointed-local-log
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install Python CLL, the AAC bundle verifier and capsule-emit (locked, with hashes)
+        run: |
+          python -m pip install --no-deps ../.interop/checkpointed-local-log
+          python -m pip install --require-hashes -r scripts/interop-requirements.txt
+          python -m pip check
+      - name: The round trip, both ways, with the tampered copies refused
+        run: bash scripts/interop-resolved.sh ../.interop/evidencebook

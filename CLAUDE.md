@@ -11,6 +11,10 @@ go vet ./...
 go test ./...
 go test -race ./...
 
+# capsulectl-book (capsulectl/, a nested module; CI: .github/workflows/capsulectl.yml)
+(cd capsulectl && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
+(cd capsulectl && go vet ./... && go test ./...)
+
 # Rust (rust/, a workspace with the one crate evidencebook)
 (cd rust && evidencebook/scripts/check-vocabulary.sh)   # the crate carries no deployment vocabulary
 (cd rust && cargo fmt --all -- --check)
@@ -47,6 +51,7 @@ text.
 | repository root | Go package `evidencebook` (the book, its substrates, indexes, requests and interop carriage) |
 | `adapter/` | Go adapters for foreign evidence (`acp`, `ucp`, `x402`) |
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
+| `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
 | `testdata/` | vectors and fixtures the Go and Rust tests read |
@@ -73,8 +78,10 @@ Use their canonicalization and verification rather than reimplementing them.
 Follow [RELEASING.md](RELEASING.md). In short: for the crate, run **Release ·
 Prepare**, merge its pull request, and the Release · Tag workflow tags and
 publishes. For the Go module, merge the CHANGELOG pull request and an admin
-pushes `v<version>`. Never create release tags by hand, except `v*`, which an
-admin pushes. Do not rename `publish-rust.yml`: crates.io's trusted publisher
+pushes `v<version>`. For capsulectl-book, a maintainer pushes
+`capsulectl/v<version>` ([capsulectl/RELEASING.md](capsulectl/RELEASING.md)).
+Never create release tags by hand, except `v*`, which an admin pushes, and
+`capsulectl/v*`. Do not rename `publish-rust.yml`: crates.io's trusted publisher
 names it, so publishing breaks until crates.io is updated first.
 `.github/release.py` and `.github/test_release.py` are identical copies shared
 with the other action-state-group repositories; change them in all of them

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: capsulectl-book, as the nested module capsulectl/
+
+- The `capsulectl` plugin over evidence books moved here from capsule-cli
+  (capsule-cli#326), imported at capsule-cli commit e0511c4 (capsule-cli#446), as the
+  nested Go module `github.com/action-state-group/evidencebook/capsulectl`
+  with its own `capsulectl/v*` releases (`capsulectl/RELEASING.md`). It
+  requires this library at a version, so it adds nothing to the library's
+  own module graph.
+
 ### Added: sealing an Evidence Result into a book
 
 - `Book.SealResult` seals a checked Evidence Result v0 as one
