@@ -1,0 +1,140 @@
+name: Release · capsulectl-book
+
+# Builds capsulectl-book (the nested module capsulectl/) for linux/amd64,
+# linux/arm64 and darwin/arm64 when a capsulectl/v* tag is pushed, and
+# attaches the binaries plus SHA256SUMS to the GitHub release for that tag.
+# The build is capsulectl/scripts/release-build.sh, so a tag can be rebuilt
+# with the same Go version and compared against SHA256SUMS. The binaries get a
+# GitHub build provenance attestation, verifiable with
+#   gh attestation verify FILE --repo action-state-group/evidencebook \
+#     --signer-workflow action-state-group/evidencebook/.github/workflows/publish-capsulectl.yml
+# and the attestation bundle is published as capsulectl-book-<version>.sigstore.json.
+#
+# Not part of release.py and tag-release.yml: those handle manifest-versioned
+# packages and create a published release before their publisher runs, which
+# immutable releases would then lock (capsule-cli#326, design note section 5).
+# A maintainer pushes the tag; a release reviewer approves the run in the
+# environments capsulectl/scripts/release-settings.sh sets. The plugin embeds
+# the capsulectl core it builds against, so a release requires capsule-cli at
+# a published release, and its handshake must report it as core_version.
+
+on:
+  push:
+    tags: ["capsulectl/v*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ contains(github.ref_name, '-') && 'capsulectl-release-candidate' || 'capsulectl-release' }}
+    defaults:
+      run:
+        working-directory: capsulectl
+    env:
+      # The tag is capsulectl/vX.Y.Z (Go's tag form for the nested module);
+      # the module version, and the plugin's, is vX.Y.Z.
+      TAG: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      id-token: write # OIDC token for the build provenance attestation
+      attestations: write
+    steps:
+      - name: Refuse a full release re-run by someone else
+        # Prevent self-review stops whoever started a run from approving it,
+        # and a re-run is started by whoever re-ran it. The tag's pusher could
+        # then approve their own full release, so that run stops here, before
+        # anything is built (capsulectl/RELEASING.md).
+        if: ${{ !contains(github.ref_name, '-') }}
+        # Before the checkout, so not in capsulectl/.
+        working-directory: ${{ github.workspace }}
+        env:
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          test "$ACTOR" = "$TRIGGERING_ACTOR" \
+            || { echo "$GITHUB_REF_NAME was pushed by $ACTOR but this run was started by $TRIGGERING_ACTOR: cut the next version"; exit 1; }
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache: false
+      - name: Check the tag follows the release tag policy
+        # The module version follows capsule-cli's release tag policy.
+        run: |
+          VERSION="${TAG#capsulectl/}"
+          test "capsulectl/$VERSION" = "$TAG" || { echo "tag $TAG is not capsulectl/<version>"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          printf '%s\n' "$VERSION" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?' \
+            || { echo "tag $VERSION does not follow the release tag policy"; exit 1; }
+      - name: The core this plugin pairs with is a published capsule-cli release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if grep -n '^replace\|=> ' go.mod; then
+            echo "go.mod replaces a module: a release requires capsule-cli at a release"; exit 1
+          fi
+          core=$(go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli)
+          printf '%s\n' "$core" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?' \
+            || { echo "go.mod requires capsule-cli at $core, not a release tag"; exit 1; }
+          draft=$(gh release view "$core" --repo action-state-group/capsule-cli --json isDraft --jq .isDraft) \
+            || { echo "capsule-cli has no release $core"; exit 1; }
+          test "$draft" = false || { echo "capsule-cli $core is not published"; exit 1; }
+          echo "CORE_VERSION=$core" >> "$GITHUB_ENV"
+      - name: Vet
+        run: go vet ./...
+      - name: Build release assets
+        env:
+          COMMIT: ${{ github.sha }}
+        run: scripts/release-build.sh "$VERSION" "$COMMIT" dist
+      - name: Check the versions the plugin reports
+        run: |
+          meta="$(dist/capsulectl-book-"$VERSION"-linux-amd64 cli-plugin-metadata)"
+          test "$(jq -r .version <<<"$meta")" = "$VERSION" || { echo "unexpected version: $meta"; exit 1; }
+          test "$(jq -r .core_version <<<"$meta")" = "$CORE_VERSION" || { echo "unexpected core_version: $meta"; exit 1; }
+      - name: Attest build provenance of the assets
+        id: attest
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            capsulectl/dist/capsulectl-book-*
+      - name: Attach the attestation bundle
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" "dist/capsulectl-book-$VERSION.sigstore.json"
+          (cd dist && sha256sum "capsulectl-book-$VERSION.sigstore.json" >> SHA256SUMS)
+      - name: Publish GitHub release
+        # A tag with a hyphen (v0.1.0-rc4, v1.0.0-beta1) is a pre-release:
+        # published as such and never marked the latest release. gh creates
+        # the release as a draft, uploads, then publishes, which immutable
+        # releases allow. A draft left by a run that died mid-upload is
+        # finished here; a published release is never changed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          case "$VERSION" in
+            *-*) flags=(--prerelease --latest=false) ;;
+          esac
+          if draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [ "$draft" != true ]; then
+              echo "release $TAG is already published and cannot change: cut the next version"
+              exit 1
+            fi
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${flags[@]}"
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" \
+              --title "capsulectl-book $VERSION" \
+              --notes "Prebuilt capsulectl-book plugin binaries (linux/amd64, linux/arm64, darwin/arm64). Verify with: sha256sum -c SHA256SUMS. Check the build attestation with no GitHub account: gh attestation verify FILE --bundle capsulectl-book-$VERSION.sigstore.json --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/publish-capsulectl.yml"
+          fi
