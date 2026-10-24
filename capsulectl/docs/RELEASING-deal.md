@@ -26,7 +26,10 @@ first-party check compares the plugin's `core_version` with its own version
 1. `go.mod` requires capsule-cli at a published release tag, with no
    `replace`. The release workflow refuses anything else.
 2. Every capsule-cli release that users install needs a capsulectl-deal
-   release built against it: bump the require, merge, then tag.
+   release built against it: bump the require and merge, then tag once that
+   capsule-cli release is published, not only tagged. The workflow refuses an
+   unpublished one, and a refused tag is spent: the cut moves to the next
+   version.
 
 ## The cut
 
