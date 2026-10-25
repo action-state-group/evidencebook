@@ -858,10 +858,11 @@ func dealProducers(events []sealedEvent) []string {
 }
 
 // currentProducer names the build that seals a record. A release build of
-// this plugin sets cli.PluginVersion, and its records name it, not the core it
-// embeds: two deal releases on one core would otherwise seal the same stamp,
-// and sealed records keep it (capsule-cli#326 design note section 4.2). A
-// build without it names the embedded core, as builds inside capsule-cli did.
+// this plugin sets cli.PluginVersion, and its records name it and its commit,
+// not the core it embeds, so a sealed record says which deal build sealed it
+// (capsule-cli#326 design note section 4.2). A release takes its core's
+// version (RELEASING.md), so the name and commit are what tell the two apart.
+// A build without it names the embedded core, as builds inside capsule-cli did.
 func currentProducer() *dealProducer {
 	if cli.PluginVersion != "" {
 		return &dealProducer{Name: "capsulectl-deal", Version: cli.PluginVersion, Commit: cli.FirstNonEmpty(cli.PluginCommit, "unknown")}

@@ -3,11 +3,12 @@
 ## Unreleased
 
 The first release of capsulectl-deal and the deal skill from this repository
-will carry these entries (capsule-cli#326); its version is not set yet. It
-requires capsulectl v0.1.0-rc23: any other capsulectl reports a version
-mismatch. capsulectl no longer installs it by name (`plugin install deal`);
-download `capsulectl-deal-<version>-<os>-<arch>` from the release, check it
-against `SHA256SUMS` and its attestation, then run
+will carry these entries (capsule-cli#326). A capsulectl-deal release takes
+the version of the capsulectl release it pairs with (RELEASING.md), and
+requires that capsulectl: any other capsulectl reports a version mismatch.
+capsulectl no longer installs it by name (`plugin install deal`); download
+`capsulectl-deal-<version>-<os>-<arch>` from the release, check it against
+`SHA256SUMS` and its attestation, then run
 `capsulectl plugin install ./capsulectl-deal-<version>-<os>-<arch>`.
 
 ### Known issues
@@ -30,7 +31,7 @@ listed in its rc22 release notes):
 
 - A release of `capsulectl-deal` seals its own build as each record's
   producer, `capsulectl-deal <tag> (<commit>)`, instead of the capsulectl core
-  it embeds, so two releases on one core no longer seal the same stamp
+  it embeds, so a record names the deal build and commit that sealed it
   (capsule-cli#326, design note section 4.2). A build without a release still
   seals the core's `capsulectl <version> (<commit>)`. Shared copies keep the
   new stamp. Records already sealed are unchanged (#3).
