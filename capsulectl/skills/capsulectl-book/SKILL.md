@@ -51,7 +51,7 @@ Each verb is run as `capsulectl book VERB ...`, which the core hands to the `cap
 
 **Records are for consequential actions only** (see Evidence policy under Guardrails, above). The `How` column says which of the two cases applies:
 
-- **primary action** — the verb's entire job already is persisting a signed book record (`book request`, `book respond`, `book close`, `book result build`). Running it satisfies the invariant by itself; nothing wraps it, and the record id it returns is what to cite. The one exception is `book respond` to a request with no authenticated requester: its signed answer or refusal may leave no record (`record_id` empty), which is reported, never hidden.
+- **primary action** — the verb's entire job already is persisting a signed book record (`book request`, `book respond`, `book close`, `book result build`). Running it satisfies the invariant by itself; nothing wraps it, and the record id it returns is what to cite. The exceptions are `book respond` to a malformed request or one with no authenticated requester: its signed answer or refusal may leave no record (`record_id` empty), which is reported, never hidden.
 - **not consequential** — `book reconcile` and `book report build` only read, compare or render held records. They run and add no record: **no wrapper seal, no synthetic evidence record.**
 
 See [references/book.md](references/book.md) for the request, Close and Result details and what `book result build` refuses.
