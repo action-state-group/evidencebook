@@ -10,7 +10,8 @@
   The `capsulectl` plugin over evidence books moved here from capsule-cli
   (capsule-cli#326), imported at capsule-cli commit e0511c4 (capsule-cli#446), as the
   nested Go module `github.com/action-state-group/evidencebook/capsulectl`
-  with its own `capsulectl/v*` releases (`capsulectl/RELEASING.md`). It
+  with its own `capsulectl/v*` releases (`capsulectl/RELEASING.md`), each
+  taking the version of the capsulectl release it pairs with. It
   requires this library at a version, so it adds nothing to the library's
   own module graph.
 
