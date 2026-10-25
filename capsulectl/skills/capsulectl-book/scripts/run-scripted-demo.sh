@@ -89,6 +89,13 @@ record_of() { # FILE: log the record_id a consequential book verb returned, or f
   echo "$id" >>"$book_records_file"
 }
 
+# The books' sizes: a not-consequential verb must leave both logs as they were.
+book_size() { wc -l <"$1/book/log.jsonl" | tr -d ' '; }
+assert_no_record() { # BEFORE_OWN BEFORE_PEER VERB
+  [[ "$(book_size "$store")" == "$1" && "$(book_size "$peer_store")" == "$2" ]] || {
+    echo "FAIL: $3 added a record to a book" >&2; exit 1; }
+}
+
 echo "== 1/6 request + respond (each a signed book record; consequential) ==" >&2
 cat >"$work/evidence-request.json" <<'EOF'
 {"subject":{"full_history":null},"coverage":{"min_freshness":1}}
@@ -138,6 +145,7 @@ jq -e '.reconciliation.peer_complete==true and .reconciliation.states.MATCHED==1
 echo "  one exchange MATCHED, one CONFLICTING, from the held bundle alone" >&2
 
 echo "== 4/6 reconcile (not-consequential; adds no record) ==" >&2
+sizes=("$(book_size "$store")" "$(book_size "$peer_store")")
 "$bin" book reconcile --profile "$profile" --period day --date "$yesterday" --counterparty skill-demo-peer \
   --peer "$work/peer-close-bundle.json" --peer-checkpoint-key "$peer_checkpoint_key" >"$work/reconcile-result.json"
 jq -e --slurpfile closed "$work/close-peer-result.json" '.reconciliation.states==$closed[0].reconciliation.states' \
@@ -154,6 +162,7 @@ for wrong in "--peer-checkpoint-key $checkpoint_public_key --counterparty skill-
   [[ "$wrong_status" -eq 2 ]] || {
     echo "FAIL: a peer bundle under another key, or from another book, must be refused (exit 2), got $wrong_status" >&2; exit 1; }
 done
+assert_no_record "${sizes[@]}" "book reconcile"
 echo "  same states as the sealed Close; a bundle under the wrong key or from another book is refused" >&2
 
 echo "== 5/6 result build (primary action; signs) ==" >&2
@@ -195,6 +204,7 @@ echo "== 6/6 disclose on the Result + report build (not-consequential; adds no r
 result_record=$(jq -r .record_id "$work/result-build.json")
 "$bin" disclose --profile "$profile" --root "$result_record" --payloads selected --out "$work/result-bundle.json" >/dev/null
 "$bookdemo" aac-verify "$work/result-bundle.json" >"$work/result-bundle-verify.json"
+sizes=("$(book_size "$store")" "$(book_size "$peer_store")") # after disclose, which commits its own record
 "$bin" book report build --bundle "$work/result-bundle.json" --card outcome --permalink --out "$work/report.html" >"$work/report-build.json"
 jq -e '.verification=="pass" and .form=="book" and .claims==2 and .unsupported_claims==0 and (.permalink|startswith("https://"))' \
   "$work/report-build.json" >/dev/null || {
@@ -207,6 +217,7 @@ wrong_status=$?
 set -e
 [[ "$wrong_status" -eq 2 && ! -e "$work/report-wrong.html" ]] || {
   echo "FAIL: a bundle rooted at a Close, not a Result, must be refused (exit 2) with nothing written, got $wrong_status" >&2; exit 1; }
+assert_no_record "${sizes[@]}" "book report build"
 echo "  the Result roots a verified bundle; report.html rendered offline; a non-Result root is refused" >&2
 
 end_epoch=$(date +%s)
