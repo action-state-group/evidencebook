@@ -17,24 +17,32 @@ The plugin embeds the `capsulectl` core it builds against, and the core's
 first-party check compares the plugin's `core_version` with its own version
 (capsule-cli#326, design note section 4.2). `go.mod` requires capsule-cli at
 a published release tag, which the release workflow checks, and this
-repository's library at a tagged version; it refuses a `replace` of either.
+repository's library at a version; it refuses a `replace` of either.
 
 **A release takes the version of the capsulectl release it pairs with**
 (Ethan, 2026-10-24): the plugin built against capsulectl `v0.1.0-rc24` is
 tagged `capsulectl/v0.1.0-rc24`. Every capsule-cli release that users install
 needs a capsulectl-book release built against it, and there is one per
-capsulectl release: a fix to the plugin ships with the next one. Tag only
-once that capsule-cli release is published, not only tagged: the workflow
-refuses an unpublished one, and a refused tag is spent.
+capsulectl release: a fix to the plugin ships with the next one. The release
+workflow refuses a tag that is not that version, before anything is built.
+
+Tag only once that capsule-cli release is published, not only tagged. A run
+refused because it was not published yet builds nothing; once it is
+published, the tag's pusher re-runs it. Only a published capsulectl-book
+release is final.
 
 ## The cut
 
-1. Tag the merge commit with the capsule-cli version `go.mod` requires
-   (`go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli`):
+1. Merge a pull request that sets `capsulectl/go.mod`'s capsule-cli
+   requirement to the published release vX.Y.Z the plugin pairs with.
+2. Tag that merge commit with the same version. At that commit,
+   `go -C capsulectl list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli`
+   prints it, a release tag and never a pseudo-version:
    `git tag -a capsulectl/vX.Y.Z <commit> -m "capsulectl-book vX.Y.Z" &&
    git push origin capsulectl/vX.Y.Z`.
-2. A release reviewer approves the run.
-3. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
+3. A release reviewer approves the run, after checking that the tag is that
+   version (the workflow refuses it otherwise, before anything is built).
+4. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
    `gh attestation verify` on each binary with
    `--bundle capsulectl-book-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook
    --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml`.
