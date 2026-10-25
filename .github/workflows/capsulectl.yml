@@ -73,6 +73,24 @@ jobs:
       - name: Tests under the race detector
         run: go test -race -count=1 ./...
 
+  skill:
+    # The capsulectl-book skill (capsulectl/skills/capsulectl-book): its text
+    # matches the plugin's verbs, and its demo runs them against capsulectl
+    # (at the version go.mod pins) plus capsulectl-book built from this checkout.
+    name: capsulectl-book skill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: capsulectl/go.mod
+          cache-dependency-path: capsulectl/go.sum
+      - name: The skill text matches the plugin
+        run: skills/capsulectl-book/scripts/check-skill.sh
+      - name: The skill's scripted demo
+        run: skills/capsulectl-book/scripts/run-scripted-demo.sh
+
   interop-at-resolved-versions:
     # The Go <-> Python round trip at the versions this module resolves,
     # which can differ from the library's own pins (scripts/interop-resolved.sh).

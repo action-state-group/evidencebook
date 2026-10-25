@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: the capsulectl-book agent skill
+
+- `capsulectl/skills/capsulectl-book` is the agent skill for the book verbs
+  `request`, `respond`, `close`, `reconcile`, `result build` and `report build`
+  (`capsulectl book VERB`), moved out of capsule-cli's `capsulectl` skill
+  (capsule-cli#326, capsule-cli#447). It has a `SKILL.md`, an `AGENTS.md`, a
+  reference and a scripted demo; CI checks that its verbs are the plugin's and
+  runs the demo against `capsulectl` plus a `capsulectl-book` built here.
+
 ## v0.8.0 (2026-10-24)
 
 ### Added: capsulectl-book, as the nested module capsulectl/

@@ -13,6 +13,17 @@ It moved here from [capsule-cli](https://github.com/action-state-group/capsule-c
 contract it implements is capsule-cli's
 [docs/PLUGINS.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/PLUGINS.md).
 
+## Agent skill
+
+[skills/capsulectl-book](skills/capsulectl-book/SKILL.md) is the agent skill for
+the verbs that ask for, answer, close, reconcile and report on evidence
+(`request`, `respond`, `close`, `reconcile`, `result build`, `report build`).
+It extends capsule-cli's `capsulectl` skill, which keeps the core verbs. Its
+`AGENTS.md` is the same text for Codex. It is written by hand: capsule-cli's
+`skillgen` has `capsulectl`'s own sections built in, so `scripts/check-skill.sh`
+keeps this skill's verbs to the plugin's, and `scripts/run-scripted-demo.sh`
+runs them against `capsulectl` and a `capsulectl-book` built here; CI runs both.
+
 ## Build and test
 
 The plugin embeds the `capsulectl` core it builds against, and requires this
