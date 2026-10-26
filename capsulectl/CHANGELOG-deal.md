@@ -2,10 +2,13 @@
 
 ## Unreleased
 
+## v0.1.0-rc23
+
 The first release of capsulectl-deal and the deal skill from this repository
-will carry these entries (capsule-cli#326). A capsulectl-deal release takes
-the version of the capsulectl release it pairs with (RELEASING.md), and
-requires that capsulectl: any other capsulectl reports a version mismatch.
+(capsule-cli#326), built against capsulectl v0.1.0-rc23. A capsulectl-deal
+release takes the version of the capsulectl release it pairs with
+(RELEASING.md), and requires that capsulectl: any other capsulectl reports a
+version mismatch.
 capsulectl no longer installs it by name (`plugin install deal`); download
 `capsulectl-deal-<version>-<os>-<arch>` from the release, check it against
 `SHA256SUMS` and its attestation, then run
@@ -38,11 +41,18 @@ listed in its rc22 release notes):
 
 ### Added
 
+- The deal skill has a Sale procedure (`skills/deal/SKILL.md`, "Sale"): what
+  the agent does, step by step, when the user sells, starting from
+  `deal sale new` (#34).
+- A nightly workflow, `.github/workflows/core-main.yml`, builds capsulectl
+  from capsule-cli main and runs the deal page and portability checks against
+  it, so a core change that breaks deal pages shows before a core release; a
+  failed run comments on one open issue (#4).
 - The deal report's page data carries `page_producer` (the build that made the
   page: name, version, commit) and, on a release, `release_notes` (this
   repository's release). With capsule-cli#448 the page compares builds only by
-  name, says a step capsulectl sealed apart as an earlier build, and links
-  this plugin's release notes (#3).
+  name, marks a step capsulectl sealed as an earlier build, and links this
+  plugin's release notes (#3).
 - The release workflow, `.github/workflows/release.yml`: a pushed `v*` tag is
   built, attested and published once a release reviewer approves the run. It
   publishes only a tag a shared copy keeps as a producer version, and only
@@ -51,7 +61,7 @@ listed in its rc22 release notes):
   card, the answer's step and the card's opening `{nonce, text}`, which
   recomputes to the approval's sealed `card_commitment` (`rendering_commitment`
   in a typed record). A page can then show the card the user answered on,
-  checked when the page is written (actionstate-muse#204). No shared copy
+  checked when the page is written. No shared copy
   carries it. It rides in the user's own sealed report; no approval or other
   step record changes. The page check refuses to write a page whose card
   opening does not recompute, names no approval, repeats a step or rides on a
