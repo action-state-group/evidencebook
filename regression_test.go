@@ -168,14 +168,23 @@ func TestRespondNeverDisclosesPayloadBytes(t *testing.T) {
 	book := newFixture(t, "book-a", 1).open(t)
 	secret := mustAppend(t, book, observation("private", "SECRET-PAYLOAD"))
 	asked := mustAppend(t, book, Entry{RecordType: "claim", EpistemicType: ProducerClaim, SubjectRef: "asked", CounterpartyRef: "peer-1", Links: []Link{{Type: Cites, Target: secret.RecordID}}, Payloads: [][]byte{[]byte("OWN-PAYLOAD")}})
-	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: asked.RecordID}, {Kind: SubjectFullHistory}, {Kind: SubjectCorrelation, Correlation: "private"}} {
-		reply := respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}), "peer-1")
+	opts := RespondOptions{AuthenticatedRequester: "peer-1", Policy: DefaultSharePolicy()}
+	// The record peer-1 is party to, and the exchange of the record it
+	// cites: both answer with peer-1's own record alone.
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: asked.RecordID}, {Kind: SubjectExchange, Digest: secret.RecordID}} {
+		reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}), opts)
 		e := mustEnvelope(t, reply)
 		for _, leak := range []string{"SECRET", "OWN-PAYLOAD", "peer-1"} {
 			if bytes.Contains(reply.Octets, []byte(leak)) || bytes.Contains(e.Artifact, []byte(leak)) || strings.Contains(hex.EncodeToString(e.Artifact), hex.EncodeToString([]byte(leak))) {
 				t.Fatalf("a %s answer carried %q", subject.Kind, leak)
 			}
 		}
+	}
+	// The cited record itself, and every subject that would reach it, is
+	// not peer-1's.
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: secret.RecordID}, {Kind: SubjectFullHistory}, {Kind: SubjectCorrelation, Correlation: "private"}} {
+		reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}), opts)
+		mustRefusal(t, reply, ReasonNotAuthorized)
 	}
 }
 
@@ -257,10 +266,10 @@ func TestExistingSubjectBeyondTheAnchorIsCoverageNotAbsence(t *testing.T) {
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
 	pin := anchorPin(t, book)
 	later := mustAppend(t, book, observation("late", "x"))
+	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: later.RecordID}}})
 	for name, subject := range map[string]Subject{
-		"record":      {Kind: SubjectRecord, Digest: later.RecordID},
-		"correlation": {Kind: SubjectCorrelation, Correlation: "late"},
-		"range":       {Kind: SubjectRange, Range: [2]uint64{0, later.Seq - 1}},
+		"record":   {Kind: SubjectRecord, Digest: later.RecordID},
+		"exchange": {Kind: SubjectExchange, Digest: later.RecordID},
 	} {
 		reply := respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1")
 		if reply.Refusal == nil || reply.Refusal.Reason != ReasonCoverageUnsatisfiable {

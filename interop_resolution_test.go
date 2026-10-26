@@ -124,19 +124,22 @@ func TestResolutionVectors(t *testing.T) {
 	}
 }
 
-// decideForVector runs Respond's own decision (decide) over a declared
-// state, for an authenticated requester under the peers tier. It returns the
-// refusal reason, or "" for an artifact.
+// decideForVector runs Respond's own decision policy over a declared state,
+// with every request authorized: the vectors fix resolution, and the
+// requester gate has its own tests. It returns the refusal reason, or ""
+// for an artifact.
 func decideForVector(view evidencerequest.View, request []byte, now time.Time, mayIssue bool, uniform bool) string {
 	check := readRequest(Message{Octets: request, MediaType: MediaTypeJSON})
 	if check.reason != "" {
 		return check.reason
 	}
-	g := gate{requester: "peer", relationship: RelationshipIdentified, policy: policyWith("peers"), refusalPolicy: RefusalPolicySpecific, cll: true}
+	g := gate{requester: "peer", policy: policyWith("peers"), refusalPolicy: RefusalPolicySpecific, cll: true}
 	if uniform {
 		g.refusalPolicy = RefusalPolicyUniform
 	}
-	d := decide(view, check, g, now, mayIssue)
+	p := g.responderPolicy(mayIssue)
+	p.Authorize = nil
+	d := evidencerequest.Decide(view, check.request, p, now)
 	if d.NeedAnchor {
 		return g.uniform(ReasonCoverageUnsatisfiable)
 	}

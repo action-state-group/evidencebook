@@ -97,12 +97,12 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 	}
 	// The floor makes bob's answer cover the record of alice's request.
 	covering := Coverage{MinFreshness: sizeFloor(uint64(len(book.order)))}
-	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: covering}),
+	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: records[0].RecordID}, Coverage: covering}),
 		RespondOptions{RequesterID: "bob", AuthenticatedRequester: "bob", Policy: peers})
 	e := mustEnvelope(t, reply)
 	for _, entry := range artifactRecords(t, e) {
 		if entry["digest"] == answered {
-			t.Fatal("bob's full_history serves the record of alice's request")
+			t.Fatal("bob's answer serves the record of alice's request")
 		}
 	}
 	sum := sha256.Sum256([]byte(alice))
@@ -152,15 +152,17 @@ func TestClaimedCounterpartyIDGrantsNoScope(t *testing.T) {
 	}
 }
 
-// (d) No regression: an authenticated counterparty still gets counterparty
-// scope.
+// (d) An authenticated counterparty still gets its own records, and only
+// those: being party to one record grants nothing on another.
 func TestAuthenticatedCounterpartyKeepsScope(t *testing.T) {
 	book, records := linkedBook(t)
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
-	reply, statement := respondWith(t, book, req, RespondOptions{RequesterID: "known-peer", AuthenticatedRequester: "known-peer", Policy: policyWith("counterparties")})
+	own := mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
+	opts := RespondOptions{RequesterID: "known-peer", AuthenticatedRequester: "known-peer", Policy: DefaultSharePolicy()}
+	reply, statement := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: own.RecordID}, Coverage: fresh()}), opts)
 	mustEnvelope(t, reply)
 	if statement.Relationship != RelationshipCounterparty {
 		t.Fatalf("relationship %q, want %q", statement.Relationship, RelationshipCounterparty)
 	}
+	reply, _ = respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()}), opts)
+	mustRefusal(t, reply, ReasonNotAuthorized)
 }

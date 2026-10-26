@@ -20,9 +20,11 @@ type DerivationDefinition struct {
 	// holder states what it declares in the fields below as well.
 	Document []byte
 	// Recipient is the authenticated requester the projection is prepared
-	// for, as the definition names it. Only that requester is answered. An
-	// empty Recipient makes the derivation answerable under the share policy
-	// like any protected subject.
+	// for, as the definition names it. Only that requester is answered, over
+	// any form the definition declares: it is the holder's grant to that
+	// requester. An empty Recipient makes the derivation answerable under
+	// the share policy like the underived subject, so over range,
+	// correlation or full_history it is answered to no one.
 	Recipient string
 	// Forms are the subject forms the derivation is defined over; any other
 	// form is answered no_such_subject (ER §3.3).

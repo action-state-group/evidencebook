@@ -22,7 +22,9 @@
 // -requester stands in for a transport's authentication: it is the identity
 // a transport would have authenticated. Without it only the checkpoints
 // subject and the history_card/1 derivation are answered, and every other
-// subject is refused not_authorized. -decline answers every request with
+// subject is refused not_authorized. No seeded record names a counterparty,
+// so the book answers under the peers tier: a record or exchange subject is
+// answered to any authenticated requester. -decline answers every request with
 // the responder's cost-policy refusal, policy_declined.
 //
 // The book's keys are test keys. Never use them for anything else.
@@ -219,7 +221,9 @@ func answer(ctx context.Context, request evidencebook.Message, requester string,
 		return nil, err
 	}
 	defer s.close()
-	reply, _, err := s.book.Respond(ctx, request, evidencebook.RespondOptions{AuthenticatedRequester: requester, Policy: evidencebook.DefaultSharePolicy()})
+	peers := evidencebook.DefaultSharePolicy()
+	peers.HistorySegments = "peers"
+	reply, _, err := s.book.Respond(ctx, request, evidencebook.RespondOptions{AuthenticatedRequester: requester, Policy: peers})
 	if err != nil {
 		return nil, err
 	}

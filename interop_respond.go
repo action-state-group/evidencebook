@@ -93,6 +93,17 @@ func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
 
 // SharePolicy is the four-switch sharing policy, carried unchanged from the
 // mesh plugin's share.* object. Every default keys on relationship.
+//
+// HistorySegments decides who may have the records an underived (or
+// shared-derivation) record or exchange subject names: "counterparties"
+// (the default) answers only the party each of those records names as its
+// counterparty; "peers" answers any authenticated peer; "off" answers no
+// one. "prospective" is accepted and read as "counterparties", as the mesh
+// plugin reads it. Whatever the setting, range, correlation and
+// full_history are refused. A recipient-specific derivation is the
+// holder's grant and is not gated by the setting: it is answered to its
+// recipient over every form it declares, "off" included
+// (gate.responderPolicy).
 type SharePolicy struct {
 	RecordAtCompletion string `json:"record_at_completion"`
 	HistorySegments    string `json:"history_segments"`
@@ -102,7 +113,7 @@ type SharePolicy struct {
 
 // DefaultSharePolicy returns the documented defaults.
 func DefaultSharePolicy() SharePolicy {
-	return SharePolicy{RecordAtCompletion: "counterparty", HistorySegments: "prospective", Adjudications: "deliver_to_subjects"}
+	return SharePolicy{RecordAtCompletion: "counterparty", HistorySegments: "counterparties", Adjudications: "deliver_to_subjects"}
 }
 
 // Validate rejects any switch outside its enumerated values.
@@ -131,18 +142,26 @@ const (
 	RelationshipCounterparty = "counterparty"
 )
 
-// allows gates protected subjects. It fails closed: a stranger (no
-// authenticated requester) is never allowed, under any tier; "peers" means
-// any authenticated peer.
-func (p SharePolicy) allows(relationship string) bool {
-	if relationship == RelationshipStranger {
+// mayHave gates a record or exchange subject by the records it names. It
+// fails closed: a stranger (no authenticated requester) is never allowed,
+// under any tier. "peers" allows any authenticated peer. "counterparties"
+// and "prospective" allow only a counterparty of this book, and only when
+// every record the subject names names that requester as its
+// counterparty; a requester no record names is refused before anything
+// about the subject is read, so it learns nothing of what is held. A
+// counterparty asking for a record not held is let through to resolution,
+// which answers no_such_subject or retention_expired; the uniform refusal
+// policy folds those and not_authorized into one answer (ER §4.2, §12).
+func (p SharePolicy) mayHave(requester, relationship string, named []Header) bool {
+	if requester == "" {
 		return false
 	}
 	switch p.HistorySegments {
-	case "peers", "prospective":
+	case "peers":
 		return true
-	case "counterparties":
-		return relationship == RelationshipCounterparty
+	case "counterparties", "prospective":
+		return relationship == RelationshipCounterparty &&
+			!slices.ContainsFunc(named, func(h Header) bool { return h.CounterpartyRef != requester })
 	}
 	return false
 }
@@ -255,6 +274,8 @@ type gate struct {
 	// cll: the book's substrate is a Checkpointed Local Log, the only one
 	// whose anchors and proofs are served.
 	cll bool
+	// named is the servable records a record or exchange subject names.
+	named func(Subject) []Header
 }
 
 // uniform applies the uniform refusal policy to a reason that would
@@ -272,15 +293,23 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 			entry, ok := g.derivations[name]
 			return entry.def.Forms, ok
 		},
-		// Authorization decides whether, never what (ER §3.7, §5).
+		// Authorization decides whether, never what (ER §3.7, §5). It is
+		// decided before the subject is resolved, from the records the
+		// subject names.
 		Authorize: func(req EvidenceRequest) bool {
 			switch {
 			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard:
 				return true // public: commitments only
 			case req.Derivation != "" && g.derivations[req.Derivation].def.Recipient != "":
+				// The holder's grant to the one requester it names.
 				return g.requester == g.derivations[req.Derivation].def.Recipient
+			case req.Subject.Kind == SubjectRecord, req.Subject.Kind == SubjectExchange:
+				return g.policy.mayHave(g.requester, g.relationship, g.named(req.Subject))
 			default:
-				return g.policy.allows(g.relationship)
+				// range, correlation and full_history reach records no one
+				// requester is party to; nothing but a recipient-specific
+				// derivation grants them.
+				return false
 			}
 		},
 		Uniform:    g.refusalPolicy == RefusalPolicyUniform,
@@ -337,7 +366,7 @@ func (a *answer) run() (Reply, error) {
 		return Reply{}, err
 	}
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
 		if _, err := b.checkpointLocked(a.ctx); err != nil {
@@ -346,6 +375,7 @@ func (a *answer) run() (Reply, error) {
 		if view, err = b.viewLocked(a.ctx); err != nil {
 			return Reply{}, err
 		}
+		g.named = view.named
 		if d = decide(view, check, g, a.now, false); d.NeedAnchor {
 			d.Reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}
@@ -490,6 +520,26 @@ func correlationOf(h Header) string {
 		return h.Correlation.ExchangeID
 	}
 	return h.SubjectRef
+}
+
+// named is the servable records a record or exchange subject names,
+// whether or not the anchor covers them yet: the record itself, or every
+// record citing the half.
+func (v *bookView) named(subject Subject) []Header {
+	var leaves []uint64
+	switch subject.Kind {
+	case SubjectRecord:
+		if leaf, ok := v.LeafOf(subject.Digest); ok {
+			leaves = append(leaves, leaf)
+		}
+	case SubjectExchange:
+		leaves = v.Citing(subject.Digest)
+	}
+	headers := make([]Header, len(leaves))
+	for i, leaf := range leaves {
+		headers[i] = v.book.records[v.book.order[leaf]].Header
+	}
+	return headers
 }
 
 func (v *bookView) Citing(half string) []uint64 {

@@ -221,7 +221,21 @@ plugin's `share.*` object. The other three switches travel unchanged;
 `Respond` does not act on them. `checkpoints` and `history_card/1` are the
 only public questions. Every other subject is gated and fails closed: a
 stranger is refused `not_authorized` under every tier, including `peers`,
-which means any authenticated peer. The book does not authenticate anyone
+which means any authenticated peer. The gate is per subject
+(evidencebook#114). Under `counterparties`, the default, a `record` or
+`exchange` subject is answered only to a counterparty, and only when every
+record it names (the record, or every record citing the half) names that
+requester in `counterparty_ref`; `prospective` is read as `counterparties`,
+as the mesh plugin reads it. It is decided before the subject is resolved,
+so a requester no record names gets one refusal whether a record is held or
+not; the uniform refusal policy also folds a counterparty's
+`no_such_subject` into `policy_declined`. `range`, `correlation` and
+`full_history` reach records no one requester is party to, and are refused
+under every tier: only a recipient-specific derivation, the holder's grant
+to the one requester it names, answers them. An artifact carries the
+records its subject names and nothing else: a cited record appears only as
+the digest in the citing record's links, and payloads only as their
+commitments. The book does not authenticate anyone
 itself: the transport sets `AuthenticatedRequester` only after it has
 authenticated the caller. A declared identity (`RespondOptions.RequesterID`,
 deprecated) is ignored, and a `counterparty_ref` value, a route or a handle

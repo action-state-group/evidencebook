@@ -72,11 +72,12 @@ func TestResponderCostPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = book.Release() })
-	for i := range 4 {
-		mustAppend(t, book, observation("many", string(rune('a'+i))))
+	half := digestBytes([]byte("a half many records cite"))
+	for range 3 {
+		mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: half}}})
 	}
 	pin := anchorPin(t, book)
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "many"}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonPolicyDeclined)
+	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: half}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonPolicyDeclined)
 	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: pin}, Route: strings.Repeat("r", 400)}), "peer-1"), ReasonPolicyDeclined)
 	limiter.allowed = 0
 	before := book.Size()

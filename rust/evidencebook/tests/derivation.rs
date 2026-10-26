@@ -399,10 +399,14 @@ fn every_case_is_the_go_answer_byte_for_byte() {
         let request = parse_json(case.request.as_bytes()).unwrap();
         let requester = case.requester.as_deref();
         let outcome = (|| {
-            // Go's default share policy: an authenticated requester may
-            // have a protected subject, an unauthenticated one may not.
-            s.derivations
-                .check(&request, requester, requester.is_some())?;
+            // Go's default share policy (evidencebook#114): an underived
+            // subject goes only to a requester every record it names names
+            // as its other party, and no record here names one, while range,
+            // correlation and full_history go to no one. Only a
+            // recipient-specific derivation grants its recipient more.
+            if s.derivations.check(&request, requester, false)?.is_none() {
+                return Err(Reason::NotAuthorized);
+            }
             let anchor = match resolve(&request, &s) {
                 Resolution::Artifact(anchor) => anchor,
                 Resolution::Refuse(reason) => return Err(reason),
@@ -459,11 +463,13 @@ fn every_case_is_the_go_answer_byte_for_byte() {
             .unwrap();
         answered += 1;
     }
-    assert_eq!((answered, refused), (5, 7));
+    assert_eq!((answered, refused), (2, 10));
 }
 
 /// The underived subject's artifact is the same with and without
-/// registrations, and is never a projection's.
+/// registrations, is never a projection's, and carries each record's
+/// octets as Go holds them. Go answers it to no one under its default share
+/// policy (evidencebook#114), so it is built here from the case's request.
 #[test]
 fn registering_a_derivation_leaves_the_underived_artifact() {
     let v = vectors();
@@ -477,27 +483,58 @@ fn registering_a_derivation_leaves_the_underived_artifact() {
         .iter()
         .find(|c| c.name == "recipient-correlation")
         .unwrap();
-    assert_ne!(underived.artifact_digest, projected.artifact_digest);
-    let empty = store(&v);
     let request = parse_json(underived.request.as_bytes()).unwrap();
-    let Resolution::Artifact(anchor) = resolve(&request, &empty) else {
-        panic!("the underived subject resolves");
-    };
-    let selection = select(&empty, &empty, &request, &anchor, MAX_RECORDS).unwrap();
     let responder = SigningKey::from_bytes(&[7; 32]);
-    let env = build(
-        &empty,
-        &empty,
-        &request,
-        underived.request.as_bytes(),
-        &anchor,
-        &selection,
-        Options::default(),
-        &responder as &dyn EnvelopeSigner,
-        "2026-10-20T00:00:00Z",
-    )
-    .unwrap();
-    assert_eq!(String::from_utf8(env.artifact).unwrap(), underived.artifact);
+    let artifact = |s: &Store, derivations: Option<&Derivations>| {
+        let Resolution::Artifact(anchor) = resolve(&request, s) else {
+            panic!("the underived subject resolves");
+        };
+        let selection = select(s, s, &request, &anchor, MAX_RECORDS).unwrap();
+        let env = build(
+            s,
+            s,
+            &request,
+            underived.request.as_bytes(),
+            &anchor,
+            &selection,
+            Options {
+                derivations,
+                ..Options::default()
+            },
+            &responder as &dyn EnvelopeSigner,
+            "2026-10-20T00:00:00Z",
+        )
+        .unwrap();
+        String::from_utf8(env.artifact).unwrap()
+    };
+    let empty = store(&v);
+    let mut registered = store(&v);
+    for def in &v.definitions {
+        registered
+            .derivations
+            .register(DerivationDefinition {
+                document: def.document.as_bytes().to_vec(),
+                recipient: def.recipient.clone(),
+                forms: forms(&def.forms).unwrap(),
+                fields: def.fields.clone().unwrap(),
+            })
+            .unwrap();
+    }
+    let plain = artifact(&empty, None);
+    assert_eq!(plain, artifact(&registered, Some(&registered.derivations)));
+    assert_ne!(plain, projected.artifact);
+    let built: Value = serde_json::from_str(&plain).unwrap();
+    let records = built["records"].as_array().unwrap();
+    assert!(!records.is_empty());
+    for entry in records {
+        let held = v
+            .book
+            .records
+            .iter()
+            .find(|r| r.digest == entry["digest"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(entry["body"].as_str().unwrap(), held.body);
+    }
 }
 
 /// A registered derivation is answered only through the registry it was

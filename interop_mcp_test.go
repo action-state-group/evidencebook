@@ -123,7 +123,7 @@ func jsonEqual(t *testing.T, got any, want string) bool {
 // caller before and after any history (§11.4.3).
 func TestMCPListsTheProfilesTwoTools(t *testing.T) {
 	book, records := linkedBook(t)
-	server := mcpServer(t, book, DefaultSharePolicy())
+	server := mcpServer(t, book, policyWith("peers"))
 	params := map[string]any{"_meta": mcpMeta}
 	first := mcpCall(t, server, "tools/list", params, "")
 	result, ok := first["result"].(map[string]any)
@@ -171,9 +171,9 @@ func TestMCPListsTheProfilesTwoTools(t *testing.T) {
 // for byte.
 func TestMCPCanonicalArtifactIsTheNativeOne(t *testing.T) {
 	book, records := linkedBook(t)
-	server := mcpServer(t, book, DefaultSharePolicy())
+	server := mcpServer(t, book, policyWith("peers"))
 	pin := anchorPin(t, book)
-	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectFullHistory}} {
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectExchange, Digest: records[0].RecordID}} {
 		for _, mediaType := range []string{MediaTypeCBOR, MediaTypeJSON} {
 			t.Run(fmt.Sprintf("%s %s", subject.Kind, mediaType), func(t *testing.T) {
 				r := requestIn(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}, Nonce: "2026-10-12T00:00:10Z/c"}, mediaType)
@@ -225,11 +225,11 @@ func jsonAny(t *testing.T, v any) any {
 // nothing. Whatever MCP carries, the reply is the one Respond gives the same
 // authenticated requester.
 func TestMCPConnectionIsNeverAuthorization(t *testing.T) {
-	book, records := linkedBook(t)
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
+	book, _ := linkedBook(t)
+	own := mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
 	pin := anchorPin(t, book)
 	server := mcpServer(t, book, policyWith("counterparties"))
-	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: Coverage{ExpectedPin: pin}})
+	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: own.RecordID}, Coverage: Coverage{ExpectedPin: pin}})
 	claimed := mcpRequestParams(r)
 	claimed["_meta"] = map[string]any{
 		mcpMetaProtocolVersion:                MCPProtocolVersion,
@@ -274,7 +274,7 @@ func respondReply(t *testing.T, book *Book, req Message, opts RespondOptions) Re
 // the log. A notification gets no response at all.
 func TestMCPNonRequestsAreTransportConditions(t *testing.T) {
 	book, records := linkedBook(t)
-	server := mcpServer(t, book, DefaultSharePolicy())
+	server := mcpServer(t, book, policyWith("peers"))
 	pin := anchorPin(t, book)
 	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: Coverage{ExpectedPin: pin}})
 	good := base64.RawURLEncoding.EncodeToString(r.Octets)
@@ -343,7 +343,7 @@ func TestMCPNonRequestsAreTransportConditions(t *testing.T) {
 // same Artifact.
 func TestMCPCarriageMembersNeverReachTheAnswer(t *testing.T) {
 	book, records := linkedBook(t)
-	server := mcpServer(t, book, DefaultSharePolicy())
+	server := mcpServer(t, book, policyWith("peers"))
 	pin := anchorPin(t, book)
 	r := requestIn(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[1].RecordID}, Coverage: Coverage{ExpectedPin: pin}}, MediaTypeCBOR)
 	plain := mustEnvelope(t, mcpReply(t, server, r, "peer-1"))
