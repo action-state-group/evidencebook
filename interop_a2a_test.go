@@ -116,7 +116,7 @@ func a2aReply(t *testing.T, server *A2AServer, m Message, authenticated string) 
 // and after any history (§11.4.2, §11.4.3).
 func TestA2AAgentCardDeclaresTheExtension(t *testing.T) {
 	book, records := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
 	before := server.AgentCard()
 	var card map[string]any
 	if err := json.Unmarshal(before, &card); err != nil {
@@ -171,10 +171,10 @@ func TestA2AAgentCardDeclaresTheExtension(t *testing.T) {
 // Artifact. Only the carriage differs.
 func TestA2ACanonicalArtifactIsTheNativeOne(t *testing.T) {
 	book, records := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
-	mcp := mcpServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
+	mcp := mcpServer(t, book, policyWith("peers"))
 	pin := anchorPin(t, book)
-	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectFullHistory}} {
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectExchange, Digest: records[0].RecordID}} {
 		for _, mediaType := range []string{MediaTypeCBOR, MediaTypeJSON} {
 			t.Run(fmt.Sprintf("%s %s", subject.Kind, mediaType), func(t *testing.T) {
 				r := requestIn(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}, Nonce: "2026-10-12T00:00:10Z/c"}, mediaType)
@@ -201,7 +201,7 @@ func TestA2ACanonicalArtifactIsTheNativeOne(t *testing.T) {
 // alphabet, padded or not, is the same octets, so the same request digest.
 func TestA2ARawPartIsTheDecodedOctets(t *testing.T) {
 	book, records := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
 	pin := anchorPin(t, book)
 	// A request whose base64 needs padding.
 	var r Message
@@ -239,11 +239,11 @@ func TestA2ARawPartIsTheDecodedOctets(t *testing.T) {
 // messageId naming a counterparty grants nothing. Whatever A2A carries, the
 // reply is the one Respond gives the same authenticated requester.
 func TestA2ADeclaredIdentityIsNeverAuthorization(t *testing.T) {
-	book, records := linkedBook(t)
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
+	book, _ := linkedBook(t)
+	own := mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
 	pin := anchorPin(t, book)
 	server := a2aServer(t, book, policyWith("counterparties"))
-	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: Coverage{ExpectedPin: pin}})
+	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: own.RecordID}, Coverage: Coverage{ExpectedPin: pin}})
 	message := a2aMessage(r)
 	message["messageId"], message["contextId"] = "known-peer", "known-peer"
 	message["metadata"] = map[string]any{"requester": "known-peer", "agentCard": map[string]any{"name": "known-peer"}}
@@ -277,7 +277,7 @@ func TestA2ADeclaredIdentityIsNeverAuthorization(t *testing.T) {
 // a rejected task a requester could mistake for one. Nothing grows the log.
 func TestA2ANonRequestsAreTransportConditions(t *testing.T) {
 	book, records := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
 	r := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}})
 	good := base64.StdEncoding.EncodeToString(r.Octets)
 	with := func(change func(m map[string]any)) map[string]any {
@@ -358,7 +358,7 @@ func TestA2ANonRequestsAreTransportConditions(t *testing.T) {
 // each time; no task is kept for anyone to list or fetch.
 func TestA2ACarriageMembersNeverReachTheAnswer(t *testing.T) {
 	book, records := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
 	r := requestIn(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[1].RecordID}, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}}, MediaTypeCBOR)
 	plainResponse, out := a2aSend(t, server, map[string]any{"message": a2aMessage(r)}, "peer-1")
 	plainReply, plainTask := a2aReplyOf(t, plainResponse, r.MediaType)
@@ -398,7 +398,7 @@ func TestA2ACarriageMembersNeverReachTheAnswer(t *testing.T) {
 // the 228 decoded octets, the same as over the native stream and MCP.
 func TestA2AProfileExampleBindsRequestB(t *testing.T) {
 	book, _ := linkedBook(t)
-	server := a2aServer(t, book, DefaultSharePolicy())
+	server := a2aServer(t, book, policyWith("peers"))
 	const example = `{"jsonrpc": "2.0", "id": 1, "method": "SendMessage", "params": {"message": {
   "messageId": "m-1", "role": "ROLE_USER",
   "extensions": ["https://datatracker.ietf.org/doc/draft-mih-agent-evidence-request/"],

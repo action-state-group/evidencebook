@@ -23,15 +23,27 @@ func correlatedBook(t *testing.T) (*Book, []Record) {
 	first, second := step("1"), step("2")
 	report := mustAppend(t, book, Entry{RecordType: "report", EpistemicType: ProducerClaim})
 	legacy := mustAppend(t, book, observation("order-17", `{"status":"approved"}`))
-	// The requester is answered as the book's counterparty.
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
 	return book, []Record{first, second, report, legacy}
 }
 
+// forPeer registers the recipient-specific derivation over correlation
+// that grants peer-1 a correlation subject, and returns its identifier.
+// Nothing else answers a correlation subject.
+func forPeer(t *testing.T, book *Book) string {
+	t.Helper()
+	id, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"d":1}`), Recipient: "peer-1",
+		Forms: []SubjectKind{SubjectCorrelation}, Fields: []string{"record_type"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// correlationDigests is the records peer-1 is answered for correlation id.
 func correlationDigests(t *testing.T, book *Book, id string) []string {
 	t.Helper()
 	pin := anchorPin(t, book)
-	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: id}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: id}, Derivation: forPeer(t, book), Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
 	var out []string
 	for _, entry := range artifactRecords(t, e) {
 		out = append(out, entry["digest"].(string))
@@ -53,7 +65,7 @@ func TestCorrelationSubjectReadsTheHeadersCorrelation(t *testing.T) {
 	}
 	// A step's own subject_ref is no correlation: the step is held under
 	// its correlation identifier alone.
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a/1"}, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}}), "peer-1"), ReasonNoSuchSubject)
+	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a/1"}, Derivation: forPeer(t, book), Coverage: Coverage{ExpectedPin: anchorPin(t, book)}}), "peer-1"), ReasonNoSuchSubject)
 }
 
 // The subject_ref index proves the set of records under one subject_ref,
@@ -81,7 +93,7 @@ func TestCorrelationFallbackAndSharedKeySpace(t *testing.T) {
 	}
 	pin := anchorPin(t, book)
 	for _, id := range []string{digestBytes([]byte("r")), "twin-1"} {
-		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: id}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNoSuchSubject)
+		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: id}, Derivation: forPeer(t, book), Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNoSuchSubject)
 	}
 	if got := correlationDigests(t, book, "deal-a"); !slices.Equal(got, []string{first.RecordID, second.RecordID, before.RecordID}) {
 		t.Fatalf("an exchange_id and a subject_ref of one value answer together: %v", got)
@@ -89,23 +101,18 @@ func TestCorrelationFallbackAndSharedKeySpace(t *testing.T) {
 }
 
 // A correlation answer carries no proof that its set is complete: no
-// verification material at all, whether underived or under a derivation
-// (profile v0 has no material for record sets, P-13), so no index proof
-// can stand in for one.
+// verification material at all (profile v0 has no material for record
+// sets, P-13), so no index proof can stand in for one. Underived, it is not
+// answered at all.
 func TestCorrelationAnswerCarriesNoCompletenessMaterial(t *testing.T) {
 	book, _ := correlatedBook(t)
-	id, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"d":1}`), Recipient: "peer-1",
-		Forms: []SubjectKind{SubjectCorrelation}, Fields: []string{"record_type"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	id := forPeer(t, book)
 	pin := anchorPin(t, book)
-	for _, derivation := range []string{"", id} {
-		e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
-		if len(e.Verification) != 0 || len(e.VerificationContent) != 0 {
-			t.Fatalf("derivation %q: a correlation answer carries verification material", derivation)
-		}
+	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Derivation: id, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+	if len(e.Verification) != 0 || len(e.VerificationContent) != 0 {
+		t.Fatal("a correlation answer carries verification material")
 	}
+	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNotAuthorized)
 }
 
 func TestSubjectIndexProofIsNotACorrelationSetsCompleteness(t *testing.T) {

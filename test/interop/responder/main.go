@@ -274,8 +274,11 @@ func run(ctx context.Context, dir, out string) error {
 	if err != nil {
 		return err
 	}
+	// The later records cite the third, so the exchange of the third is a
+	// record set.
 	for i := 3; i < 7; i++ {
-		r, err := book.Append(ctx, evidencebook.Entry{RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: fmt.Sprintf("order-%d", i)})
+		r, err := book.Append(ctx, evidencebook.Entry{RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: fmt.Sprintf("order-%d", i),
+			Links: []evidencebook.Link{{Type: evidencebook.Cites, Target: records[2].RecordID}}})
 		if err != nil {
 			return err
 		}
@@ -286,12 +289,17 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	pin := hexDigest(anchor.Statement)
+	// The vectors' requesters are no record's counterparty, so the book
+	// answers under the peers tier: record and exchange subjects go to any
+	// authenticated requester.
+	peers := evidencebook.DefaultSharePolicy()
+	peers.HistorySegments = "peers"
 	manifest := evidencebook.ManifestOptions{Bindings: []string{evidencebook.BindingStream, evidencebook.BindingHTTP, evidencebook.BindingA2A, evidencebook.BindingMCP}}
-	server, err := book.MCP(evidencebook.MCPOptions{Manifest: manifest, Policy: evidencebook.DefaultSharePolicy()})
+	server, err := book.MCP(evidencebook.MCPOptions{Manifest: manifest, Policy: peers})
 	if err != nil {
 		return err
 	}
-	agent, err := book.A2A(evidencebook.A2AOptions{Manifest: manifest, Policy: evidencebook.DefaultSharePolicy(),
+	agent, err := book.A2A(evidencebook.A2AOptions{Manifest: manifest, Policy: peers,
 		Name: "evidencebook interop responder", URL: "https://responder.example/a2a"})
 	if err != nil {
 		return err
@@ -306,7 +314,7 @@ func run(ctx context.Context, dir, out string) error {
 		return evidencebook.Message{Octets: octets, MediaType: mediaType}, err
 	}
 	respond := func(m evidencebook.Message, requester string) (evidencebook.Reply, error) {
-		reply, _, err := book.Respond(ctx, m, evidencebook.RespondOptions{AuthenticatedRequester: requester, Policy: evidencebook.DefaultSharePolicy()})
+		reply, _, err := book.Respond(ctx, m, evidencebook.RespondOptions{AuthenticatedRequester: requester, Policy: peers})
 		return reply, err
 	}
 	o := output{
@@ -400,12 +408,13 @@ func run(ctx context.Context, dir, out string) error {
 	}
 
 	// The same two variations for a record-set subject, whose Artifact is
-	// built by this responder rather than being a record's own octets.
+	// built by this responder rather than being a record's own octets. It
+	// is an exchange: no tier answers full_history.
 	for _, v := range []struct{ name, nonce, mediaType, requester string }{
-		{"full_history-alice-json-nonce-c", "2026-10-12T00:00:10Z/c", evidencebook.MediaTypeJSON, "alice"},
-		{"full_history-bob-cbor-nonce-d", "2026-10-12T00:00:20Z/d", evidencebook.MediaTypeCBOR, "bob"},
+		{"exchange-alice-json-nonce-c", "2026-10-12T00:00:10Z/c", evidencebook.MediaTypeJSON, "alice"},
+		{"exchange-bob-cbor-nonce-d", "2026-10-12T00:00:20Z/d", evidencebook.MediaTypeCBOR, "bob"},
 	} {
-		m, err := request(evidencebook.Subject{Kind: evidencebook.SubjectFullHistory}, pin, v.nonce, evidencebook.ProfileID, v.mediaType)
+		m, err := request(evidencebook.Subject{Kind: evidencebook.SubjectExchange, Digest: records[2].RecordID}, pin, v.nonce, evidencebook.ProfileID, v.mediaType)
 		if err != nil {
 			return err
 		}
@@ -414,7 +423,7 @@ func run(ctx context.Context, dir, out string) error {
 			return err
 		}
 		if reply.Envelope == nil {
-			return fmt.Errorf("full_history request %s was refused", v.name)
+			return fmt.Errorf("exchange request %s was refused", v.name)
 		}
 		o.RecordSet[v.name] = hex.EncodeToString(reply.Envelope.Artifact)
 	}
@@ -459,7 +468,7 @@ func run(ctx context.Context, dir, out string) error {
 		return err
 	}
 	defer func() { _ = declining.Release() }()
-	replyDeclined, _, err := declining.Respond(ctx, reqC, evidencebook.RespondOptions{AuthenticatedRequester: "alice", Policy: evidencebook.DefaultSharePolicy()})
+	replyDeclined, _, err := declining.Respond(ctx, reqC, evidencebook.RespondOptions{AuthenticatedRequester: "alice", Policy: peers})
 	if err != nil {
 		return err
 	}

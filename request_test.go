@@ -38,10 +38,13 @@ func jsonRequest(t *testing.T, req EvidenceRequest) Message {
 }
 
 // respondAs answers req as if the transport had authenticated the caller as
-// requester ("" for an unauthenticated caller) under the default policy.
+// requester ("" for an unauthenticated caller) under the peers tier, so a
+// record or exchange subject is answered to any authenticated requester and
+// a test of anything but the requester gate needs no counterparty records.
+// range, correlation and full_history stay refused under every tier.
 func respondAs(t *testing.T, book *Book, req Message, requester string) Reply {
 	t.Helper()
-	reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
+	reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policyWith("peers")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,11 +116,8 @@ func TestRespondResolvesEverySubjectForm(t *testing.T) {
 		subject Subject
 		want    int
 	}{
-		{Subject{Kind: SubjectRange, Range: [2]uint64{1, 2}}, 2},
-		{Subject{Kind: SubjectCorrelation, Correlation: "order-17"}, 3},
 		{Subject{Kind: SubjectExchange, Digest: half}, 1},
-		// full_history also carries the book's own index-root records.
-		{Subject{Kind: SubjectFullHistory}, 7},
+		{Subject{Kind: SubjectExchange, Digest: records[0].RecordID}, 2},
 	}
 	for _, c := range cases {
 		t.Run(string(c.subject.Kind), func(t *testing.T) {
@@ -132,6 +132,13 @@ func TestRespondResolvesEverySubjectForm(t *testing.T) {
 					t.Fatal("a served record's body does not hash to its digest")
 				}
 			}
+		})
+	}
+	// No requester is party to every record these reach: they are refused
+	// under every tier, before they are resolved.
+	for _, subject := range []Subject{{Kind: SubjectRange, Range: [2]uint64{1, 2}}, {Kind: SubjectCorrelation, Correlation: "order-17"}, {Kind: SubjectFullHistory}} {
+		t.Run(string(subject.Kind), func(t *testing.T) {
+			mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNotAuthorized)
 		})
 	}
 	t.Run("record", func(t *testing.T) {
@@ -194,7 +201,7 @@ func TestRespondRefusalReasons(t *testing.T) {
 		{"pin alone is answerable", "peer-1", "", jsonRequest(t, EvidenceRequest{Subject: record, Coverage: Coverage{ExpectedPin: pin}})},
 		{"unknown member is ignored", "peer-1", "", raw(`{` + subjectJSON + `,"coverage":{"expected_pin":"` + pin + `"},"page":{"size":10}}`)},
 		{"no such record", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never recorded"))}, Coverage: fresh()})},
-		{"range past the log", "peer-1", ReasonNoSuchSubject, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{1, 500}}, Coverage: fresh()})},
+		{"range is refused before it is resolved", "peer-1", ReasonNotAuthorized, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{1, 500}}, Coverage: fresh()})},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -241,27 +248,37 @@ func TestRefusalSignatureCoversReasonAndTime(t *testing.T) {
 	}
 }
 
+// The share policy gates record and exchange subjects by the records they
+// name: under counterparties (the default) and prospective, only the party
+// each record names; under peers, any authenticated peer.
 func TestSharePolicyGateByRelationship(t *testing.T) {
 	book, records := linkedBook(t)
-	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
-	req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
-	matrix := map[string]map[string]bool{
-		"off":            {"": false, "someone": false, "known-peer": false},
-		"counterparties": {"": false, "someone": false, "known-peer": true},
-		"prospective":    {"": false, "someone": true, "known-peer": true},
-		"peers":          {"": false, "someone": true, "known-peer": true},
+	own := mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "known-peer"})
+	if DefaultSharePolicy().HistorySegments != "counterparties" {
+		t.Fatalf("the default tier is %q, want counterparties", DefaultSharePolicy().HistorySegments)
+	}
+	theirs := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: own.RecordID}, Coverage: fresh()})
+	other := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: fresh()})
+	matrix := map[string]map[string][2]bool{ // requester: {own record answered, another record answered}
+		"off":            {"": {false, false}, "someone": {false, false}, "known-peer": {false, false}},
+		"counterparties": {"": {false, false}, "someone": {false, false}, "known-peer": {true, false}},
+		"prospective":    {"": {false, false}, "someone": {false, false}, "known-peer": {true, false}},
+		"peers":          {"": {false, false}, "someone": {true, true}, "known-peer": {true, true}},
 	}
 	for tier, requesters := range matrix {
 		for requester, answered := range requesters {
-			reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policyWith(tier)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if (reply.Envelope != nil) != answered {
-				t.Fatalf("tier %s requester %q: answered=%v, want %v", tier, requester, reply.Envelope != nil, answered)
+			for i, req := range []Message{theirs, other} {
+				reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policyWith(tier)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if (reply.Envelope != nil) != answered[i] {
+					t.Fatalf("tier %s requester %q request %d: answered=%v, want %v", tier, requester, i, reply.Envelope != nil, answered[i])
+				}
 			}
 		}
 	}
+	req := other
 	// Asking never makes a requester a counterparty.
 	for range 2 {
 		reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: "someone", Policy: policyWith("counterparties")})
@@ -289,9 +306,7 @@ func TestCallerInvariance(t *testing.T) {
 	peers := policyWith("peers")
 	subjects := []EvidenceRequest{
 		{Subject: Subject{Kind: SubjectRecord, Digest: records[1].RecordID}},
-		{Subject: Subject{Kind: SubjectCorrelation, Correlation: "order-17"}},
-		{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{0, 3}}},
-		{Subject: Subject{Kind: SubjectFullHistory}},
+		{Subject: Subject{Kind: SubjectExchange, Digest: records[0].RecordID}},
 		{Subject: Subject{Kind: SubjectCheckpoints}},
 		{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard},
 		{Subject: Subject{Kind: SubjectExchange, Digest: half}},

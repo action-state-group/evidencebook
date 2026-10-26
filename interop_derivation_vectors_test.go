@@ -254,7 +254,7 @@ func TestDerivationVectors(t *testing.T) {
 			derivation = id
 		}
 		req := jsonRequest(t, EvidenceRequest{Subject: c.subject, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}})
-		reply := respondAs(t, book, req, c.requester)
+		reply, _ := respondWith(t, book, req, RespondOptions{AuthenticatedRequester: c.requester, Policy: DefaultSharePolicy()})
 		out := derivationVectorCase{Name: c.name, Definition: c.definition, Requester: c.requester, Request: string(req.Octets)}
 		if reply.Envelope != nil {
 			e := mustEnvelope(t, reply)

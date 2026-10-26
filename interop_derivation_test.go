@@ -53,11 +53,19 @@ func TestRecipientSpecificDerivation(t *testing.T) {
 	mustRefusal(t, ask(forAlice, "bob"), ReasonNotAuthorized)
 	mustRefusal(t, ask(forAlice, ""), ReasonNotAuthorized)
 	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{0, 1}}, Derivation: forAlice, Coverage: Coverage{ExpectedPin: pin}}), "alice"), ReasonNoSuchSubject)
-	underived := mustEnvelope(t, ask("", "alice"))
-	if bytes.Equal(underived.Artifact, e.Artifact) || underived.ArtifactDigest == e.ArtifactDigest {
+	// The grant is the derivation: the underived correlation is refused to
+	// its recipient too.
+	mustRefusal(t, ask("", "alice"), ReasonNotAuthorized)
+	record := Subject{Kind: SubjectRecord, Digest: records[1].RecordID}
+	askRecord := func(derivation, requester string) Reply {
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: record, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), requester)
+	}
+	projected := mustEnvelope(t, askRecord(forAlice, "alice"))
+	underived := mustEnvelope(t, askRecord("", "alice"))
+	if bytes.Equal(underived.Artifact, projected.Artifact) || underived.ArtifactDigest == projected.ArtifactDigest {
 		t.Fatal("a projection is presented as the canonical Artifact of the underived subject")
 	}
-	if again := mustEnvelope(t, ask("", "bob")); !bytes.Equal(again.Artifact, underived.Artifact) {
+	if again := mustEnvelope(t, askRecord("", "bob")); !bytes.Equal(again.Artifact, underived.Artifact) {
 		t.Fatal("registering projections changed the underived artifact")
 	}
 	manifest, err := book.Manifest(ManifestOptions{Bindings: []string{BindingHTTP}})
@@ -73,7 +81,6 @@ func TestRecipientSpecificDerivation(t *testing.T) {
 	if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{}`), Forms: []SubjectKind{SubjectRecord}, Fields: []string{"payload"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("a field outside the record header was declared")
 	}
-	_ = records
 }
 
 // #86: the identifier binds only the document, so registering it again may
