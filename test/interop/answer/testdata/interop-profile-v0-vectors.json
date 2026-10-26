@@ -92,7 +92,7 @@
     "contract_digest": "6f6605015976f77d230ba62870bd585cb547392add86bf2efb9d46f762ee9561",
     "schema": {
       "name": "evidence-contract-v0.json",
-      "sha256": "6d10d5eb97e15421db0ab922b5f6d1f0a2e9f453fb64e52fb45306ba029ad480"
+      "sha256": "6b969610e6f120a9f5b98555aa5045644c62665f14075bb83fb9e78bab21b770"
     }
   },
   "logs": {
@@ -222,7 +222,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -347,7 +347,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -388,7 +388,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -2595,14 +2595,14 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               },
               "r-authorized": {
                 "row": "envelope-7",
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -4833,7 +4833,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -4873,7 +4873,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -4913,7 +4913,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -5096,7 +5096,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -5136,7 +5136,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {
@@ -5773,7 +5773,7 @@
                 "status": "UNKNOWN",
                 "sufficiency": "UNKNOWN",
                 "verdict": "not_evaluable",
-                "note": "§8.1 row 7: the contract evaluates the Artifact's content; met or not_met only if that gives SATISFIED, else not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
+                "note": "§8.1 row 7: the contract evaluates the Artifact's content; SATISFIED gives met, not_met or, where the requirement allows it, out_of_scope, and any other sufficiency gives not_evaluable [RES §1]. This profile fixes no content rule, so with no content evaluator the requirement is UNKNOWN (§11.3.7)."
               }
             },
             "claim": {

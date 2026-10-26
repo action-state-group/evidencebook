@@ -29,8 +29,8 @@ import (
 // checks it against the corpus. When the corpus next pins evidencebook, its
 // producer/main.go takes this file.
 const (
-	aacCommit      = "0b7b1825965e7f7845cbc70a490a581cbc70bd37"
-	vectorsSHA256  = "8369998d0fb0f118a1f4d6c5469cd93d83885fa6ae2c3b39e1267955001cbccc"
+	aacCommit      = "9d653f41419d2d2bac4714137b763315947ec754"
+	vectorsSHA256  = "f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9"
 	producerSHA256 = "99e9f3e7e43de6d879c7730155aae8f14f081c0f2e528e5a21cfda1da0f9ace9"
 )
 
@@ -271,7 +271,7 @@ func TestCorpusIsCutFromTheRun(t *testing.T) {
 			}
 		}
 	}
-	if c.Count != 12 || len(c.Cases) != 12 || responder != 5 {
+	if c.Count != 14 || len(c.Cases) != 14 || responder != 5 {
 		t.Errorf("corpus: %d cases (count %d), %d from the responder", len(c.Cases), c.Count, responder)
 	}
 }

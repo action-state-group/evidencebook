@@ -29,7 +29,7 @@ The commands below are for a Unix shell (bash or zsh) on Linux or macOS, with
 
 All three come from the public
 [agent-action-capsule](https://github.com/action-state-group/agent-action-capsule)
-repository, pinned at commit `0b7b1825965e7f7845cbc70a490a581cbc70bd37`.
+repository, pinned at commit `9d653f41419d2d2bac4714137b763315947ec754`.
 Read them at that commit, not at the tip of `main`, which may have moved on.
 The personal-evidence part (§6) uses the same commit.
 
@@ -41,7 +41,7 @@ The personal-evidence part (§6) uses the same commit.
 
 The vectors at this commit hold 53 cases. They are byte-for-byte the same as
 when they were last regenerated, in commit
-`dfc47036e9fa3a1f11d918052d2fa4377ed3ec2d`. evidencebook's continuous
+`e706487d37561a7e7aae5c169d7c45e76305973b`. evidencebook's continuous
 integration runs the profile's reference verifier against this responder over
 these same vectors.
 
@@ -49,7 +49,7 @@ Download them into a working directory:
 
 ```bash
 mkdir -p ~/eb-verifier-test && cd ~/eb-verifier-test
-AAC=0b7b1825965e7f7845cbc70a490a581cbc70bd37
+AAC=9d653f41419d2d2bac4714137b763315947ec754
 for f in spec/interop-profile-v0.md spec/draft-mih-agent-evidence-request-00.md \
   vectors/interop-profile-v0/README.md vectors/interop-profile-v0/manifest.json \
   vectors/interop-profile-v0/vectors.json vectors/interop-profile-v0/SHA256SUMS; do
@@ -277,12 +277,12 @@ selection. The request's `derivation` is the SHA-256 of that document.
 ### 6.1 The inputs
 
 They come from the same public repository at the same commit as §1,
-`0b7b1825965e7f7845cbc70a490a581cbc70bd37`.
+`9d653f41419d2d2bac4714137b763315947ec754`.
 
 | Input | Path at this commit |
 |---|---|
 | The host profile | `spec/personal-agent-history-profile-v0.md` |
-| Its conformance vectors | `vectors/personal-history-basic-v0/` (`vectors.json`, 12 cases, with `README.md` explaining how to read it) |
+| Its conformance vectors | `vectors/personal-history-basic-v0/` (`vectors.json`, 14 cases, with `README.md` explaining how to read it) |
 | The responder run the vectors are built from | `vectors/personal-history-basic-v0/responder-run.json` |
 | The program that produced that run | `vectors/personal-history-basic-v0/producer/main.go` |
 
@@ -290,7 +290,7 @@ Download them next to the §1 inputs:
 
 ```bash
 cd ~/eb-verifier-test
-AAC=0b7b1825965e7f7845cbc70a490a581cbc70bd37
+AAC=9d653f41419d2d2bac4714137b763315947ec754
 for f in spec/personal-agent-history-profile-v0.md spec/evidence-result-v0.md \
   vectors/personal-history-basic-v0/README.md vectors/personal-history-basic-v0/manifest.json \
   vectors/personal-history-basic-v0/vectors.json vectors/personal-history-basic-v0/responder-run.json \
@@ -303,7 +303,7 @@ done
 
 On macOS, use `shasum -a 256 -c SHA256SUMS`. All five files should report
 `OK`. `vectors.json` has SHA-256
-`8369998d0fb0f118a1f4d6c5469cd93d83885fa6ae2c3b39e1267955001cbccc`.
+`f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9`.
 `spec/evidence-result-v0.md` is the Evidence Result document the profile takes
 its claim, sufficiency and verdict from.
 
@@ -404,9 +404,20 @@ no verification material for a derivation's answer. So no case yields `met` or
 | `mutant-record-kind-outside-list` | derived | one record's `record_type` changed to a kind outside the host profile's §3, re-signed by the holder key | 3 of 3 | none | `record_kinds` | not accepted |
 | `mutant-member-outside-reads` | derived | `counterparty_ref` added to one record, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
 | `mutant-definition-reads-widened` | responder | answers under a definition whose `reads` adds `statement` and `counterparty_ref` | 3 of 3 | none | `definition_form` | not accepted |
+| `multi-stream-one-tick` | derived | the three deals of `history-basic`, each moved to a stream of its own and answered at one witnessed checkpoint tick, re-signed by the holder key | 3 of 3 | none | none | accepted |
+| `mutant-multi-stream-mixed-anchor` | derived | `multi-stream-one-tick` with one deal answered at its own stream's checkpoint | 3 of 3 | none | `single_anchor` | not accepted |
 | `refused-other-requester` | responder | a request under the definition from `requester-2`, who is not its recipient | no envelope | refusal `not_authorized`; every refusal property `PASS` except `responder_key_current` `NOT_CHECKED`; row `refusal-withheld`: `WITHHELD`, `GAP`, `not_evaluable` | no History | no History |
 
 For `history-basic`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step.
+
+For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. That is selected deals, 3 in `multi-stream-one-tick`, the same three deals as in `history-basic`.
+
+The two multi-stream cases are derived, not part of the responder run: each
+selected deal's records move to a stream of their own, and each request names
+one tick. That tick, and the stream checkpoint in
+`mutant-multi-stream-mixed-anchor`, are label digests, not real checkpoints.
+At the Basic level you check only that every envelope names the same anchor.
+The corpus README describes how they were built.
 
 The two other-anchor cases are two readings of one row of the host profile's
 §6.4 table. That row names both `single_anchor` and `anchor_match`, and the
