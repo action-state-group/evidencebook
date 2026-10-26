@@ -34,6 +34,13 @@
   reference and a scripted demo; CI checks that its verbs are the plugin's and
   runs the demo against `capsulectl` plus a `capsulectl-book` built here.
 
+### Changed: capsulectl-book builds against capsulectl v0.1.0-rc23
+
+- `capsulectl/go.mod` requires capsule-cli at the published release
+  `v0.1.0-rc23` instead of the commit it was imported from (e0511c4), so the
+  first capsulectl-book release is `capsulectl/v0.1.0-rc23`
+  (`capsulectl/RELEASING.md`).
+
 ## v0.8.0 (2026-10-24)
 
 ### Added: capsulectl-book, as the nested module capsulectl/
