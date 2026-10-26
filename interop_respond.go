@@ -94,13 +94,16 @@ func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
 // SharePolicy is the four-switch sharing policy, carried unchanged from the
 // mesh plugin's share.* object. Every default keys on relationship.
 //
-// HistorySegments decides who may have the records a record or exchange
-// subject names: "counterparties" (the default) answers only the party each
-// of those records names as its counterparty; "peers" answers any
-// authenticated peer; "off" answers no one. "prospective" is accepted and
-// read as "counterparties", as the mesh plugin reads it. Whatever the
-// setting, range, correlation and full_history are refused unless a
-// recipient-specific derivation grants them (gate.responderPolicy).
+// HistorySegments decides who may have the records an underived (or
+// shared-derivation) record or exchange subject names: "counterparties"
+// (the default) answers only the party each of those records names as its
+// counterparty; "peers" answers any authenticated peer; "off" answers no
+// one. "prospective" is accepted and read as "counterparties", as the mesh
+// plugin reads it. Whatever the setting, range, correlation and
+// full_history are refused. A recipient-specific derivation is the
+// holder's grant and is not gated by the setting: it is answered to its
+// recipient over every form it declares, "off" included
+// (gate.responderPolicy).
 type SharePolicy struct {
 	RecordAtCompletion string `json:"record_at_completion"`
 	HistorySegments    string `json:"history_segments"`
@@ -372,6 +375,7 @@ func (a *answer) run() (Reply, error) {
 		if view, err = b.viewLocked(a.ctx); err != nil {
 			return Reply{}, err
 		}
+		g.named = view.named
 		if d = decide(view, check, g, a.now, false); d.NeedAnchor {
 			d.Reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}

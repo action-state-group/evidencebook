@@ -143,3 +143,29 @@ func TestRefusalsDoNotEnumerateRecords(t *testing.T) {
 		mustEnvelope(t, askDefault(t, book, "alice", Subject{Kind: SubjectRecord, Digest: alice.RecordID}, pin))
 	})
 }
+
+// A recipient-specific derivation is the holder's grant to its recipient:
+// it is answered to that recipient, and only to it, whatever the tier,
+// "off" included, while the underived subject follows the tier.
+func TestRecipientGrantIsNotGatedByTheTier(t *testing.T) {
+	book, _, bob, _, _ := tenantsBook(t, nil)
+	grant, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"for":"carol"}`), Recipient: "carol",
+		Forms: []SubjectKind{SubjectRecord, SubjectFullHistory}, Fields: []string{"record_type"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := Coverage{ExpectedPin: anchorPin(t, book)}
+	for _, tier := range []string{"off", "counterparties", "prospective", "peers"} {
+		for _, subject := range []Subject{{Kind: SubjectRecord, Digest: bob.RecordID}, {Kind: SubjectFullHistory}} {
+			ask := func(requester, derivation string) Reply {
+				reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Derivation: derivation, Coverage: pin}), RespondOptions{AuthenticatedRequester: requester, Policy: policyWith(tier)})
+				return reply
+			}
+			mustEnvelope(t, ask("carol", grant))
+			mustRefusal(t, ask("alice", grant), ReasonNotAuthorized)
+			if subject.Kind == SubjectFullHistory || tier != "peers" {
+				mustRefusal(t, ask("carol", ""), ReasonNotAuthorized)
+			}
+		}
+	}
+}

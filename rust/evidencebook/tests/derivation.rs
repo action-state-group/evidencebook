@@ -399,9 +399,9 @@ fn every_case_is_the_go_answer_byte_for_byte() {
         let request = parse_json(case.request.as_bytes()).unwrap();
         let requester = case.requester.as_deref();
         let outcome = (|| {
-            // Go's default share policy (evidencebook#114): a record or
-            // exchange subject goes only to the counterparty every record
-            // it names names, and no record here names one; range,
+            // Go's default share policy (evidencebook#114): an underived
+            // subject goes only to a requester every record it names names
+            // as its other party, and no record here names one, while range,
             // correlation and full_history go to no one. Only a
             // recipient-specific derivation grants its recipient more.
             if s.derivations.check(&request, requester, false)?.is_none() {
