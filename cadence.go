@@ -130,10 +130,11 @@ const (
 	WitnessInvalid    = "INVALID"
 )
 
-// WitnessCheck is what checking one receipt found: its state and the reason
-// AAC's verifier gave, prefixed with its finding (for example
+// WitnessCheck is what checking one receipt found: its state and why. When
+// AAC's verifier ran, Reason is its finding and its reason (for example
 // "witness_unverified:<ts_url>: not checked: no directory row for this
-// witness").
+// witness"); a receipt missing a member is INVALID before any check, with
+// evidencebook's own reason.
 type WitnessCheck struct {
 	State  string
 	Reason string
@@ -157,10 +158,11 @@ func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aac
 		"tree_size":   json.Number(strconv.FormatUint(receipt.TreeSize, 10)),
 	}
 	status, findings, results := aacwitness.VerifyReceipts([]interface{}{record}, &signed, statement, directory)
-	reason := strings.Join(findings, "; ")
+	parts := findings
 	if len(results) == 1 && results[0].Reason != "" {
-		reason += ": " + results[0].Reason
+		parts = append(parts, results[0].Reason)
 	}
+	reason := strings.Join(parts, ": ")
 	switch status {
 	case aacwitness.StatusPass:
 		return WitnessCheck{State: WitnessVerified, Reason: reason}, nil

@@ -109,7 +109,9 @@ pub struct Coverage<'a> {
 /// ([`agent_action_capsule::witness::verify_witness_receipts`]), against
 /// `statement` under `directory`. A receipt the checkpoint only carries is
 /// not counted: none counts when the statement does not verify under its
-/// own key or does not state this checkpoint, and a receipt that is not
+/// own key or does not sign every field of this checkpoint as stated
+/// (`log_id`, `mmr_size`, `root`, `key_id`, `timestamp`, `prev_size`,
+/// `prev_root`), and a receipt that is not
 /// checked (no directory row or key) or fails is left out.
 fn verified_witnesses(
     cp: &Checkpoint,
@@ -121,17 +123,24 @@ fn verified_witnesses(
         Some(decoded) if verified.ok => decoded,
         _ => return BTreeSet::new(),
     };
-    if decoded.log_id != cp.log_id
-        || decoded.mmr_size != cp.mmr_size
-        || decoded.root != cp.root
-        || decoded.key_id != cp.key_id
-    {
+    let signed = witness::SignedCheckpoint::from(&decoded);
+    let stated = witness::SignedCheckpoint {
+        log_id: cp.log_id.clone(),
+        mmr_size: cp.mmr_size,
+        root: cp.root.clone(),
+        key_id: cp.key_id.clone(),
+        timestamp: cp.timestamp.clone(),
+        prev_size: cp.prev_size,
+        prev_root: cp.prev_root.clone(),
+    };
+    // Every signed field, so the summary never publishes a stated field the
+    // witnessed statement does not sign.
+    if signed != stated {
         return BTreeSet::new();
     }
     let Ok(receipts) = serde_json::to_value(&cp.witnesses) else {
         return BTreeSet::new();
     };
-    let signed = witness::SignedCheckpoint::from(&decoded);
     witness::verify_witness_receipts(Some(&receipts), Some(&signed), Some(statement), directory)
         .receipts
         .into_iter()
@@ -610,8 +619,32 @@ mod tests {
                 second_cose,
                 Some(&directory),
             ),
-            ("no statement", with(vec![good]), &[], Some(&directory)),
+            (
+                "no statement",
+                with(vec![good.clone()]),
+                &[],
+                Some(&directory),
+            ),
         ];
+        // A stated field the statement does not sign.
+        type Alter = fn(&mut Checkpoint);
+        let altered: Vec<(&str, Alter)> = vec![
+            ("log_id", |cp| cp.log_id.push('x')),
+            ("mmr_size", |cp| cp.mmr_size += 1),
+            ("root", |cp| cp.root = "00".repeat(32)),
+            ("key_id", |cp| cp.key_id = "11".repeat(32)),
+            ("timestamp", |cp| {
+                cp.timestamp = "2026-10-26T00:00:00Z".into()
+            }),
+            ("prev_size", |cp| cp.prev_size += 1),
+            ("prev_root", |cp| cp.prev_root = "22".repeat(32)),
+        ];
+        for (field, alter) in altered {
+            let mut cp = with(vec![good.clone()]);
+            alter(&mut cp);
+            let v = coverage_of(&cp, first_cose, Some(&directory));
+            assert_eq!(v["witnessed"], json!(false), "altered {field}");
+        }
         for (name, cp, statement, directory) in not_witnessed {
             let v = coverage_of(&cp, statement, directory);
             assert_eq!(v["witnessed"], json!(false), "{name}");

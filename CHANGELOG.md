@@ -10,10 +10,13 @@
   check. It now returns a `WitnessCheck`: `VERIFIED` witnesses the tick as
   before; `NOT_CHECKED` (the witness has no directory row or usable key, or
   no directory is configured) changes nothing and is not an error; `INVALID`
-  changes nothing and is an `ErrInvalid` naming AAC's reason. Each state
-  carries AAC's named reason.
-- `ImportLegacy` verifies each witnessed pre-shelf tick's receipt the same
-  way and refuses an import whose receipt is not `VERIFIED`, naming the tick.
+  changes nothing and is an `ErrInvalid` naming the reason. Each state
+  carries AAC's finding and reason, except a receipt missing a member, which
+  is `INVALID` before any check.
+- `ImportLegacy` verifies the receipt of each witnessed pre-shelf tick it
+  stores or promotes the same way and refuses an import whose receipt is not
+  `VERIFIED`, naming the tick. A tick already held witnessed is not checked
+  again, so a re-run after a key rotation still imports new ticks.
 - Hosts migrate by passing their witness directory
   (`witness.ParseDirectory`) in `CadenceConfig.Witnesses` and reading the
   returned state. Ticks witnessed before this release stay witnessed: they

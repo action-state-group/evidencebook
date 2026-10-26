@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -62,7 +63,7 @@ func mustWitness(t *testing.T, c *Cadence, n uint64) {
 		t.Fatal(err)
 	}
 	check, err := c.Witnessed(context.Background(), n, receiptFor(t, tick.Checkpoint, testWitnessURL))
-	if err != nil || check.State != WitnessVerified {
+	if err != nil || check.State != WitnessVerified || strings.HasPrefix(check.Reason, ":") || !strings.HasPrefix(check.Reason, "ok") {
 		t.Fatalf("witnessing tick %d: %+v %v", n, check, err)
 	}
 }
@@ -175,5 +176,51 @@ func TestImportLegacyRefusesAReceiptThatDoesNotVerify(t *testing.T) {
 		if rows := countRows(t, l.shelf, `SELECT COUNT(*) FROM cadence_ticks`); rows != 0 {
 			t.Fatalf("%s: %d ticks imported", name, rows)
 		}
+	}
+}
+
+// A re-run does not check a tick it already holds witnessed again: the held
+// tick's receipt no longer verifying (a witness rotated its key) does not
+// stop the import of what is new.
+func TestImportLegacyDoesNotRecheckAHeldWitnessedTick(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyFixture(t, "deal/a")
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks[:1]}); err != nil {
+		t.Fatal(err)
+	}
+	stale := receiptFor(t, l.ticks[1].Checkpoint, testWitnessURL)
+	l.ticks[0].Receipt = &stale
+	witnessLegacy(t, &l.ticks[1])
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
+		t.Fatal(err)
+	}
+	for n := uint64(1); n <= 2; n++ {
+		tick, err := l.c.Get(ctx, n)
+		if err != nil || !tick.Witnessed {
+			t.Fatalf("tick %d: %+v %v", n, tick, err)
+		}
+	}
+	// The held tick keeps the receipt that verified when it was imported.
+	first, err := l.c.Get(ctx, 1)
+	if err != nil || first.Receipt == nil || bytes.Equal(first.Receipt.Receipt, stale.Receipt) {
+		t.Fatalf("tick 1's receipt: %+v %v", first.Receipt, err)
+	}
+}
+
+// A held tick promoted to witnessed on a re-run has its receipt checked.
+func TestImportLegacyChecksAPromotedTicksReceipt(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyFixture(t, "deal/a")
+	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
+		t.Fatal(err)
+	}
+	wrong := receiptFor(t, l.ticks[0].Checkpoint, testWitnessURL)
+	l.ticks[1].Witnessed, l.ticks[1].Receipt = true, &wrong
+	err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks})
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "its receipt is INVALID") {
+		t.Fatalf("promoting with another tick's receipt: %v", err)
+	}
+	if second, err := l.c.Get(ctx, 2); err != nil || second.Witnessed {
+		t.Fatalf("tick 2: %+v %v", second, err)
 	}
 }
