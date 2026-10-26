@@ -457,11 +457,11 @@ with:
    and your `row`, `status`, `sufficiency` and `verdict` for `r-record`, with
    the claim's `evidence` and `proofs`;
 5. the SHA-256 of the `run/responder-run.json` you produced in §6.2;
-6. for each of the 12 cases of §6.3, by case id: per exchange, your
+6. for each of the 14 cases of §6.3, by case id: per exchange, your
    per-property statuses, whether you accepted the envelope, your `row`,
    `status`, `sufficiency` and `verdict` for `r-deal-steps`, and the claim;
    then your seven History properties, whether you accepted the History, and,
-   for `history-basic`, the number of selected deals and each deal's state;
+   for `history-basic` and `multi-stream-one-tick`, the number of selected deals and each deal's state;
 7. the two results side by side as §6.4 lays them out: for each, its subject,
    its unit and count, its coverage, its source assertion, and what it does not
    establish;

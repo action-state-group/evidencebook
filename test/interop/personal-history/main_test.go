@@ -355,6 +355,7 @@ func TestGuideQuotesTheCorpus(t *testing.T) {
 	quote("the responder commit", code(c.Responder.Commit))
 	quote("the run digest", code(c.Responder.RunSHA256))
 	quote("the case count", fmt.Sprintf("`vectors.json`, %d cases", len(c.Cases)))
+	quote("the report's case count", fmt.Sprintf("for each of the %d cases of §6.3", len(c.Cases)))
 	quote("the History name", code(c.History))
 	quote("the producer's directory", "go run ./test/interop/personal-history > run/responder-run.json")
 	if len(out.Deals) != 4 || len(out.Selection) != 3 || len(out.Records) != 8 || len(out.Checkpoints) != 2 {
