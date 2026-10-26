@@ -54,7 +54,7 @@ func newPaddedLegacyFixture(t *testing.T, padBucket uint64, logs ...string) *leg
 		}
 	}
 	l := &legacyFixture{shelf: f.open(t), legacy: map[string]*LegacyLog{}, ended: &ended{logs: map[string]bool{}}}
-	c, err := l.shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: l.ended.check, PadBucket: padBucket})
+	c, err := l.shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: l.ended.check, PadBucket: padBucket, Witnesses: testWitnesses(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func newPaddedLegacyFixture(t *testing.T, padBucket uint64, logs ...string) *leg
 	second := mustTick(t, l.c, first.DueNext)
 	l.ticks = []CadenceTick{first, second}
 	// The pre-shelf writer's receipt for its first tick.
-	l.ticks[0].Witnessed, l.ticks[0].Receipt = true, &testReceipt
+	witnessLegacy(t, &l.ticks[0])
 	for _, table := range []string{"cadence_ticks", "cadence_witnessed", "cadence_live", "cadence_logs"} {
 		if _, err := l.shelf.db.Exec(`DELETE FROM ` + table); err != nil {
 			t.Fatal(err)
@@ -170,7 +170,7 @@ func TestImportLegacyIsRerunnable(t *testing.T) {
 		t.Fatalf("ticks %d after a repeated import", n)
 	}
 	// The second tick's receipt arrives through the pre-shelf writer.
-	l.ticks[1].Witnessed, l.ticks[1].Receipt = true, &testReceipt
+	witnessLegacy(t, &l.ticks[1])
 	l.ended.set("deal/a")
 	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}); err != nil {
 		t.Fatal(err)
@@ -236,7 +236,8 @@ func TestImportLegacyIsRerunnable(t *testing.T) {
 
 // What an import may not do: rewrite a held tick, insert one older than the
 // cadence's newest, carry a log it does not register, take an unfinished or
-// receiptless tick, or treat a book as a legacy log.
+// receiptless tick or a witnessed one whose checkpoint does not verify, or
+// treat a book as a legacy log.
 func TestImportLegacyRefuses(t *testing.T) {
 	ctx := context.Background()
 	// Padded to 2: the ticks' roots are at entries 1 and 3, padding at 2.
@@ -247,6 +248,9 @@ func TestImportLegacyRefuses(t *testing.T) {
 	other := l.ticks[0]
 	other.Checkpoint = append([]byte{}, other.Checkpoint...)
 	other.Checkpoint[len(other.Checkpoint)-1] ^= 1
+	other.Witnessed, other.Receipt = false, nil
+	forged := l.ticks[0]
+	forged.Checkpoint = other.Checkpoint
 	unfinished := l.ticks[1]
 	unfinished.CheckpointSize = 0
 	receiptless := l.ticks[1]
@@ -258,13 +262,14 @@ func TestImportLegacyRefuses(t *testing.T) {
 		t.Fatalf("fixture: entry %d is not between the held ticks' entries %d and %d", older.EntrySeq, l.ticks[0].EntrySeq, l.ticks[1].EntrySeq)
 	}
 	cases := map[string]LegacyCadence{
-		"another checkpoint at a held position": {Logs: l.logs(), Ticks: []CadenceTick{other}},
-		"an unregistered log":                   {Logs: nil, Ticks: l.ticks},
-		"an unfinished tick":                    {Logs: l.logs(), Ticks: []CadenceTick{unfinished}},
-		"a witnessed tick without a receipt":    {Logs: l.logs(), Ticks: []CadenceTick{receiptless}},
-		"out of order":                          {Logs: l.logs(), Ticks: []CadenceTick{l.ticks[1], l.ticks[0]}},
-		"the cadence log itself":                {Logs: []string{"deal-cadence/0123456789abcdef"}},
-		"older than the newest held tick":       {Logs: l.logs(), Ticks: []CadenceTick{older}},
+		"another checkpoint at a held position":             {Logs: l.logs(), Ticks: []CadenceTick{other}},
+		"a witnessed tick whose checkpoint does not verify": {Logs: l.logs(), Ticks: []CadenceTick{forged}},
+		"an unregistered log":                               {Logs: nil, Ticks: l.ticks},
+		"an unfinished tick":                                {Logs: l.logs(), Ticks: []CadenceTick{unfinished}},
+		"a witnessed tick without a receipt":                {Logs: l.logs(), Ticks: []CadenceTick{receiptless}},
+		"out of order":                                      {Logs: l.logs(), Ticks: []CadenceTick{l.ticks[1], l.ticks[0]}},
+		"the cadence log itself":                            {Logs: []string{"deal-cadence/0123456789abcdef"}},
+		"older than the newest held tick":                   {Logs: l.logs(), Ticks: []CadenceTick{older}},
 	}
 	for name, legacy := range cases {
 		if err := l.c.ImportLegacy(ctx, legacy); !errors.Is(err, ErrInvalid) {
@@ -327,7 +332,7 @@ func TestImportLegacyPromotesTheHeldLeaves(t *testing.T) {
 	}
 	held := l.ticks[1]
 	incoming := held
-	incoming.Witnessed, incoming.Receipt = true, &testReceipt
+	witnessLegacy(t, &incoming)
 	incoming.Leaves = TickLeaves{Deals: map[string]TickLeaf{}}
 	if err := l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: []CadenceTick{l.ticks[0], incoming}}); err != nil {
 		t.Fatal(err)

@@ -32,6 +32,11 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 # checks of the Checkpointed Local Log material, on the same
 # checkpointed-local-log line as this crate.
 evidence-request = { version = "0.2", default-features = false, features = ["cll"] }
+# AAC's witness receipt verifier (`witness`, feature `strict`): the served
+# summary counts a checkpoint witnessed only on a receipt it verifies.
+agent-action-capsule = { version = "0.4.1", default-features = false, features = ["strict"] }
 
 [dev-dependencies]
+base64 = "0.22"
+coset = "0.4"
 tempfile = "3"

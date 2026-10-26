@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Breaking: the served summary counts only verified witness receipts**
+  (evidencebook#115). `served_summary::Coverage` takes the checkpoint's COSE
+  `statement` and a `witness_directory`; `coverage.witnessed` and
+  `coverage.witnesses` count only receipts that pass AAC's witness verifier
+  (`agent_action_capsule::witness::verify_witness_receipts`, a new
+  dependency with its `strict` feature) against that statement under that
+  directory. A receipt the checkpoint only carries no longer reads as
+  witnessed. The dependency enables `serde_json`'s `arbitrary_precision`
+  feature in the build.
+
 - **Breaking: `Derivations::register` refuses to change a registration**
   (evidencebook#86), as the Go book does. Registering a document again with
   the same recipient and the same sets of forms and fields returns the same

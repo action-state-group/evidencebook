@@ -24,9 +24,9 @@ type LegacyCadence struct {
 	// Ticks are the pre-shelf writer's finished ticks (CheckpointSize > 0),
 	// in cadence-log order. N is ignored: a tick's identity is its place in
 	// the cadence log (EntrySeq) and its checkpoint, and ImportLegacy
-	// numbers it. Witnessed and Receipt are set on each tick whose receipt
-	// the host has verified; evidencebook verifies no receipt. Every log a
-	// tick carries is one of Logs.
+	// numbers it. Witnessed and Receipt are set on each tick the pre-shelf
+	// writer recorded as witnessed; ImportLegacy verifies each such receipt
+	// as Witnessed does. Every log a tick carries is one of Logs.
 	Ticks []CadenceTick
 }
 
@@ -37,6 +37,10 @@ type LegacyCadence struct {
 //   - each tick not already held is stored, numbered after the cadence's
 //     last tick, with its due time, leaves, checkpoint and receipt, so the
 //     cadence continues from it and Chain rebuilds a bundle anchored on it;
+//   - each witnessed tick's receipt is verified under the configured
+//     witness directory, as Witnessed does: an import with a receipt that
+//     is not VERIFIED (NOT_CHECKED or INVALID) is refused, naming the tick
+//     and the reason, and imports nothing;
 //   - each witnessed tick's leaves get cadence_witnessed rows;
 //   - each registered log is live unless it has ended and has not grown
 //     past its largest witnessed checkpoint (the #36 rule).
@@ -85,6 +89,13 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			}
 			if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
 				return fmt.Errorf("%w: witnessed legacy tick at entry %d needs its receipt, its entry hash and its witness's URL", ErrInvalid, tick.EntrySeq)
+			}
+			check, err := checkWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
+			if err != nil {
+				return fmt.Errorf("%w: witnessed legacy tick at entry %d: %v", ErrInvalid, tick.EntrySeq, err)
+			}
+			if check.State != WitnessVerified {
+				return fmt.Errorf("%w: witnessed legacy tick at entry %d: its receipt is %s: %s", ErrInvalid, tick.EntrySeq, check.State, check.Reason)
 			}
 			encoded, err := json.Marshal(receipt)
 			if err != nil {

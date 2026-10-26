@@ -21,6 +21,7 @@
 //! it into the percentiles and publish `nan`.
 
 use crate::substrate::Checkpoint;
+use agent_action_capsule::witness;
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -95,6 +96,48 @@ pub struct Coverage<'a> {
     pub checkpoint: &'a Checkpoint,
     /// Records the checkpoint covers (its leaf count).
     pub covered: u64,
+    /// The checkpoint's COSE wire statement (`StatedCheckpoint::statement`),
+    /// which each witness receipt is verified against.
+    pub statement: &'a [u8],
+    /// The witness directory (a `witnesses.json` value) receipts are
+    /// verified under; `None` trusts no witness.
+    pub witness_directory: Option<&'a Value>,
+}
+
+/// The `ts_url`s of the checkpoint's witness receipts that verify, with
+/// AAC's witness verifier
+/// ([`agent_action_capsule::witness::verify_witness_receipts`]), against
+/// `statement` under `directory`. A receipt the checkpoint only carries is
+/// not counted: none counts when the statement does not verify under its
+/// own key or does not state this checkpoint, and a receipt that is not
+/// checked (no directory row or key) or fails is left out.
+fn verified_witnesses(
+    cp: &Checkpoint,
+    statement: &[u8],
+    directory: Option<&Value>,
+) -> BTreeSet<String> {
+    let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
+    let decoded = match verified.decoded {
+        Some(decoded) if verified.ok => decoded,
+        _ => return BTreeSet::new(),
+    };
+    if decoded.log_id != cp.log_id
+        || decoded.mmr_size != cp.mmr_size
+        || decoded.root != cp.root
+        || decoded.key_id != cp.key_id
+    {
+        return BTreeSet::new();
+    }
+    let Ok(receipts) = serde_json::to_value(&cp.witnesses) else {
+        return BTreeSet::new();
+    };
+    let signed = witness::SignedCheckpoint::from(&decoded);
+    witness::verify_witness_receipts(Some(&receipts), Some(&signed), Some(statement), directory)
+        .receipts
+        .into_iter()
+        .filter(|r| r.status == "pass")
+        .map(|r| r.ts_url)
+        .collect()
 }
 
 /// `float(raw)`: a number, a numeric string or a bool; anything else, and a
@@ -232,7 +275,7 @@ pub fn summary_value(
             a.as_deref().is_some_and(is_own_record) || b.as_deref().is_some_and(is_own_record)
         })
         .count();
-    let witnesses: BTreeSet<&str> = cp.witnesses.iter().map(|w| w.ts_url.as_str()).collect();
+    let witnesses = verified_witnesses(cp, coverage.statement, coverage.witness_directory);
     let mut derivation = Map::new();
     derivation.insert("kind".into(), json!("served_summary_fold"));
     derivation.insert("definition_digest".into(), json!(labels.definition_digest));
@@ -270,7 +313,8 @@ pub fn summary_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::substrate::{WitnessEntry, CHECKPOINT_KIND};
+    use crate::substrate::{CllSubstrate, WitnessEntry, CHECKPOINT_KIND};
+    use ed25519_dalek::SigningKey;
 
     const LABELS: Labels<'static> = Labels {
         schema: "s/1",
@@ -324,6 +368,8 @@ mod tests {
             &Coverage {
                 checkpoint: cp,
                 covered,
+                statement: &[],
+                witness_directory: None,
             },
             &|id| id == "mine",
             &LABELS,
@@ -405,8 +451,172 @@ mod tests {
         );
         assert_eq!(g["variants"], json!(["q4"]));
         assert_eq!(v["selection"]["to_entry"], json!(6));
-        assert_eq!(v["coverage"]["witnessed"], json!(true));
-        assert_eq!(v["coverage"]["witnesses"], json!(["https://w.example"]));
+        // A receipt the checkpoint only carries does not witness it.
+        assert_eq!(v["coverage"]["witnessed"], json!(false));
+        assert_eq!(v["coverage"]["witnesses"], json!([]));
+    }
+
+    const WITNESS_URL: &str = "https://w.example";
+
+    fn witness_key() -> SigningKey {
+        SigningKey::from_bytes(&[5u8; 32])
+    }
+
+    fn directory() -> Value {
+        json!({"witnesses": [{
+            "name": "w",
+            "endpoint": WITNESS_URL,
+            "key_ids": [hex::encode(witness_key().verifying_key().to_bytes())],
+        }]})
+    }
+
+    /// Checkpoints over the first one and two leaves of a log, each with
+    /// its COSE wire statement.
+    fn stated() -> Vec<(Checkpoint, Vec<u8>)> {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut log, _) = CllSubstrate::open(
+            &dir.path().join("nodes.bin"),
+            &dir.path().join("checkpoints.jsonl"),
+        )
+        .unwrap();
+        let key = SigningKey::from_bytes(&[3u8; 32]);
+        (1..=2u8)
+            .map(|n| {
+                log.append_leaf(&[n; 32]).unwrap();
+                let ts = format!("2026-10-25T00:00:0{n}Z");
+                let prepared = log.prepare_checkpoint(n.into(), "log", &ts, &key).unwrap();
+                let out = (
+                    prepared.checkpoint.clone(),
+                    prepared.cose().unwrap().to_vec(),
+                );
+                log.commit_checkpoint(prepared).unwrap();
+                out
+            })
+            .collect()
+    }
+
+    /// A CLL witness receipt from `key` for `cp`: an RFC 9162 COSE Receipt
+    /// over a one-entry tree whose entry is SHA-256 of the checkpoint
+    /// digest, as the Go tests' mintReceipt.
+    fn receipt(cp: &Checkpoint, ts_url: &str, key: &SigningKey) -> WitnessEntry {
+        use base64::Engine as _;
+        use coset::{cbor::value::Value as Cbor, iana, TaggedCborSerializable};
+        use ed25519_dalek::Signer as _;
+        use sha2::{Digest, Sha256};
+        let entry: [u8; 32] = Sha256::digest(hex::decode(cp.digest()).unwrap()).into();
+        let leaf: [u8; 32] = Sha256::digest([&[0u8][..], &entry].concat()).into();
+        // The inclusion proof [tree size 1, leaf index 0, no path].
+        let proof = vec![0x83, 0x01, 0x00, 0x80];
+        let mut sign1 = coset::CoseSign1Builder::new()
+            .protected(
+                coset::HeaderBuilder::new()
+                    .algorithm(iana::Algorithm::EdDSA)
+                    .value(395, Cbor::Integer(1.into()))
+                    .build(),
+            )
+            .unprotected(
+                coset::HeaderBuilder::new()
+                    .value(
+                        396,
+                        Cbor::Map(vec![(
+                            Cbor::Integer((-1).into()),
+                            Cbor::Array(vec![Cbor::Bytes(proof)]),
+                        )]),
+                    )
+                    .build(),
+            )
+            .payload(leaf.to_vec())
+            .create_signature(b"", |tbs| key.sign(tbs).to_bytes().to_vec())
+            .build();
+        sign1.payload = None;
+        WitnessEntry {
+            ts_url: ts_url.into(),
+            entry_hash: hex::encode(entry),
+            receipt_b64: base64::engine::general_purpose::STANDARD
+                .encode(sign1.to_tagged_vec().unwrap()),
+            leaf_index: 0,
+            tree_size: 1,
+            is_stub: false,
+        }
+    }
+
+    fn coverage_of(cp: &Checkpoint, statement: &[u8], directory: Option<&Value>) -> Value {
+        let v = summary_value(
+            &[],
+            &Coverage {
+                checkpoint: cp,
+                covered: 0,
+                statement,
+                witness_directory: directory,
+            },
+            &|_| false,
+            &LABELS,
+        );
+        v["coverage"].clone()
+    }
+
+    #[test]
+    fn only_a_receipt_that_verifies_witnesses_the_range() {
+        let checkpoints = stated();
+        let (first, first_cose) = &checkpoints[0];
+        let (second, second_cose) = &checkpoints[1];
+        let directory = directory();
+        let with = |entries: Vec<WitnessEntry>| Checkpoint {
+            witnesses: entries,
+            ..first.clone()
+        };
+        let good = receipt(first, WITNESS_URL, &witness_key());
+
+        let v = coverage_of(&with(vec![good.clone()]), first_cose, Some(&directory));
+        assert_eq!(v["witnessed"], json!(true));
+        assert_eq!(v["witnesses"], json!([WITNESS_URL]));
+
+        // A stranger's receipt alongside counts for nothing; it is not checked.
+        let stranger = receipt(first, "https://stranger.example", &witness_key());
+        let v = coverage_of(
+            &with(vec![good.clone(), stranger.clone()]),
+            first_cose,
+            Some(&directory),
+        );
+        assert_eq!(v["witnesses"], json!([WITNESS_URL]));
+
+        let not_witnessed: Vec<(&str, Checkpoint, &[u8], Option<&Value>)> = vec![
+            ("no directory", with(vec![good.clone()]), first_cose, None),
+            (
+                "an unlisted witness",
+                with(vec![stranger]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "another key",
+                with(vec![receipt(
+                    first,
+                    WITNESS_URL,
+                    &SigningKey::from_bytes(&[6u8; 32]),
+                )]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "another checkpoint's receipt",
+                with(vec![receipt(second, WITNESS_URL, &witness_key())]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "another checkpoint's statement",
+                with(vec![good.clone()]),
+                second_cose,
+                Some(&directory),
+            ),
+            ("no statement", with(vec![good]), &[], Some(&directory)),
+        ];
+        for (name, cp, statement, directory) in not_witnessed {
+            let v = coverage_of(&cp, statement, directory);
+            assert_eq!(v["witnessed"], json!(false), "{name}");
+            assert_eq!(v["witnesses"], json!([]), "{name}");
+        }
     }
 
     #[test]
