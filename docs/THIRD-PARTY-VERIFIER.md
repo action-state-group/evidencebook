@@ -410,7 +410,7 @@ no verification material for a derivation's answer. So no case yields `met` or
 
 For `history-basic`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step.
 
-For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic`, so there are selected deals, 3 in `multi-stream-one-tick`.
+For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic` (selected deals, 3 in `multi-stream-one-tick`).
 
 The two multi-stream cases are derived, not part of the responder run: each
 selected deal's records move to a stream of their own, and each request names
