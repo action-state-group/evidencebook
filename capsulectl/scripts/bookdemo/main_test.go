@@ -34,3 +34,15 @@ func TestAACVerifyRefusesATamperedBundle(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, tampered, 0o600))
 	assert.Error(t, aacVerify([]string{path}))
 }
+
+// DecodeBundleJSON reads one value and stops, so trailing bytes must be
+// refused here: the harness is as strict as json.Unmarshal was.
+func TestAACVerifyRefusesTrailingData(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "own-capsule-bundle.json"))
+	require.NoError(t, err)
+	for _, tail := range []string{"{}", " garbage"} {
+		path := filepath.Join(t.TempDir(), "trailing.json")
+		require.NoError(t, os.WriteFile(path, append(append([]byte{}, raw...), tail...), 0o600))
+		assert.ErrorContains(t, aacVerify([]string{path}), "not valid JSON", tail)
+	}
+}

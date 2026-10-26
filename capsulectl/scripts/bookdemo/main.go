@@ -142,6 +142,9 @@ func aacVerify(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !json.Valid(raw) {
+		return errors.New("the bundle file is not valid JSON")
+	}
 	// json.Number, as `verify --bundle` decodes: an own_capsule header's
 	// integers must not become float64, which AAC cannot canonicalize.
 	decoded, err := cli.DecodeBundleJSON(raw)
