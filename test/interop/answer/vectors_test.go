@@ -17,9 +17,9 @@ import (
 // The agent-action-capsule commit the whole third-party guide pins, and its
 // vectors/interop-profile-v0/vectors.json, vendored unchanged in testdata.
 const (
-	aacCommit         = "0b7b1825965e7f7845cbc70a490a581cbc70bd37"
-	regeneratedCommit = "dfc47036e9fa3a1f11d918052d2fa4377ed3ec2d"
-	vectorsSHA256     = "0812ff09fe322ee899d9adfd86a28bb07369430e59bf87df04fb77fd893c2cf3"
+	aacCommit         = "9d653f41419d2d2bac4714137b763315947ec754"
+	regeneratedCommit = "e706487d37561a7e7aae5c169d7c45e76305973b"
+	vectorsSHA256     = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
 )
 
 type ipRow struct {
