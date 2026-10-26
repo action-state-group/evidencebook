@@ -278,6 +278,8 @@ func TestReportBuildDryRunWritesADraftAndNoPermalink(t *testing.T) {
 	result, out, err := runReportBuild(t, bundle, "--card", "human_role", "--permalink", "--dry-run")
 	require.NoError(t, err)
 	assert.True(t, result.Draft)
+	assert.Equal(t, "VALID", result.Verdict)
+	assert.Empty(t, result.UnmetClaims, "a VALID bundle names no unmet claim")
 	assert.Empty(t, result.Permalink)
 	raw, err := os.ReadFile(out)
 	require.NoError(t, err)

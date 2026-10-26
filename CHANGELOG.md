@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `bookdemo aac-verify` decodes the bundle with `json.Number` as `verify
+  --bundle` does, so a bundle holding an `own_capsule` record no longer fails
+  graph closure on integer `seq` and `v`; `report build` omits `unmet_claims`
+  when the verdict is `VALID` instead of printing the fallback failure
+  message (evidencebook#113).
+
 ### Breaking: the cadence verifies witness receipts itself (evidencebook#115)
 
 - `Cadence.Witnessed` verifies the receipt against the tick's signed cadence

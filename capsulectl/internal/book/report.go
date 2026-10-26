@@ -388,7 +388,12 @@ func reportCommands() *cobra.Command {
 		if reread, err := json.Marshal(value); err == nil {
 			if judged, err := cli.DecodeBundleJSON(reread); err == nil {
 				verdict, claims := cli.BundleVerdict(judged, nil)
-				result.Verdict, result.UnmetClaims = verdict, cli.UnmetClaims(claims)
+				result.Verdict = verdict
+				// cli.UnmetClaims falls back to a failure message when no
+				// claim failed, which a VALID bundle must not report.
+				if verdict != "VALID" {
+					result.UnmetClaims = cli.UnmetClaims(claims)
+				}
 			}
 		}
 		// A page is written only when it can stand behind what it shows, as

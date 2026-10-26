@@ -22,6 +22,7 @@ import (
 	"time"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
 )
 
@@ -141,8 +142,13 @@ func aacVerify(args []string) error {
 	if err != nil {
 		return err
 	}
-	var decoded any
-	if err = json.Unmarshal(raw, &decoded); err != nil {
+	if !json.Valid(raw) {
+		return errors.New("the bundle file is not valid JSON")
+	}
+	// json.Number, as `verify --bundle` decodes: an own_capsule header's
+	// integers must not become float64, which AAC cannot canonicalize.
+	decoded, err := cli.DecodeBundleJSON(raw)
+	if err != nil {
 		return err
 	}
 	result := aacbundle.VerifyBundle(decoded)
