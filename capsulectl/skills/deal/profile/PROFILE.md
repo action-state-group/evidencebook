@@ -19,7 +19,7 @@ Files in this directory:
 | `fixtures/negative/` | Records that MUST be rejected, each at one named stage. |
 | `fixtures/fingerprint-vectors.json` | Test-only local store: a public test secret, the raw values, their normalized forms, fingerprints and commitments. |
 | `fixtures/expected-digests.txt` | The positive digests as a manifest. |
-| `check_profile.py` | The checker. Stdlib only; uses `jsonschema` when installed. |
+| `check_profile.py` | The checker. Stdlib only; uses `jsonschema` when installed. Without it the schema stage is a reduced structural check, the negative vectors that expect the schema stage are skipped and listed, and the run ends "OK, reduced coverage" (exit 0) instead of "ALL OK"; CI runs with jsonschema. |
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in BCP 14 (RFC 2119, RFC 8174).
 

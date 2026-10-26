@@ -13,7 +13,8 @@
                                       commitments FILE's records carry
 
 Stdlib only. Uses `jsonschema` for the schema stage when it is installed; without it a
-reduced structural check runs and the output says so.
+reduced structural check runs, the negative vectors that expect the schema stage are skipped
+and listed, and the run ends "OK, reduced coverage" instead of "ALL OK".
 
 Stages, in order (a negative fixture names the stage it must fail at):
   canonicalization -> personal_data -> wording -> schema -> chain -> digest
@@ -340,6 +341,9 @@ class StageError(Exception):
 _SCHEMA = None
 _VALIDATOR = None
 SCHEMA_MODE = "unknown"
+# Negative vectors the fallback cannot judge: their expected stage is `schema`, which
+# only jsonschema runs. Listed by name so a reduced run shows its coverage gap.
+SKIPPED_NEEDS_JSONSCHEMA = []
 
 
 def _validator():
@@ -1431,6 +1435,7 @@ def local_store_values():
 
 
 def run_fixtures() -> int:
+    SKIPPED_NEEDS_JSONSCHEMA.clear()
     bad = 0
     vec = load(FIX / "fingerprint-vectors.json")
     secret = bytes.fromhex(vec["store_secret_hex"])
@@ -1497,6 +1502,10 @@ def run_fixtures() -> int:
         f = load(p)
         prefix = [load(FIX / f.get("chain_dir", "positive") / n)["record"] for n in f.get("chain_prefix", [])]
         prefix += f.get("chain_between", [])
+        if f["expected_stage"] == "schema" and _VALIDATOR is None:
+            SKIPPED_NEEDS_JSONSCHEMA.append(p.name)
+            print(f"skip {p.name:<40} expects the schema stage, which needs jsonschema")
+            continue
         got = None
         try:
             check_record(f["record"], store)
@@ -2670,7 +2679,13 @@ def main(argv):
         if a.startswith("--openings="):
             openings = load(a.split("=", 1)[1])
     bad = len(fails) + (check_files(files, openings) if files else run_fixtures())
-    print("ALL OK" if not bad else f"{bad} FAILURE(S)")
+    if bad:
+        print(f"{bad} FAILURE(S)")
+    elif SKIPPED_NEEDS_JSONSCHEMA:
+        print(f"{len(SKIPPED_NEEDS_JSONSCHEMA)} vectors need jsonschema, skipped; full schema validation did not run")
+        print("OK, reduced coverage (install jsonschema for the full check)")
+    else:
+        print("ALL OK")
     return 1 if bad else 0
 
 
