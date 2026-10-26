@@ -36,7 +36,7 @@ func (e *ended) check(_ context.Context, id string) (bool, error) {
 func newCadence(t *testing.T, shelf *Shelf) (*Cadence, *ended) {
 	t.Helper()
 	e := &ended{logs: map[string]bool{}}
-	c, err := shelf.Cadence(context.Background(), CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: e.check})
+	c, err := shelf.Cadence(context.Background(), CadenceConfig{LogID: "deal-cadence/0123456789abcdef", Ended: e.check, Witnesses: testWitnesses(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,7 @@ func TestEndedLogsLeaveTheTickOnceWitnessed(t *testing.T) {
 	// deal/d grows after the tick: its final checkpoint is not the one
 	// witnessed.
 	mustAppend(t, d, observation("s", "2"))
-	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, first.N)
 	live, err := c.Live(ctx)
 	if err != nil || len(live) != 2 || live[0] != "deal/b" || live[1] != "deal/d" {
 		t.Fatalf("live %v %v", live, err)
@@ -153,9 +151,7 @@ func TestEndedLogsLeaveTheTickOnceWitnessed(t *testing.T) {
 		t.Fatalf("occupancy %d (fillers %d), want H+1 = 4", occupied, second.Leaves.FillerCount)
 	}
 	// A late receipt for the first tick changes nothing.
-	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, first.N)
 	if live, _ := c.Live(ctx); len(live) != 2 {
 		t.Fatalf("a repeated receipt moved the live set: %v", live)
 	}
@@ -178,15 +174,11 @@ func TestALateReceiptNeverMovesStandingBack(t *testing.T) {
 	mustAppend(t, a, observation("s", "2"))
 	e.set("deal/a")
 	second := mustTick(t, c, first.DueNext)
-	if err := c.Witnessed(ctx, second.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, second.N)
 	if live, _ := c.Live(ctx); len(live) != 0 {
 		t.Fatalf("live after the final checkpoint's receipt: %v", live)
 	}
-	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, first.N)
 	if live, _ := c.Live(ctx); len(live) != 0 {
 		t.Fatalf("an older receipt brought the log back: %v", live)
 	}
@@ -201,9 +193,7 @@ func TestTheWitnessedTickIsFoundByIndex(t *testing.T) {
 	a := mustOpenBook(t, shelf, "deal/a")
 	mustAppend(t, a, observation("s", "1"))
 	first := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, first.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, first.N)
 	leaf := first.Leaves.Deals["deal/a"]
 	extent, tick, got, err := c.WitnessedTick(ctx, "deal/a", leaf.CheckpointSHA256, leaf.Size)
 	if err != nil || extent != "all" || tick.N != first.N || got != leaf {
@@ -247,9 +237,7 @@ func TestAnUnchangedCheckpointIsIndexedToItsNewestWitnessedTick(t *testing.T) {
 				witness = []uint64{second.N, first.N}
 			}
 			for _, n := range witness {
-				if err := c.Witnessed(ctx, n, testReceipt); err != nil {
-					t.Fatal(err)
-				}
+				mustWitness(t, c, n)
 			}
 			extent, tick, _, err := c.WitnessedTick(ctx, "deal/a", leaf.CheckpointSHA256, leaf.Size)
 			if err != nil || extent != "all" || tick.N != second.N {
@@ -289,9 +277,7 @@ func TestALegacyLogJoinsTheCadence(t *testing.T) {
 		t.Fatalf("the legacy log is not in the tick: %+v", tick.Leaves.Deals)
 	}
 	e.set("deal/legacy")
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	if live, _ := c.Live(ctx); len(live) != 0 {
 		t.Fatalf("live %v", live)
 	}
@@ -352,9 +338,7 @@ func TestAPendingAppendKeepsALogLive(t *testing.T) {
 	if err := store.PutRecord(ctx, StoredRecord{Seq: 2, RecordID: "pending", Header: []byte(`{}`), Capsule: []byte(`{}`), Envelope: []byte{0}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	if live, _ := c.Live(ctx); len(live) != 1 {
 		t.Fatalf("a pending append was dropped from the tick: %v", live)
 	}
@@ -380,9 +364,7 @@ func TestALegacyWriteIsLiveBeforeItRuns(t *testing.T) {
 	}
 	e.set("deal/legacy")
 	tick := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	if live, _ := c.Live(ctx); len(live) != 0 {
 		t.Fatalf("live %v", live)
 	}
@@ -512,7 +494,7 @@ func TestAnUnfinishedTickCannotBeWitnessed(t *testing.T) {
 	shelf := newShelfFixture(t).open(t)
 	c, _ := newCadence(t, shelf)
 	pendingTick(t, shelf, 1)
-	if err := c.Witnessed(context.Background(), 1, testReceipt); !errors.Is(err, ErrInvalid) {
+	if _, err := c.Witnessed(context.Background(), 1, WitnessReceipt{TSURL: testWitnessURL, EntryHash: "e", Receipt: []byte("r")}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("witnessing an unfinished tick: %v", err)
 	}
 }
@@ -525,5 +507,3 @@ func TestLegacyRefusesABook(t *testing.T) {
 		t.Fatalf("a book as a legacy log: %v", err)
 	}
 }
-
-var testReceipt = WitnessReceipt{TSURL: "https://witness.example", EntryHash: "e1", Receipt: []byte("receipt"), LeafIndex: 3, TreeSize: 4}

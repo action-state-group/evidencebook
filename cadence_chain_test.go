@@ -35,9 +35,7 @@ func TestAChainIsCapsuleCLIsCadenceChain(t *testing.T) {
 	if _, err := c.Chain(ctx, statement); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("before the receipt: %v", err)
 	}
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	all, err := c.Chain(ctx, statement)
 	if err != nil {
 		t.Fatal(err)
@@ -103,30 +101,33 @@ func checkChain(t *testing.T, chain map[string]any, statement []byte, tick Caden
 }
 
 // Witnessed takes the receipt as a verifier will read it: an entry hash is
-// required, the witness's URL loses a trailing slash, and the first receipt
-// reported for a tick is the one kept.
+// required, the witness's URL loses a trailing slash, and the first
+// verified receipt reported for a tick is the one kept.
 func TestWitnessedKeepsTheReceiptAVerifierReads(t *testing.T) {
 	ctx := context.Background()
 	shelf := newShelfFixture(t).open(t)
 	c, _ := newCadence(t, shelf)
 	tick := mustTick(t, c, tickTime)
 	for name, receipt := range map[string]WitnessReceipt{
-		"no entry hash": {TSURL: "https://w.example", Receipt: []byte("r")},
-		"no receipt":    {TSURL: "https://w.example", EntryHash: "e"},
+		"no entry hash": {TSURL: testWitnessURL, Receipt: []byte("r")},
+		"no receipt":    {TSURL: testWitnessURL, EntryHash: "e"},
 		"no URL":        {EntryHash: "e", Receipt: []byte("r")},
 	} {
-		if err := c.Witnessed(ctx, tick.N, receipt); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("%s: %v", name, err)
+		if check, err := c.Witnessed(ctx, tick.N, receipt); !errors.Is(err, ErrInvalid) || check.State != WitnessInvalid {
+			t.Fatalf("%s: %+v %v", name, check, err)
 		}
 	}
-	if err := c.Witnessed(ctx, tick.N, WitnessReceipt{TSURL: "https://w.example//", EntryHash: "e1", Receipt: []byte("first")}); err != nil {
-		t.Fatal(err)
+	first := receiptFor(t, tick.Checkpoint, testWitnessURL)
+	first.TSURL += "//"
+	if check, err := c.Witnessed(ctx, tick.N, first); err != nil || check.State != WitnessVerified {
+		t.Fatalf("first: %+v %v", check, err)
 	}
-	if err := c.Witnessed(ctx, tick.N, WitnessReceipt{TSURL: "https://other.example", EntryHash: "e2", Receipt: []byte("second")}); err != nil {
-		t.Fatal(err)
+	second := receiptFor(t, tick.Checkpoint, otherWitnessURL)
+	if check, err := c.Witnessed(ctx, tick.N, second); err != nil || check.State != WitnessVerified {
+		t.Fatalf("second: %+v %v", check, err)
 	}
 	got, err := c.Get(ctx, tick.N)
-	if err != nil || got.Receipt == nil || got.Receipt.TSURL != "https://w.example" || string(got.Receipt.Receipt) != "first" {
+	if err != nil || got.Receipt == nil || got.Receipt.TSURL != testWitnessURL || !bytes.Equal(got.Receipt.Receipt, first.Receipt) {
 		t.Fatalf("receipt %+v %v", got.Receipt, err)
 	}
 }
@@ -150,9 +151,7 @@ func TestALegacyLogsChainIsPartFromItsOwnLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	tick := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	if _, err := legacy.log.Append(ctx, hex.EncodeToString(bytes.Repeat([]byte{6}, 32)), tickTime); err != nil {
 		t.Fatal(err)
 	}
@@ -175,9 +174,7 @@ func TestAChainFromACorruptStatementIsRefused(t *testing.T) {
 	a := mustOpenBook(t, shelf, "deal/a")
 	mustAppend(t, a, observation("s", "1"))
 	tick := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	leaves := tick.Leaves
 	leaf := leaves.Deals["deal/a"]
 	leaf.Statement = base64.RawURLEncoding.EncodeToString([]byte("not the checkpoint"))
@@ -254,9 +251,7 @@ func TestTheChainKeepsTheShapeCapsuleCLIVerified(t *testing.T) {
 	mustAppend(t, a, observation("s", "1"))
 	mustAppend(t, mustOpenBook(t, shelf, "deal/b"), observation("s", "1"))
 	tick := mustTick(t, c, tickTime)
-	if err := c.Witnessed(ctx, tick.N, testReceipt); err != nil {
-		t.Fatal(err)
-	}
+	mustWitness(t, c, tick.N)
 	statement, _ := base64.RawURLEncoding.DecodeString(tick.Leaves.Deals["deal/a"].Statement)
 	all, err := c.Chain(ctx, statement)
 	if err != nil {

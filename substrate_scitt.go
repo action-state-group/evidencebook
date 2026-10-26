@@ -14,11 +14,14 @@ import (
 const SubstrateKindSCITTReceipt = "scitt-receipt"
 
 // InclusionKindSCITTReceiptUnverified labels the inclusion evidence this
-// stub carries: a transparency-service receipt held as opaque bytes and
-// never verified here. It proves possession of those bytes only (FR-20); a
-// verifier runs the receipt's own check. The stub's receipts are never
-// served as checkpoints or proofs in a profile answer: Respond answers only
-// from a Checkpointed Local Log.
+// stub carries: a transparency-service receipt held as opaque bytes. It
+// proves possession of those bytes only (FR-20). Its witness property is
+// NOT_CHECKED: the receipt registers a record identity, a statement AAC's
+// witness verifier (go/witness) defines no binding for, so nothing here can
+// check it and it never counts as witnessed. Only a cadence checkpoint
+// receipt that verifies does (Cadence.Witnessed). The stub's receipts are
+// never served as checkpoints or proofs in a profile answer: Respond answers
+// only from a Checkpointed Local Log.
 const InclusionKindSCITTReceiptUnverified = "scitt-receipt-unverified"
 
 // Registrar registers a record identity with a SCITT transparency service and

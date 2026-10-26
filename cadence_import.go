@@ -24,9 +24,9 @@ type LegacyCadence struct {
 	// Ticks are the pre-shelf writer's finished ticks (CheckpointSize > 0),
 	// in cadence-log order. N is ignored: a tick's identity is its place in
 	// the cadence log (EntrySeq) and its checkpoint, and ImportLegacy
-	// numbers it. Witnessed and Receipt are set on each tick whose receipt
-	// the host has verified; evidencebook verifies no receipt. Every log a
-	// tick carries is one of Logs.
+	// numbers it. Witnessed and Receipt are set on each tick the pre-shelf
+	// writer recorded as witnessed; ImportLegacy verifies each such receipt
+	// as Witnessed does. Every log a tick carries is one of Logs.
 	Ticks []CadenceTick
 }
 
@@ -37,6 +37,11 @@ type LegacyCadence struct {
 //   - each tick not already held is stored, numbered after the cadence's
 //     last tick, with its due time, leaves, checkpoint and receipt, so the
 //     cadence continues from it and Chain rebuilds a bundle anchored on it;
+//   - each witnessed tick it stores or promotes has its receipt verified
+//     under the configured witness directory, as Witnessed does: an import
+//     with such a receipt that is not VERIFIED (NOT_CHECKED or INVALID) is
+//     refused, naming the tick and the reason, and imports nothing. A tick
+//     already held witnessed is not checked again;
 //   - each witnessed tick's leaves get cadence_witnessed rows;
 //   - each registered log is live unless it has ended and has not grown
 //     past its largest witnessed checkpoint (the #36 rule).
@@ -86,6 +91,7 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
 				return fmt.Errorf("%w: witnessed legacy tick at entry %d needs its receipt, its entry hash and its witness's URL", ErrInvalid, tick.EntrySeq)
 			}
+			tick.Receipt = &receipt
 			encoded, err := json.Marshal(receipt)
 			if err != nil {
 				return err
@@ -133,6 +139,20 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 				return err
 			}
 		}
+		// verify checks a witnessed tick's receipt where the import uses it
+		// (a tick it stores or promotes), so a held witnessed tick is never
+		// re-checked: a re-run whose old receipt no longer verifies, after
+		// a key rotation, still imports what is new.
+		verify := func(tick CadenceTick) error {
+			check, err := checkWitnessReceipt(tick.Checkpoint, *tick.Receipt, c.cfg.Witnesses)
+			if err != nil {
+				return fmt.Errorf("%w: witnessed legacy tick at entry %d: %v", ErrInvalid, tick.EntrySeq, err)
+			}
+			if check.State != WitnessVerified {
+				return fmt.Errorf("%w: witnessed legacy tick at entry %d: its receipt is %s: %s", ErrInvalid, tick.EntrySeq, check.State, check.Reason)
+			}
+			return nil
+		}
 		witness := func(n uint64, tick CadenceTick) error {
 			for id, leaf := range tick.Leaves.Deals {
 				if _, err := tx.ExecContext(ctx,
@@ -157,6 +177,9 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 				if tick.Witnessed && heldWitnessed == 0 {
 					// Delivered since it was imported: witnessed from now on,
 					// as Witnessed would record it. A held receipt is kept.
+					if err := verify(tick); err != nil {
+						return err
+					}
 					if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, receipts[i], heldN); err != nil {
 						return err
 					}
@@ -184,6 +207,9 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			last++
 			witnessed := 0
 			if tick.Witnessed {
+				if err := verify(tick); err != nil {
+					return err
+				}
 				witnessed = 1
 			}
 			if _, err := tx.ExecContext(ctx,

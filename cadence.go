@@ -14,8 +14,11 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
+	"strconv"
+	"strings"
 	"time"
 
+	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 	cllsqlite "github.com/action-state-group/checkpointed-local-log/go/store/sqlite"
 )
 
@@ -28,7 +31,7 @@ import (
 // A log is live while it is not ended, or while it has grown past the
 // largest checkpoint of it a witnessed tick carries. Delivering the cadence
 // checkpoint to the witness is the host's (its endpoint, token and receipt
-// check); the host reports a verified receipt with Witnessed.
+// check); the host reports the receipt with Witnessed, which verifies it.
 
 // CadenceConfig is a shelf's cadence. The defaults and limits are
 // capsule-cli's: a tick every 5m, give or take 1m (288 a day).
@@ -46,8 +49,13 @@ type CadenceConfig struct {
 	// the checkpoint and a pending delivery to each are one commit of the
 	// cadence log, as capsule-cli's checkpoint runner does. The host
 	// delivers them (cll's PendingWitnesses on the cadence log) and reports
-	// a verified receipt with Witnessed. None queues nothing.
+	// each receipt with Witnessed. None queues nothing.
 	WitnessIDs []string
+	// Witnesses is the witness directory receipts are verified under: the
+	// transparency services' rows and keys (a witnesses.json, parsed with
+	// AAC's witness.ParseDirectory). The zero Directory trusts no witness,
+	// so every receipt is NOT_CHECKED and no tick is witnessed.
+	Witnesses aacwitness.Directory
 	// PadBucket pads the cadence log to a multiple of this many entries per
 	// tick, at most 1024; zero is 1 (no padding).
 	PadBucket uint64
@@ -95,21 +103,73 @@ type CadenceTick struct {
 	CheckpointSize uint64
 	Checkpoint     []byte
 	Leaves         TickLeaves
-	// Witnessed is set once the host reported the checkpoint's receipt
-	// verified (Witnessed), and Receipt is that receipt.
+	// Witnessed is set once a receipt for the checkpoint verified
+	// (Witnessed), and Receipt is that receipt. Ticks witnessed before
+	// evidencebook verified receipts itself were set on the host's check.
 	Witnessed bool
 	Receipt   *WitnessReceipt
 }
 
-// WitnessReceipt is the witness's receipt for a tick's cadence checkpoint,
-// as the host verified it: capsule-cli's chain carries these members
-// (cll.WitnessState's receipt).
+// WitnessReceipt is the witness's receipt for a tick's cadence checkpoint:
+// capsule-cli's chain carries these members (cll.WitnessState's receipt).
 type WitnessReceipt struct {
 	TSURL     string `json:"ts_url"`
 	EntryHash string `json:"entry_hash"`
 	Receipt   []byte `json:"receipt"`
 	LeafIndex uint64 `json:"leaf_index"`
 	TreeSize  uint64 `json:"tree_size"`
+}
+
+// The states of a receipt's check (Cadence.Witnessed): it verified under
+// the configured witness directory; it was not checked (its witness has no
+// row or no usable key there, or AAC's verifier withholds it); or it was
+// checked and rejected.
+const (
+	WitnessVerified   = "VERIFIED"
+	WitnessNotChecked = "NOT_CHECKED"
+	WitnessInvalid    = "INVALID"
+)
+
+// WitnessCheck is what checking one receipt found: its state and why. When
+// AAC's verifier ran, Reason is its finding and its reason (for example
+// "witness_unverified:<ts_url>: not checked: no directory row for this
+// witness"); a receipt missing a member is INVALID before any check, with
+// evidencebook's own reason.
+type WitnessCheck struct {
+	State  string
+	Reason string
+}
+
+// checkWitnessReceipt verifies receipt for the signed cadence checkpoint
+// statement under directory with AAC's verifier (go/witness.VerifyReceipts,
+// the check a bundle's checkpoint.witnesses gets). evidencebook keeps no
+// verifier of its own. An error means the checkpoint statement itself does
+// not verify; the caller says whether that is stored state or input.
+func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, error) {
+	signed, err := aacwitness.ParseSignedCheckpoint(statement)
+	if err != nil {
+		return WitnessCheck{}, fmt.Errorf("the cadence checkpoint statement does not verify: %v", err)
+	}
+	record := map[string]interface{}{
+		"ts_url":      receipt.TSURL,
+		"entry_hash":  receipt.EntryHash,
+		"receipt_b64": base64.StdEncoding.EncodeToString(receipt.Receipt),
+		"leaf_index":  json.Number(strconv.FormatUint(receipt.LeafIndex, 10)),
+		"tree_size":   json.Number(strconv.FormatUint(receipt.TreeSize, 10)),
+	}
+	status, findings, results := aacwitness.VerifyReceipts([]interface{}{record}, &signed, statement, directory)
+	parts := findings
+	if len(results) == 1 && results[0].Reason != "" {
+		parts = append(parts, results[0].Reason)
+	}
+	reason := strings.Join(parts, ": ")
+	switch status {
+	case aacwitness.StatusPass:
+		return WitnessCheck{State: WitnessVerified, Reason: reason}, nil
+	case aacwitness.StatusWithheld:
+		return WitnessCheck{State: WitnessNotChecked, Reason: reason}, nil
+	}
+	return WitnessCheck{State: WitnessInvalid, Reason: reason}, nil
 }
 
 // TickResult is what one Tick call did.
@@ -509,45 +569,60 @@ func paddingRecordID() (string, error) {
 const indexWitnessed = `INSERT INTO cadence_witnessed (log_id, checkpoint_sha256, mmr_size, tick) VALUES (?, ?, ?, ?)
 ON CONFLICT (log_id, checkpoint_sha256) DO UPDATE SET tick = excluded.tick WHERE excluded.tick > cadence_witnessed.tick`
 
-// Witnessed records that tick n's cadence checkpoint has a verified witness
-// receipt. In one transaction, under the shelf's lock: each log checkpoint
-// the tick carries gets a cadence_witnessed row, and each of those logs that
-// has ended and has not grown past its largest witnessed checkpoint leaves
-// the live set. Each log compares its own size, so a receipt for an older
-// tick reported late never moves a log back.
-func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceipt) error {
+// Witnessed checks a witness's receipt for tick n's cadence checkpoint
+// under the configured witness directory (CadenceConfig.Witnesses) and
+// returns what it found. Only a verified receipt witnesses the tick: in one
+// transaction, under the shelf's lock, each log checkpoint the tick carries
+// gets a cadence_witnessed row, and each of those logs that has ended and
+// has not grown past its largest witnessed checkpoint leaves the live set.
+// Each log compares its own size, so a receipt for an older tick reported
+// late never moves a log back. A receipt that is NOT_CHECKED changes
+// nothing, and the host may report it again once its witness is in the
+// directory; one that is INVALID changes nothing and is an ErrInvalid
+// naming the reason.
+func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceipt) (WitnessCheck, error) {
 	// capsule-cli carries the witness's URL without a trailing slash
 	// (trimEndpoint), and a verifier finds the witness's row by it.
 	for len(receipt.TSURL) > 0 && receipt.TSURL[len(receipt.TSURL)-1] == '/' {
 		receipt.TSURL = receipt.TSURL[:len(receipt.TSURL)-1]
 	}
 	if receipt.TSURL == "" || receipt.EntryHash == "" || len(receipt.Receipt) == 0 {
-		return fmt.Errorf("%w: a witnessed tick needs its receipt, its entry hash and its witness's URL", ErrInvalid)
+		reason := "a witnessed tick needs its receipt, its entry hash and its witness's URL"
+		return WitnessCheck{State: WitnessInvalid, Reason: reason}, fmt.Errorf("%w: %s", ErrInvalid, reason)
 	}
 	encodedReceipt, err := json.Marshal(receipt)
 	if err != nil {
-		return err
+		return WitnessCheck{}, err
 	}
 	s := c.shelf
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.released {
-		return ErrReleased
+		return WitnessCheck{}, ErrReleased
 	}
 	tick, err := c.tickLocked(ctx, n)
 	if err != nil {
-		return err
+		return WitnessCheck{}, err
 	}
 	if tick.CheckpointSize == 0 {
-		return fmt.Errorf("%w: tick %d is not finished, so no witness has seen its root", ErrInvalid, n)
+		return WitnessCheck{}, fmt.Errorf("%w: tick %d is not finished, so no witness has seen its root", ErrInvalid, n)
+	}
+	check, err := checkWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
+	switch {
+	case err != nil:
+		return WitnessCheck{}, fmt.Errorf("%w: tick %d: %v", ErrCorrupt, n, err)
+	case check.State == WitnessInvalid:
+		return check, fmt.Errorf("%w: tick %d's witness receipt is rejected: %s", ErrInvalid, n, check.Reason)
+	case check.State != WitnessVerified:
+		return check, nil
 	}
 	ended := map[string]bool{}
 	for id := range tick.Leaves.Deals {
 		if ended[id], err = c.cfg.Ended(ctx, id); err != nil {
-			return err
+			return WitnessCheck{}, err
 		}
 	}
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
 			return err
 		}
@@ -577,6 +652,10 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 		}
 		return nil
 	})
+	if err != nil {
+		return WitnessCheck{}, err
+	}
+	return check, nil
 }
 
 // heldSizeTx is the MMR size of everything a log holds, read in tx: a

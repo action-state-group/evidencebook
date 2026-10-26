@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Breaking: the cadence verifies witness receipts itself (evidencebook#115)
+
+- `Cadence.Witnessed` verifies the receipt against the tick's signed cadence
+  checkpoint with AAC's witness verifier (`go/witness.VerifyReceipts`), under
+  the new `CadenceConfig.Witnesses` directory, instead of trusting the host's
+  check. It now returns a `WitnessCheck`: `VERIFIED` witnesses the tick as
+  before; `NOT_CHECKED` (the witness has no directory row or usable key, or
+  no directory is configured) changes nothing and is not an error; `INVALID`
+  changes nothing and is an `ErrInvalid` naming the reason. Each state
+  carries AAC's finding and reason, except a receipt missing a member, which
+  is `INVALID` before any check.
+- `ImportLegacy` verifies the receipt of each witnessed pre-shelf tick it
+  stores or promotes the same way and refuses an import whose receipt is not
+  `VERIFIED`, naming the tick. A tick already held witnessed is not checked
+  again, so a re-run after a key rotation still imports new ticks.
+- Hosts migrate by passing their witness directory
+  (`witness.ParseDirectory`) in `CadenceConfig.Witnesses` and reading the
+  returned state. Ticks witnessed before this release stay witnessed: they
+  were recorded on the host's check.
+- The SCITT receipt substrate stub's receipts read `NOT_CHECKED`: they
+  register a record identity, which AAC's verifier has no binding for. They
+  are still labelled `scitt-receipt-unverified` and never count as witnessed.
+
 ### Added: the capsulectl-book agent skill
 
 - `capsulectl/skills/capsulectl-book` is the agent skill for the book verbs
