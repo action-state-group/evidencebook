@@ -404,19 +404,20 @@ no verification material for a derivation's answer. So no case yields `met` or
 | `mutant-record-kind-outside-list` | derived | one record's `record_type` changed to a kind outside the host profile's §3, re-signed by the holder key | 3 of 3 | none | `record_kinds` | not accepted |
 | `mutant-member-outside-reads` | derived | `counterparty_ref` added to one record, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
 | `mutant-definition-reads-widened` | responder | answers under a definition whose `reads` adds `statement` and `counterparty_ref` | 3 of 3 | none | `definition_form` | not accepted |
-| `multi-stream-one-tick` | derived | the three deals of `history-basic`, each moved to a stream of its own and answered at one witnessed checkpoint tick, re-signed by the holder key | 3 of 3 | none | none | accepted |
+| `multi-stream-one-tick` | derived | the three deals of `history-basic`, each moved to a stream of its own and answered at one witnessed checkpoint tick (a label digest, see the note below), re-signed by the holder key | 3 of 3 | none | none | accepted |
 | `mutant-multi-stream-mixed-anchor` | derived | `multi-stream-one-tick` with one deal answered at its own stream's checkpoint | 3 of 3 | none | `single_anchor` | not accepted |
 | `refused-other-requester` | responder | a request under the definition from `requester-2`, who is not its recipient | no envelope | refusal `not_authorized`; every refusal property `PASS` except `responder_key_current` `NOT_CHECKED`; row `refusal-withheld`: `WITHHELD`, `GAP`, `not_evaluable` | no History | no History |
 
 For `history-basic`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step.
 
-For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. That is selected deals, 3 in `multi-stream-one-tick`, the same three deals as in `history-basic`.
+For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic`, so there are selected deals, 3 in `multi-stream-one-tick`.
 
 The two multi-stream cases are derived, not part of the responder run: each
 selected deal's records move to a stream of their own, and each request names
 one tick. That tick, and the stream checkpoint in
 `mutant-multi-stream-mixed-anchor`, are label digests, not real checkpoints.
 At the Basic level you check only that every envelope names the same anchor.
+The definition, and so the derivation, is the one of the positive run.
 The corpus README describes how they were built.
 
 The two other-anchor cases are two readings of one row of the host profile's
