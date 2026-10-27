@@ -23,12 +23,12 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from agent_action_capsule.evidence_request import encode_cll_consistency_proof, encode_cll_inclusion_proof
 from cll.checkpoint import core
-from agent_action_capsule.interop_profile import _cbor
 from cll.checkpoint.cose_wire import CLL_CHECKPOINT_CONTENT_TYPE, encode_checkpoint_claims
 from cll.checkpoint.emit import CheckpointRecord
 from cll.log import validate_identifier
 
-from ._time import from_nanos, parse_rfc3339_ns, rfc3339_nano, truncate_ms
+from . import _cborread
+from ._time import parse_rfc3339_ns, rfc3339_nano, truncate_ms
 from .errors import CorruptError, InvalidError, NotCoveredError
 from .signer import Signer, key_id, sign1
 
@@ -48,7 +48,9 @@ class Checkpoint:
     root: str
     tree_size: int
     key_id: str
-    issued_at: datetime
+    #: issued_at as nanoseconds since the epoch (RFC 3339 allows year 0000,
+    #: which a datetime cannot hold).
+    issued_at_ns: int
     statement: bytes
     prev_size: int = 0
     peaks: tuple[bytes, ...] = field(default=(), repr=False)
@@ -69,150 +71,167 @@ class _Refused(Exception):
     pass
 
 
-_CLAIMS = {"kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at"}
-_OPTIONAL_CLAIMS = {"cadence", "consistency_proof"}
-_PROOF_MEMBERS = {"size_a", "size_b", "witness", "old_peaks", "new_peaks"}
-_MAX_PORTABLE = (1 << 53) - 1
+_REQUIRED_CLAIMS = ("kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at")
+_UNDERSTOOD_LABELS = {1, 3, 4, 15}  # alg, content type, kid, CWT_Claims
+_MAX_PORTABLE = (1 << 53) - 1  # backend-contract.md MaxPortableInteger
+_MAX_CHECKPOINT_BYTES = 65536  # backend-contract.md MaxCheckpointBytes
 
 
-def _strict(raw: object, what: str) -> object:
-    """CBOR read as Go's decoders read it: well formed, no duplicate map
-    key, no indefinite length."""
-    if not isinstance(raw, bytes):
-        raise _Refused(f"{what} is not a byte string")
-    try:
-        decoded = _cbor.decode(raw)
-    except _cbor.CborError as exc:
-        raise _Refused(f"{what}: {exc}") from None
-    if not decoded.well_formed:
-        raise _Refused(f"{what} has a duplicate map key or an indefinite length")
-    return decoded.value
+def mmr_peak_count(size: int) -> int | None:
+    """The number of peaks of a complete MMR of ``size`` nodes, or ``None``
+    when ``size`` is not one. Computed here for every portable size: cll's
+    ``core.peaks`` refuses sizes from 2^50 on."""
+    count, remaining, height = 0, size, size.bit_length()
+    while remaining > 0:
+        while height > 0 and (1 << height) - 1 > remaining:
+            height -= 1
+        if height == 0:
+            return None
+        remaining -= (1 << height) - 1
+        count += 1
+        if remaining and ((1 << height) - 1) <= remaining:
+            return None  # mountains must strictly shrink
+    return count
 
 
-def _labels_are_ints(header: object) -> bool:
-    # CBOR true is not label 1, though Python compares the two equal.
-    return isinstance(header, dict) and all(type(label) is int for label in header)
-
-
-def _uint(value: object, maximum: int) -> bool:
+def _uint(value: object, maximum: int = _MAX_PORTABLE) -> bool:
     return type(value) is int and 0 <= value <= maximum
 
 
-def _peaks(raw: object, what: str) -> list[bytes]:
-    """A commitment: the canonical CBOR of an array of 32-byte peaks (Go's decodeCommitment)."""
-    peaks = _strict(raw, what)
+def _peaks(raw: object, size: int, what: str) -> list[bytes]:
+    """-01 §Commitment Representation: the peak list of the MMR at ``size``,
+    one 32-byte peak per mountain, in canonical CBOR exactly as the MMR
+    profile's commitment object encodes it."""
+    if not isinstance(raw, bytes):
+        raise _Refused(f"{what} is not a byte string")
+    try:
+        peaks = _cborread.read(raw)
+    except _cborread.CborError as exc:
+        raise _Refused(f"{what}: {exc}") from None
     if not isinstance(peaks, list) or not all(isinstance(p, bytes) and len(p) == 32 for p in peaks) or \
             core.commitment_object(peaks) != raw:
-        raise _Refused(f"{what} is not canonical")
+        raise _Refused(f"{what} is not a canonical peak list")
+    if len(peaks) != mmr_peak_count(size):
+        raise _Refused(f"{what} is not the peak list of an MMR of {size} nodes")
     return peaks
 
 
-def _byte_strings(value: object) -> bool:
-    return isinstance(value, list) and all(isinstance(item, bytes) for item in value)
-
-
 def _read(statement: bytes) -> Checkpoint:
-    """Go's ``checkpoint.ParseRecord`` and ``VerifySignature``, check for
-    check; test/interop/python-evidencebook/checkpoint_parity.py runs both
-    readers over every rule."""
-    # The message: CBOR tag 18 over [protected, {}, payload, signature], in
-    # its one canonical encoding.
+    """A CLL checkpoint read under draft-mih-scitt-checkpointed-local-log-01,
+    the revision of the wire form deployed implementations write (spec
+    §The Checkpoint, §Commitment Representation, §Required constraints,
+    §Witnessing), RFC 9052, RFC 8949 and RFC 3339; where the draft is
+    silent, as Go's reader reads it. test/interop/python-evidencebook/
+    checkpoint_parity.py holds every rule, and the cases where Go departs
+    from the draft."""
+    if len(statement) > _MAX_CHECKPOINT_BYTES:
+        raise _Refused(f"the statement is over {_MAX_CHECKPOINT_BYTES} bytes")
     try:
-        message = cbor2.loads(statement)
-    except Exception:  # noqa: BLE001 -- any undecodable statement is refused
-        raise _Refused("not CBOR") from None
-    if not isinstance(message, cbor2.CBORTag) or message.tag != _COSE_SIGN1_TAG or \
-            not isinstance(message.value, (list, tuple)) or len(message.value) != 4:
-        raise _Refused("not a COSE_Sign1 message")
+        message = _cborread.read(statement)
+    except _cborread.CborError as exc:
+        raise _Refused(f"not CBOR: {exc}") from None
+    # RFC 9052 §4.2 COSE_Sign1, tagged (the draft is silent on the untagged
+    # form; Go requires the tag).
+    if not isinstance(message, _cborread.Tag) or message.number != _COSE_SIGN1_TAG or \
+            not isinstance(message.value, list) or len(message.value) != 4:
+        raise _Refused("not a tagged COSE_Sign1 message")
     protected_bstr, unprotected, payload, signature = message.value
-    if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or not signature:
+    if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or not isinstance(unprotected, dict):
         raise _Refused("a COSE_Sign1 member has the wrong type")
-    if cbor2.dumps(message) != statement:
-        raise _Refused("the statement is not canonical")
-    if unprotected != {}:
-        raise _Refused("the unprotected header is not empty")
-    # The protected header: exactly alg EdDSA, the content type, a 32-byte
-    # kid and CWT claims holding exactly iss and sub.
-    protected = _strict(protected_bstr, "the protected header")
-    if not _labels_are_ints(protected) or set(protected) != {1, 3, 4, 15}:
-        raise _Refused("the protected header is not the checkpoint profile's")
-    kid, cwt = protected[4], protected[15]
-    if protected[1] != _COSE_ALG_EDDSA or type(protected[1]) is not int or protected[3] != CLL_CHECKPOINT_CONTENT_TYPE \
-            or not isinstance(kid, bytes) or len(kid) != 32:
-        raise _Refused("the protected header is not the checkpoint profile's")
-    if not _labels_are_ints(cwt) or set(cwt) != {1, 2} or not isinstance(cwt[1], str) or not isinstance(cwt[2], str):
-        raise _Refused("the CWT claims are not the checkpoint profile's")
-    # The claims (Go's decodeWireClaims): exactly the members it defines, in
-    # canonical CBOR; a null optional member is refused, since Go's omitempty
-    # re-encoding drops it.
-    claims = _strict(payload, "the claims")
-    if not isinstance(claims, dict) or not _CLAIMS <= set(claims) or not set(claims) <= _CLAIMS | _OPTIONAL_CLAIMS:
-        raise _Refused("the claims are not the checkpoint profile's")
-    if cbor2.dumps(claims, canonical=True) != payload:
-        raise _Refused("the claims are not canonical")
+    # The unprotected header may carry a witness's countersignature
+    # (§Witnessing); its labels are integers or texts (RFC 9052 §3).
+    if any(type(label) not in (int, str) for label in unprotected):
+        raise _Refused("an unprotected header label is not an integer or a text")
+    try:
+        protected = _cborread.read(protected_bstr) if protected_bstr else {}
+        claims = _cborread.read(payload)
+    except _cborread.CborError as exc:
+        raise _Refused(f"the protected header or the claims: {exc}") from None
+    if not isinstance(protected, dict) or any(type(label) not in (int, str) for label in protected):
+        raise _Refused("the protected header is not a map of integer or text labels")
+    # RFC 9052 §3.1 crit: every label it lists must be present and understood.
+    crit = protected.get(2)
+    if 2 in protected and not (isinstance(crit, list) and crit and all(
+            type(label) in (int, str) and label in protected and label in _UNDERSTOOD_LABELS for label in crit)):
+        raise _Refused("the protected header lists a critical label not understood")
+    kid, cwt = protected.get(4), protected.get(15)
+    # The draft: the protected header carries the algorithm and the key
+    # identifier. Silent on their values and on the content type, so Go's:
+    # EdDSA, the raw 32-byte public key, application/cll-checkpoint+cbor.
+    if type(protected.get(1)) is not int or protected.get(1) != _COSE_ALG_EDDSA or \
+            protected.get(3) != CLL_CHECKPOINT_CONTENT_TYPE or not isinstance(kid, bytes) or len(kid) != 32:
+        raise _Refused("the protected header does not carry EdDSA, the content type and a 32-byte kid")
+    # §Witnessing: CWT_Claims with iss and sub (texts, RFC 8392); other
+    # claims allowed. The draft does not define sub's form; Go's is
+    # "<iss>#<log_size>", with iss a CLL identifier.
+    if not isinstance(cwt, dict) or not isinstance(cwt.get(1), str) or not isinstance(cwt.get(2), str):
+        raise _Refused("the CWT_Claims do not carry iss and sub as texts")
+    # §The Checkpoint: a CBOR map with these claims; others MUST be ignored.
+    if not isinstance(claims, dict) or any(name not in claims for name in _REQUIRED_CLAIMS):
+        raise _Refused("the claims are not a map of the required claims")
     log_size, prev_size, issued_at = claims["log_size"], claims["prev_size"], claims["issued_at"]
-    if claims["kind"] != "cll-checkpoint" or not _uint(log_size, _MAX_PORTABLE) or log_size == 0 or \
-            not _uint(prev_size, _MAX_PORTABLE) or prev_size >= log_size or not isinstance(issued_at, str) or not issued_at:
-        raise _Refused("the claims are not the checkpoint profile's")
-    if "cadence" in claims and not (_uint(claims["cadence"], _MAX_PORTABLE) and claims["cadence"] > 0):
-        raise _Refused("the cadence is not a positive portable integer")
-    proof = claims.get("consistency_proof")
-    if "consistency_proof" in claims and not (
-            isinstance(proof, dict) and set(proof) == _PROOF_MEMBERS
-            and _uint(proof["size_a"], (1 << 64) - 1) and _uint(proof["size_b"], (1 << 64) - 1)
-            and _byte_strings(proof["old_peaks"]) and _byte_strings(proof["new_peaks"])
-            and isinstance(proof["witness"], list) and all(_byte_strings(path) for path in proof["witness"])):
-        raise _Refused("the consistency proof is not the checkpoint profile's")
+    if claims["kind"] != "cll-checkpoint":
+        raise _Refused("kind is not cll-checkpoint")
+    # log_size is the MMR's node count (a complete size), as deployed and as
+    # -02 states; portable integers (backend-contract MaxPortableInteger).
+    if not _uint(log_size) or log_size == 0 or mmr_peak_count(log_size) is None:
+        raise _Refused(f"log_size {log_size!r} is not a complete MMR size")
+    # §Required constraints 2: log_size >= prev_size.
+    if not _uint(prev_size) or prev_size > log_size or prev_size and mmr_peak_count(prev_size) is None:
+        raise _Refused(f"prev_size {prev_size!r} is not a complete MMR size up to log_size")
+    if "cadence" in claims and not (_uint(claims["cadence"]) and claims["cadence"] > 0):
+        raise _Refused("cadence is not a positive portable integer")
     if cwt[2] != f"{cwt[1]}#{log_size}" or not validate_identifier(cwt[1]):
-        raise _Refused("the CWT subject or the log id is invalid")
-    # The commitments. Go reads a null byte string as an empty one, so a null
-    # prev_commitment is no previous commitment, as an empty one is.
-    peaks = _peaks(claims["commitment"], "the commitment")
-    prev_raw = claims["prev_commitment"]
-    prev_peaks = [] if prev_raw in (b"", None) else _peaks(prev_raw, "the previous commitment")
-    if prev_size == 0 and (prev_peaks or proof is not None):
-        raise _Refused("a first checkpoint carries a previous commitment or a consistency proof")
-    root = core.root_from_peaks(peaks)
-    if prev_size > 0:
-        if not prev_peaks or proof is None:
-            raise _Refused("the previous commitment or the consistency proof is missing")
-        # Go checks the proof under its own sizes, not prev_size and log_size.
-        try:
-            verified = core.verify_consistency(
-                core.root_from_peaks(prev_peaks), proof["size_a"], root, proof["size_b"], core.ConsistencyProof(
-                    1, "consistency", proof["size_a"], proof["size_b"], tuple(p.hex() for p in proof["old_peaks"]),
-                    tuple(tuple(n.hex() for n in path) for path in proof["witness"]),
-                    tuple(p.hex() for p in proof["new_peaks"])))
-        except Exception:  # noqa: BLE001 -- an unverifiable proof is refused
-            verified = False
-        if not verified:
-            raise _Refused("the consistency proof is invalid")
+        raise _Refused("the CWT subject is not <log id>#<log_size> under a CLL identifier")
+    peaks = _peaks(claims["commitment"], log_size, "the commitment")
+    # prev_commitment: zero-length for the first, else the peak list at prev_size.
+    if prev_size == 0:
+        if claims["prev_commitment"] != b"":
+            raise _Refused("a first checkpoint's prev_commitment is not zero-length")
+        prev_peaks: list[bytes] = []
+    else:
+        prev_peaks = _peaks(claims["prev_commitment"], prev_size, "the previous commitment")
+    # The consistency relation at equal sizes is equality. At a greater size
+    # it is checked with the proof conveyed beside the checkpoint (profile
+    # §6.2.1 cll-consistency-proof), never with a consistency_proof claim:
+    # -01 defines none, so the claim is ignored.
+    if prev_size == log_size and prev_peaks != peaks:
+        raise _Refused("equal sizes carry different commitments")
     issued = parse_rfc3339_ns(issued_at)
     if issued is None:
-        raise _Refused(f"issued_at {issued_at!r} is not an RFC 3339 time")
-    # The signature, under the statement's own kid.
+        raise _Refused(f"issued_at {issued_at!r} is not an RFC 3339 date-time")
     try:
         Ed25519PublicKey.from_public_bytes(kid).verify(
             signature, cbor2.dumps(["Signature1", protected_bstr, b"", payload]))
     except (InvalidSignature, ValueError):
         raise _Refused("the signature does not verify") from None
-    try:
-        entries = core.leaf_count(log_size)
-    except core.InvalidArgumentError:
-        raise _Refused(f"size {log_size} is not a complete MMR") from None
+    root = core.root_from_peaks(peaks)
     return Checkpoint(
-        log_id=cwt[1], id=f"{root.hex()}:{log_size}", entries=entries, root=root.hex(), tree_size=log_size,
-        key_id=kid.hex(), issued_at=from_nanos(issued), statement=bytes(statement), prev_size=prev_size,
+        log_id=cwt[1], id=f"{root.hex()}:{log_size}", entries=_leaf_count(log_size), root=root.hex(),
+        tree_size=log_size, key_id=kid.hex(), issued_at_ns=issued, statement=bytes(statement), prev_size=prev_size,
         peaks=tuple(peaks), prev_peaks=tuple(prev_peaks),
     )
 
 
+def _leaf_count(size: int) -> int:
+    """Leaves of a complete MMR of ``size`` nodes (each mountain of 2^h - 1
+    nodes holds 2^(h-1) leaves)."""
+    leaves, remaining, height = 0, size, size.bit_length()
+    while remaining:
+        while (1 << height) - 1 > remaining:
+            height -= 1
+        remaining -= (1 << height) - 1
+        leaves += 1 << (height - 1)
+    return leaves
+
+
 def read_checkpoint(statement: bytes) -> Checkpoint:
     """Parse and signature-check a CLL checkpoint statement under its own
-    kid, accepting exactly what Go's checkpoint reader accepts. No ASG Python
-    package reads it that way: cll's ``verify_checkpoint_cose_offline``
-    neither checks the wire profile nor allows a proof under its own sizes,
-    and agent-action-capsule's reader checks only the profile's §6.2.1 rules."""
+    kid, by draft-mih-scitt-checkpointed-local-log-01 (see :func:`_read`).
+    No ASG Python package reads it so: cll's ``verify_checkpoint_cose_offline``
+    refuses what the draft allows (other claims, a proof under its own sizes)
+    and skips what it requires, and agent-action-capsule's reader checks
+    only the profile's §6.2.1 rules."""
     try:
         return _read(statement)
     except _Refused as exc:

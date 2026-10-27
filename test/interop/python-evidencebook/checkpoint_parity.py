@@ -9,8 +9,14 @@ checkpointFromStatement applies it).
 
 Each case is one field of a real checkpoint statement changed by one rule
 (its type, range, null, absence, encoding), signed again under the log key,
-so the signature never decides it. The comparison fails on any case where
-one reader accepts and the other refuses.
+so the signature never decides it.
+
+The spec decides (draft-mih-scitt-checkpointed-local-log-01 and the RFCs it
+cites); where it is silent, Go's reader does. So the Python reader must
+agree with Go on every case, except the ones GO_DEPARTS lists, where Go
+departs from the spec: there Python must give the spec's verdict and Go the
+other one (a pinned gap: the comparison fails the day Go is fixed, and the
+mark must then go).
 """
 from __future__ import annotations
 
@@ -25,6 +31,60 @@ import evidencebook as eb
 from evidencebook._cll import read_checkpoint
 
 LOG_KEY = eb.Ed25519Signer(hashlib.sha256(b"checkpoint parity: log key").digest())
+
+GO_ISSUE = "https://github.com/action-state-group/checkpointed-local-log/issues/99"
+_MUST_IGNORE = "-01 The Checkpoint: other claims MAY be present; verifiers MUST ignore claims they do not understand"
+_PROOF_CLAIM = "-01 defines no consistency_proof claim (the proof is made available with the checkpoint or on request); ignored"
+_ENCODING = "RFC 8949 §3, §4: valid CBOR; RFC 9052 §9 requires deterministic encoding of the Sig_structure only"
+_PEAKS = "-01 Commitment Representation: the peak list of the MMR at that size"
+#: (case name, without its first-/second- prefix when the departure holds for
+#: both checkpoints, the spec's verdict, the basis).
+GO_DEPARTS: list[tuple[str, str, str]] = [
+    ("claims-extra-member", "accept", _MUST_IGNORE),
+    ("claims-consistency_proof-missing", "accept", _PROOF_CLAIM),
+    ("claims-consistency_proof-null", "accept", _PROOF_CLAIM),
+    ("claims-consistency_proof-bool", "accept", _PROOF_CLAIM),
+    ("claims-consistency_proof-text", "accept", _PROOF_CLAIM),
+    ("claims-consistency_proof-int", "accept", _PROOF_CLAIM),
+    ("claims-proof-on-first", "accept", _PROOF_CLAIM),
+    ("claims-proof-size-a-text", "accept", _PROOF_CLAIM),
+    ("claims-proof-size-a-wrong", "accept", _PROOF_CLAIM),
+    ("claims-proof-old-peaks-int", "accept", _PROOF_CLAIM),
+    ("claims-proof-witness-text", "accept", _PROOF_CLAIM),
+    ("claims-proof-witness-null-path", "accept", _PROOF_CLAIM),
+    ("claims-proof-witness-tampered", "accept", _PROOF_CLAIM),
+    ("claims-proof-extra-member", "accept", _PROOF_CLAIM),
+    ("claims-proof-missing-member", "accept", _PROOF_CLAIM),
+    ("second-claims-prev-commitment-of-commitment", "accept",
+     "-01 Required constraints 2: the relation is checked with the proof conveyed beside the checkpoint"),
+    ("claims-prev-size-equal", "accept", "-01 Required constraints 2: log_size MUST be greater than or equal to prev_size"),
+    ("claims-indefinite", "accept", _ENCODING),
+    ("claims-noncanonical-order", "accept", _ENCODING),
+    ("protected-indefinite", "accept", _ENCODING),
+    ("outer-payload-long-length", "accept", _ENCODING),
+    ("protected-extra-label", "accept", "RFC 9052 §3: other header parameters; none is critical"),
+    ("protected-crit-understood", "accept", "RFC 9052 §3.1: crit lists only labels understood"),
+    ("protected-cwt-extra-claim", "accept", "RFC 8392 §3; -01 Witnessing requires iss and sub only"),
+    ("outer-unprotected-label", "accept", "-01 Witnessing: a countersignature in the unprotected header"),
+    ("claims-issued-at-lowercase", "accept", "RFC 3339 §5.6 NOTE: t and z may be lower case"),
+    ("claims-issued-at-comma-fraction", "refuse", "RFC 3339 §5.6: time-secfrac is \".\" 1*DIGIT"),
+    ("claims-issued-at-offset-plus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
+    ("claims-issued-at-offset-minus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
+    ("first-claims-log_size-int", "refuse", _PEAKS),
+    ("second-claims-prev_size-int", "refuse", _PEAKS),
+    ("first-claims-commitment-empty-array", "refuse", _PEAKS),
+    ("first-claims-prev_commitment-null", "refuse", "-01 The Checkpoint: prev_commitment is a bstr, zero-length for the first"),
+    ("first-claims-prev-commitment-empty-array", "refuse", "-01 The Checkpoint: prev_commitment is zero-length for the first"),
+]
+
+
+def departure(name: str) -> tuple[str, str] | None:
+    """The spec's verdict and basis where Go departs from it, for this case."""
+    bare = name.split("-", 1)[1]
+    for case, verdict, basis in GO_DEPARTS:
+        if case in (name, bare):
+            return verdict, basis
+    return None
 
 
 def _head(major: int, n: int) -> bytes:
@@ -134,6 +194,23 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
         claims_case(f"issued-at-{name}", dict(claims, issued_at=text))
     for name, value in (("zero", 0), ("one", 1), ("2^53-1", (1 << 53) - 1), ("2^53", 1 << 53)):
         claims_case(f"cadence-{name}", dict(claims, cadence=value))
+    for name, text in (("comma-fraction", claims["issued_at"][:-1] + ",5Z"),
+                       ("offset-plus-24", claims["issued_at"][:-1] + "+24:00"),
+                       ("offset-minus-24", claims["issued_at"][:-1] + "-24:00"),
+                       ("year-0000", "0000" + claims["issued_at"][4:]),
+                       ("year-0000-offset", "0000-01-01T05:00:00+05:00"),
+                       ("leap-second-end-of-day", claims["issued_at"][:11] + "23:59:60Z"),
+                       ("february-30", claims["issued_at"][:5] + "02-30" + claims["issued_at"][10:])):
+        claims_case(f"issued-at-{name}", dict(claims, issued_at=text))
+    # A one-mountain MMR beyond cll Python's 2^50 limit, and one past the portable range.
+    first_of_size = {k: v for k, v in claims.items() if k != "consistency_proof"}
+    claims_case("log-size-2^51-1", dict(first_of_size, log_size=(1 << 51) - 1, prev_size=0, prev_commitment=b"",
+                                        commitment=cbor2.dumps([claims_peak(claims)])))
+    claims_case("log-size-2^54-1", dict(first_of_size, log_size=(1 << 54) - 1, prev_size=0, prev_commitment=b"",
+                                        commitment=cbor2.dumps([claims_peak(claims)])))
+    claims_case("oversized", dict(claims, padding=bytes(70000)))
+    if claims["prev_size"]:
+        claims_case("prev-size-equal", dict(claims, prev_size=claims["log_size"], prev_commitment=claims["commitment"]))
     if "consistency_proof" in claims:
         proof = claims["consistency_proof"]
         for name, changed in (("size-a-text", dict(proof, size_a=str(proof["size_a"]))),
@@ -143,6 +220,7 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
                               ("witness-tampered", dict(proof, witness=[[b"\x00" * 32 for _ in path]
                                                                         for path in proof["witness"]])),
                               ("extra-member", dict(proof, extra=1)),
+                              ("witness-null-path", dict(proof, witness=[None for _ in proof["witness"]])),
                               ("missing-member", {k: v for k, v in proof.items() if k != "new_peaks"})):
             claims_case(f"proof-{name}", dict(claims, consistency_proof=changed))
     else:
@@ -180,6 +258,12 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     header_case("cwt-iss-not-identifier",
                 cbor2.dumps({**prot, 15: {1: "not an id!", 2: "not an id!#" + cwt[2].split("#")[1]}}))
 
+    header_case("alg-ed25519-fully-specified", cbor2.dumps({**prot, 1: -19}))
+    header_case("crit-understood", cbor2.dumps({**prot, 2: [1]}))
+    header_case("crit-not-understood", cbor2.dumps({**prot, 2: [99], 99: "x"}))
+    header_case("crit-empty", cbor2.dumps({**prot, 2: []}))
+    out[f"{label}-outer-unprotected-noncanonical-empty"] = b"\xd2\x84" + cbor2.dumps(prot_bstr) + b"\xb8\x00" + \
+        cbor2.dumps(payload) + cbor2.dumps(LOG_KEY.sign(cbor2.dumps(["Signature1", prot_bstr, b"", payload])))
     out[f"{label}-outer-untagged"] = sign(prot_bstr, payload, tag=None)
     out[f"{label}-outer-tag-17"] = sign(prot_bstr, payload, tag=17)
     out[f"{label}-outer-unprotected-label"] = sign(prot_bstr, payload, unprotected={33: b"x"})
@@ -194,6 +278,10 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
         out[f"{label}-outer-payload-long-length"] = b"\xd2\x84" + cbor2.dumps(prot_bstr) + b"\xa0" + long_head + \
             payload + cbor2.dumps(sig)
     return out
+
+
+def claims_peak(claims: dict) -> bytes:
+    return cbor2.loads(claims["commitment"])[0]
 
 
 def python_verdict(statement: bytes) -> str:
@@ -216,15 +304,24 @@ def main() -> int:
     if sys.argv[1:2] == ["compare"] and len(sys.argv) == 4:
         rows = json.load(open(sys.argv[2], encoding="utf-8"))
         go = json.load(open(sys.argv[3], encoding="utf-8"))
-        differ = 0
+        wrong, pinned = 0, 0
         for row in rows:
             py, g = row["python"], go[row["name"]]
-            same = (py == "accept") == (g == "accept") and not py.startswith("UNEXPECTED")
-            differ += not same
-            print(f"{'ok  ' if same else 'DIFF'} {row['name']}: go={'accept' if g == 'accept' else 'refuse'}"
-                  f" python={'accept' if py == 'accept' else 'refuse'}" + ("" if same else f"\n     go: {g}\n     py: {py}"))
-        print(f"\n{len(rows)} cases, {differ} where the readers disagree")
-        return 1 if differ else 0
+            py_v, go_v = ("accept" if v == "accept" else "refuse" for v in (py, g))
+            departs = departure(row["name"])
+            if departs is None:
+                ok, mark = py_v == go_v and not py.startswith("UNEXPECTED"), ""
+            else:
+                spec = departs[0]
+                ok = py_v == spec and go_v != spec
+                pinned += ok
+                mark = f"  [spec-required, Go to fix: {GO_ISSUE}; {departs[1]}]"
+            wrong += not ok
+            print(f"{'ok  ' if ok else 'FAIL'} {row['name']}: go={go_v} python={py_v}{mark}"
+                  + ("" if ok else f"\n     go: {g}\n     py: {py}"))
+        print(f"\n{len(rows)} cases: {len(rows) - wrong} as required ({pinned} where Go departs from the spec, "
+              f"pinned), {wrong} not")
+        return 1 if wrong else 0
     raise SystemExit("usage: checkpoint_parity.py cases OUT | compare CASES GO_VERDICTS")
 
 

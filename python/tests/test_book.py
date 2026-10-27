@@ -446,7 +446,7 @@ def test_a_half_pin_answers_under_the_earliest_anchor_covering_the_citations(clo
 def test_a_time_floor_states_the_anchors_time(clock, responder):
     r, records = responder
     q = book(clock, "requester")
-    floor = eb.book.profile_time(r.checkpoints()[-1].issued_at)
+    floor = eb.book.profile_time_ns(r.checkpoints()[-1].issued_at_ns)
     sent, reply = ask(q, r, eb.Subject("record", records[0].record_id), min_freshness=floor)
     assert reply.envelope.freshness == floor
     assert q.record_response(sent.record_id, reply.message, keys_of(r)).header.statement["outcome"] == "artifact"
@@ -557,28 +557,6 @@ def test_a_signed_record_set_go_refuses_is_received_and_failed(clock, responder,
     assert statement["outcome"] == eb.OUTCOME_ARTIFACT_FAILED and check in statement["failure"]
 
 
-def test_a_checkpoint_outside_the_wire_profile_is_refused(responder):
-    import cbor2
-    from evidencebook._cll import read_checkpoint
-
-    r, _ = responder
-    statement = r.checkpoints()[-1].statement
-    assert read_checkpoint(statement).anchor_digest == r.checkpoints()[-1].anchor_digest
-    message = cbor2.loads(statement)
-    protected, _, payload, signature = message.value
-    with pytest.raises(eb.InvalidError, match="unprotected header"):
-        read_checkpoint(cbor2.dumps(cbor2.CBORTag(18, [protected, {42: 0}, payload, signature])))
-    claims = cbor2.loads(payload)
-    indefinite = b"\xbf" + b"".join(cbor2.dumps(k) + cbor2.dumps(v) for k, v in claims.items()) + b"\xff"
-    for altered in (indefinite, cbor2.dumps(dict(claims, extra=1), canonical=True),
-                    cbor2.dumps(dict(claims, cadence=1 << 53), canonical=True),
-                    cbor2.dumps(dict(claims, consistency_proof=None), canonical=True)):
-        to_be_signed = cbor2.dumps(["Signature1", protected, b"", altered])
-        resigned = cbor2.dumps(cbor2.CBORTag(18, [protected, {}, altered, key("responder log").sign(to_be_signed)]))
-        with pytest.raises(eb.InvalidError, match="claims|cadence|consistency proof"):
-            read_checkpoint(resigned)
-    assert eb.request.strict_hex("61 62") is None and eb.request.strict_hex("6162") == b"ab"
-
 
 def test_inputs_go_refuses_or_accepts_are_read_as_go_reads_them(clock, tmp_path):
     with pytest.raises(eb.InvalidError):
@@ -617,57 +595,3 @@ def test_a_malformed_stored_header_or_index_root_is_corruption(clock):
                 s.seq, s.record_id, header, s.capsule, s.envelope)
         with pytest.raises(eb.CorruptError):
             book(clock, store=broken)
-
-
-def test_every_checkpoint_claim_is_null_checked_as_go_checks_it(clock):
-    """Each claim set to null, then re-signed: refused, except a first
-    checkpoint's prev_commitment, which Go and cll read as none."""
-    import cbor2
-    from evidencebook._cll import read_checkpoint
-
-    b = book(clock)
-    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
-    first = b.checkpoint()
-    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
-    second = b.checkpoint()
-    log_key = key("b log")
-    for cp in (first, second):
-        protected, _, payload, _ = cbor2.loads(cp.statement).value
-        claims = cbor2.loads(payload)
-        for name in [*claims, "cadence"]:
-            altered = cbor2.dumps(dict(claims, **{name: None}), canonical=True)
-            to_be_signed = cbor2.dumps(["Signature1", protected, b"", altered])
-            statement = cbor2.dumps(cbor2.CBORTag(18, [protected, {}, altered, log_key.sign(to_be_signed)]))
-            if cp is first and name == "prev_commitment":
-                assert read_checkpoint(statement).prev_size == 0
-                continue
-            with pytest.raises(eb.InvalidError):
-                read_checkpoint(statement)
-
-
-def test_wrong_typed_proof_fields_and_boolean_labels_are_refused(clock):
-    import cbor2
-    from evidencebook._cll import read_checkpoint
-
-    b = book(clock)
-    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
-    b.checkpoint()
-    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
-    protected_bstr, _, payload, _ = cbor2.loads(b.checkpoint().statement).value
-    claims, protected = cbor2.loads(payload), cbor2.loads(protected_bstr)
-    log_key = key("b log")
-
-    def signed(protected_bstr: bytes, payload: bytes) -> bytes:
-        to_be_signed = cbor2.dumps(["Signature1", protected_bstr, b"", payload])
-        return cbor2.dumps(cbor2.CBORTag(18, [protected_bstr, {}, payload, log_key.sign(to_be_signed)]))
-
-    proof = claims["consistency_proof"]
-    for altered in (dict(proof, size_a=str(proof["size_a"])), dict(proof, old_peaks=[1]),
-                    dict(proof, witness=[["x"]])):
-        with pytest.raises(eb.InvalidError):
-            read_checkpoint(signed(protected_bstr, cbor2.dumps(dict(claims, consistency_proof=altered), canonical=True)))
-    boolean_alg = cbor2.dumps({True: protected[1], 3: protected[3], 4: protected[4], 15: protected[15]})
-    boolean_iss = cbor2.dumps({**protected, 15: {True: protected[15][1], 2: protected[15][2]}})
-    for header in (boolean_alg, boolean_iss):
-        with pytest.raises(eb.InvalidError):
-            read_checkpoint(signed(header, payload))

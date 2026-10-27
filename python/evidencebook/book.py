@@ -50,7 +50,7 @@ from . import _decide
 from ._capsule import capsule_preimage, seal_record
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
-from ._time import from_nanos, nanos, parse_ns, profile_time, rfc3339_nano, utc
+from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
 from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError
 from .record import (
     AVAILABLE,
@@ -683,7 +683,7 @@ class _View:
     def __init__(self, book: Book):
         self.book = book
         self.checkpoints = [cp for cp in book._checkpoints if cp.kind == "cll"]
-        self._anchors = [_decide.AnchorView(cp.anchor_digest, cp.entries, nanos(cp.issued_at)) for cp in self.checkpoints]
+        self._anchors = [_decide.AnchorView(cp.anchor_digest, cp.entries, cp.issued_at_ns) for cp in self.checkpoints]
         self._leaves = {record_id: i for i, record_id in enumerate(book._order)}
         self._commitments = []
         for record_id in book._order:
@@ -810,7 +810,7 @@ class _Answer:
         freshness: int | str | None = None
         floor = req.coverage.min_freshness
         if floor is not None:
-            freshness = anchor.tree_size if isinstance(floor, int) else profile_time(anchor.issued_at)
+            freshness = anchor.tree_size if isinstance(floor, int) else profile_time_ns(anchor.issued_at_ns)
         envelope = sign_envelope(
             self.request.octets, req.subject, req.coverage.expected_pin if d.half_pin else anchor.anchor_digest,
             artifact, signer=EvidenceSigner(book._signer), issued_at=profile_time(self.now),
@@ -1135,7 +1135,7 @@ def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> None:
         raise InvalidError("anchor_inclusion: the checkpoint is not the anchor")
     cp = _signed_checkpoint(items[KIND_CLL_CHECKPOINT], checkpoint_key)
     if type(e.freshness) is int and e.freshness != cp.tree_size or \
-            isinstance(e.freshness, str) and e.freshness != profile_time(cp.issued_at):
+            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
         raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
     try:
         verify_cll_inclusion(cp.peaks, bytes.fromhex(e.artifact_digest), items[KIND_CLL_INCLUSION_PROOF])
