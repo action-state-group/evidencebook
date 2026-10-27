@@ -395,11 +395,25 @@ impl Run<'_, '_> {
             uniform: policy.refusal_policy == RefusalPolicy::Uniform,
         };
         let mut view = View::of(book)?;
-        let mut decision = decide(&view, &req, &gate, self.now(), self.seal);
+        let mut decision = decide(
+            &view,
+            &req,
+            &gate,
+            &|r, reg| authorized(&view, r, &gate, reg),
+            self.now(),
+            self.seal,
+        );
         if matches!(decision, Decision::NeedAnchor) {
             book.checkpoint()?;
             view = View::of(book)?;
-            decision = decide(&view, &req, &gate, self.now(), false);
+            decision = decide(
+                &view,
+                &req,
+                &gate,
+                &|r, reg| authorized(&view, r, &gate, reg),
+                self.now(),
+                false,
+            );
             if matches!(decision, Decision::NeedAnchor) {
                 decision = Decision::Refuse(gate.disclose(Reason::CoverageUnsatisfiable));
             }
@@ -641,12 +655,53 @@ impl Gate<'_> {
     }
 }
 
+/// One coverage anchor a book has issued: its digest, the number of log
+/// entries it covers, and when it was issued.
+struct AnchorFacts {
+    digest: String,
+    entries: u64,
+    issued: UtcTime,
+}
+
+/// What a decision reads of a book's evidence (Go `evidencerequest.View`).
+/// Positions are zero-based log positions; matching is exact.
+trait Evidence {
+    /// The anchors issued, oldest first.
+    fn anchors(&self) -> &[AnchorFacts];
+    /// The entries the log holds now, covered or not.
+    fn entries(&self) -> u64;
+    /// The position of a servable record.
+    fn leaf_of(&self, digest: &str) -> Option<u64>;
+    /// Whether the record at `leaf` may be served at all.
+    fn servable(&self, leaf: u64) -> bool;
+    /// The positions of the servable records carrying a correlation
+    /// identifier, as the host's store keys them.
+    fn correlated(&self, id: &str) -> Vec<u64>;
+    /// The positions of the servable records citing a half.
+    fn citing(&self, half: &str) -> Vec<u64>;
+    /// The counterparty the record at `leaf` names.
+    fn counterparty(&self, leaf: u64) -> Option<String>;
+    /// A retention commitment for exactly this subject whose `until` has
+    /// passed (ER §9).
+    fn lapsed(&self, subject: &Subject, now: UtcTime) -> bool;
+
+    /// The counterparty of each servable record a record or citing-records
+    /// subject names, whether or not the anchor covers them yet.
+    fn named(&self, subject: &Subject) -> Vec<Option<String>> {
+        let leaves: Vec<u64> = match (subject, citing_half(subject)) {
+            (Subject::Record(d), _) => self.leaf_of(d).into_iter().collect(),
+            (_, Some(half)) => self.citing(half),
+            _ => Vec::new(),
+        };
+        leaves.into_iter().map(|l| self.counterparty(l)).collect()
+    }
+}
+
 /// The book as resolution reads it: its stated checkpoints, and for every
 /// leaf its record type, counterparty and servability.
 struct View<'a> {
     checkpoints: Vec<StatedCheckpoint>,
-    /// Entries each checkpoint covers, and when it was issued.
-    anchors: Vec<(u64, UtcTime)>,
+    anchors: Vec<AnchorFacts>,
     entries: u64,
     leaves: Vec<LeafFacts>,
     commitments: Vec<(Subject, UtcTime)>,
@@ -667,7 +722,11 @@ impl<'a> View<'a> {
             let issued = parse_utc(&cp.checkpoint.timestamp).ok_or_else(|| {
                 RespondError::Invalid(format!("checkpoint time {:?}", cp.checkpoint.timestamp))
             })?;
-            anchors.push((cp.checkpoint.leaf_count()?, issued));
+            anchors.push(AnchorFacts {
+                digest: anchor_digest(cp),
+                entries: cp.checkpoint.leaf_count()?,
+                issued,
+            });
         }
         let entries = book.len();
         let mut leaves = Vec::with_capacity(entries as usize);
@@ -718,7 +777,9 @@ impl<'a> View<'a> {
             src: book,
         })
     }
+}
 
+impl Evidence for View<'_> {
     fn servable(&self, leaf: u64) -> bool {
         self.leaves.get(leaf as usize).is_some_and(|l| l.servable)
     }
@@ -730,41 +791,34 @@ impl<'a> View<'a> {
             .filter(|&l| self.servable(l))
     }
 
-    /// The positions of the servable records carrying a correlation
-    /// identifier, as the host's store keys them.
     fn correlated(&self, id: &str) -> Vec<u64> {
         let mut leaves = self.src.correlation(id);
         leaves.retain(|&l| self.servable(l));
         leaves
     }
 
-    /// The positions of the servable records citing a half.
     fn citing(&self, half: &str) -> Vec<u64> {
         let mut leaves = self.src.citing(half);
         leaves.retain(|&l| self.servable(l));
         leaves
     }
 
-    /// The counterparty of each servable record a record or citing-records subject
-    /// names, whether or not the anchor covers them yet.
-    fn named(&self, subject: &Subject) -> Vec<Option<String>> {
-        let leaves: Vec<u64> = match (subject, citing_half(subject)) {
-            (Subject::Record(d), _) => self.leaf_of(d).into_iter().collect(),
-            (_, Some(half)) => self.citing(half),
-            _ => Vec::new(),
-        };
-        leaves
-            .into_iter()
-            .map(|l| self.leaves[l as usize].counterparty.clone())
-            .collect()
-    }
-
-    /// A retention commitment for exactly this subject whose `until` has
-    /// passed (ER §9).
     fn lapsed(&self, subject: &Subject, now: UtcTime) -> bool {
         self.commitments
             .iter()
             .any(|(s, until)| s == subject && now > *until)
+    }
+
+    fn counterparty(&self, leaf: u64) -> Option<String> {
+        self.leaves.get(leaf as usize)?.counterparty.clone()
+    }
+
+    fn anchors(&self) -> &[AnchorFacts] {
+        &self.anchors
+    }
+
+    fn entries(&self) -> u64 {
+        self.entries
     }
 }
 
@@ -792,17 +846,25 @@ enum Decision {
 /// §3.3), authorization, coverage, the subject, and the refusal policy.
 /// `may_issue` says whether the responder will issue an anchor to meet a
 /// freshness floor.
-fn decide(view: &View, req: &Request, gate: &Gate<'_>, now: UtcTime, may_issue: bool) -> Decision {
-    match decide_inner(view, req, gate, now, may_issue) {
+fn decide(
+    view: &dyn Evidence,
+    req: &Request,
+    gate: &Gate<'_>,
+    authorize: &dyn Fn(&Request, Option<&Registered>) -> bool,
+    now: UtcTime,
+    may_issue: bool,
+) -> Decision {
+    match decide_inner(view, req, gate, authorize, now, may_issue) {
         Decision::Refuse(reason) => Decision::Refuse(gate.disclose(reason)),
         other => other,
     }
 }
 
 fn decide_inner(
-    view: &View,
+    view: &dyn Evidence,
     req: &Request,
     gate: &Gate<'_>,
+    authorize: &dyn Fn(&Request, Option<&Registered>) -> bool,
     now: UtcTime,
     may_issue: bool,
 ) -> Decision {
@@ -827,7 +889,7 @@ fn decide_inner(
         },
         None => {}
     }
-    if !authorized(view, req, gate, registered) {
+    if !authorize(req, registered) {
         return Refuse(Reason::NotAuthorized);
     }
     if let Some(r) = registered {
@@ -845,7 +907,7 @@ fn decide_inner(
 /// Authorization decides whether, never what (ER §3.7, §5). It is decided
 /// before the subject is resolved, from the records the subject names.
 fn authorized(
-    view: &View,
+    view: &dyn Evidence,
     req: &Request,
     gate: &Gate<'_>,
     registered: Option<&Registered>,
@@ -877,7 +939,7 @@ fn authorized(
 /// anchor that meets it; when none does, `may_issue` says whether the
 /// responder will do the work of issuing one.
 fn resolve_coverage(
-    view: &View,
+    view: &dyn Evidence,
     req: &Request,
     now: UtcTime,
     may_issue: bool,
@@ -885,11 +947,7 @@ fn resolve_coverage(
     let unsatisfiable = || Decision::Refuse(Reason::CoverageUnsatisfiable);
     match &req.coverage {
         Coverage::ExpectedPin(pin) => {
-            if let Some(i) = view
-                .checkpoints
-                .iter()
-                .position(|cp| anchor_digest(cp) == *pin)
-            {
+            if let Some(i) = view.anchors().iter().position(|a| a.digest == *pin) {
                 return Ok((i, false));
             }
             if citing_half(&req.subject) == Some(pin.as_str()) {
@@ -898,8 +956,10 @@ fn resolve_coverage(
             Err(unsatisfiable())
         }
         Coverage::MinFreshness(floor) => {
-            for i in (0..view.anchors.len()).rev() {
-                let (entries, issued) = view.anchors[i];
+            for i in (0..view.anchors().len()).rev() {
+                let AnchorFacts {
+                    entries, issued, ..
+                } = view.anchors()[i];
                 let meets = match floor {
                     Freshness::Size(n) => entries >= *n,
                     // Seconds precision, profile §5.2.
@@ -918,10 +978,10 @@ fn resolve_coverage(
             // refused without doing any work: a time in the future, or more
             // entries than the log holds.
             let beyond = match floor {
-                Freshness::Size(n) => *n > view.entries,
+                Freshness::Size(n) => *n > view.entries(),
                 Freshness::Time(t) => *t > now,
             };
-            if beyond || !may_issue || view.entries == 0 {
+            if beyond || !may_issue || view.entries() == 0 {
                 return Err(unsatisfiable());
             }
             Err(Decision::NeedAnchor)
@@ -934,7 +994,7 @@ fn resolve_coverage(
 /// `coverage_unsatisfiable`, never `no_such_subject`: the responder does
 /// hold it. Matching is exact.
 fn resolve_subject(
-    view: &View,
+    view: &dyn Evidence,
     req: &Request,
     anchor: usize,
     half_pin: bool,
@@ -958,19 +1018,19 @@ fn resolve_subject(
         if cited.is_empty() {
             return no_such();
         }
-        let latest = view.anchors.last().map_or(0, |a| a.0);
+        let latest = view.anchors().last().map_or(0, |a| a.entries);
         let Some(last) = cited.iter().copied().filter(|&l| l < latest).max() else {
             return Refuse(Reason::CoverageUnsatisfiable);
         };
-        match view.anchors.iter().position(|a| a.0 > last) {
+        match view.anchors().iter().position(|a| a.entries > last) {
             Some(i) => anchor = i,
             None => return Refuse(Reason::CoverageUnsatisfiable),
         }
     }
-    if anchor >= view.anchors.len() {
+    if anchor >= view.anchors().len() {
         return Refuse(Reason::CoverageUnsatisfiable);
     }
-    let covered = view.anchors[anchor].0;
+    let covered = view.anchors()[anchor].entries;
     let serve = |leaves: Vec<u64>| Decision::Serve {
         anchor,
         half_pin,
@@ -992,7 +1052,7 @@ fn resolve_subject(
         },
         Subject::Range(a, b) => {
             if *b >= covered {
-                if *b < view.entries {
+                if *b < view.entries() {
                     return Refuse(Reason::CoverageUnsatisfiable);
                 }
                 return no_such();
@@ -1019,6 +1079,264 @@ fn resolve_subject(
                 return Refuse(Reason::CoverageUnsatisfiable);
             }
             no_such()
+        }
+    }
+}
+
+/// The request-draft conformance vectors (`testdata/evidence-request`, vendored
+/// byte for byte from agent-action-capsule `vectors/evidence-request/`), run
+/// through this responder's own request reader and decision, as Go's
+/// `interop_vectors_test.go` and `interop_resolution_test.go` run them.
+#[cfg(test)]
+mod vectors {
+    use super::*;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    fn corpus(name: &str) -> Value {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/evidence-request")
+            .join(name);
+        serde_json::from_slice(&std::fs::read(&path).unwrap_or_else(|e| panic!("{path:?}: {e}")))
+            .unwrap()
+    }
+
+    fn cases(corpus: &Value) -> &Vec<Value> {
+        corpus["cases"].as_array().unwrap()
+    }
+
+    #[test]
+    fn the_request_vectors_in_both_bindings() {
+        let corpus = corpus("request.json");
+        assert_eq!(cases(&corpus).len(), 33);
+        let mut cbor = 0;
+        for case in cases(&corpus) {
+            let id = case["id"].as_str().unwrap();
+            let expect = &case["expect"];
+            let mut bindings = vec![(
+                Binding::Json,
+                case["request_json"].as_str().unwrap().as_bytes().to_vec(),
+                case["request_json_digest"].as_str(),
+            )];
+            if let Some(h) = case["request_cbor_hex"].as_str().filter(|h| !h.is_empty()) {
+                bindings.push((
+                    Binding::Cbor,
+                    hex::decode(h).unwrap(),
+                    case["request_cbor_digest"].as_str(),
+                ));
+                cbor += 1;
+            }
+            for (binding, octets, digest) in bindings {
+                if let Some(d) = digest.filter(|d| !d.is_empty()) {
+                    assert_eq!(
+                        sha256_hex(&octets),
+                        d,
+                        "{id}: the digest is over the octets"
+                    );
+                }
+                let got = read_request(&octets, binding);
+                if expect["well_formed"] == json!(true) {
+                    assert!(got.is_ok(), "{id} {binding:?}: refused {:?}", got.err());
+                } else {
+                    let (reason, _) = got
+                        .err()
+                        .unwrap_or_else(|| panic!("{id} {binding:?}: read"));
+                    assert_eq!(reason.token(), expect["reason"], "{id} {binding:?}");
+                }
+            }
+        }
+        assert!(cbor > 0);
+    }
+
+    /// The `resolution.json` responder state as evidence: records at positions
+    /// 0, 1, 2 of a 42-entry log, two anchors, the declared correlation and
+    /// citations.
+    struct Vector {
+        log_size: u64,
+        anchors: Vec<AnchorFacts>,
+        records: Vec<String>,
+        correlation: BTreeMap<String, Vec<String>>,
+        citations: BTreeMap<String, Vec<String>>,
+    }
+
+    impl Vector {
+        fn positions(&self, digests: Option<&Vec<String>>) -> Vec<u64> {
+            digests
+                .into_iter()
+                .flatten()
+                .filter_map(|d| self.leaf_of(d))
+                .collect()
+        }
+    }
+
+    impl Evidence for Vector {
+        fn anchors(&self) -> &[AnchorFacts] {
+            &self.anchors
+        }
+        fn entries(&self) -> u64 {
+            self.log_size
+        }
+        fn leaf_of(&self, digest: &str) -> Option<u64> {
+            self.records
+                .iter()
+                .position(|r| r == digest)
+                .map(|i| i as u64)
+        }
+        fn servable(&self, leaf: u64) -> bool {
+            leaf < self.records.len() as u64
+        }
+        fn correlated(&self, id: &str) -> Vec<u64> {
+            self.positions(self.correlation.get(id))
+        }
+        fn citing(&self, half: &str) -> Vec<u64> {
+            self.positions(self.citations.get(half))
+        }
+        fn counterparty(&self, _: u64) -> Option<String> {
+            None
+        }
+        fn lapsed(&self, _: &Subject, _: UtcTime) -> bool {
+            false
+        }
+    }
+
+    fn strings(v: &Value) -> Vec<String> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn map_of(v: &Value) -> BTreeMap<String, Vec<String>> {
+        v.as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), strings(v)))
+            .collect()
+    }
+
+    /// Respond's own decision over a declared state, with every request
+    /// authorized: the vectors fix resolution, and the requester gate has
+    /// its own tests. The refusal reason, or `""` for an artifact.
+    fn decide_for_vector(
+        view: &Vector,
+        request: &str,
+        now: UtcTime,
+        may_issue: bool,
+        uniform: bool,
+    ) -> String {
+        let req = match read_request(request.as_bytes(), Binding::Json) {
+            Ok(req) => req,
+            Err((reason, _)) => return reason.token().to_string(),
+        };
+        let derivations = Derivations::new();
+        let share = SharePolicy::default();
+        let gate = Gate {
+            requester: Some("peer"),
+            relationship: Relationship::Identified,
+            share: &share,
+            derivations: &derivations,
+            uniform,
+        };
+        match decide(view, &req, &gate, &|_, _| true, now, may_issue) {
+            Decision::Refuse(reason) => reason.token().to_string(),
+            Decision::NeedAnchor => gate.disclose(Reason::CoverageUnsatisfiable).token().into(),
+            Decision::Serve { .. } => String::new(),
+        }
+    }
+
+    #[test]
+    fn the_resolution_vectors() {
+        let corpus = corpus("resolution.json");
+        let state = &corpus["responder"];
+        assert_eq!(
+            state["supported_derivations"],
+            json!({"history_card/1": ["full_history", "checkpoints"]}),
+            "the corpus's derivations differ from this responder's"
+        );
+        let view = Vector {
+            log_size: state["log_size"].as_u64().unwrap(),
+            anchors: state["anchors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| AnchorFacts {
+                    digest: a["digest"].as_str().unwrap().into(),
+                    entries: a["size"].as_u64().unwrap(),
+                    issued: parse_utc(a["issued_at"].as_str().unwrap()).unwrap(),
+                })
+                .collect(),
+            records: strings(&state["records"]),
+            correlation: map_of(&state["correlations"]),
+            citations: map_of(&state["exchange_citations"]),
+        };
+        let now = parse_utc("2026-09-28T12:00:00Z").unwrap();
+        let may_issue = state["issues_new_commitments"] == json!(true);
+        let (mut ran, mut skipped) = (0, 0);
+        for case in cases(&corpus) {
+            let id = case["id"].as_str().unwrap();
+            let overrides = &case["responder_overrides"];
+            if overrides["positional_ordering"] == json!(false) {
+                // A Checkpointed Local Log always defines positions; this
+                // responder state cannot occur.
+                skipped += 1;
+                continue;
+            }
+            let uniform = overrides["uniform_policy_declined"]
+                .as_bool()
+                .unwrap_or(state["uniform_policy_declined"] == json!(true));
+            let got = decide_for_vector(
+                &view,
+                case["request_json"].as_str().unwrap(),
+                now,
+                may_issue,
+                uniform,
+            );
+            let expect = &case["expect"];
+            let want = if expect["answer"] == "artifact" {
+                ""
+            } else {
+                expect["reason"].as_str().unwrap()
+            };
+            assert_eq!(got, want, "{id}");
+            ran += 1;
+        }
+        assert_eq!((ran, skipped), (18, 1), "ran {ran} of 19 resolution cases");
+    }
+
+    #[test]
+    fn the_refusal_vectors() {
+        let corpus = corpus("refusal.json");
+        assert_eq!(cases(&corpus).len(), 21);
+        for case in cases(&corpus) {
+            let id = case["id"].as_str().unwrap();
+            let object: Value = match case["file"].as_str() {
+                Some(file) => serde_json::from_slice(
+                    &std::fs::read(
+                        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                            .join("../../testdata/evidence-request")
+                            .join(file),
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+                None => case["refusal"].clone(),
+            };
+            let check = evidence_request::refusal::check(&object);
+            let expect = &case["expect"];
+            assert_eq!(
+                check.signature_valid,
+                expect["signature"] == "valid",
+                "{id}: signature"
+            );
+            assert_eq!(
+                check.conformant,
+                expect["conformant"] == json!(true),
+                "{id}: conformant"
+            );
+            if let Some(registered) = expect["reason_registered"].as_bool() {
+                assert_eq!(check.reason_registered, registered, "{id}: reason");
+            }
         }
     }
 }
