@@ -1,0 +1,1189 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The book: records over a Checkpointed Local Log, and the evidence
+request interaction on both sides of it.
+
+As a requester a book records that it asked (:meth:`Book.request`, an
+``evidence_request`` record sealed before sending), then either the reply
+that came back (:meth:`Book.record_response`, ``evidence_response``) or that
+none did (:meth:`Book.record_absence`, ``recorded_absence``). As a responder
+it answers a request (:meth:`Book.respond`) with a signed envelope carrying
+the canonical Artifact or a signed refusal, and seals an
+``evidence_request_answered`` record for an authenticated requester. Every
+record, checkpoint, artifact and reply is the bytes Go's evidencebook
+writes for the same calls.
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import os
+import threading
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
+from typing import Any, Protocol
+
+from agent_action_capsule.canonical import compute_capsule_id, jcs
+from agent_action_capsule.evidence_request import (
+    DERIVATION_HISTORY_CARD,
+    REASON_COVERAGE_UNSATISFIABLE,
+    REASON_DEADLINE_UNMET,
+    REASON_POLICY_DECLINED,
+    SUBJECT_FORMS,
+    Envelope,
+    RequestError,
+    Subject,
+    parse_request,
+    sign_envelope,
+    sign_refusal,
+    verify_cll_consistency,
+    verify_cll_inclusion,
+    verify_refusal_offline,
+    VerificationError,
+)
+from agent_action_capsule.interop_profile._common import is_profile_time
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from . import _decide
+from ._capsule import capsule_preimage, seal_record
+from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
+from ._index import default_indexes
+from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
+from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError
+from .record import (
+    AVAILABLE,
+    CITES,
+    DERIVED_METRIC,
+    OBSERVED_EVENT,
+    PRODUCER_CLAIM,
+    RECORD_TYPE_ABSENCE,
+    RECORD_TYPE_DISCLOSURE,
+    RECORD_TYPE_INDEX_ROOT,
+    RECORD_TYPE_REQUEST,
+    RECORD_TYPE_REQUEST_ANSWERED,
+    RECORD_TYPE_RESPONSE,
+    RECORD_TYPE_RETENTION_COMMITMENT,
+    Entry,
+    Header,
+    Link,
+    Record,
+)
+from .request import (
+    PROFILE,
+    MEDIA_TYPE_CBOR,
+    MEDIA_TYPE_JSON,
+    EvidenceRequest,
+    Message,
+    Reply,
+    encode_envelope,
+    encode_refusal,
+    encode_request,
+    parse_reply,
+    read_request,
+    refusal_conforming,
+    strict_hex,
+    strict_json,
+)
+from .signer import EvidenceSigner, Signer, key_id
+from .store import MemoryStore, Store, StoredRecord
+
+__all__ = [
+    "DEFAULT_DEVELOPER",
+    "DEFAULT_MAX_REQUEST_BYTES",
+    "DEFAULT_MAX_ANSWER_ITEMS",
+    "MINIMUM_ABSENCE_WINDOW",
+    "OUTCOME_ARTIFACT",
+    "OUTCOME_REFUSAL",
+    "OUTCOME_ARTIFACT_FAILED",
+    "OUTCOME_REFUSAL_NONCONFORMING",
+    "RELATIONSHIP_STRANGER",
+    "RELATIONSHIP_IDENTIFIED",
+    "RELATIONSHIP_COUNTERPARTY",
+    "REFUSAL_POLICY_SPECIFIC",
+    "REFUSAL_POLICY_UNIFORM",
+    "Book",
+    "SentRequest",
+    "ResponderKeys",
+    "SharePolicy",
+    "RespondOptions",
+    "ResponderPolicy",
+    "RequestLimiter",
+    "WindowLimiter",
+    "DerivationDefinition",
+]
+
+DEFAULT_DEVELOPER = "evidencebook"
+DEFAULT_MAX_REQUEST_BYTES = 64 << 10
+DEFAULT_MAX_ANSWER_ITEMS = 10_000
+#: The shortest waiting window an absence may claim, from when the request was recorded.
+MINIMUM_ABSENCE_WINDOW = timedelta(minutes=1)
+
+# Response outcomes as a requester records them. A received reply that did
+# not verify is one of the two failed sub-states, never an absence.
+OUTCOME_ARTIFACT = "artifact"
+OUTCOME_REFUSAL = "refusal"
+OUTCOME_ARTIFACT_FAILED = "artifact_verification_failed"
+OUTCOME_REFUSAL_NONCONFORMING = "refusal_nonconformant"
+
+RELATIONSHIP_STRANGER = "stranger"
+RELATIONSHIP_IDENTIFIED = "identified"
+RELATIONSHIP_COUNTERPARTY = "counterparty"
+
+REFUSAL_POLICY_SPECIFIC = "specific"
+REFUSAL_POLICY_UNIFORM = "uniform"
+
+KIND_CLL_CHECKPOINT = "cll-checkpoint"
+KIND_CLL_INCLUSION_PROOF = "cll-inclusion-proof"
+KIND_CLL_CONSISTENCY_PROOF = "cll-consistency-proof"
+
+# The record header members a projection may declare.
+_HEADER_FIELDS = ("book_id", "committed_at", "correlation", "counterparty_ref", "epistemic_type", "event_time_claim",
+                  "links", "payload_commitments", "principal_ref", "record_type", "retention_state", "seq",
+                  "statement", "subject_ref", "v")
+
+
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+# --- policies -------------------------------------------------------------------
+
+
+class RequestLimiter(Protocol):
+    """Decides whether a requester may be answered now; ``requester`` is the
+    authenticated identity, or "" for every caller not authenticated."""
+
+    def allow(self, requester: str, now: datetime) -> bool: ...
+
+
+class WindowLimiter:
+    """At most ``n`` requests per requester in any window of ``window``.
+    Unauthenticated callers share the one "" bucket."""
+
+    def __init__(self, n: int, window: timedelta):
+        self._n, self._window = n, window
+        self._seen: dict[str, list[datetime]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, requester: str, now: datetime) -> bool:
+        with self._lock:
+            recent = [t for t in self._seen.get(requester, ()) if t > now - self._window]
+            if len(recent) >= self._n:
+                self._seen[requester] = recent
+                return False
+            self._seen[requester] = recent + [now]
+            return True
+
+
+@dataclass(frozen=True)
+class ResponderPolicy:
+    """The responder's cost and abuse policy. The default answers the most
+    specific token with no rate limit."""
+
+    refusal_policy: str = REFUSAL_POLICY_SPECIFIC  # "" reads as specific, as in Go
+    limiter: RequestLimiter | None = None
+    max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
+    max_answer_items: int = DEFAULT_MAX_ANSWER_ITEMS
+
+    def validate(self) -> None:
+        if self.refusal_policy not in ("", REFUSAL_POLICY_SPECIFIC, REFUSAL_POLICY_UNIFORM):
+            raise InvalidError(f"refusal policy {self.refusal_policy!r} is neither specific nor uniform")
+        if self.max_request_bytes < 0 or self.max_answer_items < 0:
+            raise InvalidError("responder limits must not be negative")
+
+
+@dataclass(frozen=True)
+class SharePolicy:
+    """The four-switch sharing policy. ``history_segments`` decides who may
+    have the records a record or exchange subject names: "counterparties"
+    (only the party each names as its counterparty), "peers" (any
+    authenticated peer) or "off"; "prospective" reads as "counterparties".
+    range, correlation and full_history are refused whatever the setting,
+    except to the recipient of a recipient-specific derivation."""
+
+    record_at_completion: str = "counterparty"
+    history_segments: str = "counterparties"
+    adjudications: str = "deliver_to_subjects"
+    witness: str = ""
+
+    def validate(self) -> None:
+        for name, allowed in (("record_at_completion", ("counterparty", "off")),
+                              ("history_segments", ("counterparties", "prospective", "peers", "off")),
+                              ("adjudications", ("deliver_to_subjects", "off"))):
+            if getattr(self, name) not in allowed:
+                raise InvalidError(f"share.{name}={getattr(self, name)!r} is not one of {list(allowed)}")
+
+    def may_have(self, requester: str, relationship: str, named: Sequence[Header]) -> bool:
+        """Fails closed: a stranger is never allowed."""
+        if not requester:
+            return False
+        if self.history_segments == "peers":
+            return True
+        if self.history_segments in ("counterparties", "prospective"):
+            return relationship == RELATIONSHIP_COUNTERPARTY and all(h.counterparty_ref == requester for h in named)
+        return False
+
+
+@dataclass(frozen=True)
+class RespondOptions:
+    """``authenticated_requester`` is the identity the transport's own
+    authentication established (a verified mTLS peer, a verified signature
+    over the request), or "" when the caller is not authenticated. It is the
+    only input to the relationship gate, and decides whether a subject is
+    answered, never what is answered."""
+
+    authenticated_requester: str = ""
+    policy: SharePolicy = field(default_factory=SharePolicy)
+
+
+@dataclass(frozen=True)
+class DerivationDefinition:
+    """A derivation served by the digest of its definition (ER §3.3).
+    ``document`` is a JSON object; the derivation's identifier is SHA-256
+    over its JCS. Only ``recipient`` is answered, when set, over every form
+    in ``forms``; ``fields`` are the header members the projection reveals."""
+
+    document: bytes
+    forms: tuple[str, ...]
+    fields: tuple[str, ...]
+    recipient: str = ""
+
+
+@dataclass(frozen=True)
+class SentRequest:
+    """A request as transmitted: its octets (JCS JSON), their digest, and the
+    id of the record of having asked."""
+
+    octets: bytes
+    digest: str
+    record_id: str
+
+    @property
+    def message(self) -> Message:
+        return Message(self.octets, MEDIA_TYPE_JSON)
+
+
+@dataclass(frozen=True)
+class ResponderKeys:
+    """The responder's keys as the requester obtained them, independently of
+    any reply: ``signer`` signs refusals and envelopes, ``checkpoint`` the
+    checkpoints an artifact is anchored to (lowercase hex)."""
+
+    signer: str
+    checkpoint: str
+
+
+@dataclass(frozen=True)
+class _Sent:
+    record: Record
+    octets: bytes
+    digest: str
+    request: EvidenceRequest
+    floor_time: int
+
+
+# --- the book -----------------------------------------------------------------------
+
+
+class Book:
+    """An evidence book over a Checkpointed Local Log.
+
+    ``signer`` signs record envelopes, envelopes and refusals; ``log_key``
+    signs the log's checkpoints and may be another key. ``now`` is the clock
+    every commit, checkpoint and answer reads.
+    """
+
+    def __init__(
+        self,
+        book_id: str,
+        operator: str,
+        *,
+        signer: Signer,
+        log_id: str,
+        log_key: Signer,
+        store: Store | None = None,
+        developer: str = DEFAULT_DEVELOPER,
+        now: Callable[[], datetime] | None = None,
+        responder: ResponderPolicy | None = None,
+    ):
+        if not book_id or not operator.strip() or not (developer or DEFAULT_DEVELOPER).strip():
+            raise InvalidError("book id, operator and developer must not be empty")
+        self._responder = responder or ResponderPolicy()
+        self._responder.validate()
+        self._id, self._operator, self._developer = book_id, operator, developer or DEFAULT_DEVELOPER
+        self._signer = signer
+        self._substrate = CLLSubstrate(log_id, log_key)
+        self._store = store if store is not None else MemoryStore()
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._lock = threading.Lock()
+        self._records: dict[str, Record] = {}
+        self._stored: dict[str, StoredRecord] = {}
+        self._order: list[str] = []
+        self._indexes = default_indexes()
+        self._roots: dict[str, dict] = {}
+        self._checkpoints: list[Checkpoint] = []
+        self._derivations: dict[str, DerivationDefinition] = {}
+        self._released = False
+        self._recover()
+
+    # -- opening ------------------------------------------------------------------
+
+    def _recover(self) -> None:
+        for i, stored in enumerate(self._store.records()):
+            if stored.seq != i + 1:
+                raise CorruptError(f"stored records are not dense at seq {stored.seq}")
+            try:
+                header = Header.from_value(json.loads(stored.header))
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                raise CorruptError(f"header of {stored.record_id}: {exc}") from None
+            if jcs(header.value()) != stored.header or header.seq != stored.seq:
+                raise CorruptError(f"header of {stored.record_id} is not canonical or disagrees with the store")
+            if header.book_id != self._id:
+                raise CorruptError(f"record {stored.record_id} belongs to book {header.book_id!r}")
+            attestation = stored.capsule.get("model_attestation", {}).get("compute_attestation", {})
+            if (compute_capsule_id(stored.capsule) != stored.record_id
+                    or stored.capsule.get("capsule_id") != stored.record_id
+                    or attestation.get("agent_input_digest") != _digest(stored.header)):
+                raise CorruptError(f"capsule for {stored.record_id} does not commit its header")
+            record = Record(stored.record_id, stored.seq, header)
+            self._substrate.append(record.record_id)
+            self._admit(record, stored)
+            if header.record_type == RECORD_TYPE_INDEX_ROOT:
+                root = header.statement
+                if not isinstance(root, dict) or not isinstance(root.get("index"), str):
+                    raise CorruptError(f"index_root record {stored.record_id} holds no index root")
+                self._roots[root["index"]] = {k: root.get(k) for k in ("index", "root", "size")}
+        for statement in self._store.checkpoints():
+            try:
+                cp = read_checkpoint(statement)
+            except InvalidError as exc:
+                raise CorruptError(f"stored checkpoint: {exc}") from None
+            self._substrate.restore(cp)
+            self._checkpoints.append(cp)
+
+    def _admit(self, record: Record, stored: StoredRecord) -> None:
+        self._records[record.record_id] = record
+        self._stored[record.record_id] = stored
+        self._order.append(record.record_id)
+        if record.header.record_type != RECORD_TYPE_INDEX_ROOT:
+            # A root record is proven by the log, not by the index it commits.
+            for index in self._indexes:
+                index.add(record)
+
+    # -- the basic surface --------------------------------------------------------------
+
+    @property
+    def book_id(self) -> str:
+        return self._id
+
+    @property
+    def key_id(self) -> str:
+        """The book signer's key (lowercase hex)."""
+        return key_id(self._signer)
+
+    @property
+    def log_id(self) -> str:
+        return self._substrate.log_id
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._order)
+
+    def records(self) -> list[Record]:
+        with self._lock:
+            return [_detached(self._records[i]) for i in self._order]
+
+    def get(self, record_id: str) -> Record:
+        with self._lock:
+            record = self._records.get(record_id)
+            if record is None:
+                raise NotFoundError(f"record {record_id}")
+            return _detached(record)
+
+    def checkpoints(self) -> list[Checkpoint]:
+        """Every checkpoint this book issued, oldest first."""
+        with self._lock:
+            return list(self._checkpoints)
+
+    def close(self) -> None:
+        """Release the store. Every later write raises :class:`ReleasedError`."""
+        with self._lock:
+            if not self._released:
+                self._released = True
+                self._store.close()
+
+    def append(self, entry: Entry) -> Record:
+        """Seal ``entry`` as a record, store it with its payloads, and commit
+        its id to the log."""
+        with self._lock:
+            return self._append(entry)
+
+    def _append(self, entry: Entry) -> Record:
+        if self._released:
+            raise ReleasedError("the book is released")
+        seq = len(self._order) + 1
+        committed_at = utc(self._now())
+        header = Header(
+            book_id=self._id, seq=seq, record_type=entry.record_type, epistemic_type=entry.epistemic_type,
+            committed_at=rfc3339_nano(committed_at), links=tuple(entry.links),
+            event_time_claim=rfc3339_nano(entry.event_time_claim) if entry.event_time_claim else "",
+            payload_commitments=tuple(_digest(p) for p in entry.payloads),
+            retention_state=AVAILABLE if entry.payloads else "",
+            subject_ref=entry.subject_ref, principal_ref=entry.principal_ref, counterparty_ref=entry.counterparty_ref,
+            correlation=None if entry.correlation.empty() else entry.correlation, statement=copy.deepcopy(entry.statement),
+        )
+        header.validate()
+        try:
+            header_bytes = jcs(header.value())
+        except (TypeError, ValueError) as exc:
+            raise InvalidError(f"header: {exc}") from None
+        record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
+                                                   developer=self._developer, at=committed_at, signer=self._signer)
+        stored = StoredRecord(seq, record_id, header_bytes, capsule, envelope, tuple(bytes(p) for p in entry.payloads))
+        self._store.put_record(stored)
+        if self._substrate.append(record_id) != seq:
+            raise CorruptError(f"record {record_id} did not land at {seq}")
+        record = Record(record_id, seq, header)
+        self._admit(record, stored)
+        return _detached(record)
+
+    def checkpoint(self, at: datetime | None = None) -> Checkpoint:
+        """Commit any changed index roots as records, then checkpoint the log
+        at ``at``, or at the book's clock."""
+        with self._lock:
+            return self._checkpoint(at)
+
+    def _checkpoint(self, at: datetime | None = None) -> Checkpoint:
+        if self._released:
+            raise ReleasedError("the book is released")
+        for index in self._indexes:
+            root = index.root()
+            if self._roots.get(root["index"]) == root:
+                continue
+            self._append(Entry(RECORD_TYPE_INDEX_ROOT, DERIVED_METRIC, statement=dict(root, as_of_seq=len(self._order))))
+            self._roots[root["index"]] = root
+        when = utc(self._now()) if at is None else utc(at)
+        cp = self._substrate.checkpoint(when)
+        if not any(held.id == cp.id for held in self._checkpoints):
+            self._store.put_checkpoint(cp.statement)
+            self._checkpoints.append(cp)
+        return cp
+
+    # -- the requester ----------------------------------------------------------------
+
+    def request(self, request: EvidenceRequest, responder: str = "") -> SentRequest:
+        """Record that this book is asking ``responder`` and return the octets
+        to transmit: the request under this profile in JCS. An empty nonce is
+        filled with a fresh random one; a nonce this book already used is
+        refused. Recording happens before sending, so "I asked" is committed
+        whatever comes back."""
+        request = replace(request, profile=PROFILE, nonce=request.nonce or os.urandom(16).hex())
+        octets = encode_request(request, MEDIA_TYPE_JSON)
+        statement: dict[str, Any] = {"request": json.loads(octets)}
+        if responder:
+            statement["responder_ref"] = responder
+        with self._lock:
+            for record_id in self._order:
+                if self._records[record_id].header.record_type != RECORD_TYPE_REQUEST:
+                    continue
+                try:
+                    prior = self._sent(record_id)
+                except CorruptError:
+                    continue
+                if prior.request.nonce == request.nonce:
+                    raise InvalidError(f"nonce already used by request {record_id}")
+            record = self._append(Entry(RECORD_TYPE_REQUEST, OBSERVED_EVENT, statement=statement))
+        return SentRequest(octets, _digest(octets), record.record_id)
+
+    def _sent(self, request_record_id: str) -> _Sent:
+        record = self._records.get(request_record_id)
+        if record is None or record.header.record_type != RECORD_TYPE_REQUEST:
+            raise NotFoundError(f"{request_record_id} is not a request this book recorded")
+        statement = record.header.statement
+        if not isinstance(statement, dict) or "request" not in statement:
+            raise CorruptError(f"request record {request_record_id} holds no request")
+        octets = jcs(statement["request"])
+        check = read_request(Message(octets, MEDIA_TYPE_JSON))
+        if check.reason:
+            raise CorruptError(f"request record {request_record_id} holds no well-formed request: {check.reason}")
+        floor = check.request.coverage.min_freshness
+        floor_time = parse_ns(floor) if isinstance(floor, str) else 0
+        return _Sent(record, octets, _digest(octets), check.request, floor_time or 0)
+
+    def _outcome_recorded(self, request_record_id: str) -> bool:
+        return any(
+            self._records[i].header.record_type in (RECORD_TYPE_RESPONSE, RECORD_TYPE_ABSENCE)
+            and request_record_id in self._records[i].header.links_to(CITES)
+            for i in self._order
+        )
+
+    def record_response(self, request_record_id: str, reply: Message, keys: ResponderKeys) -> Record:
+        """Verify and record the reply that came back for the request
+        recorded as ``request_record_id``, keeping its octets as the
+        record's payload. A reply not signed under the pinned signer key for
+        this request's digest is refused and not recorded; a genuinely signed
+        reply that fails a check of profile §7.2 is recorded as received and
+        failed, never as a grant and never as an absence."""
+        if not keys.signer or not keys.checkpoint:
+            raise InvalidError("pinned responder signer and checkpoint keys are required")
+        parsed = parse_reply(reply)
+        with self._lock:
+            sent = self._sent(request_record_id)
+            statement = _verify_reply(sent, parsed, keys)
+            if self._outcome_recorded(request_record_id):
+                raise InvalidError(f"an outcome is already recorded for request {sent.digest}")
+            return self._append(Entry(RECORD_TYPE_RESPONSE, OBSERVED_EVENT, links=(Link(CITES, request_record_id),),
+                                      statement=statement, payloads=(reply.octets,)))
+
+    def record_absence(self, request_record_id: str, window_end: datetime, route: str = "") -> Record:
+        """Commit that no reply arrived for the recorded request between its
+        recording and ``window_end`` (ER §4.4, profile §6.4). Refused while
+        the request is pending (the window not closed, shorter than
+        :data:`MINIMUM_ABSENCE_WINDOW`, or closing before the request's own
+        deadline) and once any outcome is recorded. A route the request named
+        wins; another route is refused."""
+        window_end = utc(window_end)
+        with self._lock:
+            sent = self._sent(request_record_id)
+            now = utc(self._now())
+            if window_end > now:
+                raise InvalidError("the waiting window has not closed; the request is pending")
+            asked = parse_ns(sent.record.header.committed_at)
+            if asked is None:
+                raise CorruptError(f"committed_at of request {request_record_id}")
+            if nanos(window_end) < asked + int(MINIMUM_ABSENCE_WINDOW.total_seconds()) * 1_000_000_000:
+                raise InvalidError(f"a waiting window must end at least {MINIMUM_ABSENCE_WINDOW} after the request")
+            if sent.request.deadline is not None:
+                deadline = parse_ns(sent.request.deadline)
+                if deadline is None:
+                    raise CorruptError(f"committed deadline {sent.request.deadline!r}")
+                if nanos(window_end) < deadline:
+                    raise InvalidError("the window closes before the request's own deadline")
+            if sent.request.route:
+                if route and route != sent.request.route:
+                    raise InvalidError(f"the request named route {sent.request.route!r}, not {route!r}")
+                route = sent.request.route
+            if self._outcome_recorded(request_record_id):
+                raise InvalidError(f"an outcome is already recorded for request {sent.digest}")
+            absence: dict[str, Any] = {
+                "outcome": RECORD_TYPE_ABSENCE, "request_digest": sent.digest,
+                "window": {"opened": profile_time(from_nanos(asked)), "closed": profile_time(window_end)},
+                "recorded_at": profile_time(now),
+            }
+            if route:
+                absence["route"] = route
+            return self._append(Entry(RECORD_TYPE_ABSENCE, OBSERVED_EVENT, links=(Link(CITES, request_record_id),),
+                                      statement=absence))
+
+    def reply_octets(self, response_record_id: str) -> bytes:
+        """The reply a response record observed, as received."""
+        with self._lock:
+            record = self._records.get(response_record_id)
+            if record is None or record.header.record_type != RECORD_TYPE_RESPONSE:
+                raise NotFoundError(f"{response_record_id} is not a response this book recorded")
+            payloads = self._stored[response_record_id].payloads
+            if not payloads:
+                raise NotFoundError(f"response {response_record_id} was recorded without its reply octets")
+            return payloads[0]
+
+    # -- the responder ------------------------------------------------------------------
+
+    def register_derivation(self, definition: DerivationDefinition) -> str:
+        """Make a derivation answerable by its identifier, which it returns.
+        Registrations are held in memory, never written into the history.
+        Registering the same document again with the same recipient, forms
+        and fields returns the same identifier; with anything else it is
+        :class:`InvalidError`."""
+        try:
+            document = strict_json(definition.document)
+        except ValueError as exc:
+            raise InvalidError(f"derivation definition: {exc}") from None
+        if not isinstance(document, dict):
+            raise InvalidError("a derivation definition is a JSON object")
+        if not definition.forms or not definition.fields:
+            raise InvalidError("a derivation declares its subject forms and its field set")
+        for form in definition.forms:
+            if form not in SUBJECT_FORMS or form == "checkpoints":
+                raise InvalidError(f"a derivation over records cannot be defined over {form!r}")
+        for name in definition.fields:
+            if name not in _HEADER_FIELDS:
+                raise InvalidError(f"{name!r} is not a record header member")
+        identifier = _digest(jcs(document))
+        with self._lock:
+            prev = self._derivations.get(identifier)
+            if prev is not None:
+                if (prev.recipient == definition.recipient and set(prev.forms) == set(definition.forms)
+                        and set(prev.fields) == set(definition.fields)):
+                    return identifier
+                raise InvalidError(f"derivation {identifier} is registered with a different recipient, forms or fields")
+            self._derivations[identifier] = definition
+        return identifier
+
+    def commit_retention(self, subject: Subject, until: datetime) -> Record:
+        """Seal a retention commitment: ``subject`` (a record, an exchange or
+        a range) stays answerable until ``until``. After it, a request the
+        book no longer answers is refused retention_expired."""
+        if subject.form not in ("record", "exchange", "range"):
+            raise InvalidError("a retention commitment names a record, an exchange or a range")
+        try:
+            parse_request(jcs({"subject": subject.to_wire(), "coverage": {"expected_pin": "0" * 64}}))
+        except RequestError:
+            raise InvalidError("the subject's content does not conform") from None
+        statement = {"subject": subject.to_wire(), "until": profile_time(until)}
+        with self._lock:
+            return self._append(Entry(RECORD_TYPE_RETENTION_COMMITMENT, PRODUCER_CLAIM, statement=statement))
+
+    def respond(self, request: Message, options: RespondOptions | None = None) -> tuple[Reply, Record | None]:
+        """Answer one request with a signed envelope carrying the canonical
+        Artifact, or a signed refusal with exactly one registered reason,
+        encoded in the request's encoding. The artifact is a function of
+        (subject, resolved anchor, derivation) only.
+
+        For an authenticated requester whose request was well formed this
+        seals an ``evidence_request_answered`` record and returns it;
+        otherwise the record is ``None``. Malformed and unauthenticated
+        traffic never grows the log."""
+        options = options or RespondOptions()
+        options.policy.validate()
+        if request.media_type not in (MEDIA_TYPE_JSON, MEDIA_TYPE_CBOR):
+            raise InvalidError(f"a request is carried as {MEDIA_TYPE_JSON} or {MEDIA_TYPE_CBOR}, not {request.media_type!r}")
+        with self._lock:
+            answer = _Answer(self, request, options)
+            reply = answer.run()
+            if not answer.seal:
+                return reply, None
+            record = self._append(Entry(RECORD_TYPE_REQUEST_ANSWERED, OBSERVED_EVENT, statement=answer.statement))
+            return reply, record
+
+    def _relationship(self, authenticated: str) -> str:
+        if not authenticated:
+            return RELATIONSHIP_STRANGER
+        if any(self._records[i].header.counterparty_ref == authenticated for i in self._order):
+            return RELATIONSHIP_COUNTERPARTY
+        return RELATIONSHIP_IDENTIFIED
+
+
+def _detached(record: Record) -> Record:
+    """``record`` with its own copy of the statement, so a caller holding it
+    cannot change the book's record: the book reads its own statements back
+    (a request's nonce and coverage, a retention commitment's subject)."""
+    if record.header.statement is None:
+        return record
+    return replace(record, header=replace(record.header, statement=copy.deepcopy(record.header.statement)))
+
+
+# --- answering ---------------------------------------------------------------------
+
+
+class _View:
+    """The book as the decision reads it, under the book's lock."""
+
+    def __init__(self, book: Book):
+        self.book = book
+        self.checkpoints = [cp for cp in book._checkpoints if cp.kind == "cll"]
+        self._anchors = [_decide.AnchorView(cp.anchor_digest, cp.entries, cp.issued_at_ns) for cp in self.checkpoints]
+        self._leaves = {record_id: i for i, record_id in enumerate(book._order)}
+        self._commitments = []
+        for record_id in book._order:
+            h = book._records[record_id].header
+            if h.record_type == RECORD_TYPE_RETENTION_COMMITMENT and isinstance(h.statement, dict):
+                until = h.statement.get("until")
+                if is_profile_time(until) and isinstance(h.statement.get("subject"), dict):
+                    self._commitments.append((h.statement["subject"], parse_ns(until)))
+
+    def _header(self, leaf: int) -> Header:
+        return self.book._records[self.book._order[leaf]].header
+
+    def anchors(self) -> list[_decide.AnchorView]:
+        return self._anchors
+
+    def log_entries(self) -> int:
+        return len(self.book._order)
+
+    def servable(self, leaf: int) -> bool:
+        # The responder's own bookkeeping of who asked and what it disclosed
+        # is never served.
+        return 0 <= leaf < len(self.book._order) and \
+            self._header(leaf).record_type not in (RECORD_TYPE_REQUEST_ANSWERED, RECORD_TYPE_DISCLOSURE)
+
+    def leaf_of(self, digest: str) -> int | None:
+        leaf = self._leaves.get(digest)
+        return leaf if leaf is not None and self.servable(leaf) else None
+
+    def _matching(self, match: Callable[[Header], bool]) -> list[int]:
+        return [i for i in range(len(self.book._order)) if match(self._header(i)) and self.servable(i)]
+
+    def correlated(self, correlation_id: str) -> list[int]:
+        # A record carrying correlation.exchange_id is held under it alone;
+        # only one carrying none is held under its subject_ref.
+        def held_under(h: Header) -> str:
+            if h.correlation is not None and h.correlation.exchange_id:
+                return h.correlation.exchange_id
+            return h.subject_ref
+
+        return self._matching(lambda h: held_under(h) == correlation_id)
+
+    def citing(self, half: str) -> list[int]:
+        return self._matching(lambda h: half in h.links_to(CITES))
+
+    def lapsed(self, subject_value: dict, now: int) -> bool:
+        return any(subject == subject_value and now > until for subject, until in self._commitments)
+
+    def named(self, subject: Subject) -> list[Header]:
+        if subject.form == "record":
+            leaf = self.leaf_of(subject.content)
+            leaves = [] if leaf is None else [leaf]
+        elif subject.form == "exchange":
+            leaves = self.citing(subject.content)
+        else:
+            leaves = []
+        return [self._header(leaf) for leaf in leaves]
+
+
+@dataclass(frozen=True)
+class _Declared:
+    """The field set an artifact form may carry; the disclosure scan refuses
+    any member outside it."""
+
+    top: tuple[str, ...]
+    entry: tuple[str, ...] | None
+    list: str
+
+
+_RECORD_SET_FIELDS = _Declared(("anchor", "evidence_stream", "records", "subject"), ("body", "digest", "leaf_index"), "records")
+_CHECKPOINTS_FIELDS = _Declared(("anchor", "checkpoints", "evidence_stream", "subject"), None, "checkpoints")
+_HISTORY_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history", "subject"),
+                            ("checkpoint", "consistency_from_previous"), "history")
+
+
+class _Answer:
+    def __init__(self, book: Book, request: Message, options: RespondOptions):
+        self.book = book
+        self.request = request
+        self.options = options
+        self.now = utc(book._now())
+        self.digest = _digest(request.octets)
+        self.statement: dict[str, Any] = {}
+        self.seal = False
+
+    def refuse(self, reason: str, detail: str = "") -> Reply:
+        signer = EvidenceSigner(self.book._signer)
+        refusal = sign_refusal(self.digest, reason, signer=signer, issued_at=profile_time(self.now))
+        self.statement["outcome"], self.statement["reason"] = OUTCOME_REFUSAL, reason
+        return encode_refusal(refusal, self.request.media_type, detail)
+
+    def run(self) -> Reply:
+        book, policy = self.book, self.book._responder
+        requester = self.options.authenticated_requester
+        # Cost policy first: an oversized or over-limit request is declined
+        # before any parsing or resolution work.
+        if len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
+            return self.refuse(REASON_POLICY_DECLINED)
+        if policy.limiter is not None and not policy.limiter.allow(requester, self.now):
+            return self.refuse(REASON_POLICY_DECLINED)
+        check = read_request(self.request)
+        if check.reason:
+            return self.refuse(check.reason, check.detail)
+        req = check.request
+        relationship = book._relationship(requester)
+        self.statement = {"request_digest": self.digest, "subject_kind": req.subject.form, "relationship": relationship}
+        self.seal = relationship != RELATIONSHIP_STRANGER
+        view = _View(book)
+        d = self._decide(view, req, may_issue=self.seal)
+        if d.need_anchor:
+            book._checkpoint()
+            view = _View(book)
+            d = self._decide(view, req, may_issue=False)
+            if d.need_anchor:
+                d = replace(d, reason=self._policy(view, req, False).disclose(REASON_COVERAGE_UNSATISFIABLE))
+        if d.reason:
+            return self.refuse(d.reason)
+        anchor = view.checkpoints[d.anchor]
+        built = self._build(view, req, anchor, d.leaves)
+        if built is None:
+            return self.refuse(REASON_POLICY_DECLINED)
+        artifact, material = built
+        if req.deadline is not None and nanos(utc(book._now())) > parse_ns(req.deadline):
+            return self.refuse(REASON_DEADLINE_UNMET)
+        freshness: int | str | None = None
+        floor = req.coverage.min_freshness
+        if floor is not None:
+            freshness = anchor.tree_size if isinstance(floor, int) else profile_time_ns(anchor.issued_at_ns)
+        envelope = sign_envelope(
+            self.request.octets, req.subject, req.coverage.expected_pin if d.half_pin else anchor.anchor_digest,
+            artifact, signer=EvidenceSigner(book._signer), issued_at=profile_time(self.now),
+            derivation=req.derivation, freshness=freshness, verification=material,
+        )
+        self.statement.update(outcome=OUTCOME_ARTIFACT, anchor=envelope.anchor_digest,
+                              artifact_digest=_digest(envelope.artifact))
+        return encode_envelope(envelope, self.request.media_type)
+
+    def _policy(self, view: _View, req: EvidenceRequest, may_issue: bool) -> _decide.Policy:
+        book = self.book
+        requester = self.options.authenticated_requester
+        relationship = self.statement.get("relationship", RELATIONSHIP_STRANGER)
+        derivations = book._derivations
+
+        def derivation(name: str):
+            entry = derivations.get(name)
+            return None if entry is None else entry.forms
+
+        def authorize(r: EvidenceRequest) -> bool:
+            if r.subject.form == "checkpoints" and r.derivation is None or r.derivation == DERIVATION_HISTORY_CARD:
+                return True  # public: commitments only
+            entry = derivations.get(r.derivation) if r.derivation is not None else None
+            if entry is not None and entry.recipient:
+                return requester == entry.recipient  # the holder's grant to the one requester it names
+            if r.subject.form in ("record", "exchange"):
+                return self.options.policy.may_have(requester, relationship, view.named(r.subject))
+            # range, correlation and full_history reach records no one
+            # requester is party to; only a recipient-specific derivation grants them.
+            return False
+
+        return _decide.Policy(derivation=derivation, authorize=authorize,
+                              uniform=book._responder.refusal_policy == REFUSAL_POLICY_UNIFORM, may_issue=may_issue)
+
+    def _decide(self, view: _View, req: EvidenceRequest, may_issue: bool) -> _decide.Resolution:
+        return _decide.decide(view, req, self._policy(view, req, may_issue), nanos(self.now))
+
+    # -- the canonical Artifact ---------------------------------------------------------
+
+    def _build(self, view: _View, req: EvidenceRequest, anchor: Checkpoint,
+               leaves: Sequence[int]) -> tuple[bytes, list[tuple[str, bytes]]] | None:
+        """The canonical Artifact and the material proving it, or ``None``
+        when the answer exceeds the cost policy or fails the disclosure scan."""
+        book = self.book
+        max_items = book._responder.max_answer_items or DEFAULT_MAX_ANSWER_ITEMS
+        if len(leaves) > max_items:
+            return None
+        head: dict[str, Any] = {"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
+                                "subject": req.subject.to_wire()}
+        definition = book._derivations.get(req.derivation) if req.derivation is not None else None
+        if req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
+            chain = _checkpoints_through(view.checkpoints, anchor)
+            if len(chain) > max_items:
+                return None
+            if req.derivation == DERIVATION_HISTORY_CARD:
+                head["derivation"], head["history"], declared = DERIVATION_HISTORY_CARD, \
+                    self._history_card(chain, anchor), _HISTORY_FIELDS
+            else:
+                head["checkpoints"], declared = [cp.statement.hex() for cp in chain], _CHECKPOINTS_FIELDS
+        elif definition is not None:
+            head["derivation"], head["records"] = req.derivation, self._project(leaves, definition)
+            declared = _Declared(("anchor", "derivation", "evidence_stream", "records", "subject"),
+                                 ("digest", "leaf_index", *definition.fields), "records")
+        elif req.subject.form == "record":
+            record_id = book._order[leaves[0]]
+            body = capsule_preimage(book._stored[record_id].capsule, record_id)
+            if not self._clean(body, None):
+                return None
+            return body, self._cll_material(leaves[0] + 1, anchor)
+        else:
+            records = []
+            for leaf in leaves:
+                record_id = book._order[leaf]
+                body = capsule_preimage(book._stored[record_id].capsule, record_id)
+                records.append({"leaf_index": leaf, "digest": record_id, "body": body.hex()})
+            head["records"], declared = records, _RECORD_SET_FIELDS
+        artifact = jcs(head)
+        if not self._clean(artifact, declared):
+            return None
+        return artifact, []
+
+    def _cll_material(self, seq: int, anchor: Checkpoint) -> list[tuple[str, bytes]]:
+        """The §6.2.1 material for the record at ``seq``: the anchor, the
+        record's inclusion proof, and, when the anchor extends an earlier
+        checkpoint, the proof that it does."""
+        substrate = self.book._substrate
+        material = [(KIND_CLL_CHECKPOINT, anchor.statement),
+                    (KIND_CLL_INCLUSION_PROOF, substrate.inclusion_proof(seq, anchor))]
+        if anchor.prev_size > 0:
+            material.append((KIND_CLL_CONSISTENCY_PROOF,
+                             substrate.consistency_proof(anchor.prev_size, anchor.tree_size, anchor)))
+        return material
+
+    def _history_card(self, chain: list[Checkpoint], anchor: Checkpoint) -> list[dict]:
+        """history_card/1 (ER §8.1): each checkpoint from the first to the
+        anchor, with the consistency proof from the previous one."""
+        history = []
+        for i, cp in enumerate(chain):
+            consistency = None
+            if i > 0 and chain[i - 1].tree_size < cp.tree_size:
+                consistency = self.book._substrate.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
+            history.append({"checkpoint": cp.statement.hex(), "consistency_from_previous": consistency})
+        return history
+
+    def _project(self, leaves: Sequence[int], definition: DerivationDefinition) -> list[dict]:
+        records = []
+        for leaf in leaves:
+            record_id = self.book._order[leaf]
+            fields = json.loads(self.book._stored[record_id].header)
+            entry: dict[str, Any] = {"digest": record_id, "leaf_index": leaf}
+            for name in definition.fields:
+                if name in fields:
+                    entry[name] = fields[name]
+            records.append(entry)
+        return records
+
+    def _clean(self, artifact: bytes, declared: _Declared | None) -> bool:
+        """The disclosure scan run on every artifact before release: only
+        declared members, no principal or counterparty reference this book
+        holds in any record body, and no bookkeeping record as an entry."""
+        book = self.book
+        identities = set()
+        for record_id in book._order:
+            h = book._records[record_id].header
+            identities.update(ref for ref in (h.principal_ref, h.counterparty_ref) if ref)
+        if declared is None:
+            return not _mentions_any(artifact, identities)
+        try:
+            root = json.loads(artifact)
+        except ValueError:
+            return False
+        if not isinstance(root, dict) or any(name not in declared.top for name in root):
+            return False
+        entries = root.get(declared.list)
+        for item in entries if isinstance(entries, list) else ():
+            if not isinstance(item, dict):
+                # checkpoints: a hex statement, nothing else.
+                if not isinstance(item, str) or declared.entry is not None:
+                    return False
+                continue
+            if any(name not in (declared.entry or ()) for name in item):
+                return False
+            digest = item.get("digest")
+            held = book._records.get(digest) if isinstance(digest, str) else None
+            if held is not None and held.header.record_type in (RECORD_TYPE_REQUEST_ANSWERED, RECORD_TYPE_DISCLOSURE):
+                return False
+            body = item.get("body")
+            if isinstance(body, str):
+                raw = strict_hex(body)
+                if raw is None or _mentions_any(raw, identities):
+                    return False
+        return True
+
+
+def _checkpoints_through(history: list[Checkpoint], anchor: Checkpoint) -> list[Checkpoint]:
+    out = []
+    for cp in history:
+        if cp.entries <= anchor.entries and cp.tree_size <= anchor.tree_size:
+            out.append(cp)
+        if cp.id == anchor.id:
+            break
+    return out
+
+
+def _mentions_any(document: bytes, strings: set[str]) -> bool:
+    """Whether a JSON document carries any of ``strings`` as a string value
+    or member name; a document that is not JSON is scanned as bytes."""
+    if not strings:
+        return False
+    try:
+        root = json.loads(document)
+    except ValueError:
+        text = document.decode("utf-8", "replace")
+        return any(s in text for s in strings)
+    stack = [root]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, str):
+            if value in strings:
+                return True
+        elif isinstance(value, list):
+            stack.extend(value)
+        elif isinstance(value, dict):
+            if any(key in strings for key in value):
+                return True
+            stack.extend(value.values())
+    return False
+
+
+# --- receiving --------------------------------------------------------------------
+
+
+def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys) -> dict:
+    """The response record's statement for a parsed reply, under the pinned
+    responder keys. A reply not signed under the pinned signer key for this
+    request's digest raises :class:`InvalidError`; a genuinely signed
+    artifact that fails a check of profile §7.2 is received-and-failed."""
+    statement: dict[str, Any] = {"request_digest": sent.digest, "key_id": keys.signer,
+                                 "checkpoint_key_id": keys.checkpoint}
+    if parsed.refusal is not None:
+        r = parsed.refusal
+        if r.request_digest != sent.digest or r.key_id != keys.signer:
+            raise InvalidError("refusal is not for this request under the pinned responder key")
+        if not verify_refusal_offline(r):
+            raise InvalidError("refusal signature does not verify")
+        statement["outcome"] = OUTCOME_REFUSAL if refusal_conforming(r) else OUTCOME_REFUSAL_NONCONFORMING
+        if r.reason:
+            statement["reason"] = r.reason
+        return statement
+    e = parsed.envelope
+    if e.request_digest != sent.digest or e.responder != keys.signer:
+        raise InvalidError("envelope is not for this request under the pinned responder key")
+    try:
+        sig = strict_hex(e.sig)
+        if sig is None or len(sig) != 64:
+            raise ValueError
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(e.responder)).verify(sig, e.signing_body())
+    except (ValueError, InvalidSignature):
+        raise InvalidError("envelope signature does not verify") from None
+    statement["outcome"] = OUTCOME_ARTIFACT
+    statement["artifact_digest"] = e.artifact_digest
+    statement["anchor"] = e.anchor_digest
+    try:
+        not_checked = _verify_envelope_content(sent, e, keys)
+    except InvalidError as failure:
+        statement["outcome"], statement["failure"] = OUTCOME_ARTIFACT_FAILED, str(failure)
+    else:
+        if not_checked:
+            statement["not_checked"] = not_checked
+    return {k: v for k, v in statement.items() if v != ""}
+
+
+def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> list[str]:
+    """The checks of profile §7.3 that follow the envelope signature. Returns
+    the properties it could not check; raises naming the first that failed."""
+    req = sent.request
+    if e.profile != req.profile:
+        raise InvalidError(f"profile_version: requested {req.profile}, got {e.profile}")
+    if not is_profile_time(e.issued_at):
+        raise InvalidError(f"issued_at_form: {e.issued_at!r}")
+    if e.subject.to_wire() != req.subject.to_wire() or e.derivation != req.derivation:
+        raise InvalidError("subject_binding: the envelope answers a different subject or derivation")
+    if _digest(e.artifact) != e.artifact_digest:
+        raise InvalidError("artifact_digest: the artifact does not hash to the signed digest")
+    digests = e.verification_digests or ()
+    if len(digests) != len(e.verification):
+        raise InvalidError(f"verification_binding: {len(digests)} entries, {len(e.verification)} items")
+    for i, ((_, item), digest) in enumerate(zip(e.verification, digests, strict=True)):
+        if _digest(item) != digest:
+            raise InvalidError(f"verification_binding: item {i}")
+    pin, floor = req.coverage.expected_pin, req.coverage.min_freshness
+    if pin is not None:
+        if e.anchor_digest != pin:
+            raise InvalidError("anchor_match: the anchor is not the pinned one")
+    elif isinstance(floor, int):
+        if not (type(e.freshness) is int and e.freshness >= floor):
+            raise InvalidError("anchor_match: the anchor does not state a size meeting the floor")
+    elif floor is not None:
+        attained = parse_ns(e.freshness) if is_profile_time(e.freshness) else None
+        if attained is None or attained < sent.floor_time:
+            raise InvalidError("anchor_match: the anchor does not state a time meeting the floor")
+    return _verify_anchor_inclusion(req, e, keys.checkpoint)
+
+
+def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: str) -> list[str]:
+    half_pin = req.subject.form == "exchange" and req.coverage.expected_pin == req.subject.content
+    if req.subject.form == "record" and req.derivation is None:
+        _verify_record_inclusion(e, checkpoint_key)
+        return []
+    if req.subject.form == "checkpoints" or req.derivation == DERIVATION_HISTORY_CARD:
+        _verify_checkpoint_chain(e, checkpoint_key)
+        return []
+    # Record sets and registered derivations: the profile defines no
+    # material kind for them (P-13). Their bodies and anchor member are
+    # checked; inclusion is not.
+    fields = _json_object(e.artifact)
+    if not half_pin and fields.get("anchor") != e.anchor_digest:
+        raise InvalidError("anchor_inclusion: the artifact names another anchor")
+    records = fields.get("records")
+    for i, entry in enumerate(records if isinstance(records, list) else ()):
+        if isinstance(entry, dict) and "body" in entry:
+            raw = strict_hex(entry["body"])
+            if raw is None or _digest(raw) != entry.get("digest"):
+                raise InvalidError(f"anchor_inclusion: record {i} does not hash to its digest")
+    return ["anchor_inclusion"]
+
+
+def _json_object(octets: bytes) -> dict:
+    try:
+        fields = strict_json(octets)
+    except ValueError:
+        fields = None
+    if not isinstance(fields, dict):
+        raise InvalidError("anchor_inclusion: the artifact is not a JSON object")
+    return fields
+
+
+def _signed_checkpoint(statement: bytes, pinned: str) -> Checkpoint:
+    try:
+        cp = read_checkpoint(statement)
+    except InvalidError as exc:
+        raise InvalidError(f"anchor_inclusion: {exc}") from None
+    if not pinned or cp.key_id != pinned:
+        raise InvalidError(f"anchor_inclusion: checkpoint is signed by {cp.key_id}, not the pinned key")
+    return cp
+
+
+def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> None:
+    """The §6.2.1 procedure under the pinned checkpoint key."""
+    items: dict[str, bytes] = {}
+    for kind, octets in e.verification:
+        if kind in items:
+            raise InvalidError(f"anchor_inclusion: kind {kind} appears more than once")
+        if kind not in (KIND_CLL_CHECKPOINT, KIND_CLL_INCLUSION_PROOF, KIND_CLL_CONSISTENCY_PROOF):
+            raise InvalidError(f"anchor_inclusion: kind {kind!r} is not one this requester implements")
+        items[kind] = octets
+    if KIND_CLL_CHECKPOINT not in items or KIND_CLL_INCLUSION_PROOF not in items:
+        raise InvalidError("anchor_inclusion: the checkpoint or the inclusion proof is not present")
+    if e.subject.content != e.artifact_digest:
+        raise InvalidError("anchor_inclusion: the record is not named by its artifact digest")
+    if _digest(items[KIND_CLL_CHECKPOINT]) != e.anchor_digest:
+        raise InvalidError("anchor_inclusion: the checkpoint is not the anchor")
+    cp = _signed_checkpoint(items[KIND_CLL_CHECKPOINT], checkpoint_key)
+    if type(e.freshness) is int and e.freshness != cp.tree_size or \
+            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
+        raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
+    try:
+        verify_cll_inclusion(cp.peaks, bytes.fromhex(e.artifact_digest), items[KIND_CLL_INCLUSION_PROOF])
+        if KIND_CLL_CONSISTENCY_PROOF in items:
+            if cp.prev_size == 0:
+                raise InvalidError("anchor_inclusion: the checkpoint extends no earlier commitment")
+            verify_cll_consistency(cp.prev_peaks, cp.peaks, items[KIND_CLL_CONSISTENCY_PROOF])
+    except (VerificationError, ValueError) as exc:
+        if isinstance(exc, InvalidError):
+            raise
+        raise InvalidError(f"anchor_inclusion: {exc}") from None
+
+
+def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> None:
+    """A checkpoints or history_card/1 artifact is its own material: every
+    checkpoint signed under the pinned key for one log, sizes strictly
+    growing, each consistency proof a history card carries reaching the next
+    commitment, and the last checkpoint the envelope's anchor."""
+    fields = _json_object(e.artifact)
+    card = isinstance(fields.get("history"), list)
+    if card:
+        pairs = [(entry.get("checkpoint") if isinstance(entry, dict) else None,
+                  entry.get("consistency_from_previous") if isinstance(entry, dict) else None)
+                 for entry in fields["history"]]
+    else:
+        listed = fields.get("checkpoints")
+        pairs = [(item, None) for item in (listed if isinstance(listed, list) else ())]
+    if not pairs:
+        raise InvalidError("anchor_inclusion: no checkpoints")
+    previous: Checkpoint | None = None
+    for i, (text, proof) in enumerate(pairs):
+        raw = strict_hex(text)
+        if raw is None:
+            raise InvalidError(f"anchor_inclusion: checkpoint {i} is not hex")
+        cp = _signed_checkpoint(raw, checkpoint_key)
+        if previous is not None:
+            if cp.log_id != previous.log_id or cp.tree_size <= previous.tree_size:
+                raise InvalidError(f"anchor_inclusion: checkpoint {i} does not extend the log")
+            if isinstance(proof, str) and proof:
+                octets = strict_hex(proof)
+                if octets is None:
+                    raise InvalidError(f"anchor_inclusion: consistency proof {i} is not hex")
+                try:
+                    verify_cll_consistency(previous.peaks, cp.peaks, octets)
+                except (VerificationError, ValueError) as exc:
+                    raise InvalidError(f"anchor_inclusion: checkpoint {i}: {exc}") from None
+            elif card:
+                raise InvalidError(f"anchor_inclusion: history entry {i} has no consistency proof")
+        if i == len(pairs) - 1 and _digest(raw) != e.anchor_digest:
+            raise InvalidError("anchor_inclusion: the last checkpoint is not the anchor")
+        previous = cp

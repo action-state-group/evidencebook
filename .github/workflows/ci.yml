@@ -307,3 +307,79 @@ jobs:
           fi
           grep -q "is not registered on citation_purpose" <<<"$out" || { echo "the legacy records failed for another reason: $out"; exit 1; }
           echo "legacy records rejected as expected:"; echo "$out"
+
+  python:
+    name: Python package (unit tests, the evidence-request corpus, the profile verifier, the History run byte for byte)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - name: Check out evidencebook
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: evidencebook
+      # The profile's reference verifier and vectors and the History corpus,
+      # at the commit the interop-profile and personal-history jobs pin.
+      - name: Check out the profile's reference verifier and the History vectors
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          path: agent-action-capsule
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: evidencebook/go.mod
+          cache-dependency-path: evidencebook/go.sum
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install the package and its pinned dependencies
+        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.12.0" "checkpointed-local-log==0.7.0" "cbor2==6.1.5"
+      - name: Unit tests and testdata/evidence-request
+        run: python -m pytest -q evidencebook/python/tests
+      - name: Reproduce the History responder run byte for byte, and its -correlated run
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          corpus=agent-action-capsule/vectors/personal-history-basic-v0
+          python evidencebook/test/interop/python-evidencebook/personal_history.py > "$work/run.json"
+          want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
+          got=$(sha256sum "$work/run.json" | cut -d' ' -f1)
+          echo "run_sha256: want $want, got $got"
+          test "$got" = "$want"
+          cmp "$corpus/responder-run.json" "$work/run.json"
+          python evidencebook/test/interop/python-evidencebook/personal_history.py --correlated > "$work/correlated.json"
+          go -C evidencebook run ./test/interop/personal-history -correlated > "$work/correlated-go.json"
+          cmp "$work/correlated-go.json" "$work/correlated.json"
+      - name: Read every checkpoint rule as Go reads it (the differential checkpoint test)
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          python evidencebook/test/interop/python-evidencebook/checkpoint_parity.py cases "$work/cases.json"
+          go -C evidencebook run ./test/interop/checkpoint-parity < "$work/cases.json" > "$work/go.json"
+          python evidencebook/test/interop/python-evidencebook/checkpoint_parity.py compare "$work/cases.json" "$work/go.json"
+      - name: Answer the profile vectors' requests, verify every reply, and compare with the Go run
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          mkdir "$work/py" "$work/go"
+          python evidencebook/test/interop/python-evidencebook/responder.py "$work/py" "$work/py/responder.json"
+          python evidencebook/test/interop/python-profile/verify_responder.py agent-action-capsule "$work/py/responder.json"
+          go -C evidencebook run ./test/interop/responder "$work/go" "$work/go/responder.json"
+          python - "$work/py/responder.json" "$work/go/responder.json" <<'PY'
+          import json, sys
+          py, go = (json.load(open(path)) for path in sys.argv[1:])
+          differ = [name for name in py if py[name] != go[name]]
+          if differ:
+              raise SystemExit(f"members the Python run writes differ from the Go run: {differ}")
+          print(f"the Python run writes these members as the Go run writes them: {sorted(py)}")
+          PY
+          for f in artifact-alice-json-nonce-c.bin artifact-bob-cbor-nonce-d.bin; do cmp "$work/py/$f" "$work/go/$f"; done

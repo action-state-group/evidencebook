@@ -1,0 +1,468 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The book's commitment substrate: a Checkpointed Local Log over the
+record ids, in memory.
+
+The MMR, its proofs and the checkpoint claims map come from
+checkpointed-local-log's Python package (``cll.checkpoint``); the proof
+octets from agent-action-capsule's ``evidence_request``. The log is rebuilt
+from the stored records when a book opens, and its checkpoints are the
+stored signed statements, so nothing here is durable on its own.
+
+A checkpoint is issued exactly when Go's book issues one: when the log grew
+since the last checkpoint, at the book's clock truncated to the
+millisecond, signed by the log key in the CLL checkpoint wire form.
+"""
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass, field
+from datetime import datetime
+
+import io
+import struct
+from collections.abc import Mapping
+
+import cbor2
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from agent_action_capsule.evidence_request import encode_cll_consistency_proof, encode_cll_inclusion_proof
+from cll.checkpoint import core
+from cll.checkpoint.cose_wire import CLL_CHECKPOINT_CONTENT_TYPE, encode_checkpoint_claims
+from cll.checkpoint.emit import CheckpointRecord
+from cll.log import validate_identifier
+
+from ._time import parse_rfc3339_ns, rfc3339_nano, truncate_ms
+from .errors import CorruptError, InvalidError, NotCoveredError
+from .signer import Signer, key_id, sign1
+
+SUBSTRATE_KIND_CLL = "cll"
+_COSE_ALG_EDDSA = -8
+_COSE_SIGN1_TAG = 18
+
+
+@dataclass(frozen=True)
+class Checkpoint:
+    """One signed checkpoint of the log, as read from its statement.
+    ``tree_size`` is the MMR size, ``entries`` the records it covers."""
+
+    log_id: str
+    id: str
+    entries: int
+    root: str
+    tree_size: int
+    key_id: str
+    #: issued_at as nanoseconds since the epoch (RFC 3339 allows year 0000,
+    #: which a datetime cannot hold).
+    issued_at_ns: int
+    statement: bytes
+    prev_size: int = 0
+    peaks: tuple[bytes, ...] = field(default=(), repr=False)
+    prev_peaks: tuple[bytes, ...] = field(default=(), repr=False)
+    kind: str = SUBSTRATE_KIND_CLL
+
+    def covers(self, seq: int) -> bool:
+        return 1 <= seq <= self.entries
+
+    @property
+    def anchor_digest(self) -> str:
+        """SHA-256 over the signed statement octets: the value a requester
+        pins in ``expected_pin`` (profile §6.2.1)."""
+        return hashlib.sha256(self.statement).hexdigest()
+
+
+class _Refused(Exception):
+    pass
+
+
+# Every tag cbor2 6.1 decodes into a Python value (a datetime, a bignum as
+# an int, ...); each is kept as a CBORTag, so no tag passes as the type it
+# wraps. tests/test_checkpoint_reader.py checks the pinned cbor2 has no other.
+SEMANTIC_TAGS = (0, 1, 2, 3, 4, 5, 25, 28, 29, 30, 35, 36, 37, 52, 54, 100, 256, 258, 260, 261, 1004, 43000, 55799)
+def _keep(tag: int):
+    return lambda value, immutable: cbor2.CBORTag(tag, value)
+
+
+_RAW_TAGS = {n: _keep(n) for n in SEMANTIC_TAGS}
+#: Go's decoder (fxamacker/cbor) allows 32 nested levels; the spec sets no limit.
+MAX_NESTING = 32
+
+
+def _decode(data: bytes, what: str) -> tuple[object, tuple]:
+    """One CBOR data item, read with cbor2 in strict mode: not-well-formed
+    encodings (RFC 8949 §3, Appendix F), trailing octets and more than
+    MAX_NESTING levels are refused; every valid encoding, indefinite lengths
+    included, is accepted. Returns the value and its type-faithful form
+    (:func:`_faithful`), which refuses a repeated map key (§5.6)."""
+    stream = io.BytesIO(data)
+    try:
+        value = cbor2.CBORDecoder(stream, allow_duplicate_keys=True, allow_indefinite=True, max_depth=MAX_NESTING,
+                                  semantic_decoders=_RAW_TAGS).decode()
+    except (cbor2.CBORDecodeError, ValueError, TypeError) as exc:
+        raise _Refused(f"{what}: {exc}") from None
+    if stream.read(1):
+        raise _Refused(f"{what}: trailing octets after the data item")
+    return value, _faithful(data, what)
+
+
+def _faithful(data: bytes, what: str) -> tuple:
+    """The data item cbor2 just validated, as a tree that keeps CBOR's types:
+    cbor2 hands back Python values, in which true equals 1 and 1.0 equals 1,
+    so it cannot tell two such keys apart. A map is ("map", ((key, value),
+    ...)); a map key repeated by type and value (RFC 8949 §5.6) is refused,
+    and keys 1 and true are not repeats. Only well-formed input reaches it.
+    It can give way to checkpointed-local-log's helper for the same
+    collapse once that lands (checkpointed-local-log#104)."""
+    def head(i: int) -> tuple[int, int | None, int]:
+        major, info = data[i] >> 5, data[i] & 31
+        if info < 24:
+            return major, info, i + 1
+        if info == 31:
+            return major, None, i + 1
+        width = 1 << (info - 24)
+        return major, int.from_bytes(data[i + 1:i + 1 + width], "big"), i + 1 + width
+
+    def item(i: int) -> tuple[tuple, int]:
+        initial = data[i]
+        major, arg, i = head(i)
+        if major in (0, 1):
+            return ("int", arg if major == 0 else -1 - arg), i
+        if major in (2, 3):
+            if arg is not None:
+                raw, i = data[i:i + arg], i + arg
+            else:
+                chunks = []
+                while data[i] != 0xFF:
+                    _, n, i = head(i)
+                    chunks.append(data[i:i + n])
+                    i += n
+                raw, i = b"".join(chunks), i + 1
+            return ("bytes" if major == 2 else "text", bytes(raw)), i
+        if major in (4, 5):
+            entries, seen = [], set()
+            while (arg is None and data[i] != 0xFF) or (arg is not None and len(entries) < arg):
+                key, i = item(i)
+                if major == 4:
+                    entries.append(key)
+                    continue
+                if key in seen:
+                    raise _Refused(f"{what}: a map key is repeated")
+                seen.add(key)
+                value, i = item(i)
+                entries.append((key, value))
+            if arg is None:
+                i += 1
+            return ("array" if major == 4 else "map", tuple(entries)), i
+        if major == 6:
+            inner, i = item(i)
+            return ("tag", arg, inner), i
+        if initial in (0xF9, 0xFA, 0xFB):
+            width = {0xF9: 2, 0xFA: 4, 0xFB: 8}[initial]
+            value = struct.unpack(">" + {2: "e", 4: "f", 8: "d"}[width], data[i - width:i])[0]
+            return ("float", "nan" if value != value else value), i
+        return ("simple", arg), i  # false 20, true 21, null 22, undefined 23, others
+
+    return item(0)[0]
+
+
+def _labels(tree: tuple) -> list[tuple]:
+    """The keys of a map's faithful form."""
+    return [key for key, _ in tree[1]] if tree[0] == "map" else []
+
+
+def _member(tree: tuple, key: tuple) -> tuple:
+    return next((value for k, value in tree[1] if k == key), ("absent",)) if tree[0] == "map" else ("absent",)
+
+
+_REQUIRED_CLAIMS = ("kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at")
+_UNDERSTOOD_LABELS = {1, 2, 3, 4, 15}  # alg, crit, content type, kid, CWT_Claims
+_MAX_PORTABLE = (1 << 53) - 1  # backend-contract.md MaxPortableInteger
+_MAX_CHECKPOINT_BYTES = 65536  # backend-contract.md MaxCheckpointBytes
+
+
+def mmr_peak_count(size: int) -> int | None:
+    """The number of peaks of a complete MMR of ``size`` nodes, or ``None``
+    when ``size`` is not one. Computed here for every portable size: cll's
+    ``core.peaks`` refuses sizes from 2^50 on."""
+    count, remaining, height = 0, size, size.bit_length()
+    while remaining > 0:
+        while height > 0 and (1 << height) - 1 > remaining:
+            height -= 1
+        if height == 0:
+            return None
+        remaining -= (1 << height) - 1
+        count += 1
+        if remaining and ((1 << height) - 1) <= remaining:
+            return None  # mountains must strictly shrink
+    return count
+
+
+def _uint(value: object, maximum: int = _MAX_PORTABLE) -> bool:
+    return type(value) is int and 0 <= value <= maximum
+
+
+def _peaks(raw: object, size: int, what: str) -> list[bytes]:
+    """-01 §Commitment Representation: the peak list of the MMR at ``size``,
+    one 32-byte peak per mountain, in canonical CBOR exactly as the MMR
+    profile's commitment object encodes it."""
+    if not isinstance(raw, bytes):
+        raise _Refused(f"{what} is not a byte string")
+    peaks, _ = _decode(raw, what)
+    if not isinstance(peaks, list) or not all(isinstance(p, bytes) and len(p) == 32 for p in peaks) or \
+            core.commitment_object(peaks) != raw:
+        raise _Refused(f"{what} is not a canonical peak list")
+    if len(peaks) != mmr_peak_count(size):
+        raise _Refused(f"{what} is not the peak list of an MMR of {size} nodes")
+    return peaks
+
+
+def _check_headers(protected: Mapping, unprotected: Mapping, trees: tuple[tuple, tuple]) -> None:
+    """RFC 9052 §3 and §3.1 over both header buckets: labels are integers or
+    texts (CBOR true is not label 1; text "1" is another label than 1), no
+    label in both buckets, crit only in the protected one, non-empty and
+    naming present labels this reader understands, IV and Partial IV not
+    both in the layer, and the common parameters of their types."""
+    # Label types are read from the faithful forms: a true beside 1 is
+    # invisible in the decoded maps.
+    for tree in trees:
+        if any(kind not in ("int", "text") for kind, _ in _labels(tree)):
+            raise _Refused("a header label is not an integer or a text")
+    if set(protected) & set(unprotected):
+        raise _Refused("a label is in both the protected and the unprotected header")
+    if 2 in unprotected:
+        raise _Refused("crit is in the unprotected header")
+    crit = protected.get(2)
+    if 2 in protected and not (isinstance(crit, list) and crit and all(
+            type(label) in (int, str) and label in protected and label in _UNDERSTOOD_LABELS for label in crit)):
+        raise _Refused("crit lists a label not present or not understood")
+    layer = {**unprotected, **protected}
+    if 5 in layer and 6 in layer:
+        raise _Refused("IV and Partial IV are both present")
+    kinds = {1: (int, str), 3: (int, str), 4: (bytes,), 5: (bytes,), 6: (bytes,)}
+    for label, allowed in kinds.items():
+        if label in layer and (type(layer[label]) not in allowed or label == 3 and type(layer[3]) is int and layer[3] < 0):
+            raise _Refused(f"header parameter {label} is not of its type")
+
+
+def _read(statement: bytes) -> Checkpoint:
+    """A CLL checkpoint read under draft-mih-scitt-checkpointed-local-log-01,
+    the revision of the wire form deployed implementations write (spec
+    §The Checkpoint, §Commitment Representation, §Required constraints,
+    §Witnessing), RFC 9052, RFC 8949 and RFC 3339; where the draft is
+    silent, as Go's reader reads it. test/interop/python-evidencebook/
+    checkpoint_parity.py holds every rule, and the cases where Go departs
+    from the draft."""
+    if len(statement) > _MAX_CHECKPOINT_BYTES:
+        raise _Refused(f"the statement is over {_MAX_CHECKPOINT_BYTES} bytes")
+    message, message_tree = _decode(statement, "the statement")
+    # RFC 9052 §4.2 COSE_Sign1, tagged (the draft is silent on the untagged
+    # form; Go requires the tag).
+    if not isinstance(message, cbor2.CBORTag) or message.tag != _COSE_SIGN1_TAG or \
+            not isinstance(message.value, (list, tuple)) or len(message.value) != 4:
+        raise _Refused("not a tagged COSE_Sign1 message")
+    protected_bstr, unprotected, payload, signature = message.value
+    if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or \
+            not isinstance(unprotected, Mapping):
+        raise _Refused("a COSE_Sign1 member has the wrong type")
+    protected, protected_tree = _decode(protected_bstr, "the protected header") if protected_bstr else ({}, ("map", ()))
+    claims, _ = _decode(payload, "the claims")
+    if not isinstance(protected, Mapping):
+        raise _Refused("the protected header is not a map")
+    # The unprotected header may carry a witness's countersignature (§Witnessing).
+    _check_headers(protected, unprotected, (protected_tree, message_tree[2][1][1]))
+    kid, cwt = protected.get(4), protected.get(15)
+    # The draft: the protected header carries the algorithm and the key
+    # identifier. Silent on their values and on the content type, so Go's:
+    # EdDSA, the raw 32-byte public key, application/cll-checkpoint+cbor.
+    if type(protected.get(1)) is not int or protected.get(1) != _COSE_ALG_EDDSA or \
+            protected.get(3) != CLL_CHECKPOINT_CONTENT_TYPE or not isinstance(kid, bytes) or len(kid) != 32:
+        raise _Refused("the protected header does not carry EdDSA, the content type and a 32-byte kid")
+    # §Witnessing: CWT_Claims with iss and sub (texts, RFC 8392); other
+    # claims allowed. The draft does not define sub's form; Go's is
+    # "<iss>#<log_size>", with iss a CLL identifier.
+    # RFC 8392 §3: a claim key is an integer or a text (CBOR true is not key 1).
+    cwt_keys = _labels(_member(protected_tree, ("int", 15)))
+    if not isinstance(cwt, Mapping) or any(kind not in ("int", "text") for kind, _ in cwt_keys) or \
+            not isinstance(cwt.get(1), str) or not isinstance(cwt.get(2), str):
+        raise _Refused("the CWT_Claims do not carry iss and sub as texts")
+    # §The Checkpoint: a CBOR map with these claims; others MUST be ignored.
+    if not isinstance(claims, Mapping) or any(name not in claims for name in _REQUIRED_CLAIMS):
+        raise _Refused("the claims are not a map of the required claims")
+    log_size, prev_size, issued_at = claims["log_size"], claims["prev_size"], claims["issued_at"]
+    if claims["kind"] != "cll-checkpoint":
+        raise _Refused("kind is not cll-checkpoint")
+    # log_size is the MMR's node count (a complete size), as deployed and as
+    # -02 states; portable integers (backend-contract MaxPortableInteger).
+    if not _uint(log_size) or log_size == 0 or mmr_peak_count(log_size) is None:
+        raise _Refused(f"log_size {log_size!r} is not a complete MMR size")
+    # §Required constraints 2: log_size >= prev_size.
+    if not _uint(prev_size) or prev_size > log_size or prev_size and mmr_peak_count(prev_size) is None:
+        raise _Refused(f"prev_size {prev_size!r} is not a complete MMR size up to log_size")
+    if "cadence" in claims and not (_uint(claims["cadence"]) and claims["cadence"] > 0):
+        raise _Refused("cadence is not a positive portable integer")
+    if cwt[2] != f"{cwt[1]}#{log_size}" or not validate_identifier(cwt[1]):
+        raise _Refused("the CWT subject is not <log id>#<log_size> under a CLL identifier")
+    peaks = _peaks(claims["commitment"], log_size, "the commitment")
+    # prev_commitment: zero-length for the first, else the peak list at prev_size.
+    if prev_size == 0:
+        if claims["prev_commitment"] != b"":
+            raise _Refused("a first checkpoint's prev_commitment is not zero-length")
+        prev_peaks: list[bytes] = []
+    else:
+        prev_peaks = _peaks(claims["prev_commitment"], prev_size, "the previous commitment")
+    # The consistency relation at equal sizes is equality. At a greater size
+    # it is checked with the proof conveyed beside the checkpoint (profile
+    # §6.2.1 cll-consistency-proof), never with a consistency_proof claim:
+    # -01 defines none, so the claim is ignored.
+    if prev_size == log_size and prev_peaks != peaks:
+        raise _Refused("equal sizes carry different commitments")
+    issued = parse_rfc3339_ns(issued_at)
+    if issued is None:
+        raise _Refused(f"issued_at {issued_at!r} is not an RFC 3339 date-time")
+    try:
+        Ed25519PublicKey.from_public_bytes(kid).verify(
+            signature, cbor2.dumps(["Signature1", protected_bstr, b"", payload]))
+    except (InvalidSignature, ValueError):
+        raise _Refused("the signature does not verify") from None
+    root = core.root_from_peaks(peaks)
+    return Checkpoint(
+        log_id=cwt[1], id=f"{root.hex()}:{log_size}", entries=_leaf_count(log_size), root=root.hex(),
+        tree_size=log_size, key_id=kid.hex(), issued_at_ns=issued, statement=bytes(statement), prev_size=prev_size,
+        peaks=tuple(peaks), prev_peaks=tuple(prev_peaks),
+    )
+
+
+def _leaf_count(size: int) -> int:
+    """Leaves of a complete MMR of ``size`` nodes (each mountain of 2^h - 1
+    nodes holds 2^(h-1) leaves)."""
+    leaves, remaining, height = 0, size, size.bit_length()
+    while remaining:
+        while (1 << height) - 1 > remaining:
+            height -= 1
+        remaining -= (1 << height) - 1
+        leaves += 1 << (height - 1)
+    return leaves
+
+
+def read_checkpoint(statement: bytes) -> Checkpoint:
+    """Parse and signature-check a CLL checkpoint statement under its own
+    kid, by draft-mih-scitt-checkpointed-local-log-01 (see :func:`_read`).
+    No ASG Python package reads it so: cll's ``verify_checkpoint_cose_offline``
+    refuses what the draft allows (other claims, a proof under its own sizes)
+    and skips what it requires, and agent-action-capsule's reader checks
+    only the profile's §6.2.1 rules."""
+    try:
+        return _read(statement)
+    except _Refused as exc:
+        raise InvalidError(f"checkpoint statement: {exc}") from None
+
+
+class _Nodes:
+    def __init__(self) -> None:
+        self.hashes: list[bytes] = []
+
+    def size(self) -> int:
+        return len(self.hashes)
+
+    def node(self, pos: int) -> bytes:
+        return self.hashes[pos]
+
+    def append_nodes(self, hashes: list[bytes]) -> None:
+        self.hashes.extend(hashes)
+
+
+class CLLSubstrate:
+    """A Checkpointed Local Log named ``log_id`` whose checkpoints
+    ``checkpoint_key`` signs; it may differ from the book's signer."""
+
+    def __init__(self, log_id: str, checkpoint_key: Signer):
+        if not validate_identifier(log_id):
+            raise InvalidError(f"log id {log_id!r} is not a CLL identifier")
+        self.log_id = log_id
+        self._key = checkpoint_key
+        self._nodes = _Nodes()
+        self._leaf_sizes: list[int] = []  # the MMR size after each leaf
+        self._latest: Checkpoint | None = None
+
+    @property
+    def size(self) -> int:
+        return len(self._leaf_sizes)
+
+    def append(self, record_id: str) -> int:
+        try:
+            value = bytes.fromhex(record_id)
+        except ValueError:
+            raise InvalidError(f"record id {record_id!r} is not hex") from None
+        if len(value) != 32 or value.hex() != record_id:
+            raise InvalidError(f"record id {record_id!r} is not 64 lowercase hex characters")
+        core.add_leaf(self._nodes, core.leaf_hash(value))
+        self._leaf_sizes.append(self._nodes.size())
+        return len(self._leaf_sizes)
+
+    def restore(self, checkpoint: Checkpoint) -> None:
+        """Take a stored checkpoint of this log as the latest, after checking
+        it against the log rebuilt from the records."""
+        if checkpoint.log_id != self.log_id or checkpoint.key_id != key_id(self._key):
+            raise CorruptError("a stored checkpoint is not this log's")
+        if checkpoint.tree_size > self._nodes.size() or self._peaks(checkpoint.tree_size) != list(checkpoint.peaks):
+            raise CorruptError(f"stored checkpoint {checkpoint.id} does not match the log")
+        self._latest = checkpoint
+
+    @property
+    def latest(self) -> Checkpoint | None:
+        return self._latest
+
+    def _peaks(self, size: int) -> list[bytes]:
+        return [self._nodes.node(p) for p in core.peaks(size)]
+
+    def checkpoint(self, now: datetime) -> Checkpoint:
+        """A checkpoint over everything appended: a new one when the log grew
+        since the last, otherwise the last. Raises when nothing was ever appended."""
+        size = self._nodes.size()
+        prev = self._latest
+        if prev is not None and prev.tree_size == size:
+            return prev
+        if size == 0:
+            raise InvalidError("an empty log has no checkpoint")
+        peaks = self._peaks(size)
+        record = CheckpointRecord(
+            v=1, kind="mmr_checkpoint", log_id=self.log_id, mmr_size=size, root=core.root_from_peaks(peaks).hex(),
+            prev_size=prev.tree_size if prev else 0, prev_root=prev.root if prev else "", key_id=key_id(self._key),
+            timestamp=rfc3339_nano(truncate_ms(now)), signature="",
+        )
+        claims = encode_checkpoint_claims(
+            record, peaks,
+            prev_peak_hashes=list(prev.peaks) if prev else None,
+            consistency_proof=core.consistency_proof(self._nodes, prev.tree_size, size) if prev else None,
+        )
+        protected = {1: _COSE_ALG_EDDSA, 3: CLL_CHECKPOINT_CONTENT_TYPE, 4: self._key.public_key(),
+                     15: {1: self.log_id, 2: f"{self.log_id}#{size}"}}
+        self._latest = read_checkpoint(sign1(self._key, protected, cbor2.dumps(claims, canonical=True)))
+        return self._latest
+
+    def _check(self, at: Checkpoint) -> None:
+        if at.kind != SUBSTRATE_KIND_CLL or at.log_id != self.log_id:
+            raise InvalidError("checkpoint is not from this log")
+        if at.tree_size > self._nodes.size():
+            raise NotCoveredError(f"checkpoint size {at.tree_size} exceeds the log")
+        if core.root_from_peaks(self._peaks(at.tree_size)).hex() != at.root:
+            raise CorruptError("checkpoint root does not match this log")
+
+    def inclusion_proof(self, seq: int, at: Checkpoint) -> bytes:
+        """The ``cll-inclusion-proof`` octets for the record at ``seq`` under ``at``."""
+        if not at.covers(seq):
+            raise NotCoveredError(f"seq {seq} under checkpoint {at.id}")
+        self._check(at)
+        proof = core.inclusion_proof(self._nodes, seq - 1, at.tree_size)
+        return encode_cll_inclusion_proof(seq - 1, [bytes.fromhex(h) for h in proof.witness])
+
+    def consistency_proof(self, old_size: int, new_size: int, at: Checkpoint) -> bytes:
+        """The ``cll-consistency-proof`` octets: the MMR of ``new_size`` nodes
+        extends the one of ``old_size``."""
+        self._check(at)
+        if old_size == 0 or old_size > new_size or new_size > at.tree_size:
+            raise InvalidError(f"consistency from {old_size} to {new_size} under {at.id}")
+        proof = core.consistency_proof(self._nodes, old_size, new_size)
+        return encode_cll_consistency_proof(
+            old_size, new_size, [bytes.fromhex(h) for h in proof.old_peaks],
+            [[bytes.fromhex(h) for h in path] for path in proof.witness], [bytes.fromhex(h) for h in proof.new_peaks],
+        )
