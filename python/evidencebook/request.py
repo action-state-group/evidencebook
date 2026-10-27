@@ -87,7 +87,7 @@ class EvidenceRequest:
         """The request's wire value, checked as Go's ``Request.Value`` checks it."""
         try:
             parse_request(jcs({"subject": self.subject.to_wire(), "coverage": {"expected_pin": "0" * 64}}))
-        except RequestError:
+        except (RequestError, ValueError, TypeError):
             raise InvalidError("subject is not one of the six forms with conforming content") from None
         coverage: dict[str, Any] = {}
         pin, floor = self.coverage.expected_pin, self.coverage.min_freshness
@@ -171,6 +171,62 @@ def _member_rules(fields: Any) -> str:
     return ""
 
 
+class _Duplicate(ValueError):
+    pass
+
+
+def _object(pairs: list) -> dict:
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise _Duplicate(f"duplicate member {key!r}")
+        out[key] = value
+    return out
+
+
+def _reject_constant(text: str) -> Any:
+    raise ValueError(f"{text} is not JSON")
+
+
+def _lone_surrogate(value: Any) -> bool:
+    """Whether any text in ``value``, member names included, holds an
+    unpaired surrogate, which has no UTF-8 form (Go refuses it)."""
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            try:
+                item.encode("utf-8")
+            except UnicodeEncodeError:
+                return True
+        elif isinstance(item, list):
+            stack.extend(item)
+        elif isinstance(item, dict):
+            stack.extend(item)
+            stack.extend(item.values())
+    return False
+
+
+def strict_json(octets: bytes) -> Any:
+    """JSON read as Go's ``evidencerequest.DecodeJSON`` reads it: UTF-8, no
+    duplicate member, no NaN or infinity, no unpaired surrogate. Raises
+    ``ValueError``."""
+    value = json.loads(octets.decode("utf-8"), object_pairs_hook=_object, parse_constant=_reject_constant)
+    if _lone_surrogate(value):
+        raise ValueError("a text holds an unpaired surrogate")
+    return value
+
+
+_HEX = re.compile(r"(?:[0-9a-fA-F]{2})*\Z")
+
+
+def strict_hex(text: Any) -> bytes | None:
+    """Hex as Go's ``hex.DecodeString`` reads it (no whitespace), or ``None``."""
+    if not isinstance(text, str) or not _HEX.match(text):
+        return None
+    return bytes.fromhex(text)
+
+
 def _decoded(message: Message) -> Any:
     if message.media_type == MEDIA_TYPE_JSON:
         return json.loads(message.octets)
@@ -187,11 +243,16 @@ def read_request(message: Message) -> RequestCheck:
     except RequestError as err:
         if err.reason == REASON_COVERAGE_UNSATISFIABLE:
             # The bytes decoded; a malformed member wins over the coverage rule.
-            why = _member_rules(_decoded(message))
+            fields = _decoded(message)
+            why = _member_rules(fields)
+            if message.media_type == MEDIA_TYPE_JSON and _lone_surrogate(fields):
+                why = "a text holds an unpaired surrogate"
             if why:
                 return RequestCheck(reason=REASON_REQUEST_MALFORMED, why=why)
         return RequestCheck(reason=err.reason, why=str(err))
     fields = _decoded(message)
+    if message.media_type == MEDIA_TYPE_JSON and _lone_surrogate(fields):
+        return RequestCheck(reason=REASON_REQUEST_MALFORMED, why="a text holds an unpaired surrogate")
     why = _member_rules(fields)
     if why:
         return RequestCheck(reason=REASON_REQUEST_MALFORMED, why=why)

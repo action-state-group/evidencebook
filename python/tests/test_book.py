@@ -488,3 +488,123 @@ def test_range_correlation_and_full_history_are_refused_without_a_grant(clock, r
     for subject in (eb.Subject("range", (0, 1)), eb.Subject("correlation", "order-0"), eb.Subject("full_history")):
         request = eb.encode_request(eb.EvidenceRequest(subject, eb.Coverage(min_freshness=1)))
         assert r.respond(eb.Message(request), PEERS)[0].refusal.reason == "not_authorized"
+
+
+# --- review regressions -----------------------------------------------------------
+
+
+def test_a_returned_record_cannot_change_the_books(clock):
+    b = book(clock)
+    req = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=1), nonce="n-1")
+    sent = b.request(req)
+    b.get(sent.record_id).header.statement["request"]["nonce"] = "other"
+    b.records()[0].header.statement["request"]["nonce"] = "other"
+    with pytest.raises(eb.InvalidError, match="nonce already used"):
+        b.request(req)
+    statement = {"k": ["v"]}
+    record = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, statement=statement))
+    statement["k"].append("changed")
+    record.header.statement["k"].append("changed")
+    assert b.get(record.record_id).header.statement == {"k": ["v"]}
+
+
+def test_a_failed_journal_write_stops_further_writes(clock, tmp_path, monkeypatch):
+    store = eb.FileStore(tmp_path)
+    b = book(clock, store=store)
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+
+    def fail(fd):
+        raise OSError("disk")
+
+    monkeypatch.setattr(eb.store.os, "fsync", fail)
+    with pytest.raises(OSError):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    monkeypatch.undo()
+    with pytest.raises(eb.CorruptError, match="reopen"):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+
+
+def test_a_request_with_an_unpaired_surrogate_is_malformed(clock, responder):
+    r, _ = responder
+    size = r.size()
+    for octets in (b'{"coverage":{"min_freshness":1},"ignored":"\\ud800","subject":{"checkpoints":null}}',
+                   b'{"coverage":{},"ignored":"\\ud800","subject":{"checkpoints":null}}'):
+        reply, record = r.respond(eb.Message(octets), PEERS)
+        assert reply.refusal.reason == "request_malformed" and record is None
+    assert r.size() == size
+
+
+def signed_record_set(r: eb.Book, q: eb.Book, records, edit) -> tuple[eb.SentRequest, eb.Message]:
+    sent, reply = ask(q, r, eb.Subject("exchange", records[0].record_id))
+    envelope = json.loads(reply.message.octets)
+    artifact = edit(base64.urlsafe_b64decode(envelope["artifact"] + "=="))
+    envelope["artifact"] = base64.urlsafe_b64encode(artifact).rstrip(b"=").decode()
+    envelope["artifact_digest"] = hashlib.sha256(artifact).hexdigest()
+    return sent, eb.Message(resign(envelope, key("responder signer")))
+
+
+@pytest.mark.parametrize("edit,check", [
+    # A duplicate member: the last anchor is the envelope's.
+    (lambda a: a[:1] + b'"anchor":"' + b"0" * 64 + b'",' + a[1:], "not a JSON object"),
+    # Hex with whitespace in a record body.
+    (lambda a: a.replace(b'"body":"', b'"body":" ', 1), "does not hash"),
+])
+def test_a_signed_record_set_go_refuses_is_received_and_failed(clock, responder, edit, check):
+    r, records = responder
+    q = book(clock, "requester")
+    sent, reply = signed_record_set(r, q, records, edit)
+    statement = q.record_response(sent.record_id, reply, keys_of(r)).header.statement
+    assert statement["outcome"] == eb.OUTCOME_ARTIFACT_FAILED and check in statement["failure"]
+
+
+def test_a_checkpoint_outside_the_wire_profile_is_refused(responder):
+    import cbor2
+    from evidencebook._cll import read_checkpoint
+
+    r, _ = responder
+    statement = r.checkpoints()[-1].statement
+    assert read_checkpoint(statement).anchor_digest == r.checkpoints()[-1].anchor_digest
+    message = cbor2.loads(statement)
+    protected, _, payload, signature = message.value
+    with pytest.raises(eb.InvalidError, match="headers"):
+        read_checkpoint(cbor2.dumps(cbor2.CBORTag(18, [protected, {42: 0}, payload, signature])))
+    assert eb.request.strict_hex("61 62") is None and eb.request.strict_hex("6162") == b"ab"
+
+
+def test_inputs_go_refuses_or_accepts_are_read_as_go_reads_them(clock, tmp_path):
+    with pytest.raises(eb.InvalidError):
+        book(clock).register_derivation(eb.DerivationDefinition(b'{"a":1,"a":2}', ("correlation",), ("seq",)))
+    book(clock, "x", responder=eb.ResponderPolicy(refusal_policy=""))
+    with pytest.raises(eb.InvalidError):
+        eb.Book("b", " ", signer=key("s"), log_id="l", log_key=key("l"))
+    with pytest.raises(eb.InvalidError):
+        eb.encode_request(eb.EvidenceRequest(eb.Subject("range", (0, 1 << 60)), eb.Coverage(min_freshness=1)))
+    seed = hashlib.sha256(b"s").digest()
+    signer = eb.Ed25519Signer(seed)
+    assert eb.Ed25519Signer(seed + signer.public_key()).public_key() == signer.public_key()
+    with pytest.raises(eb.InvalidError):
+        eb.Ed25519Signer(seed + bytes(32))
+    b = book(clock, store=eb.FileStore(tmp_path))
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    b.close()
+    assert (tmp_path / "records.jsonl").stat().st_mode & 0o777 == 0o600
+
+
+def test_a_malformed_stored_header_or_index_root_is_corruption(clock):
+    store = eb.MemoryStore()
+    b = book(clock, store=store)
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    b.checkpoint()
+    for i, header in ((0, b'{"links":7}'), (1, None)):
+        stored = store.records()[i]
+        changed = store.records()
+        if header is None:  # an index_root whose statement is not an index root
+            value = json.loads(stored.header)
+            value["statement"] = "root"
+            header = jcs(value)
+        broken = eb.MemoryStore()
+        for s in changed:
+            broken._records[s.record_id] = s if s is not stored else eb.StoredRecord(
+                s.seq, s.record_id, header, s.capsule, s.envelope)
+        with pytest.raises(eb.CorruptError):
+            book(clock, store=broken)

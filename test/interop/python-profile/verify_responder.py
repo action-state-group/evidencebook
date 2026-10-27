@@ -31,7 +31,8 @@ not a conforming absence yields no claim (§6.4, §8.2 invariant 3).
 Every MCP result this responder returned (the replies and the
 evidence_manifest result) must carry resultType "complete" (§11.4.5).
 
-A responder.json with no "carriage" member is from a responder that answers
+A responder.json with none of the carriage members (carriage, manifests,
+agent_card, mcp_manifest, mcp_tools) is from a responder that answers
 over the native binding only (test/interop/python-evidencebook/responder.py):
 the carriage cases are skipped with that reason, and so are the carriage,
 manifest and MCP checks.
@@ -97,7 +98,10 @@ SKIP_PREFIX = {
     "acceptance-": "§11.1 acceptance records and receipts: not responder output, and not in this item",
     "lifecycle-": "§11.2 lifecycle statements: not responder output, and not in this item",
 }
-NATIVE_ONLY = "carriage" not in PRODUCED
+_CARRIAGE_MEMBERS = {"carriage", "manifests", "agent_card", "mcp_manifest", "mcp_tools"}
+NATIVE_ONLY = not _CARRIAGE_MEMBERS & set(PRODUCED)
+if not NATIVE_ONLY and not _CARRIAGE_MEMBERS <= set(PRODUCED):
+    raise SystemExit(f"responder.json carries only some carriage members: {sorted(_CARRIAGE_MEMBERS & set(PRODUCED))}")
 if NATIVE_ONLY:
     for case_id in CARRIAGE_RUN + CARRIAGE_MUTATIONS:
         SKIP_PREFIX[case_id] = ("§11.4 carriage over A2A and MCP: this responder answers over the native "

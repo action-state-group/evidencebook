@@ -14,6 +14,7 @@ writes for the same calls.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -82,6 +83,8 @@ from .request import (
     parse_reply,
     read_request,
     refusal_conforming,
+    strict_hex,
+    strict_json,
 )
 from .signer import EvidenceSigner, Signer, key_id
 from .store import MemoryStore, Store, StoredRecord
@@ -179,13 +182,13 @@ class ResponderPolicy:
     """The responder's cost and abuse policy. The default answers the most
     specific token with no rate limit."""
 
-    refusal_policy: str = REFUSAL_POLICY_SPECIFIC
+    refusal_policy: str = REFUSAL_POLICY_SPECIFIC  # "" reads as specific, as in Go
     limiter: RequestLimiter | None = None
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
     max_answer_items: int = DEFAULT_MAX_ANSWER_ITEMS
 
     def validate(self) -> None:
-        if self.refusal_policy not in (REFUSAL_POLICY_SPECIFIC, REFUSAL_POLICY_UNIFORM):
+        if self.refusal_policy not in ("", REFUSAL_POLICY_SPECIFIC, REFUSAL_POLICY_UNIFORM):
             raise InvalidError(f"refusal policy {self.refusal_policy!r} is neither specific nor uniform")
         if self.max_request_bytes < 0 or self.max_answer_items < 0:
             raise InvalidError("responder limits must not be negative")
@@ -305,8 +308,8 @@ class Book:
         now: Callable[[], datetime] | None = None,
         responder: ResponderPolicy | None = None,
     ):
-        if not book_id or not operator:
-            raise InvalidError("book id and operator are required")
+        if not book_id or not operator.strip() or not (developer or DEFAULT_DEVELOPER).strip():
+            raise InvalidError("book id, operator and developer must not be empty")
         self._responder = responder or ResponderPolicy()
         self._responder.validate()
         self._id, self._operator, self._developer = book_id, operator, developer or DEFAULT_DEVELOPER
@@ -332,10 +335,9 @@ class Book:
             if stored.seq != i + 1:
                 raise CorruptError(f"stored records are not dense at seq {stored.seq}")
             try:
-                value = json.loads(stored.header)
-            except ValueError as exc:
+                header = Header.from_value(json.loads(stored.header))
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
                 raise CorruptError(f"header of {stored.record_id}: {exc}") from None
-            header = Header.from_value(value)
             if jcs(header.value()) != stored.header or header.seq != stored.seq:
                 raise CorruptError(f"header of {stored.record_id} is not canonical or disagrees with the store")
             if header.book_id != self._id:
@@ -348,9 +350,11 @@ class Book:
             record = Record(stored.record_id, stored.seq, header)
             self._substrate.append(record.record_id)
             self._admit(record, stored)
-            if header.record_type == RECORD_TYPE_INDEX_ROOT and isinstance(header.statement, dict):
-                self._roots[header.statement.get("index")] = {
-                    k: header.statement.get(k) for k in ("index", "root", "size")}
+            if header.record_type == RECORD_TYPE_INDEX_ROOT:
+                root = header.statement
+                if not isinstance(root, dict) or not isinstance(root.get("index"), str):
+                    raise CorruptError(f"index_root record {stored.record_id} holds no index root")
+                self._roots[root["index"]] = {k: root.get(k) for k in ("index", "root", "size")}
         for statement in self._store.checkpoints():
             try:
                 cp = read_checkpoint(statement)
@@ -389,14 +393,14 @@ class Book:
 
     def records(self) -> list[Record]:
         with self._lock:
-            return [self._records[i] for i in self._order]
+            return [_detached(self._records[i]) for i in self._order]
 
     def get(self, record_id: str) -> Record:
         with self._lock:
             record = self._records.get(record_id)
             if record is None:
                 raise NotFoundError(f"record {record_id}")
-            return record
+            return _detached(record)
 
     def checkpoints(self) -> list[Checkpoint]:
         """Every checkpoint this book issued, oldest first."""
@@ -428,7 +432,7 @@ class Book:
             payload_commitments=tuple(_digest(p) for p in entry.payloads),
             retention_state=AVAILABLE if entry.payloads else "",
             subject_ref=entry.subject_ref, principal_ref=entry.principal_ref, counterparty_ref=entry.counterparty_ref,
-            correlation=None if entry.correlation.empty() else entry.correlation, statement=entry.statement,
+            correlation=None if entry.correlation.empty() else entry.correlation, statement=copy.deepcopy(entry.statement),
         )
         header.validate()
         try:
@@ -443,7 +447,7 @@ class Book:
             raise CorruptError(f"record {record_id} did not land at {seq}")
         record = Record(record_id, seq, header)
         self._admit(record, stored)
-        return record
+        return _detached(record)
 
     def checkpoint(self, at: datetime | None = None) -> Checkpoint:
         """Commit any changed index roots as records, then checkpoint the log
@@ -593,7 +597,7 @@ class Book:
         and fields returns the same identifier; with anything else it is
         :class:`InvalidError`."""
         try:
-            document = json.loads(definition.document)
+            document = strict_json(definition.document)
         except ValueError as exc:
             raise InvalidError(f"derivation definition: {exc}") from None
         if not isinstance(document, dict):
@@ -659,6 +663,15 @@ class Book:
         if any(self._records[i].header.counterparty_ref == authenticated for i in self._order):
             return RELATIONSHIP_COUNTERPARTY
         return RELATIONSHIP_IDENTIFIED
+
+
+def _detached(record: Record) -> Record:
+    """``record`` with its own copy of the statement, so a caller holding it
+    cannot change the book's record: the book reads its own statements back
+    (a request's nonce and coverage, a retention commitment's subject)."""
+    if record.header.statement is None:
+        return record
+    return replace(record, header=replace(record.header, statement=copy.deepcopy(record.header.statement)))
 
 
 # --- answering ---------------------------------------------------------------------
@@ -946,11 +959,8 @@ class _Answer:
                 return False
             body = item.get("body")
             if isinstance(body, str):
-                try:
-                    raw = bytes.fromhex(body)
-                except ValueError:
-                    return False
-                if _mentions_any(raw, identities):
+                raw = strict_hex(body)
+                if raw is None or _mentions_any(raw, identities):
                     return False
         return True
 
@@ -1014,8 +1024,8 @@ def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys) -> dict:
     if e.request_digest != sent.digest or e.responder != keys.signer:
         raise InvalidError("envelope is not for this request under the pinned responder key")
     try:
-        sig = bytes.fromhex(e.sig)
-        if len(sig) != 64:
+        sig = strict_hex(e.sig)
+        if sig is None or len(sig) != 64:
             raise ValueError
         Ed25519PublicKey.from_public_bytes(bytes.fromhex(e.responder)).verify(sig, e.signing_body())
     except (ValueError, InvalidSignature):
@@ -1045,7 +1055,10 @@ def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> l
         raise InvalidError("subject_binding: the envelope answers a different subject or derivation")
     if _digest(e.artifact) != e.artifact_digest:
         raise InvalidError("artifact_digest: the artifact does not hash to the signed digest")
-    for i, ((_, item), digest) in enumerate(zip(e.verification, e.verification_digests or (), strict=False)):
+    digests = e.verification_digests or ()
+    if len(digests) != len(e.verification):
+        raise InvalidError(f"verification_binding: {len(digests)} entries, {len(e.verification)} items")
+    for i, ((_, item), digest) in enumerate(zip(e.verification, digests, strict=True)):
         if _digest(item) != digest:
             raise InvalidError(f"verification_binding: item {i}")
     pin, floor = req.coverage.expected_pin, req.coverage.min_freshness
@@ -1079,10 +1092,7 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     records = fields.get("records")
     for i, entry in enumerate(records if isinstance(records, list) else ()):
         if isinstance(entry, dict) and "body" in entry:
-            try:
-                raw = bytes.fromhex(entry["body"]) if isinstance(entry["body"], str) else None
-            except ValueError:
-                raw = None
+            raw = strict_hex(entry["body"])
             if raw is None or _digest(raw) != entry.get("digest"):
                 raise InvalidError(f"anchor_inclusion: record {i} does not hash to its digest")
     return ["anchor_inclusion"]
@@ -1090,7 +1100,7 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
 
 def _json_object(octets: bytes) -> dict:
     try:
-        fields = json.loads(octets)
+        fields = strict_json(octets)
     except ValueError:
         fields = None
     if not isinstance(fields, dict):
@@ -1157,10 +1167,7 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> None:
         raise InvalidError("anchor_inclusion: no checkpoints")
     previous: Checkpoint | None = None
     for i, (text, proof) in enumerate(pairs):
-        try:
-            raw = bytes.fromhex(text) if isinstance(text, str) else None
-        except ValueError:
-            raw = None
+        raw = strict_hex(text)
         if raw is None:
             raise InvalidError(f"anchor_inclusion: checkpoint {i} is not hex")
         cp = _signed_checkpoint(raw, checkpoint_key)
@@ -1168,8 +1175,11 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> None:
             if cp.log_id != previous.log_id or cp.tree_size <= previous.tree_size:
                 raise InvalidError(f"anchor_inclusion: checkpoint {i} does not extend the log")
             if isinstance(proof, str) and proof:
+                octets = strict_hex(proof)
+                if octets is None:
+                    raise InvalidError(f"anchor_inclusion: consistency proof {i} is not hex")
                 try:
-                    verify_cll_consistency(previous.peaks, cp.peaks, bytes.fromhex(proof))
+                    verify_cll_consistency(previous.peaks, cp.peaks, octets)
                 except (VerificationError, ValueError) as exc:
                     raise InvalidError(f"anchor_inclusion: checkpoint {i}: {exc}") from None
             elif card:

@@ -77,11 +77,15 @@ def _b64(data: bytes) -> str:
 
 class FileStore(MemoryStore):
     """Two append-only JSONL journals in ``directory``: ``records.jsonl`` and
-    ``checkpoints.jsonl``. A torn final line left by a crash is truncated; a
-    malformed complete line is corruption."""
+    ``checkpoints.jsonl``, readable only by their owner. A torn final line left
+    by a crash is truncated; a malformed complete line is corruption. The
+    journals are this package's own format, not Go's ``FileStore``'s: a
+    record line also carries its payloads, and a checkpoint line only its
+    signed statement, from which everything else is read."""
 
     def __init__(self, directory: str | os.PathLike):
         super().__init__()
+        self._broken = False
         root = Path(directory)
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._record_file = self._open(root / "records.jsonl", self._load_record)
@@ -99,7 +103,7 @@ class FileStore(MemoryStore):
 
     @staticmethod
     def _open(path: Path, apply):
-        file = open(path, "a+b")
+        file = os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600), "a+b")
         file.seek(0)
         offset = 0
         for raw in file.read().splitlines(keepends=True):
@@ -115,11 +119,18 @@ class FileStore(MemoryStore):
         file.seek(0, os.SEEK_END)
         return file
 
-    @staticmethod
-    def _append(file, value: dict) -> None:
-        file.write(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n")
-        file.flush()
-        os.fsync(file.fileno())
+    def _append(self, file, value: dict) -> None:
+        # A write that fails part way may or may not have reached the disk, so
+        # the journal takes no further write: reopening it reads what is there.
+        if self._broken:
+            raise CorruptError("an earlier journal write failed; reopen the store")
+        try:
+            file.write(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n")
+            file.flush()
+            os.fsync(file.fileno())
+        except BaseException:
+            self._broken = True
+            raise
 
     def put_record(self, record: StoredRecord) -> None:
         if record.record_id in self._records:

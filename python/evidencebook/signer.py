@@ -39,11 +39,15 @@ class Ed25519Signer:
 
     def __init__(self, private_key: Ed25519PrivateKey | bytes):
         if isinstance(private_key, (bytes, bytearray)):
-            if len(private_key) != 32:
-                raise InvalidError("an Ed25519 seed is 32 bytes")
-            private_key = Ed25519PrivateKey.from_private_bytes(bytes(private_key))
+            # A 32-byte seed, or Go's 64-byte ed25519.PrivateKey (the seed, then the public key).
+            raw = bytes(private_key)
+            if len(raw) not in (32, 64):
+                raise InvalidError("an Ed25519 private key is a 32-byte seed or 64 bytes")
+            private_key = Ed25519PrivateKey.from_private_bytes(raw[:32])
+            if len(raw) == 64 and raw[32:] != private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw):
+                raise InvalidError("the 64-byte private key's public half is not its seed's")
         if not isinstance(private_key, Ed25519PrivateKey):
-            raise InvalidError("an Ed25519Signer takes an Ed25519 private key or its 32-byte seed")
+            raise InvalidError("an Ed25519Signer takes an Ed25519 private key, its seed or its 64-byte form")
         self._key = private_key
         self._public = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 

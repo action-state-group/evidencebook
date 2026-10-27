@@ -32,6 +32,7 @@ from .signer import Signer, key_id, sign1
 
 SUBSTRATE_KIND_CLL = "cll"
 _COSE_ALG_EDDSA = -8
+_COSE_SIGN1_TAG = 18
 
 
 @dataclass(frozen=True)
@@ -62,8 +63,41 @@ class Checkpoint:
         return hashlib.sha256(self.statement).hexdigest()
 
 
+def _wire_profile(statement: bytes) -> str:
+    """The checks Go's ``checkpoint.ParseRecord`` makes beyond the signature:
+    a canonical COSE_Sign1 with an empty unprotected header and exactly the
+    protected alg (EdDSA), content type, 32-byte kid and CWT claims holding
+    exactly iss and sub, sub being ``<iss>#<log_size>``. Empty when it conforms."""
+    try:
+        message = cbor2.loads(statement)
+        protected_bstr, unprotected, payload, signature = message.value
+        protected = cbor2.loads(protected_bstr)
+        claims = cbor2.loads(payload)
+    except Exception:  # noqa: BLE001 -- any malformed statement is refused
+        return "not a COSE_Sign1 statement"
+    if not isinstance(message, cbor2.CBORTag) or message.tag != _COSE_SIGN1_TAG:
+        return "not a COSE_Sign1 statement"
+    if cbor2.dumps(message) != statement:
+        return "the statement is not canonical"
+    if unprotected != {} or not isinstance(protected, dict) or set(protected) != {1, 3, 4, 15}:
+        return "the COSE headers are not the checkpoint profile's"
+    cwt, kid = protected[15], protected[4]
+    if protected[1] != _COSE_ALG_EDDSA or protected[3] != CLL_CHECKPOINT_CONTENT_TYPE or \
+            not isinstance(kid, bytes) or len(kid) != 32:
+        return "the COSE headers are not the checkpoint profile's"
+    if not isinstance(claims, dict) or type(claims.get("log_size")) is not int or claims["log_size"] <= 0:
+        return "the checkpoint covers no log"
+    if not isinstance(cwt, dict) or set(cwt) != {1, 2} or not isinstance(cwt[1], str) or \
+            not isinstance(claims, dict) or cwt[2] != f"{cwt[1]}#{claims.get('log_size')}":
+        return "the CWT claims are not the checkpoint profile's"
+    return ""
+
+
 def read_checkpoint(statement: bytes) -> Checkpoint:
     """Parse and signature-check a CLL checkpoint statement (under its own kid)."""
+    why = _wire_profile(statement)
+    if why:
+        raise InvalidError(f"checkpoint statement: {why}")
     result = verify_checkpoint_cose_offline(statement)
     if not result.ok or result.decoded is None:
         raise InvalidError(f"checkpoint statement: {'; '.join(result.errors)}")
