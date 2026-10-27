@@ -7,17 +7,13 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook`](https://pkg.go.dev/github.com/action-state-group/evidencebook)
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
-The Examples for paths 0, 1 and 3 are in
-[`example_guide_test.go`](../example_guide_test.go). They use only API that
-v0.8.0 has, but they were added after it, so pkg.go.dev shows them from the
-next tagged release; until then, read them in the file or run them from a
+Every Example below renders there with its output, from v0.8.1 for the root
+module and `report/v0.1.0` for the report module. To run them from a
 checkout:
 
 ```bash
 go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond' -v .
 ```
-
-The path 2 Examples are in `report/v0.1.0` and render on pkg.go.dev now.
 
 Every Example reads a corpus file from its module's `testdata/` by its path
 and runs under `go test` in CI, so the guide, the CI run and the vectors are
@@ -29,7 +25,7 @@ the same files.
 Requires Go 1.27 or newer.
 
 ```bash
-go get github.com/action-state-group/evidencebook@v0.8.0
+go get github.com/action-state-group/evidencebook@v0.8.1
 ```
 
 The report builder is its own module, so the root module does not depend on
@@ -50,7 +46,8 @@ go get github.com/action-state-group/evidencebook/report@v0.1.0
 | verify | `Book.RecordResponse` checks the reply under the responder's pinned keys (`ResponderKeys`) and records the outcome: an artifact, a signed refusal, or a reply that failed verification. `Book.RecordAbsence` records that no reply came in the window |
 | doctor --probe | `Book.Doctor` lists what your node would emit: what is self-attested, unwitnessed, `NOT_CHECKED` or unsupported. With `DoctorOptions.Probe` it asks your own responder as a stranger and compares the answers with the advertised policy. It seals nothing |
 
-Example: [`Example_joinTheLoop`](../example_guide_test.go). Bob asks Alice for the request draft's vector
+Example: [`Example (JoinTheLoop)`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-package-JoinTheLoop)
+(`example_guide_test.go`). Bob asks Alice for the request draft's vector
 `pos-derivation-history-card`, verifies her answer, and Alice runs the doctor
 with a probe.
 
@@ -84,7 +81,8 @@ What this module does is seal the Result an evaluator produced:
 `evidence_result` record about the contract it reports, and makes sure a
 checkpoint covers it, so a bundle can be built on it at once.
 
-Example: [`ExampleBook_SealResult`](../example_guide_test.go). It seals the expected Result of the Deal Reconcile
+Example: [`Book.SealResult`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-Book.SealResult)
+(`example_guide_test.go`). It seals the expected Result of the Deal Reconcile
 Contract's vector `pair-matched`.
 
 ## Path 2: build a Report
@@ -122,7 +120,8 @@ in a capsulectl-book release.
 | a History for one recipient | `Book.RegisterDerivation` registers a derivation definition; its identifier binds the document alone, and only its recipient is answered |
 | carriage | `Book.A2A` and `Book.MCP` carry the same Artifact, byte for byte |
 
-Example: [`ExampleBook_Respond`](../example_guide_test.go). It answers every malformed case of the request
+Example: [`Book.Respond`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-Book.Respond)
+(`example_guide_test.go`). It answers every malformed case of the request
 draft's corpus with the reason the vector states, then registers the
 derivation vectors' definition `for-alice` and serves it to its recipient
 only.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.1 (2026-10-27)
 
 ### Added: the SDK guide (evidencebook#129)
 
@@ -12,9 +12,13 @@
   links capsule-engine and evidencebook-skills for them.
 - `VECTORS.md` lists this repository's vector sets with their owning spec
   and pinned commit.
+- The install lines in the README and the guide name v0.8.1.
 
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
+- Released separately: the module as `report/v0.1.0`, and the
+  capsulectl-book change in the last item with the next `capsulectl/v*`.
+  Neither is part of this module's v0.8.1.
 - `github.com/action-state-group/evidencebook/report`, a new nested module, renders a verified
   Evidence Bundle rooted at a sealed Evidence Result v0 into one offline HTML
   page: `Build(bundle, View{Card, Presentation, Draft})` verifies the bundle,
