@@ -38,6 +38,11 @@ func reportCheckCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
+		// A file that is not a report page is refused before the book is
+		// opened.
+		if _, e = report.InspectPage(page); e != nil {
+			return refused(e)
+		}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
 			return e
@@ -66,7 +71,7 @@ func reportCheckCommand() *cobra.Command {
 }
 
 // sealReport opens the profile's book and seals a written page.
-func sealReport(ctx context.Context, p cli.Profile, page *report.Page) (sealed report.Seal, err error) {
+func sealReport(ctx context.Context, p cli.Profile, page []byte) (sealed report.Seal, err error) {
 	opened, err := openBook(ctx, p, false)
 	if err != nil {
 		return report.Seal{}, err

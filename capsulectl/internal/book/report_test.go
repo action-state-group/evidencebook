@@ -387,11 +387,11 @@ func TestReportBuildRefusesABadCardOrPresentation(t *testing.T) {
 		block any
 		want  string
 	}{
-		"an extra member":   {map[string]any{"title": "x", "badge": "verified"}, "only producer_display_name, logo_data_url and title"},
-		"a remote logo":     {map[string]any{"logo_data_url": "https://example.invalid/logo.png"}, "must be an inline data:image/ URL"},
-		"a data: non-image": {map[string]any{"logo_data_url": "data:text/html,hi"}, "must be an inline data:image/ URL"},
-		"nothing named":     {map[string]any{}, "names none of"},
-		"a non-string":      {map[string]any{"title": 7}, "only producer_display_name, logo_data_url and title"},
+		"an extra member":   {map[string]any{"title": "x", "badge": "verified"}, "--presentation must be a JSON object with only producer_display_name, logo_data_url and title"},
+		"a remote logo":     {map[string]any{"logo_data_url": "https://example.invalid/logo.png"}, "--presentation logo_data_url must be an inline data:image/ URL"},
+		"a data: non-image": {map[string]any{"logo_data_url": "data:text/html,hi"}, "--presentation logo_data_url must be an inline data:image/ URL"},
+		"nothing named":     {map[string]any{}, "--presentation names none of"},
+		"a non-string":      {map[string]any{"title": 7}, "--presentation must be a JSON object with only producer_display_name, logo_data_url and title"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

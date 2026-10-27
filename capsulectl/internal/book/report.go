@@ -26,9 +26,10 @@ func readPresentation(path string) (*report.Presentation, error) {
 }
 
 // refused gives a report package refusal the input class (exit 2), naming
-// the flag its subject came from; any other error is returned as it is.
+// the flag its subject came from; any other error, or one that already has
+// a class (a bundle that does not decode), is returned as it is.
 func refused(err error) error {
-	if !errors.Is(err, report.ErrRefused) {
+	if !errors.Is(err, report.ErrRefused) || errors.Is(err, cli.ErrInput) {
 		return err
 	}
 	message := err.Error()
@@ -128,7 +129,7 @@ func reportCommands() *cobra.Command {
 		if sealProfile != nil {
 			// The page is on disk from here on: a failure sealing it still
 			// reports the page, so the caller never loses it.
-			sealed, err := sealReport(c.Context(), *sealProfile, page)
+			sealed, err := sealReport(c.Context(), *sealProfile, page.HTML)
 			result.PageSeal = &sealed
 			if err != nil {
 				return errors.Join(err, cli.Output(c, result))

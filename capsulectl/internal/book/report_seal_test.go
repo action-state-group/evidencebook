@@ -66,7 +66,7 @@ func TestReportSealMatchesTheUntouchedPage(t *testing.T) {
 		assert.Equal(t, report.RecordTypePageSeal, record.Header.RecordType)
 		var statement map[string]string
 		require.NoError(t, json.Unmarshal(record.Header.Statement, &statement))
-		assert.Equal(t, map[string]string{"page_digest": report.Digest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root}, statement)
+		assert.Equal(t, map[string]string{"page_digest": report.PageDigest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root}, statement)
 	})
 
 	result, err := checkPageFile(t, p, page)
@@ -144,7 +144,7 @@ func TestReportCheckWithASealNoCheckpointCoversYet(t *testing.T) {
 	// The seal as an interrupted `--seal` leaves it: appended, not yet
 	// checkpointed.
 	withBook(t, p, func(book *evidencebook.Book) {
-		body, err := json.Marshal(map[string]string{"page_digest": report.Digest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root})
+		body, err := json.Marshal(map[string]string{"page_digest": report.PageDigest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root})
 		require.NoError(t, err)
 		_, err = book.Append(t.Context(), evidencebook.Entry{RecordType: report.RecordTypePageSeal, EpistemicType: evidencebook.ProducerClaim, SubjectRef: built.BundleDigest, Statement: body})
 		require.NoError(t, err)
@@ -162,6 +162,14 @@ func TestReportCheckRefusesAFileThatIsNotAReportPage(t *testing.T) {
 	p, bundle := sealedBookBundle(t)
 	_, err := checkPageFile(t, p, bundle)
 	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Equal(t, 2, cli.ExitCode(err))
+	assert.Contains(t, cli.SafeError(err), "--page is not a report page: it embeds no Evidence Bundle")
+
+	_, page, err := runReportBuild(t, bundle, "--card", "outcome")
+	require.NoError(t, err)
+	_, err = checkPageFile(t, p, editedPage(t, page, "window.__BUNDLE__ = {", "window.__BUNDLE__ = ["))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "--page's embedded Evidence Bundle does not decode")
 }
 
 func TestReportBuildSealNeedsABookProfile(t *testing.T) {
