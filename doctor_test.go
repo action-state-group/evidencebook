@@ -193,6 +193,8 @@ func TestDoctorServedAnswerDisagreesWithPolicy(t *testing.T) {
 		}
 	})
 
+	// With no checkpoint the refusal is what the stranger view predicts:
+	// the probe checked nothing, which is not a mismatch.
 	t.Run("no checkpoint", func(t *testing.T) {
 		book := newFixture(t, "unanchored", 6).open(t)
 		mustAppend(t, book, observation("deal-1", "a"))
@@ -203,7 +205,7 @@ func TestDoctorServedAnswerDisagreesWithPolicy(t *testing.T) {
 		if got := findingOf(t, findings, DoctorCheckpoint); got.State != DoctorStateMissing {
 			t.Errorf("checkpoint = %+v", got)
 		}
-		if got := findingOf(t, findings, DoctorProbeCheckpoints); got.State != DoctorStateMismatch || !strings.Contains(got.Detail, "refused coverage_unsatisfiable") {
+		if got := findingOf(t, findings, DoctorProbeCheckpoints); got.State != DoctorStateNotChecked || !strings.Contains(got.Detail, "refused coverage_unsatisfiable: there is no checkpoint") {
 			t.Errorf("probe = %+v", got)
 		}
 		if cps, _ := book.Checkpoints(ctx); len(cps) != 0 {
@@ -280,7 +282,7 @@ func TestDoctorListsReceivedNotChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := findingOf(t, findings, DoctorNotChecked); f.State != DoctorStateNotChecked || len(f.Records) != 0 {
+	if f := findingOf(t, findings, DoctorNotChecked); f.State != DoctorStateNone || len(f.Records) != 0 {
 		t.Errorf("not_checked with no answers = %+v", f)
 	}
 	statement, _ := json.Marshal(ResponseStatement{RequestDigest: strings.Repeat("a", 64), Outcome: OutcomeArtifact, NotChecked: []string{"anchor_inclusion"}})
@@ -289,7 +291,7 @@ func TestDoctorListsReceivedNotChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := findingOf(t, findings, DoctorNotChecked)
-	if !slices.Equal(f.Records, []string{response.RecordID}) || !strings.Contains(f.Detail, "anchor_inclusion") {
+	if f.State != DoctorStateNotChecked || !slices.Equal(f.Records, []string{response.RecordID}) || !strings.Contains(f.Detail, "anchor_inclusion") {
 		t.Errorf("not_checked = %+v", f)
 	}
 	if c := findingOf(t, findings, DoctorCheckpoint); !strings.Contains(c.Detail, "rest are under no checkpoint") {

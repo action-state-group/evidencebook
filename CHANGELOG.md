@@ -15,9 +15,12 @@
 - With `DoctorOptions.Probe`, it asks the node's own responder for
   `checkpoints` and then `history_card/1` as a stranger, verifies both under
   the advertised keys, and reports a mismatch when an answer is refused, does
-  not verify, or is not anchored at the latest checkpoint. The identified view
-  is computed from the policy, not asked: `Respond` seals a record for every
-  authenticated requester. Doctor seals nothing and issues no checkpoint.
+  not verify, or is not anchored at the latest checkpoint; with no checkpoint
+  to verify against, a refusal is `NOT_CHECKED`. Both subjects are public
+  under every policy, so a match shows what a stranger is served, not what an
+  identified requester is. The identified view is computed from the policy,
+  not asked: `Respond` seals a record for every authenticated requester.
+  Doctor seals nothing and issues no checkpoint.
 
 ### Fixed
 

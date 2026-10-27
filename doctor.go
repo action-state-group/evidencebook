@@ -35,6 +35,7 @@ const (
 const (
 	DoctorStateSelfAttested = "self_attested"
 	DoctorStateUnbound      = "unbound"
+	DoctorStateNone         = "none"
 	DoctorStatePresent      = "present"
 	DoctorStateMissing      = "missing"
 	DoctorStateWitnessed    = "witnessed"
@@ -96,7 +97,9 @@ type DoctorOptions struct {
 // signing key is bound to a controller; whether sharing is on and whether
 // the policy is in a commitment; and what a stranger and an identified
 // requester would receive. With opts.Probe it asks the node's own responder
-// as a stranger and compares the answers with the advertised policy.
+// as a stranger and compares the answers with the advertised policy. Both
+// subjects it asks are public under every policy, so a match shows what a
+// stranger is served; it does not show what an identified requester is.
 //
 // Doctor seals nothing and never forces a checkpoint. The identified view
 // is computed from the policy, not asked over the wire: Respond seals a
@@ -230,7 +233,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	if len(notChecked) > 0 {
 		findings = append(findings, DoctorFinding{Check: DoctorNotChecked, State: DoctorStateNotChecked, Detail: fmt.Sprintf("%d received answers carry properties this node could not check: %s", len(notChecked), strings.Join(slices.Compact(properties), ", ")), Records: notChecked})
 	} else {
-		findings = append(findings, DoctorFinding{Check: DoctorNotChecked, State: DoctorStateNotChecked, Detail: "no received answer in this book carries an unchecked property"})
+		findings = append(findings, DoctorFinding{Check: DoctorNotChecked, State: DoctorStateNone, Detail: "no received answer in this book carries an unchecked property"})
 	}
 
 	unsupported := "range, correlation and full_history are answered to no one except through a recipient-specific derivation; every derivation other than history_card/1"
@@ -408,7 +411,18 @@ func (t probeTarget) probe(ctx context.Context, send DoctorTransport, check stri
 			return f, err
 		}
 	}
+	// With no checkpoint of this book to verify against, a refusal is what
+	// the stranger view predicts, and the probe checked nothing.
+	var held []Checkpoint
+	if err == nil && st.Outcome != OutcomeArtifact && st.Outcome != OutcomeArtifactFailed {
+		if held, err = t.since(ctx); err != nil {
+			return f, err
+		}
+	}
 	switch {
+	case err == nil && st.Outcome != OutcomeArtifact && st.Outcome != OutcomeArtifactFailed && len(held) == 0:
+		f.State = DoctorStateNotChecked
+		f.Detail = fmt.Sprintf("%s is refused %s: there is no checkpoint to verify against", asked, st.Reason)
 	case err != nil:
 		f.Detail = fmt.Sprintf("the answer to %s does not verify under the advertised responder key: %v", asked, err)
 	case st.Outcome == OutcomeArtifactFailed:
