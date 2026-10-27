@@ -31,9 +31,9 @@ type pageSealStatement struct {
 	ResultRoot   string `json:"result_root"`
 }
 
-// Digest is the SHA-256 of the exact bytes of a page file, as a page seal
+// PageDigest is the SHA-256 of the exact bytes of a page file, as a page seal
 // records it ("sha256:<hex>").
-func Digest(page []byte) string {
+func PageDigest(page []byte) string {
 	sum := sha256.Sum256(page)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
@@ -152,9 +152,11 @@ const (
 	PageNotCovered = "not covered by a checkpoint"
 )
 
-// Check is what CheckPage found. It always gives both answers: whether the
-// page's bytes are the bytes the book sealed (Outcome), and the embedded
-// evidence's own check (Verdict and Refusal), which is kept apart.
+// Check is what CheckPage or InspectPage found. CheckPage gives both
+// answers: whether the page's bytes are the bytes the book sealed (Outcome,
+// RecordID), and the embedded evidence's own check (Verdict and Refusal),
+// which is kept apart. InspectPage gives only the second, and leaves Outcome
+// and RecordID empty.
 type Check struct {
 	PageDigest   string
 	BundleDigest string
@@ -187,7 +189,7 @@ func inspect(page []byte) (Check, error) {
 	if err != nil {
 		return Check{}, refusal("the page's embedded Evidence Bundle has no digest: " + cli.SafeError(err))
 	}
-	out := Check{PageDigest: Digest(page), BundleDigest: bundleDigest, Verdict: "INVALID"}
+	out := Check{PageDigest: PageDigest(page), BundleDigest: bundleDigest, Verdict: "INVALID"}
 	out.root, _ = value["root"].(string)
 	extensions, _ := value["extensions"].(map[string]interface{})
 	card, _ := extensions[cli.CardExtension].(map[string]interface{})

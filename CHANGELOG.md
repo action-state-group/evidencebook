@@ -9,7 +9,9 @@
   page: `Build(bundle, View{Card, Presentation, Draft})` verifies the bundle,
   gates the root (exactly one Result), checks the Result, and renders only
   when `verify --bundle` calls the bundle VALID; otherwise it returns what it
-  found with the page gate's refusal. `Page.Permalink` encodes the same
+  found with the page gate's refusal. `FormPayload`/`FormBook` and
+  `VerificationPass`/`VerificationClosureWithheld` name `Page.Form` and
+  `Page.Verification`. `Page.Permalink` encodes the same
   embedded bundle. Refusals wrap `report.ErrRefused`.
 - `SealPage` seals a page's bytes in a book as one `report_page_seal` record,
   stating only what the page itself carries, and makes sure a checkpoint
@@ -19,10 +21,12 @@
 - This is the code behind `capsulectl book report build` and `report check`
   (#108), moved from `capsulectl/internal/book`; runnable examples render the
   presentation fixtures, now in `report/testdata/presentation`.
-- The root module now requires `capsule-cli` v0.1.0-rc23 and
-  `capsule-viewer/go` (for the Result and page gates and the pinned viewer
-  runtime), and `agent-action-capsule/go` v0.13.1. The `evidencebook` package
-  itself imports nothing new.
+- The root module now requires `capsule-cli` v0.1.0-rc23 (a prerelease) and
+  a `capsule-viewer/go` pseudo-version, for the Result and page gates and the
+  pinned viewer runtime, and `agent-action-capsule/go` v0.13.1. The
+  `evidencebook` package itself imports nothing new, but every consumer of
+  the module gets these in its module graph, with capsule-cli's own
+  requirements (cobra, viper, the MySQL driver) as indirect ones.
 
 ## v0.8.0 (2026-10-27)
 

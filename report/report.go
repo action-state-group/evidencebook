@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package report renders a verified Evidence Bundle rooted at a sealed
-// Evidence Result v0 into one offline HTML page, and seals that page's bytes
-// in an evidence book.
+// Evidence Result v0 into one offline HTML page, and seals that page's
+// digest in an evidence book.
 //
 // Build verifies before it renders: the neutral Evidence Bundle verifier,
 // the root gate (the root carries the one Result the page is built on), the
@@ -12,9 +12,10 @@
 // carry. The page is capsule-viewer's emitter shell around the bundle and
 // capsule-cli's pinned browser runtime; it loads nothing from the network.
 //
-// SealPage seals a page's digest in a book, and CheckPage tells whether a
-// page file is a page the book sealed. `capsulectl book report
-// build` and `report check` are these functions behind flags.
+// SealPage seals a page's digest in a book; InspectPage judges the evidence
+// a page embeds, with no book; and CheckPage also tells whether a page file
+// is a page the book sealed. `capsulectl book report build` and `report
+// check` are these functions behind flags.
 package report
 
 import (
@@ -34,9 +35,11 @@ import (
 	"github.com/action-state-group/evidencebook"
 )
 
-// ErrRefused is the class of every refusal Build, SealPage, InspectPage and
-// CheckPage make about their input: a bundle that does not verify, a root that is not
-// one Result, a view outside the card set, a page that is not a report page.
+// ErrRefused is the class of every refusal this package makes about its
+// input: a bundle that does not decode or verify, a root that is not one
+// Result, a view outside the card set or a bad presentation block, a
+// permalink or seal for a page that cannot have one, a page that is not a
+// report page.
 // The page gate's refusal is not one of them: it carries capsule-cli's own
 // class (cli.ErrPartial for INCOMPLETE, cli.ErrBundleInvalid for INVALID).
 var ErrRefused = errors.New("report: refused")
@@ -125,13 +128,29 @@ type View struct {
 	Draft        bool
 }
 
+// The forms a Result root takes (Page.Form).
+const (
+	// FormPayload: the Result is a disclosed member of the root.
+	FormPayload = "payload"
+	// FormBook: the root's disclosed agent_input is an evidence_result
+	// record header whose statement is the Result.
+	FormBook = "book"
+)
+
+// The labels of a bundle's verification (Page.Verification).
+const (
+	VerificationPass = "pass"
+	// VerificationClosureWithheld: the bundle declares records of its
+	// closure missing; the claims citing them count as unsupported.
+	VerificationClosureWithheld = "graph_closure withheld"
+)
+
 // Page is a built report: what Build established about the bundle, and the
 // page itself. HTML is nil when the bundle verified but the page gate
 // refused it; the rest is still filled in.
 type Page struct {
-	// Root is the Result's record id; Form is "payload" (the Result is a
-	// disclosed member) or "book" (an evidence_result record header whose
-	// statement is the Result); Member is the disclosed member carrying it.
+	// Root is the Result's record id; Form is FormPayload or FormBook;
+	// Member is the disclosed member carrying the Result.
 	Root, Form, Member string
 	Card               string
 	Draft              bool
@@ -143,8 +162,7 @@ type Page struct {
 	// BundleDigest is the digest of the bundle the page embeds, with its
 	// card and header blocks.
 	BundleDigest string
-	// Verification is "pass", or "graph_closure withheld" when the bundle
-	// declares records of its closure missing.
+	// Verification is VerificationPass or VerificationClosureWithheld.
 	Verification string
 	// Verdict is `verify --bundle`'s verdict on the embedded bundle (VALID,
 	// INCOMPLETE or INVALID); UnmetClaims names the claims that kept it
@@ -190,7 +208,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err != nil {
 		return nil, refusef("root %s carries a Result that cannot be rendered: %s", root.id, cli.SafeError(err))
 	}
-	if root.form == "book" {
+	if root.form == FormBook {
 		// The book's own verifier checks the header the record commits and
 		// the checkpoint under which it sits.
 		verified, err := evidencebook.VerifyBundle(bundle)
@@ -295,9 +313,9 @@ func acceptHeldVerification(result aacbundle.VerificationResult) (string, error)
 		}
 	}
 	if graph == "withheld" {
-		return "graph_closure withheld", nil
+		return VerificationClosureWithheld, nil
 	}
-	return "pass", nil
+	return VerificationPass, nil
 }
 
 // The book-log record types whose disclosed header stands for the capsule
@@ -312,7 +330,7 @@ const (
 type resultRoot struct {
 	id       string
 	member   string
-	form     string // payload | book
+	form     string // FormPayload | FormBook
 	document map[string]interface{}
 }
 
@@ -332,10 +350,10 @@ func resultCandidates(id string, members map[string]interface{}, inline bool) []
 			continue
 		}
 		if payload["result_version"] == cli.ResultVersion {
-			found = append(found, resultRoot{id: id, member: member, form: "payload", document: payload})
+			found = append(found, resultRoot{id: id, member: member, form: FormPayload, document: payload})
 		} else if member == "agent_input" && !inline && payload["record_type"] == evidencebook.RecordTypeEvidenceResult {
 			statement, _ := payload["statement"].(map[string]interface{})
-			found = append(found, resultRoot{id: id, member: member, form: "book", document: statement})
+			found = append(found, resultRoot{id: id, member: member, form: FormBook, document: statement})
 		}
 	}
 	return found
