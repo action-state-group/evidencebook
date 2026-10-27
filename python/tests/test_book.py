@@ -617,3 +617,29 @@ def test_a_malformed_stored_header_or_index_root_is_corruption(clock):
                 s.seq, s.record_id, header, s.capsule, s.envelope)
         with pytest.raises(eb.CorruptError):
             book(clock, store=broken)
+
+
+def test_every_checkpoint_claim_is_null_checked_as_go_checks_it(clock):
+    """Each claim set to null, then re-signed: refused, except a first
+    checkpoint's prev_commitment, which Go and cll read as none."""
+    import cbor2
+    from evidencebook._cll import read_checkpoint
+
+    b = book(clock)
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    first = b.checkpoint()
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    second = b.checkpoint()
+    log_key = key("b log")
+    for cp in (first, second):
+        protected, _, payload, _ = cbor2.loads(cp.statement).value
+        claims = cbor2.loads(payload)
+        for name in [*claims, "cadence"]:
+            altered = cbor2.dumps(dict(claims, **{name: None}), canonical=True)
+            to_be_signed = cbor2.dumps(["Signature1", protected, b"", altered])
+            statement = cbor2.dumps(cbor2.CBORTag(18, [protected, {}, altered, log_key.sign(to_be_signed)]))
+            if cp is first and name == "prev_commitment":
+                assert read_checkpoint(statement).prev_size == 0
+                continue
+            with pytest.raises(eb.InvalidError):
+                read_checkpoint(statement)

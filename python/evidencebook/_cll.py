@@ -123,11 +123,15 @@ def _claims_profile(claims: object, payload: bytes) -> str:
         return "the claims are not canonical"
     sizes_ok = all(type(claims[n]) is int and 0 <= claims[n] <= _MAX_UINT64 for n in ("log_size", "prev_size"))
     cadence_ok = "cadence" not in claims or type(claims["cadence"]) is int and 0 < claims["cadence"] <= _MAX_PORTABLE
-    if claims["kind"] != "cll-checkpoint" or not sizes_ok or claims["log_size"] == 0 or not claims["issued_at"] or \
+    issued_ok = isinstance(claims["issued_at"], str) and claims["issued_at"] != ""
+    if claims["kind"] != "cll-checkpoint" or not sizes_ok or claims["log_size"] == 0 or not issued_ok or \
             not cadence_ok:
         return "the claims are not the checkpoint profile's"
+    # Go decodes a null byte string as empty and re-encodes it as null, so a
+    # null prev_commitment reads as none, as an empty one does; a null
+    # commitment is refused, as Go refuses an empty one.
     if not _canonical_commitment(claims["commitment"]) or \
-            claims["prev_commitment"] != b"" and not _canonical_commitment(claims["prev_commitment"]):
+            claims["prev_commitment"] not in (b"", None) and not _canonical_commitment(claims["prev_commitment"]):
         return "a commitment is not canonical"
     return ""
 
