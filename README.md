@@ -22,8 +22,15 @@ Terms Packs (packs): EU AI Act Obligations and Outcomes (draft) are published at
 Requires Go 1.27 or newer.
 
 ```bash
-go get github.com/action-state-group/evidencebook
+go get github.com/action-state-group/evidencebook@v0.8.0
 ```
+
+## Guide
+
+[docs/GUIDE.md](docs/GUIDE.md) walks the SDK as four paths: join the loop,
+seal a Result, build a Report, and serve a History. Each path has a runnable
+`Example` on a corpus vector. [VECTORS.md](VECTORS.md) lists the vector sets
+this repository holds and where each comes from.
 
 ## Use
 
