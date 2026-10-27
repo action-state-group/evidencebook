@@ -7,6 +7,7 @@ nine fraction digits, so comparisons with them run on integer nanoseconds.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from agent_action_capsule.evidence_request import parse_utc
@@ -69,3 +70,28 @@ def truncate_ms(moment: datetime) -> datetime:
 
 def truncate_s(moment: datetime) -> datetime:
     return utc(moment).replace(microsecond=0)
+
+
+_RFC3339 = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?"
+                      r"(Z|[+-][0-9]{2}:[0-9]{2})\Z")
+
+
+def parse_rfc3339_ns(text: object) -> int | None:
+    """Go's ``time.Parse(time.RFC3339Nano, text)`` for a checkpoint's
+    issued_at, as nanoseconds: any offset up to 23:59, any number of fraction
+    digits (truncated to the nanosecond), and an instant in a year Go writes
+    back (1 to 9999 here; Python has no year 0)."""
+    m = _RFC3339.match(text) if isinstance(text, str) else None
+    if m is None:
+        return None
+    zone = m.group(8)
+    hours, minutes = (0, 0) if zone == "Z" else (int(zone[1:3]), int(zone[4:6]))
+    if hours > 23 or minutes > 59:
+        return None
+    offset = (-1 if zone.startswith("-") else 1) * timedelta(hours=hours, minutes=minutes)
+    try:
+        local = datetime(*(int(m.group(i)) for i in range(1, 7)), tzinfo=timezone.utc)
+        instant = local - offset
+    except (ValueError, OverflowError):
+        return None
+    return nanos(instant) + int((m.group(7) or "0")[:9].ljust(9, "0"))

@@ -357,6 +357,14 @@ jobs:
           python evidencebook/test/interop/python-evidencebook/personal_history.py --correlated > "$work/correlated.json"
           go -C evidencebook run ./test/interop/personal-history -correlated > "$work/correlated-go.json"
           cmp "$work/correlated-go.json" "$work/correlated.json"
+      - name: Read every checkpoint rule as Go reads it (the differential checkpoint test)
+        shell: bash
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          python evidencebook/test/interop/python-evidencebook/checkpoint_parity.py cases "$work/cases.json"
+          go -C evidencebook run ./test/interop/checkpoint-parity < "$work/cases.json" > "$work/go.json"
+          python evidencebook/test/interop/python-evidencebook/checkpoint_parity.py compare "$work/cases.json" "$work/go.json"
       - name: Answer the profile vectors' requests, verify every reply, and compare with the Go run
         shell: bash
         run: |
