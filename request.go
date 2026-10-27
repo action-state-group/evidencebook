@@ -172,42 +172,9 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 	if err != nil {
 		return Record{}, err
 	}
-	statement := ResponseStatement{RequestDigest: sent.digest, KeyID: keys.Signer, CheckpointKey: keys.Checkpoint}
-	switch {
-	case parsed.Refusal != nil:
-		r := parsed.Refusal
-		if r.RequestDigest != sent.digest || r.KeyID != keys.Signer {
-			return Record{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
-		}
-		if err := r.Verify(); err != nil {
-			return Record{}, err
-		}
-		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
-		if !r.Conforming() {
-			statement.Outcome = OutcomeRefusalNonconforming
-		}
-	case parsed.Envelope != nil:
-		e := parsed.Envelope
-		if e.RequestDigest != sent.digest || e.Responder != keys.Signer {
-			return Record{}, fmt.Errorf("%w: envelope is not for this request under the pinned responder key", ErrInvalid)
-		}
-		body, err := e.SigningBody()
-		if err != nil {
-			return Record{}, err
-		}
-		sig, err := hex.DecodeString(e.Sig)
-		if err != nil || len(sig) != 64 {
-			return Record{}, fmt.Errorf("%w: envelope signature is malformed", ErrInvalid)
-		}
-		if err := evidencerequest.VerifySignature(e.Responder, body, sig); err != nil {
-			return Record{}, err
-		}
-		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest
-		notChecked, err := verifyEnvelopeContent(sent, *e, keys)
-		statement.NotChecked = notChecked
-		if err != nil {
-			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
-		}
+	statement, err := verifyReply(sent, parsed, keys)
+	if err != nil {
+		return Record{}, err
 	}
 	body, err := json.Marshal(statement)
 	if err != nil {
@@ -220,6 +187,51 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 	// the record that observes them keeps them in the artifact store, so
 	// whoever later composes or re-checks the answer reads them from there.
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypeResponse, EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: requestRecordID}}, Statement: body, Payloads: [][]byte{reply.Octets}})
+}
+
+// verifyReply checks a parsed reply against the request it answers under
+// the pinned responder keys. A reply not signed under the pinned signer key
+// for this request's digest is an error; a genuinely signed artifact that
+// fails a check of profile §7.2 is returned as received-and-failed.
+func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys) (ResponseStatement, error) {
+	statement := ResponseStatement{RequestDigest: sent.digest, KeyID: keys.Signer, CheckpointKey: keys.Checkpoint}
+	switch {
+	case parsed.Refusal != nil:
+		r := parsed.Refusal
+		if r.RequestDigest != sent.digest || r.KeyID != keys.Signer {
+			return ResponseStatement{}, fmt.Errorf("%w: refusal is not for this request under the pinned responder key", ErrInvalid)
+		}
+		if err := r.Verify(); err != nil {
+			return ResponseStatement{}, err
+		}
+		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
+		if !r.Conforming() {
+			statement.Outcome = OutcomeRefusalNonconforming
+		}
+	case parsed.Envelope != nil:
+		e := parsed.Envelope
+		if e.RequestDigest != sent.digest || e.Responder != keys.Signer {
+			return ResponseStatement{}, fmt.Errorf("%w: envelope is not for this request under the pinned responder key", ErrInvalid)
+		}
+		body, err := e.SigningBody()
+		if err != nil {
+			return ResponseStatement{}, err
+		}
+		sig, err := hex.DecodeString(e.Sig)
+		if err != nil || len(sig) != 64 {
+			return ResponseStatement{}, fmt.Errorf("%w: envelope signature is malformed", ErrInvalid)
+		}
+		if err := evidencerequest.VerifySignature(e.Responder, body, sig); err != nil {
+			return ResponseStatement{}, err
+		}
+		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest
+		notChecked, err := verifyEnvelopeContent(sent, *e, keys)
+		statement.NotChecked = notChecked
+		if err != nil {
+			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
+		}
+	}
+	return statement, nil
 }
 
 // verifyEnvelopeContent runs the checks of profile §7.3 that follow the
