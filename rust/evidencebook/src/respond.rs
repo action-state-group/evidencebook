@@ -649,6 +649,39 @@ impl<'de> serde::Deserialize<'de> for NoDuplicates {
     }
 }
 
+/// The members the `evidence-request` reader would check after the coverage
+/// count, checked here for a request whose coverage count already failed: the
+/// `profile` is text, and a `derivation` is text of a registered form.
+fn members_well_formed(octets: &[u8], binding: Binding) -> bool {
+    if matches!(named_profile(octets, binding), NamedProfile::NotText) {
+        return false;
+    }
+    let derivation = match binding {
+        Binding::Json => serde_json::from_slice::<Value>(octets)
+            .ok()
+            .and_then(|v| v.get("derivation").cloned())
+            .map(|d| match d {
+                Value::String(s) => Some(s),
+                _ => None,
+            }),
+        Binding::Cbor => match ciborium::from_reader(octets) {
+            Ok(ciborium::Value::Map(entries)) => entries
+                .into_iter()
+                .find(|(k, _)| matches!(k, ciborium::Value::Text(k) if k == "derivation"))
+                .map(|(_, v)| match v {
+                    ciborium::Value::Text(s) => Some(s),
+                    _ => None,
+                }),
+            _ => None,
+        },
+    };
+    match derivation {
+        None => true,
+        Some(None) => false,
+        Some(Some(text)) => crate::ask::derivation_text_is_well_formed(&text),
+    }
+}
+
 type Refused = (Reason, Option<&'static str>);
 
 /// Read request octets (profile §6.1 steps 1 to 5).
@@ -662,7 +695,17 @@ fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
         }
         Binding::Cbor => request::parse_cbor(octets),
     };
-    let req = parsed.map_err(|e| (e.reason(), None))?;
+    let req = match parsed {
+        Ok(req) => req,
+        // Go checks every member's type before the coverage count, so a
+        // request that is also malformed in another member is malformed.
+        Err(request::RequestError::CoverageUnsatisfiable)
+            if !members_well_formed(octets, binding) =>
+        {
+            return Err((Reason::RequestMalformed, None))
+        }
+        Err(e) => return Err((e.reason(), None)),
+    };
     if !crate::ask::derivation_is_well_formed(&req) {
         return Err((Reason::RequestMalformed, None));
     }
@@ -819,15 +862,17 @@ impl<'a> View<'a> {
             let header = record.as_ref().and_then(|r| book.header_of(r));
             // A record whose type cannot be read cannot be known servable:
             // serving it could hand out the responder's own bookkeeping.
-            if header.is_none() {
-                return Err(RespondError::Invalid(format!(
-                    "the book holds no header for the record at leaf {leaf}; a responder needs RecordSource::header_of"
-                )));
-            }
-            let kind = header
+            let kind = match header
                 .as_ref()
                 .and_then(|h| h.get("record_type").and_then(Value::as_str))
-                .unwrap_or("");
+            {
+                Some(kind) => kind,
+                None => {
+                    return Err(RespondError::Invalid(format!(
+                        "the book holds no record_type for the record at leaf {leaf}; a responder needs RecordSource::header_of"
+                    )))
+                }
+            };
             // The responder's own bookkeeping of who asked and what it
             // disclosed is never served, so one requester's asking or
             // receiving can never be read by another (NFR-2, NFR-4).

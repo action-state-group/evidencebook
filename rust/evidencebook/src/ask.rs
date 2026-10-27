@@ -217,16 +217,22 @@ fn parse_request(bytes: &[u8]) -> Result<evidence_request::request::Request, Str
 pub(crate) fn derivation_is_well_formed(req: &evidence_request::request::Request) -> bool {
     use evidence_request::request::Derivation;
     match &req.derivation {
-        Some(Derivation::Token(t)) => t.split_once('/').is_some_and(|(name, version)| {
+        Some(Derivation::Token(t)) => derivation_text_is_well_formed(t),
+        _ => true,
+    }
+}
+
+/// [`derivation_is_well_formed`] for the member's text: a token or a digest.
+pub(crate) fn derivation_text_is_well_formed(text: &str) -> bool {
+    crate::record::is_digest(text)
+        || text.split_once('/').is_some_and(|(name, version)| {
             !name.is_empty()
                 && name
                     .bytes()
                     .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
                 && !version.is_empty()
                 && version.bytes().all(|b| b.is_ascii_digit())
-        }),
-        _ => true,
-    }
+        })
 }
 
 /// A request re-read from its committed record.

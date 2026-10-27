@@ -30,6 +30,7 @@ struct Mem {
     records: Vec<(Record, Map<String, Value>)>,
     ticks: i64,
     headerless: bool,
+    typeless: bool,
     _dir: tempfile::TempDir,
 }
 
@@ -46,6 +47,7 @@ impl Mem {
             records: Vec::new(),
             ticks: 0,
             headerless: false,
+            typeless: false,
             _dir: dir,
         }
     }
@@ -137,6 +139,9 @@ impl RecordSource for Mem {
     fn header_of(&self, record: &Record) -> Option<Map<String, Value>> {
         if self.headerless {
             return None;
+        }
+        if self.typeless {
+            return Some(Map::new());
         }
         self.records
             .get(record.leaf_index as usize)
@@ -814,4 +819,48 @@ fn an_unreadable_clock_is_an_error() {
         policy: SharePolicy::default(),
     };
     assert!(respond(&mut b, &responder, b"{}", Binding::Json, &opts).is_err());
+}
+
+#[test]
+fn a_header_without_a_record_type_is_an_error_too() {
+    let (mut b, ids) = book();
+    b.typeless = true;
+    let policy = ResponderPolicy::default();
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+    };
+    let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
+    let opts = RespondOptions {
+        authenticated_requester: Some("alice"),
+        policy: SharePolicy::default(),
+    };
+    assert!(respond(&mut b, &responder, &request, Binding::Json, &opts).is_err());
+}
+
+#[test]
+fn a_bad_member_wins_over_a_bad_coverage_count() {
+    let (mut b, _) = book();
+    let policy = ResponderPolicy::default();
+    for (extra, want) in [
+        (r#","profile":7"#, "request_malformed"),
+        (r#","derivation":"Foo/1""#, "request_malformed"),
+        (r#","derivation":7"#, "request_malformed"),
+        ("", "coverage_unsatisfiable"),
+        (
+            r#","derivation":"history_card/1""#,
+            "coverage_unsatisfiable",
+        ),
+    ] {
+        // No coverage member at all.
+        let request = format!(r#"{{"subject":{{"checkpoints":null}}{extra}}}"#);
+        assert_eq!(
+            respond_raw(&mut b, &policy, request.as_bytes(), Some("alice"))["reason"],
+            want,
+            "{extra}"
+        );
+    }
 }
