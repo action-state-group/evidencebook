@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -41,6 +43,31 @@ func ExampleBuild() {
 	// form: payload agent_input
 	// claims: 32 unsupported: 0
 	// same bytes as the committed page: true
+}
+
+// A host's wording pack is laid over the viewer's own words, and the
+// contract report is selected for the Result. The pack is bound to its
+// bytes by its SHA-256.
+func ExampleBuild_wording() {
+	bundle, err := os.ReadFile("testdata/presentation/4-monthly-outcome/bundle.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	pack := `{"wording_pack_version":"aac.wording-pack/v0","id":"example.host/v0","locale":"en","entries":{"page.title":"Monthly outcomes"}}`
+	sum := sha256.Sum256([]byte(pack))
+	page, err := report.Build(bundle, report.View{
+		Card:           "outcome",
+		Wording:        &report.Wording{Pack: pack, SHA256: hex.EncodeToString(sum[:])},
+		ContractReport: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("verdict:", page.Verdict)
+	fmt.Println("titled by the pack:", bytes.Contains(page.HTML, []byte("<title>Monthly outcomes</title>")))
+	// Output:
+	// verdict: VALID
+	// titled by the pack: true
 }
 
 // A bundle that verifies but is not VALID by `verify --bundle` gets no page:

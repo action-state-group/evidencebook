@@ -13,6 +13,17 @@
 - `VECTORS.md` lists this repository's vector sets with their owning spec
   and pinned commit.
 
+### Added: a wording pack and the contract report in `report.View` (evidencebook#147)
+
+- `report.View` takes `Wording`, an `aac.wording-pack/v0` host pack with its
+  SHA-256 (`report.Wording`), laid over the viewer's own words, and
+  `ContractReport`, which records the empty `contract-report/v1` block so the
+  viewer draws the contract report. `Build` refuses a pack that does not
+  check, or a different `contract-report/v1` block already in the bundle, as
+  `ErrRefused`. With neither, pages are byte-identical to before; the page
+  now goes through capsule-viewer's `BuildOfflineHTML`, whose default
+  settings write the same page.
+
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
 - `github.com/action-state-group/evidencebook/report`, a new nested module, renders a verified

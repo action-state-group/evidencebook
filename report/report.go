@@ -37,8 +37,8 @@ import (
 
 // ErrRefused is the class of every refusal this package makes about its
 // input: a bundle that does not decode or verify, a root that is not one
-// Result, a view outside the card set or a bad presentation block, a
-// permalink or seal for a page that cannot have one, a page that is not a
+// Result, a view outside the card set or with a bad presentation block or
+// wording pack, a permalink or seal for a page that cannot have one, a page that is not a
 // report page.
 // The page gate's refusal is not one of them: it carries capsule-cli's own
 // class (cli.ErrPartial for INCOMPLETE, cli.ErrBundleInvalid for INVALID).
@@ -119,14 +119,39 @@ func (p Presentation) block() map[string]interface{} {
 	return out
 }
 
-// View is how the one Result is shown: the card, an optional header, and
-// whether the page is a draft. A draft page is marked so in its
+// View is how the one Result is shown: the card, an optional header,
+// whether the page is a draft, an optional wording pack, and whether the
+// page is the contract report. A draft page is marked so in its
 // report-card/v1 block, gets no permalink and is never sealed.
 type View struct {
 	Card         string
 	Presentation *Presentation
 	Draft        bool
+	// Wording is a host wording pack laid over the viewer's own base pack:
+	// its entries replace the base's for the same keys, and the entries the
+	// viewer locks stay locked. A host with words of its own and a pack's
+	// words combines them into this one pack. Its page.title, if any, is the
+	// page title.
+	Wording *Wording
+	// ContractReport selects the contract report (AAC
+	// spec/contract-report-v1.md): the page's bundle carries the empty
+	// contract-report/v1 block, which the viewer's contract-report module
+	// resolves on. A Result with no grouping data for the card draws the
+	// generic Result page there, listing every claim.
+	ContractReport bool
 }
+
+// Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
+// text and the lowercase hex SHA-256 of its UTF-8 bytes (wording_sha256).
+// Build checks the one against the other, and the pack's shape.
+type Wording struct {
+	Pack   string
+	SHA256 string
+}
+
+// contractReportExtension is the block that opts a Result root into the
+// contract report; it carries nothing.
+const contractReportExtension = "contract-report/v1"
 
 // The forms a Result root takes (Page.Form).
 const (
@@ -190,6 +215,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 			return nil, err
 		}
 	}
+	var wording *emitter.Wording
+	if view.Wording != nil {
+		wording = &emitter.Wording{Pack: view.Wording.Pack, SHA256: view.Wording.SHA256}
+		if _, err := emitter.CheckWordingPack(*wording); err != nil {
+			return nil, refusal("wording: " + err.Error())
+		}
+	}
 	value, err := cli.DecodeBundleJSON(bundle)
 	if err != nil {
 		return nil, refusedBy{err}
@@ -235,6 +267,11 @@ func Build(bundle []byte, view View) (*Page, error) {
 			return nil, err
 		}
 	}
+	if view.ContractReport {
+		if err = setExtension(value, contractReportExtension, map[string]interface{}{}); err != nil {
+			return nil, err
+		}
+	}
 	digest, err := aacbundle.BundleDigest(value)
 	if err != nil {
 		return nil, err
@@ -262,7 +299,9 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err := cli.PageGate(value); err != nil {
 		return page, err
 	}
-	html, err := emitter.EmitEvidenceGraphHTML(value, cli.EvidenceGraphIIFE)
+	// With no wording, BuildOfflineHTML's default settings write exactly
+	// EmitEvidenceGraphHTML's page.
+	html, err := emitter.BuildOfflineHTML(value, cli.EvidenceGraphIIFE, emitter.OfflineOptions{Audience: "*", Wording: wording})
 	if err != nil {
 		return nil, err
 	}

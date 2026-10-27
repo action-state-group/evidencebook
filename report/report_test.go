@@ -3,6 +3,8 @@
 package report
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -394,4 +396,75 @@ func TestUnsupportedClaimsReadsAnOwnCapsulesSubject(t *testing.T) {
 		"disclosures": wrapped["disclosures"],
 	}
 	assert.Equal(t, 1, unsupportedClaims(posing, claims), "an own capsule's payload is not read as a header")
+}
+
+// hostWording is a host pack that sets the page title, with its digest.
+func hostWording(t *testing.T) *Wording {
+	t.Helper()
+	pack := `{"wording_pack_version":"aac.wording-pack/v0","id":"example.host/v0","locale":"en","entries":{"page.title":"Monthly outcomes"}}`
+	return &Wording{Pack: pack, SHA256: hostWordingDigest(pack)}
+}
+
+// A wording pack reaches the runtime, bound to its digest, and its
+// page.title is the page title; the contract report is selected by the
+// empty contract-report/v1 block the embedded bundle carries.
+func TestBuildCarriesAWordingPackAndTheContractReport(t *testing.T) {
+	raw := mustRead(t, filepath.Join(presentationDir, "4-monthly-outcome", "bundle.json"))
+	wording := hostWording(t)
+	page, err := Build(raw, View{Card: "outcome", Wording: wording, ContractReport: true})
+	require.NoError(t, err)
+	assert.Equal(t, "VALID", page.Verdict)
+	html := string(page.HTML)
+	assert.Contains(t, html, "<title>Monthly outcomes</title>")
+	options, err := canonical.JCS(map[string]interface{}{"audience": "*", "format": "html", "wording": map[string]interface{}{"pack": wording.Pack, "sha256": wording.SHA256}})
+	require.NoError(t, err)
+	assert.Contains(t, html, `renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, `+strings.NewReplacer("<", `\u003c`, ">", `\u003e`, "&", `\u0026`).Replace(string(options))+`);`)
+	embedded, err := embeddedBundle(page.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{}, embedded["extensions"].(map[string]interface{})[contractReportExtension])
+
+	// Neither is required, and each changes the page on its own.
+	plain, err := Build(raw, View{Card: "outcome"})
+	require.NoError(t, err)
+	assert.Equal(t, string(mustRead(t, filepath.Join(presentationDir, "4-monthly-outcome", "page.html"))), string(plain.HTML))
+	worded, err := Build(raw, View{Card: "outcome", Wording: wording})
+	require.NoError(t, err)
+	assert.NotEqual(t, plain.HTML, worded.HTML)
+	assert.Equal(t, plain.BundleDigest, worded.BundleDigest, "a wording pack changes the page, not the bundle it embeds")
+	contract, err := Build(raw, View{Card: "outcome", ContractReport: true})
+	require.NoError(t, err)
+	assert.NotEqual(t, plain.BundleDigest, contract.BundleDigest, "the contract report is recorded in the bundle")
+
+	// The page with the wording pack is sealed and checked like any other.
+	book := newBook(t)
+	_, err = SealPage(t.Context(), book, page.HTML)
+	require.NoError(t, err)
+	check, err := CheckPage(t.Context(), book, page.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, PageMatch, check.Outcome)
+}
+
+func TestBuildRefusesABadWordingPackOrAnotherContractReportBlock(t *testing.T) {
+	raw := mustRead(t, bookFormBundle)
+	good := hostWording(t)
+	for name, wording := range map[string]*Wording{
+		"a digest of other bytes": {Pack: good.Pack, SHA256: strings.Repeat("0", 64)},
+		"not a digest":            {Pack: good.Pack, SHA256: "sha256:abc"},
+		"not a wording pack":      {Pack: `{"entries":{}}`, SHA256: hostWordingDigest(`{"entries":{}}`)},
+	} {
+		_, err := Build(raw, View{Card: "outcome", Wording: wording})
+		require.ErrorIs(t, err, ErrRefused, name)
+		assert.Contains(t, err.Error(), "wording: ", name)
+	}
+	other := edited(t, raw, func(value map[string]interface{}) {
+		value["extensions"].(map[string]interface{})[contractReportExtension] = map[string]interface{}{"grouping": "lines"}
+	})
+	_, err := Build(other, View{Card: "outcome", ContractReport: true})
+	require.ErrorIs(t, err, ErrRefused)
+	assert.Contains(t, err.Error(), "already carries a different contract-report/v1 block")
+}
+
+func hostWordingDigest(pack string) string {
+	sum := sha256.Sum256([]byte(pack))
+	return hex.EncodeToString(sum[:])
 }
