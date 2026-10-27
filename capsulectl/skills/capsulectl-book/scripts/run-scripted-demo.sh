@@ -98,7 +98,7 @@ assert_no_record() { # BEFORE_OWN BEFORE_PEER VERB
 
 echo "== 1/6 request + respond (each a signed book record; consequential) ==" >&2
 cat >"$work/evidence-request.json" <<'EOF'
-{"subject":{"full_history":null},"coverage":{"min_freshness":1}}
+{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}
 EOF
 "$bin" book request --profile "$profile" --request "$work/evidence-request.json" --responder "$peer" \
   --output "$work/request.sent" >"$work/request-result.json"
@@ -108,7 +108,7 @@ request_record=$(jq -r .record_id "$work/request-result.json")
   --output "$work/response.json" >"$work/respond-result.json"
 record_of "$work/respond-result.json"
 jq -e '.outcome=="artifact"' "$work/respond-result.json" >/dev/null || {
-  echo "FAIL: an identified requester asking for full history under the default policy should get an artifact" >&2; exit 1; }
+  echo "FAIL: an identified requester asking for the checkpoints should get an artifact" >&2; exit 1; }
 "$bin" book request --profile "$profile" --for "$(jq -r .record_id "$work/request-result.json")" \
   --response "$work/response.json" --responder-key "$peer_public_key" \
   --responder-checkpoint-key "$peer_checkpoint_key" >"$work/response-recorded.json"

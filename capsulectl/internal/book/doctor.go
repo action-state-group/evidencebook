@@ -19,7 +19,7 @@ import (
 // responder address, and a stranger's request is the one Respond never
 // seals or checkpoints for.
 func doctorCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "doctor", Short: "List what this book shows about itself: self-attested, unwitnessed, NOT_CHECKED, unsupported, bound, shared (seals nothing)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "doctor", Short: "List what this book shows about itself: self-attested, unwitnessed, NOT_CHECKED, unsupported, controller binding, sharing (a list, never a score; seals nothing)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, e := cli.Selected(c)
 		if e != nil {
 			return e
@@ -48,13 +48,6 @@ func doctorCommand() *cobra.Command {
 			}
 			opts.ControllerBindings = append(opts.ControllerBindings, raw)
 		}
-		deliveries, e := newBookWitnessStore(p).load()
-		if e != nil {
-			return e
-		}
-		for _, w := range deliveries {
-			opts.Witnesses = append(opts.Witnesses, evidencebook.DoctorWitness{Witness: w.WitnessID, TreeSize: w.CheckpointSize, Receipt: w.Receipt != nil})
-		}
 		// The keys the probe verifies under are the profile's own, which
 		// this node hands a requester: a book whose served checkpoints are
 		// signed under another key (a rotation, say) does not verify.
@@ -73,6 +66,15 @@ func doctorCommand() *cobra.Command {
 			return e
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
+		// Read under the book's lock, which makes its holder the witness
+		// store's only writer (bookWitnessStore).
+		deliveries, e := newBookWitnessStore(p).load()
+		if e != nil {
+			return e
+		}
+		for _, w := range deliveries {
+			opts.Witnesses = append(opts.Witnesses, evidencebook.DoctorWitness{Witness: w.WitnessID, TreeSize: w.CheckpointSize, Receipt: w.Receipt != nil})
+		}
 		if probe, _ := c.Flags().GetBool("probe"); probe {
 			opts.Probe = strangerPath(opened.book, opts.Policy)
 		}
@@ -84,7 +86,7 @@ func doctorCommand() *cobra.Command {
 	}}
 	cmd.Flags().String("policy", "", "The share policy this node advertises and answers under, as `book respond --policy` reads it (default: the documented defaults)")
 	cmd.Flags().StringArray("controller-binding", nil, "A controller binding record (controller-binding/0) this node holds; repeatable")
-	cmd.Flags().Bool("probe", false, "Also ask this node's own responder for checkpoints, then history_card/1, as a stranger, and verify both")
+	cmd.Flags().Bool("probe", false, "Also ask for checkpoints, then history_card/1, as a stranger through the in-process `book respond` path (no --requester, not a network endpoint), and verify both; a match shows what a stranger is served, not that the policy is verified")
 	return cmd
 }
 
