@@ -568,6 +568,13 @@ def test_a_checkpoint_outside_the_wire_profile_is_refused(responder):
     protected, _, payload, signature = message.value
     with pytest.raises(eb.InvalidError, match="headers"):
         read_checkpoint(cbor2.dumps(cbor2.CBORTag(18, [protected, {42: 0}, payload, signature])))
+    claims = cbor2.loads(payload)
+    indefinite = b"\xbf" + b"".join(cbor2.dumps(k) + cbor2.dumps(v) for k, v in claims.items()) + b"\xff"
+    for altered in (indefinite, cbor2.dumps(dict(claims, extra=1), canonical=True)):
+        to_be_signed = cbor2.dumps(["Signature1", protected, b"", altered])
+        resigned = cbor2.dumps(cbor2.CBORTag(18, [protected, {}, altered, key("responder log").sign(to_be_signed)]))
+        with pytest.raises(eb.InvalidError, match="claims"):
+            read_checkpoint(resigned)
     assert eb.request.strict_hex("61 62") is None and eb.request.strict_hex("6162") == b"ab"
 
 

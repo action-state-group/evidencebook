@@ -85,11 +85,45 @@ def _wire_profile(statement: bytes) -> str:
     if protected[1] != _COSE_ALG_EDDSA or protected[3] != CLL_CHECKPOINT_CONTENT_TYPE or \
             not isinstance(kid, bytes) or len(kid) != 32:
         return "the COSE headers are not the checkpoint profile's"
-    if not isinstance(claims, dict) or type(claims.get("log_size")) is not int or claims["log_size"] <= 0:
-        return "the checkpoint covers no log"
+    why = _claims_profile(claims, payload)
+    if why:
+        return why
     if not isinstance(cwt, dict) or set(cwt) != {1, 2} or not isinstance(cwt[1], str) or \
             not isinstance(claims, dict) or cwt[2] != f"{cwt[1]}#{claims.get('log_size')}":
         return "the CWT claims are not the checkpoint profile's"
+    return ""
+
+
+_CLAIMS = {"kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at"}
+_OPTIONAL_CLAIMS = {"cadence", "consistency_proof"}
+_PROOF_MEMBERS = {"size_a", "size_b", "witness", "old_peaks", "new_peaks"}
+
+
+def _canonical_commitment(raw: object) -> bool:
+    try:
+        peaks = cbor2.loads(raw)
+        return isinstance(peaks, list) and core.commitment_object(peaks) == raw
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _claims_profile(claims: object, payload: bytes) -> str:
+    """Go's ``decodeWireClaims``: exactly the claims it defines, in canonical
+    CBOR (so no indefinite length and no duplicate), each commitment in its
+    canonical form, a positive log size and cadence."""
+    if not isinstance(claims, dict) or not _CLAIMS <= set(claims) or not set(claims) <= _CLAIMS | _OPTIONAL_CLAIMS:
+        return "the claims are not the checkpoint profile's"
+    proof = claims.get("consistency_proof")
+    if proof is not None and (not isinstance(proof, dict) or set(proof) != _PROOF_MEMBERS):
+        return "the claims are not the checkpoint profile's"
+    if cbor2.dumps(claims, canonical=True) != payload:
+        return "the claims are not canonical"
+    if claims["kind"] != "cll-checkpoint" or type(claims["log_size"]) is not int or claims["log_size"] <= 0 or \
+            not claims["issued_at"] or "cadence" in claims and not (type(claims["cadence"]) is int and claims["cadence"] > 0):
+        return "the claims are not the checkpoint profile's"
+    if not _canonical_commitment(claims["commitment"]) or \
+            claims["prev_commitment"] != b"" and not _canonical_commitment(claims["prev_commitment"]):
+        return "a commitment is not canonical"
     return ""
 
 
