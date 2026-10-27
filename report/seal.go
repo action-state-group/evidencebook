@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
@@ -49,23 +50,29 @@ type Seal struct {
 	AlreadySealed bool `json:"already_sealed,omitempty"`
 }
 
-// SealPage appends a RecordTypePageSeal record for page to book and makes
-// sure a checkpoint covers it, as Book.SealResult does for a Result. A page
-// whose bytes the book already sealed for its bundle finds that record and
-// appends nothing. A draft page, or a Page Build rendered no HTML for, is
-// refused.
+// SealPage appends a RecordTypePageSeal record for page, the exact bytes of
+// a report page, to book and makes sure a checkpoint covers it, as
+// Book.SealResult does for a Result. Everything the record states is read
+// from page itself: its digest, and the digest and Result root of the bundle
+// it embeds. A page whose bytes the book already sealed for its bundle finds
+// that record and appends nothing. A file that is not a report page, a draft
+// page, or a page whose embedded bundle the page gate refuses is refused.
 //
 // A failure after the record was appended returns the record with the
 // error, so the caller never loses its id. It is not atomic: callers that
 // may seal the same page concurrently must serialize.
-func SealPage(ctx context.Context, book *evidencebook.Book, page *Page) (Seal, error) {
-	if page.Draft {
+func SealPage(ctx context.Context, book *evidencebook.Book, page []byte) (Seal, error) {
+	inspected, err := inspect(page)
+	if err != nil {
+		return Seal{}, err
+	}
+	if inspected.Refusal != nil {
+		return Seal{}, errors.Join(refusal("the page's embedded bundle is not one a page may be written for, so it is not sealed"), inspected.Refusal)
+	}
+	if inspected.draft {
 		return Seal{}, refusal("a draft page is never sealed")
 	}
-	if page.HTML == nil {
-		return Seal{}, refusal("no page was rendered, so there is nothing to seal")
-	}
-	st := pageSealStatement{PageDigest: Digest(page.HTML), BundleDigest: page.BundleDigest, ResultRoot: page.Root}
+	st := pageSealStatement{PageDigest: inspected.PageDigest, BundleDigest: inspected.BundleDigest, ResultRoot: inspected.root}
 	body, err := json.Marshal(st)
 	if err != nil {
 		return Seal{}, err
@@ -161,12 +168,17 @@ type Check struct {
 	// Build would render it. A VALID bundle whose report would show fewer
 	// rows than it has keeps its verdict and still carries a refusal.
 	Refusal error
+
+	root  string
+	draft bool
 }
 
-// CheckPage reads the Evidence Bundle page embeds, judges it, and compares
-// the page's bytes with the seals book holds for that bundle. A file that
-// embeds no bundle is refused (ErrRefused).
-func CheckPage(ctx context.Context, book *evidencebook.Book, page []byte) (Check, error) {
+// InspectPage reads the Evidence Bundle page embeds and judges it, with no
+// book: the Check it returns has every answer but Outcome and RecordID. A
+// file that embeds no bundle is refused (ErrRefused).
+func InspectPage(page []byte) (Check, error) { return inspect(page) }
+
+func inspect(page []byte) (Check, error) {
 	value, err := embeddedBundle(page)
 	if err != nil {
 		return Check{}, err
@@ -176,13 +188,27 @@ func CheckPage(ctx context.Context, book *evidencebook.Book, page []byte) (Check
 		return Check{}, refusal("the page's embedded Evidence Bundle has no digest: " + cli.SafeError(err))
 	}
 	out := Check{PageDigest: Digest(page), BundleDigest: bundleDigest, Verdict: "INVALID"}
+	out.root, _ = value["root"].(string)
+	extensions, _ := value["extensions"].(map[string]interface{})
+	card, _ := extensions[cli.CardExtension].(map[string]interface{})
+	out.draft = card["draft"] == true
 	if reread, err := json.Marshal(value); err == nil {
 		if judged, err := cli.DecodeBundleJSON(reread); err == nil {
 			out.Verdict, _ = cli.BundleVerdict(judged, nil)
 		}
 	}
 	out.Refusal = cli.PageGate(value)
-	seals, err := pageSeals(ctx, book, bundleDigest)
+	return out, nil
+}
+
+// CheckPage is InspectPage, then the comparison of the page's bytes with the
+// seals book holds for the bundle it embeds.
+func CheckPage(ctx context.Context, book *evidencebook.Book, page []byte) (Check, error) {
+	out, err := inspect(page)
+	if err != nil {
+		return Check{}, err
+	}
+	seals, err := pageSeals(ctx, book, out.BundleDigest)
 	if err != nil {
 		return Check{}, err
 	}

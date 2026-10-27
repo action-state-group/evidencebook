@@ -11,10 +11,11 @@
   when `verify --bundle` calls the bundle VALID; otherwise it returns what it
   found with the page gate's refusal. `Page.Permalink` encodes the same
   embedded bundle. Refusals wrap `report.ErrRefused`.
-- `SealPage` seals a built page's digest in a book as one `report_page_seal`
-  record and makes sure a checkpoint covers it; `CheckPage` compares a page
-  file with those seals (`match`, `mismatch`, `no sealed record`, `not
-  covered by a checkpoint`) and judges the embedded evidence apart.
+- `SealPage` seals a page's bytes in a book as one `report_page_seal` record,
+  stating only what the page itself carries, and makes sure a checkpoint
+  covers it; `CheckPage` compares a page file with those seals (`match`,
+  `mismatch`, `no sealed record`, `not covered by a checkpoint`) and judges
+  the embedded evidence apart, which `InspectPage` does with no book.
 - This is the code behind `capsulectl book report build` and `report check`
   (#108), moved from `capsulectl/internal/book`; runnable examples render the
   presentation fixtures, now in `report/testdata/presentation`.

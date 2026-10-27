@@ -84,7 +84,7 @@ func ExampleSealPage() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	sealed, err := report.SealPage(ctx, book, page)
+	sealed, err := report.SealPage(ctx, book, page.HTML)
 	if err != nil {
 		log.Fatal(err)
 	}

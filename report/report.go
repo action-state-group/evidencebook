@@ -12,8 +12,8 @@
 // carry. The page is capsule-viewer's emitter shell around the bundle and
 // capsule-cli's pinned browser runtime; it loads nothing from the network.
 //
-// SealPage seals a built page's digest in a book, and CheckPage tells
-// whether a page file is a page the book sealed. `capsulectl book report
+// SealPage seals a page's digest in a book, and CheckPage tells whether a
+// page file is a page the book sealed. `capsulectl book report
 // build` and `report check` are these functions behind flags.
 package report
 
@@ -34,8 +34,8 @@ import (
 	"github.com/action-state-group/evidencebook"
 )
 
-// ErrRefused is the class of every refusal Build, SealPage and CheckPage
-// make about their input: a bundle that does not verify, a root that is not
+// ErrRefused is the class of every refusal Build, SealPage, InspectPage and
+// CheckPage make about their input: a bundle that does not verify, a root that is not
 // one Result, a view outside the card set, a page that is not a report page.
 // The page gate's refusal is not one of them: it carries capsule-cli's own
 // class (cli.ErrPartial for INCOMPLETE, cli.ErrBundleInvalid for INVALID).
@@ -48,6 +48,14 @@ func (r refusal) Error() string        { return string(r) }
 func (r refusal) Is(target error) bool { return target == ErrRefused }
 
 func refusef(format string, args ...any) error { return refusal(fmt.Sprintf(format, args...)) }
+
+// refusedBy is an ErrRefused that keeps the error it was refused by, and
+// that error's message and class.
+type refusedBy struct{ err error }
+
+func (r refusedBy) Error() string        { return r.err.Error() }
+func (r refusedBy) Unwrap() error        { return r.err }
+func (r refusedBy) Is(target error) bool { return target == ErrRefused }
 
 // cards is the closed profile set of the Evidence Contract schema (its
 // `profile`-discriminated oneOf; TestCardsAreTheContractProfiles keeps this
@@ -151,8 +159,8 @@ type Page struct {
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
 // root is a sealed Evidence Result v0, and renders it under view.
 //
-// Every refusal of the bundle, its root or the view is an ErrRefused, and
-// nothing is rendered. When all of those pass but the bundle is not VALID by
+// Every refusal of the bundle (including one that does not decode), its
+// root or the view is an ErrRefused, and nothing is rendered. When all of those pass but the bundle is not VALID by
 // `verify --bundle`'s verdict, Build returns the Page with no HTML and the
 // page gate's error, so a caller can still report what it found.
 func Build(bundle []byte, view View) (*Page, error) {
@@ -166,7 +174,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	value, err := cli.DecodeBundleJSON(bundle)
 	if err != nil {
-		return nil, err
+		return nil, refusedBy{err}
 	}
 	// Verify first, then gate the root, then decorate, then render: nothing
 	// is rendered until everything before it has passed.

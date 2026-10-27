@@ -130,7 +130,7 @@ func TestBuildMarksADraft(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"card": "human_role", "draft": true}, embedded["extensions"].(map[string]interface{})[cli.CardExtension])
 	_, err = draft.Permalink("")
 	require.ErrorIs(t, err, ErrRefused)
-	_, err = SealPage(t.Context(), newBook(t), draft)
+	_, err = SealPage(t.Context(), newBook(t), draft.HTML)
 	require.ErrorIs(t, err, ErrRefused)
 	assert.Contains(t, err.Error(), "a draft page is never sealed")
 
@@ -157,7 +157,7 @@ func TestBuildRendersNothingForAnIncompleteBundle(t *testing.T) {
 	assert.Equal(t, []string{"ec:airline-week:2026-09-14@1"}, page.ContractRefs)
 	_, err = page.Permalink("")
 	require.ErrorIs(t, err, ErrRefused)
-	_, err = SealPage(t.Context(), newBook(t), page)
+	_, err = SealPage(t.Context(), newBook(t), page.HTML)
 	require.ErrorIs(t, err, ErrRefused)
 }
 
@@ -223,7 +223,8 @@ func TestBuildRefusesABadView(t *testing.T) {
 	_, err = Build(raw, View{Card: "outcome", Presentation: &Presentation{LogoDataURL: "data:image/png;base64,AAAA"}})
 	require.NoError(t, err)
 	_, err = Build([]byte("not json"), View{Card: "outcome"})
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrRefused, "a bundle that does not decode is refused")
+	require.ErrorIs(t, err, cli.ErrInput, "and keeps the decoder's class")
 }
 
 func TestDecodePresentation(t *testing.T) {
@@ -374,6 +375,15 @@ func TestUnsupportedClaimsReadsAnOwnCapsulesSubject(t *testing.T) {
 		}}},
 	}
 	assert.Equal(t, 0, unsupportedClaims(wrapped, claims))
+	// Only a published or backfilled wrapper does: another record's header
+	// naming the id does not.
+	closing := map[string]interface{}{
+		"records": wrapped["records"],
+		"disclosures": map[string]interface{}{own: map[string]interface{}{"agent_input": map[string]interface{}{
+			"record_type": "close", "subject_ref": plain, "payload_commitments": []interface{}{plain},
+		}}},
+	}
+	assert.Equal(t, 1, unsupportedClaims(closing, claims), "only a wrapper stands for the id it names")
 	// An own capsule's disclosed agent_input is its payload, which may look
 	// like a wrapper's header; it never stands for the id it names.
 	posing := map[string]interface{}{

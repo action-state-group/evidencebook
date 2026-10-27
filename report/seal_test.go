@@ -23,7 +23,7 @@ func builtPage(t *testing.T) *Page {
 func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 	book := newBook(t)
 	page := builtPage(t)
-	sealed, err := SealPage(t.Context(), book, page)
+	sealed, err := SealPage(t.Context(), book, page.HTML)
 	require.NoError(t, err)
 	assert.NotEmpty(t, sealed.RecordID)
 	assert.False(t, sealed.AlreadySealed)
@@ -43,11 +43,16 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 
 	check, err := CheckPage(t.Context(), book, page.HTML)
 	require.NoError(t, err)
-	assert.Equal(t, Check{PageDigest: Digest(page.HTML), BundleDigest: page.BundleDigest, Outcome: PageMatch, RecordID: sealed.RecordID, Verdict: "VALID"}, check)
+	assert.Equal(t, PageMatch, check.Outcome)
+	assert.Equal(t, sealed.RecordID, check.RecordID)
+	assert.Equal(t, Digest(page.HTML), check.PageDigest)
+	assert.Equal(t, page.BundleDigest, check.BundleDigest)
+	assert.Equal(t, "VALID", check.Verdict)
+	assert.NoError(t, check.Refusal)
 
 	// A repeat of the same page seals no second record and cuts no
 	// checkpoint.
-	again, err := SealPage(t.Context(), book, builtPage(t))
+	again, err := SealPage(t.Context(), book, builtPage(t).HTML)
 	require.NoError(t, err)
 	assert.Equal(t, Seal{RecordID: sealed.RecordID, Seq: sealed.Seq, AlreadySealed: true}, again)
 }
@@ -55,7 +60,7 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 func TestCheckPageMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testing.T) {
 	book := newBook(t)
 	page := builtPage(t)
-	_, err := SealPage(t.Context(), book, page)
+	_, err := SealPage(t.Context(), book, page.HTML)
 	require.NoError(t, err)
 	for name, edit := range map[string][2]string{
 		"shell text": {"<!doctype html>", "<!DOCTYPE html>"},
@@ -77,7 +82,7 @@ func TestCheckPageMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testing
 func TestCheckPageJudgesTheEmbeddedEvidenceApartFromTheSeal(t *testing.T) {
 	book := newBook(t)
 	page := builtPage(t)
-	_, err := SealPage(t.Context(), book, page)
+	_, err := SealPage(t.Context(), book, page.HTML)
 	require.NoError(t, err)
 	embedded, err := embeddedBundle(page.HTML)
 	require.NoError(t, err)
@@ -88,6 +93,50 @@ func TestCheckPageJudgesTheEmbeddedEvidenceApartFromTheSeal(t *testing.T) {
 	assert.Equal(t, "INVALID", check.Verdict)
 	require.ErrorIs(t, check.Refusal, cli.ErrBundleInvalid)
 	assert.Equal(t, PageNoSeal, check.Outcome)
+
+	// Nor is such a page sealed.
+	before, err := book.Query(t.Context(), evidencebook.Filter{RecordType: RecordTypePageSeal})
+	require.NoError(t, err)
+	_, err = SealPage(t.Context(), book, []byte(strings.Replace(string(page.HTML), sig, flipped, 1)))
+	require.ErrorIs(t, err, ErrRefused)
+	require.ErrorIs(t, err, cli.ErrBundleInvalid)
+	after, err := book.Query(t.Context(), evidencebook.Filter{RecordType: RecordTypePageSeal})
+	require.NoError(t, err)
+	assert.Len(t, after, len(before))
+}
+
+// What a page seal states is read from the page's bytes, never from a Page
+// a caller may have changed.
+func TestSealPageStatesWhatThePageEmbeds(t *testing.T) {
+	book := newBook(t)
+	page := builtPage(t)
+	page.BundleDigest, page.Root = "sha256:not-this-bundle", "not-this-root"
+	sealed, err := SealPage(t.Context(), book, page.HTML)
+	require.NoError(t, err)
+	record, err := book.Get(t.Context(), sealed.RecordID)
+	require.NoError(t, err)
+	fresh := builtPage(t)
+	assert.Equal(t, fresh.BundleDigest, record.Header.SubjectRef)
+	assert.Contains(t, string(record.Header.Statement), fresh.Root)
+	check, err := CheckPage(t.Context(), book, page.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, PageMatch, check.Outcome)
+	_, err = SealPage(t.Context(), book, mustRead(t, bookFormBundle))
+	require.ErrorIs(t, err, ErrRefused, "a file that is not a page is refused")
+}
+
+// InspectPage gives every answer that needs no book.
+func TestInspectPageNeedsNoBook(t *testing.T) {
+	page := builtPage(t)
+	inspected, err := InspectPage(page.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, Digest(page.HTML), inspected.PageDigest)
+	assert.Equal(t, page.BundleDigest, inspected.BundleDigest)
+	assert.Equal(t, "VALID", inspected.Verdict)
+	assert.NoError(t, inspected.Refusal)
+	assert.Empty(t, inspected.Outcome)
+	_, err = InspectPage([]byte("<!doctype html><p>hello</p>"))
+	require.ErrorIs(t, err, ErrRefused)
 }
 
 func TestCheckPageWithNoSealedRecord(t *testing.T) {
@@ -111,7 +160,7 @@ func TestCheckPageWithASealNoCheckpointCoversYet(t *testing.T) {
 	assert.Equal(t, PageNotCovered, check.Outcome)
 	assert.Equal(t, record.RecordID, check.RecordID)
 
-	sealed, err := SealPage(t.Context(), book, page)
+	sealed, err := SealPage(t.Context(), book, page.HTML)
 	require.NoError(t, err)
 	assert.True(t, sealed.AlreadySealed)
 	assert.NotZero(t, sealed.Checkpoint, "the repeat cuts the checkpoint the first run did not")
@@ -129,7 +178,7 @@ func TestCheckPageRefusesAnUndecodableSeal(t *testing.T) {
 	_, err = CheckPage(t.Context(), book, page.HTML)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "whose statement does not decode")
-	_, err = SealPage(t.Context(), book, page)
+	_, err = SealPage(t.Context(), book, page.HTML)
 	require.Error(t, err)
 }
 
