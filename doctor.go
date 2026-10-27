@@ -411,16 +411,17 @@ func (t probeTarget) probe(ctx context.Context, send DoctorTransport, check stri
 			return f, err
 		}
 	}
-	// With no checkpoint of this book to verify against, a refusal is what
-	// the stranger view predicts, and the probe checked nothing.
+	// With no checkpoint of this book to verify against, a conforming
+	// refusal is what the stranger view predicts, and the probe checked
+	// nothing. A nonconforming one is still a mismatch.
 	var held []Checkpoint
-	if err == nil && st.Outcome != OutcomeArtifact && st.Outcome != OutcomeArtifactFailed {
+	if err == nil && st.Outcome == OutcomeRefusal {
 		if held, err = t.since(ctx); err != nil {
 			return f, err
 		}
 	}
 	switch {
-	case err == nil && st.Outcome != OutcomeArtifact && st.Outcome != OutcomeArtifactFailed && len(held) == 0:
+	case err == nil && st.Outcome == OutcomeRefusal && len(held) == 0:
 		f.State = DoctorStateNotChecked
 		f.Detail = fmt.Sprintf("%s is refused %s: there is no checkpoint to verify against", asked, st.Reason)
 	case err != nil:

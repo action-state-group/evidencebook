@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
 
 // strangerTransport is a node's own public path: Respond with no
@@ -210,6 +212,26 @@ func TestDoctorServedAnswerDisagreesWithPolicy(t *testing.T) {
 		}
 		if cps, _ := book.Checkpoints(ctx); len(cps) != 0 {
 			t.Errorf("the probe issued %d checkpoints", len(cps))
+		}
+	})
+
+	t.Run("a nonconforming refusal with no checkpoint", func(t *testing.T) {
+		book := newFixture(t, "nonconforming", 13).open(t)
+		mustAppend(t, book, observation("deal-1", "a"))
+		made := func(ctx context.Context, request Message) (Message, error) {
+			refusal, err := Refusal{RequestDigest: digestBytes(request.Octets), Reason: "made_up", IssuedAt: "2026-10-27T00:00:00Z", KeyID: KeyID(book.signer)}.Sign(ctx, book.signer)
+			if err != nil {
+				return Message{}, err
+			}
+			reply, err := evidencerequest.EncodeReply(request.MediaType, nil, &refusal)
+			return reply.Message, err
+		}
+		findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: made})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := findingOf(t, findings, DoctorProbeCheckpoints); got.State != DoctorStateMismatch || !strings.Contains(got.Detail, "made_up") {
+			t.Errorf("probe = %+v", got)
 		}
 	})
 
