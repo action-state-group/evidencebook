@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Builds against evidencebook v0.8.0. The deal cadence verifies witness receipts under a directory built from the profile's pinned witness (endpoint and key), so an unpinned profile trusts no witness and no receipt reads as witnessed; a receipt that cannot be checked leaves its tick unwitnessed and pending (evidencebook-deal#32).
+
 ## v0.1.0-rc23
 
 The first release of capsulectl-deal and the deal skill from this repository

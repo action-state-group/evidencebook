@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
@@ -116,6 +117,9 @@ func (s *dealSession) cadenceOf(ctx context.Context) (*evidencebook.Cadence, cli
 	cc := evidencebook.CadenceConfig{LogID: p.LogID, Interval: cfg.Interval, Jitter: cfg.Jitter, NoJitter: cfg.Jitter == 0, PadBucket: cfg.PadBucket, Ended: s.ended}
 	if service != "" {
 		cc.WitnessIDs = []string{service}
+		if cc.Witnesses, err = pinnedWitnessDirectory(p); err != nil {
+			return nil, cli.Profile{}, err
+		}
 	}
 	if s.cadence, err = s.shelf.Cadence(ctx, cc); err != nil {
 		return nil, cli.Profile{}, err
@@ -362,12 +366,38 @@ func (s *dealSession) witnessNativeTicks(ctx context.Context, c *evidencebook.Ca
 			return err
 		}
 		if ok {
-			if err := c.Witnessed(ctx, n, *receipt); err != nil {
+			// NOT_CHECKED stores nothing: the tick stays unwitnessed and is
+			// reported again. INVALID comes back as the error.
+			if _, err := c.Witnessed(ctx, n, *receipt); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// pinnedWitnessDirectory is the witness directory the cadence verifies
+// receipts under: one row for the witness the profile pins (endpoint and
+// Ed25519 key), the same pin cli.VerifyWitness checks a stored receipt
+// against. A profile with no pin trusts no witness, so no receipt reads as
+// witnessed (evidencebook#115).
+func pinnedWitnessDirectory(p cli.Profile) (witness.Directory, error) {
+	if p.Checkpoint.Endpoint == "" || p.Checkpoint.PublicKey == "" {
+		return witness.Directory{}, nil
+	}
+	row, err := json.Marshal(map[string]any{
+		"witnesses": []map[string]any{{
+			"name":        "profile-pinned witness",
+			"endpoint":    trimEndpoint(p.Checkpoint.Endpoint),
+			"binding":     "cll",
+			"key_ids":     []string{strings.ToLower(p.Checkpoint.PublicKey)}, // a directory takes lowercase hex; a profile key may not be
+			"public_keys": []string{},
+		}},
+	})
+	if err != nil {
+		return witness.Directory{}, err
+	}
+	return witness.ParseDirectory(row)
 }
 
 // verifiedReceipt is the cadence checkpoint at size's witness receipt, when
