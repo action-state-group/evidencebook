@@ -138,7 +138,9 @@ type View struct {
 	// spec/contract-report-v1.md): the page's bundle carries the empty
 	// contract-report/v1 block, which the viewer's contract-report module
 	// resolves on. A Result with no grouping data for the card draws the
-	// generic Result page there, listing every claim.
+	// generic Result page there, listing every claim. A bundle whose
+	// outcome-report/v1 or eu-ai-act-compliance/v1 block already draws the
+	// contract report looks the same; the block records the selection.
 	ContractReport bool
 }
 
