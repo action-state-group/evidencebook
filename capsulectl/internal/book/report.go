@@ -305,17 +305,30 @@ type reportBuildResult struct {
 	Verdict     string   `json:"verdict"`
 	UnmetClaims []string `json:"unmet_claims,omitempty"`
 	Page        string   `json:"page"`
+	// PageSeal is the record sealing the page's bytes (--seal).
+	PageSeal *sealedPage `json:"page_seal,omitempty"`
 }
 
 func reportCommands() *cobra.Command {
 	group := &cobra.Command{Use: "report", Short: "Render a verified Result-root Evidence Bundle into an offline report"}
-	build := &cobra.Command{Use: "build", Short: "Verify a held Evidence Bundle rooted at a sealed Result v0 and write report.html (and a permalink); touches no store", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	build := &cobra.Command{Use: "build", Short: "Verify a held Evidence Bundle rooted at a sealed Result v0 and write report.html (and a permalink); touches no store unless --seal", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		bundlePath, _ := c.Flags().GetString("bundle")
 		card, _ := c.Flags().GetString("card")
 		out, _ := c.Flags().GetString("out")
 		presentationPath, _ := c.Flags().GetString("presentation")
 		permalink, _ := c.Flags().GetBool("permalink")
 		dryRun, _ := c.Flags().GetBool("dry-run")
+		var sealProfile *cli.Profile
+		if seal, _ := c.Flags().GetBool("seal"); seal && !dryRun {
+			p, err := cli.Selected(c)
+			if err != nil {
+				return err
+			}
+			if p.Type == "sqlite" || !p.IsBook() {
+				return cli.InputError("--seal needs a book profile: the page's seal is a record of its book")
+			}
+			sealProfile = &p
+		}
 		if bundlePath == "" || out == "" {
 			return cli.InputError("--bundle and --out are required")
 		}
@@ -437,6 +450,15 @@ func reportCommands() *cobra.Command {
 		} else if err != nil {
 			return err
 		}
+		if sealProfile != nil && !dryRun {
+			// The page is on disk from here on: a failure sealing it still
+			// reports the page, so the caller never loses it.
+			sealed, err := sealReport(c.Context(), *sealProfile, pageSealStatement{PageDigest: pageDigest([]byte(html)), BundleDigest: digest, ResultRoot: root.id})
+			result.PageSeal = &sealed
+			if err != nil {
+				return errors.Join(err, cli.Output(c, result))
+			}
+		}
 		return cli.Output(c, result)
 	}}
 	build.Flags().String("bundle", "", "A held, disclosed Evidence Bundle whose root is a sealed Result v0")
@@ -446,6 +468,7 @@ func reportCommands() *cobra.Command {
 	build.Flags().Bool("permalink", false, "Also mint a viewer permalink over the same embedded bundle")
 	build.Flags().String("base-url", cli.DefaultBundleURL, "Bundle viewer base URL for --permalink")
 	build.Flags().Bool("dry-run", false, "Write the page marked draft in its report-card/v1 block and mint no permalink")
-	group.AddCommand(build)
+	build.Flags().Bool("seal", false, "Also seal the written page's SHA-256 in the book of --profile, with the bundle digest and the Result root, and checkpoint it; `report check` checks a page against it. A --dry-run page is never sealed")
+	group.AddCommand(build, reportCheckCommand())
 	return group
 }

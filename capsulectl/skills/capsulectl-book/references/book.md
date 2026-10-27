@@ -82,7 +82,8 @@ as a committed payload has those bytes withheld by `--suppress agent_input`
 capsulectl book report build --bundle B.json --card CARD --out report.html [--presentation P.json] [--permalink] [--base-url URL] [--dry-run]
 ```
 
-Read-only over a held file; no profile, no store, no record. The bundle is
+Read-only over a held file; no profile, no store, no record, unless `--seal`
+(below). The bundle is
 verified first (interval and membership must pass, no disclosed member may
 mismatch; a graph closure the bundle declares incomplete is accepted as
 withheld), then
@@ -105,3 +106,18 @@ unsupported), and `permalink` when asked. `--dry-run` writes the
 page with `draft: true` in its card block and mints no permalink. The page
 is self-contained: the bundle and the browser runtime are inline and nothing
 is loaded from the network.
+
+### Seal a page, check a page
+
+```sh
+capsulectl book report build ... --seal --profile NAME
+capsulectl book report check --profile NAME --page report.html
+```
+
+`--seal` appends one `report_page_seal` record to the profile's book after the
+page is written (never for `--dry-run`) and checkpoints it. The record holds the
+page's SHA-256, the embedded bundle's digest and the Result root. `report check`
+compares a page file with the book's seals for the bundle it embeds: `match`
+(exit 0), `mismatch` (5), `no sealed record` or `not covered by a checkpoint`
+(3). `verification` is the embedded evidence's own check, kept apart (exit 1
+when it fails). The page's bytes are checked with this command, never in the page.

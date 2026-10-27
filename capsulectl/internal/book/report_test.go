@@ -65,7 +65,8 @@ func TestReportBuildReadsABundle(t *testing.T) {
 			})
 		}
 	}
-	assert.Equal(t, map[string]int{"reportCommands": 1}, calls)
+	// report check reads the page it checks, which embeds a bundle.
+	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1}, calls)
 }
 
 // The card set is the contract schema's own profile set, nothing invented.

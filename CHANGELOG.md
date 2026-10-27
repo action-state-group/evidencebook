@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added: `report build --seal` and `report check` (evidencebook#108)
+
+- `capsulectl book report build --seal --profile NAME` seals the written
+  page's SHA-256 in the book as one `report_page_seal` record and cuts a
+  checkpoint over it. The record's statement holds the page digest, the
+  digest of the Evidence Bundle the page embeds and the Result root, and
+  nothing else; its `subject_ref` is the bundle digest. A repeat of the same
+  page finds its record; `--dry-run` seals nothing.
+- `capsulectl book report check --profile NAME --page FILE` compares a page
+  file with the book's seals for the bundle it embeds and reports `match`,
+  `mismatch`, `no sealed record`, or `not covered by a checkpoint`, with the
+  embedded evidence's own check in `verification`, apart from the page
+  answer. Exit codes: 0 match, 5 mismatch, 3 no seal or none covered yet, 1
+  when the embedded evidence does not verify.
+
 ### Added: `capsulectl book doctor [--probe]` (evidencebook#130)
 
 - `capsulectl book doctor` prints the book's `Book.Doctor` findings as
