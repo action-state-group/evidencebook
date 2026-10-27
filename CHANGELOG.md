@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0 (2026-10-27)
 
 ### Added: `report build --seal` and `report check` (evidencebook#108)
 
@@ -67,6 +67,15 @@
   when the verdict is `VALID` instead of printing the fallback failure
   message (evidencebook#113).
 
+### Changed (breaking): responding is subject-scoped, counterparties by default (evidencebook#114, #120)
+
+- `DefaultSharePolicy` defaults to `history_segments` for counterparties, and
+  `prospective` is read as counterparties. A record or exchange subject is
+  answered under counterparties only to a counterparty that every record it
+  names names, decided before resolution. `range`, `correlation` and
+  `full_history` are refused under every tier unless a recipient-specific
+  derivation grants them to its recipient (Steven's ruling on #114).
+
 ### Breaking: the cadence verifies witness receipts itself (evidencebook#115)
 
 - `Cadence.Witnessed` verifies the receipt against the tick's signed cadence
@@ -105,8 +114,6 @@
   `v0.1.0-rc23` instead of the commit it was imported from (e0511c4), so the
   first capsulectl-book release is `capsulectl/v0.1.0-rc23`
   (`capsulectl/RELEASING.md`).
-
-## v0.8.0 (2026-10-24)
 
 ### Added: capsulectl-book, as the nested module capsulectl/
 
