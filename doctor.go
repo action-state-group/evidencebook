@@ -113,51 +113,75 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	}
 	// The probe runs without the book's lock: the transport may reach this
 	// same book's Respond.
-	keys := opts.Keys
-	if keys.Signer == "" {
-		keys.Signer = KeyID(b.signer)
-	}
-	if keys.Checkpoint == "" && latest != nil {
-		keys.Checkpoint = latest.KeyID
-	}
+	target := probeTarget{book: b, snapshot: latest, keys: opts.Keys}
 	// The floor is one entry: any checkpoint meets it, so the responder is
 	// never asked to issue one.
 	one := uint64(1)
 	coverage := Coverage{MinFreshness: &Freshness{Size: &one}}
-	current := b.currentAnchor(ctx, latest)
-	cards, err := probe(ctx, opts.Probe, keys, current, DoctorProbeCheckpoints, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: coverage})
+	cards, err := target.probe(ctx, opts.Probe, DoctorProbeCheckpoints, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: coverage})
 	if err != nil {
 		return nil, err
 	}
-	card, err := probe(ctx, opts.Probe, keys, current, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: coverage})
+	card, err := target.probe(ctx, opts.Probe, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: coverage})
 	if err != nil {
 		return nil, err
 	}
 	return append(findings, cards, card), nil
 }
 
-// currentAnchor reports whether anchor is this book's latest checkpoint as
-// of the snapshot, or a checkpoint cut after it: the book's lock is not held
-// while the probe runs, so another writer may checkpoint meanwhile.
-func (b *Book) currentAnchor(ctx context.Context, snapshot *Checkpoint) func(string) (bool, error) {
-	return func(anchor string) (bool, error) {
-		if snapshot == nil {
-			return false, nil
-		}
-		if anchor == anchorDigest(*snapshot) {
-			return true, nil
-		}
-		history, err := b.Checkpoints(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, cp := range history {
-			if cp.Kind == SubstrateKindCLL && cp.TreeSize > snapshot.TreeSize && anchorDigest(cp) == anchor {
-				return true, nil
-			}
-		}
-		return false, nil
+// probeTarget is what a probe's answer is checked against: the advertised
+// keys, and this book's latest checkpoint as of doctor's snapshot. The
+// book's lock is not held while the probe runs, so another writer may cut
+// a checkpoint meanwhile, the book's first included; both are read again
+// after the answer arrives.
+type probeTarget struct {
+	book     *Book
+	snapshot *Checkpoint
+	keys     ResponderKeys
+}
+
+// pinned is the advertised keys, each left empty taken from this book: its
+// signer, and the key of its latest checkpoint.
+func (t probeTarget) pinned(ctx context.Context) (ResponderKeys, error) {
+	keys := t.keys
+	if keys.Signer == "" {
+		keys.Signer = KeyID(t.book.signer)
 	}
+	if keys.Checkpoint == "" {
+		cps, err := t.since(ctx)
+		if err != nil {
+			return keys, err
+		}
+		if n := len(cps); n > 0 {
+			keys.Checkpoint = cps[n-1].KeyID
+		}
+	}
+	return keys, nil
+}
+
+// since is the snapshot's checkpoint and every CLL checkpoint cut after it.
+func (t probeTarget) since(ctx context.Context) ([]Checkpoint, error) {
+	history, err := t.book.Checkpoints(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []Checkpoint
+	for _, cp := range history {
+		if cp.Kind == SubstrateKindCLL && (t.snapshot == nil || cp.TreeSize >= t.snapshot.TreeSize) {
+			out = append(out, cp)
+		}
+	}
+	return out, nil
+}
+
+// anchored reports whether anchor is the snapshot's latest checkpoint or
+// one cut after it.
+func (t probeTarget) anchored(ctx context.Context, anchor string) (bool, error) {
+	cps, err := t.since(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(cps, func(cp Checkpoint) bool { return anchorDigest(cp) == anchor }), nil
 }
 
 func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, *Checkpoint, error) {
@@ -339,7 +363,7 @@ func witnessed(latest *Checkpoint, deliveries []DoctorWitness) DoctorFinding {
 // under the advertised keys, and compares it with what the advertised
 // policy answers a stranger: an artifact anchored at the latest checkpoint.
 // It records nothing.
-func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, current func(string) (bool, error), check string, req EvidenceRequest) (DoctorFinding, error) {
+func (t probeTarget) probe(ctx context.Context, send DoctorTransport, check string, req EvidenceRequest) (DoctorFinding, error) {
 	f := DoctorFinding{Check: check, State: DoctorStateMismatch}
 	asked := "checkpoints"
 	if req.Derivation != "" {
@@ -370,13 +394,17 @@ func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, curren
 		f.Detail = fmt.Sprintf("the answer to %s is not a reply: %v", asked, err)
 		return f, nil
 	}
+	keys, err := t.pinned(ctx)
+	if err != nil {
+		return f, err
+	}
 	if keys.Checkpoint == "" {
 		keys.Checkpoint = keys.Signer // nothing to pin; every checkpoint then fails to verify
 	}
 	st, err := verifyReply(sent, parsed, keys)
 	anchored := false
 	if err == nil && st.Outcome == OutcomeArtifact {
-		if anchored, err = current(st.Anchor); err != nil {
+		if anchored, err = t.anchored(ctx, st.Anchor); err != nil {
 			return f, err
 		}
 	}

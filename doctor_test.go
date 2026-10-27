@@ -301,24 +301,31 @@ func TestDoctorListsReceivedNotChecked(t *testing.T) {
 // still this book's own: the probe matches.
 func TestDoctorProbeAcceptsACheckpointCutMeanwhile(t *testing.T) {
 	ctx := context.Background()
-	book := checkpointedBook(t, "busy", 11)
 	policy := DefaultSharePolicy()
-	answer := strangerTransport(book, policy)
-	busy := func(ctx context.Context, request Message) (Message, error) {
-		mustAppend(t, book, observation("deal-3", "c"))
-		if _, err := book.Checkpoint(ctx); err != nil {
-			return Message{}, err
-		}
-		return answer(ctx, request)
-	}
-	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: busy})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, check := range []string{DoctorProbeCheckpoints, DoctorProbeHistoryCard} {
-		if f := findingOf(t, findings, check); f.State != DoctorStateMatch {
-			t.Errorf("%s = %+v", check, f)
-		}
+	for name, book := range map[string]*Book{
+		"after a checkpoint": checkpointedBook(t, "busy", 11),
+		// The book's first checkpoint, cut after doctor's snapshot.
+		"the first checkpoint": newFixture(t, "first", 12).open(t),
+	} {
+		t.Run(name, func(t *testing.T) {
+			answer := strangerTransport(book, policy)
+			busy := func(ctx context.Context, request Message) (Message, error) {
+				mustAppend(t, book, observation("deal-3", "c"))
+				if _, err := book.Checkpoint(ctx); err != nil {
+					return Message{}, err
+				}
+				return answer(ctx, request)
+			}
+			findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: busy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, check := range []string{DoctorProbeCheckpoints, DoctorProbeHistoryCard} {
+				if f := findingOf(t, findings, check); f.State != DoctorStateMatch {
+					t.Errorf("%s = %+v", check, f)
+				}
+			}
+		})
 	}
 }
 
