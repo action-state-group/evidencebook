@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added: `Book.Doctor`, a node's check of itself (evidencebook#130)
+
+- `Book.Doctor` returns a list of findings, never a score: what is
+  self-attested, whether the latest checkpoint is witnessed, the
+  `NOT_CHECKED` properties of received answers, what this book never
+  answers, whether a controller binding names the signing key (which binding,
+  by digest; its signatures are `NOT_CHECKED`, so the key is never shown
+  bound), whether sharing is on, and what a stranger and an identified
+  requester would receive under the policy. Whether the policy digest is in a
+  commitment is `NOT_CHECKED`: the book publishes no commitment document.
+- With `DoctorOptions.Probe`, it asks the node's own responder for
+  `checkpoints` and then `history_card/1` as a stranger, verifies both under
+  the advertised keys, and reports a mismatch when an answer is refused, does
+  not verify, or is not anchored at the latest checkpoint; with no checkpoint
+  to verify against, a refusal is `NOT_CHECKED`. Both subjects are public
+  under every policy, so a match shows what a stranger is served, not what an
+  identified requester is. The identified view is computed from the policy,
+  not asked: `Respond` seals a record for every authenticated requester.
+  Doctor seals nothing and issues no checkpoint.
+
 ### Fixed
 
 - `bookdemo aac-verify` decodes the bundle with `json.Number` as `verify
