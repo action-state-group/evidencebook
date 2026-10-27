@@ -12,6 +12,7 @@
   links capsule-engine and evidencebook-skills for them.
 - `VECTORS.md` lists this repository's vector sets with their owning spec
   and pinned commit.
+- The install lines in the README and the guide name v0.8.1.
 
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
