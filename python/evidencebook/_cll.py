@@ -18,6 +18,9 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import io
+from collections.abc import Mapping
+
 import cbor2
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -27,7 +30,6 @@ from cll.checkpoint.cose_wire import CLL_CHECKPOINT_CONTENT_TYPE, encode_checkpo
 from cll.checkpoint.emit import CheckpointRecord
 from cll.log import validate_identifier
 
-from . import _cborread
 from ._time import parse_rfc3339_ns, rfc3339_nano, truncate_ms
 from .errors import CorruptError, InvalidError, NotCoveredError
 from .signer import Signer, key_id, sign1
@@ -71,6 +73,35 @@ class _Refused(Exception):
     pass
 
 
+# Every tag cbor2 6.1 decodes into a Python value (a datetime, a bignum as
+# an int, ...); each is kept as a CBORTag, so no tag passes as the type it
+# wraps. tests/test_checkpoint_reader.py checks the pinned cbor2 has no other.
+SEMANTIC_TAGS = (0, 1, 2, 3, 4, 5, 25, 28, 29, 30, 35, 36, 37, 52, 54, 100, 256, 258, 260, 261, 1004, 43000, 55799)
+def _keep(tag: int):
+    return lambda value, immutable: cbor2.CBORTag(tag, value)
+
+
+_RAW_TAGS = {n: _keep(n) for n in SEMANTIC_TAGS}
+#: Go's decoder (fxamacker/cbor) allows 32 nested levels; the spec sets no limit.
+MAX_NESTING = 32
+
+
+def _decode(data: bytes, what: str) -> object:
+    """One CBOR data item, read with cbor2 in strict mode: not-well-formed
+    encodings (RFC 8949 §3, Appendix F), a repeated map key (§5.6), trailing
+    octets and more than MAX_NESTING levels are refused; every valid
+    encoding, indefinite lengths included, is accepted."""
+    stream = io.BytesIO(data)
+    try:
+        value = cbor2.CBORDecoder(stream, allow_duplicate_keys=False, allow_indefinite=True, max_depth=MAX_NESTING,
+                                  semantic_decoders=_RAW_TAGS).decode()
+    except (cbor2.CBORDecodeError, ValueError, TypeError) as exc:
+        raise _Refused(f"{what}: {exc}") from None
+    if stream.read(1):
+        raise _Refused(f"{what}: trailing octets after the data item")
+    return value
+
+
 _REQUIRED_CLAIMS = ("kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at")
 _UNDERSTOOD_LABELS = {1, 3, 4, 15}  # alg, content type, kid, CWT_Claims
 _MAX_PORTABLE = (1 << 53) - 1  # backend-contract.md MaxPortableInteger
@@ -104,16 +135,39 @@ def _peaks(raw: object, size: int, what: str) -> list[bytes]:
     profile's commitment object encodes it."""
     if not isinstance(raw, bytes):
         raise _Refused(f"{what} is not a byte string")
-    try:
-        peaks = _cborread.read(raw)
-    except _cborread.CborError as exc:
-        raise _Refused(f"{what}: {exc}") from None
+    peaks = _decode(raw, what)
     if not isinstance(peaks, list) or not all(isinstance(p, bytes) and len(p) == 32 for p in peaks) or \
             core.commitment_object(peaks) != raw:
         raise _Refused(f"{what} is not a canonical peak list")
     if len(peaks) != mmr_peak_count(size):
         raise _Refused(f"{what} is not the peak list of an MMR of {size} nodes")
     return peaks
+
+
+def _check_headers(protected: Mapping, unprotected: Mapping) -> None:
+    """RFC 9052 §3 and §3.1 over both header buckets: labels are integers or
+    texts (CBOR true is not label 1; text "1" is another label than 1), no
+    label in both buckets, crit only in the protected one, non-empty and
+    naming present labels this reader understands, IV and Partial IV not
+    both in the layer, and the common parameters of their types."""
+    for bucket in (protected, unprotected):
+        if any(type(label) not in (int, str) for label in bucket):
+            raise _Refused("a header label is not an integer or a text")
+    if set(protected) & set(unprotected):
+        raise _Refused("a label is in both the protected and the unprotected header")
+    if 2 in unprotected:
+        raise _Refused("crit is in the unprotected header")
+    crit = protected.get(2)
+    if 2 in protected and not (isinstance(crit, list) and crit and all(
+            type(label) in (int, str) and label in protected and label in _UNDERSTOOD_LABELS for label in crit)):
+        raise _Refused("crit lists a label not present or not understood")
+    layer = {**unprotected, **protected}
+    if 5 in layer and 6 in layer:
+        raise _Refused("IV and Partial IV are both present")
+    kinds = {1: (int, str), 3: (int, str), 4: (bytes,), 5: (bytes,), 6: (bytes,)}
+    for label, allowed in kinds.items():
+        if label in layer and (type(layer[label]) not in allowed or label == 3 and type(layer[3]) is int and layer[3] < 0):
+            raise _Refused(f"header parameter {label} is not of its type")
 
 
 def _read(statement: bytes) -> Checkpoint:
@@ -126,34 +180,22 @@ def _read(statement: bytes) -> Checkpoint:
     from the draft."""
     if len(statement) > _MAX_CHECKPOINT_BYTES:
         raise _Refused(f"the statement is over {_MAX_CHECKPOINT_BYTES} bytes")
-    try:
-        message = _cborread.read(statement)
-    except _cborread.CborError as exc:
-        raise _Refused(f"not CBOR: {exc}") from None
+    message = _decode(statement, "the statement")
     # RFC 9052 §4.2 COSE_Sign1, tagged (the draft is silent on the untagged
     # form; Go requires the tag).
-    if not isinstance(message, _cborread.Tag) or message.number != _COSE_SIGN1_TAG or \
-            not isinstance(message.value, list) or len(message.value) != 4:
+    if not isinstance(message, cbor2.CBORTag) or message.tag != _COSE_SIGN1_TAG or \
+            not isinstance(message.value, (list, tuple)) or len(message.value) != 4:
         raise _Refused("not a tagged COSE_Sign1 message")
     protected_bstr, unprotected, payload, signature = message.value
-    if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or not isinstance(unprotected, dict):
+    if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or \
+            not isinstance(unprotected, Mapping):
         raise _Refused("a COSE_Sign1 member has the wrong type")
-    # The unprotected header may carry a witness's countersignature
-    # (§Witnessing); its labels are integers or texts (RFC 9052 §3).
-    if any(type(label) not in (int, str) for label in unprotected):
-        raise _Refused("an unprotected header label is not an integer or a text")
-    try:
-        protected = _cborread.read(protected_bstr) if protected_bstr else {}
-        claims = _cborread.read(payload)
-    except _cborread.CborError as exc:
-        raise _Refused(f"the protected header or the claims: {exc}") from None
-    if not isinstance(protected, dict) or any(type(label) not in (int, str) for label in protected):
-        raise _Refused("the protected header is not a map of integer or text labels")
-    # RFC 9052 §3.1 crit: every label it lists must be present and understood.
-    crit = protected.get(2)
-    if 2 in protected and not (isinstance(crit, list) and crit and all(
-            type(label) in (int, str) and label in protected and label in _UNDERSTOOD_LABELS for label in crit)):
-        raise _Refused("the protected header lists a critical label not understood")
+    protected = _decode(protected_bstr, "the protected header") if protected_bstr else {}
+    claims = _decode(payload, "the claims")
+    if not isinstance(protected, Mapping):
+        raise _Refused("the protected header is not a map")
+    # The unprotected header may carry a witness's countersignature (§Witnessing).
+    _check_headers(protected, unprotected)
     kid, cwt = protected.get(4), protected.get(15)
     # The draft: the protected header carries the algorithm and the key
     # identifier. Silent on their values and on the content type, so Go's:
@@ -164,10 +206,12 @@ def _read(statement: bytes) -> Checkpoint:
     # §Witnessing: CWT_Claims with iss and sub (texts, RFC 8392); other
     # claims allowed. The draft does not define sub's form; Go's is
     # "<iss>#<log_size>", with iss a CLL identifier.
-    if not isinstance(cwt, dict) or not isinstance(cwt.get(1), str) or not isinstance(cwt.get(2), str):
+    # RFC 8392 §3: a claim key is an integer or a text (CBOR true is not key 1).
+    if not isinstance(cwt, Mapping) or any(type(key) not in (int, str) for key in cwt) or \
+            not isinstance(cwt.get(1), str) or not isinstance(cwt.get(2), str):
         raise _Refused("the CWT_Claims do not carry iss and sub as texts")
     # §The Checkpoint: a CBOR map with these claims; others MUST be ignored.
-    if not isinstance(claims, dict) or any(name not in claims for name in _REQUIRED_CLAIMS):
+    if not isinstance(claims, Mapping) or any(name not in claims for name in _REQUIRED_CLAIMS):
         raise _Refused("the claims are not a map of the required claims")
     log_size, prev_size, issued_at = claims["log_size"], claims["prev_size"], claims["issued_at"]
     if claims["kind"] != "cll-checkpoint":

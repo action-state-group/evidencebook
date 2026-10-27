@@ -107,17 +107,28 @@ def _days_in_month(year: int, month: int) -> int:
     return 30 if month in (4, 6, 9, 11) else 31
 
 
+# The UTC days that ended in a leap second (IERS Bulletin C; none has been
+# announced since 2016-12-31).
+LEAP_SECOND_DAYS = frozenset(days_from_civil(*d) for d in (
+    (1972, 6, 30), (1972, 12, 31), (1973, 12, 31), (1974, 12, 31), (1975, 12, 31), (1976, 12, 31), (1977, 12, 31),
+    (1978, 12, 31), (1979, 12, 31), (1981, 6, 30), (1982, 6, 30), (1983, 6, 30), (1985, 6, 30), (1987, 12, 31),
+    (1989, 12, 31), (1990, 12, 31), (1992, 6, 30), (1993, 6, 30), (1994, 6, 30), (1995, 12, 31), (1997, 6, 30),
+    (1998, 12, 31), (2005, 12, 31), (2008, 12, 31), (2012, 6, 30), (2015, 6, 30), (2016, 12, 31)))
+
+
 def parse_rfc3339_ns(text: object) -> int | None:
     """An RFC 3339 date-time (§5.6 grammar, §5.7 ranges) as nanoseconds since
     the epoch, any year from 0000: lower case "t" and "z" allowed, "."
     fractions of any length (truncated to the nanosecond), offsets up to
-    23:59. A second of 60 is refused: no leap-second table is held."""
+    23:59. A second of 60 is a leap second, valid only where one occurred:
+    23:59:60 UTC at the end of a day in LEAP_SECOND_DAYS (§5.7, §5.8). Its
+    instant is the end of that day, the start of the next."""
     m = _RFC3339.match(text) if isinstance(text, str) else None
     if m is None:
         return None
     year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
     if not (1 <= month <= 12 and 1 <= day <= _days_in_month(year, month) and hour <= 23 and minute <= 59
-            and second <= 59):
+            and second <= 60):
         return None
     zone = m.group(8)
     offset = 0
@@ -127,7 +138,12 @@ def parse_rfc3339_ns(text: object) -> int | None:
             return None
         offset = (-1 if zone[0] == "-" else 1) * (hours * 3600 + minutes * 60)
     local = days_from_civil(year, month, day) * _DAY + (hour * 3600 + minute * 60 + second) * _SECOND
-    return local - offset * _SECOND + int((m.group(7) or "0")[:9].ljust(9, "0"))
+    instant = local - offset * _SECOND
+    if second == 60:
+        utc_day, utc_time = divmod(instant - _SECOND, _DAY)
+        if utc_day not in LEAP_SECOND_DAYS or utc_time != _DAY - _SECOND:
+            return None
+    return instant + int((m.group(7) or "0")[:9].ljust(9, "0"))
 
 
 def profile_time_ns(ns: int) -> str:

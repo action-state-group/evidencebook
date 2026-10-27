@@ -67,6 +67,12 @@ GO_DEPARTS: list[tuple[str, str, str]] = [
     ("protected-cwt-extra-claim", "accept", "RFC 8392 §3; -01 Witnessing requires iss and sub only"),
     ("outer-unprotected-label", "accept", "-01 Witnessing: a countersignature in the unprotected header"),
     ("claims-issued-at-lowercase", "accept", "RFC 3339 §5.6 NOTE: t and z may be lower case"),
+    ("claims-issued-at-leap-second-1990", "accept", "RFC 3339 §5.7, §5.8: 23:59:60 UTC on a leap-second day"),
+    ("claims-issued-at-leap-second-1990-offset", "accept", "RFC 3339 §5.8: the same leap second at -08:00"),
+    ("claims-issued-at-leap-second-2016", "accept", "RFC 3339 §5.7: 23:59:60 UTC on a leap-second day"),
+    ("claims-extra-nonscalar-keys", "accept", _MUST_IGNORE + "; RFC 8949 §3.1: any data item is a map key"),
+    ("claims-extra-depth-32", "accept", _MUST_IGNORE + "; 32 levels, Go's decoder limit (the spec sets none)"),
+    ("protected-text-label-1-beside-alg", "accept", "RFC 9052 §3: text \"1\" and integer 1 are different labels"),
     ("claims-issued-at-comma-fraction", "refuse", "RFC 3339 §5.6: time-secfrac is \".\" 1*DIGIT"),
     ("claims-issued-at-offset-plus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
     ("claims-issued-at-offset-minus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
@@ -209,6 +215,18 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     claims_case("log-size-2^54-1", dict(first_of_size, log_size=(1 << 54) - 1, prev_size=0, prev_commitment=b"",
                                         commitment=cbor2.dumps([claims_peak(claims)])))
     claims_case("oversized", dict(claims, padding=bytes(70000)))
+    for name, text in (("leap-second-1990", "1990-12-31T23:59:60Z"), ("leap-second-1990-offset", "1990-12-31T15:59:60-08:00"),
+                       ("leap-second-2016", "2016-12-31T23:59:60Z"), ("leap-second-not-at-day-end", "1990-12-31T23:58:60Z")):
+        claims_case(f"issued-at-{name}", dict(claims, issued_at=text))
+    claims_case("extra-nonscalar-keys", dict(claims, extra={(1, 2): 0, True: [1], "k": {(): b""}}))
+    nested: object = 0
+    for _ in range(31):
+        nested = [nested]
+    claims_case("extra-depth-32", dict(claims, extra=nested))  # the claims map is the 32nd level
+    claims_case("extra-depth-33", dict(claims, extra=[nested]))
+    claims_case("log-size-bignum", claims, payload_with(claims, "log_size", "c2" + cbor2.dumps(claims["log_size"].to_bytes(2, "big")).hex()))
+    claims_case("extra-simple-two-byte", claims, payload_with(claims, "extra", "f800"))
+    claims_case("extra-break-in-tag", claims, payload_with(claims, "extra", "c1ff"))
     if claims["prev_size"]:
         claims_case("prev-size-equal", dict(claims, prev_size=claims["log_size"], prev_commitment=claims["commitment"]))
     if "consistency_proof" in claims:
@@ -262,6 +280,15 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     header_case("crit-understood", cbor2.dumps({**prot, 2: [1]}))
     header_case("crit-not-understood", cbor2.dumps({**prot, 2: [99], 99: "x"}))
     header_case("crit-empty", cbor2.dumps({**prot, 2: []}))
+    header_case("iv-and-partial-iv", cbor2.dumps({**prot, 5: b"\x00" * 16, 6: b"\x00"}))
+    header_case("text-label-1-beside-alg", cbor2.dumps({**prot, "1": -8}))
+    sig = LOG_KEY.sign(cbor2.dumps(["Signature1", prot_bstr, b"", payload]))
+    for name, unprotected in (("crit", {2: [1]}), ("kid-again", {4: kid}), ("partial-iv-beside-protected-iv", {6: b"\x00"}),
+                              ("iv-text", {5: "x"})):
+        base = cbor2.dumps({**prot, 5: b"\x00" * 16}) if name == "partial-iv-beside-protected-iv" else prot_bstr
+        out[f"{label}-unprotected-{name}"] = sign(base, payload, unprotected=unprotected)
+    out[f"{label}-outer-payload-nested-indefinite"] = b"\xd2\x84" + cbor2.dumps(prot_bstr) + b"\xa0" + b"\x5f\x5f" + \
+        cbor2.dumps(payload) + b"\xff\xff" + cbor2.dumps(sig)
     out[f"{label}-outer-unprotected-noncanonical-empty"] = b"\xd2\x84" + cbor2.dumps(prot_bstr) + b"\xb8\x00" + \
         cbor2.dumps(payload) + cbor2.dumps(LOG_KEY.sign(cbor2.dumps(["Signature1", prot_bstr, b"", payload])))
     out[f"{label}-outer-untagged"] = sign(prot_bstr, payload, tag=None)
@@ -278,6 +305,14 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
         out[f"{label}-outer-payload-long-length"] = b"\xd2\x84" + cbor2.dumps(prot_bstr) + b"\xa0" + long_head + \
             payload + cbor2.dumps(sig)
     return out
+
+
+def payload_with(claims: dict, name: str, value_hex: str) -> bytes:
+    """The claims map with ``name``'s value replaced by raw CBOR octets."""
+    items = [(k, ("raw", bytes.fromhex(value_hex)) if k == name else v) for k, v in claims.items()]
+    if name not in claims:
+        items.append((name, ("raw", bytes.fromhex(value_hex))))
+    return raw_map(items)
 
 
 def claims_peak(claims: dict) -> bytes:

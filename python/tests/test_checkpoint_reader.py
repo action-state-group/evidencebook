@@ -32,3 +32,22 @@ def test_every_go_departure_names_a_case():
     names = set(CASES)
     for case, _, _ in parity.GO_DEPARTS:
         assert case in names or {f"first-{case}", f"second-{case}"} & names, case
+
+
+def test_cbor2_decodes_no_tag_semantically_beyond_the_kept_list():
+    """The reader keeps SEMANTIC_TAGS raw; a cbor2 that decodes another tag
+    into a Python value would let it pass as the type it wraps."""
+    import cbor2
+
+    from evidencebook._cll import SEMANTIC_TAGS
+
+    found = []
+    for n in range(0, 70000):
+        try:
+            value = cbor2.loads(cbor2.dumps(cbor2.CBORTag(n, 0)))
+        except Exception:  # noqa: BLE001 -- a tag cbor2 cannot decode over 0 is semantic too
+            found.append(n)
+            continue
+        if not (isinstance(value, cbor2.CBORTag) and value.tag == n):
+            found.append(n)
+    assert tuple(found) == SEMANTIC_TAGS
