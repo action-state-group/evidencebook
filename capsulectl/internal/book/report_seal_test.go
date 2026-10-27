@@ -185,3 +185,16 @@ func TestReportCheckJudgesTheEmbeddedSignatures(t *testing.T) {
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Equal(t, "INVALID", result.Verification)
 }
+
+// A VALID bundle whose report would show fewer rows than it has is refused by
+// the page gate, which is not a verdict on its evidence.
+func TestJudgeEmbeddedKeepsTheVerdictApartFromTheRowGate(t *testing.T) {
+	dir, out, err := runReportVariant(t, func(s string) string {
+		return replaced(t, s, `references: [cite($permissions)]`, `references: [cite("`+strings.Repeat("0", 64)+`")]`, readmeDiscloseOK, readmeOutOnly)
+	})
+	require.NoError(t, err, out)
+	verdict, gate := judgeEmbedded(readBundle(t, filepath.Join(dir, "bundle.json")))
+	assert.Equal(t, "VALID", verdict)
+	require.ErrorIs(t, gate, cli.ErrPartial)
+	assert.Equal(t, 3, cli.ExitCode(gate))
+}

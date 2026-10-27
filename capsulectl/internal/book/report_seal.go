@@ -205,16 +205,8 @@ func reportCheckCommand() *cobra.Command {
 		if e != nil {
 			return cli.Hint(cli.ErrInput, "--page's embedded Evidence Bundle has no digest: "+cli.SafeError(e))
 		}
-		// The embedded evidence gets the check `report build` gives it
-		// before writing a page: `verify --bundle`'s own verdict.
-		result := reportCheckResult{PageDigest: pageDigest(page), BundleDigest: bundleDigest, Verification: "VALID"}
-		evidenceErr := cli.PageGate(value)
-		if evidenceErr != nil {
-			result.Verification = "INCOMPLETE"
-			if errors.Is(evidenceErr, cli.ErrBundleInvalid) {
-				result.Verification = "INVALID"
-			}
-		}
+		verdict, evidenceErr := judgeEmbedded(value)
+		result := reportCheckResult{PageDigest: pageDigest(page), BundleDigest: bundleDigest, Verification: verdict}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
 			return e
@@ -253,4 +245,19 @@ func sealReport(ctx context.Context, p cli.Profile, st pageSealStatement) (seale
 	}
 	defer func() { err = errors.Join(err, opened.release()) }()
 	return sealPage(ctx, opened.book, st)
+}
+
+// judgeEmbedded is the check `report build` gives a bundle before it writes
+// a page: `verify --bundle`'s own verdict, and the page gate over it. The
+// gate also refuses a VALID bundle whose report would show fewer rows than
+// it has, which is not a verdict on the evidence: the verdict stays VALID and
+// the error carries the refusal, with the exit code the gate gives it.
+func judgeEmbedded(value map[string]interface{}) (verdict string, gate error) {
+	verdict = "INVALID"
+	if reread, err := json.Marshal(value); err == nil {
+		if judged, err := cli.DecodeBundleJSON(reread); err == nil {
+			verdict, _ = cli.BundleVerdict(judged, nil)
+		}
+	}
+	return verdict, cli.PageGate(value)
 }
