@@ -1268,7 +1268,17 @@ mod vectors {
                 .collect(),
             records: strings(&state["records"]),
             correlation: map_of(&state["correlations"]),
-            citations: map_of(&state["exchange_citations"]),
+            // The corpus names this member for the citing-records subject by
+            // its request-draft name; read it by its suffix.
+            citations: map_of(
+                state
+                    .as_object()
+                    .unwrap()
+                    .iter()
+                    .find(|(name, _)| name.ends_with("_citations"))
+                    .map(|(_, v)| v)
+                    .expect("the corpus declares the citing records"),
+            ),
         };
         let now = parse_utc("2026-09-28T12:00:00Z").unwrap();
         let may_issue = state["issues_new_commitments"] == json!(true);
