@@ -23,6 +23,10 @@ go test -race ./...
 (cd rust && RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps)
 (cd rust && cargo publish --locked --dry-run -p evidencebook)
 
+# Python (python/, the package capsule-evidencebook, imported as evidencebook;
+# CI: the python job in ci.yml)
+(cd python && python -m venv .venv && .venv/bin/pip install -e ".[test]" && .venv/bin/python -m pytest -q)
+
 # Release helper
 python -m pytest -q .github/test_release.py
 
@@ -53,6 +57,7 @@ text.
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
+| `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book and the evidence request interaction, byte for byte with Go; not yet published |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
 | `testdata/` | vectors and fixtures the Go and Rust tests read |
 | `schemas/`, `docs/` | the record header schema and vendored schemas; design notes, the interop PRD and the adapter and verifier guides |
@@ -70,8 +75,8 @@ Use their canonicalization and verification rather than reimplementing them.
 - Commits use conventional commit messages and a DCO sign-off
   (`git commit -s`). Do not add AI attribution trailers.
 - New behavior needs tests in the same change, including error paths.
-- A user-visible change adds an entry under Unreleased in `CHANGELOG.md` (Go)
-  or `rust/evidencebook/CHANGELOG.md` (Rust).
+- A user-visible change adds an entry under Unreleased in `CHANGELOG.md` (Go),
+  `rust/evidencebook/CHANGELOG.md` (Rust) or `python/CHANGELOG.md` (Python).
 
 ## Releases
 

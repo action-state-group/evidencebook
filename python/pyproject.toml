@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capsule-evidencebook"
+version = "0.1.0.dev0"
+description = "An evidence book over a Checkpointed Local Log, and the evidence request interaction (draft-mih-agent-evidence-request-00, profile evidence-interop/0) on both sides of it."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Action State Group" }]
+keywords = ["evidence", "scitt", "checkpointed-local-log", "agent-action-capsule"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Security :: Cryptography",
+    "Development Status :: 2 - Pre-Alpha",
+]
+# The request map, reply envelope, signed refusal, RFC 8785 and capsule ids
+# are agent-action-capsule's; the MMR, its proofs and the checkpoint claims
+# map are checkpointed-local-log's. Nothing here reimplements them.
+dependencies = [
+    "agent-action-capsule>=0.12.0,<0.13",
+    "checkpointed-local-log>=0.7.0,<0.8",
+    "cbor2>=5.5",
+    "cryptography>=42",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.urls]
+Homepage = "https://github.com/action-state-group/evidencebook"
+
+[tool.setuptools]
+packages = ["evidencebook"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

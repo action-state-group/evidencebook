@@ -30,6 +30,11 @@ not a conforming absence yields no claim (§6.4, §8.2 invariant 3).
 
 Every MCP result this responder returned (the replies and the
 evidence_manifest result) must carry resultType "complete" (§11.4.5).
+
+A responder.json with no "carriage" member is from a responder that answers
+over the native binding only (test/interop/python-evidencebook/responder.py):
+the carriage cases are skipped with that reason, and so are the carriage,
+manifest and MCP checks.
 """
 from __future__ import annotations
 
@@ -92,6 +97,12 @@ SKIP_PREFIX = {
     "acceptance-": "§11.1 acceptance records and receipts: not responder output, and not in this item",
     "lifecycle-": "§11.2 lifecycle statements: not responder output, and not in this item",
 }
+NATIVE_ONLY = "carriage" not in PRODUCED
+if NATIVE_ONLY:
+    for case_id in CARRIAGE_RUN + CARRIAGE_MUTATIONS:
+        SKIP_PREFIX[case_id] = ("§11.4 carriage over A2A and MCP: this responder answers over the native "
+                                "binding only")
+    CARRIAGE_RUN, CARRIAGE_MUTATIONS = [], []
 
 
 def seed_key(label: str) -> Ed25519PrivateKey:
@@ -539,6 +550,9 @@ def main() -> int:
         identical = identical and same
         print(f"invariance: canonical Artifact octets across {sorted(artifacts)}: "
               f"{'byte-identical' if same else 'DIFFERENT'} (sha256 {sha(bytes.fromhex(next(iter(artifacts.values()))))})")
+    if NATIVE_ONLY:
+        print("carriage, manifest and mcp checks: skipped, this responder answers over the native binding only")
+        return 0 if not failed and identical and len(ran) + len(mutated) + len(skipped) == len(CASES) else 1
     inv = PRODUCED["carriage"]["invariance"]
     a_native = cbor_value(bytes.fromhex(inv["native"]["response_frame_hex"]))["artifact"]
     a_a2a = cbor_value(base64.b64decode(inv["a2a"]["task"]["artifacts"][0]["parts"][0]["raw"]))["artifact"]

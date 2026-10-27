@@ -139,6 +139,11 @@ corpus's own test. It does the same for a run that files each step under
   checkpointed-local-log with its history) implements the same evidence-layer
   semantics over the Rust Checkpointed Local Log: records, epistemic types,
   links, disclosure, retention, requests and reconcile/close.
+- **Python:** the `capsule-evidencebook` package in this repository
+  ([`python/`](python/), imported as `evidencebook`) implements the book
+  and the evidence request interaction on both sides of it: asking,
+  receiving and responding, with the same records, checkpoints and reply
+  octets as this module. It is not yet published.
 - **Parity vectors** shared across implementations, all checked in CI:
   - `schemas/vendor/epistemic-types.json`: the epistemic type value set
     (`TestEpistemicTypeThreeWayParity`);
