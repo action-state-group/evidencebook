@@ -72,8 +72,12 @@ impl Book for Mem {
     }
     fn seal(&mut self, entry: &Entry) -> Result<Sealed, SealError> {
         let id = hex::encode(Sha256::digest(
-            format!("{}#{}", self.records.len(), serde_json::to_string(&entry.statement).unwrap())
-                .as_bytes(),
+            format!(
+                "{}#{}",
+                self.records.len(),
+                serde_json::to_string(&entry.statement).unwrap()
+            )
+            .as_bytes(),
         ));
         self.records
             .push((id.clone(), entry.clone(), self.clock.clone()));
@@ -121,9 +125,14 @@ fn asking_seals_the_request_before_it_is_sent() {
     assert_eq!(entry.epistemic_type, EpistemicType::ObservedEvent);
     assert!(entry.links.is_empty());
     // The responder is named in the statement, not as a counterparty.
-    assert_eq!(entry.statement["responder_ref"], "https://responder.example");
     assert_eq!(
-        serde_json::to_vec(&entry.statement["request"]).unwrap().len(),
+        entry.statement["responder_ref"],
+        "https://responder.example"
+    );
+    assert_eq!(
+        serde_json::to_vec(&entry.statement["request"])
+            .unwrap()
+            .len(),
         sent.bytes.len()
     );
 }

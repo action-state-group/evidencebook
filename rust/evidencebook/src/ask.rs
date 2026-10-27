@@ -168,7 +168,8 @@ pub fn request(
         let Some(header) = book.header_of(&record) else {
             continue;
         };
-        if header.get("record_type").and_then(Value::as_str) != Some(crate::record::record_types::REQUEST)
+        if header.get("record_type").and_then(Value::as_str)
+            != Some(crate::record::record_types::REQUEST)
         {
             continue;
         }
@@ -214,16 +215,21 @@ struct Sent {
 }
 
 fn sent_request(book: &dyn Book, record_id: &str) -> Result<Sent, AskError> {
-    let not_a_request = || AskError::NotFound(format!("{record_id} is not a request this book recorded"));
+    let not_a_request =
+        || AskError::NotFound(format!("{record_id} is not a request this book recorded"));
     let record = book.record_by_digest(record_id).ok_or_else(not_a_request)?;
     let header = book.header_of(&record).ok_or_else(not_a_request)?;
-    if header.get("record_type").and_then(Value::as_str) != Some(crate::record::record_types::REQUEST) {
+    if header.get("record_type").and_then(Value::as_str)
+        != Some(crate::record::record_types::REQUEST)
+    {
         return Err(not_a_request());
     }
     let committed_at = header
         .get("committed_at")
         .and_then(Value::as_str)
-        .ok_or_else(|| AskError::Corrupt(format!("request record {record_id} has no committed_at")))?
+        .ok_or_else(|| {
+            AskError::Corrupt(format!("request record {record_id} has no committed_at"))
+        })?
         .to_string();
     let request = header
         .get("statement")
@@ -237,7 +243,12 @@ fn sent_request(book: &dyn Book, record_id: &str) -> Result<Sent, AskError> {
             "request record {record_id} holds no well-formed request: {why}"
         ))
     })?;
-    let text = |name: &str| request.get(name).and_then(Value::as_str).map(str::to_string);
+    let text = |name: &str| {
+        request
+            .get(name)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
     Ok(Sent {
         digest: sha256_hex(&bytes),
         committed_at,
@@ -261,7 +272,8 @@ fn outcome_recorded(book: &dyn Book, request_record_id: &str) -> bool {
         let kind = header.get("record_type").and_then(Value::as_str);
         matches!(
             kind,
-            Some(crate::record::record_types::RESPONSE) | Some(crate::record::record_types::RECORDED_ABSENCE)
+            Some(crate::record::record_types::RESPONSE)
+                | Some(crate::record::record_types::RECORDED_ABSENCE)
         ) && header
             .get("links")
             .and_then(Value::as_array)
@@ -290,10 +302,13 @@ pub fn record_absence(
 ) -> Result<Sealed, AskError> {
     let sent = sent_request(book, request_record_id)?;
     let now = book.now();
-    let end = parse_utc(window_end)
-        .ok_or_else(|| AskError::Invalid(format!("window end {window_end:?} is not an RFC 3339 UTC time")))?;
-    let now_t =
-        parse_utc(&now).ok_or_else(|| AskError::Corrupt(format!("the book's clock read {now:?}")))?;
+    let end = parse_utc(window_end).ok_or_else(|| {
+        AskError::Invalid(format!(
+            "window end {window_end:?} is not an RFC 3339 UTC time"
+        ))
+    })?;
+    let now_t = parse_utc(&now)
+        .ok_or_else(|| AskError::Corrupt(format!("the book's clock read {now:?}")))?;
     if end > now_t {
         return Err(AskError::Invalid(
             "the waiting window has not closed; the request is pending".into(),
@@ -306,7 +321,8 @@ pub fn record_absence(
         ))
     })?;
     if end.seconds < asked.seconds + MINIMUM_ABSENCE_WINDOW_SECONDS
-        || (end.seconds == asked.seconds + MINIMUM_ABSENCE_WINDOW_SECONDS && end.nanos < asked.nanos)
+        || (end.seconds == asked.seconds + MINIMUM_ABSENCE_WINDOW_SECONDS
+            && end.nanos < asked.nanos)
     {
         return Err(AskError::Invalid(format!(
             "a waiting window must end at least {MINIMUM_ABSENCE_WINDOW_SECONDS}s after the request was recorded"
@@ -339,7 +355,10 @@ pub fn record_absence(
         )));
     }
     let mut statement = Map::new();
-    statement.insert("outcome".into(), json!(crate::record::record_types::RECORDED_ABSENCE));
+    statement.insert(
+        "outcome".into(),
+        json!(crate::record::record_types::RECORDED_ABSENCE),
+    );
     statement.insert("request_digest".into(), json!(sent.digest));
     if !route.is_empty() {
         statement.insert("route".into(), json!(route));

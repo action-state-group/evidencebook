@@ -342,6 +342,7 @@ dependencies = [
  "agent-action-capsule",
  "base64",
  "checkpointed-local-log",
+ "ciborium",
  "coset",
  "ed25519-dalek",
  "evidence-request",
