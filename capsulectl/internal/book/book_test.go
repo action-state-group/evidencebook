@@ -712,7 +712,7 @@ func TestRequestRespondRoundTrip(t *testing.T) {
 		return r
 	}
 
-	sent := ask("history", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	sent := ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	answered := respond("history")
 	assert.Equal(t, evidencebook.OutcomeArtifact, answered.Outcome)
 	assert.Equal(t, sent.RequestDigest, answered.RequestDigest)
@@ -729,13 +729,15 @@ func TestRequestRespondRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, mustRead(t, filepath.Join(dir, "history.response")), kept)
 
+	// No record of b names a as its counterparty, so a record subject is
+	// refused before b reads whether it holds it (evidencebook#120).
 	sent = ask("missing", `{"subject":{"record":"`+hex.EncodeToString(make([]byte, 32))+`"},"coverage":{"min_freshness":1}}`)
 	answered = respond("missing")
 	assert.Equal(t, evidencebook.OutcomeRefusal, answered.Outcome)
-	assert.Equal(t, evidencebook.ReasonNoSuchSubject, answered.Reason)
+	assert.Equal(t, evidencebook.ReasonNotAuthorized, answered.Reason)
 	got := record(sent, "missing")
 	assert.Equal(t, evidencebook.OutcomeRefusal, got.Outcome)
-	assert.Equal(t, evidencebook.ReasonNoSuchSubject, got.Reason)
+	assert.Equal(t, evidencebook.ReasonNotAuthorized, got.Reason)
 
 	sent = ask("unanswered", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	set(day1.Add(time.Hour))
@@ -750,7 +752,7 @@ func TestRequestRespondRoundTrip(t *testing.T) {
 	// them it is refused before the book is touched; under another signing
 	// key the book refuses it and records nothing, so the real response can
 	// still be recorded afterwards: a refused message never forecloses.
-	sent = ask("pinned", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	sent = ask("pinned", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	respond("pinned")
 	pinned := filepath.Join(dir, "pinned.response")
 	size := bookSize(t, a)
@@ -828,7 +830,7 @@ func TestUppercaseResponderKeysRecordTheArtifact(t *testing.T) {
 	set(day1)
 	dir := t.TempDir()
 	body := filepath.Join(dir, "ask.json")
-	require.NoError(t, os.WriteFile(body, []byte(`{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`), 0o600))
+	require.NoError(t, os.WriteFile(body, []byte(`{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`), 0o600))
 	out, err := invoke(t, "", "request", "--profile", "a", "--request", body, "--responder", "b", "--output", filepath.Join(dir, "ask.sent"))
 	require.NoError(t, err)
 	var sent cli.EvidenceRequestResult
@@ -857,7 +859,7 @@ func TestRequestAndRespondReportTheirRecordWhenOutputFails(t *testing.T) {
 	taken := filepath.Join(dir, "taken")
 	require.NoError(t, os.WriteFile(taken, []byte("x"), 0o600))
 	body := filepath.Join(dir, "ask.json")
-	require.NoError(t, os.WriteFile(body, []byte(`{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`), 0o600))
+	require.NoError(t, os.WriteFile(body, []byte(`{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`), 0o600))
 
 	size := bookSize(t, a)
 	out, err := invoke(t, "", "request", "--profile", "a", "--request", body, "--responder", "b", "--output", taken)

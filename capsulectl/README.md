@@ -2,7 +2,7 @@
 
 `capsulectl-book`, the `capsulectl` plugin over evidence books: the book verbs
 (`capsulectl book close`, `reconcile`, `request`, `respond`, `remote`,
-`result`, `report`, `backfill`, `migrate`) and a book profile's log, which the
+`result`, `report`, `backfill`, `migrate`, `doctor`) and a book profile's log, which the
 core hands to this plugin (`publish`, `cll`, `store init`, `bundle`). It is
 this library's command-line face, a nested Go module,
 `github.com/action-state-group/evidencebook/capsulectl`, with its own
