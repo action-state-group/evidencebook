@@ -435,6 +435,15 @@ func TestBuildCarriesAWordingPackAndTheContractReport(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, plain.BundleDigest, contract.BundleDigest, "the contract report is recorded in the bundle")
 
+	// A permalink would carry the bundle without the layer, so the worded
+	// page gets none; the contract-report selection is in the bundle, so
+	// that page does.
+	_, err = page.Permalink("")
+	require.ErrorIs(t, err, ErrRefused)
+	assert.Contains(t, err.Error(), "wording layer")
+	_, err = contract.Permalink("")
+	require.NoError(t, err)
+
 	// The page with the wording pack is sealed and checked like any other.
 	book := newBook(t)
 	_, err = SealPage(t.Context(), book, page.HTML)

@@ -20,7 +20,8 @@
   `ContractReport`, which records the empty `contract-report/v1` block so the
   viewer draws the contract report. `Build` refuses a pack that does not
   check, or a different `contract-report/v1` block already in the bundle, as
-  `ErrRefused`. With neither, pages are byte-identical to before; the page
+  `ErrRefused`. A page with a wording layer gets no permalink, which would
+  carry the bundle without it. With neither, pages are byte-identical to before; the page
   now goes through capsule-viewer's `BuildOfflineHTML`, whose default
   settings write the same page.
 

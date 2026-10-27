@@ -133,6 +133,9 @@ type View struct {
 	// locked. A host with words of its own combines them with the pack's
 	// into this one pack. The pack's page.title, if any, is the document
 	// <title>; Presentation.Title is the header in the page, and both apply.
+	// The layer lives in the page, not in the bundle it embeds, so a page
+	// built with one gets no permalink: the permalink carries the bundle
+	// alone, and the viewer it opens in would show its own words.
 	Wording *Wording
 	// ContractReport selects the contract report (AAC
 	// spec/contract-report-v1.md): the page's bundle carries the empty
@@ -200,6 +203,8 @@ type Page struct {
 	HTML        []byte
 
 	bundle map[string]interface{}
+	// worded is set when the page carries a wording layer.
+	worded bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -282,7 +287,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	page := &Page{
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
-		BundleDigest: digest, Verification: verification, bundle: value,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil,
 	}
 	// The bundle is judged as `verify --bundle` reads it from a file.
 	if reread, err := json.Marshal(value); err == nil {
@@ -314,13 +319,17 @@ func Build(bundle []byte, view View) (*Page, error) {
 
 // Permalink is a viewer link over the same bundle the page embeds, so both
 // carriers hold identical bytes; base is the viewer's bundle URL, the
-// public verifier's when empty. A draft page gets none.
+// public verifier's when empty. A draft page gets none, nor does a page with
+// a wording layer, which the permalink would not carry.
 func (p *Page) Permalink(base string) (string, error) {
 	if p.Draft {
 		return "", refusal("a draft page gets no permalink")
 	}
 	if p.HTML == nil {
 		return "", refusal("no page was rendered, so there is no permalink")
+	}
+	if p.worded {
+		return "", refusal("a page with a wording layer gets no permalink: the permalink carries the bundle alone, and the viewer would show its own words")
 	}
 	fragment, err := aacbundle.EncodeFragment(p.bundle)
 	if err != nil {
