@@ -84,7 +84,7 @@ The byte change is expected. Equivalence is checked by behaviour, not bytes, aga
 
 ## Release
 
-The `report` module's switches batch into one later release, after moves 2 and 3, tagged on Ethan's go. Every `cli` symbol `report` imports today is accounted for:
+The `report` module's switches batch into one later release, after moves 2 and 3, tagged on Ethan's go. Every `cli` symbol `report`'s non-test code imports today is accounted for below. Its tests also use `cli.DiscriminatorValues` (`TestCardsAreTheContractProfiles`), which goes when the card set's check moves with the contract schema.
 
 | `cli` symbol | After the batch |
 |---|---|
