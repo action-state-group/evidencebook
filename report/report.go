@@ -127,11 +127,12 @@ type View struct {
 	Card         string
 	Presentation *Presentation
 	Draft        bool
-	// Wording is a host wording pack laid over the viewer's own base pack:
-	// its entries replace the base's for the same keys, and the entries the
-	// viewer locks stay locked. A host with words of its own and a pack's
-	// words combines them into this one pack. Its page.title, if any, is the
-	// page title.
+	// Wording is the wording layer over the viewer's own base pack (SDK
+	// SURFACE `report`: base plus the pack's): its entries replace the
+	// base's for the same keys, and the entries the viewer locks stay
+	// locked. A host with words of its own combines them with the pack's
+	// into this one pack. The pack's page.title, if any, is the document
+	// <title>; Presentation.Title is the header in the page, and both apply.
 	Wording *Wording
 	// ContractReport selects the contract report (AAC
 	// spec/contract-report-v1.md): the page's bundle carries the empty

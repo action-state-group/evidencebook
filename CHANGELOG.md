@@ -15,8 +15,8 @@
 
 ### Added: a wording pack and the contract report in `report.View` (evidencebook#147)
 
-- `report.View` takes `Wording`, an `aac.wording-pack/v0` host pack with its
-  SHA-256 (`report.Wording`), laid over the viewer's own words, and
+- `report.View` takes `Wording`, an `aac.wording-pack/v0` pack with its
+  SHA-256 (`report.Wording`), the wording layer over the viewer's own base, and
   `ContractReport`, which records the empty `contract-report/v1` block so the
   viewer draws the contract report. `Build` refuses a pack that does not
   check, or a different `contract-report/v1` block already in the bundle, as

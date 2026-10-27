@@ -398,7 +398,7 @@ func TestUnsupportedClaimsReadsAnOwnCapsulesSubject(t *testing.T) {
 	assert.Equal(t, 1, unsupportedClaims(posing, claims), "an own capsule's payload is not read as a header")
 }
 
-// hostWording is a host pack that sets the page title, with its digest.
+// hostWording is a wording layer that sets the document title, with its digest.
 func hostWording(t *testing.T) *Wording {
 	t.Helper()
 	pack := `{"wording_pack_version":"aac.wording-pack/v0","id":"example.host/v0","locale":"en","entries":{"page.title":"Monthly outcomes"}}`
