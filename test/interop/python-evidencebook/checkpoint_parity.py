@@ -73,6 +73,8 @@ GO_DEPARTS: list[tuple[str, str, str]] = [
     ("claims-extra-nonscalar-keys", "accept", _MUST_IGNORE + "; RFC 8949 §3.1: any data item is a map key"),
     ("claims-extra-depth-32", "accept", _MUST_IGNORE + "; 32 levels, Go's decoder limit (the spec sets none)"),
     ("protected-text-label-1-beside-alg", "accept", "RFC 9052 §3: text \"1\" and integer 1 are different labels"),
+    ("claims-extra-one-and-true", "accept", _MUST_IGNORE + "; RFC 8949 §5.6.1: 1 and true are different keys"),
+    ("protected-crit-lists-crit", "accept", "RFC 9052 §3.1: crit may list any label present and understood"),
     ("claims-issued-at-comma-fraction", "refuse", "RFC 3339 §5.6: time-secfrac is \".\" 1*DIGIT"),
     ("claims-issued-at-offset-plus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
     ("claims-issued-at-offset-minus-24", "refuse", "RFC 3339 §5.6: time-numoffset's time-hour is 00-23"),
@@ -226,6 +228,10 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     claims_case("extra-depth-33", dict(claims, extra=[nested]))
     claims_case("log-size-bignum", claims, payload_with(claims, "log_size", "c2" + cbor2.dumps(claims["log_size"].to_bytes(2, "big")).hex()))
     claims_case("extra-simple-two-byte", claims, payload_with(claims, "extra", "f800"))
+    claims_case("extra-one-and-true", claims, payload_with(claims, "extra", raw_map([(1, "a"), (True, "b")]).hex()))
+    claims_case("extra-repeated-key", claims, payload_with(claims, "extra", raw_map([(1, "a"), (1, "b")]).hex()))
+    claims_case("extra-repeated-key-long-head", claims,
+                payload_with(claims, "extra", raw_map([(1, "a"), (("raw", b"\x18\x01"), "b")]).hex()))
     claims_case("extra-break-in-tag", claims, payload_with(claims, "extra", "c1ff"))
     if claims["prev_size"]:
         claims_case("prev-size-equal", dict(claims, prev_size=claims["log_size"], prev_commitment=claims["commitment"]))
@@ -282,6 +288,8 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     header_case("crit-empty", cbor2.dumps({**prot, 2: []}))
     header_case("iv-and-partial-iv", cbor2.dumps({**prot, 5: b"\x00" * 16, 6: b"\x00"}))
     header_case("text-label-1-beside-alg", cbor2.dumps({**prot, "1": -8}))
+    header_case("true-label-beside-alg", raw_map([*prot.items(), (True, "x")]))
+    header_case("crit-lists-crit", cbor2.dumps({**prot, 2: [2]}))
     sig = LOG_KEY.sign(cbor2.dumps(["Signature1", prot_bstr, b"", payload]))
     for name, unprotected in (("crit", {2: [1]}), ("kid-again", {4: kid}), ("partial-iv-beside-protected-iv", {6: b"\x00"}),
                               ("iv-text", {5: "x"})):

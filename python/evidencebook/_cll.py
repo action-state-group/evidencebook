@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import io
+import struct
 from collections.abc import Mapping
 
 import cbor2
@@ -86,24 +87,94 @@ _RAW_TAGS = {n: _keep(n) for n in SEMANTIC_TAGS}
 MAX_NESTING = 32
 
 
-def _decode(data: bytes, what: str) -> object:
+def _decode(data: bytes, what: str) -> tuple[object, tuple]:
     """One CBOR data item, read with cbor2 in strict mode: not-well-formed
-    encodings (RFC 8949 §3, Appendix F), a repeated map key (§5.6), trailing
-    octets and more than MAX_NESTING levels are refused; every valid
-    encoding, indefinite lengths included, is accepted."""
+    encodings (RFC 8949 §3, Appendix F), trailing octets and more than
+    MAX_NESTING levels are refused; every valid encoding, indefinite lengths
+    included, is accepted. Returns the value and its type-faithful form
+    (:func:`_faithful`), which refuses a repeated map key (§5.6)."""
     stream = io.BytesIO(data)
     try:
-        value = cbor2.CBORDecoder(stream, allow_duplicate_keys=False, allow_indefinite=True, max_depth=MAX_NESTING,
+        value = cbor2.CBORDecoder(stream, allow_duplicate_keys=True, allow_indefinite=True, max_depth=MAX_NESTING,
                                   semantic_decoders=_RAW_TAGS).decode()
     except (cbor2.CBORDecodeError, ValueError, TypeError) as exc:
         raise _Refused(f"{what}: {exc}") from None
     if stream.read(1):
         raise _Refused(f"{what}: trailing octets after the data item")
-    return value
+    return value, _faithful(data, what)
+
+
+def _faithful(data: bytes, what: str) -> tuple:
+    """The data item cbor2 just validated, as a tree that keeps CBOR's types:
+    cbor2 hands back Python values, in which true equals 1 and 1.0 equals 1,
+    so it cannot tell two such keys apart. A map is ("map", ((key, value),
+    ...)); a map key repeated by type and value (RFC 8949 §5.6) is refused,
+    and keys 1 and true are not repeats. Only well-formed input reaches it.
+    It can give way to checkpointed-local-log's helper for the same
+    collapse once that lands (checkpointed-local-log#104)."""
+    def head(i: int) -> tuple[int, int | None, int]:
+        major, info = data[i] >> 5, data[i] & 31
+        if info < 24:
+            return major, info, i + 1
+        if info == 31:
+            return major, None, i + 1
+        width = 1 << (info - 24)
+        return major, int.from_bytes(data[i + 1:i + 1 + width], "big"), i + 1 + width
+
+    def item(i: int) -> tuple[tuple, int]:
+        initial = data[i]
+        major, arg, i = head(i)
+        if major in (0, 1):
+            return ("int", arg if major == 0 else -1 - arg), i
+        if major in (2, 3):
+            if arg is not None:
+                raw, i = data[i:i + arg], i + arg
+            else:
+                chunks = []
+                while data[i] != 0xFF:
+                    _, n, i = head(i)
+                    chunks.append(data[i:i + n])
+                    i += n
+                raw, i = b"".join(chunks), i + 1
+            return ("bytes" if major == 2 else "text", bytes(raw)), i
+        if major in (4, 5):
+            entries, seen = [], set()
+            while (arg is None and data[i] != 0xFF) or (arg is not None and len(entries) < arg):
+                key, i = item(i)
+                if major == 4:
+                    entries.append(key)
+                    continue
+                if key in seen:
+                    raise _Refused(f"{what}: a map key is repeated")
+                seen.add(key)
+                value, i = item(i)
+                entries.append((key, value))
+            if arg is None:
+                i += 1
+            return ("array" if major == 4 else "map", tuple(entries)), i
+        if major == 6:
+            inner, i = item(i)
+            return ("tag", arg, inner), i
+        if initial in (0xF9, 0xFA, 0xFB):
+            width = {0xF9: 2, 0xFA: 4, 0xFB: 8}[initial]
+            value = struct.unpack(">" + {2: "e", 4: "f", 8: "d"}[width], data[i - width:i])[0]
+            return ("float", "nan" if value != value else value), i
+        return ("simple", arg), i  # false 20, true 21, null 22, undefined 23, others
+
+    return item(0)[0]
+
+
+def _labels(tree: tuple) -> list[tuple]:
+    """The keys of a map's faithful form."""
+    return [key for key, _ in tree[1]] if tree[0] == "map" else []
+
+
+def _member(tree: tuple, key: tuple) -> tuple:
+    return next((value for k, value in tree[1] if k == key), ("absent",)) if tree[0] == "map" else ("absent",)
 
 
 _REQUIRED_CLAIMS = ("kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at")
-_UNDERSTOOD_LABELS = {1, 3, 4, 15}  # alg, content type, kid, CWT_Claims
+_UNDERSTOOD_LABELS = {1, 2, 3, 4, 15}  # alg, crit, content type, kid, CWT_Claims
 _MAX_PORTABLE = (1 << 53) - 1  # backend-contract.md MaxPortableInteger
 _MAX_CHECKPOINT_BYTES = 65536  # backend-contract.md MaxCheckpointBytes
 
@@ -135,7 +206,7 @@ def _peaks(raw: object, size: int, what: str) -> list[bytes]:
     profile's commitment object encodes it."""
     if not isinstance(raw, bytes):
         raise _Refused(f"{what} is not a byte string")
-    peaks = _decode(raw, what)
+    peaks, _ = _decode(raw, what)
     if not isinstance(peaks, list) or not all(isinstance(p, bytes) and len(p) == 32 for p in peaks) or \
             core.commitment_object(peaks) != raw:
         raise _Refused(f"{what} is not a canonical peak list")
@@ -144,14 +215,16 @@ def _peaks(raw: object, size: int, what: str) -> list[bytes]:
     return peaks
 
 
-def _check_headers(protected: Mapping, unprotected: Mapping) -> None:
+def _check_headers(protected: Mapping, unprotected: Mapping, trees: tuple[tuple, tuple]) -> None:
     """RFC 9052 §3 and §3.1 over both header buckets: labels are integers or
     texts (CBOR true is not label 1; text "1" is another label than 1), no
     label in both buckets, crit only in the protected one, non-empty and
     naming present labels this reader understands, IV and Partial IV not
     both in the layer, and the common parameters of their types."""
-    for bucket in (protected, unprotected):
-        if any(type(label) not in (int, str) for label in bucket):
+    # Label types are read from the faithful forms: a true beside 1 is
+    # invisible in the decoded maps.
+    for tree in trees:
+        if any(kind not in ("int", "text") for kind, _ in _labels(tree)):
             raise _Refused("a header label is not an integer or a text")
     if set(protected) & set(unprotected):
         raise _Refused("a label is in both the protected and the unprotected header")
@@ -180,7 +253,7 @@ def _read(statement: bytes) -> Checkpoint:
     from the draft."""
     if len(statement) > _MAX_CHECKPOINT_BYTES:
         raise _Refused(f"the statement is over {_MAX_CHECKPOINT_BYTES} bytes")
-    message = _decode(statement, "the statement")
+    message, message_tree = _decode(statement, "the statement")
     # RFC 9052 §4.2 COSE_Sign1, tagged (the draft is silent on the untagged
     # form; Go requires the tag).
     if not isinstance(message, cbor2.CBORTag) or message.tag != _COSE_SIGN1_TAG or \
@@ -190,12 +263,12 @@ def _read(statement: bytes) -> Checkpoint:
     if not all(isinstance(x, bytes) for x in (protected_bstr, payload, signature)) or \
             not isinstance(unprotected, Mapping):
         raise _Refused("a COSE_Sign1 member has the wrong type")
-    protected = _decode(protected_bstr, "the protected header") if protected_bstr else {}
-    claims = _decode(payload, "the claims")
+    protected, protected_tree = _decode(protected_bstr, "the protected header") if protected_bstr else ({}, ("map", ()))
+    claims, _ = _decode(payload, "the claims")
     if not isinstance(protected, Mapping):
         raise _Refused("the protected header is not a map")
     # The unprotected header may carry a witness's countersignature (§Witnessing).
-    _check_headers(protected, unprotected)
+    _check_headers(protected, unprotected, (protected_tree, message_tree[2][1][1]))
     kid, cwt = protected.get(4), protected.get(15)
     # The draft: the protected header carries the algorithm and the key
     # identifier. Silent on their values and on the content type, so Go's:
@@ -207,7 +280,8 @@ def _read(statement: bytes) -> Checkpoint:
     # claims allowed. The draft does not define sub's form; Go's is
     # "<iss>#<log_size>", with iss a CLL identifier.
     # RFC 8392 §3: a claim key is an integer or a text (CBOR true is not key 1).
-    if not isinstance(cwt, Mapping) or any(type(key) not in (int, str) for key in cwt) or \
+    cwt_keys = _labels(_member(protected_tree, ("int", 15)))
+    if not isinstance(cwt, Mapping) or any(kind not in ("int", "text") for kind, _ in cwt_keys) or \
             not isinstance(cwt.get(1), str) or not isinstance(cwt.get(2), str):
         raise _Refused("the CWT_Claims do not carry iss and sub as texts")
     # §The Checkpoint: a CBOR map with these claims; others MUST be ignored.
