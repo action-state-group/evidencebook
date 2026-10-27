@@ -71,7 +71,7 @@ func TestReportSealMatchesTheUntouchedPage(t *testing.T) {
 	result, err := checkPageFile(t, p, page)
 	require.NoError(t, err)
 	assert.Equal(t, pageMatch, result.Page)
-	assert.Equal(t, "pass", result.Verification)
+	assert.Equal(t, "VALID", result.Verification)
 	assert.Equal(t, built.PageSeal.RecordID, result.RecordID)
 
 	// A repeat of the same page seals no second record.
@@ -93,7 +93,7 @@ func TestReportSealMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testin
 		require.ErrorIs(t, err, cli.ErrConflict, name)
 		assert.Equal(t, 5, cli.ExitCode(err), name)
 		assert.Equal(t, pageMismatch, result.Page, name)
-		assert.Equal(t, "pass", result.Verification, name+": the embedded evidence is untouched")
+		assert.Equal(t, "VALID", result.Verification, name+": the embedded evidence is untouched")
 	}
 }
 
@@ -113,7 +113,8 @@ func TestReportCheckReportsAFailedEvidenceVerificationApartFromTheSeal(t *testin
 	result, err := checkPageFile(t, p, out)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, cli.ErrConflict)
-	assert.Equal(t, "failed", result.Verification)
+	assert.Equal(t, 1, cli.ExitCode(err))
+	assert.Equal(t, "INVALID", result.Verification)
 	assert.Equal(t, pageNoSeal, result.Page)
 }
 
@@ -125,7 +126,7 @@ func TestReportCheckWithNoSealedRecord(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrPartial)
 	assert.Equal(t, 3, cli.ExitCode(err))
 	assert.Equal(t, pageNoSeal, result.Page)
-	assert.Equal(t, "pass", result.Verification)
+	assert.Equal(t, "VALID", result.Verification)
 
 	// A dry run seals nothing, even with --seal.
 	_, draft, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal", "--dry-run")
@@ -160,4 +161,27 @@ func TestReportCheckRefusesAFileThatIsNotAReportPage(t *testing.T) {
 	p, bundle := sealedBookBundle(t)
 	_, err := checkPageFile(t, p, bundle)
 	require.ErrorIs(t, err, cli.ErrInput)
+}
+
+func TestReportBuildSealNeedsABookProfile(t *testing.T) {
+	_, bundle := sealedBookBundle(t)
+	p, _ := profileFixture(t) // a mysql profile, not a book
+	_, _, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal")
+	require.ErrorIs(t, err, cli.ErrInput)
+}
+
+// A page whose embedded record signature was damaged is INVALID evidence, as
+// `report build` and `verify --bundle` call it, even though the page is
+// otherwise well formed.
+func TestReportCheckJudgesTheEmbeddedSignatures(t *testing.T) {
+	p, bundle := sealedBookBundle(t)
+	_, page, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal")
+	require.NoError(t, err)
+	record := reportEmbeddedBundle(t, string(mustRead(t, page)))["records"].([]interface{})[0].(map[string]interface{})
+	sig := record["signature"].(string)
+	flipped := sig[:len(sig)-1] + map[bool]string{true: "1", false: "0"}[sig[len(sig)-1] == '0']
+	result, err := checkPageFile(t, p, editedPage(t, page, sig, flipped))
+	require.ErrorIs(t, err, cli.ErrBundleInvalid)
+	assert.Equal(t, 1, cli.ExitCode(err))
+	assert.Equal(t, "INVALID", result.Verification)
 }

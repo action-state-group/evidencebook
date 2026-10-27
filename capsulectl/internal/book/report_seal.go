@@ -181,10 +181,11 @@ func checkPage(ctx context.Context, book *evidencebook.Book, digest string, seal
 }
 
 // reportCheckCommand is `report check`: whether a page file is the page the
-// book sealed. Its exit code is 0 for a match, 5 (conflict) for a mismatch,
-// 3 (partial) when the book holds no seal, or one no checkpoint covers yet,
-// and 1 when the embedded evidence does not verify; the output always says
-// both answers.
+// book sealed. The output always says both answers. The exit code is
+// `verify --bundle`'s (1 INVALID, 3 INCOMPLETE) when the embedded evidence is
+// not VALID, which comes first; else 0 for a match, 5 (conflict) for a
+// mismatch, and 3 (partial) when the book holds no seal, or one no checkpoint
+// covers yet. A file that embeds no bundle is not a page: exit 2.
 func reportCheckCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "check", Short: "Check a report page's bytes against the seal its book holds; the embedded evidence is verified separately", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, e := cli.Selected(c)
@@ -204,10 +205,15 @@ func reportCheckCommand() *cobra.Command {
 		if e != nil {
 			return cli.Hint(cli.ErrInput, "--page's embedded Evidence Bundle has no digest: "+cli.SafeError(e))
 		}
-		result := reportCheckResult{PageDigest: pageDigest(page), BundleDigest: bundleDigest, Verification: "pass"}
-		evidenceErr := error(nil)
-		if result.Verification, evidenceErr = verifyHeldBundle(value); evidenceErr != nil {
-			result.Verification = "failed"
+		// The embedded evidence gets the check `report build` gives it
+		// before writing a page: `verify --bundle`'s own verdict.
+		result := reportCheckResult{PageDigest: pageDigest(page), BundleDigest: bundleDigest, Verification: "VALID"}
+		evidenceErr := cli.PageGate(value)
+		if evidenceErr != nil {
+			result.Verification = "INCOMPLETE"
+			if errors.Is(evidenceErr, cli.ErrBundleInvalid) {
+				result.Verification = "INVALID"
+			}
 		}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
@@ -225,10 +231,10 @@ func reportCheckCommand() *cobra.Command {
 			return e
 		}
 		switch {
+		case evidenceErr != nil:
+			return evidenceErr
 		case result.Page == pageMismatch:
 			return errors.Join(cli.ErrConflict, errors.New("the page's bytes are not the bytes the book sealed for its bundle"))
-		case evidenceErr != nil:
-			return fmt.Errorf("the page's embedded evidence does not verify: %s", cli.SafeError(evidenceErr))
 		case result.Page != pageMatch:
 			return errors.Join(cli.ErrPartial, errors.New("page: "+result.Page))
 		}

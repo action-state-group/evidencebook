@@ -450,7 +450,7 @@ func reportCommands() *cobra.Command {
 		} else if err != nil {
 			return err
 		}
-		if sealProfile != nil && !dryRun {
+		if sealProfile != nil {
 			// The page is on disk from here on: a failure sealing it still
 			// reports the page, so the caller never loses it.
 			sealed, err := sealReport(c.Context(), *sealProfile, pageSealStatement{PageDigest: pageDigest([]byte(html)), BundleDigest: digest, ResultRoot: root.id})

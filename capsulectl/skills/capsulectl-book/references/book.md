@@ -119,5 +119,6 @@ page is written (never for `--dry-run`) and checkpoints it. The record holds the
 page's SHA-256, the embedded bundle's digest and the Result root. `report check`
 compares a page file with the book's seals for the bundle it embeds: `match`
 (exit 0), `mismatch` (5), `no sealed record` or `not covered by a checkpoint`
-(3). `verification` is the embedded evidence's own check, kept apart (exit 1
-when it fails). The page's bytes are checked with this command, never in the page.
+(3). `verification` is the embedded evidence's `verify --bundle` verdict, kept
+apart; when it is not VALID its exit code (1, 3) comes first. A file that embeds
+no bundle is not a page (2). The page's bytes are checked with this command, never in the page.

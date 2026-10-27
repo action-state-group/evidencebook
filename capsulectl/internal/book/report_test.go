@@ -36,9 +36,9 @@ func TestIIFEIsPinned(t *testing.T) {
 	assert.NotContains(t, text, "https://")
 }
 
-// book report build (reportCommands) reads its bundle with
-// cli.ReadBundleInput, the MaxBundleInput bound; it is the plugin's only
-// caller, so every other plugin input keeps MaxInput.
+// book report build reads its bundle, and book report check the page that
+// embeds one, with cli.ReadBundleInput, the MaxBundleInput bound; they are
+// the plugin's only callers, so every other plugin input keeps MaxInput.
 func TestReportBuildReadsABundle(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)

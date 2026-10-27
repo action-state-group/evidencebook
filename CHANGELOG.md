@@ -13,9 +13,10 @@
 - `capsulectl book report check --profile NAME --page FILE` compares a page
   file with the book's seals for the bundle it embeds and reports `match`,
   `mismatch`, `no sealed record`, or `not covered by a checkpoint`, with the
-  embedded evidence's own check in `verification`, apart from the page
-  answer. Exit codes: 0 match, 5 mismatch, 3 no seal or none covered yet, 1
-  when the embedded evidence does not verify.
+  embedded evidence's `verify --bundle` verdict in `verification`, apart from
+  the page answer. Exit codes: the evidence's, when it is not VALID (1 INVALID,
+  3 INCOMPLETE); else 0 match, 5 mismatch, 3 no seal or none covered yet; 2 for
+  a file that embeds no Evidence Bundle (not a report page).
 
 ### Added: `capsulectl book doctor [--probe]` (evidencebook#130)
 
