@@ -45,6 +45,7 @@
 //! | (record identity: JCS and JSON-DIGEST) | [`canonical`] |
 
 pub mod answer;
+pub mod ask;
 pub mod canonical;
 pub mod derivation;
 pub mod disclosure;
