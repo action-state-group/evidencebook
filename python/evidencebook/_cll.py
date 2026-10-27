@@ -115,8 +115,9 @@ def _claims_profile(claims: object, payload: bytes) -> str:
     canonical form, a positive log size and cadence."""
     if not isinstance(claims, dict) or not _CLAIMS <= set(claims) or not set(claims) <= _CLAIMS | _OPTIONAL_CLAIMS:
         return "the claims are not the checkpoint profile's"
+    # Present means a proof: Go's omitempty re-encoding drops a null one, so it is refused.
     proof = claims.get("consistency_proof")
-    if proof is not None and (not isinstance(proof, dict) or set(proof) != _PROOF_MEMBERS):
+    if "consistency_proof" in claims and (not isinstance(proof, dict) or set(proof) != _PROOF_MEMBERS):
         return "the claims are not the checkpoint profile's"
     if cbor2.dumps(claims, canonical=True) != payload:
         return "the claims are not canonical"
