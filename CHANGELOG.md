@@ -2,6 +2,27 @@
 
 ## v0.8.0 (2026-10-27)
 
+### Added: package `report`, the report builder in the SDK (evidencebook#132)
+
+- `github.com/action-state-group/evidencebook/report` renders a verified
+  Evidence Bundle rooted at a sealed Evidence Result v0 into one offline HTML
+  page: `Build(bundle, View{Card, Presentation, Draft})` verifies the bundle,
+  gates the root (exactly one Result), checks the Result, and renders only
+  when `verify --bundle` calls the bundle VALID; otherwise it returns what it
+  found with the page gate's refusal. `Page.Permalink` encodes the same
+  embedded bundle. Refusals wrap `report.ErrRefused`.
+- `SealPage` seals a built page's digest in a book as one `report_page_seal`
+  record and makes sure a checkpoint covers it; `CheckPage` compares a page
+  file with those seals (`match`, `mismatch`, `no sealed record`, `not
+  covered by a checkpoint`) and judges the embedded evidence apart.
+- This is the code behind `capsulectl book report build` and `report check`
+  (#108), moved from `capsulectl/internal/book`; runnable examples render the
+  presentation fixtures, now in `report/testdata/presentation`.
+- The root module now requires `capsule-cli` v0.1.0-rc23 and
+  `capsule-viewer/go` (for the Result and page gates and the pinned viewer
+  runtime), and `agent-action-capsule/go` v0.13.1. The `evidencebook` package
+  itself imports nothing new.
+
 ### Added: `report build --seal` and `report check` (evidencebook#108)
 
 - `capsulectl book report build --seal --profile NAME` seals the written

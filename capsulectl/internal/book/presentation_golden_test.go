@@ -13,7 +13,7 @@ import (
 // taken from capsule-cli's cli/testdata/presentation at the import
 // (capsule-cli#326). evidencebook-deal's TestPresentationGoldens measures
 // its own copy of these pages in a browser; a change here goes there too.
-const presentationDir = "../../testdata/presentation"
+const presentationDir = "../../../report/testdata/presentation"
 
 // TestReportBuildGoldens re-emits each fixture page `book report build`
 // wrote and holds the committed page to it byte for byte, so the browser

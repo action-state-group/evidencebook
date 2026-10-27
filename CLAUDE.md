@@ -54,6 +54,7 @@ text.
 |---|---|
 | repository root | Go package `evidencebook` (the book, its substrates, indexes, requests and interop carriage) |
 | `adapter/` | Go adapters for foreign evidence (`acp`, `ucp`, `x402`) |
+| `report/` | Go package `report`: renders a verified Result-rooted bundle into an offline page and seals the page's digest (what `capsulectl book report` runs) |
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
