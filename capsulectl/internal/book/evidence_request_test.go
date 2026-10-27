@@ -64,7 +64,7 @@ func (x *evidenceExchange) respondAs(name, out string) evidencebook.Reply {
 // --witness-directory is refused on a book profile, and with an absence.
 func TestBookAnswerTakesNoWitnessDirectory(t *testing.T) {
 	x := newEvidenceExchange(t)
-	sent := x.ask("history", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	sent := x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	x.respond("history")
 	_, err := invoke(t, "", "request", "--profile", "a", "--for", sent.RecordID, "--response", filepath.Join(x.dir, "history.response"),
 		"--responder-key", hex.EncodeToString(x.bKeys.record), "--responder-checkpoint-key", hex.EncodeToString(x.bKeys.checkpoint),
@@ -86,16 +86,16 @@ func TestBookAnswerTakesNoWitnessDirectory(t *testing.T) {
 // bytes: the pin is the anchor, never the latest checkpoint.
 func TestFixedPinArtifactSurvivesLogGrowth(t *testing.T) {
 	x := newEvidenceExchange(t)
-	x.ask("first", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	x.ask("first", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	first := x.respond("first")
 	require.NotNil(t, first.Envelope)
 	anchor := first.Envelope.Anchor.Digest
-	x.ask("pinned", `{"subject":{"full_history":null},"coverage":{"expected_pin":"`+anchor+`"}}`)
+	x.ask("pinned", `{"subject":{"checkpoints":null},"coverage":{"expected_pin":"`+anchor+`"}}`)
 	before := x.respond("pinned").Envelope
 	require.NotNil(t, before)
 
 	appendHalves(t, x.b, half{"x2", "r2", "p2"}, half{"x3", "r3", "p3"})
-	x.ask("grow", `{"subject":{"full_history":null},"coverage":{"min_freshness":`+strconv.FormatUint(bookSize(t, x.b), 10)+`}}`)
+	x.ask("grow", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":`+strconv.FormatUint(bookSize(t, x.b), 10)+`}}`)
 	grown := x.respond("grow").Envelope
 	require.NotNil(t, grown)
 	require.NotEqual(t, anchor, grown.Anchor.Digest, "the log grew and a newer checkpoint was issued")
@@ -129,7 +129,7 @@ func TestRespondWithoutRequesterAnswersOnlyPublicSubjects(t *testing.T) {
 
 	// An unauthenticated request never makes the book checkpoint: it is
 	// answered from a checkpoint an authenticated answer already cut.
-	x.ask("cut", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	x.ask("cut", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	x.respond("cut")
 	x.ask("checkpoints", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	size = bookSize(t, x.b)

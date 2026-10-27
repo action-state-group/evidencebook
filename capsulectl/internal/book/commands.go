@@ -11,7 +11,7 @@ import (
 const Vendor = "action-state-group"
 
 // BookMetadata is capsulectl-book's cli-plugin-metadata answer.
-var BookMetadata = cli.PluginMetadata{Name: cli.BookPluginName, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "backfill", "migrate"}}
+var BookMetadata = cli.PluginMetadata{Name: cli.BookPluginName, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "backfill", "migrate", "doctor"}}
 
 // BookCommands are capsulectl-book's own commands: `capsulectl book ...`.
 // The binary also holds the core tree, which reaches book profiles through
@@ -25,7 +25,7 @@ func BookCommands() []*cobra.Command {
 		}
 		return nil
 	})
-	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), backfillCommands(), migrateCommand()}
+	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), backfillCommands(), migrateCommand(), doctorCommand()}
 }
 
 // BookAliases are `capsulectl book list|get|head`, which read another

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added: `capsulectl book doctor [--probe]` (evidencebook#130)
+
+- `capsulectl book doctor` prints the book's `Book.Doctor` findings as
+  `{"findings": [...]}`, a list and never a score, and seals nothing. It reads
+  the share policy from `--policy` (as `book respond --policy` does; default
+  the documented defaults), controller binding records from
+  `--controller-binding` (repeatable), and the witness deliveries in
+  `book/witness.json`.
+- `--probe` asks the book's own responder, the path `book respond` answers
+  with no `--requester`, for `checkpoints` and then `history_card/1` as a
+  stranger, and verifies both under the profile's own signing and checkpoint
+  keys. A profile records no responder address, so the probe goes through
+  that path in-process. The book grows by no record and no checkpoint.
+- The plugin's metadata declares `doctor`, which capsulectl's own `doctor`
+  lists (capsule-cli#459).
+- `capsulectl/go.mod` requires the library at `f8de416` (#133). With it,
+  `book respond` answers under #120's subject-scoped authorization: the
+  plugin's tests now ask for `checkpoints` where they asked for
+  `full_history`, which is refused to everyone, and expect `not_authorized`
+  for a record subject asked by a requester no record names.
+
 ### Added: `Book.Doctor`, a node's check of itself (evidencebook#130)
 
 - `Book.Doctor` returns a list of findings, never a score: what is
