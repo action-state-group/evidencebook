@@ -96,6 +96,8 @@ def _wire_profile(statement: bytes) -> str:
 
 _CLAIMS = {"kind", "log_size", "commitment", "prev_size", "prev_commitment", "issued_at"}
 _OPTIONAL_CLAIMS = {"cadence", "consistency_proof"}
+_MAX_UINT64 = (1 << 64) - 1
+_MAX_PORTABLE = (1 << 53) - 1
 _PROOF_MEMBERS = {"size_a", "size_b", "witness", "old_peaks", "new_peaks"}
 
 
@@ -118,8 +120,10 @@ def _claims_profile(claims: object, payload: bytes) -> str:
         return "the claims are not the checkpoint profile's"
     if cbor2.dumps(claims, canonical=True) != payload:
         return "the claims are not canonical"
-    if claims["kind"] != "cll-checkpoint" or type(claims["log_size"]) is not int or claims["log_size"] <= 0 or \
-            not claims["issued_at"] or "cadence" in claims and not (type(claims["cadence"]) is int and claims["cadence"] > 0):
+    sizes_ok = all(type(claims[n]) is int and 0 <= claims[n] <= _MAX_UINT64 for n in ("log_size", "prev_size"))
+    cadence_ok = "cadence" not in claims or type(claims["cadence"]) is int and 0 < claims["cadence"] <= _MAX_PORTABLE
+    if claims["kind"] != "cll-checkpoint" or not sizes_ok or claims["log_size"] == 0 or not claims["issued_at"] or \
+            not cadence_ok:
         return "the claims are not the checkpoint profile's"
     if not _canonical_commitment(claims["commitment"]) or \
             claims["prev_commitment"] != b"" and not _canonical_commitment(claims["prev_commitment"]):
