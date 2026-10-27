@@ -14,6 +14,18 @@
   and pinned commit.
 - The install lines in the README and the guide name v0.8.1.
 
+### Added: a wording pack and the contract report in `report.View` (evidencebook#147)
+
+- `report.View` takes `Wording`, an `aac.wording-pack/v0` pack with its
+  SHA-256 (`report.Wording`), the wording layer over the viewer's own base, and
+  `ContractReport`, which records the empty `contract-report/v1` block so the
+  viewer draws the contract report. `Build` refuses a pack that does not
+  check, or a different `contract-report/v1` block already in the bundle, as
+  `ErrRefused`. A page with a wording layer gets no permalink, which would
+  carry the bundle without it. With neither, pages are byte-identical to before; the page
+  now goes through capsule-viewer's `BuildOfflineHTML`, whose default
+  settings write the same page.
+
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
 - Released separately: the module as `report/v0.1.0`, and the

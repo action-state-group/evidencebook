@@ -90,15 +90,19 @@ Contract's vector `pair-matched`.
 `report.Build` renders a verified, Result-rooted Evidence Bundle v2 into one
 offline HTML page under a `report.View`. It verifies before it renders, reads
 only the bundle it is given, and refuses to write a page for a bundle that is
-not `VALID`, while still saying what it found. `report.SealPage` seals the
-page's digest in the holder's book, and `report.CheckPage` later tells whether
-a page file is one the book sealed.
+not `VALID`, while still saying what it found. A view can carry a wording
+layer (`View.Wording`, an `aac.wording-pack/v0` pack over the viewer's own
+words) and select the contract report (`View.ContractReport`).
+`report.SealPage` seals the page's digest in the holder's book, and
+`report.CheckPage` later tells whether a page file is one the book sealed.
 
 Examples, in package `report` (`report/example_test.go`):
 
 - [`Build`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report#example-Build)
   renders the monthly-outcome presentation fixture and writes exactly the
   committed page.
+- [`Build (Wording)`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report#example-Build-Wording)
+  renders the same fixture as the contract report, worded by a layer.
 - [`Build (Incomplete)`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report#example-Build-Incomplete)
   gets no page for an `INCOMPLETE` bundle, and reports what is unmet.
 - [`SealPage`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report#example-SealPage)
