@@ -304,12 +304,18 @@ pub fn respond<B: Book + CheckpointedLog>(
     opts: &RespondOptions<'_>,
 ) -> Result<(Vec<u8>, Option<Sealed>), RespondError> {
     opts.policy.validate()?;
+    let now_text = book.now();
+    if parse_utc(&now_text).is_none() {
+        return Err(RespondError::Invalid(format!(
+            "the book's clock read {now_text:?}, not an RFC 3339 UTC time"
+        )));
+    }
     let mut run = Run {
         responder,
         octets,
         binding,
         opts,
-        now_text: book.now(),
+        now_text,
         digest: sha256_hex(octets),
         statement: AnsweredStatement::default(),
         seal: false,
@@ -552,32 +558,94 @@ fn subject_kind(subject: &Subject) -> SubjectKind {
     }
 }
 
-/// The profile identifier a request names, if it names one, and whether it
-/// is text (profile §6.1 step 5).
-fn named_profile(octets: &[u8], binding: Binding) -> Option<Option<String>> {
+/// The `profile` member of a request: absent, text, or present but not text
+/// (profile §6.1 step 5). The request already parsed, so the octets decode.
+enum NamedProfile {
+    Absent,
+    Text(String),
+    NotText,
+}
+
+fn named_profile(octets: &[u8], binding: Binding) -> NamedProfile {
     match binding {
-        Binding::Json => {
-            let value: Value = serde_json::from_slice(octets).ok()?;
-            match value.get("profile") {
-                None => Some(None),
-                Some(Value::String(s)) => Some(Some(s.clone())),
-                Some(_) => Some(None),
-            }
-        }
+        Binding::Json => match serde_json::from_slice::<Value>(octets)
+            .ok()
+            .and_then(|v| v.get("profile").cloned())
+        {
+            None => NamedProfile::Absent,
+            Some(Value::String(s)) => NamedProfile::Text(s),
+            Some(_) => NamedProfile::NotText,
+        },
         Binding::Cbor => {
-            let value: ciborium::Value = ciborium::from_reader(octets).ok()?;
-            let ciborium::Value::Map(entries) = value else {
-                return Some(None);
+            let Ok(ciborium::Value::Map(entries)) = ciborium::from_reader(octets) else {
+                return NamedProfile::Absent;
             };
             for (k, v) in entries {
-                if let (ciborium::Value::Text(k), ciborium::Value::Text(v)) = (k, v) {
-                    if k == "profile" {
-                        return Some(Some(v));
-                    }
+                if matches!(&k, ciborium::Value::Text(k) if k == "profile") {
+                    return match v {
+                        ciborium::Value::Text(v) => NamedProfile::Text(v),
+                        _ => NamedProfile::NotText,
+                    };
                 }
             }
-            Some(None)
+            NamedProfile::Absent
         }
+    }
+}
+
+/// Refuses a JSON text that repeats a member name at any depth: the JSON
+/// reader of `evidence-request` does not detect them (its own doc says so),
+/// and Go's reader refuses them as a map that is not well formed.
+struct NoDuplicates;
+
+impl<'de> serde::Deserialize<'de> for NoDuplicates {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = NoDuplicates;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("JSON with no repeated member name")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<NoDuplicates, A::Error> {
+                let mut seen = std::collections::BTreeSet::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if !seen.insert(key.clone()) {
+                        return Err(serde::de::Error::custom(format!("repeated member {key:?}")));
+                    }
+                    map.next_value::<NoDuplicates>()?;
+                }
+                Ok(NoDuplicates)
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<NoDuplicates, A::Error> {
+                while seq.next_element::<NoDuplicates>()?.is_some() {}
+                Ok(NoDuplicates)
+            }
+            fn visit_bool<E>(self, _: bool) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+            fn visit_i64<E>(self, _: i64) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+            fn visit_u64<E>(self, _: u64) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+            fn visit_f64<E>(self, _: f64) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+            fn visit_str<E>(self, _: &str) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+            fn visit_unit<E>(self) -> Result<NoDuplicates, E> {
+                Ok(NoDuplicates)
+            }
+        }
+        d.deserialize_any(Visitor)
     }
 }
 
@@ -586,14 +654,28 @@ type Refused = (Reason, Option<&'static str>);
 /// Read request octets (profile §6.1 steps 1 to 5).
 fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
     let parsed = match binding {
-        Binding::Json => request::parse_json(octets),
+        Binding::Json => {
+            if serde_json::from_slice::<NoDuplicates>(octets).is_err() {
+                return Err((Reason::RequestMalformed, None));
+            }
+            request::parse_json(octets)
+        }
         Binding::Cbor => request::parse_cbor(octets),
     };
     let req = parsed.map_err(|e| (e.reason(), None))?;
-    // Step 5: a profile this responder does not implement (§3.3 step 4).
-    if let Some(Some(profile)) = named_profile(octets, binding) {
-        if profile != PROFILE_ID {
-            return Err((Reason::RequestMalformed, Some(const_concat_profiles())));
+    if !crate::ask::derivation_is_well_formed(&req) {
+        return Err((Reason::RequestMalformed, None));
+    }
+    // Step 5: a profile this responder does not implement (§3.3 step 4). A
+    // present member that is not text is not a well-formed request; an empty
+    // one names nothing, as an absent one.
+    match named_profile(octets, binding) {
+        NamedProfile::Absent => {}
+        NamedProfile::NotText => return Err((Reason::RequestMalformed, None)),
+        NamedProfile::Text(profile) => {
+            if !profile.is_empty() && profile != PROFILE_ID {
+                return Err((Reason::RequestMalformed, Some(const_concat_profiles())));
+            }
         }
     }
     Ok(req)
@@ -735,6 +817,13 @@ impl<'a> View<'a> {
         for leaf in 0..entries {
             let record: Option<Record> = book.record_at(leaf);
             let header = record.as_ref().and_then(|r| book.header_of(r));
+            // A record whose type cannot be read cannot be known servable:
+            // serving it could hand out the responder's own bookkeeping.
+            if header.is_none() {
+                return Err(RespondError::Invalid(format!(
+                    "the book holds no header for the record at leaf {leaf}; a responder needs RecordSource::header_of"
+                )));
+            }
             let kind = header
                 .as_ref()
                 .and_then(|h| h.get("record_type").and_then(Value::as_str))
@@ -854,10 +943,7 @@ fn decide(
     now: UtcTime,
     may_issue: bool,
 ) -> Decision {
-    match decide_inner(view, req, gate, authorize, now, may_issue) {
-        Decision::Refuse(reason) => Decision::Refuse(gate.disclose(reason)),
-        other => other,
-    }
+    decide_inner(view, req, gate, authorize, now, may_issue)
 }
 
 fn decide_inner(
@@ -889,19 +975,26 @@ fn decide_inner(
         },
         None => {}
     }
+    // From here the refusal policy applies; the deadline, derivation support
+    // and a history card over another subject are answered as they are (Go
+    // `evidencerequest.Decide`).
     if !authorize(req, registered) {
-        return Refuse(Reason::NotAuthorized);
+        return Refuse(gate.disclose(Reason::NotAuthorized));
     }
     if let Some(r) = registered {
         if !r.declares(form) {
-            return Refuse(Reason::NoSuchSubject);
+            return Refuse(gate.disclose(Reason::NoSuchSubject));
         }
     }
     let (anchor, half_pin) = match resolve_coverage(view, req, now, may_issue) {
         Ok(chosen) => chosen,
+        Err(Refuse(reason)) => return Refuse(gate.disclose(reason)),
         Err(decision) => return decision,
     };
-    resolve_subject(view, req, anchor, half_pin, now)
+    match resolve_subject(view, req, anchor, half_pin, now) {
+        Refuse(reason) => Refuse(gate.disclose(reason)),
+        other => other,
+    }
 }
 
 /// Authorization decides whether, never what (ER §3.7, §5). It is decided

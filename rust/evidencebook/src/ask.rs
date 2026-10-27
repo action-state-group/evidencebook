@@ -202,7 +202,31 @@ pub fn request(
 }
 
 fn parse_request(bytes: &[u8]) -> Result<evidence_request::request::Request, String> {
-    evidence_request::request::parse_json(bytes).map_err(|e| e.to_string())
+    let req = evidence_request::request::parse_json(bytes).map_err(|e| e.to_string())?;
+    if !derivation_is_well_formed(&req) {
+        return Err("derivation is neither a registered token form nor a definition digest".into());
+    }
+    Ok(req)
+}
+
+/// A derivation is a token `name/N` (lowercase letters, digits and underscore,
+/// then a decimal version) or a definition digest, as Go's `ValidDerivation`
+/// (profile §5.2). The `evidence-request` reader accepts any name before the
+/// last `/`, which would answer `derivation_unsupported` where Go refuses the
+/// request as malformed.
+pub(crate) fn derivation_is_well_formed(req: &evidence_request::request::Request) -> bool {
+    use evidence_request::request::Derivation;
+    match &req.derivation {
+        Some(Derivation::Token(t)) => t.split_once('/').is_some_and(|(name, version)| {
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
+                && !version.is_empty()
+                && version.bytes().all(|b| b.is_ascii_digit())
+        }),
+        _ => true,
+    }
 }
 
 /// A request re-read from its committed record.

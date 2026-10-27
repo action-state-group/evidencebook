@@ -29,6 +29,7 @@ struct Mem {
     substrate: CllSubstrate,
     records: Vec<(Record, Map<String, Value>)>,
     ticks: i64,
+    headerless: bool,
     _dir: tempfile::TempDir,
 }
 
@@ -44,6 +45,7 @@ impl Mem {
             substrate,
             records: Vec::new(),
             ticks: 0,
+            headerless: false,
             _dir: dir,
         }
     }
@@ -133,6 +135,9 @@ impl RecordSource for Mem {
         Vec::new()
     }
     fn header_of(&self, record: &Record) -> Option<Map<String, Value>> {
+        if self.headerless {
+            return None;
+        }
         self.records
             .get(record.leaf_index as usize)
             .map(|(_, h)| h.clone())
@@ -688,4 +693,125 @@ fn an_invalid_share_policy_is_an_error_not_a_refusal() {
     )
     .unwrap_err();
     assert!(err.to_string().contains("history_segments"));
+}
+
+fn respond_raw(b: &mut Mem, policy: &ResponderPolicy, request: &[u8], who: Option<&str>) -> Value {
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy,
+    };
+    let opts = RespondOptions {
+        authenticated_requester: who,
+        policy: SharePolicy::default(),
+    };
+    let (octets, _) = respond(b, &responder, request, Binding::Json, &opts).unwrap();
+    serde_json::from_slice(&octets).unwrap()
+}
+
+#[test]
+fn a_request_go_would_not_read_as_well_formed_is_refused_before_anything_is_recorded() {
+    let (mut b, ids) = book();
+    let policy = ResponderPolicy::default();
+    let pin = b.pin(1);
+    let before = (b.records.len(), b.checkpoints());
+    let base = |extra: &str| {
+        format!(
+            r#"{{"subject":{{"record":"{}"}},"coverage":{{"expected_pin":"{pin}"}}{extra}}}"#,
+            ids[0]
+        )
+    };
+    let repeated = format!(
+        r#"{{"subject":{{"record":"{}"}},"subject":{{"record":"{}"}},"coverage":{{"expected_pin":"{pin}"}}}}"#,
+        ids[0], ids[0]
+    );
+    for bad in [
+        repeated,
+        base(r#","profile":7"#),
+        base(r#","profile":null"#),
+        base(r#","derivation":"Foo/1""#),
+        base(r#","derivation":"a/b/1""#),
+        base(r#","derivation":"history_card/x""#),
+    ] {
+        let reply = respond_raw(&mut b, &policy, bad.as_bytes(), Some("alice"));
+        assert_eq!(reply["reason"], "request_malformed", "{bad}");
+    }
+    assert_eq!((b.records.len(), b.checkpoints()), before);
+    // An empty profile names nothing, as an absent one; a registered token form is read.
+    for ok in [
+        base(r#","profile":"""#),
+        base(r#","derivation":"history_card/1""#),
+    ] {
+        let reply = respond_raw(&mut b, &policy, ok.as_bytes(), Some("alice"));
+        assert_ne!(reply["reason"], "request_malformed", "{ok}");
+    }
+}
+
+#[test]
+fn the_uniform_policy_leaves_the_derivation_checks_before_it_as_they_are() {
+    let (mut b, ids) = book();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Uniform,
+        ..Default::default()
+    };
+    let pin = b.pin(1);
+    // A history card over a record is no_such_subject, not folded (Go Decide).
+    let card = format!(
+        r#"{{"subject":{{"record":"{}"}},"coverage":{{"expected_pin":"{pin}"}},"derivation":"history_card/1"}}"#,
+        ids[0]
+    );
+    assert_eq!(
+        respond_raw(&mut b, &policy, card.as_bytes(), Some("alice"))["reason"],
+        "no_such_subject"
+    );
+    // An unknown token is derivation_unsupported.
+    let unknown = format!(
+        r#"{{"subject":{{"checkpoints":null}},"coverage":{{"expected_pin":"{pin}"}},"derivation":"other/1"}}"#
+    );
+    assert_eq!(
+        respond_raw(&mut b, &policy, unknown.as_bytes(), Some("alice"))["reason"],
+        "derivation_unsupported"
+    );
+}
+
+#[test]
+fn a_book_without_headers_is_an_error_not_a_leak() {
+    let (mut b, ids) = book();
+    b.headerless = true;
+    let policy = ResponderPolicy::default();
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+    };
+    let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
+    let opts = RespondOptions {
+        authenticated_requester: Some("alice"),
+        policy: SharePolicy::default(),
+    };
+    let err = respond(&mut b, &responder, &request, Binding::Json, &opts).unwrap_err();
+    assert!(err.to_string().contains("header_of"), "{err}");
+}
+
+#[test]
+fn an_unreadable_clock_is_an_error() {
+    let (mut b, _) = book();
+    b.ticks = -1; // formats as a time no RFC 3339 reader accepts
+    let policy = ResponderPolicy::default();
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+    };
+    let opts = RespondOptions {
+        authenticated_requester: None,
+        policy: SharePolicy::default(),
+    };
+    assert!(respond(&mut b, &responder, b"{}", Binding::Json, &opts).is_err());
 }
