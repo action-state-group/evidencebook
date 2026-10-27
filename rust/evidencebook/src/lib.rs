@@ -40,11 +40,13 @@
 //! | The Commitment-Substrate Interface | [`substrate`]; the read-only store an answer reads, [`store`] |
 //! | Answering a Request; Three Kinds of "No" | [`request`] |
 //! | Answering a Request: the artifact response | [`answer`]; the requests a book was asked, [`received`]; definition-digest derivations, [`derivation`]; the served-summary derivation, [`served_summary`] |
+//! | Answering a Request: the responder (gate, decision, the record of having answered) and the requester (the record of having asked, recorded absence) | [`respond`], [`ask`] |
 //! | Reconcile and Close | [`reconcile`] |
 //! | Privacy Considerations: What a Checkpoint Reveals | [`padding`] |
 //! | (record identity: JCS and JSON-DIGEST) | [`canonical`] |
 
 pub mod answer;
+pub mod ask;
 pub mod canonical;
 pub mod derivation;
 pub mod disclosure;
@@ -54,6 +56,7 @@ pub mod received;
 pub mod reconcile;
 pub mod record;
 pub mod request;
+pub mod respond;
 pub mod retention;
 pub mod served_summary;
 pub mod store;

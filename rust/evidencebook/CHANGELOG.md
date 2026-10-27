@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **`respond` and `ask`: the request verb at parity with the Go book**
+  (evidencebook#131, part 1). `respond::respond` answers one request, in JSON
+  or CBOR, over a caller's [`ask::Book`] (its records, clock, `seal` and
+  `checkpoint`) with a signed envelope or a signed refusal of exactly one
+  registered reason. It ports Go's `Respond` (`interop_respond.go`): the cost
+  policy and rate limiter, the profile check, the deadline, derivation
+  support, the requester gate (`SharePolicy`, a stranger is answered only the
+  public questions), coverage and a freshness floor met by cutting a
+  checkpoint only for an authenticated, well-formed request, retention
+  lapse, the uniform refusal policy, and the answer limit. For an
+  authenticated requester it seals `evidence_request_answered`, which names
+  no requester and is never served. `ask::request` seals `evidence_request`
+  before the request is sent (fresh nonce, a used nonce refused) and
+  `ask::record_absence` seals `recorded_absence` when the waiting window
+  closes. The record kinds and statements are the Go book's. The crate does
+  not own a record store: the caller's `Book` seals the entries, as it seals
+  every other record. New dependency: `ciborium`, already in the build
+  through `evidence-request`.
+
 - **Breaking: the served summary counts only verified witness receipts**
   (evidencebook#115). `served_summary::Coverage` takes the checkpoint's COSE
   `statement` and a `witness_directory`; `coverage.witnessed` and

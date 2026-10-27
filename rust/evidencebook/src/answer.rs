@@ -573,7 +573,7 @@ fn records_value(records: &[Record]) -> Value {
 /// The half a citing-records subject names (the request draft's subject form
 /// for records that cite one interaction half).
 #[rustfmt::skip]
-fn citing_half(subject: &Subject) -> Option<&str> {
+pub(crate) fn citing_half(subject: &Subject) -> Option<&str> {
     match subject { Subject::Exchange(half) => Some(half), _ => None } // the "exchange" subject form; vocabulary-gate: request-draft wire token
 }
 
