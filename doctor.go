@@ -34,7 +34,6 @@ const (
 // check was not run, never that it passed or failed.
 const (
 	DoctorStateSelfAttested = "self_attested"
-	DoctorStateBound        = "bound"
 	DoctorStateUnbound      = "unbound"
 	DoctorStatePresent      = "present"
 	DoctorStateMissing      = "missing"
@@ -125,15 +124,40 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	// never asked to issue one.
 	one := uint64(1)
 	coverage := Coverage{MinFreshness: &Freshness{Size: &one}}
-	cards, err := probe(ctx, opts.Probe, keys, latest, DoctorProbeCheckpoints, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: coverage})
+	current := b.currentAnchor(ctx, latest)
+	cards, err := probe(ctx, opts.Probe, keys, current, DoctorProbeCheckpoints, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: coverage})
 	if err != nil {
 		return nil, err
 	}
-	card, err := probe(ctx, opts.Probe, keys, latest, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: coverage})
+	card, err := probe(ctx, opts.Probe, keys, current, DoctorProbeHistoryCard, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: coverage})
 	if err != nil {
 		return nil, err
 	}
 	return append(findings, cards, card), nil
+}
+
+// currentAnchor reports whether anchor is this book's latest checkpoint as
+// of the snapshot, or a checkpoint cut after it: the book's lock is not held
+// while the probe runs, so another writer may checkpoint meanwhile.
+func (b *Book) currentAnchor(ctx context.Context, snapshot *Checkpoint) func(string) (bool, error) {
+	return func(anchor string) (bool, error) {
+		if snapshot == nil {
+			return false, nil
+		}
+		if anchor == anchorDigest(*snapshot) {
+			return true, nil
+		}
+		history, err := b.Checkpoints(ctx)
+		if err != nil {
+			return false, err
+		}
+		for _, cp := range history {
+			if cp.Kind == SubstrateKindCLL && cp.TreeSize > snapshot.TreeSize && anchorDigest(cp) == anchor {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 }
 
 func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, *Checkpoint, error) {
@@ -148,12 +172,14 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	signer := KeyID(b.signer)
 	findings := []DoctorFinding{{
 		Check: DoctorSelfAttested, State: DoctorStateSelfAttested,
-		Detail: fmt.Sprintf("each of the %d records is sealed by this node's key %s alone; no other party's signature is on any record", len(b.order), signer),
+		Detail: fmt.Sprintf("each of the %d records is sealed by this book's own signer and by no other party; its content is this node's own statement", len(b.order)),
 	}}
 	findings = append(findings, controllerBinding(signer, opts.ControllerBindings))
 
 	_, isCLL := b.commitments.(cllMaterialSource)
 	switch {
+	case !isCLL:
+		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "this book's substrate is not a Checkpointed Local Log, so it has no checkpoint a responder can anchor an answer to"})
 	case latest == nil:
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "the book has no checkpoint, so a stranger's checkpoints and history_card/1 requests are refused: a stranger's request never issues one"})
 	case latest.Entries < uint64(len(b.order)):
@@ -208,11 +234,18 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	)
 
 	stranger := "checkpoints and history_card/1 (commitments only, no record); every other subject is refused not_authorized"
-	if latest == nil || !isCLL {
+	switch {
+	case !isCLL:
+		stranger = "refusals only: this book serves no anchors, so every request is refused"
+	case latest == nil:
 		stranger = "refusals only: checkpoints and history_card/1 are public, but there is no checkpoint to answer with; every other subject is refused not_authorized"
 	}
 	findings = append(findings, DoctorFinding{Check: DoctorStrangerView, State: DoctorStateAnswered, Detail: stranger})
-	findings = append(findings, DoctorFinding{Check: DoctorIdentifiedView, State: DoctorStateAnswered, Detail: identifiedView(p, b.derivations)})
+	identified := identifiedView(p, b.derivations)
+	if !isCLL {
+		identified = "refusals only: this book serves no anchors, so every request is refused"
+	}
+	findings = append(findings, DoctorFinding{Check: DoctorIdentifiedView, State: DoctorStateAnswered, Detail: identified})
 	return findings, latest, nil
 }
 
@@ -306,7 +339,7 @@ func witnessed(latest *Checkpoint, deliveries []DoctorWitness) DoctorFinding {
 // under the advertised keys, and compares it with what the advertised
 // policy answers a stranger: an artifact anchored at the latest checkpoint.
 // It records nothing.
-func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, latest *Checkpoint, check string, req EvidenceRequest) (DoctorFinding, error) {
+func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, current func(string) (bool, error), check string, req EvidenceRequest) (DoctorFinding, error) {
 	f := DoctorFinding{Check: check, State: DoctorStateMismatch}
 	asked := "checkpoints"
 	if req.Derivation != "" {
@@ -341,6 +374,12 @@ func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, latest
 		keys.Checkpoint = keys.Signer // nothing to pin; every checkpoint then fails to verify
 	}
 	st, err := verifyReply(sent, parsed, keys)
+	anchored := false
+	if err == nil && st.Outcome == OutcomeArtifact {
+		if anchored, err = current(st.Anchor); err != nil {
+			return f, err
+		}
+	}
 	switch {
 	case err != nil:
 		f.Detail = fmt.Sprintf("the answer to %s does not verify under the advertised responder key: %v", asked, err)
@@ -349,7 +388,7 @@ func probe(ctx context.Context, send DoctorTransport, keys ResponderKeys, latest
 		f.Records = []string{st.Anchor}
 	case st.Outcome != OutcomeArtifact:
 		f.Detail = fmt.Sprintf("%s is refused %s, but the advertised policy answers it to anyone", asked, st.Reason)
-	case latest == nil || st.Anchor != anchorDigest(*latest):
+	case !anchored:
 		f.Detail = fmt.Sprintf("the artifact answering %s verifies, but its anchor is not this book's latest checkpoint", asked)
 		f.Records = []string{st.Anchor}
 	default:

@@ -296,3 +296,50 @@ func TestDoctorListsReceivedNotChecked(t *testing.T) {
 		t.Errorf("checkpoint = %+v", c)
 	}
 }
+
+// A checkpoint cut between doctor's snapshot and the responder's answer is
+// still this book's own: the probe matches.
+func TestDoctorProbeAcceptsACheckpointCutMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	book := checkpointedBook(t, "busy", 11)
+	policy := DefaultSharePolicy()
+	answer := strangerTransport(book, policy)
+	busy := func(ctx context.Context, request Message) (Message, error) {
+		mustAppend(t, book, observation("deal-3", "c"))
+		if _, err := book.Checkpoint(ctx); err != nil {
+			return Message{}, err
+		}
+		return answer(ctx, request)
+	}
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: busy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []string{DoctorProbeCheckpoints, DoctorProbeHistoryCard} {
+		if f := findingOf(t, findings, check); f.State != DoctorStateMatch {
+			t.Errorf("%s = %+v", check, f)
+		}
+	}
+}
+
+// A book on a substrate that serves no anchors answers no one, so neither
+// view promises records, whatever the policy.
+func TestDoctorUnanchoredSubstrate(t *testing.T) {
+	book := scittBook(t)
+	mustAppend(t, book, observation("deal-1", "a"))
+	findings, err := book.Doctor(context.Background(), DoctorOptions{Policy: policyWith("peers")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []string{DoctorStrangerView, DoctorIdentifiedView} {
+		if f := findingOf(t, findings, check); !strings.HasPrefix(f.Detail, "refusals only") {
+			t.Errorf("%s = %+v", check, f)
+		}
+	}
+	if f := findingOf(t, findings, DoctorCheckpoint); f.State != DoctorStateMissing || !strings.Contains(f.Detail, "not a Checkpointed Local Log") {
+		t.Errorf("checkpoint = %+v", f)
+	}
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "serves no anchors") {
+		t.Errorf("unsupported = %+v", f)
+	}
+}
