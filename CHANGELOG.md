@@ -4,7 +4,7 @@
 
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
-- `github.com/action-state-group/evidencebook/report` renders a verified
+- `github.com/action-state-group/evidencebook/report`, a new nested module, renders a verified
   Evidence Bundle rooted at a sealed Evidence Result v0 into one offline HTML
   page: `Build(bundle, View{Card, Presentation, Draft})` verifies the bundle,
   gates the root (exactly one Result), checks the Result, and renders only
@@ -21,12 +21,14 @@
 - This is the code behind `capsulectl book report build` and `report check`
   (#108), moved from `capsulectl/internal/book`; runnable examples render the
   presentation fixtures, now in `report/testdata/presentation`.
-- The root module now requires `capsule-cli` v0.1.0-rc23 (a prerelease) and
-  a `capsule-viewer/go` pseudo-version, for the Result and page gates and the
-  pinned viewer runtime, and `agent-action-capsule/go` v0.13.1. The
-  `evidencebook` package itself imports nothing new, but every consumer of
-  the module gets these in its module graph, with capsule-cli's own
-  requirements (cobra, viper, the MySQL driver) as indirect ones.
+- `report` is its own nested module (released as `report/v<version>`), so
+  the root module's requirements and module graph are unchanged. The report
+  module requires `evidencebook` v0.8.0, `agent-action-capsule/go` v0.13.1,
+  `capsule-cli` v0.1.0-rc23 (a prerelease) and a `capsule-viewer/go`
+  pseudo-version, for the Result and page gates and the pinned viewer
+  runtime; an importer of `report` gets these in its module graph, with
+  capsule-cli's own requirements (cobra, viper, the MySQL driver) as indirect
+  ones.
 
 ## v0.8.0 (2026-10-27)
 

@@ -1,0 +1,66 @@
+name: report
+
+# The nested module report/ (github.com/action-state-group/evidencebook/report):
+# the report builder, which renders a verified Result-rooted Evidence Bundle
+# into an offline page and seals the page's digest (evidencebook#132). It is
+# its own module so the root module's graph does not gain capsule-cli and the
+# viewer; it requires this repository's library at a version, never the
+# working tree, so it runs on its own.
+
+on:
+  push:
+    branches: [main]
+    paths: ["report/**", ".github/workflows/report.yml"]
+  pull_request:
+    paths: ["report/**", ".github/workflows/report.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: report-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: report
+
+jobs:
+  quality:
+    name: report quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: report/go.mod
+          cache-dependency-path: report/go.sum
+      - name: Formatting and module files
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Its modules are required at versions, never replaced
+        run: |
+          if grep -n '^replace\|=> ' go.mod; then
+            echo "::error::report/go.mod replaces a module; require it at a version instead"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+
+  test:
+    name: report tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: report/go.mod
+          cache-dependency-path: report/go.sum
+      - name: Tests and examples
+        run: go test -count=1 ./...
+      - name: Tests under the race detector
+        run: go test -race -count=1 ./...

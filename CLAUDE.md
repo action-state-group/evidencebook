@@ -11,6 +11,10 @@ go vet ./...
 go test ./...
 go test -race ./...
 
+# report (report/, a nested module; CI: .github/workflows/report.yml)
+(cd report && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
+(cd report && go vet ./... && go test ./... && go test -race ./...)
+
 # capsulectl-book (capsulectl/, a nested module; CI: .github/workflows/capsulectl.yml)
 (cd capsulectl && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
 (cd capsulectl && go vet ./... && go test ./...)
@@ -54,7 +58,7 @@ text.
 |---|---|
 | repository root | Go package `evidencebook` (the book, its substrates, indexes, requests and interop carriage) |
 | `adapter/` | Go adapters for foreign evidence (`acp`, `ucp`, `x402`) |
-| `report/` | Go package `report`: renders a verified Result-rooted bundle into an offline page and seals the page's digest (what `capsulectl book report` runs) |
+| `report/` | the nested module `github.com/action-state-group/evidencebook/report`: package `report`, which renders a verified Result-rooted bundle into an offline page and seals the page's digest (what `capsulectl book report` runs); its own module so the root's graph gains no CLI (`report/v*` tags) |
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
@@ -87,7 +91,7 @@ publishes. For the Go module, merge the CHANGELOG pull request and an admin
 pushes `v<version>`. For capsulectl-book, a maintainer pushes
 `capsulectl/v<version>` ([capsulectl/RELEASING.md](capsulectl/RELEASING.md)).
 Never create release tags by hand, except `v*`, which an admin pushes, and
-`capsulectl/v*`. Do not rename `publish-rust.yml`: crates.io's trusted publisher
+`capsulectl/v*` and `report/v*`, which a maintainer pushes. Do not rename `publish-rust.yml`: crates.io's trusted publisher
 names it, so publishing breaks until crates.io is updated first.
 `.github/release.py` and `.github/test_release.py` are identical copies shared
 with the other action-state-group repositories; change them in all of them
