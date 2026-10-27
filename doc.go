@@ -18,6 +18,10 @@
 // the neutral Evidence Bundle verifier with nothing from this package. Over
 // the SCITT stub, which keeps no ordered log, that verifier reports interval
 // coverage as withheld.
+//
+// The SDK guide, https://github.com/action-state-group/evidencebook/blob/main/docs/GUIDE.md,
+// walks this package as four paths; each has a runnable Example here on a
+// corpus vector.
 package evidencebook
 
 // Compile-time checks that each reference implementation satisfies its seam.

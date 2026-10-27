@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: the SDK guide (evidencebook#129)
+
+- `docs/GUIDE.md` walks the SDK as four paths (join the loop, seal a Result,
+  build a Report, serve a History), each with a runnable Go `Example` that
+  reads a corpus vector from `testdata/`: `Example_joinTheLoop`,
+  `ExampleBook_SealResult`, `ExampleBook_Respond`, and the `report` module's
+  examples. Terms Packs and evaluation are not in this module; the guide
+  links capsule-engine and evidencebook-skills for them.
+- `VECTORS.md` lists this repository's vector sets with their owning spec
+  and pinned commit.
+
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
 - `github.com/action-state-group/evidencebook/report`, a new nested module, renders a verified
