@@ -161,8 +161,16 @@ func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadenc
 		// A cadence checkpoint no tick holds (a released build's core write,
 		// note §3.3) is witnessed on the log but not part of the cadence.
 		if found {
-			if err := c.Witnessed(ctx, n, *receipt); err != nil {
+			check, err := c.Witnessed(ctx, n, *receipt)
+			if err != nil {
 				return nil, nil, err
+			}
+			if check.State != evidencebook.WitnessVerified {
+				// Nothing was stored, so the checkpoint is reported pending
+				// again rather than delivered.
+				pending = append(pending, map[string]any{"checkpoint": w.CheckpointSize, "reason": "not_checked", "text": check.Reason})
+				s.migrated = migrated
+				continue
 			}
 			delivered = append(delivered, w.CheckpointSize)
 		}
