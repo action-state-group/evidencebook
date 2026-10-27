@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.0 (2026-10-27)
+## Unreleased
 
 ### Added: package `report`, the report builder in the SDK (evidencebook#132)
 
@@ -23,6 +23,8 @@
   `capsule-viewer/go` (for the Result and page gates and the pinned viewer
   runtime), and `agent-action-capsule/go` v0.13.1. The `evidencebook` package
   itself imports nothing new.
+
+## v0.8.0 (2026-10-27)
 
 ### Added: `report build --seal` and `report check` (evidencebook#108)
 
