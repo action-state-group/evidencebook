@@ -6,15 +6,16 @@ require (
 	github.com/action-state-group/agent-action-capsule/go v0.13.1
 	github.com/action-state-group/capsule-cli v0.1.0-rc23
 	github.com/action-state-group/capsule-emit/go v0.3.0
-	github.com/action-state-group/capsule-viewer/go v0.1.2-0.20261023134630-4b08aad14182
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/action-state-group/evidencebook v0.8.0
+	github.com/action-state-group/evidencebook/report v0.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/action-state-group/capsule-viewer/go v0.1.2-0.20261023134630-4b08aad14182 // indirect
 	github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect

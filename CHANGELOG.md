@@ -40,6 +40,9 @@
   runtime; an importer of `report` gets these in its module graph, with
   capsule-cli's own requirements (cobra, viper, the MySQL driver) as indirect
   ones.
+- `capsulectl book report build` and `report check` now run on the `report`
+  module (`capsulectl/go.mod` requires `report` v0.1.0), and the plugin's own
+  copy is gone. Pages, output and exit codes are unchanged.
 
 ## v0.8.0 (2026-10-27)
 

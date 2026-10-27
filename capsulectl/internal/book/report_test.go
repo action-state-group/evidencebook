@@ -16,7 +16,6 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,15 +66,6 @@ func TestReportBuildReadsABundle(t *testing.T) {
 	}
 	// report check reads the page it checks, which embeds a bundle.
 	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1}, calls)
-}
-
-// The card set is the contract schema's own profile set, nothing invented.
-func TestReportCardsAreTheContractProfiles(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(coreDir(), "cli", "testdata", "contract", "evidence-contract-v0.json"))
-	require.NoError(t, err)
-	var schemaRaw any
-	require.NoError(t, json.Unmarshal(raw, &schemaRaw))
-	assert.Equal(t, cli.DiscriminatorValues(schemaRaw, "profile"), reportCards)
 }
 
 func runReportBuild(t *testing.T, bundlePath string, extra ...string) (reportBuildResult, string, error) {
@@ -363,47 +353,6 @@ func TestReportBuildRefusesANonResultRoot(t *testing.T) {
 	assert.Contains(t, cli.SafeError(err), `record header of record_type "close"`)
 }
 
-func TestResultRootOfNamesWhatItFound(t *testing.T) {
-	root := strings.Repeat("1", 64)
-	bundle := func(members map[string]interface{}) map[string]interface{} {
-		value := map[string]interface{}{"root": root, "records": []interface{}{map[string]interface{}{"capsule_id": root}}, "disclosures": map[string]interface{}{}}
-		if members != nil {
-			value["disclosures"].(map[string]interface{})[root] = members
-		}
-		return value
-	}
-	_, err := resultRootOf(bundle(map[string]interface{}{"agent_input": map[string]interface{}{"spec_version": "evaluation-summary/v1"}}))
-	assert.Contains(t, cli.SafeError(err), "its agent_input is a evaluation-summary/v1 document")
-	_, err = resultRootOf(bundle(map[string]interface{}{"agent_output": map[string]interface{}{"spec_version": "report/v1"}}))
-	assert.Contains(t, cli.SafeError(err), "its agent_output is a report/v1 document")
-	_, err = resultRootOf(bundle(map[string]interface{}{"agent_input": map[string]interface{}{"hello": "world"}}))
-	assert.Contains(t, cli.SafeError(err), "no disclosed member carries an evidence-result-v0 document or an evidence_result record header")
-	_, err = resultRootOf(bundle(map[string]interface{}{"agent_input": map[string]interface{}{"record_type": resultRecordType}}))
-	assert.Contains(t, cli.SafeError(err), "header carries no statement object")
-	_, err = resultRootOf(map[string]interface{}{"root": root, "records": []interface{}{}})
-	assert.Contains(t, cli.SafeError(err), "is not among the bundle's records")
-	found, err := resultRootOf(bundle(map[string]interface{}{"agent_output": map[string]interface{}{"result_version": resultVersion}, "agent_input": map[string]interface{}{"record_type": recordTypePublished}}))
-	require.NoError(t, err)
-	assert.Equal(t, "agent_output", found.member)
-	assert.Equal(t, "payload", found.form)
-
-	// Exactly one Result: a root carrying one in both members, or any other
-	// disclosed record carrying one, is refused with both named.
-	_, err = resultRootOf(bundle(map[string]interface{}{"agent_output": map[string]interface{}{"result_version": resultVersion}, "agent_input": map[string]interface{}{"record_type": resultRecordType, "statement": map[string]interface{}{}}}))
-	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "root "+root+" carries a Result in both its agent_output and its agent_input; a report is rooted on exactly one Result document")
-	other := strings.Repeat("2", 64)
-	two := bundle(map[string]interface{}{"agent_input": map[string]interface{}{"record_type": resultRecordType, "statement": map[string]interface{}{}}})
-	two["records"] = append(two["records"].([]interface{}), map[string]interface{}{"capsule_id": other})
-	two["disclosures"].(map[string]interface{})[other] = map[string]interface{}{"agent_output": map[string]interface{}{"result_version": resultVersion}}
-	_, err = resultRootOf(two)
-	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "the bundle carries two Result documents: root "+root+" and record "+other+" (its agent_output); a report is rooted on exactly one Result")
-	two["disclosures"].(map[string]interface{})[other] = map[string]interface{}{"agent_input": map[string]interface{}{"record_type": recordTypePublished, "statement": map[string]interface{}{"result_version": resultVersion}}}
-	_, err = resultRootOf(two)
-	require.NoError(t, err, "a non-Result record whose statement merely mentions a result_version is not a Result")
-}
-
 // End to end: a Result that cites an earlier Result record pulls it into the
 // disclosed closure, and the report refuses to choose between the two.
 func TestReportBuildRefusesABundleCarryingTwoResults(t *testing.T) {
@@ -438,11 +387,11 @@ func TestReportBuildRefusesABadCardOrPresentation(t *testing.T) {
 		block any
 		want  string
 	}{
-		"an extra member":   {map[string]any{"title": "x", "badge": "verified"}, "only producer_display_name, logo_data_url and title"},
-		"a remote logo":     {map[string]any{"logo_data_url": "https://example.invalid/logo.png"}, "must be an inline data:image/ URL"},
-		"a data: non-image": {map[string]any{"logo_data_url": "data:text/html,hi"}, "must be an inline data:image/ URL"},
-		"nothing named":     {map[string]any{}, "names none of"},
-		"a non-string":      {map[string]any{"title": 7}, "only producer_display_name, logo_data_url and title"},
+		"an extra member":   {map[string]any{"title": "x", "badge": "verified"}, "--presentation must be a JSON object with only producer_display_name, logo_data_url and title"},
+		"a remote logo":     {map[string]any{"logo_data_url": "https://example.invalid/logo.png"}, "--presentation logo_data_url must be an inline data:image/ URL"},
+		"a data: non-image": {map[string]any{"logo_data_url": "data:text/html,hi"}, "--presentation logo_data_url must be an inline data:image/ URL"},
+		"nothing named":     {map[string]any{}, "--presentation names none of"},
+		"a non-string":      {map[string]any{"title": 7}, "--presentation must be a JSON object with only producer_display_name, logo_data_url and title"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -462,28 +411,6 @@ func TestReportBuildRefusesABadCardOrPresentation(t *testing.T) {
 	assert.Contains(t, cli.SafeError(err), "input file not found")
 }
 
-// graph_closure withheld (the bundle declares records of its closure
-// missing) is accepted, and said so in the output; fail is refused, as is
-// anything but pass on interval coverage or per-record membership. A sealed
-// fixture cannot be withheld and still pass membership (its certificate
-// covers every record), so the acceptance rule is pinned on the verdicts.
-func TestHeldBundleAcceptanceNamesAWithheldClosure(t *testing.T) {
-	verdict := func(graph, interval, membership string) aacbundle.VerificationResult {
-		return aacbundle.VerificationResult{GraphClosure: aacbundle.ClaimResult{Status: graph}, IntervalCoverage: aacbundle.ClaimResult{Status: interval}, PerRecordMembership: aacbundle.ClaimResult{Status: membership}}
-	}
-	label, err := acceptHeldVerification(verdict("pass", "pass", "pass"))
-	require.NoError(t, err)
-	assert.Equal(t, "pass", label)
-	label, err = acceptHeldVerification(verdict("withheld", "pass", "pass"))
-	require.NoError(t, err)
-	assert.Equal(t, "graph_closure withheld", label)
-	for _, v := range []aacbundle.VerificationResult{verdict("fail", "pass", "pass"), verdict("pass", "withheld", "pass"), verdict("pass", "pass", "fail"), verdict("withheld", "pass", "withheld")} {
-		_, err = acceptHeldVerification(v)
-		require.ErrorIs(t, err, cli.ErrInput, "%+v", v)
-		assert.Contains(t, cli.SafeError(err), "nothing was rendered")
-	}
-}
-
 // --out is create-only: an existing file is refused in one sentence and
 // left alone, and the digest is computed before anything is written.
 func TestReportBuildRefusesAnExistingOut(t *testing.T) {
@@ -496,56 +423,4 @@ func TestReportBuildRefusesAnExistingOut(t *testing.T) {
 	kept, err := os.ReadFile(out)
 	require.NoError(t, err)
 	assert.Equal(t, "keep", string(kept))
-}
-
-// A claim may cite the id a request seals to on a plain profile; on a book
-// profile the request's own capsule carries that id as its header's
-// subject_ref, so a bundle holding that capsule supports the claim.
-func TestUnsupportedClaimsReadsAnOwnCapsulesSubject(t *testing.T) {
-	plain, own := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	claims := resultDocument{claims: []resultClaim{{Evidence: []string{plain}}}}
-	bare := map[string]interface{}{"records": []interface{}{map[string]interface{}{"capsule_id": own}}}
-	assert.Equal(t, 1, unsupportedClaims(bare, claims), "a capsule that names nothing does not hold another id")
-	headed := map[string]interface{}{"records": []interface{}{map[string]interface{}{
-		"capsule_id":                    own,
-		evidencebook.RecordHeaderMember: map[string]interface{}{"record_type": recordTypeOwn, "subject_ref": plain},
-	}}}
-	assert.Equal(t, 1, unsupportedClaims(headed, claims), "a claim cites an own capsule by its record id, not the sealed id")
-	assert.Equal(t, 0, unsupportedClaims(headed, resultDocument{claims: []resultClaim{{Evidence: []string{own}}}}))
-	wrapper := map[string]interface{}{"records": []interface{}{map[string]interface{}{
-		"capsule_id":                    own,
-		evidencebook.RecordHeaderMember: map[string]interface{}{"record_type": "close", "subject_ref": plain},
-	}}}
-	assert.Equal(t, 1, unsupportedClaims(wrapper, claims), "only an own capsule stands for the id it names")
-	// An own capsule's disclosed agent_input is its payload, which may look
-	// like a wrapper's header; it never stands for the id it names.
-	posing := map[string]interface{}{
-		"records": []interface{}{map[string]interface{}{
-			"capsule_id":                    own,
-			evidencebook.RecordHeaderMember: map[string]interface{}{"record_type": recordTypeOwn, "subject_ref": own},
-		}},
-		"disclosures": map[string]interface{}{own: map[string]interface{}{"agent_input": map[string]interface{}{
-			"record_type": recordTypePublished, "subject_ref": plain, "payload_commitments": []interface{}{plain},
-		}}},
-	}
-	assert.Equal(t, 1, unsupportedClaims(posing, claims), "an own capsule's payload is not read as a header")
-}
-
-// An own capsule's disclosed agent_input is its payload: a payload shaped
-// like an evidence_result header is not a Result in book form.
-func TestResultRootOfDoesNotReadAnOwnCapsulesPayloadAsAHeader(t *testing.T) {
-	own := strings.Repeat("b", 64)
-	value := map[string]interface{}{
-		"root": own,
-		"records": []interface{}{map[string]interface{}{
-			"capsule_id":                    own,
-			evidencebook.RecordHeaderMember: map[string]interface{}{"record_type": recordTypeOwn},
-		}},
-		"disclosures": map[string]interface{}{own: map[string]interface{}{"agent_input": map[string]interface{}{
-			"record_type": resultRecordType, "statement": map[string]interface{}{"result_version": "x"},
-		}}},
-	}
-	_, err := resultRootOf(value)
-	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), `it is a book record of record_type "own_capsule"`)
 }
