@@ -9,6 +9,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/report"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,15 +63,15 @@ func TestReportSealMatchesTheUntouchedPage(t *testing.T) {
 	withBook(t, p, func(book *evidencebook.Book) {
 		record, err := book.Get(t.Context(), built.PageSeal.RecordID)
 		require.NoError(t, err)
-		assert.Equal(t, recordTypePageSeal, record.Header.RecordType)
+		assert.Equal(t, report.RecordTypePageSeal, record.Header.RecordType)
 		var statement map[string]string
 		require.NoError(t, json.Unmarshal(record.Header.Statement, &statement))
-		assert.Equal(t, map[string]string{"page_digest": pageDigest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root}, statement)
+		assert.Equal(t, map[string]string{"page_digest": report.Digest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root}, statement)
 	})
 
 	result, err := checkPageFile(t, p, page)
 	require.NoError(t, err)
-	assert.Equal(t, pageMatch, result.Page)
+	assert.Equal(t, report.PageMatch, result.Page)
 	assert.Equal(t, "VALID", result.Verification)
 	assert.Equal(t, built.PageSeal.RecordID, result.RecordID)
 
@@ -92,7 +93,7 @@ func TestReportSealMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testin
 		result, err := checkPageFile(t, p, edited)
 		require.ErrorIs(t, err, cli.ErrConflict, name)
 		assert.Equal(t, 5, cli.ExitCode(err), name)
-		assert.Equal(t, pageMismatch, result.Page, name)
+		assert.Equal(t, report.PageMismatch, result.Page, name)
 		assert.Equal(t, "VALID", result.Verification, name+": the embedded evidence is untouched")
 	}
 }
@@ -115,7 +116,7 @@ func TestReportCheckReportsAFailedEvidenceVerificationApartFromTheSeal(t *testin
 	assert.NotErrorIs(t, err, cli.ErrConflict)
 	assert.Equal(t, 1, cli.ExitCode(err))
 	assert.Equal(t, "INVALID", result.Verification)
-	assert.Equal(t, pageNoSeal, result.Page)
+	assert.Equal(t, report.PageNoSeal, result.Page)
 }
 
 func TestReportCheckWithNoSealedRecord(t *testing.T) {
@@ -125,7 +126,7 @@ func TestReportCheckWithNoSealedRecord(t *testing.T) {
 	result, err := checkPageFile(t, p, page)
 	require.ErrorIs(t, err, cli.ErrPartial)
 	assert.Equal(t, 3, cli.ExitCode(err))
-	assert.Equal(t, pageNoSeal, result.Page)
+	assert.Equal(t, report.PageNoSeal, result.Page)
 	assert.Equal(t, "VALID", result.Verification)
 
 	// A dry run seals nothing, even with --seal.
@@ -133,7 +134,7 @@ func TestReportCheckWithNoSealedRecord(t *testing.T) {
 	require.NoError(t, err)
 	result, err = checkPageFile(t, p, draft)
 	require.ErrorIs(t, err, cli.ErrPartial)
-	assert.Equal(t, pageNoSeal, result.Page)
+	assert.Equal(t, report.PageNoSeal, result.Page)
 }
 
 func TestReportCheckWithASealNoCheckpointCoversYet(t *testing.T) {
@@ -143,9 +144,9 @@ func TestReportCheckWithASealNoCheckpointCoversYet(t *testing.T) {
 	// The seal as an interrupted `--seal` leaves it: appended, not yet
 	// checkpointed.
 	withBook(t, p, func(book *evidencebook.Book) {
-		body, err := json.Marshal(pageSealStatement{PageDigest: pageDigest(mustRead(t, page)), BundleDigest: built.BundleDigest, ResultRoot: built.Root})
+		body, err := json.Marshal(map[string]string{"page_digest": report.Digest(mustRead(t, page)), "bundle_digest": built.BundleDigest, "result_root": built.Root})
 		require.NoError(t, err)
-		_, err = book.Append(t.Context(), evidencebook.Entry{RecordType: recordTypePageSeal, EpistemicType: evidencebook.ProducerClaim, SubjectRef: built.BundleDigest, Statement: body})
+		_, err = book.Append(t.Context(), evidencebook.Entry{RecordType: report.RecordTypePageSeal, EpistemicType: evidencebook.ProducerClaim, SubjectRef: built.BundleDigest, Statement: body})
 		require.NoError(t, err)
 		covered, err := book.CheckpointCovers(t.Context(), 1<<62)
 		require.NoError(t, err)
@@ -153,7 +154,7 @@ func TestReportCheckWithASealNoCheckpointCoversYet(t *testing.T) {
 	})
 	result, err := checkPageFile(t, p, page)
 	require.ErrorIs(t, err, cli.ErrPartial)
-	assert.Equal(t, pageNotCovered, result.Page)
+	assert.Equal(t, report.PageNotCovered, result.Page)
 	assert.NotEmpty(t, result.RecordID)
 }
 
@@ -187,14 +188,21 @@ func TestReportCheckJudgesTheEmbeddedSignatures(t *testing.T) {
 }
 
 // A VALID bundle whose report would show fewer rows than it has is refused by
-// the page gate, which is not a verdict on its evidence.
-func TestJudgeEmbeddedKeepsTheVerdictApartFromTheRowGate(t *testing.T) {
+// the page gate, which is not a verdict on its evidence: `report check` on a
+// page embedding it says VALID and exits with the gate's code.
+func TestReportCheckKeepsTheVerdictApartFromTheRowGate(t *testing.T) {
 	dir, out, err := runReportVariant(t, func(s string) string {
 		return replaced(t, s, `references: [cite($permissions)]`, `references: [cite("`+strings.Repeat("0", 64)+`")]`, readmeDiscloseOK, readmeOutOnly)
 	})
 	require.NoError(t, err, out)
-	verdict, gate := judgeEmbedded(readBundle(t, filepath.Join(dir, "bundle.json")))
-	assert.Equal(t, "VALID", verdict)
-	require.ErrorIs(t, gate, cli.ErrPartial)
-	assert.Equal(t, 3, cli.ExitCode(gate))
+	bundle := mustRead(t, filepath.Join(dir, "bundle.json"))
+	page := filepath.Join(t.TempDir(), "page.html")
+	require.NoError(t, os.WriteFile(page, []byte("<!doctype html><script>window.__BUNDLE__ = "+strings.TrimSpace(string(bundle))+";</script>"), 0o600))
+	p, _ := sealedBookBundle(t)
+	result, err := checkPageFile(t, p, page)
+	assert.Equal(t, "VALID", result.Verification)
+	assert.Equal(t, report.PageNoSeal, result.Page)
+	require.ErrorIs(t, err, cli.ErrPartial)
+	assert.Equal(t, 3, cli.ExitCode(err))
+	assert.Contains(t, cli.SafeError(err), "rows")
 }
