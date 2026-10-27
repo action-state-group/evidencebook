@@ -643,3 +643,31 @@ def test_every_checkpoint_claim_is_null_checked_as_go_checks_it(clock):
                 continue
             with pytest.raises(eb.InvalidError):
                 read_checkpoint(statement)
+
+
+def test_wrong_typed_proof_fields_and_boolean_labels_are_refused(clock):
+    import cbor2
+    from evidencebook._cll import read_checkpoint
+
+    b = book(clock)
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    b.checkpoint()
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    protected_bstr, _, payload, _ = cbor2.loads(b.checkpoint().statement).value
+    claims, protected = cbor2.loads(payload), cbor2.loads(protected_bstr)
+    log_key = key("b log")
+
+    def signed(protected_bstr: bytes, payload: bytes) -> bytes:
+        to_be_signed = cbor2.dumps(["Signature1", protected_bstr, b"", payload])
+        return cbor2.dumps(cbor2.CBORTag(18, [protected_bstr, {}, payload, log_key.sign(to_be_signed)]))
+
+    proof = claims["consistency_proof"]
+    for altered in (dict(proof, size_a=str(proof["size_a"])), dict(proof, old_peaks=[1]),
+                    dict(proof, witness=[["x"]])):
+        with pytest.raises(eb.InvalidError):
+            read_checkpoint(signed(protected_bstr, cbor2.dumps(dict(claims, consistency_proof=altered), canonical=True)))
+    boolean_alg = cbor2.dumps({True: protected[1], 3: protected[3], 4: protected[4], 15: protected[15]})
+    boolean_iss = cbor2.dumps({**protected, 15: {True: protected[15][1], 2: protected[15][2]}})
+    for header in (boolean_alg, boolean_iss):
+        with pytest.raises(eb.InvalidError):
+            read_checkpoint(signed(header, payload))

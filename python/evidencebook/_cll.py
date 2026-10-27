@@ -79,7 +79,9 @@ def _wire_profile(statement: bytes) -> str:
         return "not a COSE_Sign1 statement"
     if cbor2.dumps(message) != statement:
         return "the statement is not canonical"
-    if unprotected != {} or not isinstance(protected, dict) or set(protected) != {1, 3, 4, 15}:
+    # Labels are integers: CBOR true is not label 1, though Python compares them equal.
+    if unprotected != {} or not isinstance(protected, dict) or set(protected) != {1, 3, 4, 15} or \
+            any(type(label) is not int for label in protected):
         return "the COSE headers are not the checkpoint profile's"
     cwt, kid = protected[15], protected[4]
     if protected[1] != _COSE_ALG_EDDSA or protected[3] != CLL_CHECKPOINT_CONTENT_TYPE or \
@@ -88,7 +90,7 @@ def _wire_profile(statement: bytes) -> str:
     why = _claims_profile(claims, payload)
     if why:
         return why
-    if not isinstance(cwt, dict) or set(cwt) != {1, 2} or not isinstance(cwt[1], str) or \
+    if not isinstance(cwt, dict) or set(cwt) != {1, 2} or any(type(label) is not int for label in cwt) or not isinstance(cwt[1], str) or \
             not isinstance(claims, dict) or cwt[2] != f"{cwt[1]}#{claims.get('log_size')}":
         return "the CWT claims are not the checkpoint profile's"
     return ""
@@ -109,6 +111,18 @@ def _canonical_commitment(raw: object) -> bool:
         return False
 
 
+def _byte_strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, bytes) for item in value)
+
+
+def _proof_profile(proof: object) -> bool:
+    """Go's wireConsistencyProof: two uint64 sizes, peak lists and paths of byte strings."""
+    return (isinstance(proof, dict) and set(proof) == _PROOF_MEMBERS
+            and all(type(proof[n]) is int and 0 <= proof[n] <= _MAX_UINT64 for n in ("size_a", "size_b"))
+            and _byte_strings(proof["old_peaks"]) and _byte_strings(proof["new_peaks"])
+            and isinstance(proof["witness"], list) and all(_byte_strings(path) for path in proof["witness"]))
+
+
 def _claims_profile(claims: object, payload: bytes) -> str:
     """Go's ``decodeWireClaims``: exactly the claims it defines, in canonical
     CBOR (so no indefinite length and no duplicate), each commitment in its
@@ -117,7 +131,7 @@ def _claims_profile(claims: object, payload: bytes) -> str:
         return "the claims are not the checkpoint profile's"
     # Present means a proof: Go's omitempty re-encoding drops a null one, so it is refused.
     proof = claims.get("consistency_proof")
-    if "consistency_proof" in claims and (not isinstance(proof, dict) or set(proof) != _PROOF_MEMBERS):
+    if "consistency_proof" in claims and not _proof_profile(proof):
         return "the claims are not the checkpoint profile's"
     if cbor2.dumps(claims, canonical=True) != payload:
         return "the claims are not canonical"
