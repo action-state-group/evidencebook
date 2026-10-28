@@ -72,9 +72,9 @@ func TestCoreRefusesWritesOnAShelfStoreWhateverTheProfileSays(t *testing.T) {
 	retailDeal(t)
 	p, err := cli.LoadProfile("deal")
 	require.NoError(t, err)
-	p.Namespace = "plain"
+	p.Log, p.Namespace = "", "plain"
 	require.NoError(t, cli.SaveProfile(p, true))
-	require.False(t, p.IsShelf())
+	require.Empty(t, p.LogOwner(), "the profile no longer names the plugin")
 	_, err = invoke(t, "", "publish", "--profile", "deal", "--request", sealRequestFile(t, "stray"))
 	assert.ErrorIs(t, err, cli.ErrPluginStoreWrite)
 }

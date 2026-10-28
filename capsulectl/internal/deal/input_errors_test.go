@@ -35,7 +35,7 @@ func TestCLLListOnDealProfile(t *testing.T) {
 	require.NoError(t, cli.SaveProfile(p, true))
 	_, err = invoke(t, "", "--profile", "deal", "cll", "list")
 	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "profile deal has no log_id: a deal profile keeps one log per deal; pass --log-id deal/<deal id>")
+	assert.Contains(t, cli.SafeError(err), "profile deal has no log_id: the deal plugin keeps several logs in its store; name one with --log-id")
 
 	out, err := invoke(t, "", "--profile", "deal", "cll", "list", "--log-id", cli.DealLogID(dealID))
 	require.NoError(t, err)

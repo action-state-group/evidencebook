@@ -34,6 +34,16 @@ import (
 // stops advancing, and `canary watch`, run anywhere, raises the alarm from
 // the witness alone. Absence is the alarm.
 
+// errCanaryAlarm is `canary watch` finding the log stale or its history
+// rewritten. It reads "canary alarm: ..." as it always did, and is the core's
+// alarm class (exit code 6) for the exit code.
+var errCanaryAlarm error = canaryAlarm{}
+
+type canaryAlarm struct{}
+
+func (canaryAlarm) Error() string        { return "canary alarm" }
+func (canaryAlarm) Is(target error) bool { return target == cli.ErrAlarm }
+
 // errWitnessUnread is `canary watch` unable to read the witness at all: it
 // cannot tell whether the log advanced, so it says so instead of alarming.
 var errWitnessUnread = errors.New("witness not readable")
@@ -307,7 +317,7 @@ func canaryWatchCommand() *cobra.Command {
 			return cli.Hint(errWitnessUnread, fmt.Sprintf("could not read %s for %s (%s); cannot tell whether it advanced", witness, logID, err))
 		}
 		if !found {
-			return cli.Hint(cli.ErrAlarm, fmt.Sprintf("%s has never been witnessed at %s", logID, witness))
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s has never been witnessed at %s", logID, witness))
 		}
 		prev, hadPrev, err := readCanaryState(statePath)
 		if err != nil {
@@ -315,7 +325,7 @@ func canaryWatchCommand() *cobra.Command {
 		}
 		if why := canaryRewritten(cp, prev, hadPrev); why != "" {
 			// The last good observation is kept, so every later run alarms too.
-			return cli.Hint(cli.ErrAlarm, fmt.Sprintf("%s history was rewritten: %s", logID, why))
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s history was rewritten: %s", logID, why))
 		}
 		next := canaryObservation{LogID: logID, MMRSize: cp.MMRSize, Root: cp.Root, KeyID: cp.KeyID, Timestamp: cp.Timestamp, SizeSince: now.Format(time.RFC3339)}
 		if hadPrev && prev.MMRSize == cp.MMRSize && prev.SizeSince != "" {
@@ -326,14 +336,14 @@ func canaryWatchCommand() *cobra.Command {
 		}
 		stamped, err := time.Parse(time.RFC3339, cp.Timestamp)
 		if err != nil {
-			return cli.Hint(cli.ErrAlarm, fmt.Sprintf("%s: the witness's last checkpoint has no readable time (%q)", logID, cp.Timestamp))
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s: the witness's last checkpoint has no readable time (%q)", logID, cp.Timestamp))
 		}
 		since, _ := time.Parse(time.RFC3339, next.SizeSince)
 		if age := now.Sub(stamped); age > every {
-			return cli.Hint(cli.ErrAlarm, fmt.Sprintf("%s has not advanced since %s (%s ago; expected every %s)", logID, cp.Timestamp, age.Truncate(time.Minute), every))
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s has not advanced since %s (%s ago; expected every %s)", logID, cp.Timestamp, age.Truncate(time.Minute), every))
 		}
 		if held := now.Sub(since); held > every {
-			return cli.Hint(cli.ErrAlarm, fmt.Sprintf("%s has stayed at size %d since %s (%s; expected every %s)", logID, cp.MMRSize, next.SizeSince, held.Truncate(time.Minute), every))
+			return cli.Hint(errCanaryAlarm, fmt.Sprintf("%s has stayed at size %d since %s (%s; expected every %s)", logID, cp.MMRSize, next.SizeSince, held.Truncate(time.Minute), every))
 		}
 		return cli.Output(c, map[string]any{
 			"state":            "advancing",
