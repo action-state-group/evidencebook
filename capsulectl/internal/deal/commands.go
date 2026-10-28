@@ -90,6 +90,14 @@ func dealBundleExtension(c *cobra.Command, use string) (bool, error) {
 		if c.Flags().Changed("share") || c.Flags().Changed("to") {
 			return true, cli.InputError("--share and --to go with --deal: they choose what a deal's shared copy withholds")
 		}
+		// On a deal profile the core refuses the store (it is the plugin's);
+		// the plugin says what to pass instead.
+		if p, err := cli.Selected(c); err == nil && p.LogOwner() == Name {
+			if c.Flags().Changed("log-id") {
+				return true, cli.InputError("a deal's logs are read with --deal DEAL_ID, which applies the deal's share rules; --log-id does not")
+			}
+			return true, cli.InputError("this is a deal profile: each deal is its own log; name the deal with --deal DEAL_ID")
+		}
 		return false, nil
 	}
 	if html, _ := c.Flags().GetString("html"); html != "" {

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Builds against capsule-cli `8a856b75` (unreleased; capsule-cli#428 PR B), whose core names no company
+  plugin. The deal plugin now says the words the core no longer does: `bundle`,
+  `disclose` and `permalink` on a deal profile without `--deal` name the deal to
+  pass (`name the deal with --deal DEAL_ID`, `--log-id` does not apply), and the
+  canary's alarm still reads `canary alarm: ...` and exits 6. `doctor
+  --install-check` reports the deal skill under `skills` (it was `deal_skills`),
+  and the installed plugin must declare `core_version` to be checked against the
+  core. `cll list` on a deal profile with no `log_id` now gets the core's generic
+  message (the deal plugin keeps several logs in its store; name one with `--log-id`).
 - `canary` is a deal verb now: `capsulectl deal canary run|watch` (it was
   `capsulectl canary run|watch` in capsulectl, which drops its own with
   capsule-cli#428). `--expect-version` takes this binary's release tag, and

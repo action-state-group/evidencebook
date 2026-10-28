@@ -49,7 +49,7 @@ func dealPluginAt(t *testing.T, version string) {
 	if version == "" {
 		return
 	}
-	script := "#!/bin/sh\nif [ \"$1\" = cli-plugin-metadata ]; then echo '{\"name\":\"deal\",\"vendor\":\"v\",\"version\":\"" + version + "\",\"plugin_api\":\"cli-plugin/v1\"}'; fi\n"
+	script := "#!/bin/sh\nif [ \"$1\" = cli-plugin-metadata ]; then echo '{\"name\":\"deal\",\"vendor\":\"v\",\"version\":\"" + version + "\",\"core_version\":\"" + version + "\",\"plugin_api\":\"cli-plugin/v1\"}'; fi\n"
 	require.NoError(t, os.WriteFile(filepath.Join(root, "capsulectl-deal"), []byte(script), 0o755))
 }
 
@@ -85,7 +85,7 @@ func TestInstallCheckPassesAFreshInstall(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out, "\n"), "one JSON line, for the run to seal")
 	assert.Equal(t, true, check["ok"])
 	assert.Equal(t, []any{}, check["issues"])
-	assert.Equal(t, []any{filepath.Join("deal", "SKILL.md")}, check["deal_skills"])
+	assert.Equal(t, []any{filepath.Join("deal", "SKILL.md")}, check["skills"])
 	sum := sha256.Sum256([]byte(dealSkillText))
 	assert.Equal(t, hex.EncodeToString(sum[:]), check["skill_sha256"])
 	assert.Equal(t, map[string]any{"endpoint_set": true, "public_key_ok": true}, check["profile_witness"])
