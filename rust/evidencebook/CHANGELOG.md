@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.0.8
+
+### Breaking changes and how to migrate
+
+- **`served_summary::summary_value`** (#161, #35): the third argument is now
+  `leaf_index_of: &dyn Fn(&str) -> Option<u64>`, replacing
+  `is_own_record: &dyn Fn(&str) -> bool`. To migrate, return the leaf index
+  of the owner's own record with that id, and `None` for any other id.
+  `adjudications_received` then counts only verdicts inside the covered
+  range.
+- **`served_summary::Coverage`** (#119, #115): new fields `statement` (the
+  checkpoint's COSE wire statement, `StatedCheckpoint::statement`) and
+  `witness_directory` (a `witnesses.json` value). To migrate, pass both.
+  With no directory, every receipt reads `NOT_CHECKED` and `witnessed` is
+  `false`. The new dependency on `agent-action-capsule` turns on
+  `serde_json`'s `arbitrary_precision` feature for the whole build.
+- **`served_summary/1` output** (#162): `coverage` gains `witness_check`
+  and `witness_receipts`. This is additive, but a consumer that pins the
+  summary's bytes sees both members. Show whether a range is witnessed from
+  `witnessed` and `witness_receipts`, never from `witness_check` alone.
+- **`Derivations::register`** (#92, #86): registering a document again
+  with different declarations now returns `DerivationError::Redeclared`
+  and keeps the first registration. To migrate, register a changed
+  definition under its own document.
+
+### Changes
+
 - **The served summary states each witness receipt's check** (evidencebook#35,
   #115). `coverage` gains `witness_check` and `witness_receipts`
   (`[{ts_url, status}]`), each `PASS`, `NOT_CHECKED` or `FAIL` from AAC's
