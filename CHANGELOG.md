@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed: `capsulectl book result open` validates against the frozen Result v0 schema (#106)
+
+- `result open` checked only that `aggregate.coverage` existed and called Result v0
+  a draft. The Result v0 core schema is frozen (agent-action-capsule
+  `spec/evidence-result-v0.md`: "no longer DRAFT"), so `result open` now validates
+  with the same schema gate as `result build` and `report build`. It is stricter: a
+  document it accepted before may now be refused, with every schema violation
+  reported. Its note says the core schema is frozen and names what the spec still
+  marks PROPOSED, the §4.1 `type: close` claim and §7.1 `coverage_report`.
+
 ### Changed: builds against the capsule-cli whose core names no company plugin (capsule-cli#428)
 
 - The `report` and `capsulectl` modules build against capsule-cli `8a856b75` and capsule-viewer `389c1bac`

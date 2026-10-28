@@ -10,28 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resultShapeNote explains why `result open` only does a structural
-// best-effort check rather than schema validation: the Result v0 schema is
-// still DRAFT, so no frozen schema exists yet to validate against. This
-// command checks for the one shape the draft already commits to regardless
-// of its open questions -- a mandatory
-// `aggregate.coverage` statement ("an aggregate without coverage fails
-// validation") -- and nothing more. It also stands in for a result viewer,
-// which does not exist yet, by printing the aggregate and coverage as text.
-const resultShapeNote = "Result v0 schema is still DRAFT; this is a best-effort structural check, not schema validation"
+// resultShapeNote says what `result open` checked and what the spec still
+// leaves open. The Result v0 core schema is frozen and `result open`
+// validates against it (the same gate `result build` and `report build`
+// use); the Result v0 spec still marks two claims PROPOSED: §4.1's
+// `type: close` claim and §7.1's `coverage_report`. `result open` also
+// stands in for a result viewer, which does not exist yet, by printing the
+// aggregate and coverage as text.
+const resultShapeNote = "Result v0 core schema is frozen and this document passes it; the `type: close` claim (spec §4.1) and `coverage_report` (spec §7.1) are still PROPOSED"
 
-// validateResultDocument enforces only the one requirement the DRAFT Result
-// v0 item already states plainly: an aggregate carrying a coverage statement.
-func validateResultDocument(doc map[string]interface{}) (aggregate, coverage map[string]interface{}, err error) {
-	aggregate, ok := doc["aggregate"].(map[string]interface{})
-	if !ok {
-		return nil, nil, cli.InputError("Result v0 requires a top-level aggregate object")
-	}
-	coverage, ok = aggregate["coverage"].(map[string]interface{})
-	if !ok {
-		return nil, nil, cli.InputError("Result v0 requires aggregate.coverage (an aggregate without a coverage statement fails validation)")
-	}
-	return aggregate, coverage, nil
+// resultAggregate returns the aggregate and its coverage statement, which
+// the frozen schema has already required.
+func resultAggregate(doc map[string]interface{}) (aggregate, coverage map[string]interface{}) {
+	aggregate, _ = doc["aggregate"].(map[string]interface{})
+	coverage, _ = aggregate["coverage"].(map[string]interface{})
+	return aggregate, coverage
 }
 
 func sortedKeys(m map[string]interface{}) []string {
@@ -60,13 +53,14 @@ func renderResultText(aggregate, coverage map[string]interface{}) string {
 }
 
 // resultCommands implements `result open`, text mode at minimum: until a
-// result viewer exists, this validates the one settled shape requirement and
-// prints the aggregate/coverage statement itself rather than rendering it.
+// result viewer exists, this validates the document against the frozen
+// Result v0 schema and prints the aggregate/coverage statement itself rather
+// than rendering it.
 func resultCommands() *cobra.Command {
 	group := &cobra.Command{Use: "result", Short: "Inspect a Result v0 document, or seal one into the book"}
 	open := &cobra.Command{
 		Use:   "open FILE",
-		Short: "Validate + print a Result v0's aggregate and coverage statement (text mode)",
+		Short: "Validate against the frozen Result v0 schema, then print the aggregate and coverage statement (text mode)",
 		Args:  cli.OneArg,
 		RunE: func(c *cobra.Command, args []string) error {
 			format, _ := c.Flags().GetString("format")
@@ -81,10 +75,10 @@ func resultCommands() *cobra.Command {
 			if e != nil {
 				return e
 			}
-			aggregate, coverage, e := validateResultDocument(doc)
-			if e != nil {
+			if e := checkResultSchema(doc); e != nil {
 				return e
 			}
+			aggregate, coverage := resultAggregate(doc)
 			notRecomputed := dealReconcileClaimIDs(doc)
 			if format == "json" {
 				out := map[string]any{"aggregate": aggregate, "note": resultShapeNote}
