@@ -14,7 +14,7 @@ const Vendor = "action-state-group"
 const Name = "deal"
 
 // DealMetadata is capsulectl-deal's cli-plugin-metadata answer.
-var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "settlement", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "terms-result"}}
+var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "settlement", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "terms-result", "canary"}}
 
 // DealCommands are capsulectl-deal's own commands: `capsulectl deal ...`.
 func DealCommands() []*cobra.Command {
@@ -60,7 +60,6 @@ func onProfiles(cmd *cobra.Command, check func(cli.Profile) error) *cobra.Comman
 func InstallDealHooks() {
 	cli.ExtendBundle(cli.BundleExtension{Flags: dealBundleFlags, Run: dealBundleExtension})
 	cli.GraftCommand([]string{"cll", "checkpoint"}, cadenceCommand)
-	cli.DealCommandGroup = DealGroup
 	cli.ErrorPhase = dealErrorPhase
 }
 
