@@ -33,13 +33,33 @@ func refused(err error) error {
 		return err
 	}
 	message := err.Error()
-	for _, flag := range [][2]string{{"presentation ", "--presentation "}, {"card ", "--card "}, {"not a report page", "--page is not a report page"}, {"the page's ", "--page's "}} {
+	for _, flag := range [][2]string{{"presentation ", "--presentation "}, {"wording: ", "--wording "}, {"card ", "--card "}, {"not a report page", "--page is not a report page"}, {"the page's ", "--page's "}} {
 		if rest, ok := strings.CutPrefix(message, flag[0]); ok {
 			message = flag[1] + rest
 			break
 		}
 	}
 	return cli.Hint(cli.ErrInput, message)
+}
+
+// readWording reads --wording, the aac.wording-pack/v0 pack, with the
+// --wording-digest it is pinned to. report.Build checks the digest against the
+// pack's bytes and the pack's shape; the two flags come together because a
+// pack without its digest would be unpinned.
+func readWording(path, digest string) (*report.Wording, error) {
+	switch {
+	case path == "" && digest == "":
+		return nil, nil
+	case path == "":
+		return nil, cli.InputError("--wording-digest needs --wording")
+	case digest == "":
+		return nil, cli.InputError("--wording needs --wording-digest: the lowercase hex SHA-256 of the pack's bytes")
+	}
+	raw, err := cli.ReadInput(path)
+	if err != nil {
+		return nil, err
+	}
+	return &report.Wording{Pack: string(raw), SHA256: digest}, nil
 }
 
 type reportBuildResult struct {
@@ -90,8 +110,16 @@ func reportCommands() *cobra.Command {
 			return cli.InputError("--bundle and --out are required")
 		}
 		view := report.View{Card: card, Draft: dryRun}
+		wordingPath, _ := c.Flags().GetString("wording")
+		wordingDigest, _ := c.Flags().GetString("wording-digest")
+		if wordingPath != "" && permalink {
+			return cli.InputError("--permalink cannot be used with --wording: the permalink carries the bundle alone, and the viewer it opens in would show its own words")
+		}
+		var err error
+		if view.Wording, err = readWording(wordingPath, wordingDigest); err != nil {
+			return err
+		}
 		if presentationPath != "" {
-			var err error
 			if view.Presentation, err = readPresentation(presentationPath); err != nil {
 				return err
 			}
@@ -140,6 +168,8 @@ func reportCommands() *cobra.Command {
 	build.Flags().String("bundle", "", "A held, disclosed Evidence Bundle whose root is a sealed Result v0")
 	build.Flags().String("card", "", "Renderer card: "+strings.Join(report.Cards(), ", ")+" (recorded in the report's report-card/v1 block)")
 	build.Flags().String("presentation", "", "presentation/v1 header block JSON: producer_display_name, logo_data_url (data:image/ only), title")
+	build.Flags().String("wording", "", "An aac.wording-pack/v0 wording pack laid over the viewer's own words in the page; needs --wording-digest. Cannot be used with --permalink")
+	build.Flags().String("wording-digest", "", "Lowercase hex SHA-256 of the --wording file's bytes; the build is refused and no page is written if they differ")
 	build.Flags().String("out", "", "Write the offline report.html here (new file)")
 	build.Flags().Bool("permalink", false, "Also mint a viewer permalink over the same embedded bundle")
 	build.Flags().String("base-url", cli.DefaultBundleURL, "Bundle viewer base URL for --permalink")
