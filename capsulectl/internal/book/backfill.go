@@ -790,7 +790,7 @@ func openBackfillTarget(c *cobra.Command, use cli.TargetUse) (*cli.Target, error
 	if err != nil {
 		return nil, err
 	}
-	if t.Book == nil {
+	if t.Owned == nil {
 		return nil, errors.Join(cli.InputError("backfill needs the profile's evidence book: run store init"), t.Close())
 	}
 	return t, nil

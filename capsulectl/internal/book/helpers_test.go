@@ -61,7 +61,7 @@ func invoke(t *testing.T, input string, args ...string) (string, error) {
 // own commands at the top level, where its binary has them (replacing the
 // transitional aliases); and `book ...` as the core dispatches it.
 func testCommand() *cobra.Command {
-	book := &cobra.Command{Use: cli.BookPluginName}
+	book := &cobra.Command{Use: Name}
 	book.AddCommand(append(BookCommands(), BookAliases()...)...)
 	return cli.NewCommandWith(append(BookCommands(), book)...)
 }
@@ -168,7 +168,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
-	cli.SetBookBackend(BookBackend{})
+	cli.RegisterLogBackend(Name, BookBackend{})
 	code := m.Run()
 	if installed.dir != "" {
 		_ = os.RemoveAll(installed.dir)

@@ -11,16 +11,16 @@ import (
 
 // BookBackend is the evidence book behind every book profile in the
 // capsulectl-book plugin: the core's publish, cll and bundle commands reach
-// a book profile's log through it (cli.SetBookBackend).
+// a book profile's log through it (cli.RegisterLogBackend).
 type BookBackend struct{}
 
-var _ cli.BookBackend = BookBackend{}
+var _ cli.LogBackend = BookBackend{}
 
 // Init is `store init` on a book profile: the book's files, no signing.
 func (BookBackend) Init(ctx context.Context, p cli.Profile) error { return initBookFiles(ctx, p) }
 
 // Open opens the profile's book over the artifact store the core opened.
-func (BookBackend) Open(ctx context.Context, p cli.Profile, artifacts cli.ArtifactStore) (cli.BookLog, error) {
+func (BookBackend) Open(ctx context.Context, p cli.Profile, artifacts cli.ArtifactStore) (cli.OwnedLog, error) {
 	opened, err := openBookWith(ctx, p, false, artifacts)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (b *bookLog) Checkpoint(ctx context.Context, service string) (map[string]an
 	return checkpointBook(ctx, b.profile, b.opened.book, service)
 }
 
-func (b *bookLog) Bundle(ctx context.Context, req cli.BookBundleRequest) ([]byte, error) {
+func (b *bookLog) Bundle(ctx context.Context, req cli.LogBundleRequest) ([]byte, error) {
 	bundle, err := bookBundle(ctx, b.opened.book, b.opened.originals, req.Root, req.ClosureDepth, req.Payloads, req.Suppress, req.Disclose, req.AttachOriginals, req.ProducerKey)
 	return bundle.JSON, err
 }
@@ -71,7 +71,7 @@ func (b *bookLog) Release() error { return b.opened.release() }
 // bookOf is the evidence book behind a target the core opened on a book
 // profile in this plugin.
 func bookOf(t *cli.Target) *bookLog {
-	if b, ok := t.Book.(*bookLog); ok {
+	if b, ok := t.Owned.(*bookLog); ok {
 		return b
 	}
 	return nil
