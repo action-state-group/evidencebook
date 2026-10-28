@@ -19,7 +19,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 here="$root/scripts/presentation-goldens"
-out="$root/testdata/presentation"
+out="${PRESENTATION_OUT:-$root/testdata/presentation}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -297,6 +297,18 @@ mkdir -p "$work/3-bilateral-composed/no-plugins"
 CAPSULECTL_PLUGIN_ROOTS="$work/3-bilateral-composed/no-plugins" XDG_CONFIG_HOME="$work/3-bilateral-composed/none" capsulectl presentation build --bundle bundle.json --out page.html >/dev/null
 cp bundle.json page.html "$out/3-bilateral-composed/"
 meta 3-bilateral-composed "$(jq -n --arg v "$(verdict bundle.json)" '{kind: "bilateral-composed", emitted_by: "capsulectl deal compose --deal ID --member BUYER_REQUEST --member SELLER_REQUEST --output bundle.json, then capsulectl presentation build --bundle bundle.json --out page.html", rerender: "presentation-build", page: "written", verify: $v}')"
+
+# --- 3b. the composer's both-halves page (evidencebook-deal#31) -------------
+# The buyer's page for fixture 3's composition with its own keep copy joined
+# at the page: `deal compose --html --keep` shows the keep copy as "your half
+# (private)". The composed bundle is a composition like fixture 3's and holds
+# none of the keep copy; keep.json is the input the page is rebuilt from.
+half="$out/10-composed-private-half"
+mkdir -p "$half"
+side buyer
+capsulectl --profile deal deal report --deal "$id" --bundle "$half/keep.json" >/dev/null
+capsulectl --profile deal deal compose --deal "$id" --member "$own" --member "$theirs" --keep "$half/keep.json" --html "$half/page.html" --output "$half/bundle.json" >/dev/null
+meta 10-composed-private-half "$(jq -n --arg v "$(verdict "$half/bundle.json")" '{kind: "composed-private-half", emitted_by: "capsulectl deal report --deal ID --bundle keep.json, then capsulectl deal compose --deal ID --member BUYER_REQUEST --member SELLER_REQUEST --keep keep.json --html page.html --output bundle.json", rerender: "compose-page", page: "written", verify: $v}')"
 
 # --- 4 and 5. monthly outcome and compliance reports: Result v0 roots ------
 # A Result v0 sealed as the payload of a SQLite record. When these fixtures

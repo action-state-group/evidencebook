@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `deal compose --html FILE --keep KEEP_BUNDLE` writes the composer's
+  both-halves page: the composed bundle with the composer's own keep copy
+  (`deal report --bundle`) shown as "Your half (private)", joined at the page
+  (evidencebook-deal#31, option b). composed/v1 is unchanged: the keep copy
+  rides in the page's bootstrap, never in the composed bundle, so share and
+  export carry served copies only. The page is refused, and no bundle is
+  written, unless the keep bundle verifies VALID, is audience keep, and names
+  the composition's deal id and its composer. Join states still come from the
+  served members alone. Adds the wording key `report.private_half`.
+
 - The `deal report --html` page runs capsule-viewer's own page runtime
   (`go/pageruntime` in capsule-viewer/go v0.3.0), pinned by its digest, in
   place of capsule-cli's vendored build. Its bootstrap renders through the

@@ -241,6 +241,23 @@ func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, b
 		return emitter.EmitEvidenceGraphHTML(bundle, cli.EvidenceGraphIIFE)
 	case "deal-report":
 		return dealReportHTML(bundle, dealNotCountersigned(), dealVerifyCommand(""), cli.BuiltinWording())
+	case "compose-page":
+		// The composer's both-halves page: the composed bundle with the
+		// keep copy beside it (evidencebook-deal#31).
+		// The deal id is the composition's own, from its served members.
+		dealID := ""
+		block, _ := bundle["extensions"].(map[string]interface{})["composed/v1"].(map[string]interface{})
+		for _, raw := range block["members"].([]interface{}) {
+			if dealID == "" {
+				dealID = rootDealID(raw.(map[string]interface{}))
+			}
+		}
+		require.NotEmpty(t, dealID)
+		half, err := privateHalfOf(filepath.Join(dir, "keep.json"), dealID, bundle, cli.BuiltinWording())
+		if err != nil {
+			return "", err
+		}
+		return composedPageHTML(bundle, half, dealVerifyCommand("page.html"), cli.BuiltinWording())
 	case "report-build":
 		// `book report build` is capsulectl-book's: its tests re-emit this
 		// page and hold it to the committed one (TestReportBuildGoldens).
