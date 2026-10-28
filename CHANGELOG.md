@@ -8,9 +8,13 @@
   (pseudo-versions, unreleased). A book profile now names its owner: a jsonl
   profile with a `log_id` needs `log: book` (`capsulectl profile create ... --log
   book`, or `capsulectl profile update --profile NAME --log book` for an older
-  profile), and the core refuses one that names none, with that command. The
-  core's transitional aliases are gone, so `capsulectl close`, `reconcile`, `request`,
-  `respond` and `store migrate` are `capsulectl book ...`. The scripted demo creates
+  profile). The core refuses a profile that names none and prints the fix
+  (`capsulectl profile update --profile NAME --log <cll or the plugin that keeps its
+  log>`; for a book the value is `book`), and `capsulectl doctor` lists every
+  profile with no declared log owner. The core's transitional aliases are gone and
+  the old commands no longer exist: `capsulectl close`, `reconcile`, `request` and
+  `respond` are `capsulectl book close|reconcile|request|respond`, and `capsulectl
+  store migrate` is `capsulectl book migrate`. The scripted demo creates
   its profiles with `--log book`. The two `report` page goldens are re-emitted with
   the newer page runtime (its banner check no longer discards a render when the page
   grows a scrollbar, capsule-viewer#113).

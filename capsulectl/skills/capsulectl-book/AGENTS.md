@@ -2,7 +2,7 @@
 
 Call the capsulectl-book verbs to ask for, answer, close, reconcile and report on evidence in an evidence book — never to reason about business meaning or invent a workflow beyond the verbs listed below.
 
-This skill may call the book verbs below — request and answer evidence, close and reconcile a period, seal a Result and render its report — nothing else. It never reasons about business meaning, and never invents a workflow beyond the verb surface below. It works on a book profile (a jsonl profile with `log_id`, `operator`, a signing key the profile trusts and a checkpoint signing key it trusts) and extends the `capsulectl` skill: the core verbs (`verify`, `disclose`, `get`, `cll`, `publish`, `plugin ls` and the rest) are that skill's, and this one adds only what the `capsulectl-book` plugin provides.
+This skill may call the book verbs below — request and answer evidence, close and reconcile a period, seal a Result and render its report — nothing else. It never reasons about business meaning, and never invents a workflow beyond the verb surface below. It works on a book profile (a jsonl profile with `log_id`, `log: book` (the owner the core requires; `--log book` when you create it), `operator`, a signing key the profile trusts and a checkpoint signing key it trusts) and extends the `capsulectl` skill: the core verbs (`verify`, `disclose`, `get`, `cll`, `publish`, `plugin ls` and the rest) are that skill's, and this one adds only what the `capsulectl-book` plugin provides.
 
 ## Guardrails
 
