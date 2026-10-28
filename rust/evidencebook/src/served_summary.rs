@@ -104,29 +104,95 @@ pub struct Coverage<'a> {
     pub witness_directory: Option<&'a Value>,
 }
 
-/// The `ts_url`s of the checkpoint's witness receipts that verify, with
-/// AAC's witness verifier
-/// ([`agent_action_capsule::witness::verify_witness_receipts`]), against
-/// `statement` under `directory`. A receipt the checkpoint only carries is
-/// not counted: none counts when the statement does not verify under its
-/// own key or does not sign every field of this checkpoint as stated
-/// (`log_id`, `mmr_size`, `root`, `key_id`, `timestamp`, `prev_size`,
-/// `prev_root`), and a receipt that is not
-/// checked (no directory row or key) or fails is left out.
-fn verified_witnesses(
-    cp: &Checkpoint,
-    statement: &[u8],
-    directory: Option<&Value>,
-) -> BTreeSet<String> {
+/// What the checkpoint's witness receipts came to, as the summary's
+/// `coverage` states it.
+#[derive(Debug, PartialEq)]
+struct WitnessCheck {
+    /// The `ts_url`s of the receipts that verify (`coverage.witnesses`).
+    witnesses: BTreeSet<String>,
+    /// `PASS`, `NOT_CHECKED` or `FAIL` over every carried receipt
+    /// (`coverage.witness_check`); `None` when the checkpoint carries none.
+    check: Option<&'static str>,
+    /// One `{ts_url, status}` per carried receipt the verifier read
+    /// (`coverage.witness_receipts`).
+    receipts: Vec<Value>,
+}
+
+const PASS: &str = "PASS";
+const NOT_CHECKED: &str = "NOT_CHECKED";
+const FAIL: &str = "FAIL";
+
+impl WitnessCheck {
+    /// Every carried receipt at `status`, none verified.
+    fn all(cp: &Checkpoint, status: &'static str) -> Self {
+        Self {
+            witnesses: BTreeSet::new(),
+            check: Some(status),
+            receipts: cp
+                .witnesses
+                .iter()
+                .map(|w| json!({"ts_url": w.ts_url, "status": status}))
+                .collect(),
+        }
+    }
+
+    /// AAC's report, its `pass`, `withheld` and `fail` written `PASS`,
+    /// `NOT_CHECKED` and `FAIL`. An entry the verifier could not read as a
+    /// receipt (no `ts_url`) makes the whole check `FAIL` but is named by no
+    /// line of `receipts`.
+    fn from_report(report: &witness::WitnessReport) -> Self {
+        let token = |status: &str| match status {
+            "pass" => PASS,
+            "withheld" => NOT_CHECKED,
+            _ => FAIL,
+        };
+        Self {
+            witnesses: report
+                .receipts
+                .iter()
+                .filter(|r| r.status == "pass")
+                .map(|r| r.ts_url.clone())
+                .collect(),
+            check: Some(token(&report.status)),
+            receipts: report
+                .receipts
+                .iter()
+                .map(|r| json!({"ts_url": r.ts_url, "status": token(&r.status)}))
+                .collect(),
+        }
+    }
+}
+
+/// The checkpoint's witness receipts checked with AAC's witness verifier
+/// ([`agent_action_capsule::witness::verify_witness_receipts`]) against
+/// `statement` under `directory`. Only a receipt that verifies witnesses
+/// the range. A receipt that cannot be checked (no directory, no row or key
+/// for its witness, a stub, or no statement to check it against) is
+/// `NOT_CHECKED`, never a lower count. When the statement does not verify
+/// under its own key, or does not sign every field of this checkpoint as
+/// stated (`log_id`, `mmr_size`, `root`, `key_id`, `timestamp`,
+/// `prev_size`, `prev_root`), the checkpoint was checked and does not hold:
+/// every receipt is `FAIL`.
+fn witness_check(cp: &Checkpoint, statement: &[u8], directory: Option<&Value>) -> WitnessCheck {
+    if cp.witnesses.is_empty() {
+        return WitnessCheck {
+            witnesses: BTreeSet::new(),
+            check: None,
+            receipts: Vec::new(),
+        };
+    }
+    if statement.is_empty() {
+        return WitnessCheck::all(cp, NOT_CHECKED);
+    }
     // checkpointed-local-log 0.3.1 verifies the statement's signature with
     // dalek's lenient `verify`; the strict check comes first (#108).
     if !crate::ed25519::statement_verifies(statement) {
-        return BTreeSet::new();
+        return WitnessCheck::all(cp, FAIL);
     }
     let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
     let decoded = match verified.decoded {
         Some(decoded) if verified.ok => decoded,
-        _ => return BTreeSet::new(),
+        _ => return WitnessCheck::all(cp, FAIL),
     };
     let signed = witness::SignedCheckpoint::from(&decoded);
     let stated = witness::SignedCheckpoint {
@@ -141,17 +207,17 @@ fn verified_witnesses(
     // Every signed field, so the summary never publishes a stated field the
     // witnessed statement does not sign.
     if signed != stated {
-        return BTreeSet::new();
+        return WitnessCheck::all(cp, FAIL);
     }
     let Ok(receipts) = serde_json::to_value(&cp.witnesses) else {
-        return BTreeSet::new();
+        return WitnessCheck::all(cp, FAIL);
     };
-    witness::verify_witness_receipts(Some(&receipts), Some(&signed), Some(statement), directory)
-        .receipts
-        .into_iter()
-        .filter(|r| r.status == "pass")
-        .map(|r| r.ts_url)
-        .collect()
+    WitnessCheck::from_report(&witness::verify_witness_receipts(
+        Some(&receipts),
+        Some(&signed),
+        Some(statement),
+        directory,
+    ))
 }
 
 /// `float(raw)`: a number, a numeric string or a bool; anything else, and a
@@ -251,6 +317,13 @@ impl Bucket {
 /// log entry's facts, in log order) bounded by `coverage`. `leaf_index_of`
 /// gives the leaf index of one of the owner's own records by its id, `None`
 /// for any other id (for the adjudications-received count).
+///
+/// `coverage.witness_check` is the verifier's overall result, and a `FAIL`
+/// outranks a `PASS`: one receipt that verifies beside one that does not
+/// gives `witnessed: true` with `witness_check: "FAIL"`, the bad receipt
+/// named in `witness_receipts`. That is a valid summary. A reader showing
+/// whether the range is witnessed reads `witnessed` and `witness_receipts`,
+/// never `witness_check` alone.
 pub fn summary_value(
     leaves: &[&LeafFacts],
     coverage: &Coverage<'_>,
@@ -283,7 +356,7 @@ pub fn summary_value(
         .map(|(group, bucket)| (group.to_string(), bucket.to_value(labels)))
         .collect();
     let adjudications_received = adjudications_received(leaves, covered, leaf_index_of);
-    let witnesses = verified_witnesses(cp, coverage.statement, coverage.witness_directory);
+    let witnessed = witness_check(cp, coverage.statement, coverage.witness_directory);
     let mut derivation = Map::new();
     derivation.insert("kind".into(), json!("served_summary_fold"));
     derivation.insert("definition_digest".into(), json!(labels.definition_digest));
@@ -304,8 +377,10 @@ pub fn summary_value(
             "mmr_size": cp.mmr_size,
             "log_id": cp.log_id,
             "timestamp": cp.timestamp,
-            "witnesses": witnesses,
-            "witnessed": !witnesses.is_empty(),
+            "witnesses": witnessed.witnesses,
+            "witnessed": !witnessed.witnesses.is_empty(),
+            "witness_check": witnessed.check,
+            "witness_receipts": witnessed.receipts,
             "note": labels.coverage_note,
         },
         "adjudications_received": {
@@ -738,5 +813,222 @@ mod tests {
         assert_eq!(v["adjudications_received"]["value"], json!(0));
         assert_eq!(v["selection"]["from_entry"], json!(0));
         assert_eq!(v["derivation"]["by_group"], json!({}));
+    }
+
+    const OTHER_WITNESS_URL: &str = "https://w2.example";
+
+    /// [`directory`] with a second witness, under its own key.
+    fn two_witnesses() -> Value {
+        let mut d = directory();
+        d["witnesses"].as_array_mut().unwrap().push(json!({
+            "name": "w2",
+            "endpoint": OTHER_WITNESS_URL,
+            "key_ids": [hex::encode(SigningKey::from_bytes(&[8u8; 32]).verifying_key().to_bytes())],
+        }));
+        d
+    }
+
+    fn receipts(entries: &[(&str, &str)]) -> Value {
+        entries
+            .iter()
+            .map(|(url, status)| json!({"ts_url": url, "status": status}))
+            .collect()
+    }
+
+    #[test]
+    fn no_receipt_is_no_check_rather_than_not_checked() {
+        let checkpoints = stated();
+        let (first, first_cose) = &checkpoints[0];
+        let v = coverage_of(first, first_cose, Some(&directory()));
+        assert_eq!(v["witness_check"], Value::Null);
+        assert_eq!(v["witness_receipts"], json!([]));
+        assert_eq!(v["witnessed"], json!(false));
+    }
+
+    #[test]
+    fn each_receipt_reads_pass_not_checked_or_fail() {
+        let checkpoints = stated();
+        let (first, first_cose) = &checkpoints[0];
+        let with = |entries: Vec<WitnessEntry>| Checkpoint {
+            witnesses: entries,
+            ..first.clone()
+        };
+        let good = receipt(first, WITNESS_URL, &witness_key());
+        let directory = directory();
+        let mut unusable = directory.clone();
+        unusable["witnesses"][0]["key_ids"] = json!(["zz"]);
+        let v = coverage_of(&with(vec![good.clone()]), first_cose, Some(&directory));
+        assert_eq!(v["witness_check"], json!("PASS"));
+        assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "PASS")]));
+
+        // Not checked is a state, not a zero: the receipt is still listed.
+        let not_checked: Vec<(&str, Checkpoint, &[u8], Option<&Value>)> = vec![
+            ("no directory", with(vec![good.clone()]), first_cose, None),
+            (
+                "an unlisted witness",
+                with(vec![receipt(
+                    first,
+                    "https://stranger.example",
+                    &witness_key(),
+                )]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "no statement",
+                with(vec![good.clone()]),
+                &[],
+                Some(&directory),
+            ),
+            (
+                "a stub",
+                with(vec![WitnessEntry {
+                    is_stub: true,
+                    ..good.clone()
+                }]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "an unusable key in the directory row",
+                with(vec![good.clone()]),
+                first_cose,
+                Some(&unusable),
+            ),
+        ];
+        for (name, cp, statement, directory) in not_checked {
+            let v = coverage_of(&cp, statement, directory);
+            assert_eq!(v["witness_check"], json!("NOT_CHECKED"), "{name}");
+            assert_eq!(v["witnessed"], json!(false), "{name}");
+            let url = cp.witnesses[0].ts_url.clone();
+            assert_eq!(
+                v["witness_receipts"],
+                receipts(&[(&url, "NOT_CHECKED")]),
+                "{name}"
+            );
+        }
+
+        let forged = receipt(first, WITNESS_URL, &SigningKey::from_bytes(&[6u8; 32]));
+        let v = coverage_of(&with(vec![forged]), first_cose, Some(&directory));
+        assert_eq!(v["witness_check"], json!("FAIL"));
+        assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "FAIL")]));
+    }
+
+    /// One receipt verifies and one does not: witnessed, and the check is
+    /// `FAIL` with the bad receipt named. A valid summary (see
+    /// [`summary_value`]).
+    #[test]
+    fn a_failing_receipt_beside_a_passing_one_is_witnessed_and_fail() {
+        let checkpoints = stated();
+        let (first, first_cose) = &checkpoints[0];
+        let cp = Checkpoint {
+            witnesses: vec![
+                receipt(first, WITNESS_URL, &witness_key()),
+                receipt(
+                    first,
+                    OTHER_WITNESS_URL,
+                    &SigningKey::from_bytes(&[9u8; 32]),
+                ),
+            ],
+            ..first.clone()
+        };
+        let v = coverage_of(&cp, first_cose, Some(&two_witnesses()));
+        assert_eq!(v["witnessed"], json!(true));
+        assert_eq!(v["witnesses"], json!([WITNESS_URL]));
+        assert_eq!(v["witness_check"], json!("FAIL"));
+        assert_eq!(
+            v["witness_receipts"],
+            receipts(&[(WITNESS_URL, "PASS"), (OTHER_WITNESS_URL, "FAIL")])
+        );
+    }
+
+    /// A statement that does not verify, or does not sign the checkpoint as
+    /// stated, was checked and does not hold: every receipt is `FAIL`, never
+    /// `NOT_CHECKED`.
+    #[test]
+    fn a_statement_that_does_not_hold_fails_every_receipt() {
+        let checkpoints = stated();
+        let (first, first_cose) = &checkpoints[0];
+        let (_, second_cose) = &checkpoints[1];
+        let good = receipt(first, WITNESS_URL, &witness_key());
+        let mut cp = Checkpoint {
+            witnesses: vec![good],
+            ..first.clone()
+        };
+        let mut bad_signature = first_cose.clone();
+        *bad_signature.last_mut().unwrap() ^= 1;
+        for (name, statement) in [
+            ("another checkpoint's statement", second_cose.as_slice()),
+            ("a signature that does not verify", bad_signature.as_slice()),
+        ] {
+            let v = coverage_of(&cp, statement, Some(&directory()));
+            assert_eq!(v["witness_check"], json!("FAIL"), "{name}");
+            assert_eq!(v["witnessed"], json!(false), "{name}");
+            assert_eq!(
+                v["witness_receipts"],
+                receipts(&[(WITNESS_URL, "FAIL")]),
+                "{name}"
+            );
+        }
+        // Signed under its own key, so the strict check passes, but no
+        // checkpoint: checkpointed-local-log rejects it.
+        let not_a_checkpoint = {
+            let mut m = crate::ed25519::Sign1::decode(first_cose).unwrap();
+            m.payload = b"not a checkpoint".to_vec();
+            let tbs = crate::ed25519::to_be_signed(&m.protected, &m.payload);
+            m.signature =
+                ed25519_dalek::Signer::sign(&SigningKey::from_bytes(&[3u8; 32]), &tbs).to_bytes();
+            crate::ed25519::encode(&ciborium::Value::Tag(
+                crate::ed25519::COSE_SIGN1_TAG,
+                Box::new(ciborium::Value::Array(vec![
+                    ciborium::Value::Bytes(m.protected),
+                    ciborium::Value::Map(m.unprotected),
+                    ciborium::Value::Bytes(m.payload),
+                    ciborium::Value::Bytes(m.signature.to_vec()),
+                ])),
+            ))
+        };
+        assert!(crate::ed25519::statement_verifies(&not_a_checkpoint));
+        assert!(!cll::checkpoint::verify_checkpoint_cose_offline(&not_a_checkpoint).ok);
+        let v = coverage_of(&cp, &not_a_checkpoint, Some(&directory()));
+        assert_eq!(v["witness_check"], json!("FAIL"), "not a checkpoint");
+        assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "FAIL")]));
+
+        cp.root = "00".repeat(32);
+        let v = coverage_of(&cp, first_cose, Some(&directory()));
+        assert_eq!(
+            v["witness_check"],
+            json!("FAIL"),
+            "a stated field not signed"
+        );
+        assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "FAIL")]));
+    }
+
+    /// An entry the verifier cannot read as a receipt fails the check and
+    /// is named by no line: a `FAIL` with no named receipt is deliberate.
+    #[test]
+    fn a_malformed_entry_fails_the_check_with_no_receipt_named() {
+        let report = witness::WitnessReport {
+            status: "fail".into(),
+            findings: vec!["witness_receipt_malformed:0".into()],
+            receipts: Vec::new(),
+        };
+        let check = WitnessCheck::from_report(&report);
+        assert_eq!(check.check, Some("FAIL"));
+        assert!(check.receipts.is_empty());
+        assert!(check.witnesses.is_empty());
+        // As AAC reports it for an entry with no `ts_url`.
+        let checkpoints = stated();
+        let (_, first_cose) = &checkpoints[0];
+        let decoded = cll::checkpoint::verify_checkpoint_cose_offline(first_cose)
+            .decoded
+            .unwrap();
+        let aac = witness::verify_witness_receipts(
+            Some(&json!([{"entry_hash": "ab"}])),
+            Some(&witness::SignedCheckpoint::from(&decoded)),
+            Some(first_cose),
+            Some(&directory()),
+        );
+        assert_eq!(WitnessCheck::from_report(&aac), check);
     }
 }

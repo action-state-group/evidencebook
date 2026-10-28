@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **The served summary states each witness receipt's check** (evidencebook#35,
+  #115). `coverage` gains `witness_check` and `witness_receipts`
+  (`[{ts_url, status}]`), each `PASS`, `NOT_CHECKED` or `FAIL` from AAC's
+  witness verifier, and `witness_check` is `null` when the checkpoint
+  carries no receipt.
+  - A receipt that cannot be checked (no directory, no row or key, a stub,
+    no statement) reads `NOT_CHECKED` and is still listed, never a lower
+    count.
+  - No statement to check against (an empty statement) means not checked:
+    every receipt reads `NOT_CHECKED`. It can never yield a false
+    `witnessed`.
+  - A statement that does not verify, or does not sign the checkpoint as
+    stated, fails every receipt.
+  - `witnesses` and `witnessed` still count verified receipts only.
+  - A `FAIL` outranks a `PASS`: one good receipt beside a bad one gives
+    `witnessed: true` with `witness_check: "FAIL"`. Show whether a range is
+    witnessed from `witnessed` and `witness_receipts`, never from
+    `witness_check` alone.
+
 - **Breaking: the served summary counts adjudications only within the
   checkpoint** (evidencebook#35). `served_summary::summary_value` takes
   `leaf_index_of: &dyn Fn(&str) -> Option<u64>` (the leaf index of one of
