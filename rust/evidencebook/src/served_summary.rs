@@ -248,13 +248,13 @@ impl Bucket {
 }
 
 /// The published summary (`ServedSummary.to_value()`), over `leaves` (every
-/// log entry's facts, in log order) bounded by `coverage`. `is_own_record`
-/// says whether a committed entry is one of the owner's own records (for the
-/// adjudications-received count, which reads the whole log).
+/// log entry's facts, in log order) bounded by `coverage`. `leaf_index_of`
+/// gives the leaf index of one of the owner's own records by its id, `None`
+/// for any other id (for the adjudications-received count).
 pub fn summary_value(
     leaves: &[&LeafFacts],
     coverage: &Coverage<'_>,
-    is_own_record: &dyn Fn(&str) -> bool,
+    leaf_index_of: &dyn Fn(&str) -> Option<u64>,
     labels: &Labels<'_>,
 ) -> Value {
     let cp = coverage.checkpoint;
@@ -282,13 +282,7 @@ pub fn summary_value(
         .iter()
         .map(|(group, bucket)| (group.to_string(), bucket.to_value(labels)))
         .collect();
-    let adjudications_received = leaves
-        .iter()
-        .filter_map(|f| f.adjudicated_halves.as_ref())
-        .filter(|(a, b)| {
-            a.as_deref().is_some_and(is_own_record) || b.as_deref().is_some_and(is_own_record)
-        })
-        .count();
+    let adjudications_received = adjudications_received(leaves, covered, leaf_index_of);
     let witnesses = verified_witnesses(cp, coverage.statement, coverage.witness_directory);
     let mut derivation = Map::new();
     derivation.insert("kind".into(), json!("served_summary_fold"));
@@ -322,6 +316,25 @@ pub fn summary_value(
         "no_requester_identifiers": labels.no_requester_identifiers,
         "not_a_score": labels.not_a_score,
     })
+}
+
+/// Verdicts within the covered range that name one of the owner's own
+/// records within it. A line appended after the checkpoint, a verdict or the
+/// record it names, never changes the answer for that checkpoint.
+fn adjudications_received(
+    leaves: &[&LeafFacts],
+    covered: u64,
+    leaf_index_of: &dyn Fn(&str) -> Option<u64>,
+) -> usize {
+    let is_covered_own = |id: &str| leaf_index_of(id).is_some_and(|at| at < covered);
+    leaves
+        .iter()
+        .take(usize::try_from(covered).unwrap_or(usize::MAX))
+        .filter_map(|f| f.adjudicated_halves.as_ref())
+        .filter(|(a, b)| {
+            a.as_deref().is_some_and(is_covered_own) || b.as_deref().is_some_and(is_covered_own)
+        })
+        .count()
 }
 
 #[cfg(test)]
@@ -385,7 +398,7 @@ mod tests {
                 statement: &[],
                 witness_directory: None,
             },
-            &|id| id == "mine",
+            &|id| (id == "mine").then_some(0),
             &LABELS,
         )
     }
@@ -563,7 +576,7 @@ mod tests {
                 statement,
                 witness_directory: directory,
             },
-            &|_| false,
+            &|_| None,
             &LABELS,
         );
         v["coverage"].clone()
@@ -657,20 +670,72 @@ mod tests {
         }
     }
 
-    #[test]
-    fn adjudications_count_verdicts_on_own_records_across_the_whole_log() {
-        let cp = checkpoint();
-        let verdict = |a: Option<&str>, b: Option<&str>| LeafFacts {
+    /// A verdict judging `half` against another owner's half.
+    fn verdict(half: &str) -> LeafFacts {
+        LeafFacts {
             served: None,
-            adjudicated_halves: Some((a.map(str::to_string), b.map(str::to_string))),
-        };
+            adjudicated_halves: Some((Some(half.into()), Some("theirs".into()))),
+        }
+    }
+
+    /// The adjudications-received count over `leaves`, the first `covered`
+    /// of them checkpointed, where `own` maps each own record to its leaf.
+    fn received(leaves: &[LeafFacts], covered: u64, own: &[(&str, u64)]) -> Value {
+        let cp = checkpoint();
+        let refs: Vec<&LeafFacts> = leaves.iter().collect();
+        let index_of = |id: &str| own.iter().find(|(o, _)| *o == id).map(|(_, at)| *at);
+        summary_value(
+            &refs,
+            &Coverage {
+                checkpoint: &cp,
+                covered,
+                statement: &[],
+                witness_directory: None,
+            },
+            &index_of,
+            &LABELS,
+        )
+    }
+
+    #[test]
+    fn adjudications_count_covered_verdicts_on_covered_own_records() {
         let facts = vec![
-            verdict(Some("mine"), None),
-            verdict(Some("theirs"), Some("mine")),
-            verdict(Some("theirs"), None),
+            served("g", Outcome::Completed, None),
+            LeafFacts {
+                served: None,
+                adjudicated_halves: Some((Some("theirs".into()), Some("mine".into()))),
+            },
+            verdict("theirs"),
+            verdict("mine"),
         ];
-        let v = summary(&facts, 0, &cp);
+        let v = received(&facts, 4, &[("mine", 0)]);
         assert_eq!(v["adjudications_received"]["value"], json!(2));
+    }
+
+    #[test]
+    fn a_verdict_appended_after_the_checkpoint_leaves_the_summary_unchanged() {
+        let record = served("g", Outcome::Completed, None);
+        let at_checkpoint = received(std::slice::from_ref(&record), 1, &[("mine", 0)]);
+        let grown = received(&[record, verdict("mine")], 1, &[("mine", 0)]);
+        assert_eq!(grown["adjudications_received"]["value"], json!(0));
+        assert_eq!(grown, at_checkpoint);
+    }
+
+    #[test]
+    fn a_covered_verdict_naming_a_record_appended_later_is_not_counted() {
+        let facts = [
+            served("g", Outcome::Completed, None),
+            verdict("later"),
+            served("g", Outcome::Completed, None),
+        ];
+        let v = received(&facts, 2, &[("mine", 0), ("later", 2)]);
+        assert_eq!(v["adjudications_received"]["value"], json!(0));
+    }
+
+    #[test]
+    fn nothing_is_counted_before_the_first_checkpoint() {
+        let v = received(&[verdict("mine")], 0, &[("mine", 0)]);
+        assert_eq!(v["adjudications_received"]["value"], json!(0));
         assert_eq!(v["selection"]["from_entry"], json!(0));
         assert_eq!(v["derivation"]["by_group"], json!({}));
     }
