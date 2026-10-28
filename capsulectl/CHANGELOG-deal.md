@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- The deal words move out of capsulectl's built-in wording pack into this
+  plugin's own pack, `capsulectl.deal-wording/v0`
+  (`internal/deal/assets/wording/capsulectl-deal-en.json`, 268 keys, names
+  unchanged; capsule-cli#428 step 3). The plugin registers that pack with
+  `cli.RegisterWording`, and its handshake carries it, so `capsulectl profile
+  update --wording` and `doctor` check a pack pinned on a deal profile against
+  the deal keys as well as the core's. A pack whose `card.terms.*` entries could
+  hide a term is still refused. A pack made from the core's pack alone is now
+  refused with a line naming this plugin. A pack pinned earlier holds every key
+  and is still used. Builds against capsule-cli `5745be57` (unreleased;
+  capsule-cli#480 merged).
 - Builds against capsule-cli `ed9c4db4` (unreleased; capsule-cli#479 merged), whose core
   has no deal view of its own: `capsulectl presentation list` and `build` use the
   deal view only from this plugin, with its files unpacked beside the launcher,

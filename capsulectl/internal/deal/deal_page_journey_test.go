@@ -164,9 +164,7 @@ func TestTheSealedJourneyHoldsNoWords(t *testing.T) {
 // profile's wording.
 func pinJourneyPack(t *testing.T, edit func(entries map[string]any)) {
 	t.Helper()
-	var doc map[string]any
-	require.NoError(t, json.Unmarshal(cli.BuiltinWordingBytes(), &doc))
-	doc["id"] = "org.example.product.wording/v0"
+	doc := fullPackDoc(t)
 	edit(doc["entries"].(map[string]any))
 	raw, err := json.Marshal(doc)
 	require.NoError(t, err)
