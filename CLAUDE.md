@@ -19,13 +19,15 @@ go test -race ./...
 (cd capsulectl && test -z "$(gofmt -l .)" && go mod tidy && git diff --exit-code -- go.mod go.sum)
 (cd capsulectl && go vet ./... && go test ./...)
 
-# Rust (rust/, a workspace with the one crate evidencebook)
+# Rust (rust/, a workspace: the crate evidencebook and the unpublished
+# interop programs evidencebook-interop; CI: .github/workflows/rust.yml)
 (cd rust && evidencebook/scripts/check-vocabulary.sh)   # the crate carries no deployment vocabulary
 (cd rust && cargo fmt --all -- --check)
 (cd rust && cargo clippy --locked --all-targets --all-features -- -D warnings)
 (cd rust && cargo test --locked --all-features)
 (cd rust && RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps)
 (cd rust && cargo publish --locked --dry-run -p evidencebook)
+(cd rust && cargo build --locked -p evidencebook-interop)   # the runs the rust.yml interop job checks
 
 # Python (python/, the package capsule-evidencebook, imported as evidencebook;
 # CI: the python job in ci.yml)
@@ -49,7 +51,11 @@ CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
 `rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`.github/scripts/check_crate_metadata.py` or the workflow itself changes. `leak-lint.yml` scans public material for internal workflow
+`testdata/evidence-request/`, the Go and Python interop programs it compares
+with (`test/interop/personal-history/`, `test/interop/responder/`,
+`test/interop/python-profile/`, `test/interop/python-personal/`, and the root
+Go package's `*.go`, `go.mod` and `go.sum`), `.github/scripts/check_crate_metadata.py`
+or the workflow itself changes. `leak-lint.yml` scans public material for internal workflow
 text.
 
 ## Layout
@@ -62,6 +68,7 @@ text.
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
+| `rust/interop/` | `evidencebook-interop` (not published): the crate's Personal-Agent History and interop-profile runs, which the Rust CI `interop` job checks against the vectors and the Go runs |
 | `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book and the evidence request interaction, byte for byte with Go; not yet published |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
 | `testdata/` | vectors and fixtures the Go and Rust tests read |

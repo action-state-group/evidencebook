@@ -33,7 +33,7 @@
 //!
 //! | I-D section | Module |
 //! |---|---|
-//! | Record header (anchor `record`); Epistemic Type; Typed Links | [`record`] |
+//! | Record header (anchor `record`); Epistemic Type; Typed Links | [`record`]; sealing a record as Go's book does, [`seal`] |
 //! | Record/Payload Separation; Retention States | [`retention`] |
 //! | Disclosure Records | [`disclosure`] |
 //! | Index Classes | [`index`] |
@@ -50,6 +50,7 @@ pub mod ask;
 pub mod canonical;
 pub mod derivation;
 pub mod disclosure;
+mod ed25519;
 pub mod index;
 pub mod padding;
 pub mod received;
@@ -58,6 +59,7 @@ pub mod record;
 pub mod request;
 pub mod respond;
 pub mod retention;
+pub mod seal;
 pub mod served_summary;
 pub mod store;
 pub mod substrate;

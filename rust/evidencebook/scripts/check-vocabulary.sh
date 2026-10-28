@@ -10,22 +10,28 @@
 # and an underscore counts as a separator, so compound identifiers
 # (`some_word_id`, `word_attestation`) are hits too.
 #
-# One exemption exists, and it is per line: a request-draft wire token that
-# happens to be one of these words, marked on that line with
-#   vocabulary-gate: request-draft wire token
-# The mark is only honoured on a line that also carries the token as a quoted
+# Two exemptions exist, and each is per line: a request-draft wire token or an
+# Agent Action Capsule member name that happens to contain one of these words,
+# marked on that line with
+#   vocabulary-gate: request-draft wire token     (the token "exchange")
+#   vocabulary-gate: AAC capsule member           (the member "model_attestation")
+# A mark is only honoured on a line that also carries its token as a quoted
 # string, so it cannot silently exempt prose.
 set -euo pipefail
 
 crate_dir="$(cd "$(dirname "$0")/.." && pwd)"
 words='mesh|exchange|exchanges|twin|twins|provider|providers|model|models'
 mark='vocabulary-gate: request-draft wire token'
+aac_mark='vocabulary-gate: AAC capsule member'
 
 hits="$(grep -RIniE "(^|[^[:alnum:]])($words)($|[^[:alnum:]])" "$crate_dir" \
   --exclude-dir=target --exclude=Cargo.lock --exclude="$(basename "$0")" || true)"
 
 violations="$(printf '%s\n' "$hits" | grep -v '^$' | while IFS= read -r line; do
   if [[ "$line" == *"$mark"* && "$line" == *'"exchange"'* ]]; then
+    continue
+  fi
+  if [[ "$line" == *"$aac_mark"* && "$line" == *'"model_attestation"'* ]]; then
     continue
   fi
   printf '%s\n' "$line"

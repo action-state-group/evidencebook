@@ -118,6 +118,11 @@ fn verified_witnesses(
     statement: &[u8],
     directory: Option<&Value>,
 ) -> BTreeSet<String> {
+    // checkpointed-local-log 0.3.1 verifies the statement's signature with
+    // dalek's lenient `verify`; the strict check comes first (#108).
+    if !crate::ed25519::statement_verifies(statement) {
+        return BTreeSet::new();
+    }
     let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
     let decoded = match verified.decoded {
         Some(decoded) if verified.ok => decoded,

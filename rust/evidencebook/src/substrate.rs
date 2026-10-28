@@ -171,9 +171,22 @@ impl Checkpoint {
         self.to_log().digest()
     }
 
-    /// Verify `signature` from this record alone (key from `key_id`).
+    /// Verify `signature` from this record alone (key from `key_id`), with
+    /// strict Ed25519: a small-order or non-canonical key never verifies
+    /// (checkpointed-local-log#108).
     pub fn verify_signature_offline(&self) -> bool {
-        self.to_log().verify_signature_offline()
+        let key: Option<[u8; 32]> = hex::decode(&self.key_id)
+            .ok()
+            .and_then(|k| k.try_into().ok());
+        let signature: Option<[u8; 64]> = hex::decode(&self.signature)
+            .ok()
+            .and_then(|s| s.try_into().ok());
+        match (key, signature) {
+            (Some(key), Some(signature)) => {
+                crate::ed25519::verify(&key, self.digest().as_bytes(), &signature)
+            }
+            _ => false,
+        }
     }
 
     fn to_log(&self) -> CheckpointRecord {
@@ -793,6 +806,19 @@ mod tests {
         }
         let first = cut(&mut s, 3, &key).unwrap();
         assert!(first.verify_signature_offline());
+        // The identity key with R the identity and S = 0 signs every
+        // message under the lenient check; the strict one refuses it.
+        let identity = format!("01{}", "00".repeat(31));
+        let forged = Checkpoint {
+            key_id: identity.clone(),
+            signature: format!("{identity}{}", "00".repeat(32)),
+            ..first.clone()
+        };
+        assert!(
+            forged.to_log().verify_signature_offline(),
+            "the lenient check accepts it"
+        );
+        assert!(!forged.verify_signature_offline());
         assert_eq!((first.prev_size, first.prev_root.as_str()), (0, ""));
         for n in 3..5 {
             s.append(&id(n)).unwrap();
