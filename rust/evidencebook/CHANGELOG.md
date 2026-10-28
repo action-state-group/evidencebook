@@ -15,8 +15,8 @@
 
 - **Breaking (behavior): `answer::Derive` answers a holder's own digest
   derivation** (evidencebook#35). A request whose `derivation` is a
-  definition digest that `Options::derivations` does not register now goes to the profile's
-  `Derive`, as a token does. `Derive` is called with the digest, and its
+  definition digest that `Options::derivations` does not register now goes
+  to the profile's `Derive`, as a token does. `Derive` is called with the digest, and its
   value is carried under the member it names, with the anchor checkpoint as
   material when `prove_beyond_profile` is set. A registered digest is still
   answered from its registration, and an unregistered digest that `Derive`
