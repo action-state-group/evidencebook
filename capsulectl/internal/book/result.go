@@ -11,16 +11,16 @@ import (
 )
 
 // resultShapeNote says what `result open` checked and what the spec still
-// leaves open. The Result v0 core schema is frozen and `result open`
+// leaves open. The Result v0 schema is no longer DRAFT and `result open`
 // validates against it (the same gate `result build` and `report build`
-// use); the Result v0 spec still marks two claims PROPOSED: §4.1's
-// `type: close` claim and §7.1's `coverage_report`. `result open` also
-// stands in for a result viewer, which does not exist yet, by printing the
-// aggregate and coverage as text.
-const resultShapeNote = "Result v0 core schema is frozen and this document passes it; the `type: close` claim (spec §4.1) and `coverage_report` (spec §7.1) are still PROPOSED"
+// use); the schema also encodes members the spec still marks PROPOSED:
+// §4.1's `type: close` claim, §7.1's `coverage_report` and §7.2's
+// `coverage_declaration`. `result open` also stands in for a result viewer,
+// which does not exist yet, by printing the aggregate and coverage as text.
+const resultShapeNote = "Result v0 schema is no longer DRAFT and this document passes it; members the spec still marks PROPOSED (§4.1 type: close, §7.1 coverage_report, §7.2 coverage_declaration) may still change"
 
 // resultAggregate returns the aggregate and its coverage statement, which
-// the frozen schema has already required.
+// the schema has already required.
 func resultAggregate(doc map[string]interface{}) (aggregate, coverage map[string]interface{}) {
 	aggregate, _ = doc["aggregate"].(map[string]interface{})
 	coverage, _ = aggregate["coverage"].(map[string]interface{})
@@ -53,14 +53,14 @@ func renderResultText(aggregate, coverage map[string]interface{}) string {
 }
 
 // resultCommands implements `result open`, text mode at minimum: until a
-// result viewer exists, this validates the document against the frozen
+// result viewer exists, this validates the document against the
 // Result v0 schema and prints the aggregate/coverage statement itself rather
 // than rendering it.
 func resultCommands() *cobra.Command {
 	group := &cobra.Command{Use: "result", Short: "Inspect a Result v0 document, or seal one into the book"}
 	open := &cobra.Command{
 		Use:   "open FILE",
-		Short: "Validate against the frozen Result v0 schema, then print the aggregate and coverage statement (text mode)",
+		Short: "Validate against the Result v0 schema, then print the aggregate and coverage statement (text mode)",
 		Args:  cli.OneArg,
 		RunE: func(c *cobra.Command, args []string) error {
 			format, _ := c.Flags().GetString("format")

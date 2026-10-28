@@ -18,7 +18,7 @@ func writeResultFixture(t *testing.T, body string) string {
 	return path
 }
 
-// validResultFixture is a Result the frozen schema accepts.
+// validResultFixture is a Result the schema accepts.
 func validResultFixture(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("testdata", "result", "pos-example-org-claims-result.json"))
@@ -35,8 +35,7 @@ func TestResultOpenTextMode(t *testing.T) {
 	assert.Contains(t, out, "evaluated_population: 3")
 	assert.Contains(t, out, "excluded_not_applicable: 1")
 	assert.Contains(t, out, "unknown_count: 0")
-	assert.Contains(t, out, "core schema is frozen")
-	assert.NotContains(t, out, "DRAFT")
+	assert.Contains(t, out, "no longer DRAFT")
 }
 
 func TestResultOpenJSONMode(t *testing.T) {
@@ -51,8 +50,7 @@ func TestResultOpenJSONMode(t *testing.T) {
 	coverage, ok := parsed.Aggregate["coverage"].(map[string]any)
 	require.True(t, ok)
 	assert.EqualValues(t, 3, coverage["evaluated_population"])
-	assert.Contains(t, parsed.Note, "core schema is frozen")
-	assert.NotContains(t, parsed.Note, "DRAFT")
+	assert.Contains(t, parsed.Note, "no longer DRAFT")
 }
 
 func TestResultOpenRejectsMissingAggregate(t *testing.T) {
@@ -69,7 +67,7 @@ func TestResultOpenRejectsAggregateWithoutCoverage(t *testing.T) {
 	assert.Equal(t, 2, cli.ExitCode(e))
 }
 
-// A Result that carries an aggregate coverage but fails only the frozen
+// A Result that carries an aggregate coverage but fails only the
 // schema (here: a claim with no tier) is refused.
 func TestResultOpenRejectsSchemaViolation(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "result", "neg-untiered-claim.json"))
