@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -844,13 +845,20 @@ func composeCommand() *cobra.Command {
 		if path == "" {
 			return cli.InputError("--output is required: the file to write the composed bundle to")
 		}
+		htmlPath, _ := c.Flags().GetString("html")
+		keepPath, _ := c.Flags().GetString("keep")
+		if keepPath != "" && htmlPath == "" {
+			return cli.InputError("--keep joins your keep copy to the page: it needs --html FILE")
+		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, _ []sealedEvent) error {
-			return s.compose(c, dealID, members, path)
+			return s.compose(c, dealID, members, path, htmlPath, keepPath)
 		})
 	}}
 	cmd.Flags().String("deal", "", "Deal ID the answers are about")
 	cmd.Flags().StringArray("member", nil, "REQUEST_RECORD_ID: a request this profile recorded, whose recorded answer (kept in the artifact store) or absence is the member; REQUEST_RECORD_ID=RESPONSE_FILE for an answer recorded before replies were kept. Give two or more")
 	cmd.Flags().String("output", "", "Write the composed bundle here")
+	cmd.Flags().String("html", "", "Also write the composed bundle's page (your own page) to this new file")
+	cmd.Flags().String("keep", "", "With --html: your keep copy of this deal (`deal report --bundle`), shown on the page as \"your half (private)\"; it must be your own copy of the same deal. It is never put in the composed bundle")
 	return cmd
 }
 
@@ -864,7 +872,7 @@ func composeCommand() *cobra.Command {
 // set by its composed digest. A copy's member carries its signed response
 // without the artifact bytes, and each pair of members is joined on the
 // deal id (dealJoins).
-func (s *dealSession) compose(c *cobra.Command, dealID string, members []composeMember, path string) error {
+func (s *dealSession) compose(c *cobra.Command, dealID string, members []composeMember, path, htmlPath, keepPath string) error {
 	ctx := c.Context()
 	own := hex.EncodeToString(s.key.Public().(ed25519.PublicKey))
 	ownCheckpoint, err := cli.PrivateKey(s.p.Checkpoint.Signing)
@@ -932,10 +940,34 @@ func (s *dealSession) compose(c *cobra.Command, dealID string, members []compose
 	if err != nil {
 		return err
 	}
+	// The page is built, and the keep copy joined, before anything is
+	// written: a refused join leaves no bundle behind.
+	var page string
+	if htmlPath != "" {
+		if _, statErr := os.Stat(htmlPath); statErr == nil || htmlPath == path {
+			return cli.InputError("--html " + htmlPath + " already exists or is the --output file; nothing was written")
+		}
+		var half *dealPrivateHalf
+		if keepPath != "" {
+			if half, err = privateHalfOf(keepPath, dealID, container, cli.BuiltinWording()); err != nil {
+				return err
+			}
+		}
+		if page, err = composedPageHTML(container, half, dealVerifyCommand(htmlPath), cli.BuiltinWording()); err != nil {
+			return err
+		}
+	}
 	if err = cli.AtomicFile(path, encoded, false); err != nil {
 		return err
 	}
-	return cli.Output(c, map[string]any{"deal_id": dealID, "output": path, "composed_digest": digest, "members": len(blockMembers)})
+	result := map[string]any{"deal_id": dealID, "output": path, "composed_digest": digest, "members": len(blockMembers)}
+	if htmlPath != "" {
+		if err = cli.AtomicFile(htmlPath, []byte(page), false); err != nil {
+			return err
+		}
+		result["html"], result["private_half"] = htmlPath, keepPath != ""
+	}
+	return cli.Output(c, result)
 }
 
 // composeMember is one member from a recorded request and its recorded
