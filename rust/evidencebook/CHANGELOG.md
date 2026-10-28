@@ -15,8 +15,9 @@
 - **`served_summary::Coverage`** (#119, #115): new fields `statement` (the
   checkpoint's COSE wire statement, `StatedCheckpoint::statement`) and
   `witness_directory` (a `witnesses.json` value). To migrate, pass both.
-  With no directory, every receipt reads `NOT_CHECKED` and `witnessed` is
-  `false`. The new dependency on `agent-action-capsule` turns on
+  With no directory no receipt verifies, so `witnessed` is `false`. Each
+  receipt then reads `NOT_CHECKED`, except when the statement itself does
+  not hold, in which case every receipt reads `FAIL`. The new dependency on `agent-action-capsule` turns on
   `serde_json`'s `arbitrary_precision` feature for the whole build.
 - **`served_summary/1` output** (#162): `coverage` gains `witness_check`
   and `witness_receipts`. This is additive, but a consumer that pins the
