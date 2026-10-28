@@ -33,15 +33,11 @@ func TestPresentationPass(t *testing.T) {
 			require.NoError(t, err)
 			var meta presentationMeta
 			readJSONFile(t, filepath.Join(dir, "meta.json"), &meta)
-			listOther := f.listOther
-			if listOther == "" {
-				listOther = f.list
-			}
 			var want presentationSnapshot
 			var seen *presentationSnapshot
 			for _, audience := range passAudiences {
 				// What list says, per format.
-				for format, wantID := range map[string]string{"html": f.list, "fragment": listOther, "embedded": listOther} {
+				for format, wantID := range map[string]string{"html": f.list, "fragment": f.list, "embedded": f.list} {
 					id, err := passList(t, bundlePath, audience, format)
 					assert.Equal(t, wantID, id, "presentation list --audience %s --format %s", audience, format)
 					assert.NoError(t, err)
@@ -177,7 +173,7 @@ type passFixture struct {
 	dir string
 	// list is the module `presentation list` selects for html, fragment and
 	// embedded.
-	list, listOther string
+	list string
 	// view is the page's own mark of the module it rendered: a data-page
 	// or data-notice value.
 	view string
@@ -189,24 +185,24 @@ type passFixture struct {
 
 const (
 	passNoAggregate = "aac.builtin.no-aggregate/v0"
-	passDealView    = "capsulectl.deal-view/v0"
-	// The deal view is a module `presentation list` offers and `presentation
-	// build` does not carry (an open question; see TestPresentationPassDealViewNotCarried).
-	passDealDiffers = "deal report --html built the golden with the deal view; presentation build carries no deal view, so its page is the fallback"
+	// The deal view is this plugin's module, offered to the core only with its
+	// files unpacked beside the launcher; these commands run with no plugin
+	// installed (see TestPresentationPassADealWithoutTheDealView).
+	passDealDiffers = "deal report --html built the golden with the deal view; with no plugin module installed, presentation build's page is the fallback"
 	passCardDiffers = "report build stamps the card extension into the bundle; presentation build packages the bundle as given, so the bundle digest differs"
 )
 
 var passFixtures = []passFixture{
 	{dir: "1-rules-comparison", list: "aac.builtin.report-rows/v0", view: "report-rows"},
-	{dir: "2-unilateral-receipt", list: passDealView, listOther: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
+	{dir: "2-unilateral-receipt", list: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
 	{dir: "3-bilateral-composed", list: passNoAggregate, view: "no-aggregate"},
 	{dir: "4-monthly-outcome", list: "aac.builtin.result-outcome-report/v0", view: "outcome-report", differs: passCardDiffers},
 	{dir: "5-monthly-compliance", list: "aac.builtin.result-compliance/v0", view: "compliance", differs: passCardDiffers},
 	{dir: "6-generic-fallback", list: passNoAggregate, view: "no-aggregate"},
 	{dir: "6-generic-fallback-unknown-extension", list: passNoAggregate, view: "no-aggregate"},
-	{dir: "7-receipt-declared-rules", list: passDealView, listOther: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
-	{dir: "8-seller-buyer-copy", list: passDealView, listOther: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
-	{dir: "9-seller-later-evidence", list: passDealView, listOther: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
+	{dir: "7-receipt-declared-rules", list: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
+	{dir: "8-seller-buyer-copy", list: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
+	{dir: "9-seller-later-evidence", list: passNoAggregate, view: "no-aggregate", differs: passDealDiffers},
 }
 
 var passAudiences = []string{"*", "counterparty"}
@@ -333,16 +329,16 @@ func passChrome(t *testing.T) *headlessChrome {
 // page: an extension the viewer does not interpret.
 const passCardRow = cli.CardExtension + " covered Covered by the file's fingerprint; not interpreted by this page's checks"
 
-// The deal view is offered by list and not carried by build (the open
-// question of whether build should register it): list names it, build's page
-// holds no module and falls back. When build starts carrying it, this test
-// fails, and the deal fixtures' expectations above change with it.
-func TestPresentationPassDealViewNotCarried(t *testing.T) {
+// With no plugin module installed, a deal bundle resolves through the
+// generic path: list selects the fallback and build's page carries no module.
+// The deal view reaches these commands only from the installed plugin
+// (TestTheHandshakeOffersTheDealView).
+func TestPresentationPassADealWithoutTheDealView(t *testing.T) {
 	passIsolate(t)
 	bundle := filepath.Join(presentationDir, "2-unilateral-receipt", "bundle.json")
 	id, err := passList(t, bundle, "*", "html")
 	require.NoError(t, err)
-	assert.Equal(t, passDealView, id)
+	assert.Equal(t, passNoAggregate, id)
 	b, page, err := passBuild(t, bundle)
 	require.NoError(t, err)
 	assert.Empty(t, b.Modules)
