@@ -45,11 +45,16 @@ pub(crate) struct Sign1 {
 
 impl Sign1 {
     /// Read a tagged COSE_Sign1 message with an attached payload and a
-    /// 64-byte signature; anything else is `None`.
+    /// 64-byte signature, and nothing after it; anything else is `None`.
     pub fn decode(octets: &[u8]) -> Option<Sign1> {
-        let Ok(Cbor::Tag(COSE_SIGN1_TAG, inner)) = ciborium::from_reader::<Cbor, _>(octets) else {
+        let mut rest = octets;
+        let Ok(Cbor::Tag(COSE_SIGN1_TAG, inner)) = ciborium::from_reader::<Cbor, _>(&mut rest)
+        else {
             return None;
         };
+        if !rest.is_empty() {
+            return None;
+        }
         let Cbor::Array(parts) = *inner else {
             return None;
         };

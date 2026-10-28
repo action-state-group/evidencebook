@@ -206,6 +206,12 @@ fn verify_record_refuses_anything_but_the_seal() {
         refused(&s.record_id, &s.header, &s.capsule, b"not cbor", &pk),
         "not an envelope"
     );
+    let mut trailing = s.envelope.clone();
+    trailing.push(0);
+    assert!(
+        refused(&s.record_id, &s.header, &s.capsule, &trailing, &pk),
+        "bytes after the envelope"
+    );
 }
 
 /// A signer that answers with a key id that is not an Ed25519 key, or
