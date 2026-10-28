@@ -893,7 +893,7 @@ func TestDealHistoryRefusesWhatIsNotAPickedDeal(t *testing.T) {
 // The deal view never presents a History: it forbids the extension.
 func TestDealViewForbidsAHistory(t *testing.T) {
 	var m map[string]interface{}
-	require.NoError(t, json.Unmarshal(cli.DealViewManifestJSON, &m))
+	require.NoError(t, json.Unmarshal(DealViewManifestJSON, &m))
 	assert.True(t, cli.ManifestSet(cli.ManifestMap(m, "forbids")["extensions"])[cli.HistorySelectionExtension])
 }
 

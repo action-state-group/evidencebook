@@ -27,9 +27,9 @@ func TestTheShareGateReadsTextNotCode(t *testing.T) {
 	require.NoError(t, dealShareGate(page, events, cli.DealAudienceCounterparty), "the page as shared passes again")
 
 	refreshed := bytes.Replace(page, cli.EvidenceGraphIIFE, append(append([]byte(nil), cli.EvidenceGraphIIFE...), []byte(`;const sample="Pay $8.00 now";`)...), 1)
-	refreshed = bytes.Replace(refreshed, []byte(cli.DealViewJS), []byte(cli.DealViewJS+`;const fee="$8.00";`), 1)
+	refreshed = bytes.Replace(refreshed, []byte(DealViewJS), []byte(DealViewJS+`;const fee="$8.00";`), 1)
 	refreshed = bytes.Replace(refreshed, []byte("</style>"), []byte(`.price::after{content:"$8.00"}</style>`), 1)
-	require.False(t, bytes.Contains(refreshed, cli.EvidenceGraphIIFE) && bytes.Contains(refreshed, []byte(cli.DealViewJS+"</script>")), "the vendored bytes no longer match byte for byte")
+	require.False(t, bytes.Contains(refreshed, cli.EvidenceGraphIIFE) && bytes.Contains(refreshed, []byte(DealViewJS+"</script>")), "the vendored bytes no longer match byte for byte")
 	assert.NoError(t, dealShareGate(refreshed, events, cli.DealAudienceCounterparty), "code and style are not read")
 
 	inData := bytes.Replace(refreshed, []byte("window.__BUNDLE__ = {"), []byte(`window.__BUNDLE__ = {"note":"my limit is $8.00",`), 1)

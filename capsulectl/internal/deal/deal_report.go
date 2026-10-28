@@ -535,11 +535,11 @@ func dealPageReport(b map[string]interface{}) map[string]interface{} {
 // modules (presentation_build.go). Its manifest pins the script's digest.
 func dealViewModule() (emitter.Module, error) {
 	var manifest map[string]interface{}
-	if err := json.Unmarshal(cli.DealViewManifestJSON, &manifest); err != nil {
+	if err := json.Unmarshal(DealViewManifestJSON, &manifest); err != nil {
 		return emitter.Module{}, fmt.Errorf("the deal view's manifest: %w", err)
 	}
 	executable := cli.ManifestMap(manifest, "executable")
-	pin := strings.TrimSpace(cli.DealViewJSSHA256)
+	pin := strings.TrimSpace(DealViewJSSHA256)
 	if cli.ManifestString(executable, "script_sha256") != pin {
 		return emitter.Module{}, errors.New("the deal view's manifest does not pin its script")
 	}
@@ -559,7 +559,7 @@ func dealViewModule() (emitter.Module, error) {
 			styles = append(styles, digest)
 		}
 	}
-	return emitter.Module{Code: []byte(cli.DealViewJS), SHA256: pin, StyleSHA256: styles}, nil
+	return emitter.Module{Code: []byte(DealViewJS), SHA256: pin, StyleSHA256: styles}, nil
 }
 
 // dealThemeCSS is the deal page's theme: tokens only (the shell's --aac-*

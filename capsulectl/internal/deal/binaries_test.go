@@ -23,10 +23,6 @@ var coreDir = sync.OnceValue(func() string {
 	return dir
 })
 
-// coreAssetsDir holds the core's assets the deal view is built from
-// (deal-view.js, its stylesheet and manifest, the evidence-graph verifier).
-var coreAssetsDir = filepath.Join(coreDir(), "cli", "assets")
-
 // installed is capsulectl with the deal plugin installed, as an operator has
 // it: the core binary in dir, and capsulectl-deal in
 // dir/plugins, a trusted plugin root. They are built once per test binary.

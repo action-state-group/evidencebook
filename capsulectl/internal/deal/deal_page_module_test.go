@@ -19,8 +19,8 @@ import (
 
 // The deal view is pinned by digest like the runtime it runs beside.
 func TestDealViewIsPinned(t *testing.T) {
-	sum := sha256.Sum256([]byte(cli.DealViewJS))
-	assert.Equal(t, strings.TrimSpace(cli.DealViewJSSHA256), hex.EncodeToString(sum[:]), "update assets/deal-view.js.sha256 with the file")
+	sum := sha256.Sum256([]byte(DealViewJS))
+	assert.Equal(t, strings.TrimSpace(DealViewJSSHA256), hex.EncodeToString(sum[:]), "update assets/deal-view.js.sha256 with the file")
 }
 
 func cspSource(content string) string {
@@ -66,7 +66,7 @@ func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 	module := 0
 	readers := 0
 	for _, s := range scripts {
-		if s[1] == cli.DealViewJS {
+		if s[1] == DealViewJS {
 			module++
 		}
 		if strings.Contains(s[1], "__BUNDLE__") {
@@ -77,7 +77,7 @@ func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 	}
 	assert.Equal(t, 1, module, "the deal view is one module")
 	assert.Equal(t, 2, readers, "the bundle slot sets it, the bootstrap reads it")
-	assert.Contains(t, directives["script-src"], cspSource(cli.DealViewJS))
+	assert.Contains(t, directives["script-src"], cspSource(DealViewJS))
 	assert.NotContains(t, page, `id="deal-countersign"`, "nothing beside the emitter's slots")
 	assert.Regexp(t, `<title>Deal report: “[^<]+”</title>`, page, "the user's own copy is titled with the words they asked")
 }
@@ -86,9 +86,9 @@ func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 // recomputes a commitment: it reads the verified context it is handed.
 func TestTheDealViewReadsOnlyTheVerifiedContext(t *testing.T) {
 	for _, forbidden := range []string{"__BUNDLE__", "verifyBundle", "crypto.subtle", "bundle.disclosures", "bundle.records"} {
-		assert.NotContains(t, cli.DealViewJS, forbidden)
+		assert.NotContains(t, DealViewJS, forbidden)
 	}
-	assert.Contains(t, cli.DealViewJS, "EvidenceGraph.verifiedPayload(context")
+	assert.Contains(t, DealViewJS, "EvidenceGraph.verifiedPayload(context")
 }
 
 type pageOpenings struct {
@@ -179,32 +179,32 @@ func TestADealPageWhoseWordsDoNotMatchIsNotWritten(t *testing.T) {
 func TestTheDealViewIsAPresentationModule(t *testing.T) {
 	schema, err := cli.PresentationSchema("manifest")
 	require.NoError(t, err)
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(cli.DealViewManifestJSON))
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(DealViewManifestJSON))
 	require.NoError(t, err)
 	require.NoError(t, schema.Validate(doc))
 
 	var manifest map[string]interface{}
-	require.NoError(t, json.Unmarshal(cli.DealViewManifestJSON, &manifest))
+	require.NoError(t, json.Unmarshal(DealViewManifestJSON, &manifest))
 	assert.Equal(t, "capsulectl.deal-view/v0", manifest["id"])
-	css := mustRead(t, filepath.Join(coreAssetsDir, "deal-view.css"))
+	css := mustRead(t, "assets/deal-view.css")
 	executable := manifest["executable"].(map[string]interface{})
 	assert.Equal(t, "module-slot", executable["carrier"])
-	assert.Equal(t, strings.TrimSpace(cli.DealViewJSSHA256), executable["script_sha256"])
+	assert.Equal(t, strings.TrimSpace(DealViewJSSHA256), executable["script_sha256"])
 	assert.Equal(t, []interface{}{hexSHA256(css)}, executable["style_sha256"])
 
-	m := regexp.MustCompile("(?s)const DEAL_VIEW_CSS = `(.*?)`;").FindStringSubmatch(cli.DealViewJS)
+	m := regexp.MustCompile("(?s)const DEAL_VIEW_CSS = `(.*?)`;").FindStringSubmatch(DealViewJS)
 	require.NotNil(t, m, "the script carries its stylesheet")
-	assert.Equal(t, string(css), m[1], "the core's assets/deal-view.css and the script's stylesheet are the same bytes")
+	assert.Equal(t, string(css), m[1], "assets/deal-view.css and the script's stylesheet are the same bytes")
 
-	code := regexp.MustCompile(`EvidenceGraph\.registerPresentation\(\{\n  manifest: (\{.*\}),\n`).FindStringSubmatch(cli.DealViewJS)
+	code := regexp.MustCompile(`EvidenceGraph\.registerPresentation\(\{\n  manifest: (\{.*\}),\n`).FindStringSubmatch(DealViewJS)
 	require.NotNil(t, code, "the script registers its module at load")
 	assert.Equal(t, strings.Repeat("0", 64), regexp.MustCompile(`"script_sha256": "([0-9a-f]{64})"`).FindStringSubmatch(code[1])[1])
 	var inCode map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(code[1]), &inCode))
 	inCode["executable"].(map[string]interface{})["script_sha256"] = executable["script_sha256"]
 	assert.Equal(t, manifest, inCode)
-	assert.Equal(t, 1, strings.Count(cli.DealViewJS, "registerPresentation("), "one module")
-	assert.NotContains(t, cli.DealViewJS, "capsulectlDealView =", "no entry point beside the module")
+	assert.Equal(t, 1, strings.Count(DealViewJS, "registerPresentation("), "one module")
+	assert.NotContains(t, DealViewJS, "capsulectlDealView =", "no entry point beside the module")
 
 	module, err := dealViewModule()
 	require.NoError(t, err)
@@ -225,7 +225,7 @@ func TestTheDealPageThemeIsTokensOnly(t *testing.T) {
 	for _, s := range pageStyles.FindAllStringSubmatch(page, -1) {
 		assert.NotContains(t, s[1], "#deal", "the deal view's rules are not in the page's own styles")
 	}
-	assert.Contains(t, pageCSP.FindStringSubmatch(page)[1], cspSource(string(mustRead(t, filepath.Join(coreAssetsDir, "deal-view.css")))))
+	assert.Contains(t, pageCSP.FindStringSubmatch(page)[1], cspSource(string(mustRead(t, "assets/deal-view.css"))))
 }
 
 // A deal view the page's runtime would refuse, one ambiguous with a
@@ -241,13 +241,13 @@ func TestADealViewThePageWouldRefuseWritesNoPage(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var copied map[string]interface{}
-			require.NoError(t, json.Unmarshal(cli.DealViewManifestJSON, &copied))
+			require.NoError(t, json.Unmarshal(DealViewManifestJSON, &copied))
 			edit(copied)
 			raw, err := json.Marshal(copied)
 			require.NoError(t, err)
-			old := cli.DealViewManifestJSON
-			cli.DealViewManifestJSON = raw
-			t.Cleanup(func() { cli.DealViewManifestJSON = old })
+			old := DealViewManifestJSON
+			DealViewManifestJSON = raw
+			t.Cleanup(func() { DealViewManifestJSON = old })
 			dealFixture(t)
 			id := retailDeal(t)
 			path := filepath.Join(t.TempDir(), "page.html")

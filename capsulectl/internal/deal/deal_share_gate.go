@@ -135,7 +135,7 @@ func dealGateText(page []byte) []byte {
 // where they are found byte for byte: fixed code, pinned by digest.
 func dealWithoutVendored(page []byte) []byte {
 	data := bytes.Replace(page, cli.EvidenceGraphIIFE, nil, 1)
-	return bytes.Replace(data, []byte(cli.DealViewJS), nil, 1)
+	return bytes.Replace(data, []byte(DealViewJS), nil, 1)
 }
 
 // removeWholeToken replaces each occurrence of value in data that stands as a whole

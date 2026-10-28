@@ -360,7 +360,7 @@ func TestGradeStringsNameOnlyLadderRungs(t *testing.T) {
 			return true
 		})
 	}
-	page, err := os.ReadFile(filepath.Join(coreAssetsDir, "deal-view.js"))
+	page, err := os.ReadFile("assets/deal-view.js")
 	require.NoError(t, err)
 	// The page renders the rung capsulectl wrote: it spells none itself.
 	assert.Empty(t, regexp.MustCompile(`(?:rung|finding)\s*(?::|===|!==)\s*"[^"]+"`).FindAllString(string(page), -1), "deal-view.js spells a rung or finding")

@@ -219,7 +219,7 @@ func TestDealCountersignRefusesWhatItCannotVouchFor(t *testing.T) {
 // else.
 func TestDealCountersignStaysOnTheNeutralSide(t *testing.T) {
 	banned := regexp.MustCompile(`(?i)pricing|\bprice tier|\btier(ed|ing)?\b|subscription|\bpaid\b|evaluator`)
-	for _, path := range []string{"deal_countersign.go", filepath.Join(coreAssetsDir, "deal-view.js"), "../../skills/deal/COUNTERSIGN.md"} {
+	for _, path := range []string{"deal_countersign.go", "assets/deal-view.js", "../../skills/deal/COUNTERSIGN.md"} {
 		raw, err := os.ReadFile(path)
 		require.NoError(t, err, path)
 		assert.Empty(t, banned.FindAllString(string(raw), -1), path)

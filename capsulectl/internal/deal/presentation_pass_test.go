@@ -346,7 +346,7 @@ func TestPresentationPassDealViewNotCarried(t *testing.T) {
 	b, page, err := passBuild(t, bundle)
 	require.NoError(t, err)
 	assert.Empty(t, b.Modules)
-	assert.NotContains(t, page, strings.TrimSpace(cli.DealViewJSSHA256), "the page does not carry the deal view")
+	assert.NotContains(t, page, strings.TrimSpace(DealViewJSSHA256), "the page does not carry the deal view")
 }
 
 // passWording, passWordingOther and passWordingFR are the wording flips'
