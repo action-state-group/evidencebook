@@ -14,6 +14,11 @@ const Vendor = "action-state-group"
 // `capsulectl book`, and the log owner a book profile names (log: book).
 const Name = "book"
 
+// isBook reports whether p is one of the book plugin's profiles: a jsonl
+// profile whose log the book plugin keeps. (The core lets a sqlite store name
+// a plugin too, and that store is not an evidence book.)
+func isBook(p cli.Profile) bool { return p.Type == "jsonl" && p.LogOwner() == Name }
+
 // aliasRemovedIn is the release that removes the plugin's own deprecated
 // aliases.
 const aliasRemovedIn = "v0.2.0"
@@ -126,7 +131,7 @@ func migrateCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		if p.LogOwner() != Name || p.ReadOnly {
+		if !isBook(p) || p.ReadOnly {
 			return cli.InputError("book migrate applies to a writable book profile")
 		}
 		newLogID, _ := c.Flags().GetString("log-id")
