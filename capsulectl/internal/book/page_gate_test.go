@@ -59,7 +59,7 @@ func exitCode(err error) int {
 
 const (
 	readmeSQLite     = "--type sqlite --sqlite-path ./store.db"
-	readmeJSONL      = "--type jsonl --jsonl-path ./store --namespace example"
+	readmeJSONL      = "--type jsonl --jsonl-path ./store --namespace example --log book"
 	readmeDiscloseOK = `capsulectl disclose --profile example --root "$report" --out bundle.json --html report.html`
 	readmeOutOnly    = `capsulectl disclose --profile example --root "$report" --out bundle.json`
 	readmeBundleHTML = `capsulectl bundle --profile example --root "$report" --out bundle.json --html report.html`
@@ -82,7 +82,7 @@ func TestPageGateRefusesAJSONLProfilesPage(t *testing.T) {
 		return replaced(t, s, readmeSQLite, readmeJSONL)
 	})
 	require.Error(t, err)
-	assert.Contains(t, out, "no page written: a book profile's bundle carries its evidence book's own records")
+	assert.Contains(t, out, "no page written: a bundle of a log a plugin keeps carries that log's own records")
 	assert.NoFileExists(t, filepath.Join(dir, "report.html"))
 	assert.NoFileExists(t, filepath.Join(dir, "bundle.json"), "disclose is refused before the bundle is built or put on record")
 
@@ -91,7 +91,7 @@ func TestPageGateRefusesAJSONLProfilesPage(t *testing.T) {
 		return replaced(t, s, readmeSQLite, readmeJSONL, readmeDiscloseOK, readmeBundleHTML)
 	})
 	require.Error(t, err)
-	assert.Contains(t, out, "no page written: a book profile's bundle carries its evidence book's own records")
+	assert.Contains(t, out, "no page written: a bundle of a log a plugin keeps carries that log's own records")
 	assert.NoFileExists(t, filepath.Join(dir, "report.html"))
 	assert.FileExists(t, filepath.Join(dir, "bundle.json"))
 

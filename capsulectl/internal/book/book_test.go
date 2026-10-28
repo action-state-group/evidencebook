@@ -43,7 +43,7 @@ func bookProfile(t *testing.T, name string) (cli.Profile, bookKeys) {
 	require.NoError(t, err)
 	checkpointPub, checkpointKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	p := cli.Profile{Name: name, Type: "jsonl", LogID: name, Namespace: "capsule", Operator: name + "-operator"}
+	p := cli.Profile{Name: name, Type: "jsonl", LogID: name, Log: Name, Namespace: "capsule", Operator: name + "-operator"}
 	p.Connection.Database = filepath.Join(t.TempDir(), name)
 	p.Signing.Value = hex.EncodeToString(recordKey.Seed())
 	p.TrustedKeys = []string{hex.EncodeToString(recordPub)}
@@ -1038,7 +1038,7 @@ func TestClockRefusalsReachStderr(t *testing.T) {
 		return stderr.String(), exit.ExitCode()
 	}
 
-	stderr, code := run("close", "--profile", "a", "--period", "day", "--counterparty", "b")
+	stderr, code := run("book", "close", "--profile", "a", "--period", "day", "--counterparty", "b")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "invalid input or profile configuration: the book's last record is committed at")
 	assert.Contains(t, stderr, "start a new log")
@@ -1046,7 +1046,7 @@ func TestClockRefusalsReachStderr(t *testing.T) {
 
 	p.ClockTolerance = "1h"
 	require.NoError(t, cli.SaveProfile(p, true))
-	stderr, code = run("close", "--profile", "a", "--period", "day", "--counterparty", "b")
+	stderr, code = run("book", "close", "--profile", "a", "--period", "day", "--counterparty", "b")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "no period can be closed or reconciled until this clock passes")
 }

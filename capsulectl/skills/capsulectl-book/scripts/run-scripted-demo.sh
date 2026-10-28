@@ -46,7 +46,7 @@ checkpoint_seed="$work/checkpoint-signing.hex"
 "$bin" key generate --output "$checkpoint_seed" >"$work/checkpoint-keygen.json"
 checkpoint_public_key=$(jq -r .public_key "$work/checkpoint-keygen.json")
 "$bin" profile create --name "$profile" --type jsonl --jsonl-path "$store" \
-  --namespace demo --log-id skill-demo --operator demo-operator \
+  --namespace demo --log-id skill-demo --log book --operator demo-operator \
   --trusted-key "$public_key" --signing-key-file "$seed" \
   --checkpoint-signing-key-file "$checkpoint_seed" --checkpoint-trusted-key "$checkpoint_public_key" >/dev/null
 "$bin" store init --profile "$profile" >/dev/null
@@ -73,7 +73,7 @@ peer_public_key=$(jq -r .public_key "$work/peer-keygen.json")
 peer_checkpoint_key=$(jq -r .public_key "$work/peer-checkpoint-keygen.json")
 peer_store="$work/peer-store"
 "$bin" profile create --name "$peer" --type jsonl --jsonl-path "$peer_store" \
-  --namespace demo --log-id skill-demo-peer --operator demo-peer-operator \
+  --namespace demo --log-id skill-demo-peer --log book --operator demo-peer-operator \
   --trusted-key "$peer_public_key" --signing-key-file "$peer_seed" \
   --checkpoint-signing-key-file "$peer_checkpoint_seed" --checkpoint-trusted-key "$peer_checkpoint_key" >/dev/null
 "$bookdemo" seed --store "$peer_store" --log-id skill-demo-peer --operator demo-peer-operator \
