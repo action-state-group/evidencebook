@@ -117,10 +117,13 @@ pub enum AnswerError {
 }
 
 /// A derivation the calling profile answers beyond `history_card/1`: given
-/// the derivation token, the subject and the serving checkpoint, the
-/// artifact member that carries the derived value and the value, or `None`
-/// when the profile has no answer for that token and subject. The artifact
-/// is RFC 8785 of `{anchor, derivation, evidence_stream, <member>, subject}`.
+/// the derivation token, or the definition digest of a derivation of the
+/// holder's own that `Options::derivations` does not register, the subject
+/// and the serving checkpoint, the artifact member that carries the derived
+/// value and the value, or `None` when the profile has no answer for that
+/// derivation and subject. The artifact is RFC 8785 of
+/// `{anchor, derivation, evidence_stream, <member>, subject}`. A registered
+/// definition digest is always answered from its registration, never here.
 pub type Derive<'a> = &'a dyn Fn(&str, &Subject, &StatedCheckpoint) -> Option<(String, Value)>;
 
 /// How [`build`] proves and what it answers beyond the profile. The default
@@ -149,8 +152,9 @@ pub struct Options<'a> {
 /// checkpoint in [`CheckpointedLog::stated_checkpoints`], and the leaf
 /// indices of the records the artifact carries, ascending and distinct, all
 /// under that checkpoint (empty for a checkpoint list or a token
-/// derivation; a definition-digest derivation carries its subject's
-/// records).
+/// derivation; a registered definition-digest derivation carries its
+/// subject's records, and a holder's own digest that [`Derive`] answers
+/// carries none, so its caller passes an empty selection, as for a token).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
     pub at: usize,
@@ -253,7 +257,10 @@ pub fn serving_checkpoint(
 /// registered: decide the derivation first ([`Derivations::check`] and
 /// `evidence_request::resolve`), so an unknown digest is refused
 /// `derivation_unsupported` before any record is read. Whether a token
-/// derivation has an answer path is [`build`]'s to say.
+/// derivation has an answer path is [`build`]'s to say. A holder's own
+/// digest that its [`Derive`] answers is not registered, so `check` would
+/// refuse it and this would select its subject's records: its caller
+/// decides it first and builds with an empty [`Selection`] instead.
 pub fn select(
     log: &dyn CheckpointedLog,
     records: &dyn RecordSource,
@@ -345,9 +352,13 @@ pub fn build(
     );
     let mut material: Vec<(String, Vec<u8>)> = Vec::new();
 
+    let registered = |id: &str| options.derivations.and_then(|d| d.get(id)).is_some();
     let derived = match (&request.derivation, options.derive) {
         (Some(Derivation::Token(t)), Some(derive)) if t != DERIVATION_HISTORY_CARD => {
             derive(t, &request.subject, at).map(|d| (t.clone(), d))
+        }
+        (Some(Derivation::Digest(id)), Some(derive)) if !registered(id) => {
+            derive(id, &request.subject, at).map(|d| (id.clone(), d))
         }
         _ => None,
     };
@@ -375,7 +386,7 @@ pub fn build(
             head.insert("history".into(), Value::Array(history));
             jcs(head)?
         }
-        (Some(Derivation::Digest(id)), subject) => {
+        (Some(Derivation::Digest(id)), subject) if derived.is_none() => {
             let registered = options
                 .derivations
                 .and_then(|d| d.get(id))

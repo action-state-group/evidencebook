@@ -405,6 +405,128 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
     assert_eq!(kinds(&env), [KIND_CHECKPOINT]);
 }
 
+/// A digest derivation of the holder's own, which `Options::derivations`
+/// does not register, is answered by the profile's `Derive` like a token;
+/// a registered digest is answered from its registration even when `Derive`
+/// would answer it, and an unregistered digest `Derive` does not answer is
+/// unsupported.
+#[test]
+fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
+    let f = foreign();
+    let at = pinned(&f, 1);
+    let mut derivations = Derivations::new();
+    let registered = derivations
+        .register(DerivationDefinition {
+            document: br#"{"project":["seq"]}"#.to_vec(),
+            recipient: None,
+            forms: vec![SubjectKind::FullHistory],
+            fields: vec!["seq".into()],
+        })
+        .unwrap();
+    let own = "ab".repeat(32);
+    let derive = |id: &str, subject: &Subject, cp: &StatedCheckpoint| {
+        (*subject == Subject::FullHistory).then(|| {
+            (
+                "entries".to_string(),
+                json!({"for": id, "leaves": cp.checkpoint.leaf_count().unwrap()}),
+            )
+        })
+    };
+    let ask = |digest: &str, subject: Value, derive: Option<evidencebook::answer::Derive<'_>>| {
+        let (bytes, mut req) = request(subject, json!({"expected_pin": at.digest()}));
+        req.derivation = Some(evidence_request::request::Derivation::Digest(
+            digest.to_string(),
+        ));
+        build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &Selection {
+                at: 1,
+                records: vec![],
+            },
+            Options {
+                prove_beyond_profile: true,
+                derive,
+                derivations: Some(&derivations),
+                requester: None,
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    let env = ask(&own, json!({"full_history": null}), Some(&derive)).unwrap();
+    let art: Value = serde_json::from_slice(&env.artifact).unwrap();
+    assert_eq!(art["derivation"], json!(own));
+    assert_eq!(art["entries"], json!({"for": own, "leaves": 5}));
+    assert_eq!(kinds(&env), [KIND_CHECKPOINT]);
+
+    // Derive declines this subject: unsupported, as without Derive.
+    for derive in [Some(&derive as evidencebook::answer::Derive<'_>), None] {
+        assert!(matches!(
+            ask(&own, json!({"range": [1, 2]}), derive),
+            Err(AnswerError::DerivationUnsupported)
+        ));
+    }
+    // A registered digest is never Derive's, even where its registration
+    // refuses: a form it does not declare, or a requester its recipient
+    // is not.
+    let mut restricted = Derivations::new();
+    let range_only = restricted
+        .register(DerivationDefinition {
+            document: br#"{"project":["seq"],"for":"alice"}"#.to_vec(),
+            recipient: Some("alice".into()),
+            forms: vec![SubjectKind::Range],
+            fields: vec!["seq".into()],
+        })
+        .unwrap();
+    let answers_all = |_: &str, _: &Subject, _: &StatedCheckpoint| {
+        Some(("entries".to_string(), json!("from Derive")))
+    };
+    let refused = |subject: Value, requester: Option<&str>| {
+        let (bytes, mut req) = request(subject, json!({"expected_pin": at.digest()}));
+        req.derivation = Some(evidence_request::request::Derivation::Digest(
+            range_only.clone(),
+        ));
+        build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &Selection {
+                at: 1,
+                records: vec![],
+            },
+            Options {
+                prove_beyond_profile: true,
+                derive: Some(&answers_all),
+                derivations: Some(&restricted),
+                requester,
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    assert!(matches!(
+        refused(json!({"full_history": null}), Some("alice")),
+        Err(AnswerError::DerivationUnsupported)
+    ));
+    assert!(matches!(
+        refused(json!({"range": [1, 2]}), Some("bob")),
+        Err(AnswerError::NotAuthorized)
+    ));
+
+    // The registration answers it, from the records the selection names
+    // (none here), never Derive.
+    assert!(matches!(
+        ask(&registered, json!({"full_history": null}), Some(&derive)),
+        Err(AnswerError::NoRecords)
+    ));
+}
+
 #[test]
 fn the_citing_anchor_reads_the_callers_index() {
     let f = foreign();
