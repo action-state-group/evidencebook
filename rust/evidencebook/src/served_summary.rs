@@ -855,6 +855,8 @@ mod tests {
         };
         let good = receipt(first, WITNESS_URL, &witness_key());
         let directory = directory();
+        let mut unusable = directory.clone();
+        unusable["witnesses"][0]["key_ids"] = json!(["zz"]);
         let v = coverage_of(&with(vec![good.clone()]), first_cose, Some(&directory));
         assert_eq!(v["witness_check"], json!("PASS"));
         assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "PASS")]));
@@ -877,6 +879,21 @@ mod tests {
                 with(vec![good.clone()]),
                 &[],
                 Some(&directory),
+            ),
+            (
+                "a stub",
+                with(vec![WitnessEntry {
+                    is_stub: true,
+                    ..good.clone()
+                }]),
+                first_cose,
+                Some(&directory),
+            ),
+            (
+                "an unusable key in the directory row",
+                with(vec![good.clone()]),
+                first_cose,
+                Some(&unusable),
             ),
         ];
         for (name, cp, statement, directory) in not_checked {
@@ -953,6 +970,30 @@ mod tests {
                 "{name}"
             );
         }
+        // Signed under its own key, so the strict check passes, but no
+        // checkpoint: checkpointed-local-log rejects it.
+        let not_a_checkpoint = {
+            let mut m = crate::ed25519::Sign1::decode(first_cose).unwrap();
+            m.payload = b"not a checkpoint".to_vec();
+            let tbs = crate::ed25519::to_be_signed(&m.protected, &m.payload);
+            m.signature =
+                ed25519_dalek::Signer::sign(&SigningKey::from_bytes(&[3u8; 32]), &tbs).to_bytes();
+            crate::ed25519::encode(&ciborium::Value::Tag(
+                crate::ed25519::COSE_SIGN1_TAG,
+                Box::new(ciborium::Value::Array(vec![
+                    ciborium::Value::Bytes(m.protected),
+                    ciborium::Value::Map(m.unprotected),
+                    ciborium::Value::Bytes(m.payload),
+                    ciborium::Value::Bytes(m.signature.to_vec()),
+                ])),
+            ))
+        };
+        assert!(crate::ed25519::statement_verifies(&not_a_checkpoint));
+        assert!(!cll::checkpoint::verify_checkpoint_cose_offline(&not_a_checkpoint).ok);
+        let v = coverage_of(&cp, &not_a_checkpoint, Some(&directory()));
+        assert_eq!(v["witness_check"], json!("FAIL"), "not a checkpoint");
+        assert_eq!(v["witness_receipts"], receipts(&[(WITNESS_URL, "FAIL")]));
+
         cp.root = "00".repeat(32);
         let v = coverage_of(&cp, first_cose, Some(&directory()));
         assert_eq!(
