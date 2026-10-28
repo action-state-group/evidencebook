@@ -152,8 +152,9 @@ pub struct Options<'a> {
 /// checkpoint in [`CheckpointedLog::stated_checkpoints`], and the leaf
 /// indices of the records the artifact carries, ascending and distinct, all
 /// under that checkpoint (empty for a checkpoint list or a token
-/// derivation; a definition-digest derivation carries its subject's
-/// records).
+/// derivation; a registered definition-digest derivation carries its
+/// subject's records, and a holder's own digest that [`Derive`] answers
+/// carries none, so its caller passes an empty selection, as for a token).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
     pub at: usize,
@@ -256,7 +257,10 @@ pub fn serving_checkpoint(
 /// registered: decide the derivation first ([`Derivations::check`] and
 /// `evidence_request::resolve`), so an unknown digest is refused
 /// `derivation_unsupported` before any record is read. Whether a token
-/// derivation has an answer path is [`build`]'s to say.
+/// derivation has an answer path is [`build`]'s to say. A holder's own
+/// digest that its [`Derive`] answers is not registered, so `check` would
+/// refuse it and this would select its subject's records: its caller
+/// decides it first and builds with an empty [`Selection`] instead.
 pub fn select(
     log: &dyn CheckpointedLog,
     records: &dyn RecordSource,

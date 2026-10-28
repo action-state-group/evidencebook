@@ -248,6 +248,10 @@ impl Derivations {
     ///
     /// A responder with the uniform refusal policy maps the reason as it
     /// maps every other.
+    ///
+    /// A digest the holder answers with its own `answer::Derive` is not
+    /// registered here, so this refuses it: a caller serving one decides it
+    /// before calling this.
     pub fn check(
         &self,
         request: &Request,

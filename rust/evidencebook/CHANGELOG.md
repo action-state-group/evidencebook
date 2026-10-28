@@ -2,15 +2,21 @@
 
 ## Unreleased
 
-- **`answer::Derive` answers a holder's own digest derivation**
-  (evidencebook#35). A request whose `derivation` is a definition digest
+- **Breaking (behavior): `answer::Derive` answers a holder's own digest
+  derivation** (evidencebook#35). A request whose `derivation` is a definition digest
   that `Options::derivations` does not register now goes to the profile's
   `Derive`, as a token does. `Derive` is called with the digest, and its
   value is carried under the member it names, with the anchor checkpoint as
   material when `prove_beyond_profile` is set. A registered digest is still
   answered from its registration, and an unregistered digest that `Derive`
-  does not answer is still `DerivationUnsupported`. A `Derive` that answers
-  every name it is given now also answers such digests, so check the name.
+  does not answer is still `DerivationUnsupported`. To migrate, check the
+  name: a `Derive` that answers every name it is given now also answers
+  such digests. The crate checks no requester for a value `Derive`
+  answers, token or digest, and `Derive` is not given one: a derivation
+  restricted to a recipient must be registered. `select` still selects a
+  digest's subject records and `Derivations::check` refuses an
+  unregistered digest, so a caller serving its own digest decides it first
+  and builds with an empty `Selection`.
 
 ## 0.0.8
 

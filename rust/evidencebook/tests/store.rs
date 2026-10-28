@@ -470,6 +470,55 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
             Err(AnswerError::DerivationUnsupported)
         ));
     }
+    // A registered digest is never Derive's, even where its registration
+    // refuses: a form it does not declare, or a requester its recipient
+    // is not.
+    let mut restricted = Derivations::new();
+    let range_only = restricted
+        .register(DerivationDefinition {
+            document: br#"{"project":["seq"],"for":"alice"}"#.to_vec(),
+            recipient: Some("alice".into()),
+            forms: vec![SubjectKind::Range],
+            fields: vec!["seq".into()],
+        })
+        .unwrap();
+    let answers_all = |_: &str, _: &Subject, _: &StatedCheckpoint| {
+        Some(("entries".to_string(), json!("from Derive")))
+    };
+    let refused = |subject: Value, requester: Option<&str>| {
+        let (bytes, mut req) = request(subject, json!({"expected_pin": at.digest()}));
+        req.derivation = Some(evidence_request::request::Derivation::Digest(
+            range_only.clone(),
+        ));
+        build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &Selection {
+                at: 1,
+                records: vec![],
+            },
+            Options {
+                prove_beyond_profile: true,
+                derive: Some(&answers_all),
+                derivations: Some(&restricted),
+                requester,
+            },
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    assert!(matches!(
+        refused(json!({"full_history": null}), Some("alice")),
+        Err(AnswerError::DerivationUnsupported)
+    ));
+    assert!(matches!(
+        refused(json!({"range": [1, 2]}), Some("bob")),
+        Err(AnswerError::NotAuthorized)
+    ));
+
     // The registration answers it, from the records the selection names
     // (none here), never Derive.
     assert!(matches!(
