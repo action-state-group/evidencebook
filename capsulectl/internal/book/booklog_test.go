@@ -1047,7 +1047,7 @@ func TestStoreInitOnJSONLNeedsNoKey(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	other, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
-	p := cli.Profile{Name: "verifier", Type: "jsonl", LogID: "verifier-log", Namespace: "capsule"}
+	p := cli.Profile{Name: "verifier", Type: "jsonl", LogID: "verifier-log", Log: Name, Namespace: "capsule"}
 	p.Connection.Database = filepath.Join(t.TempDir(), "store")
 	p.TrustedKeys = []string{hex.EncodeToString(other)}
 	require.NoError(t, cli.SaveProfile(p, false))
@@ -1082,10 +1082,8 @@ func TestOneLogRefusalsReachStderr(t *testing.T) {
 	stderr, code := run("cll", "list", "--profile", "a")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "holds entries not yet in its book; run 'book migrate --log-id <new-log-id>'")
-	// The old entry point still reaches it, and says what replaced it.
-	stderr, code = run("store", "migrate", "--profile", "a")
+	stderr, code = run("book", "migrate", "--profile", "a")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "`capsulectl store migrate` is deprecated; use `capsulectl book migrate`")
 	assert.Contains(t, stderr, "book migrate needs --log-id with a new log id")
 
 	q, _ := bookProfile(t, "q")
@@ -1097,7 +1095,7 @@ func TestOneLogRefusalsReachStderr(t *testing.T) {
 	_, err = foreign.book.Append(t.Context(), evidencebook.Entry{RecordType: "exchange", EpistemicType: evidencebook.ObservedEvent})
 	require.NoError(t, err)
 	require.NoError(t, foreign.release())
-	stderr, code = run("store", "migrate", "--profile", "q", "--log-id", "q-book-v2")
+	stderr, code = run("book", "migrate", "--profile", "q", "--log-id", "q-book-v2")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "move the book/ directory aside (keep it)")
 

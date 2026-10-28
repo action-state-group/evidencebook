@@ -81,7 +81,7 @@ func openBookWith(ctx context.Context, p cli.Profile, create bool, artifacts cli
 // `book migrate`, which is what satisfies that check, calls it directly.
 func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore) (openedBook, error) {
 	if !isBook(p) {
-		return openedBook{}, cli.InputError("book verbs need a jsonl profile with log_id and operator set")
+		return openedBook{}, cli.InputError("book verbs need a jsonl profile with log_id and operator set, and `log: book` (the log is not this plugin's otherwise)")
 	}
 	if p.OperatorMissing() {
 		// A profile saved by an earlier capsulectl, which did not require one.

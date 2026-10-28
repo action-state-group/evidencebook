@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Changed: builds against the capsule-cli whose core names no company plugin (capsule-cli#428)
+
+- The `report` and `capsulectl` modules build against capsule-cli `8a856b75` and capsule-viewer `389c1bac`
+  (pseudo-versions, unreleased). A book profile now names its owner: a jsonl
+  profile with a `log_id` needs `log: book` (`capsulectl profile create ... --log
+  book`, or `capsulectl profile update --profile NAME --log book` for an older
+  profile). The core refuses a profile that names none and prints the fix
+  (`capsulectl profile update --profile NAME --log <cll or the plugin that keeps its
+  log>`; for a book the value is `book`), and `capsulectl doctor` lists every
+  profile with no declared log owner. The core's transitional aliases are gone and
+  the old commands no longer exist: `capsulectl close`, `reconcile`, `request` and
+  `respond` are `capsulectl book close|reconcile|request|respond`, and `capsulectl
+  store migrate` is `capsulectl book migrate`. The scripted demo creates
+  its profiles with `--log book`. The two `report` page goldens are re-emitted with
+  the newer page runtime (its banner check no longer discards a render when the page
+  grows a scrollbar, capsule-viewer#113).
+
 ### Changed: capsulectl-book names no host-package book export (capsule-cli#428)
 
 - `capsulectl-book` registers its log backend by its own name

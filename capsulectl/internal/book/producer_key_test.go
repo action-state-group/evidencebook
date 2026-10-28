@@ -42,7 +42,7 @@ func viewerProducerKey(t *testing.T, encoded []byte) string {
 func TestBundleCommandDeclaresProducerKeyOnTheBook(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, key := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	p.Connection.Database = filepath.Join(t.TempDir(), "store")
 	require.NoError(t, cli.SaveProfile(p, false))
 	_, err := invoke(t, "", "store", "init", "--profile", p.Name)

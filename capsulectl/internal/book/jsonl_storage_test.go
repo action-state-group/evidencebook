@@ -23,7 +23,7 @@ import (
 func TestJSONLSDKOnlyStorage(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, key := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	dir := filepath.Join(t.TempDir(), "store")
 	p.Connection.Database = dir
 	require.NoError(t, cli.SaveProfile(p, false))
@@ -79,7 +79,7 @@ func TestJSONLSDKOnlyStorage(t *testing.T) {
 func TestJSONLMissingDirectoryFailsClosed(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, _ := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	missing := filepath.Join(t.TempDir(), "never-created")
 	p.Connection.Database = missing
 
@@ -93,7 +93,7 @@ func TestJSONLMissingDirectoryFailsClosed(t *testing.T) {
 func TestJSONLReadOnlyRejectsWrites(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, _ := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	p.Connection.Database = filepath.Join(t.TempDir(), "store")
 	p.ReadOnly = true
 
@@ -108,7 +108,7 @@ func TestJSONLProfileCreate(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "store")
 	trusted := strings.Repeat("ab", 32)
 	_, e := invoke(t, "", "profile", "create", "--name", "jl", "--type", "jsonl",
-		"--jsonl-path", dir, "--namespace", "demo", "--log-id", "log-j", "--trusted-key", trusted,
+		"--jsonl-path", dir, "--namespace", "demo", "--log-id", "log-j", "--log", Name, "--trusted-key", trusted,
 		"--operator", "example-operator")
 	require.NoError(t, e)
 	p, e := cli.LoadProfile("jl")
@@ -129,7 +129,7 @@ func TestJSONLProfileCreate(t *testing.T) {
 func TestJSONLDiscloseIsOnTheBook(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, key := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	p.Connection.Database = filepath.Join(t.TempDir(), "store")
 	require.NoError(t, cli.SaveProfile(p, false))
 	_, err := invoke(t, "", "store", "init", "--profile", p.Name)
@@ -210,7 +210,7 @@ func jsonlPublished(t *testing.T) (cli.Profile, artifact.Record) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	p, key := profileFixture(t)
-	p.Type = "jsonl"
+	p.Type, p.Log = "jsonl", Name
 	p.Connection.Database = filepath.Join(t.TempDir(), "store")
 	require.NoError(t, cli.SaveProfile(p, false))
 	_, err := invoke(t, "", "store", "init", "--profile", p.Name)

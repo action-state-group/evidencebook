@@ -10,7 +10,7 @@ The reference for the verbs in [../SKILL.md](../SKILL.md). Each runs as
 capsulectl book result build --profile NAME --result RESULT.json --out SEALED.json [--contract REF] [--capsule-out RECORD.json]
 ```
 
-Requires a jsonl profile with `log_id`, `operator`, a signing key the
+Requires a jsonl profile with `log_id`, `log: book` (the owner the core requires; `--log book` when you create it), `operator`, a signing key the
 profile trusts and a checkpoint signing key it trusts (the same footing as
 `book close`). RESULT is an Evidence Result v0 document (agent-action-capsule
 `schemas/evidence-result-v0.json`, vendored in the binary with its digest

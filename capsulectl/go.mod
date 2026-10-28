@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956
-	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028002930-0e9eef2b2369
+	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028063209-8a856b751316
 	github.com/action-state-group/capsule-emit/go v0.3.0
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/action-state-group/evidencebook v0.8.0
@@ -15,7 +15,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/action-state-group/capsule-viewer/go v0.2.0 // indirect
+	github.com/action-state-group/capsule-viewer/go v0.2.1-0.20261028034017-389c1bacb86d // indirect
 	github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
