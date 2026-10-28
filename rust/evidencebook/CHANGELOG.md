@@ -19,8 +19,8 @@
   derivation** (evidencebook#35). A request whose `derivation` is a
   definition digest that `Options::derivations` does not register now goes
   to the profile's `Derive`, as a token does. `Derive` is called with the
-  digest, and its value is carried under the member it names, with the anchor checkpoint as
-  material when `prove_beyond_profile` is set. A registered digest is still
+  digest, and its value is carried under the member it names, with the
+  anchor checkpoint as material when `prove_beyond_profile` is set. A registered digest is still
   answered from its registration, and an unregistered digest that `Derive`
   does not answer is still `DerivationUnsupported`. To migrate, check the
   name: a `Derive` that answers every name it is given now also answers
