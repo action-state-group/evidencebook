@@ -117,10 +117,13 @@ pub enum AnswerError {
 }
 
 /// A derivation the calling profile answers beyond `history_card/1`: given
-/// the derivation token, the subject and the serving checkpoint, the
-/// artifact member that carries the derived value and the value, or `None`
-/// when the profile has no answer for that token and subject. The artifact
-/// is RFC 8785 of `{anchor, derivation, evidence_stream, <member>, subject}`.
+/// the derivation token, or the definition digest of a derivation of the
+/// holder's own that `Options::derivations` does not register, the subject
+/// and the serving checkpoint, the artifact member that carries the derived
+/// value and the value, or `None` when the profile has no answer for that
+/// derivation and subject. The artifact is RFC 8785 of
+/// `{anchor, derivation, evidence_stream, <member>, subject}`. A registered
+/// definition digest is always answered from its registration, never here.
 pub type Derive<'a> = &'a dyn Fn(&str, &Subject, &StatedCheckpoint) -> Option<(String, Value)>;
 
 /// How [`build`] proves and what it answers beyond the profile. The default
@@ -345,9 +348,13 @@ pub fn build(
     );
     let mut material: Vec<(String, Vec<u8>)> = Vec::new();
 
+    let registered = |id: &str| options.derivations.and_then(|d| d.get(id)).is_some();
     let derived = match (&request.derivation, options.derive) {
         (Some(Derivation::Token(t)), Some(derive)) if t != DERIVATION_HISTORY_CARD => {
             derive(t, &request.subject, at).map(|d| (t.clone(), d))
+        }
+        (Some(Derivation::Digest(id)), Some(derive)) if !registered(id) => {
+            derive(id, &request.subject, at).map(|d| (id.clone(), d))
         }
         _ => None,
     };
@@ -375,7 +382,7 @@ pub fn build(
             head.insert("history".into(), Value::Array(history));
             jcs(head)?
         }
-        (Some(Derivation::Digest(id)), subject) => {
+        (Some(Derivation::Digest(id)), subject) if derived.is_none() => {
             let registered = options
                 .derivations
                 .and_then(|d| d.get(id))
