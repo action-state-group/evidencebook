@@ -10,6 +10,9 @@
   - A receipt that cannot be checked (no directory, no row or key, a stub,
     no statement) reads `NOT_CHECKED` and is still listed, never a lower
     count.
+  - No statement to check against (an empty statement) means not checked:
+    every receipt reads `NOT_CHECKED`. It can never yield a false
+    `witnessed`.
   - A statement that does not verify, or does not sign the checkpoint as
     stated, fails every receipt.
   - `witnesses` and `witnessed` still count verified receipts only.
