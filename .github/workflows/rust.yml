@@ -4,15 +4,17 @@
 # carries no deployment vocabulary), format, Clippy, tests, rustdoc with
 # warnings as errors, and the crates.io package checks (never a real publish).
 # The crate depends on checkpointed-local-log from crates.io, so the dry run
-# resolves it as a real upload would.
+# resolves it as a real upload would. The interop job runs the crate's
+# personal-history and responder programs (rust/interop) against the shared
+# vectors and the Go runs.
 name: Rust CI
 
 on:
   push:
     branches: [main]
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
   pull_request:
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
@@ -82,3 +84,86 @@ jobs:
 
       - name: Publish dry run (no upload)
         run: cargo publish --locked --dry-run -p evidencebook
+
+  interop:
+    name: Interop (the History run byte for byte, and the profile verifier over the responder's replies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: evidencebook
+          persist-credentials: false
+      # The profile's reference verifier and vectors and the History corpus,
+      # at the commit ci.yml's interop-profile and personal-history jobs pin.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          path: agent-action-capsule
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: evidencebook/go.mod
+          cache-dependency-path: evidencebook/go.sum
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install the verifiers' dependencies
+        run: python -m pip install "cryptography>=42" pytest
+      - name: Build the interop programs
+        run: cargo build --locked --manifest-path evidencebook/rust/Cargo.toml -p evidencebook-interop
+      - name: Reproduce the History responder run byte for byte, rebuild the corpus from it, and match Go's -correlated run
+        shell: bash
+        env:
+          PYTHONPATH: agent-action-capsule/python
+        run: |
+          set -euo pipefail
+          bin=evidencebook/rust/target/debug
+          corpus=agent-action-capsule/vectors/personal-history-basic-v0
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          "$bin/personal-history" > "$work/run.json"
+          want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
+          got=$(sha256sum "$work/run.json" | cut -d' ' -f1)
+          echo "run_sha256: want $want, got $got"
+          test "$got" = "$want"
+          cmp "$corpus/responder-run.json" "$work/run.json"
+          mkdir -p "$work/out/producer"
+          cp "$corpus/README.md" "$work/out/"
+          cp "$corpus/producer/main.go" "$work/out/producer/"
+          python agent-action-capsule/python/scripts/generate_personal_history_basic_v0_vectors.py --out "$work/out" --run "$work/run.json"
+          diff -r "$corpus" "$work/out"
+          junit=$(mktemp)
+          python -m pytest -p no:cacheprovider -rA --junitxml="$junit" \
+            agent-action-capsule/python/tests/test_personal_history_basic_v0_vectors.py
+          python evidencebook/test/interop/python-personal/count_by_class.py "$junit" "$corpus/vectors.json"
+          "$bin/personal-history" --correlated > "$work/correlated.json"
+          go -C evidencebook run ./test/interop/personal-history -correlated > "$work/correlated-go.json"
+          cmp "$work/correlated-go.json" "$work/correlated.json"
+      - name: Answer the profile vectors' requests, verify every reply, and compare with the Go run
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          mkdir "$work/rs" "$work/go"
+          evidencebook/rust/target/debug/responder "$work/rs" "$work/rs/responder.json"
+          python evidencebook/test/interop/python-profile/verify_responder.py agent-action-capsule "$work/rs/responder.json"
+          go -C evidencebook run ./test/interop/responder "$work/go" "$work/go/responder.json"
+          python - "$work/rs/responder.json" "$work/go/responder.json" <<'PY'
+          import json, sys
+          rs, go = (json.load(open(path)) for path in sys.argv[1:])
+          differ = [name for name in rs if rs[name] != go[name]]
+          if differ:
+              raise SystemExit(f"members the Rust run writes differ from the Go run: {differ}")
+          print(f"the Rust run writes these members as the Go run writes them: {sorted(rs)}")
+          PY
+          cmp "$work/rs/artifact-alice-json-nonce-c.bin" "$work/rs/artifact-bob-cbor-nonce-d.bin"
+          for f in artifact-alice-json-nonce-c.bin artifact-bob-cbor-nonce-d.bin; do cmp "$work/rs/$f" "$work/go/$f"; done

@@ -1,3 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["evidencebook"]
+# interop holds the programs the interop CI job runs; it is never published.
+members = ["evidencebook", "interop"]

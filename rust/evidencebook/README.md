@@ -24,6 +24,11 @@ plain reason; a responder under the uniform refusal policy maps it. The
 request protocol itself, and checking a received envelope and
 its material, is the `evidence-request` crate's.
 
+`seal` builds a record's header and seals it as the Go book's record
+capsule and Producer Envelope, byte for byte, for a caller's `ask::Book` to
+store. Every Ed25519 signature the crate checks is verified strictly: a
+small-order or non-canonical key never verifies.
+
 The crate carries no deployment vocabulary. Record kinds, correlation key
 names and content comparators come from the calling profile.
 `scripts/check-vocabulary.sh` enforces this in CI.
@@ -41,6 +46,16 @@ names and content comparators come from the calling profile.
   definition-digest derivations as the Go implementation answers them
   (`TestDerivationVectors`). `tests/derivation.rs` answers the same requests
   and gives the same identifiers, refusals and reply octets.
+
+- `tests/ed25519_vectors_c45422a.json` is checkpointed-local-log's
+  `checkpoint-conformance-vectors/ed25519-vectors.json`, which every CLL
+  implementation runs. The unit tests in `src/ed25519.rs` check its SHA-256
+  and decide every case.
+- `../interop` (the workspace member `evidencebook-interop`, not published)
+  makes the Go book's Personal-Agent History run and answers the
+  interop-profile vectors with this crate. The Rust CI job `interop` checks
+  the first against the corpus's `run_sha256` and the second with the
+  profile's reference verifier, and compares both with the Go runs.
 
 ## Changes
 
