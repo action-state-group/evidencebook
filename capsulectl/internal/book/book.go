@@ -80,7 +80,7 @@ func openBookWith(ctx context.Context, p cli.Profile, create bool, artifacts cli
 // openBookUnguarded is openBook without the retired-log check; only
 // `book migrate`, which is what satisfies that check, calls it directly.
 func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore) (openedBook, error) {
-	if !p.IsBook() {
+	if !isBook(p) {
 		return openedBook{}, cli.InputError("book verbs need a jsonl profile with log_id and operator set")
 	}
 	if p.OperatorMissing() {

@@ -17,7 +17,7 @@ import (
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	cli.SetBookBackend(book.BookBackend{})
+	cli.RegisterLogBackend(book.Name, book.BookBackend{})
 	// The error line on stderr, and an error object on stdout when the
 	// command printed nothing (capsule-cli#345).
 	code := cli.Run(ctx, cli.NewPluginCommand(book.BookMetadata, append(book.BookCommands(), book.BookAliases()...)...), "capsulectl-book")

@@ -10,14 +10,27 @@ import (
 // Vendor is what both first-party plugins name in their metadata.
 const Vendor = "action-state-group"
 
+// Name is the plugin's name: the launcher capsulectl-book, the command
+// `capsulectl book`, and the log owner a book profile names (log: book).
+const Name = "book"
+
+// isBook reports whether p is one of the book plugin's profiles: a jsonl
+// profile whose log the book plugin keeps. (The core lets a sqlite store name
+// a plugin too, and that store is not an evidence book.)
+func isBook(p cli.Profile) bool { return p.Type == "jsonl" && p.LogOwner() == Name }
+
+// aliasRemovedIn is the release that removes the plugin's own deprecated
+// aliases.
+const aliasRemovedIn = "v0.2.0"
+
 // BookMetadata is capsulectl-book's cli-plugin-metadata answer.
-var BookMetadata = cli.PluginMetadata{Name: cli.BookPluginName, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "backfill", "migrate", "doctor"}}
+var BookMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "backfill", "migrate", "doctor"}}
 
 // BookCommands are capsulectl-book's own commands: `capsulectl book ...`.
 // The binary also holds the core tree, which reaches book profiles through
 // BookBackend.
 func BookCommands() []*cobra.Command {
-	remote := cli.RemoteBookCommand()
+	remote := cli.RemoteCommand()
 	request := bookRequestCommand(remote)
 	respond := onProfiles(respondCommand(), func(p cli.Profile) error {
 		if p.Type == "sqlite" {
@@ -34,7 +47,7 @@ func BookCommands() []*cobra.Command {
 // only through `capsulectl book`, so they never stand for the core's `get`.
 func BookAliases() []*cobra.Command {
 	var aliases []*cobra.Command
-	for _, sub := range cli.RemoteBookCommand().Commands() {
+	for _, sub := range cli.RemoteCommand().Commands() {
 		if sub.Name() != "request" {
 			aliases = append(aliases, remoteAlias(sub.Name()))
 		}
@@ -65,7 +78,7 @@ func bookRequestCommand(remote *cobra.Command) *cobra.Command {
 		}
 		switch p.Type {
 		case cli.RemoteProfileType:
-			fmt.Fprintf(c.ErrOrStderr(), "capsulectl: `capsulectl book request` on a remote profile is deprecated; use `capsulectl book remote request` (the alias is removed in %s)\n", cli.AliasRemovedIn)
+			fmt.Fprintf(c.ErrOrStderr(), "capsulectl: `capsulectl book request` on a remote profile is deprecated; use `capsulectl book remote request` (the alias is removed in %s)\n", aliasRemovedIn)
 			return ask(c, args)
 		case "sqlite":
 			return cli.InputError("this is a deal profile: its requests are `capsulectl deal request`")
@@ -83,10 +96,10 @@ func bookRequestCommand(remote *cobra.Command) *cobra.Command {
 func remoteAlias(verb string) *cobra.Command {
 	return &cobra.Command{
 		Use:                verb,
-		Short:              fmt.Sprintf("Deprecated: use `capsulectl book remote %s`; removed in %s", verb, cli.AliasRemovedIn),
+		Short:              fmt.Sprintf("Deprecated: use `capsulectl book remote %s`; removed in %s", verb, aliasRemovedIn),
 		DisableFlagParsing: true,
 		RunE: func(c *cobra.Command, args []string) error {
-			fmt.Fprintf(c.ErrOrStderr(), "capsulectl: `capsulectl book %s` is deprecated; use `capsulectl book remote %s` (the alias is removed in %s)\n", verb, verb, cli.AliasRemovedIn)
+			fmt.Fprintf(c.ErrOrStderr(), "capsulectl: `capsulectl book %s` is deprecated; use `capsulectl book remote %s` (the alias is removed in %s)\n", verb, verb, aliasRemovedIn)
 			root := c.Root()
 			root.SetArgs(append([]string{"remote", verb}, args...))
 			return root.ExecuteContext(c.Context())
@@ -118,7 +131,7 @@ func migrateCommand() *cobra.Command {
 		if e != nil {
 			return e
 		}
-		if !p.IsBook() || p.ReadOnly {
+		if !isBook(p) || p.ReadOnly {
 			return cli.InputError("book migrate applies to a writable book profile")
 		}
 		newLogID, _ := c.Flags().GetString("log-id")

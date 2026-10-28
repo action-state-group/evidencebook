@@ -81,7 +81,7 @@ func reportCommands() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if p.Type == "sqlite" || !p.IsBook() {
+			if !isBook(p) {
 				return cli.InputError("--seal needs a book profile: the page's seal is a record of its book")
 			}
 			sealProfile = &p

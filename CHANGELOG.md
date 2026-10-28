@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changed: capsulectl-book names no host-package book export (capsule-cli#428)
+
+- `capsulectl-book` registers its log backend by its own name
+  (`cli.RegisterLogBackend`), checks for its own profiles with the log owner
+  (a jsonl profile whose `log:` is `book`) and keeps its own `book` name and
+  alias-removal constants, so the neutral capsule-cli core can drop every
+  export named for the book. It builds against capsule-cli `0e9eef2b` and
+  agent-action-capsule `1d1752bf` (both unreleased); a book profile's behavior is unchanged. The two `report` page
+  goldens are rewritten because that capsule-cli vendors a newer viewer
+  runtime, and the `report` module's own pins (capsule-cli, capsule-viewer
+  v0.2.0, agent-action-capsule) move with them so both modules build the same
+  pages.
+
 ## v0.8.1 (2026-10-27)
 
 ### Added: the SDK guide (evidencebook#129)

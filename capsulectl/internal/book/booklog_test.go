@@ -505,7 +505,7 @@ func TestCountersignRootRefusesABookProfile(t *testing.T) {
 	storedProfile(t, "a")
 	published := publishFile(t, "a", sealRequestFile(t, "published-1"))
 	_, err := invoke(t, "", "countersign", "request", "--profile", "a", "--service", "https://countersign.example.invalid", "--window", "2026-09", "--root", published.CapsuleID, "--out", filepath.Join(t.TempDir(), "b.json"))
-	assert.ErrorIs(t, err, cli.ErrBookProfile)
+	assert.ErrorIs(t, err, cli.ErrPluginLogProfile)
 }
 
 // After a migration, an older binary cutting a checkpoint on the retired
