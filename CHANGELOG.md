@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: `report build --wording` (evidencebook#155)
+
+- `capsulectl book report build --wording FILE --wording-digest HEX` lays an
+  `aac.wording-pack/v0` wording pack over the viewer's own words in the written
+  page, as the SDK's `report.View.Wording` does. The digest is the lowercase
+  hex SHA-256 of the file's bytes and is required with the pack. The build is
+  refused, and no page is written, when the digest does not match, the pack is
+  not a valid `aac.wording-pack/v0`, or either flag comes without the other.
+  A worded page gets no permalink, so `--permalink` with `--wording` is
+  refused. `capsulectl/go.mod` now requires `report` v0.2.0.
+
 ### Changed: `capsulectl book result open` validates against the Result v0 schema (#106)
 
 - `result open` checked only that `aggregate.coverage` existed and called Result v0
