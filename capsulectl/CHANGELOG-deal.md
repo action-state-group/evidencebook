@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Builds against an unreleased capsulectl (capsule-cli `005e7e97`, capsule-viewer `389c1bac` (its Go module pinned by pseudo-version) and agent-action-capsule `1d1752bf`, all unreleased; capsule-cli#428) and
+  names no deal-specific export of its host package where a generic one
+  exists: the plugin owns its store through `cli.OpenOwnedTarget` and marks it
+  (`plugin_owned`, written under the writer lock by every write session and by
+  `deal init`, never on a read), `bundle|disclose|permalink --deal` and `cll checkpoint cadence`
+  come from `cli.ExtendBundle` and `cli.GraftCommand`, and `deal init` now
+  writes `log: deal` into the profile. Deals behave as before; a deal profile
+  saved without `log:` is still read as the deal plugin's until the core drops
+  that default.
+- A deal page opened by the host's viewer (`presentation build`, a shared copy) now
+  reads "None of the bundle's checks failed, but some were not run" where it read
+  "Contents checked", and its status is `incomplete`, not `verified`. The
+  browser has no checkpoint verifier, so under agent-action-capsule 0.8.0's strict
+  mode the page does not check the checkpoint signature
+  (`checkpoint_verifier_unavailable`); it does check every record's producer
+  signature, and a forged signer now reads `failed`. The page scripts assert this
+  is the only check not run. No capsulectl-deal release can be cut from this
+  until capsule-cli, capsule-viewer and agent-action-capsule are tagged.
 - Builds against evidencebook v0.8.0. The deal cadence verifies witness receipts under a directory built from the profile's pinned witness (endpoint and key), so an unpinned profile trusts no witness and no receipt reads as witnessed; a receipt that cannot be checked leaves its tick unwitnessed and pending (evidencebook-deal#32).
 
 ## v0.1.0-rc23

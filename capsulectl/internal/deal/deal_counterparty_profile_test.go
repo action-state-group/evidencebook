@@ -242,6 +242,7 @@ func TestRegenerateProfileVectors(t *testing.T) {
 		require.NoError(t, err)
 		s, err := openDealSession(t.Context(), p)
 		require.NoError(t, err)
+		defer func() { _ = s.close() }()
 		require.NoError(t, s.useDeal(t.Context(), id, false))
 		for i, se := range events {
 			if se.Event.Kind != "counterparty_profile" {
@@ -529,6 +530,7 @@ func TestADealSealedBeforeCompanionsReDerivesUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	require.NotEmpty(t, events)
 	for i, se := range events {

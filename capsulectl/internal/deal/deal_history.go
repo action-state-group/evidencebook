@@ -186,7 +186,7 @@ func (s *dealSession) historyBundle(ctx context.Context, audience, recipient str
 	}
 	s.dp = s.p
 	s.dp.LogID = cli.HistoryLogPrefix + hex.EncodeToString(nonce)
-	if s.t, err = cli.OpenDealTarget(ctx, s.dp, cli.UseInitialization, s); err != nil {
+	if s.t, err = openOwnedTarget(ctx, s.dp, cli.UseInitialization, s); err != nil {
 		return nil, "", err
 	}
 	defer func() {

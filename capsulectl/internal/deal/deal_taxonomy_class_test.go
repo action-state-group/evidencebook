@@ -158,6 +158,7 @@ func TestDealStepSealedBeforeTheClassReDerivesWithoutOne(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	for i, se := range events {
@@ -181,6 +182,7 @@ func TestDealStepSealedUnderAnEarlierTaxonomyReDerivesWithIt(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	current := []byte(`"taxonomy_version":"6"`)
@@ -221,6 +223,7 @@ func TestDealShareNeverDisclosesMoreForTheClass(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	private := dealPrivateValues(events)

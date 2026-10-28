@@ -46,10 +46,18 @@ func TestPresentationPass(t *testing.T) {
 					assert.Equal(t, wantID, id, "presentation list --audience %s --format %s", audience, format)
 					assert.NoError(t, err)
 				}
-				// Packagings this tool does not build are refusals, for every bundle.
+				// The core builds the fragment and embedded packagings now
+				// (capsule-cli#254): a bundle either gets one or is refused as
+				// unavailable with a reason (a fragment over its size budget,
+				// say), never truncated.
 				for _, format := range []string{"fragment", "embedded"} {
-					_, _, err := passBuild(t, bundlePath, "--audience", audience, "--format", format)
-					assert.ErrorContains(t, err, "--format "+format+" is not built by this tool yet")
+					b, written, err := passBuild(t, bundlePath, "--audience", audience, "--format", format)
+					if err != nil {
+						assert.ErrorContains(t, err, "--format "+format+" is unavailable (", "presentation build --audience %s --format %s", audience, format)
+						continue
+					}
+					assert.Equal(t, "written", b.Page, "presentation build --audience %s --format %s", audience, format)
+					assert.NotEmpty(t, written, "presentation build --audience %s --format %s writes the packaging", audience, format)
 				}
 				_, _, err := passBuild(t, bundlePath, "--audience", audience, "--format", "static")
 				assert.ErrorContains(t, err, "--format static is unavailable (no-document)")
@@ -152,8 +160,8 @@ func passWithoutCard(t *testing.T, dir string, value map[string]interface{}, met
 //     evidence identifiers and verification state, byte-identical;
 //   - a failing bundle gets no page, and a page that carries it
 //     anyway shows the refusal and nothing else. A record signed by another
-//     key than the one it names gets no page either; the page's
-//     own gate does not check producer signatures (TestPresentationPassWrongSigner).
+//     key than the one it names gets no page either, and a page that carries
+//     it anyway says it failed (TestPresentationPassWrongSigner).
 //
 // Without CAPSULECTL_CHROME, every check that reads bytes runs. With it, each
 // html page is also opened at 390px, 1280px and in print: its semantic
@@ -534,12 +542,10 @@ func TestPresentationPassFailingBundleShowsTheRefusalOnly(t *testing.T) {
 
 // A record signed by another key than the one it names: verify --bundle
 // calls the bundle INVALID (producer_signature_invalid), so build writes no
-// page. The page's own gate (the vendored viewer, and
-// agent-action-capsule's Go resolver that list uses) checks each record's
-// identity, not its producer signature: list resolves the bundle, and a page
-// that carries it anyway says it verified. Both are pinned here so that a
-// viewer that checks producer signatures fails this test; then it asserts
-// the refusal, as the test above does.
+// page. list's gate (agent-action-capsule's Go resolver) checks each record's
+// identity, not its producer signature, and resolves the bundle; the page's
+// own runtime (the vendored viewer) checks the signature now, so a page that
+// carries the bundle anyway says it failed.
 func TestPresentationPassWrongSigner(t *testing.T) {
 	passIsolate(t)
 	chrome := passChrome(t)
@@ -556,7 +562,10 @@ func TestPresentationPassWrongSigner(t *testing.T) {
 		return
 	}
 	got := passSnapshots(t, chrome, passPageOf(t, value))
-	assert.Equal(t, []string{"verified"}, got.Verification.Verify, "the page's gate does not check producer signatures")
+	// The page's own runtime checks producer signatures now (the viewer's
+	// verification states), so it says the bundle failed, though the module
+	// list's gate (identity only) still selects its notice.
+	assert.Equal(t, []string{"failed"}, got.Verification.Verify, "the page's runtime checks producer signatures")
 }
 
 // passJSONValue is v as JSON decodes it, so a typed report member compares

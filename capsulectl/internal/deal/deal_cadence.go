@@ -119,7 +119,7 @@ func (s *dealSession) tick(ctx context.Context) (map[string]any, error) {
 // seen and the next open's repair reports it (witnessNativeTicks); a
 // receipt a released build stored is found the same way.
 func (s *dealSession) deliverCadence(ctx context.Context, c *evidencebook.Cadence, p cli.Profile, service string, now time.Time) (delivered []uint64, pending []map[string]any, err error) {
-	t, err := cli.OpenDealTarget(ctx, p, cli.UseCLL, s)
+	t, err := openOwnedTarget(ctx, p, cli.UseCLL, s)
 	if err != nil {
 		return nil, nil, err
 	}

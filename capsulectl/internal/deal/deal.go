@@ -96,16 +96,30 @@ type dealSession struct {
 	migrated bool
 }
 
-// HoldsDealStore is the session's proof, to cli.OpenDealTarget, that it
+// HoldsPluginStore is the session's proof, to cli.OpenOwnedTarget, that it
 // holds the deal store's writer lock: from openDealSession until close. A
 // read session holds only the shared lock, and is no writer.
-func (s *dealSession) HoldsDealStore() bool { return s.shelf != nil && !s.shared && !s.closed }
+func (s *dealSession) HoldsPluginStore() bool { return s.shelf != nil && !s.shared && !s.closed }
+
+// PluginStoreOwner names the plugin to the core's owner check.
+func (s *dealSession) PluginStoreOwner() string { return Name }
 
 // dealStoreLock is the writer lock held outside a session: deal init's,
 // while it creates the store.
 type dealStoreLock struct{ held bool }
 
-func (l *dealStoreLock) HoldsDealStore() bool { return l.held }
+func (l *dealStoreLock) HoldsPluginStore() bool { return l.held }
+
+// PluginStoreOwner names the plugin to the core's owner check.
+func (l *dealStoreLock) PluginStoreOwner() string { return Name }
+
+// openOwnedTarget opens a log of the deal store through the core's handle for
+// a store a plugin owns. A write session has marked the store already (the
+// core's plugin_owned marker, openDealSession); deal init, which holds only the
+// lock, marks it itself.
+func openOwnedTarget(ctx context.Context, p cli.Profile, use cli.TargetUse, w cli.PluginStoreWriter) (*cli.Target, error) {
+	return cli.OpenOwnedTarget(ctx, p, use, w)
+}
 
 func openDealSession(ctx context.Context, p cli.Profile) (_ *dealSession, err error) {
 	if p.Type != "sqlite" {
@@ -148,6 +162,12 @@ func openDealSession(ctx context.Context, p cli.Profile) (_ *dealSession, err er
 	// The shelf takes the store's writer lock (the lock file every released
 	// build takes), and holds it until close.
 	if err = s.openShelf(ctx, dbPath, originals); err != nil {
+		return nil, err
+	}
+	// Every write session marks the store as the plugin's under the lock,
+	// whether or not it ever opens a writable target (a tick without a witness
+	// writes only the shelf).
+	if err = cli.MarkStoreOwned(ctx, s.db, Name, s); err != nil {
 		return nil, err
 	}
 	s.originals = originals
@@ -238,7 +258,7 @@ func (s *dealSession) useDeal(ctx context.Context, dealID string, create bool) e
 			return err
 		}
 		s.book = book
-		t, err := cli.OpenDealTarget(ctx, s.dp, cli.UseRead, s)
+		t, err := openOwnedTarget(ctx, s.dp, cli.UseRead, s)
 		if err != nil {
 			return err
 		}
@@ -254,7 +274,7 @@ func (s *dealSession) useDeal(ctx context.Context, dealID string, create bool) e
 	if create {
 		use = cli.UseInitialization
 	}
-	t, err := cli.OpenDealTarget(ctx, s.dp, use, s)
+	t, err := openOwnedTarget(ctx, s.dp, use, s)
 	if err != nil {
 		return err
 	}
@@ -986,7 +1006,7 @@ func dealInitCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		p := cli.Profile{Name: name, Type: "sqlite", Namespace: "deal", LogID: "deal-cadence/" + suffix}
+		p := cli.Profile{Name: name, Type: "sqlite", Namespace: "deal", LogID: "deal-cadence/" + suffix, Log: Name}
 		p.Connection.Database = filepath.Join(dir, "deal.db")
 		p.Signing.File = filepath.Join(dir, "signing.seed")
 		p.TrustedKeys = []string{public}
@@ -1020,9 +1040,12 @@ func dealInitCommand() *cobra.Command {
 				err = errors.Join(err, unlock())
 			}
 		}()
-		t, err := cli.OpenDealTarget(c.Context(), p, cli.UseInitialization, lock)
+		t, err := openOwnedTarget(c.Context(), p, cli.UseInitialization, lock)
 		if err != nil {
 			return err
+		}
+		if err = t.MarkOwned(c.Context(), Name, lock); err != nil {
+			return errors.Join(err, t.Close())
 		}
 		if err = t.Close(); err != nil {
 			return err

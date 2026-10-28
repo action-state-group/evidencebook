@@ -101,7 +101,7 @@ func openDealSessionRead(ctx context.Context, p cli.Profile, dealID string) (_ *
 // openDealStoreRead is openDealSessionRead without a deal: the store's
 // handle, holding its shelf (and so its lock: a read waits for a step being
 // sealed, never for a tick's sleep), and no log opened. A read session
-// never migrates and is no writer (HoldsDealStore); a store no build with
+// never migrates and is no writer (HoldsPluginStore); a store no build with
 // the shelf has opened yet is refused, untouched, until a deal command has
 // run on a writable profile.
 func openDealStoreRead(ctx context.Context, p cli.Profile) (_ *dealSession, err error) {

@@ -1,12 +1,14 @@
 package deal
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
@@ -166,9 +168,13 @@ func dealEvents(t *testing.T, id string) ([]sealedEvent, *dealSession) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	events, err := s.load(t.Context(), id)
 	require.NoError(t, err)
+	// Closed at once: the session holds the store's writer lock, and the
+	// caller's next command needs it. A caller reads only the deal key.
+	require.NoError(t, s.close())
 	return events, s
 }
 
@@ -313,4 +319,19 @@ func TestAPackThatHidesTheTermsLineIsNotUsed(t *testing.T) {
 	require.Equal(t, "pause", share["verdict"], share["card"])
 	assert.Equal(t, "built-in", share["wording"])
 	assert.Contains(t, share["card"], "\nSaying yes also agrees to shipping: Free shipping.\n")
+}
+
+// A test helper that opens a session closes it before it returns: the session
+// holds the store's writer lock, and a helper that kept it made the next
+// command wait for the garbage collector to release it (minutes in CI).
+func TestAHelperThatReadsADealLeavesTheWriterLockFree(t *testing.T) {
+	id := stickerDeal(t, "lock", false)
+	dealEvents(t, id)
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	s, err := openDealSession(ctx, p)
+	require.NoError(t, err, "a session opens while no other holds the writer lock")
+	require.NoError(t, s.close())
 }

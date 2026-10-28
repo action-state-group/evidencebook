@@ -100,6 +100,7 @@ func TestVerifierStatementIssuedOverThePassingSealedEmail(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	holder := hex.EncodeToString(s.key.Public().(ed25519.PublicKey))
 	require.NoError(t, s.close())
 	assert.Equal(t, map[string]any{"key_id": holder, "public_key": holder}, statement["verifier"])

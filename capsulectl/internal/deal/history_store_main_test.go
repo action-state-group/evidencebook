@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 	os.Setenv(dohEnv, "off")
 	systemProbe = func(string) ([]net.IP, error) { return nil, nil }
 	InstallDealHooks()
+	nameProcessAsDealPlugin()
 	code := m.Run()
 	removeInstalled()
 	_ = os.RemoveAll(home)

@@ -200,6 +200,7 @@ func dealNonceOf(t *testing.T, dealID, capsuleID, name string) string {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	events, err := s.loadOther(t.Context(), dealID)
 	require.NoError(t, err)

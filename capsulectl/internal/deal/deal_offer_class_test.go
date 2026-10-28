@@ -39,6 +39,7 @@ func TestAnOfferSealedBeforeReDerivesUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	events, err := s.loadOther(t.Context(), id)
 	require.NoError(t, err)

@@ -3,13 +3,18 @@ package deal
 import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Vendor is what both first-party plugins name in their metadata.
 const Vendor = "action-state-group"
 
+// Name is the plugin's name: the launcher capsulectl-deal, the command
+// `capsulectl deal`, and the log owner a deal profile names (log: deal).
+const Name = "deal"
+
 // DealMetadata is capsulectl-deal's cli-plugin-metadata answer.
-var DealMetadata = cli.PluginMetadata{Name: cli.DealPluginName, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "settlement", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "terms-result"}}
+var DealMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"init", "open", "check", "note", "close", "report", "export", "list", "history", "deadlines", "settlement", "audit-host", "reconcile", "countersign", "verify-email", "verify-object", "verifier-statement", "verify-statement", "tick", "checkpoint", "sale", "compose", "request", "respond", "terms-result"}}
 
 // DealCommands are capsulectl-deal's own commands: `capsulectl deal ...`.
 func DealCommands() []*cobra.Command {
@@ -49,12 +54,47 @@ func onProfiles(cmd *cobra.Command, check func(cli.Profile) error) *cobra.Comman
 	return cmd
 }
 
-// InstallDealHooks gives the core tree the deal commands it reaches from
-// its own: `bundle --deal`, `cll checkpoint cadence`, and the deal verbs
-// `canary run` drives. Call it before the tree is built.
+// InstallDealHooks gives the core tree the deal commands it reaches from its
+// own: `bundle --deal`, `cll checkpoint cadence`, and the deal verbs `canary
+// run` drives. Call it before the tree is built.
 func InstallDealHooks() {
-	cli.DealBundleRun = dealBundleRun
-	cli.DealTickCommand = dealTickCommand
+	cli.ExtendBundle(cli.BundleExtension{Flags: dealBundleFlags, Run: dealBundleExtension})
+	cli.GraftCommand([]string{"cll", "checkpoint"}, cadenceCommand)
 	cli.DealCommandGroup = DealGroup
 	cli.ErrorPhase = dealErrorPhase
+}
+
+// cadenceCommand is `deal tick` under the core's checkpoint verbs.
+func cadenceCommand() *cobra.Command {
+	cadence := dealTickCommand()
+	cadence.Use = "cadence"
+	return cadence
+}
+
+// dealBundleFlags defines the flags the plugin adds to bundle, disclose and
+// permalink. A flag the core still defines is left to it.
+func dealBundleFlags(f *pflag.FlagSet, use string) {
+	if f.Lookup("deal") == nil {
+		f.String("deal", "", "A deal on a deal profile: the whole deal from its own log, built as `deal report` builds it (disclose also needs --share and --to; a deal is not shared as a link)")
+	}
+	if f.Lookup("share") == nil {
+		f.String("share", cli.DealAudienceKeep, "With --deal: who the copy is for: keep (bundle only: your own copy), counterparty or adjudicator (disclose only: a shared copy, put on record first)")
+	}
+	if f.Lookup("to") == nil {
+		f.String("to", "", "With --deal and --share: who the shared copy is for, as sealed in the disclosure record")
+	}
+}
+
+// dealBundleExtension runs bundle, disclose and permalink with --deal.
+func dealBundleExtension(c *cobra.Command, use string) (bool, error) {
+	if deal, _ := c.Flags().GetString("deal"); deal == "" {
+		if c.Flags().Changed("share") || c.Flags().Changed("to") {
+			return true, cli.InputError("--share and --to go with --deal: they choose what a deal's shared copy withholds")
+		}
+		return false, nil
+	}
+	if html, _ := c.Flags().GetString("html"); html != "" {
+		return true, cli.InputError("a deal's page is its receipt: `deal report --deal ID --html FILE` (or `--share ... --html FILE` for someone else)")
+	}
+	return true, dealBundleRun(c, use)
 }

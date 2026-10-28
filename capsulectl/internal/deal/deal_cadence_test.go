@@ -85,6 +85,7 @@ func deliver(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey
 	// (witnessNativeTicks): the tick's leaves become witnessed.
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	c, cp, err := s.cadenceOf(t.Context())
 	require.NoError(t, err)
@@ -96,7 +97,7 @@ func deliver(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey
 // tells the cadence.
 func storeReceipt(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey) {
 	t.Helper()
-	target, err := cli.OpenDealTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, target.Close()) }()
 	service, err := cli.ServiceID(p)
@@ -362,7 +363,7 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	size := uint64(tick["checkpoint"].(float64))
 	service, err := cli.ServiceID(p)
 	require.NoError(t, err)
-	target, err := cli.OpenDealTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
 	require.NoError(t, err)
 	state, err := target.Log.GetWitness(t.Context(), service, size)
 	require.NoError(t, err)
@@ -380,7 +381,7 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	assert.NotContains(t, assurance["text"], "retried at every tick")
 
 	// A refused delivery is said with its reason and the standing grant.
-	target, err = cli.OpenDealTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	target, err = openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
 	require.NoError(t, err)
 	refused := conflict
 	refused.Permanent = false
@@ -435,7 +436,7 @@ func TestTickRearmsARefusedDelivery(t *testing.T) {
 	size := uint64(tick["checkpoint"].(float64))
 	service, err := cli.ServiceID(p)
 	require.NoError(t, err)
-	target, err := cli.OpenDealTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
 	require.NoError(t, err)
 	state, err := target.Log.GetWitness(t.Context(), service, size)
 	require.NoError(t, err)
