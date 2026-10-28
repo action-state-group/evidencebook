@@ -17,8 +17,9 @@
   `witness_directory` (a `witnesses.json` value). To migrate, pass both.
   With no directory no receipt verifies, so `witnessed` is `false`. Each
   receipt then reads `NOT_CHECKED`, except when the statement itself does
-  not hold, in which case every receipt reads `FAIL`. The new dependency on `agent-action-capsule` turns on
-  `serde_json`'s `arbitrary_precision` feature for the whole build.
+  not hold, in which case every receipt reads `FAIL`. The new dependency
+  on `agent-action-capsule` turns on `serde_json`'s `arbitrary_precision`
+  feature for the whole build.
 - **`served_summary/1` output** (#162): `coverage` gains `witness_check`
   and `witness_receipts`. This is additive, but a consumer that pins the
   summary's bytes sees both members. Show whether a range is witnessed from
@@ -26,7 +27,14 @@
 - **`Derivations::register`** (#92, #86): registering a document again
   with different declarations now returns `DerivationError::Redeclared`
   and keeps the first registration. To migrate, register a changed
-  definition under its own document.
+  definition under its own document. `DerivationError` is not
+  `#[non_exhaustive]`, so an exhaustive `match` on it needs an arm for
+  `Redeclared`.
+- **Strict Ed25519** (#160, checkpointed-local-log#108):
+  `Checkpoint::verify_signature_offline`, `SealedRecord::verify` and the
+  served summary's statement check now refuse small-order and non-canonical
+  keys and signatures. Honest keys need no migration; such signatures, which
+  anyone can make without the private key, now fail.
 
 ### Changes
 
