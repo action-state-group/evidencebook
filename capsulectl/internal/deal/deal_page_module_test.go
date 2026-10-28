@@ -71,7 +71,7 @@ func TestTheDealPageIsBuiltThroughTheEmittersSlots(t *testing.T) {
 		}
 		if strings.Contains(s[1], "__BUNDLE__") {
 			readers++
-			assert.True(t, strings.HasPrefix(s[1], "window.__BUNDLE__ = ") || strings.Contains(s[1], "buildVerifiedBundleContext(window.__BUNDLE__)"),
+			assert.True(t, strings.HasPrefix(s[1], "window.__BUNDLE__ = ") || strings.Contains(s[1], "renderEvidenceGraph(window.__BUNDLE__,"),
 				"only the bundle slot and the bootstrap name the bundle: %.80s", s[1])
 		}
 	}

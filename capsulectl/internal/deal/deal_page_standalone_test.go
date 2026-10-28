@@ -12,6 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// verifiedContextJS is a node driver's verifiedContext(context, EG, bundle):
+// the verified context the page's runtime builds, the one a presentation
+// module's buildModel receives. The runtime exports no context builder;
+// renderEvidenceGraph hands the context to the registry it is given before
+// it renders anything but its checking bar, and this registry keeps it and
+// stops the render there.
+const verifiedContextJS = `async function verifiedContext(context, EG, bundle) {
+  if (vm.runInContext("typeof document", context) === "undefined")
+    vm.runInContext("globalThis.document = { createElement: () => ({ dataset: {}, append() {} }) };", context);
+  const stop = new Error("context captured");
+  let captured;
+  const registry = { resolve(ctx) { captured = ctx; throw stop; } };
+  try {
+    await EG.renderEvidenceGraph(bundle, { childNodes: [], replaceChildren() {} }, undefined, { registry });
+  } catch (err) {
+    if (err !== stop) throw err;
+  }
+  if (captured === undefined) throw new Error("the runtime built no verified context");
+  return captured;
+}
+`
+
 // dealPageStandaloneDriver runs a deal page's own runtime and deal view
 // under node, with node's WebCrypto, after an optional edit to its bundle,
 // and prints whether the view refused the report or showed it.
@@ -33,7 +55,7 @@ vm.runInContext(bundleScript, context);
 vm.runInContext(runtime, context);
 for (const source of modules) vm.runInContext(source, context);
 const EG = vm.runInContext("EvidenceGraph", context);
-const bundle = vm.runInContext("window.__BUNDLE__", context);
+` + verifiedContextJS + `const bundle = vm.runInContext("window.__BUNDLE__", context);
 const x = (bundle.extensions || {})["x-deal-report/v0"] || {};
 const flip = (h) => h.slice(0, -2) + (h.endsWith("00") ? "01" : "00");
 if (edit === "step-key") {
@@ -52,7 +74,7 @@ if (edit === "stripped") {
   delete bundle.extensions["x-deal-report/v0"];
 }
 (async () => {
-  const ctx = await EG.buildVerifiedBundleContext(bundle);
+  const ctx = await verifiedContext(context, EG, bundle);
   const resolution = await EG.resolvePresentation(ctx);
   if (resolution.kind !== "module") {
     process.stdout.write(JSON.stringify({ presentation: resolution.kind }));

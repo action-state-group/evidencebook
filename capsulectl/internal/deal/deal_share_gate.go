@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 )
 
 // dealPageGate is the last check before a shared copy is written. It reads
@@ -134,7 +135,7 @@ func dealGateText(page []byte) []byte {
 // dealWithoutVendored is a copy read whole, less the two vendored scripts
 // where they are found byte for byte: fixed code, pinned by digest.
 func dealWithoutVendored(page []byte) []byte {
-	data := bytes.Replace(page, cli.EvidenceGraphIIFE, nil, 1)
+	data := bytes.Replace(page, pageruntime.IIFE, nil, 1)
 	return bytes.Replace(data, []byte(DealViewJS), nil, 1)
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -315,10 +316,13 @@ func TestOverflowBaselineCheck(t *testing.T) {
 	}
 }
 
-// sameViewer: the page embeds the viewer this build vendors.
+// sameViewer: the page embeds a runtime this build carries. Deal report
+// pages carry capsule-viewer's own (pageruntime); the core's pages carry
+// capsule-cli's until capsule-cli#472 moves them to the same one.
 func sameViewer(page []byte) bool {
-	sum := sha256.Sum256(cli.EvidenceGraphIIFE)
-	return strings.Contains(string(page), string(cli.EvidenceGraphIIFE)) && hex.EncodeToString(sum[:]) == cli.EvidenceGraphIIFEDigest
+	core := sha256.Sum256(cli.EvidenceGraphIIFE)
+	return strings.Contains(string(page), string(pageruntime.IIFE)) ||
+		strings.Contains(string(page), string(cli.EvidenceGraphIIFE)) && hex.EncodeToString(core[:]) == cli.EvidenceGraphIIFEDigest
 }
 
 // openedToday is what a page works out from the clock it is opened on

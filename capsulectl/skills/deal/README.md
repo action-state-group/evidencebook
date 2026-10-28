@@ -455,9 +455,9 @@ as one local, self-contained page, built on this machine: nothing is hosted
 and no link is minted. The page embeds an AAC Evidence Bundle of the deal's
 own log (every step, its membership proof, the chain back to the opening
 step, the signed checkpoint) in capsule-viewer's emitter shell, with
-agent-action-capsule's own browser verifier, bundled with capsule-viewer's
-page code in capsule-cli's `cli/assets/` (rebuild and compare with its
-`scripts/build-evidence-graph-iife.sh`). Each item expands to
+capsule-viewer's page runtime, which bundles agent-action-capsule's own
+browser verifier (`go/pageruntime` in the capsule-viewer Go module, pinned
+by its digest). Each item expands to
 its steps, and a step's line is shown only if the verifier matched its record
 against the step's seal; the words shown come from this device's local
 store. If a byte was changed, the page says "This report did not verify"
@@ -622,10 +622,9 @@ dates read from it: never a header, the body or a name. The raw `.eml` stays
 in the local deal store, where `deal verify-email` re-checks it; no bundle
 carries it.
 
-Most of the self-contained `deal report --html` page is the embedded
-verifier, not evidence: of a 221,847-byte page for the 5-step deal,
-194,730 B is the vendored `evidence-graph.iife.js` and 7,488 B is
-`deal-view.js` (91%).
+The self-contained `deal report --html` page embeds its verifier:
+capsule-viewer's page runtime, 753,028 B (capsule-viewer/go v0.3.0), and
+`deal-view.js`, 42,069 B.
 
 ## Which build made a record, and what is never collected
 

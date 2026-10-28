@@ -18,6 +18,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 )
 
 // dealSellerExtension is the bundle extension kind every copy of a deal the
@@ -464,19 +465,11 @@ func dealReportHTML(b map[string]interface{}, countersign dealCountersignView, v
 		return "", err
 	}
 	bootstrap := `globalThis.capsulectlDealPage = Object.freeze(` + string(data) + `);
-(async () => {
-  const app = document.getElementById("app");
-  if (EvidenceGraph.digestCapability() === "none") {
-    EvidenceGraph.renderUnableToVerify(app, { verifyCommand: capsulectlDealPage.verify_command });
-    return;
-  }
-  const context = await EvidenceGraph.buildVerifiedBundleContext(window.__BUNDLE__);
-  await renderEvidenceGraph(context, app);
-})();`
-	return emitter.EmitEvidenceGraphHTMLWithOptions(b, cli.EvidenceGraphIIFE, emitter.Options{
+renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });`
+	return emitter.EmitEvidenceGraphHTMLWithOptions(b, pageruntime.IIFE, emitter.Options{
 		Title:             dealPageTitle(b, openings),
 		ThemeCSS:          dealThemeCSS,
-		CoreRuntimeSHA256: strings.TrimSpace(cli.EvidenceGraphIIFESHA256),
+		CoreRuntimeSHA256: pageruntime.SHA256,
 		Modules:           []emitter.Module{module},
 		Bootstrap:         bootstrap,
 	})

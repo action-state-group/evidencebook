@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The `deal report --html` page runs capsule-viewer's own page runtime
+  (`go/pageruntime` in capsule-viewer/go v0.3.0), pinned by its digest, in
+  place of capsule-cli's vendored build. Its bootstrap renders through the
+  viewer's `renderEvidenceGraph`. The summary line now names the one signature
+  check the page didn't run ("checkpoint signature not checked here", from
+  capsule-viewer#118). Prerequisite for capsule-cli#472 (#49).
+
 - The deal words move out of capsulectl's built-in wording pack into this
   plugin's own pack, `capsulectl.deal-wording/v0`
   (`internal/deal/assets/wording/capsulectl-deal-en.json`, 268 keys, names
