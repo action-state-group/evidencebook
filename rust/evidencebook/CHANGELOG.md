@@ -10,8 +10,8 @@
   counts only verdicts inside the covered range that name an own record
   inside it, so a verdict or record appended after the checkpoint never
   changes the summary for that checkpoint. It used to count verdicts across
-  the whole log. This is the rule the Mesh plugin's own served summary
-  already applies, ported so the plugin can use the crate's.
+  the whole log. A downstream plugin's own served summary already applies
+  this rule; porting it lets that plugin use the crate's.
 
 - **`seal`: a record sealed as the Go book seals it** (evidencebook#139).
   `seal::header` builds a record's header the way the Go book does, at its
