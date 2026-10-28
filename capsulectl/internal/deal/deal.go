@@ -909,6 +909,8 @@ func dealCommands() *cobra.Command {
 	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealListCommand(), dealSettlementCommand(), dealHistoryCommand(), dealTermsResultCommand())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
+	// A scheduled demo deal and the watcher that alarms when it stops.
+	deal.AddCommand(canaryCommands())
 	return deal
 }
 

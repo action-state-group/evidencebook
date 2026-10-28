@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `canary` is a deal verb now: `capsulectl deal canary run|watch` (it was
+  `capsulectl canary run|watch` in capsulectl, which drops its own with
+  capsule-cli#428). `--expect-version` takes this binary's release tag, and
+  the sealed note and `binary_version`/`binary_commit` name that tag and
+  commit, with the capsulectl core's version beside them (`core_version`). Behavior, flags, the exit code 6 on an alarm and the
+  alarm's words are unchanged. Its guide (`docs/CANARY.md`) and the two GitHub
+  Actions templates (`examples/canary-watch.yml`,
+  `examples/deal-harness-watch.yml`) moved here from capsule-cli; the
+  templates install this plugin's binary and run `capsulectl-deal canary
+  watch`, which needs no capsulectl beside it.
 - Builds against an unreleased capsulectl (capsule-cli `005e7e97`, capsule-viewer `389c1bac` (its Go module pinned by pseudo-version) and agent-action-capsule `1d1752bf`, all unreleased; capsule-cli#428) and
   names no deal-specific export of its host package where a generic one
   exists: the plugin owns its store through `cli.OpenOwnedTarget` and marks it
