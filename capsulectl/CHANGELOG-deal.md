@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Builds against capsule-cli `ed9c4db4` (unreleased; capsule-cli#479 merged), whose core
+  has no deal view of its own: `capsulectl presentation list` and `build` use the
+  deal view only from this plugin, with its files unpacked beside the launcher,
+  and otherwise resolve a deal receipt to the fallback page.
 - The deal view (`capsulectl.deal-view/v0`, the deal section of a receipt's
   page) is this plugin's own presentation module now (capsule-cli#428 step 4):
   its files are in `internal/deal/assets/`, the handshake offers it, and a

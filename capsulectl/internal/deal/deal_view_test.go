@@ -34,7 +34,8 @@ func installDealView(t *testing.T) string {
 
 // The handshake offers the deal view, and the core accepts the files beside
 // the launcher against the digests it states: `plugin ls` lists the module
-// with no refusal, and `presentation build` carries it in the page.
+// with no refusal, `presentation list` selects it for a deal receipt, and
+// `presentation build` carries it in the page.
 func TestTheHandshakeOffersTheDealView(t *testing.T) {
 	installDealView(t)
 	stdout, err := invoke(t, "", "plugin", "ls")
@@ -53,7 +54,18 @@ func TestTheHandshakeOffersTheDealView(t *testing.T) {
 	assert.Nil(t, deal["presentations_refused"], stdout)
 	assert.Contains(t, stdout, `"capsulectl.deal-view/v0"`)
 
-	b, page, err := passBuild(t, filepath.Join(presentationDir, "2-unilateral-receipt", "bundle.json"))
+	bundle := filepath.Join(presentationDir, "2-unilateral-receipt", "bundle.json")
+	stdout, err = invoke(t, "", "presentation", "list", "--bundle", bundle)
+	require.NoError(t, err, stdout)
+	var list struct {
+		Selected map[string]any `json:"selected"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &list), stdout)
+	assert.Equal(t, "capsulectl.deal-view/v0", list.Selected["id"], stdout)
+	assert.Equal(t, "plugin", list.Selected["source"])
+	assert.Equal(t, Name, list.Selected["plugin"])
+
+	b, page, err := passBuild(t, bundle)
 	require.NoError(t, err)
 	require.Len(t, b.Modules, 1, "the page carries the deal view")
 	assert.Equal(t, "capsulectl.deal-view/v0", b.Modules[0]["id"])
