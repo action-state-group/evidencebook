@@ -12,11 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Every wording key this plugin's code names is in the core's built-in pack,
-// so no line is left out for a missing key (Line drops one). capsule-cli's
+// Every wording key this plugin's code names is in the built-in packs this
+// process speaks with (the core's and this plugin's own), so no line is left
+// out for a missing key (Line drops one). capsule-cli's
 // TestEveryWordingKeyTheCodeNamesIsInThePack checks the core's code; this is
-// the same check over this plugin's code, against the pack of the capsule-cli
-// release it builds with (capsule-cli#326, design note section 3.1).
+// the same check over this plugin's code (capsule-cli#326, design note
+// section 3.1; capsule-cli#428).
 func TestEveryWordingKeyTheDealCodeNamesIsInThePack(t *testing.T) {
 	w := cli.BuiltinWording()
 	key := regexp.MustCompile(`"((?:say|card|report|action)\.[a-z_.]*[a-z_])"`)

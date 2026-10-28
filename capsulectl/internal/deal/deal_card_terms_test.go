@@ -302,9 +302,7 @@ func TestACardAnswerWithoutWordsAdoptsTheNamedTerms(t *testing.T) {
 // the built-in words, so what the approval adopts is on it.
 func TestAPackThatHidesTheTermsLineIsNotUsed(t *testing.T) {
 	id := stickerDeal(t, "card", false)
-	var doc map[string]any
-	require.NoError(t, json.Unmarshal(cli.BuiltinWordingBytes(), &doc))
-	doc["id"] = "org.example.product.wording/v0"
+	doc := fullPackDoc(t)
 	doc["entries"].(map[string]any)["card.terms.label"] = "Saying yes also agrees to {terms}. {extra}"
 	raw, err := json.Marshal(doc)
 	require.NoError(t, err)
