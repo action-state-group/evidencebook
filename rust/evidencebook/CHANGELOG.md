@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Breaking: the served summary counts adjudications only within the
+  checkpoint** (evidencebook#35). `served_summary::summary_value` takes
+  `leaf_index_of: &dyn Fn(&str) -> Option<u64>` (the leaf index of one of
+  the owner's own records, `None` for any other id) in place of
+  `is_own_record: &dyn Fn(&str) -> bool`. `adjudications_received` now
+  counts only verdicts inside the covered range that name an own record
+  inside it, so a verdict or record appended after the checkpoint never
+  changes the summary for that checkpoint. It used to count verdicts across
+  the whole log. This is the rule the Mesh plugin's own served summary
+  already applies, ported so the plugin can use the crate's.
+
 - **`seal`: a record sealed as the Go book seals it** (evidencebook#139).
   `seal::header` builds a record's header the way the Go book does, at its
   position and commit time, with the commit time truncated to the
