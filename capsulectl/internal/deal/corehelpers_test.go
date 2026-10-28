@@ -163,11 +163,20 @@ func invoke(t *testing.T, input string, args ...string) (string, error) {
 	return out.String(), e
 }
 
-// testCommand is the capsulectl tree as a user reaches it with the deal
-// plugin installed, in one process: the core commands, and `deal ...` as the
-// core dispatches it.
+// testCommand is the capsulectl tree with the deal commands added, in one
+// process. TestMain has named the process as the deal plugin (see
+// nameProcessAsDealPlugin), so the core runs `bundle --deal` here.
 func testCommand() *cobra.Command {
 	return cli.NewCommandWith(DealGroup())
+}
+
+// nameProcessAsDealPlugin makes the core treat this process as the
+// capsulectl-deal plugin that keeps a deal profile's log, as the real binary
+// is, instead of forwarding `bundle --deal` to an installed plugin. Building
+// the plugin tree is what names the process, and it writes a global, so
+// TestMain does it once before any test runs, never from a test goroutine.
+func nameProcessAsDealPlugin() {
+	_ = cli.NewPluginCommand(DealMetadata, DealGroup())
 }
 
 func writeBundle(t *testing.T, value interface{}) string {

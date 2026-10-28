@@ -181,6 +181,7 @@ func TestABookingCheckedBeforeReDerivesUnchanged(t *testing.T) {
 		require.NoError(t, err)
 		s, err := openDealSession(t.Context(), p)
 		require.NoError(t, err)
+		defer func() { _ = s.close() }()
 		require.NoError(t, s.useDeal(t.Context(), id, false))
 		for i, se := range events {
 			_, digest, err := encodeDealRecord(se.Event, events[:i], s.dkey)

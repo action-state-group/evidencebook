@@ -248,7 +248,7 @@ func termsWitnessState(cadence map[string]interface{}) string {
 func (s *dealSession) resultsBundle(ctx context.Context, dealID, root string, withhold map[string]bool) (_ map[string]interface{}, _ map[string]interface{}, err error) {
 	lp := s.dp
 	lp.LogID = dealResultsLogID(dealID)
-	t, err := cli.OpenDealTarget(ctx, lp, cli.UseRead, s)
+	t, err := openOwnedTarget(ctx, lp, cli.UseRead, s)
 	if err != nil {
 		return nil, nil, err
 	}

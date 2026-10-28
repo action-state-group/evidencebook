@@ -1402,7 +1402,7 @@ func (s *dealSession) recordShare(ctx context.Context, dealID string, b map[stri
 	lp := s.dp
 	lp.LogID = dealDisclosureLogID(dealID)
 	lp.Namespace = ""
-	t, err := cli.OpenDealTarget(ctx, lp, cli.UseInitialization, s)
+	t, err := openOwnedTarget(ctx, lp, cli.UseInitialization, s)
 	if err != nil {
 		return nil, err
 	}

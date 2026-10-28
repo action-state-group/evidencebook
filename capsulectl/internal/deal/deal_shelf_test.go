@@ -87,6 +87,7 @@ func liveLogs(t *testing.T, p cli.Profile) []string {
 	t.Helper()
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	c, _, err := s.cadenceOf(t.Context())
 	require.NoError(t, err)

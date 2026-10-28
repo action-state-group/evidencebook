@@ -129,6 +129,7 @@ func TestACloseSealedBeforeActorsReDerivesUnchanged(t *testing.T) {
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	require.NoError(t, s.useDeal(t.Context(), id, false))
 	events, err := s.load(t.Context(), id)

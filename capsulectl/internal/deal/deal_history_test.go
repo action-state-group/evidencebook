@@ -906,6 +906,7 @@ func sealHistory(t *testing.T, audience, recipient string, selection []any, deal
 	require.NoError(t, err)
 	s, err := openDealSession(t.Context(), p)
 	require.NoError(t, err)
+	defer func() { _ = s.close() }()
 	defer func() { require.NoError(t, s.close()) }()
 	sel := make([]interface{}, len(selection))
 	copy(sel, selection)
