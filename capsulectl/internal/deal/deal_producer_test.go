@@ -166,8 +166,8 @@ const context = vm.createContext({ console, TextEncoder, TextDecoder, atob, btoa
 vm.runInContext("globalThis.window = globalThis;", context);
 for (const source of [bundleScript, runtime, ...scripts.filter((s) => s !== bundleScript && s !== runtime && s !== bootstrap)]) vm.runInContext(source, context);
 const EG = vm.runInContext("EvidenceGraph", context);
-(async () => {
-  const ctx = await EG.buildVerifiedBundleContext(vm.runInContext("window.__BUNDLE__", context));
+` + verifiedContextJS + `(async () => {
+  const ctx = await verifiedContext(context, EG, vm.runInContext("window.__BUNDLE__", context));
   const resolution = await EG.resolvePresentation(ctx);
   const view = await resolution.module.buildModel(ctx);
   process.stdout.write(JSON.stringify({ refusal: view.refusal || "", page: view.pageBuild, older: view.olderBuilds, earlier: view.earlierBuilds, notes: view.releaseNotes }));

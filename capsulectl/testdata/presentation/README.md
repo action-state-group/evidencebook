@@ -1,15 +1,18 @@
 # Presentation goldens
 
 Nine synthetic bundles and what capsulectl's pages show a reader for them, taken with
-the viewer first vendored at agent-action-capsule `5d80d40`; the pages and snapshots
-are now those of the viewer capsule-cli's `cli/assets/README.md` pins. This copy was taken
+the viewer first vendored at agent-action-capsule `5d80d40`. The `deal report --html`
+fixtures (2, 7, 8, 9) run capsule-viewer's page runtime (`go/pageruntime`) at the
+capsule-viewer/go version `go.mod` requires, so their snapshots move with that version;
+the other fixtures and every `build-snapshot.json` stay on the runtime capsule-cli vendors
+until capsule-cli#472. This copy was taken
 from capsule-cli's `cli/testdata/presentation` when the plugin moved here (capsule-cli#326);
 `TestPresentationGoldens` (`internal/deal/presentation_golden_test.go`) holds every later
 viewer to it:
 
 - **Without Chrome:** it re-emits each page from its `bundle.json` the way capsulectl
-  does and checks the page gate's decision. While the vendored viewer is unchanged,
-  the result must equal `page.html` byte for byte. The two pages `book report build`
+  does and checks the page gate's decision. While the runtime a page embeds is
+  unchanged, the result must equal `page.html` byte for byte. The two pages `book report build`
   writes (`4-monthly-outcome`, `5-monthly-compliance`) are re-emitted by capsulectl-book's
   `TestReportBuildGoldens` (evidencebook's `capsulectl/internal/book/presentation_golden_test.go`, evidencebook#104), which
   fails unless `page.html` is exactly what it writes now; the browser checks below

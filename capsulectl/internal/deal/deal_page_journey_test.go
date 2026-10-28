@@ -44,9 +44,9 @@ vm.runInContext(bundleScript, context);
 vm.runInContext(runtime, context);
 for (const source of modules) vm.runInContext(source, context);
 // The bootstrap's first statement sets the page's data; the rest renders.
-vm.runInContext(bootstrap.slice(0, bootstrap.indexOf("\n(async")), context);
+vm.runInContext(bootstrap.slice(0, bootstrap.indexOf("\nrenderEvidenceGraph(")), context);
 const EG = vm.runInContext("EvidenceGraph", context);
-const bundle = vm.runInContext("window.__BUNDLE__", context);
+` + verifiedContextJS + `const bundle = vm.runInContext("window.__BUNDLE__", context);
 const words = vm.runInContext("globalThis.capsulectlDealPage.words", context);
 // "withhold": the switch step's disclosure is dropped from the file.
 if (edit === "withhold") {
@@ -55,7 +55,7 @@ if (edit === "withhold") {
   delete bundle.disclosures[step];
 }
 (async () => {
-  const ctx = await EG.buildVerifiedBundleContext(bundle);
+  const ctx = await verifiedContext(context, EG, bundle);
   const resolution = await EG.resolvePresentation(ctx);
   const model = await resolution.module.buildModel(ctx);
   const L0 = new Node("div");

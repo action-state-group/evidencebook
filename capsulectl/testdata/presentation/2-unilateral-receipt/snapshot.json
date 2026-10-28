@@ -30,7 +30,7 @@
   ],
   "text": [
     "None of the bundle's checks failed, but some were not run: see \"Not checked on this page\" below",
-    "10 of 10 checks passed · 6 records · signatures not checked here",
+    "10 of 10 checks passed · 6 records · checkpoint signature not checked here",
     "How this page was checked",
     "This page did not check the checkpoint signature, which this page cannot check (checkpoint_verifier_unavailable). Interval coverage and per-record membership are checkpoint_unverified: relative to a producer-asserted checkpoint this page could not authenticate.",
     "DEMO",
@@ -76,7 +76,7 @@
     "None found.",
     "This page checked each step's sealed record and its place in this deal's log; the verification below says what was and was not checked. The records carry fingerprints, not names or numbers; the words shown come from this device. The seal key is on the agent's machine, so this shows the record was not changed after it was made, not who made it. It covers this skill's own records only, never the agent host's own store.",
     "How this page was checked",
-    "· 10 of 10 checks passed · 6 records · signatures not checked here",
+    "· 10 of 10 checks passed · 6 records · checkpoint signature not checked here",
     "Verification",
     "bundle digest",
     "\"24850ae1dbcc43e96c0a363f6f19b7c2ca9733cfe4b96e133b1ff01601f656ed\"",

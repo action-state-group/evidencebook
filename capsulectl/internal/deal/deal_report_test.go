@@ -2,8 +2,6 @@ package deal
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -19,6 +17,7 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,7 +109,7 @@ func dealReportIsOneLocalVerifyingPage(t *testing.T, inLog bool) {
 	html := string(raw)
 	assert.NotRegexp(t, regexp.MustCompile(`(?i)<(script|link|img|iframe)[^>]+(src|href)=`), html)
 	assert.Regexp(t, `<title>Deal report: “[^<]+”</title>`, html, "the user's own copy is titled with the words they asked")
-	assert.Contains(t, html, string(cli.EvidenceGraphIIFE))
+	assert.Contains(t, html, string(pageruntime.IIFE))
 	assert.NotContains(t, html, "Checked only by capsulectl verify", "the deal view lists no checks of its own: the core's lists stand (capsule-cli#341)")
 
 	// Pull the embedded bundle back out and run the authoritative verifier.
@@ -158,7 +157,7 @@ func embeddedBundle(t *testing.T, html string) map[string]interface{} {
 	b, ok := v.(map[string]interface{})
 	require.True(t, ok)
 	// Round-trip check: re-emitting the same bundle gives the same page.
-	again, err := emitter.EmitEvidenceGraphHTML(b, cli.EvidenceGraphIIFE)
+	again, err := emitter.EmitEvidenceGraphHTML(b, pageruntime.IIFE)
 	require.NoError(t, err)
 	assert.Contains(t, html, again[strings.Index(again, start):strings.Index(again, ";</script>")])
 	return b
@@ -227,11 +226,6 @@ func TestDealRecordsFollowTheProfile(t *testing.T) {
 	result, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(result))
 	assert.Contains(t, string(result), "ALL OK")
-}
-
-func TestVendoredVerifierMatchesRecordedDigest(t *testing.T) {
-	sum := sha256.Sum256(cli.EvidenceGraphIIFE)
-	assert.Equal(t, strings.TrimSpace(cli.EvidenceGraphIIFESHA256), hex.EncodeToString(sum[:]), "rebuild with scripts/build-evidence-graph-iife.sh; never hand-edit")
 }
 
 // SF2: the page can check "What you asked" against the baseline's sealed
