@@ -236,13 +236,17 @@ fn canonical_header(header: &Header) -> Result<Vec<u8>, SealRecordError> {
 }
 
 /// The record capsule committing `header` (whose JCS is `header_bytes`):
-/// its committed body, its id and its JCS with `capsule_id`.
+/// its committed body, its id and its JCS with `capsule_id`. A blank
+/// operator or developer is refused, whether sealing or verifying.
 fn record_capsule(
     header: &Header,
     header_bytes: &[u8],
     operator: &str,
     developer: &str,
 ) -> Result<(Vec<u8>, String, Vec<u8>), SealRecordError> {
+    if operator.trim().is_empty() || developer.trim().is_empty() {
+        return Err(invalid("operator and developer must not be empty"));
+    }
     let mut capsule = Map::new();
     capsule.insert("spec_version".into(), json!(SPEC_VERSION));
     capsule.insert("format_version".into(), json!(FORMAT_VERSION));
@@ -294,9 +298,6 @@ pub fn seal_record(
     header: &Header,
     producer: &Producer<'_>,
 ) -> Result<SealedRecord, SealRecordError> {
-    if producer.operator.trim().is_empty() || producer.developer.trim().is_empty() {
-        return Err(invalid("operator and developer must not be empty"));
-    }
     let header_bytes = canonical_header(header)?;
     let public_key = public_key_of(producer.signer)?;
     let (body, record_id, capsule) =
@@ -351,7 +352,8 @@ impl SealedRecord {
             .map_err(|_| mismatch("the capsule is not JSON"))?;
         let named = |member: &str| capsule.get(member).and_then(Value::as_str).unwrap_or("");
         let (body, record_id, expected) =
-            record_capsule(&header, &self.header, named("operator"), named("developer"))?;
+            record_capsule(&header, &self.header, named("operator"), named("developer"))
+                .map_err(|e| mismatch(&format!("no record capsule of this header: {e}")))?;
         if expected != self.capsule || body != self.body || record_id != self.record_id {
             return Err(mismatch(
                 "the capsule is not the record capsule of this header",

@@ -278,6 +278,16 @@ fn verify_refuses_anything_but_the_seal() {
         refused(&resealed(stamped, &s.header, &key), &pk),
         "a timestamp other than committed_at"
     );
+    for member in ["operator", "developer"] {
+        for blank in ["", "  "] {
+            let mut c = capsule.clone();
+            c[member] = json!(blank);
+            assert!(
+                refused(&resealed(c, &s.header, &key), &pk),
+                "a blank {member}"
+            );
+        }
+    }
     let mut operator = capsule;
     operator["operator"] = json!("someone else");
     assert!(
