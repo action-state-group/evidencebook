@@ -373,7 +373,7 @@ func TestDealReceiptNeverSaysTheUserWasReminded(t *testing.T) {
 		require.NoError(t, err)
 		ext, err := json.Marshal(embeddedBundle(t, string(html))["extensions"])
 		require.NoError(t, err)
-		for name, text := range map[string]string{"json": string(raw), "page data": string(ext), "page script": cli.DealViewJS} {
+		for name, text := range map[string]string{"json": string(raw), "page data": string(ext), "page script": DealViewJS} {
 			assert.Empty(t, reminded.FindAllString(text, -1), "%s at %s", name, at)
 		}
 		assert.Contains(t, string(raw), "carried")

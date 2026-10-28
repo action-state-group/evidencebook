@@ -56,7 +56,9 @@ first-party check compares the plugin's `core_version` with its own version
    `--bundle capsulectl-deal-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook-deal
    --signer-workflow action-state-group/evidencebook-deal/.github/workflows/release.yml`.
 4. The install page pins the plugin asset, the skill archive
-   (`deal-skill-vX.Y.Z.tar.gz`) and its `skills/deal/SKILL.md`.
+   (`deal-skill-vX.Y.Z.tar.gz`) and its `skills/deal/SKILL.md`, and the deal
+   view archive (`deal-view-vX.Y.Z.tar.gz`), which is unpacked into the
+   plugin directory beside `capsulectl-deal` (see the README).
 
 ## Repository settings
 

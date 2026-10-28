@@ -334,7 +334,7 @@ func TestDealSharePageGate(t *testing.T) {
 	digest := "aa" + verifyCode + strings.Repeat("b", 56) // a code-shaped run inside a digest, by chance
 	page := func(text string) []byte {
 		return []byte("<!doctype html><script>" + string(cli.EvidenceGraphIIFE) + "</script><script>window.__BUNDLE__ = " +
-			`{"line":"` + text + `","sig":"` + digest + `","amount_minor":120000}` + ";</script><script>" + cli.DealViewJS + "</script>")
+			`{"line":"` + text + `","sig":"` + digest + `","amount_minor":120000}` + ";</script><script>" + DealViewJS + "</script>")
 	}
 	assert.NoError(t, dealPageGate(page("Did: pay $1200.00 by card · code [withheld]"), events))
 	for _, leak := range []string{

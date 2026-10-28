@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The deal view (`capsulectl.deal-view/v0`, the deal section of a receipt's
+  page) is this plugin's own presentation module now (capsule-cli#428 step 4):
+  its files are in `internal/deal/assets/`, the handshake offers it, and a
+  release ships `deal-view-VERSION.tar.gz` to unpack beside the launcher
+  (README). `deal report --html` pages are unchanged; with the files unpacked,
+  `capsulectl presentation build` also carries the deal view. Builds against
+  capsule-cli `d5f42c06` (unreleased; capsule-cli#478 merged), whose handshake can
+  state a plugin's presentations.
 - Builds against capsule-cli `8a856b75` (unreleased; capsule-cli#428 PR B), whose core names no company
   plugin. The deal plugin now says the words the core no longer does: `bundle`,
   `disclose` and `permalink` on a deal profile without `--deal` name the deal to

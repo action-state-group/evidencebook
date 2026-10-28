@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ import (
 // one verdict stand alone on the page (Steven's banner ruling, 2026-10-21,
 // on capsule-cli#341).
 func TestTheDealViewStatesNoVerificationOfItsOwn(t *testing.T) {
-	script := cli.DealViewJS
+	script := DealViewJS
 	for _, own := range []string{"Checked on this page", "Checked only by capsulectl verify", "The agent's signature on every record", "Witnessed through", "Sealed by my agent", "Not witnessed"} {
 		assert.NotContains(t, script, own)
 	}

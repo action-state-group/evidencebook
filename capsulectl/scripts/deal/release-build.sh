@@ -14,10 +14,12 @@
 # cli.PluginCommit are this release's. The handshake reports the first as
 # core_version and the second as version.
 #
-# Assets: capsulectl-deal-VERSION-OS-ARCH for each target, and
-# deal-skill-VERSION.tar.gz, the skills/deal tree as a deterministic archive
-# (sorted entries, fixed mtime, owner 0:0, gzip -n). It needs GNU tar: set
-# TAR=gtar on macOS.
+# Assets: capsulectl-deal-VERSION-OS-ARCH for each target;
+# deal-skill-VERSION.tar.gz, the skills/deal tree; and deal-view-VERSION.tar.gz,
+# the deal view's files as the core reads them beside the launcher
+# (capsulectl-deal.d/deal-view.js and .css, the bytes the binary embeds and
+# its handshake states). Both archives are deterministic (sorted entries,
+# fixed mtime, owner 0:0, gzip -n). It needs GNU tar: set TAR=gtar on macOS.
 set -euo pipefail
 
 VERSION="${1:?version, e.g. v0.1.0}"
@@ -46,10 +48,20 @@ git ls-files -z skills/deal | LC_ALL=C sort -z |
     --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf - |
   gzip -n -9 >"$OUT/deal-skill-$VERSION.tar.gz"
 
+# The deal view, unpacked into the plugin root beside capsulectl-deal.
+view=$(mktemp -d)
+trap 'rm -rf "$view"' EXIT
+mkdir "$view/capsulectl-deal.d"
+cp internal/deal/assets/deal-view.js internal/deal/assets/deal-view.css "$view/capsulectl-deal.d/"
+(cd "$view" && printf '%s\0' capsulectl-deal.d capsulectl-deal.d/deal-view.css capsulectl-deal.d/deal-view.js |
+  "${TAR:-tar}" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
+    --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf -) |
+  gzip -n -9 >"$OUT/deal-view-$VERSION.tar.gz"
+
 cd "$OUT"
 if command -v sha256sum >/dev/null; then
-  sha256sum capsulectl-deal-"$VERSION"-* deal-skill-"$VERSION".tar.gz > SHA256SUMS
+  sha256sum capsulectl-deal-"$VERSION"-* deal-skill-"$VERSION".tar.gz deal-view-"$VERSION".tar.gz > SHA256SUMS
 else
-  shasum -a 256 capsulectl-deal-"$VERSION"-* deal-skill-"$VERSION".tar.gz > SHA256SUMS
+  shasum -a 256 capsulectl-deal-"$VERSION"-* deal-skill-"$VERSION".tar.gz deal-view-"$VERSION".tar.gz > SHA256SUMS
 fi
 cat SHA256SUMS

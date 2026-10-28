@@ -74,7 +74,7 @@ func TestDealPageComparesBuildsWithoutFetching(t *testing.T) {
 	assert.Contains(t, html, "Produced by an older version")
 	assert.Contains(t, html, "https://github.com/action-state-group/capsule-cli/releases")
 	for _, call := range []string{"fetch(", "XMLHttpRequest", "sendBeacon", "WebSocket", "navigator.connection"} {
-		assert.NotContains(t, cli.DealViewJS, call, "the deal view makes no network call")
+		assert.NotContains(t, DealViewJS, call, "the deal view makes no network call")
 	}
 }
 
