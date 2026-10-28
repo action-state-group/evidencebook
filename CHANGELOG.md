@@ -4,7 +4,7 @@
 
 ### Changed: builds against the capsule-cli whose core names no company plugin (capsule-cli#428)
 
-- Both modules build against capsule-cli `8a856b75` and capsule-viewer `389c1bac`
+- The `report` and `capsulectl` modules build against capsule-cli `8a856b75` and capsule-viewer `389c1bac`
   (pseudo-versions, unreleased). A book profile now names its owner: a jsonl
   profile with a `log_id` needs `log: book` (`capsulectl profile create ... --log
   book`, or `capsulectl profile update --profile NAME --log book` for an older
