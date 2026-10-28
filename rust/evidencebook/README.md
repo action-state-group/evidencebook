@@ -26,8 +26,11 @@ its material, is the `evidence-request` crate's.
 
 `seal` builds a record's header and seals it as the Go book's record
 capsule and Producer Envelope, byte for byte, for a caller's `ask::Book` to
-store. Every Ed25519 signature the crate checks is verified strictly: a
-small-order or non-canonical key never verifies.
+store. It does not seal headers with field commitments, which `Header` does
+not carry. The crate's own Ed25519 checks (checkpoint signatures, the served
+summary's checkpoint statement, `SealedRecord::verify`) are strict: a
+small-order or non-canonical key never verifies. Witness receipts are checked
+by agent-action-capsule and follow its rules.
 
 The crate carries no deployment vocabulary. Record kinds, correlation key
 names and content comparators come from the calling profile.

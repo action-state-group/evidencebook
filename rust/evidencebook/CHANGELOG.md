@@ -8,15 +8,20 @@
   microsecond in Go's RFC 3339 form. `seal::seal_record` seals it as the Go
   book's record capsule: an Agent Action Capsule of action type `fyi` that
   commits the header's JCS, with each link also a reference, and a Producer
-  Envelope over the capsule id. It returns the record id, the header, the
-  capsule, the committed body and the envelope, byte for byte what the Go
-  book stores. `seal::verify_record` checks a stored record against its
-  header and key. A caller's `ask::Book::seal` uses these. With them, the
-  crate reproduces the Go book's Personal-Agent History run (its
-  `run_sha256`) and answers the interop-profile vectors as Go does: 20 of
-  53 pass and 33 are skipped, the same split as the Python package. The
-  programs that make those runs are `rust/interop`, which is not
-  published. No new dependency.
+  Envelope over the capsule id. It returns a `SealedRecord` (the record id,
+  the header, the capsule, the committed body and the envelope), byte for
+  byte what the Go book stores. It refuses a header Go would write
+  differently: a time not in Go's form, or an empty ref or correlation
+  value. Headers with field commitments are not supported. `SealedRecord::verify`
+  checks a stored record: the capsule must be exactly the record capsule of
+  its header, and the envelope must verify under the book's key. A caller's
+  `ask::Book::seal` uses these. With them, the crate reproduces the Go book's
+  Personal-Agent History run (its `run_sha256`). It also answers the
+  interop-profile vectors: every member its run writes matches the Go run's,
+  and 20 of 53 cases pass and 33 are skipped (Go's 25 skips plus the 8
+  A2A/MCP carriage cases), the same split as the Python package. The
+  programs that make those runs are `rust/interop`, which is not published.
+  No new dependency.
 
 - **Security: Ed25519 signatures are verified strictly**
   (checkpointed-local-log#108). `substrate::Checkpoint::verify_signature_offline`
@@ -24,7 +29,7 @@
   checkpointed-local-log 0.3.1. That release uses ed25519-dalek's `verify`,
   which accepts a signature by a small-order public key, and anyone can make
   such a signature without the private key. Both checks, and
-  `seal::verify_record`, now refuse non-canonical keys and R, small-order
+  `SealedRecord::verify`, now refuse non-canonical keys and R, small-order
   keys and R, and S >= L, and check the cofactorless equation, as the shared
   `ed25519-vectors.json` requires. The tests run those vectors.
 

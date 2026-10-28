@@ -224,14 +224,9 @@ impl MemBook {
             signer: &self.signer,
         };
         let sealed = seal::seal_record(&header, &producer).map_err(|e| SealError(e.to_string()))?;
-        seal::verify_record(
-            &sealed.record_id,
-            &sealed.header,
-            &sealed.capsule,
-            &sealed.envelope,
-            &self.signer.verifying_key().to_bytes(),
-        )
-        .map_err(|e| SealError(e.to_string()))?;
+        sealed
+            .verify(&self.signer.verifying_key().to_bytes())
+            .map_err(|e| SealError(e.to_string()))?;
         let id: [u8; 32] = hex::decode(&sealed.record_id).unwrap().try_into().unwrap();
         let leaf_index = self
             .substrate

@@ -11,7 +11,9 @@
 //! COSE_Sign1 over the raw 32-byte id, its protected header in capsule-emit's
 //! order (content type, kid, alg). For the same header, operator, developer
 //! and key, [`seal_record`] returns the bytes Go's book stores, which the
-//! personal-history and interop-profile runs check byte for byte.
+//! personal-history and interop-profile runs check byte for byte. A Go
+//! header that carries field commitments (`field_commitments`, `commit_alg`)
+//! has no [`Header`] here, so such records are not sealed by this module.
 //!
 //! The crate owns no record store. A caller's [`crate::ask::Book::seal`]
 //! assigns the position and commit time, builds the header with [`header`],
@@ -100,7 +102,9 @@ fn invalid(why: impl Into<String>) -> SealRecordError {
 ///
 /// The members [`Entry`] does not carry (`event_time_claim`, the refs,
 /// `correlation`, payload commitments) are the caller's to set on the
-/// returned header before sealing it.
+/// returned header before sealing it. Write `event_time_claim` with
+/// [`rfc3339_nano`], and leave an empty ref or correlation value unset:
+/// [`seal_record`] refuses anything else, since Go's header would differ.
 pub fn header(
     book_id: &str,
     seq: u64,
@@ -195,8 +199,8 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// The record's header in JCS, after the checks a Go book makes before
-/// sealing: the record rules ([`Header::validate`]) and its times in the
-/// form Go writes them.
+/// sealing: the record rules ([`Header::validate`]), its times in the form
+/// Go writes them, and no member Go's header would leave out as empty.
 fn canonical_header(header: &Header) -> Result<Vec<u8>, SealRecordError> {
     header.validate()?;
     if go_time(&header.committed_at, 6).as_deref() != Some(header.committed_at.as_str()) {
@@ -212,24 +216,33 @@ fn canonical_header(header: &Header) -> Result<Vec<u8>, SealRecordError> {
             )));
         }
     }
+    // Go omits an empty ref or correlation key (`omitempty`); one written
+    // here would give the header, and so the record id, other bytes.
+    let refs = [
+        ("subject_ref", &header.subject_ref),
+        ("principal_ref", &header.principal_ref),
+        ("counterparty_ref", &header.counterparty_ref),
+    ];
+    if let Some((name, _)) = refs.iter().find(|(_, r)| r.as_deref() == Some("")) {
+        return Err(invalid(format!("{name} is empty; leave it unset")));
+    }
+    if let Some((key, _)) = header.correlation.iter().find(|(_, v)| v.is_empty()) {
+        return Err(invalid(format!(
+            "correlation key {key:?} is empty; leave it unset"
+        )));
+    }
     let value = serde_json::to_value(header).map_err(|e| invalid(e.to_string()))?;
     Ok(canonical::jcs(&value)?)
 }
 
-/// Seal `header` as a record of `producer`'s book: its record capsule, id
-/// and Producer Envelope. The header is checked first
-/// ([`Header::validate`]); its `committed_at` must be in the form
-/// [`header`] writes, and any `event_time_claim` in [`rfc3339_nano`]'s.
-pub fn seal_record(
+/// The record capsule committing `header` (whose JCS is `header_bytes`):
+/// its committed body, its id and its JCS with `capsule_id`.
+fn record_capsule(
     header: &Header,
-    producer: &Producer<'_>,
-) -> Result<SealedRecord, SealRecordError> {
-    if producer.operator.trim().is_empty() || producer.developer.trim().is_empty() {
-        return Err(invalid("operator and developer must not be empty"));
-    }
-    let header_bytes = canonical_header(header)?;
-    let public_key = public_key_of(producer.signer)?;
-
+    header_bytes: &[u8],
+    operator: &str,
+    developer: &str,
+) -> Result<(Vec<u8>, String, Vec<u8>), SealRecordError> {
     let mut capsule = Map::new();
     capsule.insert("spec_version".into(), json!(SPEC_VERSION));
     capsule.insert("format_version".into(), json!(FORMAT_VERSION));
@@ -242,8 +255,8 @@ pub fn seal_record(
         json!(format!("{}#{}", header.book_id, header.seq)),
     );
     capsule.insert("action_type".into(), json!("fyi"));
-    capsule.insert("operator".into(), json!(producer.operator));
-    capsule.insert("developer".into(), json!(producer.developer));
+    capsule.insert("operator".into(), json!(operator));
+    capsule.insert("developer".into(), json!(developer));
     capsule.insert(
         "timestamp".into(),
         json!(capsule_timestamp(&header.committed_at)),
@@ -253,7 +266,7 @@ pub fn seal_record(
         json!({"attestation_mode": "self_attested", "effect_mode": "not_applicable", "ledger_mode": "standalone"}),
     );
     let attestation =
-        json!({"compute_attestation": {"agent_input_digest": sha256_hex(&header_bytes)}});
+        json!({"compute_attestation": {"agent_input_digest": sha256_hex(header_bytes)}});
     capsule.insert(ATTESTATION.into(), attestation);
     // Each link is also a reference, with no citation_purpose: a link type
     // is an Evidence Layer link type, carried and committed in the header.
@@ -269,17 +282,31 @@ pub fn seal_record(
     let record_id = sha256_hex(&body);
     capsule.insert("capsule_id".into(), json!(record_id));
     let capsule = canonical::jcs(&Value::Object(capsule))?;
+    Ok((body, record_id, capsule))
+}
+
+/// Seal `header` as a record of `producer`'s book: its record capsule, id
+/// and Producer Envelope. The header is checked first: the record rules
+/// ([`Header::validate`]), `committed_at` in the form [`header`] writes, any
+/// `event_time_claim` in [`rfc3339_nano`]'s, and no empty ref or
+/// correlation value (Go would leave it out).
+pub fn seal_record(
+    header: &Header,
+    producer: &Producer<'_>,
+) -> Result<SealedRecord, SealRecordError> {
+    if producer.operator.trim().is_empty() || producer.developer.trim().is_empty() {
+        return Err(invalid("operator and developer must not be empty"));
+    }
+    let header_bytes = canonical_header(header)?;
+    let public_key = public_key_of(producer.signer)?;
+    let (body, record_id, capsule) =
+        record_capsule(header, &header_bytes, producer.operator, producer.developer)?;
 
     let protected = producer_protected(&public_key);
     let id = hex::decode(&record_id).expect("a SHA-256 hex digest decodes");
-    let signature = producer
-        .signer
-        .sign(&ed25519::to_be_signed(&protected, &id))?;
-    if !ed25519::verify(
-        &public_key,
-        &ed25519::to_be_signed(&protected, &id),
-        &signature,
-    ) {
+    let to_be_signed = ed25519::to_be_signed(&protected, &id);
+    let signature = producer.signer.sign(&to_be_signed)?;
+    if !ed25519::verify(&public_key, &to_be_signed, &signature) {
         return Err(invalid(
             "the signer's signature does not verify under its key id",
         ));
@@ -302,52 +329,49 @@ pub fn seal_record(
     })
 }
 
-/// Check that a stored record is the seal of `header` under `public_key`:
-/// the capsule is canonical, its `capsule_id` and its recomputed id are
-/// `record_id`, it commits the header's JCS as its `agent_input_digest`,
-/// and the envelope is the Producer Envelope over that id, signed by
-/// `public_key` and verified strictly. Only a book's own record capsule
-/// verifies; a capsule its caller sealed with the header inline (Go
-/// `AppendCapsule`) does not.
-pub fn verify_record(
-    record_id: &str,
-    header: &[u8],
-    capsule: &[u8],
-    envelope: &[u8],
-    public_key: &[u8; 32],
-) -> Result<(), SealRecordError> {
-    let mismatch = |why: &str| SealRecordError::Mismatch(format!("record {record_id}: {why}"));
-    let value: Value =
-        serde_json::from_slice(capsule).map_err(|_| mismatch("the capsule is not JSON"))?;
-    if canonical::jcs(&value).ok().as_deref() != Some(capsule) {
-        return Err(mismatch("the capsule is not in JCS"));
+impl SealedRecord {
+    /// Check that this is a record [`seal_record`] seals under
+    /// `public_key`: the header is a canonical header [`seal_record`]
+    /// accepts, the capsule and body are exactly the record capsule that
+    /// commits it (with the `operator` and `developer` the capsule names)
+    /// and `record_id` is its id, and the envelope is the Producer Envelope
+    /// over that id, signed by `public_key` and verified strictly. Any other
+    /// capsule fails, including one that also carries its header inline (Go
+    /// `AppendCapsule`), which a Go book refuses as committing its header
+    /// twice.
+    pub fn verify(&self, public_key: &[u8; 32]) -> Result<(), SealRecordError> {
+        let mismatch =
+            |why: &str| SealRecordError::Mismatch(format!("record {}: {why}", self.record_id));
+        let header: Header = serde_json::from_slice(&self.header)
+            .map_err(|_| mismatch("the header is not a record header"))?;
+        if canonical_header(&header).ok().as_deref() != Some(self.header.as_slice()) {
+            return Err(mismatch("the header is not one a book seals, in JCS"));
+        }
+        let capsule: Value = serde_json::from_slice(&self.capsule)
+            .map_err(|_| mismatch("the capsule is not JSON"))?;
+        let named = |member: &str| capsule.get(member).and_then(Value::as_str).unwrap_or("");
+        let (body, record_id, expected) =
+            record_capsule(&header, &self.header, named("operator"), named("developer"))?;
+        if expected != self.capsule || body != self.body || record_id != self.record_id {
+            return Err(mismatch(
+                "the capsule is not the record capsule of this header",
+            ));
+        }
+        let message = Sign1::decode(&self.envelope)
+            .ok_or_else(|| mismatch("the envelope is not a COSE_Sign1"))?;
+        if message.protected != producer_protected(public_key)
+            || !message.unprotected.is_empty()
+            || hex::encode(&message.payload) != self.record_id
+        {
+            return Err(mismatch(
+                "the envelope is not the Producer Envelope of this record and key",
+            ));
+        }
+        if !message.verifies_under(public_key) {
+            return Err(mismatch("the envelope's signature does not verify"));
+        }
+        Ok(())
     }
-    if value.get("capsule_id").and_then(Value::as_str) != Some(record_id)
-        || canonical::compute_capsule_id(&value).ok().as_deref() != Some(record_id)
-    {
-        return Err(mismatch("the capsule's id is not the record id"));
-    }
-    let committed = value
-        .get(ATTESTATION)
-        .and_then(|a| a.pointer("/compute_attestation/agent_input_digest"))
-        .and_then(Value::as_str);
-    if committed != Some(sha256_hex(header).as_str()) {
-        return Err(mismatch("the capsule does not commit the header"));
-    }
-    let message =
-        Sign1::decode(envelope).ok_or_else(|| mismatch("the envelope is not a COSE_Sign1"))?;
-    if message.protected != producer_protected(public_key)
-        || !message.unprotected.is_empty()
-        || hex::encode(&message.payload) != record_id
-    {
-        return Err(mismatch(
-            "the envelope is not the Producer Envelope of this record and key",
-        ));
-    }
-    if !message.verifies_under(public_key) {
-        return Err(mismatch("the envelope's signature does not verify"));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

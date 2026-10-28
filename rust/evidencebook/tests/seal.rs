@@ -62,14 +62,7 @@ fn seals_the_first_history_record_as_go_did() {
         capsule.get("references").is_none(),
         "a record with no links carries no references"
     );
-    seal::verify_record(
-        &sealed.record_id,
-        &sealed.header,
-        &sealed.capsule,
-        &sealed.envelope,
-        &key.verifying_key().to_bytes(),
-    )
-    .unwrap();
+    sealed.verify(&key.verifying_key().to_bytes()).unwrap();
 }
 
 #[test]
@@ -147,71 +140,176 @@ fn sealed_record(key: &SigningKey) -> seal::SealedRecord {
     .unwrap()
 }
 
+/// `capsule` re-sealed under `key` as if its producer had signed it: the id
+/// recomputed, and a valid Producer Envelope over it.
+fn resealed(mut capsule: Value, header: &[u8], key: &SigningKey) -> seal::SealedRecord {
+    capsule.as_object_mut().unwrap().remove("capsule_id");
+    let body = evidencebook::canonical::jcs(&capsule).unwrap();
+    let record_id = hex::encode(Sha256::digest(&body));
+    capsule["capsule_id"] = json!(record_id);
+    let id = hex::decode(&record_id).unwrap();
+    let mut protected = vec![0xa3, 0x03, 0x78, 0x23];
+    protected.extend_from_slice(b"application/agent-action-capsule-id");
+    protected.extend_from_slice(&[0x04, 0x58, 0x20]);
+    protected.extend_from_slice(&key.verifying_key().to_bytes());
+    protected.extend_from_slice(&[0x01, 0x27]);
+    let cbor = |v: &ciborium::Value| {
+        let mut out = Vec::new();
+        ciborium::into_writer(v, &mut out).unwrap();
+        out
+    };
+    use ciborium::Value as C;
+    let tbs = cbor(&C::Array(vec![
+        C::Text("Signature1".into()),
+        C::Bytes(protected.clone()),
+        C::Bytes(Vec::new()),
+        C::Bytes(id.clone()),
+    ]));
+    let sig = ed25519_dalek::Signer::sign(key, &tbs).to_bytes();
+    let envelope = cbor(&C::Tag(
+        18,
+        Box::new(C::Array(vec![
+            C::Bytes(protected),
+            C::Map(Vec::new()),
+            C::Bytes(id),
+            C::Bytes(sig.to_vec()),
+        ])),
+    ));
+    seal::SealedRecord {
+        record_id,
+        header: header.to_vec(),
+        capsule: evidencebook::canonical::jcs(&capsule).unwrap(),
+        body,
+        envelope,
+    }
+}
+
 #[test]
-fn verify_record_refuses_anything_but_the_seal() {
+fn verify_refuses_anything_but_the_seal() {
     let key = seeded("verify");
     let pk = key.verifying_key().to_bytes();
     let s = sealed_record(&key);
-    let refused = |id: &str, header: &[u8], capsule: &[u8], envelope: &[u8], pk: &[u8; 32]| {
-        matches!(
-            seal::verify_record(id, header, capsule, envelope, pk),
-            Err(SealRecordError::Mismatch(_))
-        )
+    s.verify(&pk).unwrap();
+    let refused = |r: &seal::SealedRecord, pk: &[u8; 32]| {
+        matches!(r.verify(pk), Err(SealRecordError::Mismatch(_)))
+    };
+
+    let with = |f: &dyn Fn(&mut seal::SealedRecord)| {
+        let mut r = s.clone();
+        f(&mut r);
+        r
     };
     assert!(
-        refused(&"00".repeat(32), &s.header, &s.capsule, &s.envelope, &pk),
+        refused(&with(&|r| r.record_id = "00".repeat(32)), &pk),
         "another id"
     );
     assert!(
-        refused(&s.record_id, b"{}", &s.capsule, &s.envelope, &pk),
-        "another header"
+        refused(&with(&|r| r.header = b"{}".to_vec()), &pk),
+        "not a header"
+    );
+    let pretty =
+        serde_json::to_vec_pretty(&serde_json::from_slice::<Value>(&s.header).unwrap()).unwrap();
+    assert!(
+        refused(&with(&|r| r.header = pretty.clone()), &pk),
+        "a header not in JCS"
     );
     let pretty =
         serde_json::to_vec_pretty(&serde_json::from_slice::<Value>(&s.capsule).unwrap()).unwrap();
     assert!(
-        refused(&s.record_id, &s.header, &pretty, &s.envelope, &pk),
+        refused(&with(&|r| r.capsule = pretty.clone()), &pk),
         "a capsule not in JCS"
     );
-    let mut edited: Value = serde_json::from_slice(&s.capsule).unwrap();
-    edited["operator"] = json!("someone else");
-    let edited = evidencebook::canonical::jcs(&edited).unwrap();
     assert!(
-        refused(&s.record_id, &s.header, &edited, &s.envelope, &pk),
-        "an edited capsule"
+        refused(&with(&|r| r.body = b"{}".to_vec()), &pk),
+        "another body"
     );
     let other = seeded("other");
     assert!(
-        refused(
-            &s.record_id,
-            &s.header,
-            &s.capsule,
-            &s.envelope,
-            &other.verifying_key().to_bytes()
-        ),
+        refused(&s, &other.verifying_key().to_bytes()),
         "another key"
     );
     let mut forged = s.envelope.clone();
     let last = forged.len() - 1;
     forged[last] ^= 1;
     assert!(
-        refused(&s.record_id, &s.header, &s.capsule, &forged, &pk),
+        refused(&with(&|r| r.envelope = forged.clone()), &pk),
         "a changed signature"
     );
     let theirs = sealed_record(&other);
     assert!(
-        refused(&s.record_id, &s.header, &s.capsule, &theirs.envelope, &pk),
+        refused(&with(&|r| r.envelope = theirs.envelope.clone()), &pk),
         "another record's envelope"
     );
     assert!(
-        refused(&s.record_id, &s.header, &s.capsule, b"not cbor", &pk),
+        refused(&with(&|r| r.envelope = b"not cbor".to_vec()), &pk),
         "not an envelope"
     );
     let mut trailing = s.envelope.clone();
     trailing.push(0);
     assert!(
-        refused(&s.record_id, &s.header, &s.capsule, &trailing, &pk),
+        refused(&with(&|r| r.envelope = trailing.clone()), &pk),
         "bytes after the envelope"
     );
+
+    // Capsules its producer did sign, with a valid envelope, that are not
+    // the record capsule of this header.
+    let capsule: Value = serde_json::from_slice(&s.capsule).unwrap();
+    assert!(
+        resealed(capsule.clone(), &s.header, &key)
+            .verify(&pk)
+            .is_ok(),
+        "the helper reseals faithfully"
+    );
+    let mut inline = capsule.clone();
+    inline["evidence_record_header"] = serde_json::from_slice(&s.header).unwrap();
+    assert!(
+        refused(&resealed(inline, &s.header, &key), &pk),
+        "the header carried inline too"
+    );
+    let mut action = capsule.clone();
+    action["action_type"] = json!("decision");
+    assert!(
+        refused(&resealed(action, &s.header, &key), &pk),
+        "another action type"
+    );
+    let mut stamped = capsule.clone();
+    stamped["timestamp"] = json!("2026-10-15T00:00:02Z");
+    assert!(
+        refused(&resealed(stamped, &s.header, &key), &pk),
+        "a timestamp other than committed_at"
+    );
+    let mut operator = capsule;
+    operator["operator"] = json!("someone else");
+    assert!(
+        resealed(operator, &s.header, &key).verify(&pk).is_ok(),
+        "the operator is the producer's to name"
+    );
+}
+
+#[test]
+fn empty_refs_and_correlation_values_are_refused() {
+    let key = seeded("empty");
+    let producer = Producer {
+        operator: "op",
+        developer: "dev",
+        signer: &key,
+    };
+    let good = seal::header("b", 1, "2026-10-15T00:00:01Z", &entry("observation")).unwrap();
+    for set in [
+        (|h: &mut evidencebook::record::Header| h.subject_ref = Some(String::new())) as fn(&mut _),
+        |h| h.principal_ref = Some(String::new()),
+        |h| h.counterparty_ref = Some(String::new()),
+        |h| {
+            h.correlation.insert("request_digest".into(), String::new());
+        },
+    ] {
+        let mut h = good.clone();
+        set(&mut h);
+        assert!(matches!(
+            seal::seal_record(&h, &producer),
+            Err(SealRecordError::Invalid(_))
+        ));
+    }
 }
 
 /// A signer that answers with a key id that is not an Ed25519 key, or

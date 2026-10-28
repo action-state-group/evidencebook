@@ -12,9 +12,9 @@ name: Rust CI
 on:
   push:
     branches: [main]
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
   pull_request:
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
@@ -160,6 +160,12 @@ jobs:
           python - "$work/rs/responder.json" "$work/go/responder.json" <<'PY'
           import json, sys
           rs, go = (json.load(open(path)) for path in sys.argv[1:])
+          # The crate answers over the native binding only, so it writes
+          # every member Go writes except exactly these carriage members.
+          carriage = {"agent_card", "carriage", "manifests", "mcp_manifest", "mcp_tools"}
+          only_go, only_rs = set(go) - set(rs), set(rs) - set(go)
+          if only_go != carriage or only_rs:
+              raise SystemExit(f"members only the Go run writes: {sorted(only_go)} (expected {sorted(carriage)}); only the Rust run: {sorted(only_rs)}")
           differ = [name for name in rs if rs[name] != go[name]]
           if differ:
               raise SystemExit(f"members the Rust run writes differ from the Go run: {differ}")
