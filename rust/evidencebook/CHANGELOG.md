@@ -2,9 +2,20 @@
 
 ## Unreleased
 
+## 0.0.9
+
+### Breaking changes and how to migrate
+
+- **`answer::Derive`** (#165, #35): an unregistered definition-digest
+  derivation now reaches the profile's `Derive`. To migrate, have a
+  `Derive` that answers every name it is given check the name first.
+  Signatures are unchanged.
+
+### Changes
+
 - **Breaking (behavior): `answer::Derive` answers a holder's own digest
-  derivation** (evidencebook#35). A request whose `derivation` is a definition digest
-  that `Options::derivations` does not register now goes to the profile's
+  derivation** (evidencebook#35). A request whose `derivation` is a
+  definition digest that `Options::derivations` does not register now goes to the profile's
   `Derive`, as a token does. `Derive` is called with the digest, and its
   value is carried under the member it names, with the anchor checkpoint as
   material when `prove_beyond_profile` is set. A registered digest is still
