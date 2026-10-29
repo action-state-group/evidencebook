@@ -454,11 +454,11 @@ rows, and do not show either as support for the other.
 ## 7. A node's bundle from a live test network
 
 §3 to §6 check replies that test programs made. This section checks a bundle
-that a node made on its own: a record that the node `stevenmih-1` on the
+that a node made on its own: three records that the node `stevenmih-1` on the
 evidence network's lab sealed into its book, with the per-property findings
-recorded when it was published. The evidence network publishes these in its
+recorded when the bundle was published. The evidence network publishes these in its
 public [loop](https://github.com/evidence-network/loop) repository. Nothing
-here is a test key: the record, its checkpoint and both keys are the node's
+here is a test key: the records, their checkpoint and both keys are the node's
 own.
 
 ### 7.1 The inputs
