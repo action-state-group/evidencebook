@@ -213,14 +213,20 @@ done
 # Every `leaf_index` and `mmr_size` the page states is the files' value.
 [ "$(grep -o '`leaf_index` [0-9]*' "$GUIDE" | sort -u)" = '`leaf_index` 32' ] || fail "§7.4 states a leaf_index other than 32"
 [ "$(grep -o '`mmr_size` [0-9]*' "$GUIDE" | sort -u)" = '`mmr_size` 127' ] || fail "§7.4 states an mmr_size other than 127"
-# Each side's values sit in its own column: on one table row, stevenmih-1's
-# held value comes before stevenmih-2's. And each checkpoint is the other side's.
+# Each side's values sit in its own column: on the table row that states them,
+# stevenmih-1's value comes before stevenmih-2's.
 side() { grep -o "\"$2\": *\"[0-9a-f]*\"" "$1" | head -1 | cut -d'"' -f4; }
-for pair in "held-1-inclusion.json checkpoint_digest 64" "held-1-inclusion.json half_capsule_id 8" "held-1-citing.json capsule_id 8"; do
-  set -- $pair
-  a=$(side $X/stevenmih-1/$1 $2 | cut -c1-$3) b=$(side $X/stevenmih-2/$1 $2 | cut -c1-$3)
-  grep -F "$a" "$GUIDE" | grep -q "$a.*$b" || fail "§7.4 does not put $2 $a (stevenmih-1) before $b (stevenmih-2) on one row"
-done
+row_order() { # ROW-PREFIX FILE FIELD WIDTH
+  local a b line
+  a=$(side $X/stevenmih-1/$2 $3 | cut -c1-$4) b=$(side $X/stevenmih-2/$2 $3 | cut -c1-$4)
+  line=$(grep -F "| $1" "$GUIDE" | head -1)
+  [ -n "$line" ] || fail "§7.4 has no row '$1'"
+  grep -q "$a.*$b" <<<"$line" || fail "§7.4 row '$1' does not put $a (stevenmih-1) before $b (stevenmih-2)"
+}
+row_order "The held half" held-1-inclusion.json half_capsule_id 8
+row_order "The checkpoint it was pushed under" held-1-inclusion.json checkpoint_digest 64
+row_order "The holder's own record" held-1-citing.json capsule_id 8
+row_order "The holder's own record" held-1-inclusion.json half_capsule_id 8
 K1=1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9
 K2=6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26
 [ "$(side $X/stevenmih-1/held-1-inclusion.json key_id)" = "$K2" ] || fail "stevenmih-1 holds a checkpoint not signed by stevenmih-2's key"
