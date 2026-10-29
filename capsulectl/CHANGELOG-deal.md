@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The deal skill's "Points of no return" table lists a seller's `offer` and
+  `represent`, and a test fails when the table and the plugin's action list
+  differ (#23).
+
 - The presentation goldens' tests run on capsule-viewer/go v0.3.0
   (`pageruntime`, `presentation`) in place of the names capsule-cli removed in
   capsule-cli#486, and `sameViewer` accepts that one runtime only. `page.html`
