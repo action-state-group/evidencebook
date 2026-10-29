@@ -126,6 +126,14 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 			t.Errorf("run.sh sets %s %d times, want 1", p.name, n)
 		}
 	}
+	// Every digest and key run.sh holds the page's commands to is one the
+	// page states, so a typo in the page's copy fails here and not only for
+	// a tester.
+	for _, v := range regexp.MustCompile(`\b[0-9a-f]{64}\b`).FindAllString(string(script), -1) {
+		if !strings.Contains(guide, v) {
+			t.Errorf("run.sh checks %s, which the guide does not state", v)
+		}
+	}
 	for _, q := range []string{tick(aacCommit), tick(regeneratedCommit), fmt.Sprintf("The vectors at this commit hold %d cases.", len(cases))} {
 		if !strings.Contains(guide, q) {
 			t.Errorf("the guide does not quote %s", q)

@@ -503,7 +503,9 @@ done
 ```
 
 The last line prints
-`aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0`.
+`aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0`. The
+same command on `verify.json` prints
+`9a1ad3b2c39c7d7862d259cce52dab46df9eb686b1a6f915816f9d6597b5e244`.
 
 ### 7.2 Your trust choice
 
@@ -530,7 +532,7 @@ not names:
 | Result | Specified | `verify.json` member |
 |---|---|---|
 | Bundle digest (draft §Bundle Digest) | `aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0`; the file is already in canonical form, so this is also its SHA-256 | `bundle_digest` |
-| Each of the three enclosed Capsules, under the record format | each `capsule_id` recomputes, and each signature verifies under the node key: `cd567ccf…`, `9c004a2b…` and `3d1cea60…`. `root` is `cd567ccf…` | `record_identity`: `passed`; `record_signatures`: `authored` |
+| Each of the three enclosed Capsules, under the record format | each `capsule_id` recomputes, and each signature verifies under the node key: `cd567ccf…`, `9c004a2b…` and `3d1cea60…`. `root` is `cd567ccf…` | `record_identity`: `passed`; `record_signatures`: `authored` for each record; `producer_signatures`: `pass`, the same signature result over all three |
 | Disclosures (draft §Bundle-Level Disclosures) | `agent_input` of each Capsule is WITHHELD: there is no overlay, so nothing is revealed and nothing fails | `disclosures`: `withheld` |
 | Graph closure | holds, with `completeness.missing` empty | `graph_closure`: `pass` |
 | Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, verified from the checkpoint itself: `checkpoint.cose` verifies under the checkpoint key, its CWT `iss` is `lab-1-book`, its `log_size` is 10, and the root its `commitment` folds to, `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58`, equals the certificate's `range_root` and the checkpoint's `root` | `interval_coverage`: `pass`; `checkpoint`: `pass` |
@@ -580,11 +582,14 @@ docker run --rm eb-cleanroom
 
 To run your own verifier at the end, mount it and name it in `VERIFIER`: the
 script calls `$VERIFIER ~/eb-verifier-test` once every input is in place, and
-keeps its output as `~/eb-verifier-test/verifier.out`. For example, with a
-verifier at `./myverifier/run`:
+prints its output as well as keeping it as `~/eb-verifier-test/verifier.out`
+inside the container. The image holds no language runtime but Go, so the
+verifier must be a static binary, a Go program, or run on an image you build
+`FROM eb-cleanroom` with your runtime added. For example, with a static
+verifier at `./myverifier/run`, keeping its output in `verifier.log`:
 
 ```bash
-docker run --rm -v "$PWD/myverifier:/verifier:ro" -e VERIFIER=/verifier/run eb-cleanroom
+docker run --rm -v "$PWD/myverifier:/verifier:ro" -e VERIFIER=/verifier/run eb-cleanroom > verifier.log
 ```
 
 Without Docker, run the script itself; it needs bash, `git`, `curl` and Go

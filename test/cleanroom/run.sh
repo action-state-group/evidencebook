@@ -163,6 +163,12 @@ for v in "$(sha256 "$B")" \
   "$(grep -o '"checkpoint_key": "[0-9a-f]*"' loop/lab/runs/2026-10-28/join/stevenmih-1/book.json | cut -d'"' -f4)"; do
   [ -n "$v" ] && grep -qF "$v" "$GUIDE" || fail "§7 does not state the bundle's value '$v'"
 done
+# The page names the three records by their first eight hex digits.
+for id in $(grep -o '"body_digests":\[[^]]*\]' "$B" | grep -o '[0-9a-f]\{64\}'); do
+  grep -qF "\`${id:0:8}…\`" "$GUIDE" || fail "§7 does not name record $id"
+done
+grep -q '"missing":\[\]' "$B" || fail "the bundle declares missing records; §7 says none"
+grep -q '"countersignatures"' "$B" && fail "the bundle carries countersignatures; §7 says none"
 for f in first_seq last_seq mmr_size; do
   v=$(grep -o "\"$f\":[0-9]*" "$B" | head -1 | cut -d: -f2)
   echo "  bundle $f $v"
