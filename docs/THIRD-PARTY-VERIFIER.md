@@ -533,15 +533,15 @@ not names:
 | Each of the three enclosed Capsules, under the record format | each `capsule_id` recomputes, and each signature verifies under the node key: `cd567ccf…`, `9c004a2b…` and `3d1cea60…`. `root` is `cd567ccf…` | `record_identity`: `passed`; `record_signatures`: `authored` |
 | Disclosures (draft §Bundle-Level Disclosures) | `agent_input` of each Capsule is WITHHELD: there is no overlay, so nothing is revealed and nothing fails | `disclosures`: `withheld` |
 | Graph closure | holds, with `completeness.missing` empty | `graph_closure`: `pass` |
-| Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, independently verified: `checkpoint.cose` verifies under the checkpoint key, its CWT `iss` is `lab-1-book`, its `log_size` is 10, and the root its `commitment` folds to, `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58`, equals the certificate's `range_root` and the checkpoint's `root` | `interval_coverage`: `pass`; `checkpoint`: `pass` |
+| Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, verified from the checkpoint itself: `checkpoint.cose` verifies under the checkpoint key, its CWT `iss` is `lab-1-book`, its `log_size` is 10, and the root its `commitment` folds to, `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58`, equals the certificate's `range_root` and the checkpoint's `root` | `interval_coverage`: `pass`; `checkpoint`: `pass` |
 | Per-record membership | holds for each of the three records, each by its own inclusion proof at `leaf_index = seq - 1` and `size` 10 | `per_record_membership`: `pass` |
 | Transparency | no Receipt from a Transparency Service and no witness: interval coverage and membership rest on the checkpoint signature alone. Say so; do not report them as witnessed | `witnesses`: `withheld`, `witness_receipt_absent` |
 | `producer-key/v1` | declares `1dd25d99…`. It is used only to judge whether a countersignature is independent, and there are none, so it changes no result | `extensions`: `uninterpreted` |
 | Countersignatures | none | `countersignatures`: empty |
 | Verdict | every result above holds | `verdict`: `VALID` |
 
-Four things the texts leave to you, which an independent verifier has had to
-infer (§9 item 9 asks you to say how you read them):
+Four things the texts leave to you, which a verifier written from these texts
+has to infer (§9 item 9 asks you to say how you read them):
 
 - **The checkpoint's form.** It follows CLL -01, not the -02 draft at the same
   tag: `commitment` and `prev_commitment` are the CBOR-encoded peak list (-01
@@ -588,7 +588,13 @@ docker run --rm -v "$PWD/myverifier:/verifier:ro" -e VERIFIER=/verifier/run eb-c
 ```
 
 Without Docker, run the script itself; it needs bash, `git`, `curl` and Go
-1.27 or newer.
+1.27 or newer. An earlier `run/` in the evidencebook checkout is moved aside,
+not deleted.
+
+A clean run means only that your inputs match this page. It judges nothing your
+verifier outputs: `verifier.out` is kept, not checked. Only the pass rule of §9
+counts, and this page is the third-party verifier test of the requirements'
+§8, not this section.
 
 ## 9. What to report back
 

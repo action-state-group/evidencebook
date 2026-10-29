@@ -7,7 +7,7 @@
 - `docs/THIRD-PARTY-VERIFIER.md` §7 adds a bundle that a node on the evidence
   network's lab sealed and published (evidence-network/loop `b02f8cf`), with
   the keys to pin, the texts to read and the result specified for each of the
-  bundle draft's checks. §8 runs the whole guide in a container that holds only
+  bundle draft's checks. The guide's §8 runs all its commands in a container that holds only
   Debian, `git`, `curl` and Go (`test/cleanroom/Dockerfile`), with an optional
   `VERIFIER` the tester supplies.
 - `test/cleanroom/run.sh` runs every command of the guide and checks every

@@ -41,6 +41,7 @@ want_sha() { # file sha
 step "§1 the normative inputs (agent-action-capsule $AAC)"
 mkdir -p "$WORK"
 cd "$WORK"
+WORK=$(pwd)
 for f in spec/interop-profile-v0.md spec/draft-mih-agent-evidence-request-00.md \
   vectors/interop-profile-v0/README.md vectors/interop-profile-v0/manifest.json \
   vectors/interop-profile-v0/vectors.json vectors/interop-profile-v0/SHA256SUMS; do
@@ -61,7 +62,9 @@ else
 fi
 cd "$EB"
 echo "evidencebook $(git rev-parse HEAD)"
-rm -rf run
+# The page writes its requests and replies to run/. A run/ from an earlier
+# attempt may hold a tester's own files, so move it aside, never delete it.
+[ -e run ] && mv run "run.$(date +%Y%m%dT%H%M%S)"
 
 step "§3 the test responder"
 info=$(go run ./test/interop/answer -info)
@@ -148,6 +151,25 @@ grep -q '"key_id": "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab
   fail "the node listing does not name the node key"
 grep -q '"checkpoint_key": "dbcc770a60a673668470b1a8083d88f00fd290b92234f9fbb610eec52a689922"' \
   loop/lab/runs/2026-10-28/join/stevenmih-1/book.json || fail "book.json does not name the checkpoint key"
+
+# Every §7 value the page tells a tester to expect is the value the
+# downloaded bundle and the published key files carry.
+GUIDE=$EB/docs/THIRD-PARTY-VERIFIER.md
+B="loop/$NODE/bundle.json"
+for v in "$(sha256 "$B")" \
+  "$(grep -o '"range_root":"[0-9a-f]*"' "$B" | cut -d'"' -f4)" \
+  "$(grep -o '"root":"[0-9a-f]*"' "$B" | head -1 | cut -d'"' -f4)" \
+  "$(grep -o '"public_key":"[0-9a-f]*"' "$B" | cut -d'"' -f4)" \
+  "$(grep -o '"checkpoint_key": "[0-9a-f]*"' loop/lab/runs/2026-10-28/join/stevenmih-1/book.json | cut -d'"' -f4)"; do
+  [ -n "$v" ] && grep -qF "$v" "$GUIDE" || fail "§7 does not state the bundle's value '$v'"
+done
+for f in first_seq last_seq mmr_size; do
+  v=$(grep -o "\"$f\":[0-9]*" "$B" | head -1 | cut -d: -f2)
+  echo "  bundle $f $v"
+done
+grep -q 'sequences 4 to 6' "$GUIDE" && grep -q '"first_seq":4' "$B" && grep -q '"last_seq":6' "$B" ||
+  fail "§7's sequence range is not the bundle's"
+grep -q '`log_size` is 10' "$GUIDE" && grep -q '"mmr_size":10' "$B" || fail "§7's log size is not the bundle's"
 
 echo "run.sh: every input the page names is in place under $WORK"
 if [ -n "${VERIFIER:-}" ]; then
