@@ -127,10 +127,11 @@ want_sha run/responder-run.json f7d77d56d81ca187cb9a8118f8a15aae5407f5a96aca1c55
 
 step "§7 a node's bundle (evidence-network/loop $LOOP)"
 cd "$WORK"
-for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt-agent-action-capsule-05.md; do
+for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt-agent-action-capsule-05.md \
+  spec/draft-mih-agent-disclosure-envelope-00.md; do
   fetch action-state-group/agent-action-capsule "$AAC" "$f" "aac/$f"
 done
-for f in spec/draft-mih-scitt-checkpointed-local-log-02.md mmr-conformance-vectors/README.md \
+for f in spec/draft-mih-scitt-checkpointed-local-log-01.md mmr-conformance-vectors/README.md \
   mmr-conformance-vectors/vectors.json; do
   fetch action-state-group/checkpointed-local-log "$CLL" "$f" "cll/$f"
 done

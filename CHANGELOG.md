@@ -15,6 +15,11 @@
   no longer held once `test/interop/personal-history` gained the originals
   store and `-correlated`: the guide now compares against `producer.diff`, as
   CI already did.
+- A clean-room rehearsal of §7 (a verifier written from the public texts
+  only) found that the node's checkpoint is in checkpointed-local-log -01 form;
+  the guide now names -01, adds the disclosure-envelope draft to the inputs,
+  and states the four points the texts leave to the verifier
+  (agent-action-capsule#460).
 
 ### Added: `book result build --plan` binds a Result to the dataset plan it ran (#107)
 

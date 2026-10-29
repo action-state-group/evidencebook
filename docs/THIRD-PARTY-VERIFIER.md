@@ -467,7 +467,9 @@ own.
 |---|---|---|
 | The bundle format | agent-action-capsule `9d653f41419d2d2bac4714137b763315947ec754` (§1) | `spec/draft-mih-zhang-agent-disclosure-bundle-01.md` |
 | The record format each enclosed Capsule follows | the same commit | `spec/draft-mih-scitt-agent-action-capsule-05.md` |
-| The log, its COSE checkpoint and its proofs | [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log) `0f74297761f3a0b81d27a116f32ac556c0ecb59d` (tag `crates/checkpointed-local-log-v0.3.1`, the log the node's book embeds) | `spec/draft-mih-scitt-checkpointed-local-log-02.md`; `mmr-conformance-vectors/README.md` and `vectors.json` for the inclusion proof's JSON form |
+| The disclosure member paths the bundle draft cites | the same commit | `spec/draft-mih-agent-disclosure-envelope-00.md` |
+| The log and its COSE checkpoint | [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log) `0f74297761f3a0b81d27a116f32ac556c0ecb59d` (tag `crates/checkpointed-local-log-v0.3.1`, the log the node's book embeds) | `spec/draft-mih-scitt-checkpointed-local-log-01.md`, the form this checkpoint is in (§7.3) |
+| The MMR hashing, the single root and the proofs' JSON form | the same commit | `mmr-conformance-vectors/README.md` and `vectors.json`, the only place these are written down (§7.3) |
 | The bundle | evidence-network/loop `b02f8cf24200773a837027c19972154f9e461f02` | `findings/2026-10-28-live/02-book/stevenmih-1/bundle.json` |
 | The findings recorded with it | the same commit | `findings/2026-10-28-live/02-book/stevenmih-1/verify.json` |
 | The node's listing, which names its key | the same commit | `nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json` (`key_id`) |
@@ -478,12 +480,13 @@ Download them next to the §1 inputs:
 ```bash
 cd ~/eb-verifier-test
 AAC=9d653f41419d2d2bac4714137b763315947ec754
-for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt-agent-action-capsule-05.md; do
+for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt-agent-action-capsule-05.md \
+  spec/draft-mih-agent-disclosure-envelope-00.md; do
   curl -fsSL --create-dirs -o "aac/$f" \
     "https://raw.githubusercontent.com/action-state-group/agent-action-capsule/$AAC/$f"
 done
 CLL=0f74297761f3a0b81d27a116f32ac556c0ecb59d
-for f in spec/draft-mih-scitt-checkpointed-local-log-02.md mmr-conformance-vectors/README.md \
+for f in spec/draft-mih-scitt-checkpointed-local-log-01.md mmr-conformance-vectors/README.md \
   mmr-conformance-vectors/vectors.json; do
   curl -fsSL --create-dirs -o "cll/$f" \
     "https://raw.githubusercontent.com/action-state-group/checkpointed-local-log/$CLL/$f"
@@ -530,12 +533,34 @@ not names:
 | Each of the three enclosed Capsules, under the record format | each `capsule_id` recomputes, and each signature verifies under the node key: `cd567ccf…`, `9c004a2b…` and `3d1cea60…`. `root` is `cd567ccf…` | `record_identity`: `passed`; `record_signatures`: `authored` |
 | Disclosures (draft §Bundle-Level Disclosures) | `agent_input` of each Capsule is WITHHELD: there is no overlay, so nothing is revealed and nothing fails | `disclosures`: `withheld` |
 | Graph closure | holds, with `completeness.missing` empty | `graph_closure`: `pass` |
-| Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, independently verified: `checkpoint.cose` verifies under the checkpoint key, and its log identifier `lab-1-book`, MMR size 10 and root `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58` equal the certificate's and the checkpoint's | `interval_coverage`: `pass`; `checkpoint`: `pass` |
+| Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, independently verified: `checkpoint.cose` verifies under the checkpoint key, its CWT `iss` is `lab-1-book`, its `log_size` is 10, and the root its `commitment` folds to, `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58`, equals the certificate's `range_root` and the checkpoint's `root` | `interval_coverage`: `pass`; `checkpoint`: `pass` |
 | Per-record membership | holds for each of the three records, each by its own inclusion proof at `leaf_index = seq - 1` and `size` 10 | `per_record_membership`: `pass` |
 | Transparency | no Receipt from a Transparency Service and no witness: interval coverage and membership rest on the checkpoint signature alone. Say so; do not report them as witnessed | `witnesses`: `withheld`, `witness_receipt_absent` |
 | `producer-key/v1` | declares `1dd25d99…`. It is used only to judge whether a countersignature is independent, and there are none, so it changes no result | `extensions`: `uninterpreted` |
 | Countersignatures | none | `countersignatures`: empty |
 | Verdict | every result above holds | `verdict`: `VALID` |
+
+Four things the texts leave to you, which an independent verifier has had to
+infer (§9 item 9 asks you to say how you read them):
+
+- **The checkpoint's form.** It follows CLL -01, not the -02 draft at the same
+  tag: `commitment` and `prev_commitment` are the CBOR-encoded peak list (-01
+  §Commitment Representation), the consistency proof rides along as an extra
+  claim, and its CWT `sub` is `lab-1-book#10`, naming the checkpoint rather
+  than the log. A strict -02 verifier rejects it, because the logs that write
+  the -02 form are not released yet
+  ([checkpointed-local-log#89](https://github.com/action-state-group/checkpointed-local-log/issues/89));
+  report which draft you applied.
+- **The single root.** `checkpoint.root` and `range_root` are the peak list
+  folded to one hash. CLL -01 leaves the fold to the implementation; the fold
+  this log uses is the one `mmr-conformance-vectors/README.md` shows, as are
+  the leaf and parent hashing and the JSON form of the inclusion and range
+  proofs.
+- **The log entry.** Each record's log entry is its `capsule_id`, as
+  `completeness_certificate.body_digests` lists them, so its leaf is the
+  README's `leaf` over that digest.
+- **The signature carriage.** Each record's `signature` is a hex-encoded
+  COSE_Sign1 by `key_id`.
 
 The bundle shows that this node signed these three records and placed them at
 these positions in its book, under a checkpoint signed by its book's
