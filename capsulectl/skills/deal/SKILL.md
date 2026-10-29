@@ -708,7 +708,7 @@ likely a missing standing grant, and the tick names the site. It is retried
 at every tick.
 
 Tell the user, in one message, exactly what this does: their deal steps are
-sealed on this device; once an hour, whether or not anything happened, one
+sealed on this device; about every 5 minutes, whether or not anything happened, one
 checkpoint of hashes goes to the witness; the witness never sees content, how
 many deals there are, or when they happen. A remote checker (minimal deal
 fields, never message text) stays off unless they turn it on. Ask once, up
