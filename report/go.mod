@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956
-	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028174648-93dff5dddeae
+	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261029153820-1a6d212bb869
 	github.com/action-state-group/capsule-viewer/go v0.3.0
 	github.com/action-state-group/evidencebook v0.8.0
 	github.com/stretchr/testify v1.12.1
