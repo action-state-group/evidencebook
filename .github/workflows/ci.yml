@@ -63,6 +63,24 @@ jobs:
       - name: Race test
         run: go test -race ./...
 
+  verifier-pack:
+    name: Third-party verifier pack (every command and value of docs/THIRD-PARTY-VERIFIER.md)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The script downloads the page's inputs from their public URLs and runs
+      # this checkout's responder, so a change that breaks a command or a
+      # value the page states fails here.
+      - name: Run test/cleanroom/run.sh
+        run: WORK="$RUNNER_TEMP/eb-verifier-test" EB_DIR="$PWD" test/cleanroom/run.sh
+
   release-helper:
     name: Release helper tests
     runs-on: ubuntu-latest
