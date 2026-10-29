@@ -28,6 +28,7 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 	assert.NotEmpty(t, sealed.RecordID)
 	assert.False(t, sealed.AlreadySealed)
 	assert.NotZero(t, sealed.Checkpoint, "the seal is covered by a checkpoint at once")
+	assert.Equal(t, 1, sealed.Revision, "the first page over a Result is its revision 1")
 
 	// The record carries the page digest, the bundle digest and the Result
 	// root, and nothing else, about the bundle digest.
@@ -54,7 +55,45 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 	// checkpoint.
 	again, err := SealPage(t.Context(), book, builtPage(t).HTML)
 	require.NoError(t, err)
-	assert.Equal(t, Seal{RecordID: sealed.RecordID, Seq: sealed.Seq, AlreadySealed: true}, again)
+	assert.Equal(t, Seal{RecordID: sealed.RecordID, Seq: sealed.Seq, AlreadySealed: true, Revision: 1}, again)
+}
+
+// A page that changes only its presentation embeds the same bundle, so the
+// same Result: sealing it bumps the revision and the Result root stays. A
+// repeat of an earlier page keeps that page's revision, and a seal over
+// another Result counts its own revisions.
+func TestSealPageNumbersRevisionsOverOneResult(t *testing.T) {
+	book := newBook(t)
+	first := builtPage(t)
+	retitled, err := Build(mustRead(t, bookFormBundle), View{Card: "outcome", Presentation: &Presentation{Title: "Week 38"}})
+	require.NoError(t, err)
+	require.NotEqual(t, PageDigest(first.HTML), PageDigest(retitled.HTML))
+	require.Equal(t, first.Root, retitled.Root, "a presentation-only change keeps the Result")
+
+	one, err := SealPage(t.Context(), book, first.HTML)
+	require.NoError(t, err)
+	two, err := SealPage(t.Context(), book, retitled.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, 1, one.Revision)
+	assert.Equal(t, 2, two.Revision)
+	assert.NotEqual(t, one.RecordID, two.RecordID)
+	again, err := SealPage(t.Context(), book, first.HTML)
+	require.NoError(t, err)
+	assert.True(t, again.AlreadySealed)
+	assert.Equal(t, 1, again.Revision, "a repeat keeps its revision")
+
+	// A seal over another Result root is not one of this Result's
+	// revisions.
+	other := pageSealStatement{PageDigest: "sha256:" + strings.Repeat("0", 64), BundleDigest: "sha256:" + strings.Repeat("1", 64), ResultRoot: strings.Repeat("2", 64)}
+	body, err := json.Marshal(other)
+	require.NoError(t, err)
+	_, err = book.Append(t.Context(), evidencebook.Entry{RecordType: RecordTypePageSeal, EpistemicType: evidencebook.ProducerClaim, SubjectRef: other.BundleDigest, Statement: body})
+	require.NoError(t, err)
+	n, err := revision(t.Context(), book, two.RecordID, first.Root)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	_, err = revision(t.Context(), book, one.RecordID, other.ResultRoot)
+	assert.ErrorContains(t, err, "is not among the book's page seals over Result")
 }
 
 func TestCheckPageMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testing.T) {
