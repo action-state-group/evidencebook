@@ -311,7 +311,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	// With no wording, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
-	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", Wording: wording})
+	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256})
 	if err != nil {
 		return nil, err
 	}
