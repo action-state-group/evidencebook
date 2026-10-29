@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: the third-party verifier guide checks one exchange between two live nodes (#41)
+
+- `docs/THIRD-PARTY-VERIFIER.md` §7.4 adds both halves of one exchange
+  between two lab nodes, as each side holds the other's (evidence-network/loop
+  `cfeaf09`, step 05 of 2026-10-29): the files and their digests, both node
+  keys, the texts (adding checkpointed-local-log's JSON checkpoint record), the
+  result specified per side, the client-nonce join, and what it does not show.
+  §7 now pins that loop commit throughout; the §7.1 to §7.3 files are
+  unchanged at it. `test/cleanroom/run.sh` fetches the new files and checks
+  that every value §7.4 states is theirs.
+
 ### Added: the third-party verifier guide checks a live node's bundle, and runs in a clean room (#41)
 
 - `docs/THIRD-PARTY-VERIFIER.md` §7 adds a bundle that a node on the evidence

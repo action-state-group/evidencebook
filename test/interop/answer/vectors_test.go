@@ -21,9 +21,9 @@ const (
 	regeneratedCommit = "e706487d37561a7e7aae5c169d7c45e76305973b"
 	// The guide's §7: checkpointed-local-log at tag
 	// crates/checkpointed-local-log-v0.3.1, and the evidence-network/loop
-	// commit that holds the node's bundle.
+	// commit that holds the node's bundle and the two-node exchange (§7.4).
 	cllCommit     = "0f74297761f3a0b81d27a116f32ac556c0ecb59d"
-	loopCommit    = "b02f8cf24200773a837027c19972154f9e461f02"
+	loopCommit    = "cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8"
 	vectorsSHA256 = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
 )
 
