@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,7 +103,7 @@ func TestTheReadmeReportExampleRunsAndVerifies(t *testing.T) {
 
 	html, err := os.ReadFile(page)
 	require.NoError(t, err)
-	assert.Contains(t, string(html), string(cli.EvidenceGraphIIFE), "the page carries the verifier")
+	assert.Contains(t, string(html), string(pageruntime.IIFE), "the page carries the verifier")
 	assert.Contains(t, string(html), "Example checks", "and the bundle it checks")
 }
 

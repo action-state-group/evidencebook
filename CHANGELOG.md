@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed: `report` takes its page runtime and block names from capsule-viewer/go (evidencebook#152)
+
+- `report` imports `pageruntime.IIFE` and the `presentation.CardExtension` and
+  `presentation.PresentationExtension` block names from `capsule-viewer/go`
+  v0.3.0, not from capsule-cli, which removed them (capsule-cli#486). Report
+  pages now embed the viewer's own runtime, so every page changes bytes; the
+  build-provenance values are the viewer's: commit `3fe9ad7b0737` and viewer
+  version `0.3.0` (verifier `0.8.0` unchanged). `report` and `capsulectl` build
+  against capsule-cli `93dff5d`. Needs a new `report/v*` tag; none is cut here.
+
 ### Added: `report build --wording` (evidencebook#155)
 
 - `capsulectl book report build --wording FILE --wording-digest HEX` lays an
