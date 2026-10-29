@@ -1,8 +1,6 @@
 package deal
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -160,7 +158,7 @@ func TestPresentationGoldens(t *testing.T) {
 
 			page, err := rerenderPresentationPage(t, dir, meta, bundle)
 			require.NoError(t, err, "the page gate must let this fixture's page through")
-			// While the vendored viewer is the one the fixture's page was
+			// While the viewer this build carries is the one the fixture's page was
 			// emitted with, re-emitting must give that page byte for byte:
 			// the path re-emitted here is the one capsulectl took.
 			pageFile := filepath.Join(dir, "page.html")
@@ -229,8 +227,8 @@ func TestPresentationGoldens(t *testing.T) {
 }
 
 // rerenderPresentationPage emits the fixture's page from its bundle the way
-// capsulectl does: disclose/bundle --html (the page gate, then the vendored
-// viewer), deal report --html, or report build.
+// capsulectl does: disclose/bundle --html (the page gate, then capsule-viewer's
+// runtime), deal report --html, or report build.
 func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, bundle map[string]interface{}) (string, error) {
 	t.Helper()
 	switch meta.Rerender {
@@ -238,7 +236,7 @@ func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, b
 		if err := cli.PageGate(bundle); err != nil {
 			return "", err
 		}
-		return emitter.EmitEvidenceGraphHTML(bundle, cli.EvidenceGraphIIFE)
+		return emitter.EmitEvidenceGraphHTML(bundle, pageruntime.IIFE)
 	case "deal-report":
 		return dealReportHTML(bundle, dealNotCountersigned(), dealVerifyCommand(""), cli.BuiltinWording())
 	case "compose-page":
@@ -333,13 +331,10 @@ func TestOverflowBaselineCheck(t *testing.T) {
 	}
 }
 
-// sameViewer: the page embeds a runtime this build carries. Deal report
-// pages carry capsule-viewer's own (pageruntime); the core's pages carry
-// capsule-cli's until capsule-cli#472 moves them to the same one.
+// sameViewer: the page embeds the runtime this build carries, capsule-viewer's
+// pageruntime, which every page capsulectl and this plugin emit now carries.
 func sameViewer(page []byte) bool {
-	core := sha256.Sum256(cli.EvidenceGraphIIFE)
-	return strings.Contains(string(page), string(pageruntime.IIFE)) ||
-		strings.Contains(string(page), string(cli.EvidenceGraphIIFE)) && hex.EncodeToString(core[:]) == cli.EvidenceGraphIIFEDigest
+	return strings.Contains(string(page), string(pageruntime.IIFE))
 }
 
 // openedToday is what a page works out from the clock it is opened on

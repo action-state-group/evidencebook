@@ -1,11 +1,9 @@
 # Presentation goldens
 
 Nine synthetic bundles and what capsulectl's pages show a reader for them, taken with
-the viewer first vendored at agent-action-capsule `5d80d40`. The `deal report --html`
-fixtures (2, 7, 8, 9) run capsule-viewer's page runtime (`go/pageruntime`) at the
-capsule-viewer/go version `go.mod` requires, so their snapshots move with that version;
-the other fixtures and every `build-snapshot.json` stay on the runtime capsule-cli vendors
-until capsule-cli#472. This copy was taken
+the viewer first vendored at agent-action-capsule `5d80d40`. Every page runs
+capsule-viewer's page runtime (`go/pageruntime`) at the capsule-viewer/go version
+`go.mod` requires (v0.3.0), so the snapshots move with that version. This copy was taken
 from capsule-cli's `cli/testdata/presentation` when the plugin moved here (capsule-cli#326);
 `TestPresentationGoldens` (`internal/deal/presentation_golden_test.go`) holds every later
 viewer to it:
@@ -103,7 +101,7 @@ the one registry, shell and builder capsulectl has, with no plugin installed:
   unavailable: the test asserts each refusal for every bundle.
 - **Views agree.** In Chrome, each page's semantic snapshot is the same at 390px, at 1280px, in
   print and for both audiences. The snapshot reads the DOM, whatever CSS shows or hides. The
-  vendored runtime builds the same DOM at every width and medium, so this check catches only a
+  page runtime builds the same DOM at every width and medium, so this check catches only a
   script that changes the content by viewport.
 - **Flips.** Wording (an installed module's wording pack, the one way a page gets one), the pack's
   locale and depth (`--depth L0`/`L1`/`L2`) each change the page's bytes. None changes the bundle
@@ -130,13 +128,11 @@ What `presentation build` shows, against these goldens (built through other comm
 | `8-seller-buyer-copy` | no: `build-snapshot.json` | As fixture 2. |
 | `9-seller-later-evidence` | no: `build-snapshot.json` | As fixture 2. |
 
-One gap is pinned so it fails once it closes:
-
-- **A record signed by another key than the one it names.** `verify --bundle` calls it INVALID
-  (`producer_signature_invalid`), so build writes no page. The page's own gate (the
-  vendored viewer, and agent-action-capsule's Go resolver that `list` uses) checks each record's
-  identity, not its producer signature. So `list` resolves the bundle, and a page carrying it
-  says it verified (`TestPresentationPassWrongSigner`).
+A record signed by another key than the one it names: `verify --bundle` calls it INVALID
+(`producer_signature_invalid`), so build writes no page. `list`'s gate (agent-action-capsule's
+Go resolver) checks each record's identity, not its producer signature, so `list` resolves
+the bundle; a page that carries it anyway says it failed, because the page runtime checks
+the producer signature (`TestPresentationPassWrongSigner`).
 
 `CAPSULECTL_UPDATE_PRESENTATION_PASS=1` rewrites `build-snapshot.json` and
 `refusal-snapshot.json`.
