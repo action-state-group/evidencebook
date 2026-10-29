@@ -9,7 +9,7 @@ require (
 	github.com/action-state-group/capsule-viewer/go v0.3.0
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/action-state-group/evidencebook v0.8.0
-	github.com/action-state-group/evidencebook/report v0.2.1-0.20261029153852-4ca1df2d2a1c
+	github.com/action-state-group/evidencebook/report v0.2.1-0.20261029154434-6ff0033761c8
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 )
