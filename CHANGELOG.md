@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added: `report.Seal.Revision` numbers the pages sealed over one Result (#107)
+
+- `report.SealPage` returns `Revision` (`revision` in JSON): the seal's place,
+  from 1, among the book's page seals with the same Result root, in log order.
+  A page that changes only its presentation embeds the same Result, so sealing
+  it bumps the revision and the Result stays as it was. A repeat of a page
+  already sealed keeps its revision. No record changes: the revision is read
+  from the page seals the book already holds. `report` builds against
+  capsule-cli `1a6d212b` (capsule-cli#490), whose Result gate admits
+  `plan_ref` and `dataset_ref`, so `report.Build` accepts a page over a
+  plan-driven Result. Needs a new `report/v*` tag; none is cut here.
+
 ### Changed: `report` takes its page runtime and block names from capsule-viewer/go (evidencebook#152)
 
 - `report` imports `pageruntime.IIFE` and the `presentation.CardExtension` and

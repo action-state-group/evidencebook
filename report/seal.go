@@ -49,6 +49,12 @@ type Seal struct {
 	// AlreadySealed is set when the book already held a record for these
 	// exact page bytes: nothing was appended.
 	AlreadySealed bool `json:"already_sealed,omitempty"`
+	// Revision numbers the pages sealed over one Result: this seal's place,
+	// from 1, among the book's page seals with the same Result root, in log
+	// order. A page that changes only its presentation embeds the same
+	// Result, so sealing it bumps the revision and leaves the Result as it
+	// was; a repeat of the same page keeps its revision.
+	Revision int `json:"revision"`
 }
 
 // SealPage appends a RecordTypePageSeal record for page, the exact bytes of
@@ -103,6 +109,9 @@ func SealPage(ctx context.Context, book *evidencebook.Book, page []byte) (Seal, 
 		}
 	}
 	out.RecordID, out.Seq = record.RecordID, record.Seq
+	if out.Revision, err = revision(ctx, book, record.RecordID, st.ResultRoot); err != nil {
+		return out, err
+	}
 	covered, err := book.CheckpointCovers(ctx, record.Seq)
 	if err != nil {
 		return out, err
@@ -137,6 +146,29 @@ func pageSeals(ctx context.Context, book *evidencebook.Book, bundleDigest string
 		seals = append(seals, pageSeal{r, st})
 	}
 	return seals, nil
+}
+
+// revision is the place, from 1, of the page seal recordID among the book's
+// page seals over resultRoot, in log order. A seal whose statement does not
+// decode states no Result root, so it is no revision of this one and does
+// not stop this page's seal.
+func revision(ctx context.Context, book *evidencebook.Book, recordID, resultRoot string) (int, error) {
+	records, err := book.Query(ctx, evidencebook.Filter{RecordType: RecordTypePageSeal})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range records {
+		var st pageSealStatement
+		if json.Unmarshal(r.Header.Statement, &st) != nil || st.ResultRoot != resultRoot {
+			continue
+		}
+		n++
+		if r.RecordID == recordID {
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("page seal %s is not among the book's page seals over Result %s", recordID, resultRoot)
 }
 
 // The outcomes of checking a page against the book's seals.

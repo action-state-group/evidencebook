@@ -28,6 +28,7 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 	assert.NotEmpty(t, sealed.RecordID)
 	assert.False(t, sealed.AlreadySealed)
 	assert.NotZero(t, sealed.Checkpoint, "the seal is covered by a checkpoint at once")
+	assert.Equal(t, 1, sealed.Revision, "the first page over a Result is its revision 1")
 
 	// The record carries the page digest, the bundle digest and the Result
 	// root, and nothing else, about the bundle digest.
@@ -54,7 +55,56 @@ func TestSealPageMatchesTheUntouchedPage(t *testing.T) {
 	// checkpoint.
 	again, err := SealPage(t.Context(), book, builtPage(t).HTML)
 	require.NoError(t, err)
-	assert.Equal(t, Seal{RecordID: sealed.RecordID, Seq: sealed.Seq, AlreadySealed: true}, again)
+	assert.Equal(t, Seal{RecordID: sealed.RecordID, Seq: sealed.Seq, AlreadySealed: true, Revision: 1}, again)
+}
+
+// A page that changes only its presentation embeds the same bundle, so the
+// same Result: sealing it bumps the revision and the Result root stays. A
+// repeat of an earlier page keeps that page's revision. Seals over another
+// Result, and seals whose statement does not decode, are not revisions of
+// this Result and do not stop its seal; a seal over the same Result from
+// another bundle is one.
+func TestSealPageNumbersRevisionsOverOneResult(t *testing.T) {
+	book := newBook(t)
+	first := builtPage(t)
+	retitled, err := Build(mustRead(t, bookFormBundle), View{Card: "outcome", Presentation: &Presentation{Title: "Week 38"}})
+	require.NoError(t, err)
+	require.NotEqual(t, PageDigest(first.HTML), PageDigest(retitled.HTML))
+	require.Equal(t, first.Root, retitled.Root, "a presentation-only change keeps the Result")
+	seal := func(st any) {
+		t.Helper()
+		body, err := json.Marshal(st)
+		require.NoError(t, err)
+		_, err = book.Append(t.Context(), evidencebook.Entry{RecordType: RecordTypePageSeal, EpistemicType: evidencebook.ProducerClaim, SubjectRef: "sha256:" + strings.Repeat("1", 64), Statement: body})
+		require.NoError(t, err)
+	}
+
+	one, err := SealPage(t.Context(), book, first.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, 1, one.Revision)
+	// Between the two: a seal over another Result, and one that states
+	// nothing a seal states.
+	seal(pageSealStatement{PageDigest: "sha256:" + strings.Repeat("0", 64), BundleDigest: "sha256:" + strings.Repeat("1", 64), ResultRoot: strings.Repeat("2", 64)})
+	seal([]string{"not", "a", "seal", "statement"})
+	two, err := SealPage(t.Context(), book, retitled.HTML)
+	require.NoError(t, err)
+	assert.Equal(t, 2, two.Revision)
+	assert.NotEqual(t, one.RecordID, two.RecordID)
+	again, err := SealPage(t.Context(), book, first.HTML)
+	require.NoError(t, err)
+	assert.True(t, again.AlreadySealed)
+	assert.Equal(t, 1, again.Revision, "a repeat keeps its revision")
+
+	// A page of the same Result embedded in another bundle is its next
+	// revision: the revision counts per Result, not per bundle.
+	seal(pageSealStatement{PageDigest: "sha256:" + strings.Repeat("3", 64), BundleDigest: "sha256:" + strings.Repeat("4", 64), ResultRoot: first.Root})
+	records, err := book.Query(t.Context(), evidencebook.Filter{RecordType: RecordTypePageSeal})
+	require.NoError(t, err)
+	n, err := revision(t.Context(), book, records[len(records)-1].RecordID, first.Root)
+	require.NoError(t, err)
+	assert.Equal(t, 3, n)
+	_, err = revision(t.Context(), book, one.RecordID, strings.Repeat("2", 64))
+	assert.ErrorContains(t, err, "is not among the book's page seals over Result")
 }
 
 func TestCheckPageMismatchesAChangedPageWhileTheEvidenceStillVerifies(t *testing.T) {
