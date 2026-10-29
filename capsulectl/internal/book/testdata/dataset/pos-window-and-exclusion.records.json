@@ -1,0 +1,152 @@
+[
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-01T06:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-01T06:00:00Z",
+    "links": [],
+    "record_type": "example-run",
+    "seq": 1,
+    "statement": {
+      "note": "EXAMPLE-ORG example-run placeholder, seq 1",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-02T00:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-02T00:00:00Z",
+    "links": [],
+    "record_type": "example-run",
+    "seq": 2,
+    "statement": {
+      "note": "EXAMPLE-ORG example-run placeholder, seq 2",
+      "sample": false
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-02T10:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-02T10:00:00Z",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 3,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 3",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-02T23:59:59Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-02T23:59:59Z",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 4,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 4",
+      "sample": false
+    },
+    "subject_ref": "example-org:excluded",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-03T06:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-03T06:00:00Z",
+    "links": [],
+    "record_type": "example-run",
+    "seq": 5,
+    "statement": {
+      "note": "EXAMPLE-ORG example-run placeholder, seq 5",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-06T00:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-05T01:30:00+05:00",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 6,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 6",
+      "sample": false
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-06T00:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-04T23:59:59-00:30",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 7,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 7",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-03T08:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-03T08:00:00Z",
+    "links": [],
+    "record_type": "example-note",
+    "seq": 8,
+    "statement": {
+      "note": "EXAMPLE-ORG example-note placeholder, seq 8",
+      "sample": false
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org",
+    "committed_at": "2026-09-03T09:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-03T09:00:00Z",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 9,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 9",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  },
+  {
+    "book_id": "example-org-peer",
+    "committed_at": "2026-09-03T09:00:00Z",
+    "epistemic_type": "producer_claim",
+    "event_time_claim": "2026-09-03T09:00:00Z",
+    "links": [],
+    "record_type": "example-event",
+    "seq": 3,
+    "statement": {
+      "note": "EXAMPLE-ORG example-event placeholder, seq 3",
+      "sample": true
+    },
+    "subject_ref": "example-org:subject-1",
+    "v": 1
+  }
+]

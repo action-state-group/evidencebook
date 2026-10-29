@@ -2,9 +2,13 @@ package book
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	"github.com/action-state-group/agent-action-capsule/go/evidenceplan"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
@@ -239,4 +243,43 @@ func mustJSON(t *testing.T, value any) []byte {
 	raw, err := json.Marshal(value)
 	require.NoError(t, err)
 	return raw
+}
+
+// aac's vectors agree: pos-example-org-dataset-result names the plan and
+// dataset of vectors/evidence-dataset/pos-window-and-exclusion, and the
+// pinned gate run over that case's records gives the same two digests,
+// which bindPlan then accepts as the Result states them.
+func TestResultPlanDigestsAgreeWithTheAACVectors(t *testing.T) {
+	read := func(name string) interface{} {
+		t.Helper()
+		raw, err := os.ReadFile(filepath.Join("testdata", "dataset", name))
+		require.NoError(t, err)
+		value, err := evidenceplan.Decode(raw)
+		require.NoError(t, err)
+		return value
+	}
+	plan, records, want := read("pos-window-and-exclusion.plan.json"), read("pos-window-and-exclusion.records.json"), read("pos-window-and-exclusion.dataset.json")
+	dataset, err := evidenceplan.Build(plan, records)
+	require.NoError(t, err)
+	got, err := canonical.JCS(dataset)
+	require.NoError(t, err)
+	expected, err := canonical.JCS(want)
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), string(got))
+
+	run := planRun{}
+	run.planDigest, err = canonical.JSONDigest(plan)
+	require.NoError(t, err)
+	run.datasetDigest, err = canonical.JSONDigest(dataset)
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join("testdata", "result", "pos-example-org-dataset-result.json"))
+	require.NoError(t, err)
+	doc := decodeJSONNumber(t, raw)
+	require.NoError(t, bindPlan(doc, &run))
+	require.NoError(t, checkResultSchema(doc))
+
+	run.datasetDigest = strings.Repeat("0", 64)
+	err = bindPlan(decodeJSONNumber(t, raw), &run)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "the Result states dataset_ref")
 }
