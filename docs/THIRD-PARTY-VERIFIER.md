@@ -470,7 +470,7 @@ own.
 | The disclosure member paths the bundle draft cites | the same commit | `spec/draft-mih-agent-disclosure-envelope-00.md` |
 | The log and its COSE checkpoint | [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log) `0f74297761f3a0b81d27a116f32ac556c0ecb59d` (tag `crates/checkpointed-local-log-v0.3.1`, the log the node's book embeds) | `spec/draft-mih-scitt-checkpointed-local-log-01.md`, the form this checkpoint is in (§7.3) |
 | The MMR hashing, the single root and the proofs' JSON form | the same commit | `mmr-conformance-vectors/README.md` and `vectors.json`, the only place these are written down (§7.3) |
-| The JSON checkpoint record of §7.4 | the same commit | `checkpoint-conformance-vectors/README.md` |
+| The JSON checkpoint record of §7.4 | the same commit | `checkpoint-conformance-vectors/README.md` and its `vectors.json` |
 | The bundle | evidence-network/loop `cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8` | `findings/2026-10-28-live/02-book/stevenmih-1/bundle.json` |
 | The findings recorded with it | the same commit | `findings/2026-10-28-live/02-book/stevenmih-1/verify.json` |
 | The node's listing, which names its key | the same commit | `nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json` (`key_id`) |
@@ -488,7 +488,8 @@ for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt
 done
 CLL=0f74297761f3a0b81d27a116f32ac556c0ecb59d
 for f in spec/draft-mih-scitt-checkpointed-local-log-01.md mmr-conformance-vectors/README.md \
-  mmr-conformance-vectors/vectors.json checkpoint-conformance-vectors/README.md; do
+  mmr-conformance-vectors/vectors.json checkpoint-conformance-vectors/README.md \
+  checkpoint-conformance-vectors/vectors.json; do
   curl -fsSL --create-dirs -o "cll/$f" \
     "https://raw.githubusercontent.com/action-state-group/checkpointed-local-log/$CLL/$f"
 done

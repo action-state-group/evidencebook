@@ -135,7 +135,8 @@ for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt
   fetch action-state-group/agent-action-capsule "$AAC" "$f" "aac/$f"
 done
 for f in spec/draft-mih-scitt-checkpointed-local-log-01.md mmr-conformance-vectors/README.md \
-  mmr-conformance-vectors/vectors.json checkpoint-conformance-vectors/README.md; do
+  mmr-conformance-vectors/vectors.json checkpoint-conformance-vectors/README.md \
+  checkpoint-conformance-vectors/vectors.json; do
   fetch action-state-group/checkpointed-local-log "$CLL" "$f" "cll/$f"
 done
 NODE=findings/2026-10-28-live/02-book/stevenmih-1
