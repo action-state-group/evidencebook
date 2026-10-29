@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,4 +163,66 @@ func TestAChargeInAnotherCurrencyExemptsNothing(t *testing.T) {
 	assert.True(t, dealShownAmounts([]sealedEvent{open, charge("")})[6400], "an email that names no currency is read in the deal's")
 	assert.False(t, dealShownAmounts([]sealedEvent{open, charge("JPY")})[6400])
 	assert.ErrorContains(t, dealCeilingGate([]byte("my max is $64.00"), []sealedEvent{open, charge("JPY")}, cli.DealAudienceCounterparty), "your spending limit")
+}
+
+func ceilingEvents(limit int64) []sealedEvent {
+	return []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{
+		Intent: dealIntent{PartyRole: dealRoleBuyer, MaxTotalMinor: &limit},
+		Terms:  dealTerms{Currency: "USD"}}}}}
+}
+
+// A random id in base64url (the COSE checkpoint, a witness) is not prose:
+// with a limit of 8.00, "8krsil…" read as 8 kr and "8gbp-…" as 8 GBP, and a
+// counterparty copy was refused at random (issue #26). Each token below is
+// a fixed one of that shape.
+func TestARandomIdIsNotTheLimit(t *testing.T) {
+	events := ceilingEvents(800)
+	for _, tok := range []string{
+		"8krSiljccsfh-Gc4lpkxi8m4j8wl", "8krSiljccsfhGc4lpkxi8w", "8krSiljccsfhGcAlpkxiAw", "8kR2HyiCRXnmH-sExilKR7VFhmKmkFs-A8P1Z2q_z_R", "8gbp-Qlhh6xzsywqlv3kuyf8b1xtzkQ",
+		"8usd_K3j2h1xxxxxxxxxxxxxxxxxx", "8eur-Ab3xxxxxxxxxxxxxxxxxxxxxxx", "8chf-Xz9xxxxxxxxxxxxxxxxxxxxxxxx",
+	} {
+		assert.NoError(t, dealCeilingGate([]byte(`{"cose":"`+tok+`"}`), events, cli.DealAudienceCounterparty), tok)
+	}
+}
+
+// The same ids, drawn at random: none states the limit. A fixed seed, so a
+// failure names its token; each starts with the limit's digit, the shape
+// that was refused.
+func TestRandomBase64urlIdsNeverStateTheLimit(t *testing.T) {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	events := ceilingEvents(800)
+	r := rand.New(rand.NewSource(26))
+	for range 20000 {
+		tok := make([]byte, 43)
+		for i := range tok {
+			tok[i] = alphabet[r.Intn(len(alphabet))]
+		}
+		tok[0] = '8'
+		require.NoError(t, dealCeilingGate([]byte(`{"cose":"`+string(tok)+`"}`), events, cli.DealAudienceCounterparty), string(tok))
+	}
+}
+
+// What the gate caught stays caught: the limit written as money, in or
+// beside a long run, and the bound's name, even inside a long key.
+func TestTheLimitInOrBesideALongRunIsStillRefused(t *testing.T) {
+	events := ceilingEvents(800)
+	id := "Zq3-Tr9xYb_Lm4NpWk7VcHd2Fg5Js8Aa"
+	for _, page := range []string{
+		"my limit is $8.00", "8kr", "limit 8usd-ish", "my-limit-is-$8", "limit 8.00 " + id, id + " limit 8.00",
+		"Lowest-I-Will-Take-Is-Exactly-8-Dollars-Thanks-ok limit is 8 usd",
+		// Context beside a long run stays: its words, its number, its code.
+		"Max_Budget_Limit_FY2026Q4: 8", "My-Personal-Spending-Limit-2026 is 8", "My-Absolute-Spending-Limit-Is-8.50 and 8.00",
+		"8 usd_Settlement_Ref_A1b2c3d4", "8USD-Per-Month",
+		`{"note":"8krSiljccsfh-Gc4lpkxi8m4j8wl and my limit is 8"}`, `{"note":"my limit is 8 USD"}`, `{"note":"8USD-Per-Month-Plan-2026-Ok limit"}`,
+		`{"8krSiljccsfh-Gc4lpkxi8m4j8wl":"limit 8 usd"}`,
+		// A quoted slug in prose, or in an array, is not an id value.
+		`My limit is "8USD-Per-Month-Plan-2026".`, `{"note":"My limit is \"8USD-Per-Month-Plan-2026\"."}`, `["8USD-Per-Month-Plan-2026"]`, `{"max_total_minor":800}`, `{"x_max_total_minor_` + id + `":1}`,
+	} {
+		assert.Error(t, dealCeilingGate([]byte(page), events, cli.DealAudienceCounterparty), page)
+	}
+	assert.Error(t, dealCeilingGate([]byte("$8.50USD-Per-Month-Plan-2026"), ceilingEvents(850), cli.DealAudienceCounterparty), "an amount is not cut at a decimal point")
+	floor := int64(170000)
+	fe := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{
+		Intent: dealIntent{PartyRole: dealRoleSeller, MinTotalMinor: &floor}, Terms: dealTerms{Currency: "USD"}}}}}
+	assert.Error(t, dealCeilingGate([]byte(`{"x_min_total_minor_`+id+`":1}`), fe, cli.DealAudienceCounterparty), "a long key does not hide the floor's name")
 }
