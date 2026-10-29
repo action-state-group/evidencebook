@@ -40,3 +40,6 @@ b3cfb862497bf89fd4dff876f527b41590ca6ac1c4391b40962146398cdb6f51  pos-example-or
 f194bcb3baa4c3db25e6b13b7d8996d4e00ef4fcc6f7dac187a059e68af4ebb7  pos-example-org-extended-result.json
 334f2240e500476715c77a59b92e925487fe93ffb83748782de04511f488afb9  pos-example-org-reconcile-result.json
 8c674d2911805c9015b90d9f1a96733bb0e265de51044b1c7cb06abf434cd58e  pos-example-org-recorded-absence-result.json
+773faa51d749dd028b1dd2131ebcaba2fae184d6db7918a02beb074ba6707ba5  neg-dataset-ref-without-plan-ref.json
+24f5b882390ab40dee65ff59da78fa72c4ba62b5cb0e6bf8240976cc4cf0a951  neg-plan-ref-inline-plan.json
+80940bc75f89d7b793a1dea7288dcec707b718e669c2dc24c52e441a1a8a824f  pos-example-org-dataset-result.json

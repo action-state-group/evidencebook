@@ -3,13 +3,13 @@ module github.com/action-state-group/evidencebook/capsulectl
 go 1.27.0
 
 require (
-	github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956
-	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028174648-93dff5dddeae
+	github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261029023053-8c673d1aaf6e
+	github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261029153820-1a6d212bb869
 	github.com/action-state-group/capsule-emit/go v0.3.0
 	github.com/action-state-group/capsule-viewer/go v0.3.0
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/action-state-group/evidencebook v0.8.0
-	github.com/action-state-group/evidencebook/report v0.2.1-0.20261029011431-f9c649cc22b9
+	github.com/action-state-group/evidencebook/report v0.2.1-0.20261029154434-6ff0033761c8
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 )

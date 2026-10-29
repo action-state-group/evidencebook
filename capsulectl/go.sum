@@ -6,10 +6,10 @@ github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOEl
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956 h1:IhYtJhzXnCPWgiVKyuc0qRv61VV3/lC/WY3hq9vj02w=
-github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956/go.mod h1:Q1yzmSvtxEQiE/rMZZaN7qrSEN8JYQnfwF4VNtqsmTM=
-github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028174648-93dff5dddeae h1:8zRPSEgEoDDN63PZ6vms4AfSA9efFW53mbbjQz1B+m8=
-github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261028174648-93dff5dddeae/go.mod h1:uaJLS4WAQPWDwd2Ln8vPjXLd+rC39fDk1082ealQOJk=
+github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261029023053-8c673d1aaf6e h1:ozb02IBmVJ96wVr8XDpMte8QYlkpdR5XQgIWFCSCUmk=
+github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261029023053-8c673d1aaf6e/go.mod h1:uvgmKp2zrVslYyVKtN0JgOowmBjPP4YxQXMGF/YHigE=
+github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261029153820-1a6d212bb869 h1:cTcnPXrUoTiwxN/BHRjROed7ejW7gKdKN5yfVIzmq1U=
+github.com/action-state-group/capsule-cli v0.1.0-rc9.0.20261029153820-1a6d212bb869/go.mod h1:uaJLS4WAQPWDwd2Ln8vPjXLd+rC39fDk1082ealQOJk=
 github.com/action-state-group/capsule-emit/go v0.3.0 h1:DEFDSHktFQoUxWScjeIbMKfET/4Kjgm/ZQsWJp4AI+Y=
 github.com/action-state-group/capsule-emit/go v0.3.0/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
 github.com/action-state-group/capsule-viewer/go v0.3.0 h1:WMPAMlg/guhPwbgVp/6x0A6SPaYtpYYFEn61IgOq+x4=
@@ -18,8 +18,8 @@ github.com/action-state-group/checkpointed-local-log/go v0.1.0 h1:bDJSW+fy3eZnwn
 github.com/action-state-group/checkpointed-local-log/go v0.1.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
 github.com/action-state-group/evidencebook v0.8.0 h1:remVdZQ2BqEJVdXCNdEXiyn4qVYpRVEali19jwZvI84=
 github.com/action-state-group/evidencebook v0.8.0/go.mod h1:c1nsSve4+e8U6Yfzb7PmOEaDHKJy62KOMgOiza1Tgxk=
-github.com/action-state-group/evidencebook/report v0.2.1-0.20261029011431-f9c649cc22b9 h1:nNcMzqK/kNqnSzEwA5T2JVFr2BInBSFHZO9CAN3cOxY=
-github.com/action-state-group/evidencebook/report v0.2.1-0.20261029011431-f9c649cc22b9/go.mod h1:2zQUyBOgR75K0XRA1J84ye1Ekh4oCcCJUVJTIytySxE=
+github.com/action-state-group/evidencebook/report v0.2.1-0.20261029154434-6ff0033761c8 h1:qG49XXjrsWfqVO7rp5jOP4jSruMvp0gL1iboq141Od0=
+github.com/action-state-group/evidencebook/report v0.2.1-0.20261029154434-6ff0033761c8/go.mod h1:nPp7rUJ1TBSn8j72RHejlrh9E1jyKaARWbnD0irJCNU=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

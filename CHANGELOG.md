@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Added: `book result build --plan` binds a Result to the dataset plan it ran (#107)
+
+- `capsulectl book result build --plan PLAN.json` runs an agent-action-capsule
+  Plan IR v0 dataset plan (§5.1) over the profile's book with aac's
+  `go/evidenceplan` gate. It sets the Result's `plan_ref` and `dataset_ref`
+  (Result v0 §7.3) to the digests of the plan and of the dataset it selected,
+  and refuses stated ones that differ. It refuses a plan over another book, one
+  that reads past the book's last record, and one the gate refuses. The plan
+  and the dataset are sealed as `evidence_plan` and `evidence_dataset` records,
+  which the Result cites; the dataset cites the plan and names its rows'
+  records by seq and header digest. The same plan reproduces both digests
+  however the book grows. A Result that states either member without `--plan` is refused.
+  A different plan or dataset is a different Result. `book report build --seal`
+  reports `page_seal.revision`, so a presentation-only rebuild over the same
+  Result shows the next revision. `capsulectl` builds
+  against agent-action-capsule go `8c673d1` and capsule-cli `1a6d212b`, whose
+  Result gate admits the two members (capsule-cli#490).
+
 ### Added: `report.Seal.Revision` numbers the pages sealed over one Result (#107)
 
 - `report.SealPage` returns `Revision` (`revision` in JSON): the seal's place,

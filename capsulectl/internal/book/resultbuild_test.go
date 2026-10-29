@@ -158,14 +158,22 @@ func decodeJSONNumber(t *testing.T, raw []byte) map[string]interface{} {
 func TestResultSchemaIsPinned(t *testing.T) {
 	sum := sha256.Sum256(cli.ResultSchemaBytes())
 	assert.Equal(t, cli.ResultSchemaDigest, hex.EncodeToString(sum[:]), "cli/schemas/evidence-result-v0.json changed: update ResultSchemaDigest and ResultSchemaSource together")
-	// The schema and the vectors in testdata/result come from one aac
-	// commit, which testdata/result/UPSTREAM names.
+	// The schema and the vectors in testdata/result come from the aac
+	// commits testdata/result/UPSTREAM names: every vector from the first,
+	// and from the second only the plan_ref/dataset_ref vectors, as the
+	// schema takes only that hunk from it.
 	upstream, err := os.ReadFile(filepath.Join("testdata", "result", "UPSTREAM"))
 	require.NoError(t, err)
-	repo, vectors, ok := strings.Cut(strings.TrimSpace(string(upstream)), " ")
-	require.True(t, ok)
-	commit, _, _ := strings.Cut(vectors, " ")
-	assert.Equal(t, repo+" "+commit+" schemas/evidence-result-v0.json", cli.ResultSchemaSource, "ResultSchemaSource must name the commit the vectors were vendored from")
+	lines := strings.Split(strings.TrimSpace(string(upstream)), "\n")
+	require.Len(t, lines, 2)
+	commit := func(line string) (string, string) {
+		fields := strings.Fields(line)
+		require.GreaterOrEqual(t, len(fields), 3)
+		return fields[0], fields[1]
+	}
+	repo, base := commit(lines[0])
+	_, hunk := commit(lines[1])
+	assert.Equal(t, repo+" "+base+" schemas/evidence-result-v0.json, with "+hunk+"'s plan_ref and dataset_ref", cli.ResultSchemaSource, "ResultSchemaSource must name the commits the vectors were vendored from")
 }
 
 // walkNegatives are the upstream close vectors that SATISFY the schema by

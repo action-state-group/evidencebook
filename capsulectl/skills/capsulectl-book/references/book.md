@@ -7,7 +7,7 @@ The reference for the verbs in [../SKILL.md](../SKILL.md). Each runs as
 ## Seal a Result into the book
 
 ```sh
-capsulectl book result build --profile NAME --result RESULT.json --out SEALED.json [--contract REF] [--capsule-out RECORD.json]
+capsulectl book result build --profile NAME --result RESULT.json --out SEALED.json [--contract REF] [--plan PLAN.json] [--capsule-out RECORD.json]
 ```
 
 Requires a jsonl profile with `log_id`, `log: book` (the owner the core requires; `--log book` when you create it), `operator`, a signing key the
@@ -47,6 +47,22 @@ and, with the same `--out`/`--capsule-out`, rewrites nothing (the files
 already hold those bytes); a file holding anything else at either path is
 refused by name, nothing overwritten. A repeat whose record is not yet under
 a checkpoint (an earlier run sealed it, then failed) checkpoints it.
+
+With `--plan`, the Result is bound to a dataset plan (agent-action-capsule
+`spec/evidence-plan-ir-v0.md` §5.1: a `traditional.population` node, then
+`traditional.window` and `traditional.filter` nodes) that the verb runs over
+the book's committed record headers. It sets the Result's `plan_ref` and
+`dataset_ref` (Result v0 §7.3) to the digests of the plan and of the dataset it
+selected. When the document already states them, any that differs is refused.
+A plan over another book, one whose `through_seq` is past the book's last
+record, and one the Plan IR gate refuses (its reason in parentheses, for example
+`(field-missing)`) are refused too. The plan reads only records already
+committed, so the same plan reproduces both digests however the book grows. The
+plan and the dataset are sealed as an `evidence_plan` and an `evidence_dataset`
+record, which the Result cites. The dataset cites the plan; its rows name their
+records by seq and header digest, and the dataset does not cite them. Output adds `plan_ref`, `dataset_ref` and `rows`. A Result that
+states `plan_ref` or `dataset_ref` without `--plan` is refused: the verb never
+seals them as stated.
 
 Sealed as the producer states them, not checked: a reconcile claim's
 `join_key` and `state_of_record`; the `period` of a claim whose Close
@@ -116,7 +132,11 @@ capsulectl book report check --profile NAME --page report.html
 
 `--seal` appends one `report_page_seal` record to the profile's book after the
 page is written (never for `--dry-run`) and checkpoints it. The record holds the
-page's SHA-256, the embedded bundle's digest and the Result root. `report check`
+page's SHA-256, the embedded bundle's digest and the Result root. The output's
+`page_seal.revision` numbers the pages sealed over one Result, from 1, in log
+order: a page that changes only its presentation (`--presentation`, `--card`,
+`--wording`) embeds the same Result and seals as the next revision, and a repeat
+of a sealed page keeps its revision. `report check`
 compares a page file with the book's seals for the bundle it embeds: `match`
 (exit 0), `mismatch` (5), `no sealed record` or `not covered by a checkpoint`
 (3). `verification` is the embedded evidence's `verify --bundle` verdict, kept

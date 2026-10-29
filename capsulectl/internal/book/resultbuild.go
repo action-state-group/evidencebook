@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,6 +46,11 @@ type resultBuildResult struct {
 	Checkpoint      uint64   `json:"checkpoint,omitempty"`
 	Result          string   `json:"result,omitempty"`
 	Capsule         string   `json:"capsule,omitempty"`
+	// PlanRef and DatasetRef are the digests --plan bound the Result to,
+	// and Rows the number of rows its dataset has.
+	PlanRef    string `json:"plan_ref,omitempty"`
+	DatasetRef string `json:"dataset_ref,omitempty"`
+	Rows       *int   `json:"rows,omitempty"`
 }
 
 // resolveRecord finds the book record a cited digest names: the record that
@@ -537,6 +543,16 @@ Rebut of its Close is ignored (a producer cannot agree with itself), where
 evidencebook's own status reading would count it. Sealing AGREED or
 CONTESTED needs the peer's record in this book, which no verb imports yet.
 
+With --plan, the Result is bound to a dataset plan (aac Plan IR v0 section
+5.1) run over this book's committed records: plan_ref and dataset_ref are set
+to the digests of the plan and of the dataset it selects; when the document
+already states them, digests that differ are refused. The plan must name this book and read no further than
+its last record, so the same plan reproduces both digests however the book
+grows. The plan and the dataset are sealed as evidence_plan and
+evidence_dataset records, which the Result cites; the dataset cites the plan
+and names its rows' records by seq and header digest. A Result that states plan_ref or
+dataset_ref without --plan is refused.
+
 A repeat with the same document returns the existing record; if that record
 is not yet under a checkpoint, the repeat checkpoints it. --out and
 --capsule-out are left alone when they already hold the same bytes, and
@@ -551,6 +567,7 @@ func resultBuildCommand() *cobra.Command {
 		resultPath, _ := c.Flags().GetString("result")
 		out, _ := c.Flags().GetString("out")
 		contract, _ := c.Flags().GetString("contract")
+		planPath, _ := c.Flags().GetString("plan")
 		if resultPath == "" || out == "" {
 			return cli.InputError("--result and --out are required")
 		}
@@ -575,13 +592,17 @@ func resultBuildCommand() *cobra.Command {
 		// such a document never takes the lock; what needs the book --
 		// citations, close state, tallies -- is checked once it is open,
 		// before anything is appended.
+		var planRaw []byte
+		if planPath == "" {
+			if e := bindPlan(doc, nil); e != nil {
+				return e
+			}
+		} else if planRaw, e = cli.ReadInput(planPath); e != nil {
+			return e
+		}
 		checked, e := checkResult(doc, contract)
 		if e != nil {
 			return e
-		}
-		encoded, digest, e := statementDigest(doc)
-		if e != nil {
-			return cli.Hint(cli.ErrInput, "the Result cannot be put in canonical (JCS) form: "+e.Error())
 		}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
@@ -589,11 +610,51 @@ func resultBuildCommand() *cobra.Command {
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
 		book := opened.book
+		var run *planRun
+		if planRaw != nil {
+			ran, e := runPlan(c.Context(), book, opened.store, planRaw)
+			if e != nil {
+				return e
+			}
+			if e = bindPlan(doc, &ran); e != nil {
+				return e
+			}
+			// The document now carries both digests: it is checked again,
+			// and sealed in its canonical form.
+			if _, e = checkResult(doc, contract); e != nil {
+				return e
+			}
+			run = &ran
+		}
+		encoded, digest, e := statementDigest(doc)
+		if e != nil {
+			return cli.Hint(cli.ErrInput, "the Result cannot be put in canonical (JCS) form: "+e.Error())
+		}
+		if run != nil {
+			raw = encoded
+		}
 		links, e := resolveResultCitations(c.Context(), book, opened.store, checked)
 		if e != nil {
 			return e
 		}
+		if run != nil {
+			// Sealed only once every check has passed; a repeat finds the
+			// records an earlier run sealed.
+			planLinks, e := sealPlanRun(c.Context(), book, *run)
+			if e != nil {
+				return e
+			}
+			for _, link := range planLinks {
+				if !slices.Contains(links, link) {
+					links = append(links, link)
+				}
+			}
+		}
 		result := resultBuildResult{ContractRef: checked.contractRef, ContractRefs: checked.contracts, Claims: len(checked.claims), StatementDigest: digest, Cites: make([]string, 0, len(links))}
+		if run != nil {
+			rows := run.rows
+			result.PlanRef, result.DatasetRef, result.Rows = run.planDigest, run.datasetDigest, &rows
+		}
 		for _, link := range links {
 			result.Cites = append(result.Cites, link.Target)
 		}
@@ -627,6 +688,7 @@ func resultBuildCommand() *cobra.Command {
 	}}
 	cmd.Flags().String("result", "", "Evidence Result v0 document to seal (JSON)")
 	cmd.Flags().String("contract", "", "The <contract_id>@<version> every claim must name (the record's subject); default: the one contract the claims name, if they name one")
+	cmd.Flags().String("plan", "", "A dataset plan (aac Plan IR v0 section 5.1) to run over this book; sets the Result's plan_ref and dataset_ref and seals the plan and its dataset")
 	cmd.Flags().String("out", "", "Write the sealed document in its canonical (JCS) form, the bytes the record's statement digest covers")
 	cmd.Flags().String("capsule-out", "", "Also write the evidence_result record as an artifact.Record for `verify --capsule`")
 	return cmd
