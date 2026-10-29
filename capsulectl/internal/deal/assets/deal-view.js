@@ -157,6 +157,16 @@ const dealStandaloneReport = async (context, bundle, x, sealedId) => {
   return { report };
 };
 
+// lifecycleText is the lifecycle's sentence with the close date in the
+// viewer's zone, as the page's times are (evidencebook-deal#57): capsulectl wrote
+// the sentence with the close's UTC day (closed_date); the day closed_at falls
+// on here replaces it. A report without those fields keeps its sentence.
+const lifecycleText = (life) => {
+  const t = Date.parse(life.closed_at);
+  if (Number.isNaN(t) || typeof life.closed_date !== "string" || life.closed_date === "" || !life.text.includes(life.closed_date)) return life.text;
+  return life.text.replace(life.closed_date, new Date(t).toLocaleDateString(undefined, { dateStyle: "medium" }));
+};
+
 // dealBuildsCompared compares the builds that sealed the steps with the build
 // that made this page: page_producer when the plugin wrote one
 // (capsule-cli#326), else the core version a page built inside capsule-cli
@@ -573,7 +583,7 @@ const dealViewRender = (model, regions) => {
   // record expands to its sealed step.
   const life = report.lifecycle;
   if (life && typeof life.text === "string") {
-    host.append(el("h2", "Where this deal stands"), el("p", life.text));
+    host.append(el("h2", "Where this deal stands"), el("p", lifecycleText(life)));
     (life.later || []).forEach((l) => host.append(item(`${local(l.at)} · confirms the close: ${l.text}`, [l.capsule_id])));
     host.append(el("p", `${life.may_change} (as of ${local(life.as_of)})`, "deal-note"));
     // A report off the deal's log (capsule-cli#294) states the deal as of
