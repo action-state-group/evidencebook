@@ -131,8 +131,7 @@ type pageSeal struct {
 	statement pageSealStatement
 }
 
-// pageSeals are the page seals the book holds for one bundle digest, or for
-// every bundle when bundleDigest is "".
+// pageSeals are the page seals the book holds for one bundle digest.
 func pageSeals(ctx context.Context, book *evidencebook.Book, bundleDigest string) ([]pageSeal, error) {
 	records, err := book.Query(ctx, evidencebook.Filter{RecordType: RecordTypePageSeal, SubjectRef: bundleDigest})
 	if err != nil {
@@ -150,19 +149,22 @@ func pageSeals(ctx context.Context, book *evidencebook.Book, bundleDigest string
 }
 
 // revision is the place, from 1, of the page seal recordID among the book's
-// page seals over resultRoot, in log order.
+// page seals over resultRoot, in log order. A seal whose statement does not
+// decode states no Result root, so it is no revision of this one and does
+// not stop this page's seal.
 func revision(ctx context.Context, book *evidencebook.Book, recordID, resultRoot string) (int, error) {
-	seals, err := pageSeals(ctx, book, "")
+	records, err := book.Query(ctx, evidencebook.Filter{RecordType: RecordTypePageSeal})
 	if err != nil {
 		return 0, err
 	}
 	n := 0
-	for _, s := range seals {
-		if s.statement.ResultRoot != resultRoot {
+	for _, r := range records {
+		var st pageSealStatement
+		if json.Unmarshal(r.Header.Statement, &st) != nil || st.ResultRoot != resultRoot {
 			continue
 		}
 		n++
-		if s.record.RecordID == recordID {
+		if r.RecordID == recordID {
 			return n, nil
 		}
 	}
