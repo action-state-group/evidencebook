@@ -14,8 +14,10 @@
   which the Result cites; the dataset cites the plan and names its rows'
   records by seq and header digest. The same plan reproduces both digests
   however the book grows. A Result that states either member without `--plan` is refused.
-  A different plan or dataset is a different Result. `capsulectl` builds
-  against agent-action-capsule go `8c673d1` and capsule-cli `<CC>` (now c195683e, #490's head), whose
+  A different plan or dataset is a different Result. `book report build --seal`
+  reports `page_seal.revision`, so a presentation-only rebuild over the same
+  Result shows the next revision. `capsulectl` builds
+  against agent-action-capsule go `8c673d1` and capsule-cli `1a6d212b`, whose
   Result gate admits the two members (capsule-cli#490).
 
 ### Added: `report.Seal.Revision` numbers the pages sealed over one Result (#107)

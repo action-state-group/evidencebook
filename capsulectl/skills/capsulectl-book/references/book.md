@@ -132,7 +132,11 @@ capsulectl book report check --profile NAME --page report.html
 
 `--seal` appends one `report_page_seal` record to the profile's book after the
 page is written (never for `--dry-run`) and checkpoints it. The record holds the
-page's SHA-256, the embedded bundle's digest and the Result root. `report check`
+page's SHA-256, the embedded bundle's digest and the Result root. The output's
+`page_seal.revision` numbers the pages sealed over one Result, from 1, in log
+order: a page that changes only its presentation (`--presentation`, `--card`,
+`--wording`) embeds the same Result and seals as the next revision, and a repeat
+of a sealed page keeps its revision. `report check`
 compares a page file with the book's seals for the bundle it embeds: `match`
 (exit 0), `mismatch` (5), `no sealed record` or `not covered by a checkpoint`
 (3). `verification` is the embedded evidence's `verify --bundle` verdict, kept

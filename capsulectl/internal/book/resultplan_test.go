@@ -317,3 +317,37 @@ func TestResultBuildPlanReusesOnlyADatasetThatCitesItsPlan(t *testing.T) {
 		assert.Equal(t, []string{result.Cites[1]}, dataset.Header.LinksTo(evidencebook.Cites))
 	})
 }
+
+// Acceptance 2 (#107), end to end: a page over a plan-driven Result, then a
+// page that changes only its presentation, are revisions 1 and 2 of the
+// same Result; the Result, its plan_ref and its dataset_ref stay.
+func TestReportRevisionsOverAPlanDrivenResult(t *testing.T) {
+	b := newResultBook(t)
+	p := b.profile
+	bookID, last := bookIdentity(t, b)
+	built, _, err := runResultBuild(t, p, resultDoc(testClaim("claim-1", "met", b.capsules[0])), "--plan", writeTestJSON(t, "plan.json", testPlan(bookID, last)))
+	require.NoError(t, err)
+	bundle := filepath.Join(t.TempDir(), "bundle.json")
+	_, err = invoke(t, "", "disclose", "--profile", p.Name, "--root", built.RecordID, "--payloads", "selected", "--out", bundle)
+	require.NoError(t, err)
+
+	first, _, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal")
+	require.NoError(t, err)
+	second, _, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal", "--presentation", writeTestJSON(t, "presentation.json", map[string]any{"title": "Week 38"}))
+	require.NoError(t, err)
+	require.NotNil(t, first.PageSeal)
+	require.NotNil(t, second.PageSeal)
+	assert.Equal(t, built.RecordID, first.Root)
+	assert.Equal(t, first.Root, second.Root, "a presentation-only change keeps the Result")
+	assert.NotEqual(t, first.PageSeal.RecordID, second.PageSeal.RecordID)
+	assert.Equal(t, 1, first.PageSeal.Revision)
+	assert.Equal(t, 2, second.PageSeal.Revision)
+
+	// Nothing about the Result moved: a repeat of the same build finds it.
+	again, _, err := runResultBuild(t, p, resultDoc(testClaim("claim-1", "met", b.capsules[0])), "--plan", writeTestJSON(t, "plan.json", testPlan(bookID, last)))
+	require.NoError(t, err)
+	assert.True(t, again.AlreadyBuilt)
+	assert.Equal(t, built.RecordID, again.RecordID)
+	assert.Equal(t, built.PlanRef, again.PlanRef)
+	assert.Equal(t, built.DatasetRef, again.DatasetRef)
+}
