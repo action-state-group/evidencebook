@@ -2,6 +2,7 @@ package book
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,7 +114,14 @@ func TestResultBuildPlanBindsTheResultToWhatItRan(t *testing.T) {
 		sealedDataset, err := canonical.JSONDigest(decodeJSONNumber(t, datasetRecord.Header.Statement))
 		require.NoError(t, err)
 		assert.Equal(t, result.DatasetRef, sealedDataset, "the dataset record holds the bytes dataset_ref names")
-		assert.Equal(t, append([]string{planRecord.RecordID}, rowRecords...), datasetRecord.Header.LinksTo(evidencebook.Cites), "the dataset cites its plan and every record it has a row for")
+		assert.Equal(t, []string{planRecord.RecordID}, datasetRecord.Header.LinksTo(evidencebook.Cites), "the dataset cites its plan, not its rows' records")
+		rows := decodeJSONNumber(t, datasetRecord.Header.Statement)["rows"].([]interface{})
+		require.Len(t, rows, 2)
+		for i, row := range rows {
+			record, err := book.Get(t.Context(), rowRecords[i])
+			require.NoError(t, err)
+			assert.Equal(t, json.Number(fmt.Sprint(record.Seq)), row.(map[string]interface{})["seq"], "the rows name the records in log order")
+		}
 	})
 
 	// The book grew (the plan, the dataset, the Result and a checkpoint),
@@ -282,4 +290,30 @@ func TestResultPlanDigestsAgreeWithTheAACVectors(t *testing.T) {
 	err = bindPlan(decodeJSONNumber(t, raw), &run)
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "the Result states dataset_ref")
+}
+
+// A record holding the same dataset but not citing the plan is not reused:
+// the Result's dataset record is one whose closure reaches the plan.
+func TestResultBuildPlanReusesOnlyADatasetThatCitesItsPlan(t *testing.T) {
+	b := newResultBook(t)
+	p := b.profile
+	bookID, last := bookIdentity(t, b)
+	plan := testPlan(bookID, last)
+	run := planDigests(t, b, plan)
+	var stray string
+	withBook(t, p, func(book *evidencebook.Book) {
+		record, err := book.Append(t.Context(), evidencebook.Entry{RecordType: datasetRecordType, EpistemicType: evidencebook.DerivedMetric, SubjectRef: run.datasetDigest, Statement: run.dataset})
+		require.NoError(t, err)
+		stray = record.RecordID
+	})
+	result, _, err := runResultBuild(t, p, resultDoc(testClaim("claim-1", "met", b.capsules[0])), "--plan", writeTestJSON(t, "plan.json", plan))
+	require.NoError(t, err)
+	assert.Equal(t, run.datasetDigest, result.DatasetRef)
+	require.Len(t, result.Cites, 3)
+	assert.NotEqual(t, stray, result.Cites[2])
+	withBook(t, p, func(book *evidencebook.Book) {
+		dataset, err := book.Get(t.Context(), result.Cites[2])
+		require.NoError(t, err)
+		assert.Equal(t, []string{result.Cites[1]}, dataset.Header.LinksTo(evidencebook.Cites))
+	})
 }

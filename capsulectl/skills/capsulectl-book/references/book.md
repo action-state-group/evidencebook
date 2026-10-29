@@ -55,12 +55,12 @@ the book's committed record headers. It sets the Result's `plan_ref` and
 `dataset_ref` (Result v0 §7.3) to the digests of the plan and of the dataset it
 selected. When the document already states them, any that differs is refused.
 A plan over another book, one whose `through_seq` is past the book's last
-record, and one the Plan IR gate refuses (its reason in brackets, for example
-`field-missing`) are refused too. The plan reads only records already
+record, and one the Plan IR gate refuses (its reason in parentheses, for example
+`(field-missing)`) are refused too. The plan reads only records already
 committed, so the same plan reproduces both digests however the book grows. The
 plan and the dataset are sealed as an `evidence_plan` and an `evidence_dataset`
-record, which the Result cites. The dataset cites the plan and every record it
-has a row for. Output adds `plan_ref`, `dataset_ref` and `rows`. A Result that
+record, which the Result cites. The dataset cites the plan; its rows name their
+records by seq and header digest, and the dataset does not cite them. Output adds `plan_ref`, `dataset_ref` and `rows`. A Result that
 states `plan_ref` or `dataset_ref` without `--plan` is refused: the verb never
 seals them as stated.
 

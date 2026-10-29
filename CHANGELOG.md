@@ -11,10 +11,11 @@
   and refuses stated ones that differ. It refuses a plan over another book, one
   that reads past the book's last record, and one the gate refuses. The plan
   and the dataset are sealed as `evidence_plan` and `evidence_dataset` records,
-  which the Result cites, and the same plan reproduces both digests however the
-  book grows. A Result that states either member without `--plan` is refused.
+  which the Result cites; the dataset cites the plan and names its rows'
+  records by seq and header digest. The same plan reproduces both digests
+  however the book grows. A Result that states either member without `--plan` is refused.
   A different plan or dataset is a different Result. `capsulectl` builds
-  against agent-action-capsule go `8c673d1` and capsule-cli `<CC>`, whose
+  against agent-action-capsule go `8c673d1` and capsule-cli `<CC>` (now c195683e, #490's head), whose
   Result gate admits the two members (capsule-cli#490).
 
 ### Added: `report.Seal.Revision` numbers the pages sealed over one Result (#107)

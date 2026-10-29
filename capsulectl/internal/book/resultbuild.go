@@ -545,12 +545,12 @@ CONTESTED needs the peer's record in this book, which no verb imports yet.
 
 With --plan, the Result is bound to a dataset plan (aac Plan IR v0 section
 5.1) run over this book's committed records: plan_ref and dataset_ref are set
-to the digests of the plan and of the dataset it selects, or refused when the
-document states others. The plan must name this book and read no further than
+to the digests of the plan and of the dataset it selects; when the document
+already states them, digests that differ are refused. The plan must name this book and read no further than
 its last record, so the same plan reproduces both digests however the book
 grows. The plan and the dataset are sealed as evidence_plan and
 evidence_dataset records, which the Result cites; the dataset cites the plan
-and every record it has a row for. A Result that states plan_ref or
+and names its rows' records by seq and header digest. A Result that states plan_ref or
 dataset_ref without --plan is refused.
 
 A repeat with the same document returns the existing record; if that record
@@ -652,7 +652,7 @@ func resultBuildCommand() *cobra.Command {
 		}
 		result := resultBuildResult{ContractRef: checked.contractRef, ContractRefs: checked.contracts, Claims: len(checked.claims), StatementDigest: digest, Cites: make([]string, 0, len(links))}
 		if run != nil {
-			rows := len(run.rowRecords)
+			rows := run.rows
 			result.PlanRef, result.DatasetRef, result.Rows = run.planDigest, run.datasetDigest, &rows
 		}
 		for _, link := range links {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/agent-action-capsule/go/evidenceplan"
@@ -20,7 +21,10 @@ import (
 // produced (section 6.2), never digests the caller states. The plan and the
 // dataset are each sealed as a record of their own, so a bundle rooted on
 // the Result can disclose the bytes its digests name: the Result cites both,
-// and the dataset cites the plan and every record it has a row for.
+// and the dataset cites the plan. The dataset does not cite the records it
+// has rows for: its rows name them by seq and header digest, and a closure
+// through them would reach every earlier Result a plan over daily Results
+// selects, which a report rooted on one Result refuses.
 
 // The record types `result build --plan` seals. record_type is open
 // vocabulary; these names are the book's own (evidencebook#107).
@@ -30,12 +34,12 @@ const (
 )
 
 // planRun is a dataset plan run over this book: the plan and the dataset
-// document in canonical (JCS) form with their digests, and the record each
-// dataset row names.
+// document in canonical (JCS) form with their digests, and the number of
+// rows the dataset has.
 type planRun struct {
 	plan, dataset             []byte
 	planDigest, datasetDigest string
-	rowRecords                []string
+	rows                      int
 }
 
 // runPlan runs the plan in raw over the book's committed records. It refuses
@@ -52,7 +56,6 @@ func runPlan(ctx context.Context, book *evidencebook.Book, store recordStore, ra
 		return planRun{}, err
 	}
 	headers := make([]interface{}, len(records))
-	bySeq := make(map[uint64]string, len(records))
 	for i, record := range records {
 		stored, err := store.GetRecord(ctx, record.RecordID)
 		if err != nil {
@@ -61,7 +64,6 @@ func runPlan(ctx context.Context, book *evidencebook.Book, store recordStore, ra
 		if headers[i], err = evidenceplan.Decode(stored.Header); err != nil {
 			return planRun{}, fmt.Errorf("record %s: header: %w", record.RecordID, err)
 		}
-		bySeq[record.Seq] = record.RecordID
 	}
 	dataset, err := evidenceplan.Build(plan, headers)
 	var refusal *evidenceplan.Error
@@ -95,10 +97,7 @@ func runPlan(ctx context.Context, book *evidencebook.Book, store recordStore, ra
 	if out.datasetDigest, err = canonical.JSONDigest(dataset); err != nil {
 		return planRun{}, err
 	}
-	for _, row := range dataset["rows"].([]interface{}) {
-		seq, _ := row.(map[string]interface{})["seq"].(json.Number).Int64()
-		out.rowRecords = append(out.rowRecords, bySeq[uint64(seq)])
-	}
+	out.rows = len(dataset["rows"].([]interface{}))
 	return out, nil
 }
 
@@ -135,8 +134,9 @@ func bindPlan(doc map[string]interface{}, run *planRun) error {
 }
 
 // sealDocument seals statement, a canonical document, as one record of
-// recordType about its own digest, or finds the record an earlier run
-// sealed for the same bytes, so a repeat appends nothing.
+// recordType about its own digest with links, or finds the record an
+// earlier run sealed for the same bytes and the same links, so a repeat
+// appends nothing.
 func sealDocument(ctx context.Context, book *evidencebook.Book, recordType string, epistemic evidencebook.EpistemicType, statement []byte, digest string, links []evidencebook.Link) (evidencebook.Record, error) {
 	prior, err := book.Query(ctx, evidencebook.Filter{RecordType: recordType, SubjectRef: digest})
 	if err != nil {
@@ -147,7 +147,7 @@ func sealDocument(ctx context.Context, book *evidencebook.Book, recordType strin
 		if err != nil {
 			continue
 		}
-		if sealed, err := canonical.JSONDigest(statement); err == nil && sealed == digest {
+		if sealed, err := canonical.JSONDigest(statement); err == nil && sealed == digest && slices.Equal(record.Header.Links, links) {
 			return record, nil
 		}
 	}
@@ -162,11 +162,7 @@ func sealPlanRun(ctx context.Context, book *evidencebook.Book, run planRun) ([]e
 	if err != nil {
 		return nil, err
 	}
-	links := []evidencebook.Link{{Type: evidencebook.Cites, Target: plan.RecordID}}
-	for _, id := range run.rowRecords {
-		links = append(links, evidencebook.Link{Type: evidencebook.Cites, Target: id})
-	}
-	dataset, err := sealDocument(ctx, book, datasetRecordType, evidencebook.DerivedMetric, run.dataset, run.datasetDigest, links)
+	dataset, err := sealDocument(ctx, book, datasetRecordType, evidencebook.DerivedMetric, run.dataset, run.datasetDigest, []evidencebook.Link{{Type: evidencebook.Cites, Target: plan.RecordID}})
 	if err != nil {
 		return nil, err
 	}
