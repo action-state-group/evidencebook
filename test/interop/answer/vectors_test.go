@@ -19,7 +19,12 @@ import (
 const (
 	aacCommit         = "9d653f41419d2d2bac4714137b763315947ec754"
 	regeneratedCommit = "e706487d37561a7e7aae5c169d7c45e76305973b"
-	vectorsSHA256     = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
+	// The guide's §7: checkpointed-local-log at tag
+	// crates/checkpointed-local-log-v0.3.1, and the evidence-network/loop
+	// commit that holds the node's bundle.
+	cllCommit     = "0f74297761f3a0b81d27a116f32ac556c0ecb59d"
+	loopCommit    = "b02f8cf24200773a837027c19972154f9e461f02"
+	vectorsSHA256 = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
 )
 
 type ipRow struct {
@@ -93,14 +98,40 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 	guide := string(data)
 	cases := loadIPVectors(t)
 
-	// One pin for the whole guide.
-	pins := regexp.MustCompile(`(?m)^AAC=(\S+)$`).FindAllStringSubmatch(guide, -1)
-	if len(pins) != 2 {
-		t.Errorf("the guide sets AAC %d times, want 2 (§1 and §6.1)", len(pins))
+	// One pin per repository for the whole guide, and the same pins in
+	// test/cleanroom/run.sh, which runs the guide's commands.
+	script, err := os.ReadFile(filepath.Join("..", "..", "cleanroom", "run.sh"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, p := range pins {
-		if p[1] != aacCommit {
-			t.Errorf("the guide pins AAC=%s, not %s", p[1], aacCommit)
+	for _, p := range []struct {
+		name, commit string
+		inGuide      int
+	}{
+		{"AAC", aacCommit, 3}, // §1, §6.1 and §7.1
+		{"CLL", cllCommit, 1},
+		{"LOOP", loopCommit, 1},
+	} {
+		set := regexp.MustCompile(`(?m)^` + p.name + `=(\S+)$`)
+		pins := set.FindAllStringSubmatch(guide, -1)
+		if len(pins) != p.inGuide {
+			t.Errorf("the guide sets %s %d times, want %d", p.name, len(pins), p.inGuide)
+		}
+		for _, m := range append(pins, set.FindAllStringSubmatch(string(script), -1)...) {
+			if m[1] != p.commit {
+				t.Errorf("%s=%s, not %s", p.name, m[1], p.commit)
+			}
+		}
+		if n := len(set.FindAllStringSubmatch(string(script), -1)); n != 1 {
+			t.Errorf("run.sh sets %s %d times, want 1", p.name, n)
+		}
+	}
+	// Every digest and key run.sh holds the page's commands to is one the
+	// page states, so a typo in the page's copy fails here and not only for
+	// a tester.
+	for _, v := range regexp.MustCompile(`\b[0-9a-f]{64}\b`).FindAllString(string(script), -1) {
+		if !strings.Contains(guide, v) {
+			t.Errorf("run.sh checks %s, which the guide does not state", v)
 		}
 	}
 	for _, q := range []string{tick(aacCommit), tick(regeneratedCommit), fmt.Sprintf("The vectors at this commit hold %d cases.", len(cases))} {
@@ -109,7 +140,9 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 		}
 	}
 	for _, sha := range regexp.MustCompile("`([0-9a-f]{40})`").FindAllStringSubmatch(guide, -1) {
-		if sha[1] != aacCommit && sha[1] != regeneratedCommit && sha[1] != "43f3cb1b955d647bc92cb4da0d823973d1981cad" {
+		switch sha[1] {
+		case aacCommit, regeneratedCommit, cllCommit, loopCommit, "43f3cb1b955d647bc92cb4da0d823973d1981cad":
+		default:
 			t.Errorf("the guide names another commit: %s", sha[1])
 		}
 	}

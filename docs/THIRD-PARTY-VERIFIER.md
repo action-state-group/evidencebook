@@ -22,8 +22,15 @@ personal-evidence disclosure: a holder's History at the Basic level of the
 Personal-Agent History Profile, with its own conformance vectors, which this
 repository's `Respond` produced. Section 6.4 says how to keep the two apart.
 
+Section 7 adds a third input that no test program made: a bundle that a node
+on a live test network sealed and published, with the per-property findings
+recorded when it was published.
+
 The commands below are for a Unix shell (bash or zsh) on Linux or macOS, with
-`git` and `curl` installed.
+`git` and `curl` installed. `test/cleanroom/run.sh` in this repository runs all
+of them and checks every value this page states; `test/cleanroom/Dockerfile`
+builds a container that holds only Debian, `git`, `curl` and Go to run it in
+(§8).
 
 ## 1. The normative inputs
 
@@ -312,21 +319,24 @@ its claim, sufficiency and verdict from.
 The vectors' positive run is not hand-made. It is the octets that
 evidencebook's `Respond`, unmodified, sent at evidencebook commit
 `43f3cb1b955d647bc92cb4da0d823973d1981cad`. The program that drove it is in
-this repository as `test/interop/personal-history`, byte-for-byte the
-`producer/main.go` you downloaded. It seeds a holder stream of four deals, with
-a checkpoint after the sixth record and another after the eighth, and registers
-the Basic level definition for one recipient. Then it asks for each deal as the
-requester each exchange names. Its clock is fixed and its keys are test keys,
-so every run on every machine gives the same bytes. Its header comment still
-describes the corpus README's copy step: the file is kept byte-identical to the
-corpus's, so that comment is not edited here.
+this repository as `test/interop/personal-history`. It seeds a holder stream of
+four deals, with a checkpoint after the sixth record and another after the
+eighth, and registers the Basic level definition for one recipient. Then it
+asks for each deal as the requester each exchange names. Its clock is fixed and
+its keys are test keys, so every run on every machine gives the same bytes.
+
+Its `main.go` is the `producer/main.go` you downloaded with two changes, which
+`test/interop/personal-history/producer.diff` records exactly: the book keeps
+payloads in its originals store rather than a payload directory, and a
+`-correlated` flag adds a second run that is not the corpus's. Without the flag
+the output is the corpus run, byte for byte.
 
 In the `evidencebook` clone of §2:
 
 ```bash
 cd ~/eb-verifier-test/evidencebook
 PH=../aac/vectors/personal-history-basic-v0
-cmp "$PH/producer/main.go" test/interop/personal-history/main.go
+diff "$PH/producer/main.go" test/interop/personal-history/main.go | cmp - test/interop/personal-history/producer.diff
 go run ./test/interop/personal-history > run/responder-run.json
 cmp "$PH/responder-run.json" run/responder-run.json
 (sha256sum run/responder-run.json 2>/dev/null || shasum -a 256 run/responder-run.json) | cut -d' ' -f1
@@ -441,17 +451,168 @@ rows, and do not show either as support for the other.
 | Requirement row | `r-record` of the interop vectors' contract, as §5 specifies | `r-deal-steps` of `H@1`: row `envelope-4`, `UNKNOWN`, `UNKNOWN`, `not_evaluable` |
 | Not established | what the record's content means: the profile fixes no content rule, so the Artifact is octets to you (§5) | any outcome of a deal (sale, payment, delivery, receipt or return); that anything happened at a claimed time; who holds the holder key |
 
-## 7. What to report back
+## 7. A node's bundle from a live test network
+
+§3 to §6 check replies that test programs made. This section checks a bundle
+that a node made on its own: three records that the node `stevenmih-1` on the
+evidence network's lab sealed into its book, with the per-property findings
+recorded when the bundle was published. The evidence network publishes these in its
+public [loop](https://github.com/evidence-network/loop) repository. Nothing
+here is a test key: the records, their checkpoint and both keys are the node's
+own.
+
+### 7.1 The inputs
+
+| Input | Repository and commit | Path |
+|---|---|---|
+| The bundle format | agent-action-capsule `9d653f41419d2d2bac4714137b763315947ec754` (§1) | `spec/draft-mih-zhang-agent-disclosure-bundle-01.md` |
+| The record format each enclosed Capsule follows | the same commit | `spec/draft-mih-scitt-agent-action-capsule-05.md` |
+| The disclosure member paths the bundle draft cites | the same commit | `spec/draft-mih-agent-disclosure-envelope-00.md` |
+| The log and its COSE checkpoint | [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log) `0f74297761f3a0b81d27a116f32ac556c0ecb59d` (tag `crates/checkpointed-local-log-v0.3.1`, the log the node's book embeds) | `spec/draft-mih-scitt-checkpointed-local-log-01.md`, the form this checkpoint is in (§7.3) |
+| The MMR hashing, the single root and the proofs' JSON form | the same commit | `mmr-conformance-vectors/README.md` and `vectors.json`, the only place these are written down (§7.3) |
+| The bundle | evidence-network/loop `b02f8cf24200773a837027c19972154f9e461f02` | `findings/2026-10-28-live/02-book/stevenmih-1/bundle.json` |
+| The findings recorded with it | the same commit | `findings/2026-10-28-live/02-book/stevenmih-1/verify.json` |
+| The node's listing, which names its key | the same commit | `nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json` (`key_id`) |
+| The book's description, which names its checkpoint key | the same commit | `lab/runs/2026-10-28/join/stevenmih-1/book.json` (`checkpoint_key`) |
+
+Download them next to the §1 inputs:
+
+```bash
+cd ~/eb-verifier-test
+AAC=9d653f41419d2d2bac4714137b763315947ec754
+for f in spec/draft-mih-zhang-agent-disclosure-bundle-01.md spec/draft-mih-scitt-agent-action-capsule-05.md \
+  spec/draft-mih-agent-disclosure-envelope-00.md; do
+  curl -fsSL --create-dirs -o "aac/$f" \
+    "https://raw.githubusercontent.com/action-state-group/agent-action-capsule/$AAC/$f"
+done
+CLL=0f74297761f3a0b81d27a116f32ac556c0ecb59d
+for f in spec/draft-mih-scitt-checkpointed-local-log-01.md mmr-conformance-vectors/README.md \
+  mmr-conformance-vectors/vectors.json; do
+  curl -fsSL --create-dirs -o "cll/$f" \
+    "https://raw.githubusercontent.com/action-state-group/checkpointed-local-log/$CLL/$f"
+done
+LOOP=b02f8cf24200773a837027c19972154f9e461f02
+NODE=findings/2026-10-28-live/02-book/stevenmih-1
+for f in "$NODE/bundle.json" "$NODE/verify.json" \
+  nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json \
+  lab/runs/2026-10-28/join/stevenmih-1/book.json; do
+  curl -fsSL --create-dirs -o "loop/$f" \
+    "https://raw.githubusercontent.com/evidence-network/loop/$LOOP/$f"
+done
+(sha256sum "loop/$NODE/bundle.json" 2>/dev/null || shasum -a 256 "loop/$NODE/bundle.json") | cut -d' ' -f1
+```
+
+The last line prints
+`aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0`. The
+same command on `verify.json` prints
+`9a1ad3b2c39c7d7862d259cce52dab46df9eb686b1a6f915816f9d6597b5e244`.
+
+### 7.2 Your trust choice
+
+Pin two keys, each from where the network published it:
+
+- the node key `1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9`,
+  the `key_id` of the node's listing;
+- the checkpoint key `dbcc770a60a673668470b1a8083d88f00fd290b92234f9fbb610eec52a689922`,
+  the `checkpoint_key` of the book's description, for the log `lab-1-book`.
+
+Whether a listing in that repository is a good reason to trust a key is your
+choice. The test asks only that you say which keys you pinned and why.
+
+### 7.3 What to verify, and what result is specified
+
+Verify the bundle offline, as the bundle draft's Verification section
+requires, and report each result separately. The bundle's own
+`verification` member is the producer's self-report: label it so, and do not
+count it as a result. `verify.json` is what the evidence network's own
+verifier (`capsulectl verify --bundle`, an implementation this test is
+independent of) found. Its member names are that tool's, so compare meanings,
+not names:
+
+| Result | Specified | `verify.json` member |
+|---|---|---|
+| Bundle digest (draft §Bundle Digest) | `aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0`; the file is already in canonical form, so this is also its SHA-256 | `bundle_digest` |
+| Each of the three enclosed Capsules, under the record format | each `capsule_id` recomputes, and each signature verifies under the node key: `cd567ccf…`, `9c004a2b…` and `3d1cea60…`. `root` is `cd567ccf…` | `record_identity`: `passed`; `record_signatures`: `authored` for each record; `producer_signatures`: `pass`, the same signature result over all three |
+| Disclosures (draft §Bundle-Level Disclosures) | `agent_input` of each Capsule is WITHHELD: there is no overlay, so nothing is revealed and nothing fails | `disclosures`: `withheld` |
+| Graph closure | holds, with `completeness.missing` empty | `graph_closure`: `pass` |
+| Interval coverage | holds for `lab-1-book` sequences 4 to 6 under the range root, verified from the checkpoint itself: `checkpoint.cose` verifies under the checkpoint key, its CWT `iss` is `lab-1-book`, its `log_size` is 10, and the root its `commitment` folds to, `72ea0ded3b6fabfb29af0bb36dae918853863533b536a326483f27e1e96cff58`, equals the certificate's `range_root` and the checkpoint's `root` | `interval_coverage`: `pass`; `checkpoint`: `pass` |
+| Per-record membership | holds for each of the three records, each by its own inclusion proof at `leaf_index = seq - 1` and `size` 10 | `per_record_membership`: `pass` |
+| Transparency | no Receipt from a Transparency Service and no witness: interval coverage and membership rest on the checkpoint signature alone. Say so; do not report them as witnessed | `witnesses`: `withheld`, `witness_receipt_absent` |
+| `producer-key/v1` | declares `1dd25d99…`. It is used only to judge whether a countersignature is independent, and there are none, so it changes no result | `extensions`: `uninterpreted` |
+| Countersignatures | none | `countersignatures`: empty |
+| Verdict | every result above holds | `verdict`: `VALID` |
+
+Four things the texts leave to you, which a verifier written from these texts
+has to infer (§9 item 9 asks you to say how you read them):
+
+- **The checkpoint's form.** It follows CLL -01, not the -02 draft at the same
+  tag: `commitment` and `prev_commitment` are the CBOR-encoded peak list (-01
+  §Commitment Representation), the consistency proof rides along as an extra
+  claim, and its CWT `sub` is `lab-1-book#10`, naming the checkpoint rather
+  than the log. A strict -02 verifier rejects it, because the logs that write
+  the -02 form are not released yet
+  ([checkpointed-local-log#89](https://github.com/action-state-group/checkpointed-local-log/issues/89));
+  report which draft you applied.
+- **The single root.** `checkpoint.root` and `range_root` are the peak list
+  folded to one hash. CLL -01 leaves the fold to the implementation; the fold
+  this log uses is the one `mmr-conformance-vectors/README.md` shows, as are
+  the leaf and parent hashing and the JSON form of the inclusion and range
+  proofs.
+- **The log entry.** Each record's log entry is its `capsule_id`, as
+  `completeness_certificate.body_digests` lists them, so its leaf is the
+  README's `leaf` over that digest.
+- **The signature carriage.** Each record's `signature` is a hex-encoded
+  COSE_Sign1 by `key_id`.
+
+The bundle shows that this node signed these three records and placed them at
+these positions in its book, under a checkpoint signed by its book's
+checkpoint key. It does not show what the records' actions meant, that
+anything happened at a claimed time, or that anyone else saw the checkpoint.
+
+## 8. Running it all in a clean room
+
+`test/cleanroom/run.sh` runs every command of §1 to §7 and stops at the first
+value that differs from this page. Run it in a container that holds nothing
+but Debian, `git`, `curl` and Go:
+
+```bash
+docker build -t eb-cleanroom test/cleanroom
+docker run --rm eb-cleanroom
+```
+
+To run your own verifier at the end, mount it and name it in `VERIFIER`: the
+script calls `$VERIFIER ~/eb-verifier-test` once every input is in place, and
+prints its output as well as keeping it as `~/eb-verifier-test/verifier.out`
+inside the container. The image holds no language runtime but Go, so the
+verifier must be a static binary, a Go program, or run on an image you build
+`FROM eb-cleanroom` with your runtime added. For example, with a static
+verifier at `./myverifier/run`, keeping its output in `verifier.log`:
+
+```bash
+docker run --rm -v "$PWD/myverifier:/verifier:ro" -e VERIFIER=/verifier/run eb-cleanroom > verifier.log
+```
+
+Without Docker, run the script itself; it needs bash, `git`, `curl` and Go
+1.27 or newer. An earlier `run/` in the evidencebook checkout is moved aside,
+not deleted.
+
+A clean run means only that your inputs match this page. It judges nothing your
+verifier outputs: `verifier.out` is kept, not checked. Only the pass rule of §9
+counts, and this page is the third-party verifier test of the requirements'
+§8, not this section.
+
+## 9. What to report back
 
 Open an issue on the
 [evidencebook repository](https://github.com/action-state-group/evidencebook/issues)
 with:
 
 1. the agent-action-capsule commit you read (it should be the one in §1 and
-   §6.1), and the evidencebook commit you ran (`git rev-parse HEAD`);
-2. your verifier: language, the libraries it uses for Ed25519, SHA-256, JCS and
-   CBOR, and a statement that it uses no code from evidencebook or from
-   agent-action-capsule;
+   §6.1), the checkpointed-local-log and evidence-network/loop commits of
+   §7.1, and the evidencebook commit you ran (`git rev-parse HEAD`);
+2. your verifier: language, the libraries it uses for Ed25519, SHA-256, JCS,
+   CBOR and COSE, and a statement that it uses no code from evidencebook,
+   agent-action-capsule, checkpointed-local-log or capsule-cli;
 3. the key pins you chose, and your `evaluation_time`;
 4. for each row of the table in §5: the request and reply octets (JSON as text,
    CBOR as hex) or the vector case id, your verifier's per-property statuses,
@@ -466,13 +627,16 @@ with:
 7. the two results side by side as §6.4 lays them out: for each, its subject,
    its unit and count, its coverage, its source assertion, and what it does not
    establish;
-8. every place the profile texts left you unsure, or where you think the text,
-   the vectors and this responder disagree.
+8. for the node's bundle of §7: the keys you pinned and why, and your result
+   for each row of the table in §7.3;
+9. every place the texts left you unsure, or where you think the text, the
+   vectors, this responder and the node's bundle disagree.
 
-**Pass** means both of these hold. For every row of the table in §5, your
+**Pass** means all three of these hold. For every row of the table in §5, your
 results equal the named vector case's `expected` block as §5 describes. For
 every case of §6.3, your results equal that case's whole `expected` block, and
-your report keeps the two results apart as §6.4 describes. Any difference is a
+your report keeps the two results apart as §6.4 describes. For the node's
+bundle, your results equal every row of the table in §7.3. Any difference is a
 finding. Report it even if you think the mistake is ours.
 
 ## Other implementations
@@ -482,5 +646,6 @@ reference verifier from the agent-action-capsule project. It also reproduces the
 §6.2 run and runs the agent-action-capsule test for the History vectors, which
 uses that reference verifier and a History evaluator of its own. Those, and
 evidencebook's Go code, are the implementations this test is meant to be
-independent of. Do not use any of them for the test. Comparing results with
+independent of. So, for §7, are capsule-cli (`capsulectl`) and the
+checkpointed-local-log libraries. Do not use any of them for the test. Comparing results with
 them afterwards is fine.

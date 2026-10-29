@@ -33,6 +33,10 @@ go test -race ./...
 # CI: the python job in ci.yml)
 (cd python && python -m venv .venv && .venv/bin/pip install -e ".[test]" && .venv/bin/python -m pytest -q)
 
+# Third-party verifier guide: every command and value of docs/THIRD-PARTY-VERIFIER.md
+# (CI: the verifier-pack job in ci.yml; needs network access)
+WORK=$(mktemp -d) EB_DIR=$PWD test/cleanroom/run.sh
+
 # Release helper
 python -m pytest -q .github/test_release.py
 

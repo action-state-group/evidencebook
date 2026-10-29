@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Added: the third-party verifier guide checks a live node's bundle, and runs in a clean room (#41)
+
+- `docs/THIRD-PARTY-VERIFIER.md` §7 adds a bundle that a node on the evidence
+  network's lab sealed and published (evidence-network/loop `b02f8cf`), with
+  the keys to pin, the texts to read and the result specified for each of the
+  bundle draft's checks. The guide's §8 runs all its commands in a container that holds only
+  Debian, `git`, `curl` and Go (`test/cleanroom/Dockerfile`), with an optional
+  `VERIFIER` the tester supplies.
+- `test/cleanroom/run.sh` runs every command of the guide and checks every
+  value it states; CI runs it on every change. It found that §6.2's first `cmp`
+  no longer held once `test/interop/personal-history` gained the originals
+  store and `-correlated`: the guide now compares against `producer.diff`, as
+  CI already did.
+- A clean-room rehearsal of §7 (a verifier written from the public texts
+  only) found that the node's checkpoint is in checkpointed-local-log -01 form;
+  the guide now names -01, adds the disclosure-envelope draft to the inputs,
+  and states the four points the texts leave to the verifier
+  (agent-action-capsule#460).
+
 ### Added: `book result build --plan` binds a Result to the dataset plan it ran (#107)
 
 - `capsulectl book result build --plan PLAN.json` runs an agent-action-capsule
