@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
@@ -378,4 +379,64 @@ func TestDealReceiptNeverSaysTheUserWasReminded(t *testing.T) {
 		}
 		assert.Contains(t, string(raw), "carried")
 	}
+}
+
+// The close sentence names the close's UTC day and the report carries that
+// day beside the sealed time, so the page can say the viewer's day instead
+// (evidencebook-deal#57). A close just after midnight UTC is the previous evening
+// in the Americas.
+func TestLifecycleCarriesTheCloseDayItNames(t *testing.T) {
+	events := []sealedEvent{
+		{CapsuleID: "c0", Event: dealEvent{Kind: "open", Open: &dealOpen{Terms: dealTerms{Currency: "USD"}}, At: "2026-10-22T20:00:00Z"}},
+		{CapsuleID: "c1", Event: dealEvent{Kind: "close", N: 2, At: "2026-10-23T02:19:32Z", Close: &dealCloseResult{Outcome: "completed"}}},
+	}
+	l := buildDealLifecycle(events, time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC))
+	assert.Equal(t, "2026-10-23T02:19:32Z", l.ClosedAt)
+	assert.Equal(t, "Oct 23, 2026", l.ClosedDate)
+	assert.Contains(t, l.Text, "Closed on "+l.ClosedDate+":")
+	shared := shareLifecycle(l)
+	assert.Equal(t, l.ClosedAt, shared["closed_at"], "a shared copy carries it too")
+	assert.Equal(t, l.ClosedDate, shared["closed_date"])
+}
+
+// The page shows the close on the viewer's day, as it shows the times
+// (evidencebook-deal#57): 02:19 UTC on Oct 23 is Oct 22 in US Central and Oct 23
+// elsewhere east of it; a report without the fields keeps its sentence.
+func TestDealViewShowsTheCloseOnTheViewersDay(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	dir := t.TempDir()
+	driver := filepath.Join(dir, "driver.cjs")
+	script := filepath.Join(dir, "deal-view.js")
+	const code = `
+const fs = require("fs");
+const vm = require("vm");
+const context = vm.createContext({ EvidenceGraph: { registerPresentation() {} } });
+vm.runInContext(fs.readFileSync(process.argv[2], "utf8"), context);
+const lifecycleText = vm.runInContext("lifecycleText", context);
+process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync(0, "utf8")).map((l) => lifecycleText(l))));
+`
+	require.NoError(t, os.WriteFile(driver, []byte(code), 0o600))
+	require.NoError(t, os.WriteFile(script, []byte(DealViewJS), 0o600))
+	text := "Closed on Oct 23, 2026: matched, nothing left to match. No record has been linked to the close yet."
+	life := map[string]any{"text": text, "closed_at": "2026-10-23T02:19:32Z", "closed_date": "Oct 23, 2026"}
+	in, err := json.Marshal([]any{life, map[string]any{"text": text}})
+	require.NoError(t, err)
+	run := func(zone string) []string {
+		cmd := exec.Command(node, driver, script)
+		cmd.Env = append(os.Environ(), "TZ="+zone, "LANG=en_US.UTF-8", "LC_ALL=en_US.UTF-8")
+		cmd.Stdin = bytes.NewReader(in)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+		var got []string
+		require.NoError(t, json.Unmarshal(out, &got), string(out))
+		return got
+	}
+	chicago := run("America/Chicago")
+	assert.Equal(t, strings.Replace(text, "Oct 23, 2026", "Oct 22, 2026", 1), chicago[0])
+	assert.Equal(t, text, chicago[1], "no closed_at: the sentence as written")
+	assert.Equal(t, text, run("UTC")[0])
+	assert.Equal(t, text, run("Asia/Tokyo")[0], "east of UTC the day is the same here")
 }

@@ -165,15 +165,18 @@ func lateReceiptLine(events []sealedEvent, i int) string {
 // anyone did or failed to do. Anything that depends on today is computed
 // when the receipt is made and says so ("as of").
 type dealLifecycle struct {
-	State     string           `json:"state"` // "open", "cancelled" (an authorized cancel, no close yet) or "closed"
-	AsOf      string           `json:"as_of"`
-	Text      string           `json:"text"`
-	ClosedAt  string           `json:"closed_at,omitempty"`
-	Outcome   string           `json:"outcome,omitempty"`
-	Later     []dealLateRecord `json:"later"`
-	Carried   []dealDeadline   `json:"carried,omitempty"`
-	MayChange string           `json:"may_change"`
-	Open      *dealOpenListing `json:"open,omitempty"`
+	State    string `json:"state"` // "open", "cancelled" (an authorized cancel, no close yet) or "closed"
+	AsOf     string `json:"as_of"`
+	Text     string `json:"text"`
+	ClosedAt string `json:"closed_at,omitempty"`
+	// ClosedDate is the UTC day Text names; the page swaps it for the day
+	// ClosedAt falls on in the viewer's zone (deal-view.js lifecycleText).
+	ClosedDate string           `json:"closed_date,omitempty"`
+	Outcome    string           `json:"outcome,omitempty"`
+	Later      []dealLateRecord `json:"later"`
+	Carried    []dealDeadline   `json:"carried,omitempty"`
+	MayChange  string           `json:"may_change"`
+	Open       *dealOpenListing `json:"open,omitempty"`
 }
 
 // dealLateRecord is one record sealed after the close, linked to it.
@@ -246,15 +249,16 @@ func buildDealLifecycle(events []sealedEvent, now time.Time) dealLifecycle {
 			l.Carried = append(l.Carried, d)
 		}
 	}
-	l.Text = fmt.Sprintf("Closed on %s (%s).", readDate(c.Event.At), c.Event.Close.Outcome)
+	l.ClosedDate = readDate(c.Event.At)
+	l.Text = fmt.Sprintf("Closed on %s (%s).", l.ClosedDate, c.Event.Close.Outcome)
 	switch c.Event.Close.Outcome {
 	case "completed":
 		// What was delivered matched what was agreed, with nothing open.
-		l.Text = fmt.Sprintf("Closed on %s: matched, nothing left to match.", readDate(c.Event.At))
+		l.Text = fmt.Sprintf("Closed on %s: matched, nothing left to match.", l.ClosedDate)
 	case "not_selected":
-		l.Text = fmt.Sprintf("Closed on %s: not selected; nothing was taken or delivered.", readDate(c.Event.At))
+		l.Text = fmt.Sprintf("Closed on %s: not selected; nothing was taken or delivered.", l.ClosedDate)
 	case "called_off":
-		l.Text = fmt.Sprintf("Closed on %s: you called off this errand; nothing was taken or delivered.", readDate(c.Event.At))
+		l.Text = fmt.Sprintf("Closed on %s: you called off this errand; nothing was taken or delivered.", l.ClosedDate)
 	}
 	switch n := len(l.Later); n {
 	case 0:

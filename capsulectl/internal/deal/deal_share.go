@@ -1327,7 +1327,11 @@ func shareLifecycle(l dealLifecycle) map[string]interface{} {
 	for i, r := range l.Later {
 		later[i] = map[string]interface{}{"at": r.At, "relation": r.Relation, "capsule_id": r.CapsuleID, "text": "a record sealed after the close"}
 	}
-	return map[string]interface{}{"state": l.State, "as_of": l.AsOf, "text": l.Text, "later": later, "may_change": l.MayChange}
+	out := map[string]interface{}{"state": l.State, "as_of": l.AsOf, "text": l.Text, "later": later, "may_change": l.MayChange}
+	if l.ClosedAt != "" {
+		out["closed_at"], out["closed_date"] = l.ClosedAt, l.ClosedDate
+	}
+	return out
 }
 
 // dealVerifyCommand is the one command a stranger runs to check the file
