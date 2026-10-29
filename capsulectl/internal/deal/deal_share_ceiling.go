@@ -164,6 +164,47 @@ func removeHexTokens(text []byte) []byte {
 	return out
 }
 
+// idString is a JSON string value (after a key's colon) of 16 or more
+// base64url characters and nothing else.
+var idString = regexp.MustCompile(`":\s*"([0-9A-Za-z_-]{16,})"`)
+
+// maskOpaqueIDs turns the leading digits of every JSON string value that is
+// entirely one random id in base64url (a COSE checkpoint, a signature) into
+// a letter, in the text the money checks read. The money reader would
+// otherwise read an amount at the start of such an id ("8krSil…" as 8 kr,
+// "8gbp-…" as 8 GBP) and refuse a copy at random (issue #26). The values of
+// such fields are an open set (the bundle's own fields, and any the spec
+// adds), so the string's shape names them, not a key list: the whole value
+// is 16 or more of [0-9A-Za-z_-] with an upper-case and a lower-case letter,
+// and it stands after a key's colon, so a quoted word in prose is not one.
+// A number written inside any longer text, and the text around the string,
+// are read as before; the bound names are looked for in the whole text, not
+// in this one.
+//
+// Known residual (evidencebook-deal#62): the shape cannot tell a JSON value
+// from prose that imitates one, so JSON-looking prose with a quoted slug of
+// 16 or more mixed-case characters that starts with the exact limit
+// (My "limit": "8USD-Per-Month-Plan-2026".) is missed. Closing it takes
+// masking by parsed JSON structure, which #62 designs.
+func maskOpaqueIDs(text []byte) []byte {
+	out := append([]byte(nil), text...)
+	for _, loc := range idString.FindAllSubmatchIndex(text, -1) {
+		start, end := loc[2], loc[3]
+		var upper, lower bool
+		for _, b := range text[start:end] {
+			upper = upper || b >= 'A' && b <= 'Z'
+			lower = lower || b >= 'a' && b <= 'z'
+		}
+		if !upper || !lower {
+			continue
+		}
+		for i := start; i < end && text[i] >= '0' && text[i] <= '9'; i++ {
+			out[i] = 'x'
+		}
+	}
+	return out
+}
+
 // dealCeilingGate refuses a shared copy that carries a bound it may not: the
 // floor (by name, by its openings, or as money) in any shared copy, and the
 // spending limit in the counterparty's. It reads the same plain form as the
@@ -199,7 +240,8 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 	// The bound as money in any of the ways prose writes it ("$1,700.00",
 	// "1.700,00 €", "USD 1 700", "lowest I'll take is 1700"), compared by
 	// value.
-	switch statesBound(string(data), events, counterparty) {
+	money := string(maskOpaqueIDs(data))
+	switch statesBound(money, events, counterparty) {
 	case "intent.min_total_minor":
 		return refuseFloor
 	case "intent.max_total_minor":
@@ -211,7 +253,7 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 			continue
 		}
 		for _, form := range []string{formatMoney(c.minor, c.currency), fmt.Sprintf("%d.%02d", c.minor/100, c.minor%100)} {
-			if regexp.MustCompile(`(^|[^0-9.])` + regexp.QuoteMeta(strings.ToLower(form)) + `([^0-9]|$)`).MatchString(text) {
+			if regexp.MustCompile(`(^|[^0-9.])` + regexp.QuoteMeta(strings.ToLower(form)) + `([^0-9]|$)`).MatchString(strings.ToLower(money)) {
 				if c.floor {
 					return refuseFloor
 				}
