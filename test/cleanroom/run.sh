@@ -206,7 +206,28 @@ for n in 1 2; do
   done
   grep -q '"leaf_index": *32' $X/stevenmih-$n/held-1-inclusion.json || fail "§7.4's leaf_index 32 is not stevenmih-$n's"
   grep -q '"mmr_size": *127' $X/stevenmih-$n/held-1-inclusion.json || fail "§7.4's mmr_size 127 is not stevenmih-$n's"
+  grep -q '"citation_purpose": *"counterparty_half"' $X/stevenmih-$n/held-1-citing.json || fail "stevenmih-$n's record does not cite counterparty_half"
+  grep -q '"accepted_via": *"host_announced"' $X/stevenmih-$n/held-1-citing.json || fail "stevenmih-$n's acceptance is not host_announced"
 done
+# Every `leaf_index` and `mmr_size` the page states is the files' value.
+[ "$(grep -o '`leaf_index` [0-9]*' "$GUIDE" | sort -u)" = '`leaf_index` 32' ] || fail "§7.4 states a leaf_index other than 32"
+[ "$(grep -o '`mmr_size` [0-9]*' "$GUIDE" | sort -u)" = '`mmr_size` 127' ] || fail "§7.4 states an mmr_size other than 127"
+# Each side's values sit in its own column: on one table row, stevenmih-1's
+# held value comes before stevenmih-2's. And each checkpoint is the other side's.
+side() { grep -o "\"$2\": *\"[0-9a-f]*\"" "$1" | head -1 | cut -d'"' -f4; }
+for pair in "held-1-inclusion.json checkpoint_digest 64" "held-1-inclusion.json half_capsule_id 8" "held-1-citing.json capsule_id 8"; do
+  set -- $pair
+  a=$(side $X/stevenmih-1/$1 $2 | cut -c1-$3) b=$(side $X/stevenmih-2/$1 $2 | cut -c1-$3)
+  grep -F "$a" "$GUIDE" | grep -q "$a.*$b" || fail "§7.4 does not put $2 $a (stevenmih-1) before $b (stevenmih-2) on one row"
+done
+K1=1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9
+K2=6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26
+[ "$(side $X/stevenmih-1/held-1-inclusion.json key_id)" = "$K2" ] || fail "stevenmih-1 holds a checkpoint not signed by stevenmih-2's key"
+[ "$(side $X/stevenmih-2/held-1-inclusion.json key_id)" = "$K1" ] || fail "stevenmih-2 holds a checkpoint not signed by stevenmih-1's key"
+grep -q '"received_from": *"91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9"' $X/stevenmih-1/held-1-inclusion.json ||
+  fail "stevenmih-1's half did not come from stevenmih-2"
+grep -q '"received_from": *"16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"' $X/stevenmih-2/held-1-inclusion.json ||
+  fail "stevenmih-2's half did not come from stevenmih-1"
 
 echo "run.sh: every input the page names is in place under $WORK"
 if [ -n "${VERIFIER:-}" ]; then

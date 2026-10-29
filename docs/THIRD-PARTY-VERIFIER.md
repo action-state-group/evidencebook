@@ -596,14 +596,18 @@ their SHA-256:
 | `stevenmih-2` | `stevenmih-2/checks.json` | the findings recorded for `stevenmih-2` | `7f02f94ec73ffa92b0c47ba99f4f516ba3bb93dd8144a22ccea39e70f0b76896` |
 
 The other files in that directory belong to a second exchange, between
-`stevenmih-1` and `stevenmih-3`, and are not part of this test.
+`stevenmih-1` and `stevenmih-3`, and are not part of this test. So does the
+second entry of `stevenmih-1/checks.json`: compare only the entry whose `held`
+is `held-1`.
 
 Each node's key is in its listing under `nodes/`: `stevenmih-1` is node
 `16a607c3…`, key `1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9`
 (§7.2); `stevenmih-2` is node
 `91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9`, key
 `6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26`. Pin both.
-Each node signs its own records and its own log's checkpoints with that one key.
+Each node signs its own records, and the checkpoints of its capsule log
+(`capsules/…`), with that one key. The book of §7.2 is a different log, with
+its own checkpoint key.
 
 The texts are the record format of §7.1 for the halves and the citing records,
 and checkpointed-local-log at the §7.1 commit for the checkpoint and the proof:
@@ -617,7 +621,7 @@ What to verify, for each side, and the result specified:
 | Check | Held by `stevenmih-1` | Held by `stevenmih-2` | `checks.json` member |
 |---|---|---|---|
 | The held half | `capsule_id` `7e4aefd0…` recomputes; its signature verifies under `stevenmih-2`'s key | `3f1b3c6b…` recomputes; its signature verifies under `stevenmih-1`'s key | `held_by_digest` |
-| The checkpoint it was pushed under (its `digest_hex`, the README's signing-body digest) | `76f8f5c2f72dd52540a78797887c641aee40d02520223f53cc7b2fd66c929f6a`, log `capsules/7e04d3e3fec1332f`, `mmr_size` 127; its signature verifies under `stevenmih-2`'s key | `9efb33adec6ad7d137be57c56a95e0bab17513ba3161a1b1c5d3c36d39712a88`, log `capsules/511b5b4246cf58e7`, `mmr_size` 127; its signature verifies under `stevenmih-1`'s key | `pushed_under_checkpoint` |
+| The checkpoint it was pushed under: the `checkpoint` object's signing-body digest (the README's `digest_hex`), which equals the file's `checkpoint_digest` | `76f8f5c2f72dd52540a78797887c641aee40d02520223f53cc7b2fd66c929f6a`, log `capsules/7e04d3e3fec1332f`, `mmr_size` 127; its signature verifies under `stevenmih-2`'s key | `9efb33adec6ad7d137be57c56a95e0bab17513ba3161a1b1c5d3c36d39712a88`, log `capsules/511b5b4246cf58e7`, `mmr_size` 127; its signature verifies under `stevenmih-1`'s key | `pushed_under_checkpoint` |
 | Inclusion | the half is the leaf at `leaf_index` 32 under that checkpoint's `root` | the same, `leaf_index` 32 | `pushed_under_checkpoint` |
 | The holder's own record | `9d5bf69e…` recomputes, verifies under `stevenmih-1`'s key, and cites `7e4aefd0…` with `citation_purpose` `counterparty_half` | `2475eaa9…` recomputes, verifies under `stevenmih-2`'s key, and cites `3f1b3c6b…` the same way | `cited` |
 | Where it came from | received from `stevenmih-2` (node `91abddbc…`) by push | received from `stevenmih-1` (node `16a607c3…`) by push | `provenance` |
@@ -626,7 +630,9 @@ Then join the two halves: both carry the same `client_nonce`
 (`26c09646-1582-4ee4-a0f8-f030163f917f`) and the same `agent_output_digest`,
 and `stevenmih-1`'s half names `stevenmih-2`'s node as its requesting party.
 So they are the two halves of one exchange, each signed by its own side and
-each held by the other.
+each held by the other. A third link: each holder's own record chains to its
+own half (`chain.parent_capsule_id`: `9d5bf69e…` to `3f1b3c6b…`, `2475eaa9…`
+to `7e4aefd0…`) and cites the other side's, so it names both.
 
 This shows that the two nodes each signed their own account of one exchange
 and each holds the other's, under the other's signed checkpoint. It does not
