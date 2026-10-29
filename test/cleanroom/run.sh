@@ -158,11 +158,14 @@ GUIDE=$EB/docs/THIRD-PARTY-VERIFIER.md
 B="loop/$NODE/bundle.json"
 for v in "$(sha256 "$B")" \
   "$(grep -o '"range_root":"[0-9a-f]*"' "$B" | cut -d'"' -f4)" \
-  "$(grep -o '"root":"[0-9a-f]*"' "$B" | head -1 | cut -d'"' -f4)" \
   "$(grep -o '"public_key":"[0-9a-f]*"' "$B" | cut -d'"' -f4)" \
   "$(grep -o '"checkpoint_key": "[0-9a-f]*"' loop/lab/runs/2026-10-28/join/stevenmih-1/book.json | cut -d'"' -f4)"; do
   [ -n "$v" ] && grep -qF "$v" "$GUIDE" || fail "§7 does not state the bundle's value '$v'"
 done
+# The bundle's own root (its keys are sorted, so the last "root" is the
+# top-level one, after checkpoint.root), named like the records below.
+r=$(grep -o '"root":"[0-9a-f]*"' "$B" | tail -1 | cut -d'"' -f4)
+grep -qF "\`root\` is \`${r:0:8}…\`" "$GUIDE" || fail "§7 does not name the bundle's root $r"
 # The page names the three records by their first eight hex digits.
 for id in $(grep -o '"body_digests":\[[^]]*\]' "$B" | grep -o '[0-9a-f]\{64\}'); do
   grep -qF "\`${id:0:8}…\`" "$GUIDE" || fail "§7 does not name record $id"
