@@ -14,6 +14,8 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +67,7 @@ func TestPresentationPass(t *testing.T) {
 
 				// One builder: the page is agent-action-capsule's offline
 				// packaging of the bundle as given, for this audience.
-				packaged, err := emitter.BuildOfflineHTML(value, cli.EvidenceGraphIIFE, emitter.OfflineOptions{Audience: audience, CoreRuntimeSHA256: cli.EvidenceGraphIIFEDigest})
+				packaged, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: audience, CoreRuntimeSHA256: pageruntime.SHA256})
 				require.NoError(t, err)
 				require.Equal(t, packaged, page, "presentation build's page is the offline packaging of the bundle")
 
@@ -123,7 +125,7 @@ func passWithoutCard(t *testing.T, dir string, value map[string]interface{}, met
 	if extensions == nil {
 		extensions = map[string]interface{}{}
 	}
-	extensions[cli.CardExtension] = map[string]interface{}{"card": meta.Card}
+	extensions[presentation.CardExtension] = map[string]interface{}{"card": meta.Card}
 	carded["extensions"] = extensions
 	withCard, err := aacbundle.BundleDigest(carded)
 	require.NoError(t, err)
@@ -327,7 +329,7 @@ func passChrome(t *testing.T) *headlessChrome {
 
 // passCardRow is the extension row the card block adds to a report build
 // page: an extension the viewer does not interpret.
-const passCardRow = cli.CardExtension + " covered Covered by the file's fingerprint; not interpreted by this page's checks"
+const passCardRow = presentation.CardExtension + " covered Covered by the file's fingerprint; not interpreted by this page's checks"
 
 // With no plugin module installed, a deal bundle resolves through the
 // generic path: list selects the fallback and build's page carries no module.
@@ -501,7 +503,7 @@ func passRefusedByBuild(t *testing.T, bundle string) {
 // capsulectl's gate: a page built elsewhere, carrying it anyway.
 func passPageOf(t *testing.T, value map[string]interface{}) string {
 	t.Helper()
-	page, err := emitter.BuildOfflineHTML(value, cli.EvidenceGraphIIFE, emitter.OfflineOptions{Audience: "*", CoreRuntimeSHA256: cli.EvidenceGraphIIFEDigest})
+	page, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", CoreRuntimeSHA256: pageruntime.SHA256})
 	require.NoError(t, err)
 	return page
 }
@@ -540,7 +542,7 @@ func TestPresentationPassFailingBundleShowsTheRefusalOnly(t *testing.T) {
 // calls the bundle INVALID (producer_signature_invalid), so build writes no
 // page. list's gate (agent-action-capsule's Go resolver) checks each record's
 // identity, not its producer signature, and resolves the bundle; the page's
-// own runtime (the vendored viewer) checks the signature now, so a page that
+// own runtime (capsule-viewer's pageruntime) checks the signature now, so a page that
 // carries the bundle anyway says it failed.
 func TestPresentationPassWrongSigner(t *testing.T) {
 	passIsolate(t)
