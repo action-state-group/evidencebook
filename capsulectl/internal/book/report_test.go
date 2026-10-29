@@ -16,6 +16,8 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,12 +25,9 @@ import (
 const sealedResultFixture = "testdata/result/result-root-bundle.sealed.json"
 
 func TestIIFEIsPinned(t *testing.T) {
-	sum := sha256.Sum256(cli.EvidenceGraphIIFE)
-	assert.Equal(t, cli.EvidenceGraphIIFEDigest, hex.EncodeToString(sum[:]), "cli/assets/evidence-graph.iife.js changed: pin the new digest in cli/evidence_graph_assets.go and assets/README.md together")
-	readme, err := os.ReadFile(filepath.Join(coreAssetsDir, "README.md"))
-	require.NoError(t, err)
-	assert.Contains(t, string(readme), cli.EvidenceGraphIIFEDigest, "assets/README.md records the same digest")
-	text := string(cli.EvidenceGraphIIFE)
+	sum := sha256.Sum256(pageruntime.IIFE)
+	assert.Equal(t, pageruntime.SHA256, hex.EncodeToString(sum[:]), "capsule-viewer/go pageruntime's runtime and its pin disagree")
+	text := string(pageruntime.IIFE)
 	assert.True(t, strings.HasPrefix(text, "\"use strict\";\n"), "the runtime runs in strict mode, as aac and capsule-viewer build and test it")
 	assert.Contains(t, text, "globalThis.renderEvidenceGraph", "the IIFE exports the entry point the shell calls")
 	assert.NotContains(t, text, "http://")
@@ -202,8 +201,8 @@ func TestReportBuildRendersABookFormResultRoot(t *testing.T) {
 	bundlePath, rootID := bookFormBundle(t)
 	verifyTestBundleFile(t, bundlePath)
 
-	presentation := writeTestJSON(t, "presentation.json", map[string]any{"producer_display_name": "Demo Co", "title": "Week 38"})
-	result, out, err := runReportBuild(t, bundlePath, "--card", "obligation", "--presentation", presentation, "--permalink")
+	presentationFile := writeTestJSON(t, "presentation.json", map[string]any{"producer_display_name": "Demo Co", "title": "Week 38"})
+	result, out, err := runReportBuild(t, bundlePath, "--card", "obligation", "--presentation", presentationFile, "--permalink")
 	require.NoError(t, err)
 	assert.Equal(t, "written", result.Page)
 	assert.Equal(t, "VALID", result.Verdict)
@@ -227,8 +226,8 @@ func TestReportBuildRendersABookFormResultRoot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, digest, result.BundleDigest)
 	extensions, _ := embedded["extensions"].(map[string]interface{})
-	assert.Equal(t, map[string]interface{}{"card": "obligation"}, extensions[cli.CardExtension])
-	assert.Equal(t, map[string]interface{}{"producer_display_name": "Demo Co", "title": "Week 38"}, extensions[cli.PresentationExtension])
+	assert.Equal(t, map[string]interface{}{"card": "obligation"}, extensions[presentation.CardExtension])
+	assert.Equal(t, map[string]interface{}{"producer_display_name": "Demo Co", "title": "Week 38"}, extensions[presentation.PresentationExtension])
 	_, hasPayloads := extensions["evidencebook/payloads"]
 	assert.True(t, hasPayloads, "the book's own extensions are kept")
 	disclosures, _ := embedded["disclosures"].(map[string]interface{})
@@ -241,7 +240,7 @@ func TestReportBuildRendersABookFormResultRoot(t *testing.T) {
 	require.NoError(t, err)
 	value, err := cli.DecodeBundleJSON(onDisk)
 	require.NoError(t, err)
-	_, decorated := value["extensions"].(map[string]interface{})[cli.CardExtension]
+	_, decorated := value["extensions"].(map[string]interface{})[presentation.CardExtension]
 	assert.False(t, decorated)
 
 	// The permalink carries the same bytes the page embeds.
@@ -253,7 +252,7 @@ func TestReportBuildRendersABookFormResultRoot(t *testing.T) {
 	_, _, err = runReportBuild(t, bundlePath, "--card", "process")
 	require.NoError(t, err, "the file on disk carries no card block")
 	withCard := filepath.Join(t.TempDir(), "with-card.json")
-	value["extensions"].(map[string]interface{})[cli.CardExtension] = map[string]interface{}{"card": "outcome"}
+	value["extensions"].(map[string]interface{})[presentation.CardExtension] = map[string]interface{}{"card": "outcome"}
 	encoded, err := json.Marshal(value)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(withCard, encoded, 0o600))
@@ -275,7 +274,7 @@ func TestReportBuildDryRunWritesADraftAndNoPermalink(t *testing.T) {
 	raw, err := os.ReadFile(out)
 	require.NoError(t, err)
 	extensions, _ := reportEmbeddedBundle(t, string(raw))["extensions"].(map[string]interface{})
-	assert.Equal(t, map[string]interface{}{"card": "human_role", "draft": true}, extensions[cli.CardExtension])
+	assert.Equal(t, map[string]interface{}{"card": "human_role", "draft": true}, extensions[presentation.CardExtension])
 	stamped, _, err := runReportBuild(t, bundle, "--card", "human_role")
 	require.NoError(t, err)
 	assert.NotEqual(t, stamped.BundleDigest, result.BundleDigest, "a draft page never has a stamped page's digest")

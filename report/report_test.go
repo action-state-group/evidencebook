@@ -15,6 +15,7 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,8 +88,8 @@ func TestBuildRendersABookFormResultRoot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, digest, page.BundleDigest)
 	extensions, _ := embedded["extensions"].(map[string]interface{})
-	assert.Equal(t, map[string]interface{}{"card": "obligation"}, extensions[cli.CardExtension])
-	assert.Equal(t, map[string]interface{}{"producer_display_name": "Demo Co", "title": "Week 38"}, extensions[cli.PresentationExtension])
+	assert.Equal(t, map[string]interface{}{"card": "obligation"}, extensions[presentation.CardExtension])
+	assert.Equal(t, map[string]interface{}{"producer_display_name": "Demo Co", "title": "Week 38"}, extensions[presentation.PresentationExtension])
 	_, hasPayloads := extensions["evidencebook/payloads"]
 	assert.True(t, hasPayloads, "the book's own extensions are kept")
 
@@ -105,7 +106,7 @@ func TestBuildRendersABookFormResultRoot(t *testing.T) {
 
 	// A bundle may already state the card and header, but not other ones.
 	withCard := edited(t, raw, func(value map[string]interface{}) {
-		value["extensions"].(map[string]interface{})[cli.CardExtension] = map[string]interface{}{"card": "outcome"}
+		value["extensions"].(map[string]interface{})[presentation.CardExtension] = map[string]interface{}{"card": "outcome"}
 	})
 	_, err = Build(withCard, View{Card: "process"})
 	require.ErrorIs(t, err, ErrRefused)
@@ -129,7 +130,7 @@ func TestBuildMarksADraft(t *testing.T) {
 	assert.Equal(t, "VALID", draft.Verdict)
 	embedded, err := embeddedBundle(draft.HTML)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]interface{}{"card": "human_role", "draft": true}, embedded["extensions"].(map[string]interface{})[cli.CardExtension])
+	assert.Equal(t, map[string]interface{}{"card": "human_role", "draft": true}, embedded["extensions"].(map[string]interface{})[presentation.CardExtension])
 	_, err = draft.Permalink("")
 	require.ErrorIs(t, err, ErrRefused)
 	_, err = SealPage(t.Context(), newBook(t), draft.HTML)

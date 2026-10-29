@@ -32,6 +32,8 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
+	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/action-state-group/evidencebook"
 )
 
@@ -267,11 +269,11 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Draft {
 		cardBlock["draft"] = true
 	}
-	if err = setExtension(value, cli.CardExtension, cardBlock); err != nil {
+	if err = setExtension(value, presentation.CardExtension, cardBlock); err != nil {
 		return nil, err
 	}
 	if view.Presentation != nil {
-		if err = setExtension(value, cli.PresentationExtension, view.Presentation.block()); err != nil {
+		if err = setExtension(value, presentation.PresentationExtension, view.Presentation.block()); err != nil {
 			return nil, err
 		}
 	}
@@ -309,7 +311,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	// With no wording, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
-	html, err := emitter.BuildOfflineHTML(value, cli.EvidenceGraphIIFE, emitter.OfflineOptions{Audience: "*", Wording: wording})
+	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", Wording: wording})
 	if err != nil {
 		return nil, err
 	}

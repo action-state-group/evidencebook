@@ -13,6 +13,7 @@ import (
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/action-state-group/evidencebook"
 )
 
@@ -192,7 +193,7 @@ func inspect(page []byte) (Check, error) {
 	out := Check{PageDigest: PageDigest(page), BundleDigest: bundleDigest, Verdict: "INVALID"}
 	out.root, _ = value["root"].(string)
 	extensions, _ := value["extensions"].(map[string]interface{})
-	card, _ := extensions[cli.CardExtension].(map[string]interface{})
+	card, _ := extensions[presentation.CardExtension].(map[string]interface{})
 	out.draft = card["draft"] == true
 	if reread, err := json.Marshal(value); err == nil {
 		if judged, err := cli.DecodeBundleJSON(reread); err == nil {

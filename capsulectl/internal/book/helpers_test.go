@@ -111,9 +111,6 @@ var coreDir = sync.OnceValue(func() string {
 	return strings.TrimSpace(string(out))
 })
 
-// coreAssetsDir holds the core's assets the report page is built from.
-var coreAssetsDir = filepath.Join(coreDir(), "cli", "assets")
-
 // installed is capsulectl with the book plugin installed, as an operator has
 // it: the core binary in dir, and capsulectl-book in dir/plugins, a trusted
 // plugin root. They are built once per test binary.
