@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Fixed: answering an evidence request no longer holds the book's lock (evidencebook#208)
+
+- `Book.Respond` answers from a snapshot of the log taken under the book's
+  lock and builds the answer without it. It takes the lock again only to
+  issue an anchor an authenticated requester's freshness floor needs and to
+  seal the `evidence_request_answered` record. A flood of requests no longer
+  stalls `Append`, `AppendCapsule`, `Checkpoint` or any other write: before,
+  each seal waited for the answers queued ahead of it. What an answer may
+  contain is unchanged; it is as of the snapshot it was built from.
+  `TestRespondFloodDoesNotStallSealing` is the load test: while every answer
+  costs 1 s, every seal lands in order and 95% of seals take at most 500 ms,
+  waiting for the seals queued ahead of them (one per answer in flight),
+  never for an answer; under a flood of strangers, who never seal, no seal
+  takes over 2 s. Holding the lock, seals took seconds.
+- Concurrent answers that each need an anchor for the same freshness floor
+  issue one between them.
+- A host's `Store` (`GetRecord`, `Checkpoints`), `Signer` and
+  `StandardHistorySource.Inputs` are now called by `Respond` without the
+  book's lock, concurrently with the book's writes and with other answers.
+  The stores and signer this module provides already allow that.
+  `Config.Now` and `RequestLimiter` are still called under the lock.
+  `Release` waits for the answers already in progress.
+
 ### Added: `standard_history/1` for signed requesters (evidencebook#157)
 
 - `Config.StandardHistory` (`StandardHistorySource`) has `Book.Respond`

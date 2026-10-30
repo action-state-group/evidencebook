@@ -16,7 +16,8 @@ import (
 // Signer is the book's signing seam. A host plugs in any key custodian (a
 // local key, an HSM, a KMS) that produces raw Ed25519 signatures; the book
 // never holds or requires a particular key. Sign receives the exact bytes to
-// be signed (for COSE, the Sig_structure), never a pre-hash.
+// be signed (for COSE, the Sig_structure), never a pre-hash. Respond signs
+// without the book's lock, so Sign may be called concurrently.
 type Signer interface {
 	PublicKey() ed25519.PublicKey
 	Sign(ctx context.Context, message []byte) ([]byte, error)
