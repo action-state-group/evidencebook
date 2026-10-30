@@ -13,6 +13,16 @@
 
 - The install lines in the README and the guide name v0.9.0.
 
+### Added: `dealprofile` record types (#93)
+
+- `Record{Block, Body}` is a step record, with one body type per record type
+  behind the closed `Body` interface, and the typed action records and
+  contract documents (PROFILE.md §9) have a type each. They follow the
+  schemas member for member and carry no rule: `Encode` takes a `Record` as
+  it takes the record's text and checks it the same way. Every record in the
+  profile's positive fixtures and the baseline vectors decodes into them and
+  encodes to the same bytes.
+
 ### Added: package `dealprofile`, the x-deal-v0 deal record profile (#93)
 
 - The x-deal-v0 profile moves here from the deal plugin (evidencebook-deal),
