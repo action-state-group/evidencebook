@@ -116,15 +116,17 @@
   (that digest), never the locator.
 - `head` and `counts_by_kind` describe the own window the Close binds
   (`ReconcileInput.FromSeq`/`ToSeq`, an open end resolved to the log), not
-  the log's tip: `head` is the record at the window's last position and
-  `counts_by_kind` counts every record in it. A window a caller starts before
+  the log's tip: `head` is the record at the window's last position (for an
+  empty window, the record just before it) and `counts_by_kind` counts every
+  record in it. A window a caller starts before
   `period.start` is counted as given. `CloseStatement.Window` recovers the
   window and refuses counts that do not fit the head.
 - `CloseInput` takes `Period` and `PeerClose`, and loses `Profile` and
   `Reason`. `CloseStatement` is now the `close/v1` body; the body Closes
   carried before (`counterparty`, `profile`, `reconciliation`, `reason`) is
-  `LegacyCloseStatement`. `ReadClose` reads either by `record_version` and
-  checks a `close/v1` body against its header. Closes sealed before this
+  `LegacyCloseStatement`. `ReadClose` reads either by `record_version`; a
+  `close/v1` body must validate against the vendored schema and agree with
+  its header (`record_id`, `closed_at`, `producer_claim`). Closes sealed before this
   change still verify and read as legacy; they carry the whole
   reconciliation (pairs and windows) and the profile string, which a
   `close/v1` body has no member for.

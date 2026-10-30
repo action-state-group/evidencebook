@@ -588,7 +588,7 @@ func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at t
 	}
 	sealed, err := emit.Seal(emit.SealInput{
 		Capsule: emit.Input{
-			ActionID: fmt.Sprintf("%s#%d", b.id, header.Seq), ActionType: emit.ActionTypeFYI,
+			ActionID: recordLocator(b.id, header.Seq), ActionType: emit.ActionTypeFYI,
 			Operator: b.operator, Developer: b.developer, Timestamp: at, References: references,
 		},
 		Payload:  json.RawMessage(headerBytes),

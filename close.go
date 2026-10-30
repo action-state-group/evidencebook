@@ -5,14 +5,37 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // CloseRecordVersion is the record_version of the Close body Book.Close
 // seals: agent-action-capsule's close/v1 (schemas/judge/close-v1.json).
 const CloseRecordVersion = "close/v1"
+
+// closeV1SchemaJSON is agent-action-capsule's close/v1 schema at 5ce8c94,
+// which ReadClose validates a close/v1 body against.
+//
+//go:embed schemas/vendor/close-v1.json
+var closeV1SchemaJSON []byte
+
+var closeV1Schema = sync.OnceValues(func() (*jsonschema.Schema, error) {
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(closeV1SchemaJSON))
+	if err != nil {
+		return nil, err
+	}
+	c := jsonschema.NewCompiler()
+	c.DefaultDraft(jsonschema.Draft2020)
+	if err := c.AddResource("close-v1.json", doc); err != nil {
+		return nil, err
+	}
+	return c.Compile("close-v1.json")
+})
 
 // ClosePeriod is the period a Close states, as RFC 3339 instants.
 type ClosePeriod struct {
@@ -149,87 +172,73 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	}
 	entry := Entry{RecordType: RecordTypeClose, EpistemicType: ProducerClaim, Links: links, CounterpartyRef: in.Counterparty}
 	return b.commitEntryLocked(ctx, entry, nil, nil, func(seq uint64, committedAt string) (json.RawMessage, error) {
-		statement.RecordID, statement.ClosedAt = closeLocator(b.id, seq), committedAt
+		statement.RecordID, statement.ClosedAt = recordLocator(b.id, seq), committedAt
 		return json.Marshal(statement)
 	})
 }
 
-func closeLocator(bookID string, seq uint64) string {
+// recordLocator is "<book_id>#<seq>": a record capsule's action_id, and a
+// close/v1 Close's record_id.
+func recordLocator(bookID string, seq uint64) string {
 	return fmt.Sprintf("%s#%d", bookID, seq)
 }
 
 // ReadClose reads a Close record's body, dispatching on record_version: a
 // close/v1 body fills v1, a body without record_version (a Close sealed
-// before close/v1) fills legacy, and any other version is refused. A v1 body
-// is checked against its own header: record_id is the header's
-// book_id#seq, closed_at its committed_at, and both epistemic types are
-// producer_claim.
+// before close/v1) fills legacy, and any other version, null included, is
+// refused. A v1 body must validate against the close/v1 schema and agree
+// with its own header: record_id is the header's book_id#seq, closed_at its
+// committed_at, the header's epistemic_type producer_claim, and the period's
+// start before its end.
 func ReadClose(h Header) (v1 *CloseStatement, legacy *LegacyCloseStatement, err error) {
 	if h.RecordType != RecordTypeClose {
 		return nil, nil, fmt.Errorf("%w: record %d is a %s, not a Close", ErrInvalid, h.Seq, h.RecordType)
 	}
-	var probe struct {
-		RecordVersion *string `json:"record_version"`
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(h.Statement, &members); err != nil || members == nil {
+		return nil, nil, fmt.Errorf("%w: Close %d statement is not an object", ErrInvalid, h.Seq)
 	}
-	if err := json.Unmarshal(h.Statement, &probe); err != nil {
-		return nil, nil, fmt.Errorf("%w: Close %d statement: %v", ErrInvalid, h.Seq, err)
-	}
-	if probe.RecordVersion == nil {
+	raw, versioned := members["record_version"]
+	if !versioned {
 		legacy = &LegacyCloseStatement{}
 		if err := json.Unmarshal(h.Statement, legacy); err != nil {
 			return nil, nil, fmt.Errorf("%w: Close %d statement: %v", ErrInvalid, h.Seq, err)
 		}
 		return nil, legacy, nil
 	}
-	if *probe.RecordVersion != CloseRecordVersion {
-		return nil, nil, fmt.Errorf("%w: Close %d has record_version %q, not %s", ErrInvalid, h.Seq, *probe.RecordVersion, CloseRecordVersion)
+	var version string
+	if err := json.Unmarshal(raw, &version); err != nil || string(raw) == "null" || version != CloseRecordVersion {
+		return nil, nil, fmt.Errorf("%w: Close %d has record_version %s, not %s", ErrInvalid, h.Seq, raw, CloseRecordVersion)
 	}
-	// close/v1 is a closed object: an unknown member is refused, not dropped.
-	decoder := json.NewDecoder(bytes.NewReader(h.Statement))
-	decoder.DisallowUnknownFields()
-	v1 = &CloseStatement{}
-	if err := decoder.Decode(v1); err != nil {
+	schema, err := closeV1Schema()
+	if err != nil {
+		return nil, nil, fmt.Errorf("close/v1 schema: %w", err)
+	}
+	value, err := jsonschema.UnmarshalJSON(bytes.NewReader(h.Statement))
+	if err != nil {
 		return nil, nil, fmt.Errorf("%w: Close %d statement: %v", ErrInvalid, h.Seq, err)
 	}
-	if err := v1.check(h); err != nil {
+	if err := schema.Validate(value); err != nil {
+		return nil, nil, fmt.Errorf("%w: Close %d is not a close/v1 body: %v", ErrInvalid, h.Seq, err)
+	}
+	v1 = &CloseStatement{}
+	if err := json.Unmarshal(h.Statement, v1); err != nil {
+		return nil, nil, fmt.Errorf("%w: Close %d statement: %v", ErrInvalid, h.Seq, err)
+	}
+	switch {
+	case v1.RecordID != recordLocator(h.BookID, h.Seq):
+		err = fmt.Errorf("record_id %q is not %q", v1.RecordID, recordLocator(h.BookID, h.Seq))
+	case v1.ClosedAt != h.CommittedAt:
+		err = fmt.Errorf("closed_at %q is not its committed_at %q", v1.ClosedAt, h.CommittedAt)
+	case h.EpistemicType != ProducerClaim:
+		err = fmt.Errorf("a close/v1 Close is a producer_claim, not %s", h.EpistemicType)
+	case !v1.Period.Start.Before(v1.Period.End):
+		err = fmt.Errorf("period start is not before its end")
+	}
+	if err != nil {
 		return nil, nil, fmt.Errorf("%w: Close %d: %v", ErrInvalid, h.Seq, err)
 	}
 	return v1, nil, nil
-}
-
-func (s CloseStatement) check(h Header) error {
-	switch {
-	case s.RecordID != closeLocator(h.BookID, h.Seq):
-		return fmt.Errorf("record_id %q is not %q", s.RecordID, closeLocator(h.BookID, h.Seq))
-	case s.ClosedAt != h.CommittedAt:
-		return fmt.Errorf("closed_at %q is not its committed_at %q", s.ClosedAt, h.CommittedAt)
-	case s.EpistemicType != ProducerClaim || h.EpistemicType != ProducerClaim:
-		return fmt.Errorf("a close/v1 Close is a producer_claim")
-	case !s.Period.Start.Before(s.Period.End):
-		return fmt.Errorf("period start is not before its end")
-	case s.CountsByKind == nil:
-		return fmt.Errorf("counts_by_kind is missing")
-	case s.Head.DigestAlg != "SHA-256" || !hex64.MatchString(s.Head.Digest):
-		return fmt.Errorf("head is not a SHA-256 record id")
-	}
-	for kind, n := range s.CountsByKind {
-		if n < 0 {
-			return fmt.Errorf("counts_by_kind[%q] is negative", kind)
-		}
-	}
-	cites := 0
-	for _, link := range s.EvidenceLinks {
-		if !link.Type.Valid() || !hex64.MatchString(link.Target) {
-			return fmt.Errorf("x-evidence-links holds %+v, not a typed link to a record id", link)
-		}
-		if link.Type == Cites {
-			cites++
-		}
-	}
-	if s.Reconcile != nil && cites != 1 {
-		return fmt.Errorf("a reconcile block needs exactly one cites link to the peer's Close, not %d", cites)
-	}
-	return nil
 }
 
 // Window recovers the own window [from, to] a v1 Close binds, given the seq
@@ -247,10 +256,12 @@ func (s CloseStatement) Window(headSeq, closeSeq uint64) (from, to uint64, err e
 		if n < 0 {
 			return 0, 0, fmt.Errorf("%w: counts_by_kind[%q] is negative", ErrInvalid, kind)
 		}
-		// Checked per kind, so the sum never passes headSeq and cannot overflow.
-		if total += uint64(n); total > headSeq {
+		// Checked before adding, so the sum never passes headSeq and cannot
+		// wrap.
+		if uint64(n) > headSeq-total {
 			return 0, 0, fmt.Errorf("%w: counts_by_kind sums past the head's position %d", ErrInvalid, headSeq)
 		}
+		total += uint64(n)
 	}
 	return headSeq - total + 1, headSeq, nil
 }

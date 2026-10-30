@@ -24,25 +24,18 @@ var testPeriod = ClosePeriod{Start: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC)
 // agent-action-capsule schemas/judge/close-v1.json at 5ce8c94 (#176).
 const closeV1SchemaSHA256 = "183774e7eeb50f50aae545f5dca50c966624e14c1bc78d17f16922e2c6ae2f03"
 
-func closeV1Schema(t *testing.T) *jsonschema.Schema {
+// pinnedCloseSchema is the close/v1 schema ReadClose embeds, checked to be
+// the pinned agent-action-capsule copy on disk.
+func pinnedCloseSchema(t *testing.T) *jsonschema.Schema {
 	t.Helper()
 	raw, err := os.ReadFile("schemas/vendor/close-v1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sum := sha256.Sum256(raw); hex.EncodeToString(sum[:]) != closeV1SchemaSHA256 {
-		t.Fatalf("schemas/vendor/close-v1.json is not the pinned agent-action-capsule copy")
+	if sum := sha256.Sum256(raw); hex.EncodeToString(sum[:]) != closeV1SchemaSHA256 || !bytes.Equal(raw, closeV1SchemaJSON) {
+		t.Fatalf("schemas/vendor/close-v1.json is not the pinned agent-action-capsule copy ReadClose embeds")
 	}
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := jsonschema.NewCompiler()
-	c.DefaultDraft(jsonschema.Draft2020)
-	if err := c.AddResource("close-v1.json", doc); err != nil {
-		t.Fatal(err)
-	}
-	schema, err := c.Compile("close-v1.json")
+	schema, err := closeV1Schema()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +64,7 @@ func mustReadV1(t *testing.T, record Record) *CloseStatement {
 
 func TestCloseSealsTheCloseV1Body(t *testing.T) {
 	ctx := context.Background()
-	schema := closeV1Schema(t)
+	schema := pinnedCloseSchema(t)
 	a, b := twoBooks(t)
 	if _, err := a.Checkpoint(ctx); err != nil {
 		t.Fatal(err)
@@ -186,6 +179,9 @@ func TestCloseCountsAndHeadFollowTheWindow(t *testing.T) {
 func TestCloseKeepsReconcilesOpenWindowRule(t *testing.T) {
 	ctx := context.Background()
 	a, b := twoBooks(t)
+	// An exchange only the peer holds is B_ONLY exactly when this book's
+	// account counts as complete, which is what the open-window rule decides.
+	mustAppend(t, b, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "party-a", Correlation: Correlation{ExchangeID: "b-only", RequestDigest: digestBytes([]byte("only-b"))}, Payloads: [][]byte{[]byte("b")}})
 	if _, err := a.Checkpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +190,9 @@ func TestCloseKeepsReconcilesOpenWindowRule(t *testing.T) {
 	recon, err := a.Reconcile(ctx, input)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if recon.Tallies.BOnly != 1 {
+		t.Fatalf("the peer-only exchange must be B_ONLY under an open window: %+v", recon.Tallies)
 	}
 	sealed, err := a.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Period: testPeriod, PeerClose: strings.Repeat("cd", 32)})
 	if err != nil {
@@ -264,24 +263,26 @@ func TestCloseRefusesWhatClosev1CannotState(t *testing.T) {
 	}
 }
 
-// A Close sealed before close/v1 still verifies and reads as legacy. Its
-// record is what the previous Book.Close appended: the legacy body, sealed
-// as derived_metric.
+// A Close sealed before close/v1 still verifies and reads as legacy.
+// testdata/legacy-close/statement.json is the statement Book.Close sealed at
+// 05ef665, over twoBooks' first four records; the record carrying it is
+// appended as that Book.Close appended it, as derived_metric.
 func TestReadCloseReadsLegacyAndV1(t *testing.T) {
 	ctx := context.Background()
-	a, b := twoBooks(t)
-	recon, err := a.Reconcile(ctx, ReconcileInput{Peer: peerBundle(t, b), RecordType: "exchange", Compare: SamePayloadCommitments})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := json.Marshal(LegacyCloseStatement{Counterparty: "party-b", Profile: "capsulectl-close/v1 day:2026-09-26 comparator=same_payload_commitments", Reconciliation: recon})
+	a, _ := twoBooks(t)
+	body, err := os.ReadFile("testdata/legacy-close/statement.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	old := mustAppend(t, a, Entry{RecordType: RecordTypeClose, EpistemicType: DerivedMetric, CounterpartyRef: "party-b", Links: []Link{}, Statement: body})
 	v1, legacy, err := ReadClose(old.Header)
-	if err != nil || v1 != nil || legacy == nil || legacy.Reconciliation.Tallies != recon.Tallies || legacy.Profile == "" {
+	if err != nil || v1 != nil || legacy == nil {
 		t.Fatalf("legacy Close: v1 %v, legacy %+v, err %v", v1, legacy, err)
+	}
+	r := legacy.Reconciliation
+	if legacy.Counterparty != "party-b" || legacy.Profile != "capsulectl-close/v1 day:2026-09-26 comparator=same_payload_commitments" || legacy.Reason != "golden" ||
+		r.FromSeq != 1 || r.ToSeq != 4 || len(r.Pairs) != 4 || r.Pairs[0].JoinKey != JoinRequestDigest || r.Tallies != (Tallies{Matched: 3, AOnly: 1}) {
+		t.Fatalf("the legacy wire names did not all read: %+v", legacy)
 	}
 	bundle := peerAll(t, a)
 	if err := bundle.FullyVerified(); err != nil {
@@ -332,6 +333,13 @@ func TestReadCloseRefusesABodyItsHeaderContradicts(t *testing.T) {
 			b["reconcile"] = map[string]any{"tallies": ResultTallies{}, "status": "UNILATERAL"}
 		}),
 		"a derived_metric header": derived,
+		"a null record_version":   edit(func(b map[string]any) { b["record_version"] = nil }),
+		"a null count":            edit(func(b map[string]any) { b["counts_by_kind"] = map[string]any{"exchange": nil} }),
+		"a missing head":          edit(func(b map[string]any) { delete(b, "head") }),
+		"an empty reconcile block": edit(func(b map[string]any) {
+			b["reconcile"] = map[string]any{}
+			b["x-evidence-links"] = []Link{{Type: Cites, Target: strings.Repeat("ab", 32)}}
+		}),
 	} {
 		if _, _, err := ReadClose(h); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: got %v, want ErrInvalid", name, err)
@@ -345,11 +353,12 @@ func TestCloseWindowRefusesCountsThatDoNotFitTheHead(t *testing.T) {
 		counts            map[string]int
 		headSeq, closeSeq uint64
 	}{
-		"a negative count":           {map[string]int{"a": -1}, 5, 9},
-		"more records than the head": {map[string]int{"a": 4, "b": 3}, 5, 9},
-		"a sum that would overflow":  {map[string]int{"a": math.MaxInt, "b": math.MaxInt, "c": math.MaxInt}, 5, 9},
-		"a head at the Close":        {map[string]int{}, 9, 9},
-		"a head at position zero":    {map[string]int{}, 0, 9},
+		"a negative count":              {map[string]int{"a": -1}, 5, 9},
+		"more records than the head":    {map[string]int{"a": 4, "b": 3}, 5, 9},
+		"a sum that would overflow":     {map[string]int{"a": math.MaxInt, "b": math.MaxInt, "c": math.MaxInt}, 5, 9},
+		"a head at the Close":           {map[string]int{}, 9, 9},
+		"a head at position zero":       {map[string]int{}, 0, 9},
+		"a sum that wraps near the top": {map[string]int{"a": math.MaxInt, "b": math.MaxInt, "c": math.MaxInt}, math.MaxUint64 - 1, math.MaxUint64},
 	} {
 		if _, _, err := (CloseStatement{CountsByKind: tc.counts}).Window(tc.headSeq, tc.closeSeq); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: got %v, want ErrInvalid", name, err)
