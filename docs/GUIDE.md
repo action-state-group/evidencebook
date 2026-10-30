@@ -8,7 +8,7 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
 Every Example below renders there with its output, from v0.9.0 for the root
-module and `report/v0.1.0` for the report module. To run them from a
+module and `report/v0.3.0` for the report module. To run them from a
 checkout:
 
 ```bash
@@ -32,7 +32,7 @@ The report builder is its own module, so the root module does not depend on
 capsule-cli or the viewer. Add it only for path 2:
 
 ```bash
-go get github.com/action-state-group/evidencebook/report@v0.1.0
+go get github.com/action-state-group/evidencebook/report@v0.3.0
 ```
 
 ## Path 0: join the loop
