@@ -18,7 +18,7 @@ import (
 // seals: agent-action-capsule's close/v1 (schemas/judge/close-v1.json).
 const CloseRecordVersion = "close/v1"
 
-// closeV1SchemaJSON is agent-action-capsule's close/v1 schema at 5ce8c94,
+// closeV1SchemaJSON is agent-action-capsule's close/v1 schema at 201f4df,
 // which ReadClose validates a close/v1 body against.
 //
 //go:embed schemas/vendor/close-v1.json
