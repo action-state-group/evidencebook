@@ -130,6 +130,7 @@
   `close/v1` body has no member for.
 - `Book.Close` commits a stored record still awaiting its append before it
   takes its window, and refuses a window past the log or an empty book.
+
 ## v0.10.0 (2026-10-30)
 
 ### Changed: the third-party verifier guide's two-node exchange is one whose records name both halves (#41)
