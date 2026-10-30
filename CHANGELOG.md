@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.10.0 (2026-10-30)
+
 ### Changed: the third-party verifier guide's two-node exchange is one whose records name both halves (#41)
 
 - `docs/THIRD-PARTY-VERIFIER.md` §7.4 now takes the exchange from evidence-network/loop
