@@ -1063,9 +1063,19 @@ func exportRecord(ctx context.Context, store *evidencebook.FileStore, p cli.Prof
 // flags and their checks are the core's (cli.EvidenceRequestCommand), which
 // capsulectl-deal's `deal request` shares.
 func requestCommand() *cobra.Command {
-	return cli.EvidenceRequestCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRequestInput) (err error) {
+	cmd := cli.EvidenceRequestCommand(func(c *cobra.Command, p cli.Profile, in cli.EvidenceRequestInput) (err error) {
+		// The witnesses whose receipts count on the answer's anchor
+		// (ResponderKeys.Witnesses). Read before the book opens, so a bad
+		// directory records nothing.
+		var witnesses []evidencebook.WitnessRow
 		if in.WitnessDirectory != "" {
-			return cli.InputError("--witness-directory checks the witness receipts a deal copy carries; a book's answer is a profile envelope and carries none")
+			raw, e := os.ReadFile(in.WitnessDirectory)
+			if e != nil {
+				return cli.InputError("--witness-directory: " + e.Error())
+			}
+			if witnesses, e = evidencebook.ParseWitnessDirectory(raw); e != nil {
+				return cli.InputError("--witness-directory: " + e.Error())
+			}
 		}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
@@ -1098,7 +1108,7 @@ func requestCommand() *cobra.Command {
 		case in.Response != nil:
 			// Book.Request sends JCS JSON, and a reply is in the request's
 			// own encoding.
-			responder := evidencebook.ResponderKeys{Signer: in.ResponderSigner, Checkpoint: in.ResponderCheckpoint}
+			responder := evidencebook.ResponderKeys{Signer: in.ResponderSigner, Checkpoint: in.ResponderCheckpoint, Witnesses: witnesses}
 			record, e := book.RecordResponse(c.Context(), in.For, evidencebook.Message{Octets: in.Response, MediaType: evidencebook.MediaTypeJSON}, responder)
 			if e != nil {
 				return bookError(e)
@@ -1107,7 +1117,10 @@ func requestCommand() *cobra.Command {
 			if e = json.Unmarshal(record.Header.Statement, &st); e != nil {
 				return e
 			}
-			return cli.Output(c, cli.EvidenceRequestResult{RecordID: record.RecordID, RequestDigest: st.RequestDigest, Outcome: st.Outcome, Reason: st.Reason})
+			return cli.Output(c, bookResponseResult{
+				EvidenceRequestResult: cli.EvidenceRequestResult{RecordID: record.RecordID, RequestDigest: st.RequestDigest, Outcome: st.Outcome, Reason: st.Reason},
+				Witness:               st.Witness,
+			})
 		default:
 			record, e := book.RecordAbsence(c.Context(), in.For, in.WindowEnd, in.Route)
 			if e != nil {
@@ -1120,6 +1133,23 @@ func requestCommand() *cobra.Command {
 			return cli.Output(c, cli.EvidenceRequestResult{RecordID: record.RecordID, RequestDigest: st.RequestDigest, Outcome: evidencebook.RecordTypeAbsence})
 		}
 	})
+	// The core's help describes a deal copy, where a bad receipt fails the
+	// answer. On a book a carried receipt is unsigned, so it can only add
+	// standing (evidencebook#216).
+	cmd.Flags().Lookup("witness-directory").Usage = "With --response: a witness directory (witnesses.json format). The answer reads witness \"witnessed\" only when a receipt from a witness in it covers the answer's anchor checkpoint; without it, or with no such receipt, \"unwitnessed\". A receipt that does not verify counts for nothing"
+	return cmd
+}
+
+// bookResponseResult is what `book request --response` prints: the core's
+// result plus the answer's witness standing, as the response record holds it
+// (ResponseStatement.Witness): "witnessed" when a receipt from a witness in
+// --witness-directory covers the answer's anchor, "unwitnessed" when the
+// answer verifies only against its holder's own signatures, and absent when
+// the answer did not verify (evidencebook#209). An unwitnessed artifact is
+// never reported as witnessed.
+type bookResponseResult struct {
+	cli.EvidenceRequestResult
+	Witness string `json:"witness,omitempty"`
 }
 
 // respondCommand is `capsulectl book respond`: answer a request with the

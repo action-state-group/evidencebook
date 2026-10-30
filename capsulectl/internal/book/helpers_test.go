@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -14,8 +16,12 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
+	"github.com/action-state-group/evidencebook"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"github.com/veraison/go-cose"
 )
 
 // The book package's test helpers. Until the plugins split (capsule-cli#326)
@@ -186,5 +192,62 @@ func keepGoCaches() {
 		if value != "" && os.Getenv(name) == "" {
 			os.Setenv(name, value)
 		}
+	}
+}
+
+const testWitnessURL = "https://witness.test"
+
+// carryReceipt adds to the reply file at path a witness_receipts carrier
+// holding one receipt over the reply's anchor checkpoint, signed by key
+// under testWitnessURL.
+func carryReceipt(t *testing.T, path string, reply evidencebook.Reply, key ed25519.PrivateKey) {
+	t.Helper()
+	require.NotNil(t, reply.Envelope)
+	var artifact struct {
+		Checkpoints []string `json:"checkpoints"`
+	}
+	require.NoError(t, json.Unmarshal(reply.Envelope.Artifact, &artifact))
+	require.NotEmpty(t, artifact.Checkpoints)
+	statement, err := hex.DecodeString(artifact.Checkpoints[len(artifact.Checkpoints)-1])
+	require.NoError(t, err)
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var wire map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	wire[evidencebook.WitnessReceiptsMember] = []interface{}{map[string]interface{}{
+		"checkpoint": reply.Envelope.Anchor.Digest, "witness": mintReceipt(t, statement, key),
+	}}
+	raw, err = json.Marshal(wire)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+}
+
+// mintReceipt is a checkpoint.witnesses entry: a genuine RFC 9162 COSE
+// receipt over the checkpoint statement from a single-entry witness log,
+// signed by key. The same receipt evidencebook's own tests mint
+// (receipt_binding_test.go, adapted from cll-go's witness/verify_test.go).
+func mintReceipt(t *testing.T, statement []byte, key ed25519.PrivateKey) map[string]interface{} {
+	t.Helper()
+	record, err := checkpoint.ParseRecord(statement)
+	require.NoError(t, err)
+	entry, err := record.EntryHash()
+	require.NoError(t, err)
+	proof, err := cbor.Marshal([]interface{}{int64(1), int64(0), [][]byte{}})
+	require.NoError(t, err)
+	leaf := sha256.Sum256(append([]byte{0}, entry...))
+	message := cose.NewSign1Message()
+	message.Headers.Protected.SetAlgorithm(cose.AlgorithmEdDSA)
+	message.Headers.Protected[int64(395)] = int64(1)
+	message.Headers.Unprotected[int64(396)] = map[interface{}]interface{}{int64(-1): []interface{}{proof}}
+	message.Payload = leaf[:]
+	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, key)
+	require.NoError(t, err)
+	require.NoError(t, message.Sign(rand.Reader, nil, signer))
+	message.Payload = nil
+	raw, err := message.MarshalCBOR()
+	require.NoError(t, err)
+	return map[string]interface{}{
+		"ts_url": testWitnessURL, "entry_hash": hex.EncodeToString(entry),
+		"receipt_b64": base64.StdEncoding.EncodeToString(raw), "leaf_index": 0, "tree_size": 1,
 	}
 }

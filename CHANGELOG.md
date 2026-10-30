@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Changed: `capsulectl book request --response` prints the answer's witness standing (evidencebook#209)
+
+- The result now carries `witness`, as the response record holds it (#216):
+  `witnessed` only when a receipt the reply carries (`witness_receipts`),
+  from a witness in `--witness-directory`, covers the answer's anchor
+  checkpoint; `unwitnessed` for a chain that verifies only against its
+  holder's own signatures. A refusal or a failed answer prints none. Before,
+  the command printed only `outcome` and `reason`, so an unwitnessed artifact
+  read the same as a witnessed one.
+- A book now accepts `--witness-directory` with `--response`; it refused the
+  flag before, when a book's answer could carry no receipts. A directory that
+  cannot be read refuses the command and records nothing. A carried receipt
+  that does not verify counts for nothing; it never fails the answer, since
+  nothing signs the carrier. The flag's help on a book says so.
+
 ### Fixed: answering an evidence request no longer holds the book's lock (evidencebook#208)
 
 - `Book.Respond` answers from a snapshot of the log taken under the book's

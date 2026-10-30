@@ -1,6 +1,8 @@
 package book
 
 import (
+	"bytes"
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -60,23 +62,82 @@ func (x *evidenceExchange) respondAs(name, out string) evidencebook.Reply {
 	return reply
 }
 
-// A book's answer is a profile envelope, which carries no witness receipts:
-// --witness-directory is refused on a book profile, and with an absence.
-func TestBookAnswerTakesNoWitnessDirectory(t *testing.T) {
+// The witness standing `book request --response` prints (evidencebook#209):
+// "witnessed" only when a receipt the reply carries (witness_receipts), from a
+// witness in --witness-directory, covers the answer's anchor checkpoint;
+// "unwitnessed" for a chain that verifies only against its holder's own
+// signatures. A receipt that does not verify counts for nothing.
+func TestBookResponsePrintsWitnessStanding(t *testing.T) {
+	witnessKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{77}, ed25519.SeedSize))
+	holderKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{78}, ed25519.SeedSize))
+	listed := []map[string]interface{}{{"name": "test witness", "endpoint": testWitnessURL, "binding": "cll",
+		"key_ids": []string{hex.EncodeToString(witnessKey.Public().(ed25519.PublicKey))}}}
+	for name, tc := range map[string]struct {
+		key       ed25519.PrivateKey // the receipt's signer; nil carries none
+		directory []map[string]interface{}
+		want      string
+	}{
+		"no receipt, no directory":      {nil, nil, evidencebook.Unwitnessed},
+		"no receipt":                    {nil, listed, evidencebook.Unwitnessed},
+		"receipt, no directory":         {witnessKey, nil, evidencebook.Unwitnessed},
+		"receipt from a listed witness": {witnessKey, listed, evidencebook.Witnessed},
+		"receipt forged under its name": {holderKey, listed, evidencebook.Unwitnessed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			x := newEvidenceExchange(t)
+			sent := x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
+			reply := x.respond("history")
+			path := filepath.Join(x.dir, "history.response")
+			if tc.key != nil {
+				carryReceipt(t, path, reply, tc.key)
+			}
+			args := []string{"request", "--profile", "a", "--for", sent.RecordID, "--response", path,
+				"--responder-key", hex.EncodeToString(x.bKeys.record), "--responder-checkpoint-key", hex.EncodeToString(x.bKeys.checkpoint)}
+			if tc.directory != nil {
+				args = append(args, "--witness-directory", writeDirectory(t, tc.directory...))
+			}
+			out, err := invoke(t, "", args...)
+			require.NoError(t, err, out)
+			var got struct {
+				Outcome, Witness string
+			}
+			require.NoError(t, json.Unmarshal([]byte(out), &got), out)
+			assert.Equal(t, evidencebook.OutcomeArtifact, got.Outcome)
+			assert.Equal(t, tc.want, got.Witness)
+		})
+	}
+}
+
+// A refusal has no witness standing, and a directory that cannot be read
+// records nothing, so the genuine answer still records after it.
+func TestBookResponseWitnessEdges(t *testing.T) {
 	x := newEvidenceExchange(t)
 	sent := x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	x.respond("history")
-	_, err := invoke(t, "", "request", "--profile", "a", "--for", sent.RecordID, "--response", filepath.Join(x.dir, "history.response"),
-		"--responder-key", hex.EncodeToString(x.bKeys.record), "--responder-checkpoint-key", hex.EncodeToString(x.bKeys.checkpoint),
-		"--witness-directory", writeDirectory(t))
+	path := filepath.Join(x.dir, "history.response")
+	keys := []string{"--responder-key", hex.EncodeToString(x.bKeys.record), "--responder-checkpoint-key", hex.EncodeToString(x.bKeys.checkpoint)}
+	base := append([]string{"request", "--profile", "a", "--for", sent.RecordID, "--response", path}, keys...)
+
+	_, err := invoke(t, "", append(base, "--witness-directory", filepath.Join(t.TempDir(), "no-such-witnesses.json"))...)
 	assert.ErrorIs(t, err, cli.ErrInput)
-	assert.ErrorContains(t, err, "deal copy")
-	// Refused before the file is opened: a path that does not exist gets the
-	// same refusal, not a missing-file error.
-	_, err = invoke(t, "", "request", "--profile", "a", "--for", sent.RecordID, "--response", filepath.Join(x.dir, "history.response"),
-		"--responder-key", hex.EncodeToString(x.bKeys.record), "--responder-checkpoint-key", hex.EncodeToString(x.bKeys.checkpoint),
-		"--witness-directory", filepath.Join(t.TempDir(), "no-such-witnesses.json"))
-	assert.ErrorContains(t, err, "deal copy")
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	require.NoError(t, os.WriteFile(bad, []byte("{"), 0o600))
+	_, err = invoke(t, "", append(base, "--witness-directory", bad)...)
+	assert.ErrorIs(t, err, cli.ErrInput)
+	out, err := invoke(t, "", base...)
+	require.NoError(t, err, out, "the answer still records after the refused directories")
+	assert.Contains(t, out, `"witness":"unwitnessed"`)
+
+	// Without --requester a protected subject is refused: the refusal records
+	// with no witness member.
+	refused := x.ask("records", `{"subject":{"full_history":null},"coverage":{"min_freshness":1}}`)
+	_, err = invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "records.sent"), "--output", filepath.Join(x.dir, "records.response"))
+	require.NoError(t, err)
+	out, err = invoke(t, "", append([]string{"request", "--profile", "a", "--for", refused.RecordID, "--response", filepath.Join(x.dir, "records.response")}, keys...)...)
+	require.NoError(t, err, out)
+	assert.Contains(t, out, `"outcome":"`+evidencebook.OutcomeRefusal+`"`)
+	assert.NotContains(t, out, `"witness"`)
+
 	_, err = invoke(t, "", "request", "--profile", "a", "--for", sent.RecordID, "--absent-until", day1.Format(time.RFC3339), "--witness-directory", writeDirectory(t))
 	assert.ErrorIs(t, err, cli.ErrInput, "--witness-directory goes with --response only")
 }

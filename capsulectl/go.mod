@@ -10,8 +10,10 @@ require (
 	github.com/action-state-group/checkpointed-local-log/go v0.1.0
 	github.com/action-state-group/evidencebook v0.10.1-0.20261030225904-316587abad14
 	github.com/action-state-group/evidencebook/report v0.3.0
+	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
+	github.com/veraison/go-cose v1.3.0
 )
 
 require (
@@ -19,7 +21,6 @@ require (
 	github.com/datatrails/go-datatrails-merklelog/mmr v0.4.2-0.20250428132117-275103a34a08 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -36,7 +37,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/veraison/go-cose v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.59.0 // indirect
