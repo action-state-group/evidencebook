@@ -209,7 +209,7 @@ Also required:
 |---|---|
 | Third-party verifier pack (service evidence) | merged: `evidencebook` #16 `30e3473` ([THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md), which pins `agent-action-capsule` `c86a73a`); this repository's CI runs the regenerated vectors at `agent-action-capsule` `dfc4703` (`evidencebook` #26 `43f3cb1`) |
 | Personal-evidence half | vectors merged: `agent-action-capsule` #296 `0b7b182` (`vectors/personal-history-basic-v0/`, 12 cases); the guide section that points to them exists: [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md) §6, #28 `3f68739` |
-| Live node's bundle (§7 of the guide) | added: a lab node's `evidence-bundle/v2` from `evidence-network/loop` `b02f8cf`, with its specified results (#175); one exchange between two lab nodes, both halves, at `cfeaf09` (§7.4) |
+| Live node's bundle (§7 of the guide) | added: a lab node's `evidence-bundle/v2` from `evidence-network/loop` `b02f8cf`, with its specified results (#175); one exchange between two lab nodes, both halves, whose records name each other's halves, at loop `202d8da` (§7.4) |
 | Clean-room rehearsal | internal, not an outside developer, so it does not count toward this section: a verifier written from the public texts only reproduced every result of the guide's §7 once the guide named the checkpoint's CLL -01 form (#41). The points it had to infer are AAC #460 |
 | Run by an outside developer | **in progress**, owned by the project lead; not passed |
 

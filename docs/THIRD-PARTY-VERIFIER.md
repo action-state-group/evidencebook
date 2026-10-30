@@ -471,6 +471,7 @@ own.
 | The log and its COSE checkpoint | [checkpointed-local-log](https://github.com/action-state-group/checkpointed-local-log) `0f74297761f3a0b81d27a116f32ac556c0ecb59d` (tag `crates/checkpointed-local-log-v0.3.1`, the log the node's book embeds) | `spec/draft-mih-scitt-checkpointed-local-log-01.md`, the form this checkpoint is in (§7.3) |
 | The MMR hashing, the single root and the proofs' JSON form | the same commit | `mmr-conformance-vectors/README.md` and `vectors.json`, the only place these are written down (§7.3) |
 | The JSON checkpoint record of §7.4 | the same commit | `checkpoint-conformance-vectors/README.md` and its `vectors.json` |
+| The two nodes' exchange of §7.4 | evidence-network/loop `202d8da362734eecfd01713192b65ae61cefa5c9` | `findings/2026-10-30-live/05-deal/stevenmih-{1,2}/` (`held-18…` and `checks.json`; `held-11…` and `checks.json`), and the listing of `stevenmih-2` under `nodes/` |
 | The bundle | evidence-network/loop `cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8` | `findings/2026-10-28-live/02-book/stevenmih-1/bundle.json` |
 | The findings recorded with it | the same commit | `findings/2026-10-28-live/02-book/stevenmih-1/verify.json` |
 | The node's listing, which names its key | the same commit | `nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json` (`key_id`) |
@@ -497,11 +498,17 @@ LOOP=cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8
 NODE=findings/2026-10-28-live/02-book/stevenmih-1
 for f in "$NODE/bundle.json" "$NODE/verify.json" \
   nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json \
-  lab/runs/2026-10-28/join/stevenmih-1/book.json \
-  nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json \
-  findings/2026-10-29-live/05-deal/stevenmih-{1,2}/{held-1,held-1-inclusion,held-1-citing,checks}.json; do
+  lab/runs/2026-10-28/join/stevenmih-1/book.json; do
   curl -fsSL --create-dirs -o "loop/$f" \
     "https://raw.githubusercontent.com/evidence-network/loop/$LOOP/$f"
+done
+DEAL=202d8da362734eecfd01713192b65ae61cefa5c9
+X=findings/2026-10-30-live/05-deal
+for f in nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json \
+  $X/stevenmih-1/{held-18,held-18-inclusion,held-18-citing,checks}.json \
+  $X/stevenmih-2/{held-11,held-11-inclusion,held-11-citing,checks}.json; do
+  curl -fsSL --create-dirs -o "loop/$f" \
+    "https://raw.githubusercontent.com/evidence-network/loop/$DEAL/$f"
 done
 (sha256sum "loop/$NODE/bundle.json" 2>/dev/null || shasum -a 256 "loop/$NODE/bundle.json") | cut -d' ' -f1
 ```
@@ -578,28 +585,31 @@ anything happened at a claimed time, or that anyone else saw the checkpoint.
 §7.1 to §7.3 check one node's own records. This part checks one exchange
 between two nodes, as each side holds it: `stevenmih-2` asked `stevenmih-1`
 for one inference, each sealed its own half of that exchange, and each pushed
-its half to the other, which holds it and seals a record of its own citing
-it. The evidence network ran this as its step 05 on 2026-10-29, at the same
-loop commit as §7.1.
+its half to the other, which holds it and seals a record of its own that
+names both halves. The evidence network ran this as its step 05 on
+2026-10-30, on a lab build that includes
+[capsules-plugin#138](https://github.com/Mesh-LLM/capsules-plugin/pull/138),
+which adds the node's own half to that record. The files are at
+evidence-network/loop `202d8da362734eecfd01713192b65ae61cefa5c9`, a different
+commit from §7.1's, so §7.1 to §7.3 are unchanged.
 
-The inputs, under `findings/2026-10-29-live/05-deal/` at that commit, with
+The inputs, under `findings/2026-10-30-live/05-deal/` at that commit, with
 their SHA-256:
 
 | Node | File | What it is | SHA-256 |
 |---|---|---|---|
-| `stevenmih-1` | `stevenmih-1/held-1.json` | the half `stevenmih-2` sealed and pushed | `07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9` |
-| `stevenmih-1` | `stevenmih-1/held-1-inclusion.json` | that half's inclusion proof and the signed checkpoint it was pushed under | `f252e1720b5a51516ba7ec8e69cb9605628a493f61cc83296aa8a102a1c8b811` |
-| `stevenmih-1` | `stevenmih-1/held-1-citing.json` | `stevenmih-1`'s own record citing that half | `314d54d90dc2d8e313acb0c57d5494b6b3574d8bf4eedbf8a7c56def64bccaa4` |
-| `stevenmih-1` | `stevenmih-1/checks.json` | the findings recorded for `stevenmih-1` | `b96e991fa50f4c4b2a6196ffc418d6484558ce851f0138e9b8787e27105cf0cb` |
-| `stevenmih-2` | `stevenmih-2/held-1.json` | the half `stevenmih-1` sealed and pushed | `3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694` |
-| `stevenmih-2` | `stevenmih-2/held-1-inclusion.json` | its inclusion proof and checkpoint | `07b6a1bec0545ea5be8dccffacb8999c7aad1479b650d3b48e699e9d0a42d451` |
-| `stevenmih-2` | `stevenmih-2/held-1-citing.json` | `stevenmih-2`'s own record citing it | `2fa153cfc0549864cbb9cb8420447cfcc3ea58dff9e5f99a21b23253aface154` |
-| `stevenmih-2` | `stevenmih-2/checks.json` | the findings recorded for `stevenmih-2` | `7f02f94ec73ffa92b0c47ba99f4f516ba3bb93dd8144a22ccea39e70f0b76896` |
+| `stevenmih-1` | `stevenmih-1/held-18.json` | the half `stevenmih-2` sealed and pushed | `f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603` |
+| `stevenmih-1` | `stevenmih-1/held-18-inclusion.json` | that half's inclusion proof and the signed checkpoint it was pushed under | `f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea` |
+| `stevenmih-1` | `stevenmih-1/held-18-citing.json` | `stevenmih-1`'s own record naming both halves | `fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639` |
+| `stevenmih-1` | `stevenmih-1/checks.json` | the findings recorded for `stevenmih-1` | `98c6fee06eecf12232f381bd159f78792328da516a14ca66c3405cda9e58bd42` |
+| `stevenmih-2` | `stevenmih-2/held-11.json` | the half `stevenmih-1` sealed and pushed | `54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683` |
+| `stevenmih-2` | `stevenmih-2/held-11-inclusion.json` | its inclusion proof and checkpoint | `b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd` |
+| `stevenmih-2` | `stevenmih-2/held-11-citing.json` | `stevenmih-2`'s own record naming both halves | `8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b` |
+| `stevenmih-2` | `stevenmih-2/checks.json` | the findings recorded for `stevenmih-2` | `8dc5f40518fd3a65efe445609ea638bb6fd9e757fa79e357d5878725dd3696f2` |
 
-The other files in that directory belong to a second exchange, between
-`stevenmih-1` and `stevenmih-3`, and are not part of this test. So does the
-second entry of `stevenmih-1/checks.json`: compare only the entry whose `held`
-is `held-1`.
+The other files in those directories belong to other exchanges, and so do
+the other entries of each `checks.json`: compare only the entry whose `held`
+is `held-18` (`stevenmih-1`) or `held-11` (`stevenmih-2`).
 
 Each node's key is in its listing under `nodes/`: `stevenmih-1` is node
 `16a607c3…`, key `1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9`
@@ -621,29 +631,39 @@ What to verify, for each side, and the result specified:
 
 | Check | Held by `stevenmih-1` | Held by `stevenmih-2` | `checks.json` member |
 |---|---|---|---|
-| The held half | `capsule_id` `7e4aefd0…` recomputes; its signature verifies under `stevenmih-2`'s key | `3f1b3c6b…` recomputes; its signature verifies under `stevenmih-1`'s key | `held_by_digest` |
-| The checkpoint it was pushed under: the `checkpoint` object's signing-body digest (the README's `digest_hex`), which equals the file's `checkpoint_digest` | `76f8f5c2f72dd52540a78797887c641aee40d02520223f53cc7b2fd66c929f6a`, log `capsules/7e04d3e3fec1332f`, `mmr_size` 127; its signature verifies under `stevenmih-2`'s key | `9efb33adec6ad7d137be57c56a95e0bab17513ba3161a1b1c5d3c36d39712a88`, log `capsules/511b5b4246cf58e7`, `mmr_size` 127; its signature verifies under `stevenmih-1`'s key | `pushed_under_checkpoint` |
-| Inclusion | the half is the leaf at `leaf_index` 32 under that checkpoint's `root` | the same, `leaf_index` 32 | `pushed_under_checkpoint` |
-| The holder's own record | `9d5bf69e…` recomputes, verifies under `stevenmih-1`'s key, and cites `7e4aefd0…` with `citation_purpose` `counterparty_half` | `2475eaa9…` recomputes, verifies under `stevenmih-2`'s key, and cites `3f1b3c6b…` the same way | `cited` |
+| The held half | `capsule_id` `a930596b…` recomputes; its signature verifies under `stevenmih-2`'s key | `587eea74…` recomputes; its signature verifies under `stevenmih-1`'s key | `held_by_digest` |
+| The checkpoint it was pushed under: the `checkpoint` object's signing-body digest (the README's `digest_hex`), which equals the file's `checkpoint_digest` | `13bff0c79f3ac215a1eef34aaa0a4ef26dfe491a26661acc7ff58bd84cc8d413`, log `capsules/7e04d3e3fec1332f`, `mmr_size` 1278; its signature verifies under `stevenmih-2`'s key | `d53b0d1834e942ef116a52799cede11df972600f656cf1e8a478d7ecda2a435b`, log `capsules/511b5b4246cf58e7`, `mmr_size` 1979; its signature verifies under `stevenmih-1`'s key | `pushed_under_checkpoint` |
+| Inclusion | the half is the leaf at `leaf_index` 609 under that checkpoint's `root` | the same, `leaf_index` 960 | `pushed_under_checkpoint` |
+| The holder's own record | `1ed02f21…` recomputes, verifies under `stevenmih-1`'s key, and cites `a930596b…` with `citation_purpose` `counterparty_half` | `d195e7ac…` recomputes, verifies under `stevenmih-2`'s key, and cites `587eea74…` the same way | `cited` |
+| The holder's own half, named by that record | `received_half.own_half_capsule_id` is `587eea74…`, the half `stevenmih-2` holds | it is `a930596b…`, the half `stevenmih-1` holds | none |
 | Where it came from | received from `stevenmih-2` (node `91abddbc…`) by push | received from `stevenmih-1` (node `16a607c3…`) by push | `provenance` |
 
 Then join the two halves: both carry the same `client_nonce`
-(`26c09646-1582-4ee4-a0f8-f030163f917f`) and the same `agent_output_digest`,
+(`5362ca82-acc2-44a2-b21f-bafbf5be74ba`) and the same `agent_output_digest`,
 and `stevenmih-1`'s half names `stevenmih-2`'s node as its requesting party.
 So they are the two halves of one exchange, each signed by its own side and
-each held by the other. A third link: each holder's own record chains to its
-own half (`chain.parent_capsule_id`: `9d5bf69e…` to `3f1b3c6b…`, `2475eaa9…`
-to `7e4aefd0…`) and cites the other side's, so it names both.
+each held by the other. The holders' records say the same thing without the
+nonce: each names the half it holds as `cited_capsule_id` and its own half as
+`own_half_capsule_id`, and each one's own half is the half the other holds
+(`587eea74…` and `a930596b…`). A third link: each holder's own record chains
+to its own half (`chain.parent_capsule_id`: `1ed02f21…` to `587eea74…`,
+`d195e7ac…` to `a930596b…`). Do not join on `serving_provenance.exchange_id`: each side's half has its own.
 
-This shows that the two nodes each signed their own account of one exchange
-and each holds the other's, under the other's signed checkpoint. It does not
-show:
+This shows that the two nodes each signed their own account of one exchange,
+each holds the other's under the other's signed checkpoint, and each one's
+record names both halves. It does not show:
 - that the inference was correct;
 - that anything was paid;
-- that either half cites the other half or the other side's checkpoint (each
-  half cites neither; only the holder's own record cites what it holds);
+- that either half cites the other half or the other side's checkpoint (the
+  halves are sealed before either side knows the other's `capsule_id`; only
+  the holder's record names both);
 - that the holder accepted the push under anything stronger than the peer
-  identity its host announced (`accepted_via` is `host_announced`).
+  identity its host announced (`accepted_via` is `host_announced`). The
+  records' `controller_binding_digest` and `same_controller_as_receiver`
+  members, and the `accepted` member of `checks.json`, which records that the
+  digest equals the one in the sender's published commitment
+  (`nodes/commitments/…` in loop), belong to a check this test neither
+  fetches nor specifies.
 
 ## 8. Running it all in a clean room
 
