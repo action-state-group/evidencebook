@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -32,6 +34,9 @@ const (
 type StageError struct {
 	Stage  string
 	Detail string
+	// Causes are, at the schema stage, every failed leaf of the validation
+	// ("/location: why"); Detail is the first.
+	Causes []string
 }
 
 func (e *StageError) Error() string { return "[" + e.Stage + "] " + e.Detail }
@@ -48,8 +53,10 @@ var typedActionTypes = map[string]string{
 }
 
 // Encode is a record's payload, the JCS bytes a step seals, and its digest,
-// once the record passes Check. record is any value that marshals to the
-// record's JSON. localValues are the raw local-store values the record must
+// once the record passes Check. record is the record's JSON text ([]byte or
+// json.RawMessage, read as written), or any other value, which is marshaled
+// with encoding/json first (that replaces invalid UTF-8 in Go strings).
+// localValues are the raw local-store values the record must
 // not carry (every identifier seen in the deal, and every committed text
 // long enough not to collide with a token); they are used only for that
 // scan and never sealed.
@@ -103,7 +110,9 @@ func CheckDigest(record any, claimed string) error {
 }
 
 // decode reads record as generic JSON with numbers kept as written
-// (json.Number), as a verifier reads the sealed bytes.
+// (json.Number), as a verifier reads the sealed bytes. JSON text must be
+// valid UTF-8 with no lone surrogate escape, which a decoder would replace
+// unseen; such text is refused at the canonicalization stage.
 func decode(record any) (any, error) {
 	var raw []byte
 	switch r := record.(type) {
@@ -117,7 +126,52 @@ func decode(record any) (any, error) {
 			return nil, err
 		}
 	}
+	if err := checkText(raw); err != nil {
+		return nil, err
+	}
 	return jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+}
+
+// checkText refuses JSON text that is not valid UTF-8, or whose strings
+// escape a lone surrogate (RFC 8785 §3.2.2.2: every string is valid
+// Unicode).
+func checkText(raw []byte) error {
+	if !utf8.Valid(raw) {
+		return stageErr(StageCanonicalization, "not JCS-serializable: the JSON text is not valid UTF-8")
+	}
+	inString := false
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if !inString {
+			inString = c == '"'
+			continue
+		}
+		switch c {
+		case '"':
+			inString = false
+		case '\\':
+			if i+1 < len(raw) && raw[i+1] == 'u' && i+5 < len(raw) {
+				u, err := strconv.ParseUint(string(raw[i+2:i+6]), 16, 16)
+				if err == nil && u >= 0xD800 && u <= 0xDFFF {
+					low := u >= 0xDC00
+					paired := false
+					if !low && i+11 < len(raw) && raw[i+6] == '\\' && raw[i+7] == 'u' {
+						l, err := strconv.ParseUint(string(raw[i+8:i+12]), 16, 16)
+						paired = err == nil && l >= 0xDC00 && l <= 0xDFFF
+					}
+					if !paired {
+						return stageErr(StageCanonicalization, "not JCS-serializable: lone surrogate")
+					}
+					i += 11
+					continue
+				}
+				i += 5
+				continue
+			}
+			i++ // the escaped character
+		}
+	}
+	return nil
 }
 
 func checkDoc(doc any, localValues []string) error {
@@ -153,10 +207,15 @@ func stageCanonicalization(doc any) error {
 	if c := blk["canonicalization"]; c != Canonicalization {
 		return stageErr(StageCanonicalization, `canonicalization must be exactly "jcs" (got %v); fail closed`, c)
 	}
+	// A float is refused by name first, as the reference checker words it;
+	// JCS would refuse it too, less plainly.
+	if err := noFloats(doc, "$"); err != nil {
+		return err
+	}
 	if _, err := canonical.JCS(doc); err != nil {
 		return stageErr(StageCanonicalization, "not JCS-serializable: %v", err)
 	}
-	return noFloats(doc, "$")
+	return nil
 }
 
 func noFloats(v any, path string) error {
@@ -210,11 +269,20 @@ func sortedKeys(m map[string]any) []string {
 	return keys
 }
 
+// The scans read digits and white space as the reference checker's Python
+// patterns do, in Unicode: \d is any decimal digit (Nd), and \s any white
+// space. Python's $ also matches before one final newline.
+const (
+	pyDigit = `\p{Nd}`
+	pySpace = `\t\n\v\f\r \x{1c}-\x{1f}\x{85}\p{Z}`
+)
+
 var (
-	scanExempt = regexp.MustCompile(`^([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?|[a-z0-9-]+/[a-z0-9-]+/\d+\.\d+\.\d+)$`)
-	scanPhone  = regexp.MustCompile(`\+?\(?\d[\d\s().-]{6,}\d`)
-	scanEmail  = regexp.MustCompile(`[^\s@]+@[^\s@]+\.[^\s@]+`)
-	scanWords  = regexp.MustCompile(`[^a-z]+`)
+	scanExempt   = regexp.MustCompile(`^([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|` + pyDigit + `{4}-` + pyDigit + `{2}-` + pyDigit + `{2}(T` + pyDigit + `{2}:` + pyDigit + `{2}:` + pyDigit + `{2}Z)?|[a-z0-9-]+/[a-z0-9-]+/` + pyDigit + `+\.` + pyDigit + `+\.` + pyDigit + `+)\n?$`)
+	scanPhone    = regexp.MustCompile(`\+?\(?` + pyDigit + `[` + pyDigit + pySpace + `().-]{6,}` + pyDigit)
+	scanNonDigit = regexp.MustCompile(`\P{Nd}`)
+	scanEmail    = regexp.MustCompile(`[^` + pySpace + `@]+@[^` + pySpace + `@]+\.[^` + pySpace + `@]+`)
+	scanWords    = regexp.MustCompile(`[^a-z]+`)
 	// bannedWords label or grade a counterparty; a record never carries them.
 	bannedWords = map[string]bool{
 		"scam": true, "scams": true, "scammer": true, "scammers": true, "scammy": true, "fraud": true, "frauds": true,
@@ -235,7 +303,7 @@ func stagePersonalData(doc any, localValues []string) error {
 			continue
 		}
 		for _, m := range scanPhone.FindAllString(s, -1) {
-			if len(nonDigit.ReplaceAllString(m, "")) >= 7 {
+			if utf8.RuneCountInString(scanNonDigit.ReplaceAllString(m, "")) >= 7 {
 				return stageErr(StagePersonalData, "raw phone number at %s", rs.path)
 			}
 		}
@@ -279,21 +347,27 @@ func stageSchema(doc any) error {
 		return err
 	}
 	if err := schema.Validate(doc); err != nil {
-		return stageErr(StageSchema, "%s", firstSchemaError(err))
+		v, ok := err.(*jsonschema.ValidationError)
+		if !ok {
+			return err
+		}
+		var leaves []string
+		schemaLeaves(v, &leaves)
+		return &StageError{Stage: StageSchema, Detail: leaves[0], Causes: leaves}
 	}
 	return nil
 }
 
 var schemaPrinter = message.NewPrinter(language.English)
 
-// firstSchemaError is the first leaf of a validation error: where, and why.
-func firstSchemaError(err error) string {
-	v, ok := err.(*jsonschema.ValidationError)
-	if !ok {
-		return err.Error()
+// schemaLeaves are a validation error's failed leaves, depth first: where,
+// and why.
+func schemaLeaves(v *jsonschema.ValidationError, out *[]string) {
+	if len(v.Causes) == 0 {
+		*out = append(*out, "/"+strings.Join(v.InstanceLocation, "/")+": "+v.ErrorKind.LocalizedString(schemaPrinter))
+		return
 	}
-	for len(v.Causes) > 0 {
-		v = v.Causes[0]
+	for _, c := range v.Causes {
+		schemaLeaves(c, out)
 	}
-	return "/" + strings.Join(v.InstanceLocation, "/") + ": " + v.ErrorKind.LocalizedString(schemaPrinter)
 }

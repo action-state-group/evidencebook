@@ -30,7 +30,9 @@ var ErrNotNormalizable = errors.New("identifier cannot be normalized")
 
 // Kinds are the counterparty identifier kinds a record may carry, a closed
 // set (PROFILE.md §2).
-var Kinds = []string{"payee", "name", "domain", "phone", "email", "relay_address", "profile_id"}
+func Kinds() []string { return append([]string(nil), kinds...) }
+
+var kinds = []string{"payee", "name", "domain", "phone", "email", "relay_address", "profile_id"}
 
 var legalForms = map[string]bool{"llc": true, "inc": true, "ltd": true, "corp": true, "co": true, "company": true, "gmbh": true, "llp": true, "plc": true}
 

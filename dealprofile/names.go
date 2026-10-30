@@ -21,8 +21,6 @@ const (
 	// DealIDMember is the top-level Capsule member a step carries its deal
 	// id in, which a composition joins the parties' copies on.
 	DealIDMember = "deal_id"
-	// Developer is the developer a deal Capsule names.
-	Developer = "capsulectl-deal"
 )
 
 // The x-deal-v0 record types (PROFILE.md §3), in the schema's order.
@@ -50,7 +48,9 @@ const (
 )
 
 // RecordTypes are the x-deal-v0 record types, in the schema's order.
-var RecordTypes = []string{
+func RecordTypes() []string { return append([]string(nil), recordTypes...) }
+
+var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
 	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeAgentMove,
@@ -85,7 +85,8 @@ const (
 const (
 	// ReportActionID is the action_id of every report Capsule.
 	ReportActionID = "capsulectl-deal-report"
-	// ReportType is the report payload's type.
+	// ReportType is the report payload's own type member (PROFILE.md §1),
+	// not the book header's record type, which is ReportRecordType.
 	ReportType = "deal_report"
 	// ReportPointer is the bundle's x-deal-v0 extension member that names
 	// the copy's report Capsule.
@@ -105,7 +106,9 @@ const (
 
 // The evidence record header a step or report carries on a book.
 const (
-	StepRecordType   = "deal_step"
+	StepRecordType = "deal_step"
+	// ReportRecordType is the record_type of a report's evidence record
+	// header on a book, not the payload's type member (ReportType).
 	ReportRecordType = "deal_report"
 	// LocalField commits a step's local event (its raw values and the
 	// nonces of its commitments); its opening never leaves the device.

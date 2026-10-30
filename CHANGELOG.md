@@ -25,16 +25,20 @@
   digest, once it passes `Check`), `Check` (the canonicalization,
   personal_data, wording and schema stages, refusing with a `*StageError`) and
   `CheckDigest`; `ReportPayload` and `ReportCapsule` for a sealed deal_report;
-  and `StepCapsule`, a step's Capsule members and book header fields. It seals
-  nothing and imports neither the root package nor any CLI.
+  and `StepCapsule`, a step's Capsule members and book header fields, each
+  naming the producer's own developer. It seals nothing and imports neither
+  the root package nor any CLI.
 - `dealprofile/testdata/baseline-vectors.json`, frozen from the deal plugin's
   builders before the move (evidencebook-deal#65), is reproduced byte for
   byte: every step's payload, digest, Capsule and header fields, and every
-  report's payload and Capsule. The chain stage (§6), which the reference
-  checker runs over a record and those before it, is not ported yet.
+  report's payload and Capsule. The chain stage (§6) stays the reference
+  checker's: CI runs `check_profile.py` over every chain the package builds
+  from those vectors.
 - The module now requires `golang.org/x/net` v0.59.0 (identifier
-  normalization), which raises `golang.org/x/text` to v0.42.0 and
-  `golang.org/x/crypto` to v0.57.0.
+  normalization), which raises `golang.org/x/text` to v0.42.0,
+  `golang.org/x/crypto` to v0.57.0 and `golang.org/x/sys` to v0.48.0, and
+  `github.com/stretchr/testify` v1.12.1 for the package's tests (with
+  `go.yaml.in/yaml/v3`).
 
 ## v0.9.0 (2026-10-30)
 

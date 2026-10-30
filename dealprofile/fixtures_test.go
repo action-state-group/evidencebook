@@ -120,7 +120,9 @@ func TestRecordTypesAreTheSchemas(t *testing.T) {
 		} `json:"$defs"`
 	}
 	require.NoError(t, json.Unmarshal(ProfileSchema(), &s))
-	assert.Equal(t, s.Defs.RecordType.Enum, RecordTypes)
+	assert.Equal(t, s.Defs.RecordType.Enum, RecordTypes())
+	RecordTypes()[0] = "changed"
+	assert.Equal(t, TypeIntent, RecordTypes()[0], "a caller cannot change the closed set")
 	for _, typ := range recordSchemaTypes {
 		_, err := RecordSchema(typ)
 		assert.NoError(t, err, typ)
@@ -183,12 +185,22 @@ func expectedDigests(t *testing.T) map[string]string {
 	return out
 }
 
+// schemaWordingOnly are the schema-stage negatives whose expected text is
+// the reference validator's own wording (jsonschema 4.23), which no member
+// name or location in another validator's report carries.
+var schemaWordingOnly = map[string]bool{
+	"neg-agent-card-with-words.json":                        true, // "should not be valid under ... said_commitment"; here: /body: 'not' failed
+	"neg-typed-seller-offer-no-proposal-beside-source.json": true, // "should not be valid under"; here: /body: 'not' failed
+	"neg-typed-seller-source-on-a-commit.json":              true, // "'offer' was expected"; here: /body/action: value must be 'offer'
+}
+
 // TestNegativeFixtures checks that every negative the reference checker
-// rejects before the chain stage is rejected here at the same stage. At the
-// schema stage only the stage is compared: the message is the validator's,
-// and two validators word it differently. A negative it rejects at the chain
-// stage passes every record-level stage here, as there; the chain stage is
-// not in this package yet.
+// rejects before the chain stage is rejected here at the same stage, for the
+// same reason: its expected text is in the refusal (at the schema stage, in
+// one of the failed leaves, which name the member that failed). A negative
+// it rejects at the chain stage passes every record-level stage here, as
+// there: this package has no chain stage, and CI runs the reference checker
+// over the chains Go builds (TestBaselineSteps, DEALPROFILE_BUILT_CHAINS).
 func TestNegativeFixtures(t *testing.T) {
 	store := localStoreValues(loadFingerprints(t))
 	files, err := filepath.Glob(filepath.Join(fixturesDir, "negative", "*.json"))
@@ -218,9 +230,10 @@ func TestNegativeFixtures(t *testing.T) {
 			continue
 		}
 		assert.Equal(t, fx.ExpectedStage, se.Stage, "%s: %v", name, err)
-		if fx.ExpectedStage != StageSchema {
-			assert.Contains(t, se.Error(), fx.ExpectedErrorContains, name)
+		if fx.ExpectedStage == StageSchema && schemaWordingOnly[name] {
+			continue
 		}
+		assert.Contains(t, se.Error()+"\n"+strings.Join(se.Causes, "\n"), fx.ExpectedErrorContains, name)
 	}
-	t.Logf("%d negatives rejected at the record-level stages; %d wait for the chain stage", len(files)-chain, chain)
+	t.Logf("%d negatives rejected at the record-level stages; %d are the chain stage's, which the reference checker runs", len(files)-chain, chain)
 }

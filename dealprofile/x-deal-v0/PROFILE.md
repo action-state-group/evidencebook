@@ -5,7 +5,7 @@
 `evidencebook-deal/skills/deal/profile/`). It has no capsule-registry entry and no CPB artifact-type
 entry, and none is proposed here. Registration is a separate item, taken up after the deal check
 works end to end. Until then the name `x-deal-v0` and the artifact type name `deal-record` are
-local to the profile.
+local to the skill.
 
 Files in this directory:
 

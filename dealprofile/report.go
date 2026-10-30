@@ -71,12 +71,14 @@ func ReportPayload(r Report) ([]byte, error) {
 }
 
 // ReportCapsule is a report's Capsule members, sealed at at (to the second)
-// by operator. The producer seals it with the payload and its own key; on a
-// book, the record header it carries is ReportRecordType, with no
-// subject_ref, link or field commitment.
-func ReportCapsule(operator string, at time.Time) emit.Input {
+// by operator, naming the producer's own developer (the capsulectl deal
+// plugin names "capsulectl-deal"). The producer seals it with the payload as
+// JSON (json.RawMessage) and its own key; on a book, the record header it
+// carries is ReportRecordType, with no subject_ref, link or field
+// commitment.
+func ReportCapsule(operator, developer string, at time.Time) emit.Input {
 	return emit.Input{
-		ActionID: ReportActionID, ActionType: emit.ActionTypeFYI, Operator: operator, Developer: Developer,
+		ActionID: ReportActionID, ActionType: emit.ActionTypeFYI, Operator: operator, Developer: developer,
 		Timestamp: at.UTC().Truncate(time.Second),
 	}
 }

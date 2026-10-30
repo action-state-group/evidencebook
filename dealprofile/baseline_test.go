@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -80,6 +81,9 @@ type capsuleFacts struct {
 	} `json:"effect"`
 }
 
+// pluginDeveloper is the developer the capsulectl deal plugin names.
+const pluginDeveloper = "capsulectl-deal"
+
 func loadBaseline(t *testing.T) baselineFile {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/baseline-vectors.json")
@@ -99,12 +103,26 @@ func identityOf(t *testing.T, seedHex string) emit.SigningIdentity {
 	return id
 }
 
+// TestBaselineSteps rebuilds every step. With DEALPROFILE_BUILT_CHAINS set to
+// a directory, it also writes each deal's chain as this package encoded it
+// (one JSON array per deal), for the reference checker's chain stage, which
+// CI runs over them (check_profile.py FILE...).
 func TestBaselineSteps(t *testing.T) {
+	out := os.Getenv("DEALPROFILE_BUILT_CHAINS")
 	for _, d := range loadBaseline(t).Deals {
 		t.Run(d.Flow, func(t *testing.T) {
 			identity := identityOf(t, d.SigningSeed)
+			var chain []json.RawMessage
+			defer func() {
+				if out != "" && !t.Failed() {
+					raw, err := json.Marshal(chain)
+					require.NoError(t, err)
+					require.NoError(t, os.WriteFile(filepath.Join(out, d.Flow+".json"), raw, 0o644))
+				}
+			}()
 			for _, s := range d.Steps {
 				payload, digest, err := Encode([]byte(s.Payload), nil)
+				chain = append(chain, payload)
 				require.NoError(t, err, "step %d", s.N)
 				assert.Equal(t, s.Payload, string(payload), "step %d payload", s.N)
 				assert.Equal(t, s.Digest, digest, "step %d digest", s.N)
@@ -114,7 +132,7 @@ func TestBaselineSteps(t *testing.T) {
 				at, err := time.Parse(time.RFC3339, facts.Timestamp)
 				require.NoError(t, err)
 				in := StepInput{
-					DealID: d.DealID, Seq: s.N, Operator: d.Operator, At: at, Settlement: facts.Settlement,
+					DealID: d.DealID, Seq: s.N, Operator: d.Operator, Developer: pluginDeveloper, At: at, Settlement: facts.Settlement,
 					Local: s.Header.Fields[LocalField], Amount: s.Header.Fields[AmountField], Currency: s.Header.Fields[CurrencyField],
 				}
 				if c := facts.Chain; c != nil {
@@ -179,7 +197,7 @@ func TestBaselineReports(t *testing.T) {
 				assert.Equal(t, r.Form == "standalone", in.Checkpoint != nil, "only a standalone report binds a checkpoint")
 				at, err := time.Parse(time.RFC3339, r.Timestamp)
 				require.NoError(t, err)
-				result, err := emit.Seal(emit.SealInput{Capsule: ReportCapsule(d.Operator, at), Identity: identity, Payload: json.RawMessage(payload)})
+				result, err := emit.Seal(emit.SealInput{Capsule: ReportCapsule(d.Operator, pluginDeveloper, at), Identity: identity, Payload: json.RawMessage(payload)})
 				require.NoError(t, err)
 				assert.Equal(t, r.CapsuleID, result.CapsuleID, "%s capsule_id", r.Form)
 				assert.Equal(t, r.Capsule, string(result.Payload), "%s Capsule", r.Form)

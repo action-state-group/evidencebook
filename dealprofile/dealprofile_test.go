@@ -58,6 +58,32 @@ func TestEncodeRefusals(t *testing.T) {
 	t.Run("a float", func(t *testing.T) {
 		_, _, err := Encode([]byte(`{"x-deal-v0":{"canonicalization":"jcs","seq":1.5},"body":{}}`), nil)
 		assert.Equal(t, StageCanonicalization, stageOf(t, err))
+		assert.ErrorContains(t, err, "floating-point value at $.x-deal-v0.seq", "worded as the reference checker words it")
+	})
+	t.Run("a phone number in other digits", func(t *testing.T) {
+		_, _, err := Encode([]byte(`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"call +١٢١٢٥٥٥٠١٢٣"}}`), nil)
+		assert.Equal(t, StagePersonalData, stageOf(t, err), "Arabic-Indic digits are digits, as in the reference checker")
+		_, _, err = Encode([]byte(`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"call 415 555 0199"}}`), nil)
+		assert.Equal(t, StagePersonalData, stageOf(t, err), "Unicode white space separates a number's digits")
+	})
+	t.Run("text that is not Unicode", func(t *testing.T) {
+		for _, raw := range []string{
+			`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"\ud800"}}`,
+			`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"\udc00x"}}`,
+			`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"\ud800\u0041"}}`,
+			"{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"\xff\"}}",
+		} {
+			_, _, err := Encode([]byte(raw), nil)
+			assert.Equal(t, StageCanonicalization, stageOf(t, err), raw)
+		}
+		// A surrogate pair, and an escaped backslash before a u, are text.
+		for _, raw := range []string{
+			`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"\ud83d\ude00"}}`,
+			`{"x-deal-v0":{"canonicalization":"jcs"},"body":{"text":"\\ud800"}}`,
+		} {
+			_, _, err := Encode([]byte(raw), nil)
+			assert.Equal(t, StageSchema, stageOf(t, err), raw)
+		}
 	})
 	t.Run("another canonicalization", func(t *testing.T) {
 		_, _, err := Encode([]byte(`{"x-deal-v0":{"canonicalization":"jcs-n"},"body":{}}`), nil)
@@ -106,7 +132,8 @@ func TestReportPayloadRefusals(t *testing.T) {
 
 func TestReportCapsuleIsToTheSecond(t *testing.T) {
 	at := time.Date(2026, 10, 30, 1, 2, 3, 999, time.FixedZone("x", 3600))
-	c := ReportCapsule("deal", at)
+	c := ReportCapsule("deal", "capsulectl-deal", at)
+	assert.Equal(t, "capsulectl-deal", c.Developer, "the producer names its own developer")
 	assert.Equal(t, time.Date(2026, 10, 30, 0, 2, 3, 0, time.UTC), c.Timestamp)
 	assert.Equal(t, ReportActionID, c.ActionID)
 	assert.Equal(t, emit.ActionTypeFYI, c.ActionType)
@@ -114,9 +141,12 @@ func TestReportCapsuleIsToTheSecond(t *testing.T) {
 }
 
 func TestStepCapsuleRefusals(t *testing.T) {
-	in := StepInput{DealID: "deal-0123456789abcdef", Seq: 1, Operator: "deal", At: time.Unix(0, 0)}
+	in := StepInput{DealID: "deal-0123456789abcdef", Seq: 1, Operator: "deal", Developer: "a-node", At: time.Unix(7, 999)}
 	c, h, err := StepCapsule(in)
 	require.NoError(t, err)
+	assert.Equal(t, "a-node", c.Developer, "the producer names its own developer")
+	assert.Equal(t, time.Unix(7, 0).UTC(), c.Timestamp, "taken to the second, as the record's block states it")
+	assert.Equal(t, c.Timestamp, h.CommittedAt)
 	assert.Equal(t, "deal-0123456789abcdef/1", c.ActionID)
 	assert.Equal(t, emit.ActionTypeFYI, c.ActionType)
 	assert.Nil(t, c.Chain)

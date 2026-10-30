@@ -42,7 +42,11 @@ type StepInput struct {
 	DealID   string
 	Seq      int64
 	Operator string
-	// At is the step's seal time, the record's block "at".
+	// Developer is the producer's own developer name (the capsulectl deal
+	// plugin names "capsulectl-deal").
+	Developer string
+	// At is the step's seal time, the record's block "at"; it is taken to
+	// the second, as the block states it.
 	At time.Time
 	// Parent is the Capsule the step chains to: the step before it
 	// (RelationFollows), or the close it confirms (RelationConfirms); nil
@@ -78,6 +82,8 @@ type StepHeader struct {
 }
 
 // StepCapsule is a step's Capsule members and its record header fields.
+// The producer seals the Capsule with the record's payload as JSON
+// (json.RawMessage) and its own key.
 func StepCapsule(in StepInput) (emit.Input, StepHeader, error) {
 	if in.DealID == "" || in.Seq < 1 {
 		return emit.Input{}, StepHeader{}, fmt.Errorf("dealprofile: a step needs a deal id and a seq >= 1")
@@ -85,9 +91,10 @@ func StepCapsule(in StepInput) (emit.Input, StepHeader, error) {
 	if p := in.Parent; p != nil && p.Relation != RelationFollows && p.Relation != RelationConfirms {
 		return emit.Input{}, StepHeader{}, fmt.Errorf("dealprofile: chain relation %q is not follows or confirms", p.Relation)
 	}
+	at := in.At.UTC().Truncate(time.Second)
 	c := emit.Input{
 		ActionID: fmt.Sprintf("%s/%d", in.DealID, in.Seq), ActionType: emit.ActionTypeFYI,
-		Operator: in.Operator, Developer: Developer, Timestamp: in.At.UTC(),
+		Operator: in.Operator, Developer: in.Developer, Timestamp: at,
 	}
 	if len(in.Settlement) > 0 {
 		c.Extensions = []emit.Extension{{Name: "settlement", Value: in.Settlement}}
@@ -107,7 +114,7 @@ func StepCapsule(in StepInput) (emit.Input, StepHeader, error) {
 		}
 	}
 	h := StepHeader{
-		RecordType: StepRecordType, EpistemicType: EpistemicProducerClaim, CommittedAt: in.At.UTC(), SubjectRef: c.ActionID,
+		RecordType: StepRecordType, EpistemicType: EpistemicProducerClaim, CommittedAt: at, SubjectRef: c.ActionID,
 		Fields: map[string]string{LocalField: in.Local, AmountField: in.Amount, CurrencyField: in.Currency},
 	}
 	if p := in.Parent; p != nil {
