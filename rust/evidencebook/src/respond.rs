@@ -115,11 +115,14 @@ pub struct ResponderPolicy {
 /// object. Every default keys on relationship.
 ///
 /// `history_segments` decides who may have the records an underived (or
-/// shared-derivation) record or citing-records subject names: `counterparties`
-/// (the default) answers only the party each of those records names as its
-/// counterparty; `peers` answers any authenticated peer; `off` answers no
-/// one. `prospective` is accepted and read as `counterparties`. Whatever the
-/// setting, range, correlation and full_history are refused. A
+/// shared-derivation) record, citing-records or correlation subject names:
+/// `counterparties` (the default) answers only the party each of those
+/// records names as its counterparty; `peers` answers any authenticated
+/// peer; `off` answers no one. `prospective` is accepted and read as
+/// `counterparties`. A correlation subject is an exact-key lookup
+/// ([`RecordSource::correlation`]),
+/// so it is gated like a citing-records subject. Whatever the setting,
+/// range and full_history are refused. A
 /// recipient-specific derivation is the holder's grant and is not gated by
 /// the setting.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -172,7 +175,8 @@ impl SharePolicy {
         Ok(())
     }
 
-    /// Gates a record or citing-records subject by the records it names. It fails
+    /// Gates a record, citing-records or correlation subject by the records
+    /// it names. It fails
     /// closed: a stranger (no authenticated requester) is never allowed,
     /// under any tier. `peers` allows any authenticated peer. `counterparties`
     /// and `prospective` allow only a counterparty of this book, and only
@@ -810,11 +814,12 @@ trait Evidence {
     /// passed (ER §9).
     fn lapsed(&self, subject: &Subject, now: UtcTime) -> bool;
 
-    /// The counterparty of each servable record a record or citing-records
-    /// subject names, whether or not the anchor covers them yet.
+    /// The counterparty of each servable record a record, citing-records or
+    /// correlation subject names, whether or not the anchor covers them yet.
     fn named(&self, subject: &Subject) -> Vec<Option<String>> {
         let leaves: Vec<u64> = match (subject, citing_half(subject)) {
             (Subject::Record(d), _) => self.leaf_of(d).into_iter().collect(),
+            (Subject::Correlation(id), _) => self.correlated(id),
             (_, Some(half)) => self.citing(half),
             _ => Vec::new(),
         };
@@ -1060,11 +1065,13 @@ fn authorized(
         return gate.requester == Some(recipient);
     }
     match &req.subject {
-        Subject::Record(_) => {}
+        // A correlation subject matches its key exactly, never by prefix or
+        // range, so it names a deal's records the way a citing-records
+        // subject does (Steven's Q1 amendment on evidencebook#114).
+        Subject::Record(_) | Subject::Correlation(_) => {}
         subject if citing_half(subject).is_some() => {}
-        // range, correlation and full_history reach records no one
-        // requester is party to; nothing but a recipient-specific
-        // derivation grants them.
+        // range and full_history reach records no one requester is party
+        // to; nothing but a recipient-specific derivation grants them.
         _ => return false,
     }
     gate.share

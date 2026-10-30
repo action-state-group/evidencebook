@@ -10,9 +10,9 @@ import (
 )
 
 // Adversarial tests of subject-scoped authorization (evidencebook#114):
-// under the default policy a record or exchange subject is answered only to
-// the party every record it names names as its counterparty, and range,
-// correlation and full_history are answered to no one.
+// under the default policy a record, exchange or correlation subject is
+// answered only to the party every record it names names as its
+// counterparty, and range and full_history are answered to no one.
 
 // tenantsBook holds alice's and bob's records: one each, one of alice's
 // citing bob's, and a half both cite.
@@ -72,10 +72,51 @@ func TestCrossTenantTraversalIsRefused(t *testing.T) {
 	// A subject reaching more than one requester's records is refused to
 	// each, under every tier but off's refusal of everything.
 	for _, tier := range []string{"counterparties", "prospective", "peers"} {
-		for _, subject := range []Subject{{Kind: SubjectFullHistory}, {Kind: SubjectRange, Range: [2]uint64{0, 0}}, {Kind: SubjectCorrelation, Correlation: "deal-alice"}} {
+		for _, subject := range []Subject{{Kind: SubjectFullHistory}, {Kind: SubjectRange, Range: [2]uint64{0, 0}}} {
 			reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: pin}), RespondOptions{AuthenticatedRequester: "alice", Policy: policyWith(tier)})
 			mustRefusal(t, reply, ReasonNotAuthorized)
 		}
+	}
+}
+
+// A correlation subject is an exact-key lookup, so it is answered under the
+// rule of a record or exchange (Steven's Q1 amendment on #114): by default
+// only to a counterparty every matching record names, under "peers" to any
+// authenticated peer, and to a stranger never.
+func TestCorrelationIsAnsweredPerRecord(t *testing.T) {
+	book, _, _, _, _ := tenantsBook(t, nil)
+	for _, counterparty := range []string{"alice", "bob"} {
+		mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, SubjectRef: "step-" + counterparty,
+			CounterpartyRef: counterparty, Correlation: Correlation{ExchangeID: "deal-both"}})
+	}
+	pin := Coverage{ExpectedPin: anchorPin(t, book)}
+	ask := func(requester, tier, key string) Reply {
+		reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: key}, Coverage: pin}),
+			RespondOptions{AuthenticatedRequester: requester, Policy: policyWith(tier)})
+		return reply
+	}
+	for _, tier := range []string{"counterparties", "prospective"} {
+		// deal-alice holds alice's record and her record citing bob's.
+		if e := mustEnvelope(t, ask("alice", tier, "deal-alice")); bytes.Contains(e.Artifact, []byte("PAYLOAD-OF-bob")) {
+			t.Fatalf("%s: alice's correlation answer carries bob's payload", tier)
+		}
+		mustEnvelope(t, ask("bob", tier, "deal-bob"))
+		for name, c := range map[string]struct{ requester, key string }{
+			"another party's deal":            {"alice", "deal-bob"},
+			"the other way":                   {"bob", "deal-alice"},
+			"a deal not every record names":   {"alice", "deal-both"},
+			"the same deal for the other one": {"bob", "deal-both"},
+			"a peer no record names":          {"mallory", "deal-alice"},
+		} {
+			t.Run(tier+"/"+name, func(t *testing.T) { mustRefusal(t, ask(c.requester, tier, c.key), ReasonNotAuthorized) })
+		}
+	}
+	mustEnvelope(t, ask("mallory", "peers", "deal-both"))
+	// The key matches exactly: a prefix of every key names nothing.
+	mustRefusal(t, ask("mallory", "peers", "deal-"), ReasonNoSuchSubject)
+	mustRefusal(t, ask("alice", "off", "deal-alice"), ReasonNotAuthorized)
+	for _, tier := range []string{"off", "counterparties", "prospective", "peers"} {
+		mustRefusal(t, ask("", tier, "deal-alice"), ReasonNotAuthorized)
 	}
 }
 
@@ -92,7 +133,7 @@ func TestCitedRecordsAreNotServedWithTheCitingOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: aliceCitesBob.RecordID}, {Kind: SubjectExchange, Digest: bob.RecordID}} {
+	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: aliceCitesBob.RecordID}, {Kind: SubjectExchange, Digest: bob.RecordID}, {Kind: SubjectCorrelation, Correlation: "deal-alice"}} {
 		reply := askDefault(t, book, "alice", subject, pin)
 		e := mustEnvelope(t, reply)
 		if !bytes.Contains(e.Artifact, []byte(bob.RecordID)) && !bytes.Contains(e.Artifact, []byte(hex.EncodeToString([]byte(bob.RecordID)))) {
@@ -126,6 +167,7 @@ func TestRefusalsDoNotEnumerateRecords(t *testing.T) {
 		for _, subject := range []Subject{
 			{Kind: SubjectRecord, Digest: alice.RecordID}, {Kind: SubjectRecord, Digest: never}, {Kind: SubjectRecord, Digest: later.RecordID},
 			{Kind: SubjectExchange, Digest: shared}, {Kind: SubjectExchange, Digest: never},
+			{Kind: SubjectCorrelation, Correlation: "deal-alice"}, {Kind: SubjectCorrelation, Correlation: "deal-never"},
 		} {
 			mustRefusal(t, askDefault(t, book, "mallory", subject, pin), ReasonNotAuthorized)
 		}
@@ -137,6 +179,7 @@ func TestRefusalsDoNotEnumerateRecords(t *testing.T) {
 		for _, subject := range []Subject{
 			{Kind: SubjectRecord, Digest: bob.RecordID}, {Kind: SubjectRecord, Digest: never}, {Kind: SubjectRecord, Digest: later.RecordID},
 			{Kind: SubjectExchange, Digest: never}, {Kind: SubjectFullHistory},
+			{Kind: SubjectCorrelation, Correlation: "deal-bob"}, {Kind: SubjectCorrelation, Correlation: "deal-never"},
 		} {
 			mustRefusal(t, askDefault(t, book, "alice", subject, pin), ReasonPolicyDeclined)
 		}

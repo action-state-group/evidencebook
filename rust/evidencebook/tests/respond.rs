@@ -62,13 +62,20 @@ impl Mem {
         )
     }
 
-    /// Commit one observation record, optionally naming a counterparty.
+    /// Commit one observation record, optionally naming a counterparty,
+    /// held under the correlation key `deal-<counterparty>`.
     fn add(&mut self, record_type: &str, counterparty: Option<&str>) -> String {
+        let key = format!("deal-{}", counterparty.unwrap_or("none"));
+        self.add_under(record_type, counterparty, &key)
+    }
+
+    /// Commit one observation record held under the correlation key `key`.
+    fn add_under(&mut self, record_type: &str, counterparty: Option<&str>, key: &str) -> String {
         self.ticks += 1;
         let mut header = json!({
             "v": 1, "book_id": LOG_ID, "seq": self.records.len() + 1,
             "record_type": record_type, "epistemic_type": "observed_event",
-            "committed_at": self.clock(), "links": [], "subject_ref": "deal-1",
+            "committed_at": self.clock(), "links": [], "subject_ref": key,
         });
         if let Some(c) = counterparty {
             header["counterparty_ref"] = json!(c);
@@ -130,8 +137,13 @@ impl RecordSource for Mem {
             .get(leaf_index as usize)
             .map(|(r, _)| r.clone())
     }
-    fn correlation(&self, _: &str) -> Vec<u64> {
-        Vec::new()
+    fn correlation(&self, id: &str) -> Vec<u64> {
+        // Exactly the key, as the store contract asks.
+        self.records
+            .iter()
+            .filter(|(_, h)| h.get("subject_ref").and_then(Value::as_str) == Some(id))
+            .map(|(r, _)| r.leaf_index)
+            .collect()
     }
     fn citing(&self, _: &str) -> Vec<u64> {
         Vec::new()
@@ -407,15 +419,11 @@ fn a_record_is_refused_to_a_requester_it_does_not_name_but_the_asking_is_recorde
 }
 
 #[test]
-fn range_correlation_and_full_history_are_answered_to_no_one() {
+fn range_and_full_history_are_answered_to_no_one() {
     let (mut b, _) = book();
     let policy = ResponderPolicy::default();
     let pin = json!({"expected_pin": b.pin(1)});
-    for subject in [
-        json!({"range": [0, 1]}),
-        json!({"full_history": null}),
-        json!({"correlation": "deal-1"}),
-    ] {
+    for subject in [json!({"range": [0, 1]}), json!({"full_history": null})] {
         let (reply, _) = run(
             &mut b,
             &policy,
@@ -424,6 +432,84 @@ fn range_correlation_and_full_history_are_answered_to_no_one() {
             &ask(Some("alice")),
         );
         assert_eq!(reason(&reply), Reason::NotAuthorized);
+    }
+}
+
+fn tier<'a>(requester: Option<&'a str>, history_segments: &str) -> Ask<'a> {
+    Ask {
+        requester,
+        policy: SharePolicy {
+            history_segments: history_segments.into(),
+            ..SharePolicy::default()
+        },
+    }
+}
+
+/// A correlation subject is an exact-key lookup, so it is answered under the
+/// rule of a record or citing-records subject (Steven's Q1 amendment on
+/// evidencebook#114): by default only to a counterparty every matching
+/// record names, under `peers` to any authenticated peer, and to a stranger
+/// never. Go: `TestCorrelationIsAnsweredPerRecord`.
+#[test]
+fn a_correlation_is_answered_per_record() {
+    let (mut b, _) = book();
+    b.add_under("observation", Some("alice"), "deal-both");
+    b.add_under("observation", Some("bob"), "deal-both");
+    b.cut();
+    let policy = ResponderPolicy::default();
+    let pin = json!({"expected_pin": b.pin(2)});
+    let mut ask_for = |who: &Ask<'_>, key: &str| {
+        run(
+            &mut b,
+            &policy,
+            &req(json!({"correlation": key}), pin.clone()),
+            Binding::Json,
+            who,
+        )
+        .0
+    };
+    for t in ["counterparties", "prospective"] {
+        assert!(matches!(
+            ask_for(&tier(Some("alice"), t), "deal-alice"),
+            Reply::Envelope(_)
+        ));
+        assert!(matches!(
+            ask_for(&tier(Some("bob"), t), "deal-bob"),
+            Reply::Envelope(_)
+        ));
+        for (who, key) in [
+            ("alice", "deal-bob"),
+            ("bob", "deal-alice"),
+            ("alice", "deal-both"),
+            ("bob", "deal-both"),
+            ("carol", "deal-alice"),
+            ("carol", "deal-never"),
+        ] {
+            assert_eq!(
+                reason(&ask_for(&tier(Some(who), t), key)),
+                Reason::NotAuthorized,
+                "{t}: {who} {key}"
+            );
+        }
+    }
+    assert!(matches!(
+        ask_for(&tier(Some("carol"), "peers"), "deal-both"),
+        Reply::Envelope(_)
+    ));
+    // The key matches exactly: a prefix of every key names nothing.
+    assert_eq!(
+        reason(&ask_for(&tier(Some("carol"), "peers"), "deal-")),
+        Reason::NoSuchSubject
+    );
+    assert_eq!(
+        reason(&ask_for(&tier(Some("alice"), "off"), "deal-alice")),
+        Reason::NotAuthorized
+    );
+    for t in ["off", "counterparties", "prospective", "peers"] {
+        assert_eq!(
+            reason(&ask_for(&tier(None, t), "deal-alice")),
+            Reason::NotAuthorized
+        );
     }
 }
 

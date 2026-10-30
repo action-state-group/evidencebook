@@ -39,9 +39,9 @@ func jsonRequest(t *testing.T, req EvidenceRequest) Message {
 
 // respondAs answers req as if the transport had authenticated the caller as
 // requester ("" for an unauthenticated caller) under the peers tier, so a
-// record or exchange subject is answered to any authenticated requester and
+// record, exchange or correlation subject is answered to any authenticated requester and
 // a test of anything but the requester gate needs no counterparty records.
-// range, correlation and full_history stay refused under every tier.
+// range and full_history stay refused under every tier.
 func respondAs(t *testing.T, book *Book, req Message, requester string) Reply {
 	t.Helper()
 	reply, _, err := book.Respond(context.Background(), req, RespondOptions{AuthenticatedRequester: requester, Policy: policyWith("peers")})
@@ -118,6 +118,7 @@ func TestRespondResolvesEverySubjectForm(t *testing.T) {
 	}{
 		{Subject{Kind: SubjectExchange, Digest: half}, 1},
 		{Subject{Kind: SubjectExchange, Digest: records[0].RecordID}, 2},
+		{Subject{Kind: SubjectCorrelation, Correlation: "order-17"}, 3},
 	}
 	for _, c := range cases {
 		t.Run(string(c.subject.Kind), func(t *testing.T) {
@@ -136,7 +137,7 @@ func TestRespondResolvesEverySubjectForm(t *testing.T) {
 	}
 	// No requester is party to every record these reach: they are refused
 	// under every tier, before they are resolved.
-	for _, subject := range []Subject{{Kind: SubjectRange, Range: [2]uint64{1, 2}}, {Kind: SubjectCorrelation, Correlation: "order-17"}, {Kind: SubjectFullHistory}} {
+	for _, subject := range []Subject{{Kind: SubjectRange, Range: [2]uint64{1, 2}}, {Kind: SubjectFullHistory}} {
 		t.Run(string(subject.Kind), func(t *testing.T) {
 			mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNotAuthorized)
 		})

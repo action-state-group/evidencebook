@@ -483,11 +483,38 @@ def test_a_cbor_reply_is_received(clock, responder):
     assert record.header.statement["outcome"] == eb.OUTCOME_ARTIFACT
 
 
-def test_range_correlation_and_full_history_are_refused_without_a_grant(clock, responder):
+def test_range_and_full_history_are_refused_without_a_grant(clock, responder):
     r, _ = responder
-    for subject in (eb.Subject("range", (0, 1)), eb.Subject("correlation", "order-0"), eb.Subject("full_history")):
+    for subject in (eb.Subject("range", (0, 1)), eb.Subject("full_history")):
         request = eb.encode_request(eb.EvidenceRequest(subject, eb.Coverage(min_freshness=1)))
         assert r.respond(eb.Message(request), PEERS)[0].refusal.reason == "not_authorized"
+
+
+def test_a_correlation_is_answered_per_record(clock):
+    # An exact-key lookup, answered under the rule of a record or exchange
+    # (Steven's Q1 amendment on #114). Go: TestCorrelationIsAnsweredPerRecord.
+    r = book(clock, "responder")
+    for who in ("alice", "bob"):
+        r.append(eb.Entry("exchange", eb.OBSERVED_EVENT, subject_ref=f"deal-{who}", counterparty_ref=who))
+        r.append(eb.Entry("exchange", eb.OBSERVED_EVENT, subject_ref=f"step-{who}", counterparty_ref=who,
+                          correlation=eb.Correlation(exchange_id="deal-both")))
+    r.checkpoint()
+
+    def reason(who: str, tier: str, key: str) -> str | None:
+        request = eb.Message(eb.encode_request(eb.EvidenceRequest(eb.Subject("correlation", key), eb.Coverage(min_freshness=1))))
+        reply, _ = r.respond(request, eb.RespondOptions(authenticated_requester=who, policy=eb.SharePolicy(history_segments=tier)))
+        return reply.refusal.reason if reply.refusal else None
+
+    for tier in ("counterparties", "prospective"):
+        assert reason("alice", tier, "deal-alice") is None and reason("bob", tier, "deal-bob") is None
+        for who, key in (("alice", "deal-bob"), ("bob", "deal-alice"), ("alice", "deal-both"), ("bob", "deal-both"),
+                         ("carol", "deal-alice"), ("carol", "deal-never")):
+            assert reason(who, tier, key) == "not_authorized", (tier, who, key)
+    assert reason("carol", "peers", "deal-both") is None
+    assert reason("carol", "peers", "deal-") == "no_such_subject"  # the key matches exactly, not by prefix
+    assert reason("alice", "off", "deal-alice") == "not_authorized"
+    for tier in ("off", "counterparties", "prospective", "peers"):
+        assert reason("", tier, "deal-alice") == "not_authorized"
 
 
 # --- review regressions -----------------------------------------------------------

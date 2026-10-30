@@ -53,9 +53,10 @@ func TestRecipientSpecificDerivation(t *testing.T) {
 	mustRefusal(t, ask(forAlice, "bob"), ReasonNotAuthorized)
 	mustRefusal(t, ask(forAlice, ""), ReasonNotAuthorized)
 	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRange, Range: [2]uint64{0, 1}}, Derivation: forAlice, Coverage: Coverage{ExpectedPin: pin}}), "alice"), ReasonNoSuchSubject)
-	// The grant is the derivation: the underived correlation is refused to
-	// its recipient too.
-	mustRefusal(t, ask("", "alice"), ReasonNotAuthorized)
+	// The grant is the derivation: under the default tier the underived
+	// correlation is refused to its recipient, whom no record names.
+	underivedCorrelation, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), RespondOptions{AuthenticatedRequester: "alice", Policy: DefaultSharePolicy()})
+	mustRefusal(t, underivedCorrelation, ReasonNotAuthorized)
 	record := Subject{Kind: SubjectRecord, Digest: records[1].RecordID}
 	askRecord := func(derivation, requester string) Reply {
 		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: record, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), requester)

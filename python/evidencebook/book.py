@@ -197,11 +197,12 @@ class ResponderPolicy:
 @dataclass(frozen=True)
 class SharePolicy:
     """The four-switch sharing policy. ``history_segments`` decides who may
-    have the records a record or exchange subject names: "counterparties"
-    (only the party each names as its counterparty), "peers" (any
-    authenticated peer) or "off"; "prospective" reads as "counterparties".
-    range, correlation and full_history are refused whatever the setting,
-    except to the recipient of a recipient-specific derivation."""
+    have the records a record, exchange or correlation subject names:
+    "counterparties" (only the party each names as its counterparty), "peers"
+    (any authenticated peer) or "off"; "prospective" reads as
+    "counterparties". A correlation subject is an exact-key lookup, so it is
+    gated like an exchange. range and full_history are refused whatever the
+    setting, except to the recipient of a recipient-specific derivation."""
 
     record_at_completion: str = "counterparty"
     history_segments: str = "counterparties"
@@ -737,6 +738,8 @@ class _View:
             leaves = [] if leaf is None else [leaf]
         elif subject.form == "exchange":
             leaves = self.citing(subject.content)
+        elif subject.form == "correlation":
+            leaves = self.correlated(subject.content)
         else:
             leaves = []
         return [self._header(leaf) for leaf in leaves]
@@ -836,10 +839,12 @@ class _Answer:
             entry = derivations.get(r.derivation) if r.derivation is not None else None
             if entry is not None and entry.recipient:
                 return requester == entry.recipient  # the holder's grant to the one requester it names
-            if r.subject.form in ("record", "exchange"):
+            if r.subject.form in ("record", "exchange", "correlation"):
+                # A correlation matches its key exactly, so it names a deal's
+                # records as an exchange does (Steven's Q1 amendment on #114).
                 return self.options.policy.may_have(requester, relationship, view.named(r.subject))
-            # range, correlation and full_history reach records no one
-            # requester is party to; only a recipient-specific derivation grants them.
+            # range and full_history reach records no one requester is
+            # party to; only a recipient-specific derivation grants them.
             return False
 
         return _decide.Policy(derivation=derivation, authorize=authorize,

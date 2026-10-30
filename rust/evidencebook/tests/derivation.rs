@@ -401,8 +401,9 @@ fn every_case_is_the_go_answer_byte_for_byte() {
         let outcome = (|| {
             // Go's default share policy (evidencebook#114): an underived
             // subject goes only to a requester every record it names names
-            // as its other party, and no record here names one, while range,
-            // correlation and full_history go to no one. Only a
+            // as its other party, and no record here names one (a
+            // correlation too, since it is an exact-key lookup), while range
+            // and full_history go to no one. Only a
             // recipient-specific derivation grants its recipient more.
             if s.derivations.check(&request, requester, false)?.is_none() {
                 return Err(Reason::NotAuthorized);

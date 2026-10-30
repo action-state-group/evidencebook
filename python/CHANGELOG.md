@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `Book.respond` answers an underived `correlation` subject under the rule of
+  `record` and `exchange`, as Go's `Respond` does (evidencebook#114): under
+  `counterparties`, only to a counterparty every record held under the key
+  names; under `peers`, to any authenticated peer; never to a stranger.
+
 - **The package** (evidencebook#131), imported as `evidencebook`: a book over
   an in-memory Checkpointed Local Log, with `MemoryStore` and the JSONL
   `FileStore`, and the evidence request interaction on both sides. As a

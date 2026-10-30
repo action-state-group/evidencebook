@@ -95,12 +95,13 @@ func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
 // mesh plugin's share.* object. Every default keys on relationship.
 //
 // HistorySegments decides who may have the records an underived (or
-// shared-derivation) record or exchange subject names: "counterparties"
-// (the default) answers only the party each of those records names as its
-// counterparty; "peers" answers any authenticated peer; "off" answers no
-// one. "prospective" is accepted and read as "counterparties", as the mesh
-// plugin reads it. Whatever the setting, range, correlation and
-// full_history are refused. A recipient-specific derivation is the
+// shared-derivation) record, exchange or correlation subject names:
+// "counterparties" (the default) answers only the party each of those
+// records names as its counterparty; "peers" answers any authenticated
+// peer; "off" answers no one. "prospective" is accepted and read as
+// "counterparties", as the mesh plugin reads it. A correlation subject is
+// an exact-key lookup (bookView.Correlated), so it is gated like an
+// exchange. Whatever the setting, range and full_history are refused. A recipient-specific derivation is the
 // holder's grant and is not gated by the setting: it is answered to its
 // recipient over every form it declares, "off" included
 // (gate.responderPolicy).
@@ -142,7 +143,8 @@ const (
 	RelationshipCounterparty = "counterparty"
 )
 
-// mayHave gates a record or exchange subject by the records it names. It
+// mayHave gates a record, exchange or correlation subject by the records
+// it names. It
 // fails closed: a stranger (no authenticated requester) is never allowed,
 // under any tier. "peers" allows any authenticated peer. "counterparties"
 // and "prospective" allow only a counterparty of this book, and only when
@@ -274,7 +276,8 @@ type gate struct {
 	// cll: the book's substrate is a Checkpointed Local Log, the only one
 	// whose anchors and proofs are served.
 	cll bool
-	// named is the servable records a record or exchange subject names.
+	// named is the servable records a record, exchange or correlation
+	// subject names.
 	named func(Subject) []Header
 }
 
@@ -303,12 +306,15 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 			case req.Derivation != "" && g.derivations[req.Derivation].def.Recipient != "":
 				// The holder's grant to the one requester it names.
 				return g.requester == g.derivations[req.Derivation].def.Recipient
-			case req.Subject.Kind == SubjectRecord, req.Subject.Kind == SubjectExchange:
+			case req.Subject.Kind == SubjectRecord, req.Subject.Kind == SubjectExchange, req.Subject.Kind == SubjectCorrelation:
+				// A correlation subject matches its key exactly, never by
+				// prefix or range, so it names a deal's records the way
+				// an exchange does (Steven's Q1 amendment on #114).
 				return g.policy.mayHave(g.requester, g.relationship, g.named(req.Subject))
 			default:
-				// range, correlation and full_history reach records no one
-				// requester is party to; nothing but a recipient-specific
-				// derivation grants them.
+				// range and full_history reach records no one requester is
+				// party to; nothing but a recipient-specific derivation
+				// grants them.
 				return false
 			}
 		},
@@ -522,9 +528,9 @@ func correlationOf(h Header) string {
 	return h.SubjectRef
 }
 
-// named is the servable records a record or exchange subject names,
-// whether or not the anchor covers them yet: the record itself, or every
-// record citing the half.
+// named is the servable records a record, exchange or correlation subject
+// names, whether or not the anchor covers them yet: the record itself,
+// every record citing the half, or every record held under the key.
 func (v *bookView) named(subject Subject) []Header {
 	var leaves []uint64
 	switch subject.Kind {
@@ -534,6 +540,8 @@ func (v *bookView) named(subject Subject) []Header {
 		}
 	case SubjectExchange:
 		leaves = v.Citing(subject.Digest)
+	case SubjectCorrelation:
+		leaves = v.Correlated(subject.Correlation)
 	}
 	headers := make([]Header, len(leaves))
 	for i, leaf := range leaves {
