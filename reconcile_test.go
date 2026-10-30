@@ -222,7 +222,7 @@ func TestReconcileAndCloseAcrossTwoBooks(t *testing.T) {
 		}
 	}
 	input := ReconcileInput{Peer: peerBundle(t, b), RecordType: "exchange", Compare: SamePayloadCommitments}
-	closeA, err := a.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Profile: "example-profile/v1"})
+	closeA, err := a.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Period: testPeriod})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestReconcileAndCloseAcrossTwoBooks(t *testing.T) {
 	}
 
 	// An adjustment supersedes, never rewrites.
-	adjusted, err := a.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Profile: "example-profile/v1", Supersedes: closeA.RecordID, Reason: "late evidence"})
+	adjusted, err := a.Close(ctx, CloseInput{Reconcile: input, Counterparty: "party-b", Period: testPeriod, Supersedes: closeA.RecordID})
 	if err != nil {
 		t.Fatal(err)
 	}

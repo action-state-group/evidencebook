@@ -402,7 +402,7 @@ func (b *Book) Append(ctx context.Context, entry Entry) (Record, error) {
 }
 
 func (b *Book) appendLocked(ctx context.Context, entry Entry) (Record, error) {
-	return b.commitEntryLocked(ctx, entry, payloadOriginals(entry.Payloads), nil)
+	return b.commitEntryLocked(ctx, entry, payloadOriginals(entry.Payloads), nil, nil)
 }
 
 // CapsuleSealer seals a caller's own capsule as a record, under the book's
@@ -443,12 +443,14 @@ func (b *Book) AppendCapsule(ctx context.Context, entry Entry, originals []artif
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.commitEntryLocked(ctx, entry, originals, seal)
+	return b.commitEntryLocked(ctx, entry, originals, seal, nil)
 }
 
 // commitEntryLocked is Append and AppendCapsule: callerSeal nil seals the
-// header as a record capsule of the book's own.
-func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []artifact.Artifact, callerSeal CapsuleSealer) (Record, error) {
+// header as a record capsule of the book's own. statementAt, when set,
+// builds the statement from the position and commit time the book assigns
+// (Close's record_id and closed_at), replacing entry.Statement.
+func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []artifact.Artifact, callerSeal CapsuleSealer, statementAt func(seq uint64, committedAt string) (json.RawMessage, error)) (Record, error) {
 	if b.released {
 		return Record{}, ErrReleased
 	}
@@ -477,6 +479,11 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		Links:       append([]Link{}, entry.Links...),
 		SubjectRef:  entry.SubjectRef, PrincipalRef: entry.PrincipalRef, CounterpartyRef: entry.CounterpartyRef,
 		Statement: entry.Statement,
+	}
+	if statementAt != nil {
+		if header.Statement, err = statementAt(seq, header.CommittedAt); err != nil {
+			return Record{}, err
+		}
 	}
 	if !entry.EventTimeClaim.IsZero() {
 		header.EventTimeClaim = entry.EventTimeClaim.UTC().Format(time.RFC3339Nano)

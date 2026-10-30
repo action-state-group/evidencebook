@@ -95,7 +95,7 @@ with the error so the caller does not append it twice.
 | §9 Answering a Request | `SubjectKind` (six forms), `Subject`, `Coverage`, `Freshness`, `EvidenceRequest`, `EncodeRequest`, `Message`, `Envelope`, `Anchor`, `VerificationEntry`, `Reply`, `ParseReply`, `Book.Respond`, `RespondOptions`, `ResponderPolicy`, `RequestLimiter`, `WindowLimiter`, `AnsweredStatement`, `SharePolicy`, `DerivationDefinition`, `Book.RegisterDerivation`, `Book.CommitRetention`, `Book.Manifest`; MCP carriage (profile §11.4.5): `Book.MCP`, `MCPOptions`, `MCPServer`, `MCPServer.Handle`, `MCPProtocolVersion`, `MCPToolManifest`, `MCPToolRequest`; A2A carriage (profile §11.4.4): `Book.A2A`, `A2AOptions`, `A2AServer`, `A2AServer.AgentCard`, `A2AServer.Handle`, `A2ARequest`, `A2AResponse`, `A2AProtocolVersion`, `A2AExtensionURI`, `A2AProtocolBinding` |
 | §9.1 Three Kinds of "No" | non-membership: `Book.ProveKeyRange` returning no matches; withheld: `WithheldItem`, `UnavailableError`; asserted absence: a `Refusal` with `no_such_subject` |
 | Request draft: outcomes | `Refusal` (signed), `Envelope` (signed), `SentRequest`, `RequestStatement`, `Book.Request`, `Book.RecordResponse`, `ResponderKeys`, `WitnessRow`, `ParseWitnessDirectory`, `ResponseStatement`, `Book.RecordAbsence`, `AbsenceRecord`, `VerifyBundleAnswer` |
-| §10 Reconcile and Close | `ExchangeState` (six states), `Half`, `HalfSet`, `Comparator`, `SamePayloadCommitments`, `PairResult`, `Tallies`, `ReconcileHalves`, `ReconcileInput`, `Reconciliation`, `Book.Reconcile`, `CloseInput`, `CloseStatement`, `Book.Close`, `Book.Acknowledge`, `Book.Rebut`, `CloseStatus`, `StatusOfClose` |
+| §10 Reconcile and Close | `ExchangeState` (six states), `Half`, `HalfSet`, `Comparator`, `SamePayloadCommitments`, `PairResult`, `Tallies`, `ReconcileHalves`, `ReconcileInput`, `Reconciliation`, `Book.Reconcile`, `CloseInput`, `ClosePeriod`, `CloseStatement`, `CloseReconcile`, `LegacyCloseStatement`, `ReadClose`, `CloseStatement.Window`, `Book.Close`, `Book.Acknowledge`, `Book.Rebut`, `CloseStatus`, `StatusOfClose` |
 | Out of scope in the I-D, needed by any implementation | `Signer`, `Ed25519Signer`, `KeyID`, `Store`, `FileStore`, `Config`, `Book`, `Open`, `Release`, the error values |
 
 ## Decisions worth knowing
@@ -414,7 +414,12 @@ disappearing.
 
 **Close.** `Close` runs the reconciliation itself from a `ReconcileInput`; a
 caller never supplies tallies. It seals a `closes` link to every own record
-placed. `StatusOfClose` reads the counterparty's records: a `rebuts` link to
+placed, and agent-action-capsule's `close/v1` body as its statement
+(`docs/design/125-close-v1.md`): the period, the counts by record type and the
+head of the own window it binds, and, only when the caller names the
+counterparty's Close for the period, the tallies with one `cites` link to that
+Close. `ReadClose` reads either that body or the body Closes carried before it,
+by `record_version`. `StatusOfClose` reads the counterparty's records: a `rebuts` link to
 the Close makes it `CONTESTED`, an `acknowledges` link `AGREED`, neither
 `UNILATERAL`. It counts only records carrying the counterparty's book id,
 under a checkpoint signed by the key the caller pinned for that counterparty.
