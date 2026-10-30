@@ -97,6 +97,37 @@ jobs:
       - name: Test .github/release.py
         run: python -m pytest -q .github/test_release.py
 
+  deal-profile:
+    name: x-deal-v0 reference checker over the profile's fixtures and the chains Go builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install jsonschema
+        run: python -m pip install "jsonschema==4.23.0"
+      - name: Run check_profile.py (without jsonschema it skips the schema-stage negatives, so anything but ALL OK fails)
+        working-directory: dealprofile/x-deal-v0
+        run: |
+          python check_profile.py | tee "$RUNNER_TEMP/check_profile.out"
+          tail -n 1 "$RUNNER_TEMP/check_profile.out" | grep -qx "ALL OK"
+      - name: Run check_profile.py over every chain package dealprofile builds (the chain stage, which only the reference checker runs)
+        run: |
+          mkdir -p "$RUNNER_TEMP/built-chains"
+          DEALPROFILE_BUILT_CHAINS="$RUNNER_TEMP/built-chains" go test ./dealprofile -run TestBaselineSteps -count=1
+          test "$(ls "$RUNNER_TEMP/built-chains" | wc -l)" -ge 10
+          (cd dealprofile/x-deal-v0 && python check_profile.py "$RUNNER_TEMP"/built-chains/*.json) | tee "$RUNNER_TEMP/built.out"
+          tail -n 1 "$RUNNER_TEMP/built.out" | grep -qx "ALL OK"
+
   python-cll-interop:
     name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)
     runs-on: ubuntu-latest

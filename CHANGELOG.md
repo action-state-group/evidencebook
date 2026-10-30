@@ -13,6 +13,33 @@
 
 - The install lines in the README and the guide name v0.9.0.
 
+### Added: package `dealprofile`, the x-deal-v0 deal record profile (#93)
+
+- The x-deal-v0 profile moves here from the deal plugin (evidencebook-deal),
+  with no rule change: `dealprofile/x-deal-v0/` holds PROFILE.md, its schemas,
+  fixtures and reference checker (`check_profile.py`, now run in CI with
+  `jsonschema` pinned), and `sentence-marks.txt`. PROFILE.md changes only where
+  it names its home.
+- Package `dealprofile` gives the profile's names; `DealKey`, `ProfileKey`,
+  `Normalize`, `Fingerprint` and `CommitText`; `Encode` (a record's payload and
+  digest, once it passes `Check`), `Check` (the canonicalization,
+  personal_data, wording and schema stages, refusing with a `*StageError`) and
+  `CheckDigest`; `ReportPayload` and `ReportCapsule` for a sealed deal_report;
+  and `StepCapsule`, a step's Capsule members and book header fields, each
+  naming the producer's own developer. It seals nothing and imports neither
+  the root package nor any CLI.
+- `dealprofile/testdata/baseline-vectors.json`, frozen from the deal plugin's
+  builders before the move (evidencebook-deal#65), is reproduced byte for
+  byte: every step's payload, digest, Capsule and header fields, and every
+  report's payload and Capsule. The chain stage (§6) stays the reference
+  checker's: CI runs `check_profile.py` over every chain the package builds
+  from those vectors.
+- The module now requires `golang.org/x/net` v0.59.0 (identifier
+  normalization), which raises `golang.org/x/text` to v0.42.0,
+  `golang.org/x/crypto` to v0.57.0 and `golang.org/x/sys` to v0.48.0, and
+  `github.com/stretchr/testify` v1.12.1 for the package's tests (with
+  `go.yaml.in/yaml/v3`).
+
 ## v0.9.0 (2026-10-30)
 
 ### Changed: `report` requires the published capsule-cli v0.1.0-rc24 (evidencebook#144)
