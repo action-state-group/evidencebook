@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -372,7 +373,7 @@ func TestDealHistoryVerifiesEachPickedDeal(t *testing.T) {
 		cert := tb["completeness_certificate"].(map[string]any)
 		assert.Equal(t, cli.DealLogID(id), cert["log_id"], "each nested bundle is its own deal's log")
 		assert.False(t, cli.PayloadDisclosed(tb), "no payload of %s is disclosed", id)
-		assert.Equal(t, map[string]any{"audience": cli.DealAudienceHistory, "deal_id": id}, tb["extensions"].(map[string]any)[cli.DealProfile], "no report text")
+		assert.Equal(t, map[string]any{"audience": cli.DealAudienceHistory, "deal_id": id}, tb["extensions"].(map[string]any)[dealprofile.Profile], "no report text")
 		for _, raw := range tb["records"].([]any) {
 			r := raw.(map[string]any)
 			assert.NotEmpty(t, r["timestamp"], "each record still shows its time")
@@ -961,8 +962,8 @@ func TestDealHistoryChecksItsOwnParts(t *testing.T) {
 		// bundle_digest catches the edit.
 		b := readHistory(t, path)
 		tb := historyExt(b)["deals"].(map[string]any)[d.closed].(map[string]any)
-		section := tb["extensions"].(map[string]any)[cli.DealProfile].(map[string]any)
-		require.NotContains(t, section, cli.DealReportPointer, "an unsealed section")
+		section := tb["extensions"].(map[string]any)[dealprofile.Profile].(map[string]any)
+		require.NotContains(t, section, dealprofile.ReportPointer, "an unsealed section")
 		section["deal_id"] = "edited"
 		_, entry, findings, err := verifyHistory(t, rewrite(t, b))
 		require.ErrorIs(t, err, cli.ErrBundleInvalid)

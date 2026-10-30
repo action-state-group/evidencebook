@@ -13,6 +13,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -201,9 +202,9 @@ func TestTermsResultWithATamperedOrMissingOpening(t *testing.T) {
 	pair := closedPair(t, received, received)
 	tampered := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d, fields := range m {
-			o := fields[dealAmountField]
+			o := fields[dealprofile.AmountField]
 			o.Text = "1"
-			m[d][dealAmountField] = o
+			m[d][dealprofile.AmountField] = o
 		}
 	})
 	_, result, _, err := runTermsResult(t, pair.id, pair.response, "--openings", tampered)
@@ -214,7 +215,7 @@ func TestTermsResultWithATamperedOrMissingOpening(t *testing.T) {
 
 	missing := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	_, result, _, err = runTermsResult(t, pair.id, pair.response, "--openings", missing)
@@ -448,7 +449,7 @@ func TestTermsResultRefuses(t *testing.T) {
 	party(t, pair.buyer.config)
 	var steps []string
 	for _, r := range records {
-		if r.Header.RecordType == dealStepRecordType {
+		if r.Header.RecordType == dealprofile.StepRecordType {
 			steps = append(steps, r.RecordID)
 		}
 	}
@@ -567,20 +568,20 @@ func TestCheck5ComparesOnlyVerifiedOpenings(t *testing.T) {
 		return c
 	}
 	half := func(o evidencebook.Opening) dealHalf {
-		return dealHalf{recordID: "c", header: evidencebook.Header{CommitAlg: evidencebook.CommitAlgNonce256, FieldCommitments: map[string]string{dealAmountField: commit(o), dealCurrencyField: commit(currency)}}}
+		return dealHalf{recordID: "c", header: evidencebook.Header{CommitAlg: evidencebook.CommitAlgNonce256, FieldCommitments: map[string]string{dealprofile.AmountField: commit(o), dealprofile.CurrencyField: commit(currency)}}}
 	}
 	bundle := func(closeRecord map[string]any) map[string]any {
 		return map[string]any{"disclosures": map[string]any{"c": map[string]any{"agent_input": closeRecord}, "o": map[string]any{"agent_input": outcome}}}
 	}
 	openings := func(o evidencebook.Opening) map[string]evidencebook.Opening {
-		return map[string]evidencebook.Opening{dealAmountField: o, dealCurrencyField: currency}
+		return map[string]evidencebook.Opening{dealprofile.AmountField: o, dealprofile.CurrencyField: currency}
 	}
 	require.ErrorIs(t, disclosedCloseHolds(bundle(closeOf("completed")), half(amount), openings(amount)), cli.ErrInput, "a verified amount the disclosed outcome contradicts")
 	require.NoError(t, disclosedCloseHolds(bundle(closeOf("completed")), half(agreeing), openings(agreeing)), "a verified amount the outcome states")
 	tampered := amount
 	tampered.Text = "185000"
 	require.NoError(t, disclosedCloseHolds(bundle(closeOf("completed")), half(amount), openings(tampered)), "an opening that does not verify is left to rule 4")
-	require.NoError(t, disclosedCloseHolds(bundle(closeOf("completed")), half(amount), map[string]evidencebook.Opening{dealCurrencyField: currency}), "a missing opening is left to rule 3")
+	require.NoError(t, disclosedCloseHolds(bundle(closeOf("completed")), half(amount), map[string]evidencebook.Opening{dealprofile.CurrencyField: currency}), "a missing opening is left to rule 3")
 	require.ErrorIs(t, disclosedCloseHolds(bundle(closeOf("open")), half(agreeing), openings(agreeing)), cli.ErrInput, "a close whose outcome is open")
 	require.ErrorIs(t, disclosedCloseHolds(map[string]any{"disclosures": map[string]any{"c": map[string]any{"agent_input": outcome}}}, half(agreeing), openings(agreeing)), cli.ErrInput, "a disclosed record that is not a close")
 	require.NoError(t, disclosedCloseHolds(map[string]any{}, half(amount), openings(amount)), "a withheld payload is no finding")
@@ -695,7 +696,7 @@ func TestTermsResultCheckIsAgainstTheInputsGiven(t *testing.T) {
 	pair := closedPair(t, received, received)
 	missing := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	_, _, resultPath, err := runTermsResult(t, pair.id, pair.response, "--openings", missing)
@@ -821,8 +822,8 @@ func TestTermsResultCheckNamesBothFields(t *testing.T) {
 	buyerFile := discloseTo(t, pair.id, "the seller")
 	odd := editOpenings(t, buyerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			m[d]["unrelated"] = m[d][dealAmountField]
-			delete(m[d], dealAmountField)
+			m[d]["unrelated"] = m[d][dealprofile.AmountField]
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	sellerResponse := recordedCopy(t, pair.seller, pair.buyer, pair.id)
@@ -839,7 +840,7 @@ func TestTheDiscloseRefusesWhenAnOpeningIsMissing(t *testing.T) {
 	closeID := dealRun(t, "close", "--deal", id, "--input", writeJSON(t, received))["capsule_id"].(string)
 	db, _, err := cli.SqliteConnection(dealProfile(t))
 	require.NoError(t, err)
-	res, err := db.Exec(`DELETE FROM capsule_store_artifacts WHERE capsule_id = ? AND name = ?`, closeID, dealOpeningPrefix+dealAmountField)
+	res, err := db.Exec(`DELETE FROM capsule_store_artifacts WHERE capsule_id = ? AND name = ?`, closeID, dealOpeningPrefix+dealprofile.AmountField)
 	require.NoError(t, err)
 	n, err := res.RowsAffected()
 	require.NoError(t, err)
@@ -871,8 +872,8 @@ func TestTheBoundsAreKeptByFieldAndInFreeText(t *testing.T) {
 	openings := mustOpenings(t, path)
 	require.Len(t, openings, 1)
 	for _, held := range openings {
-		assert.Equal(t, "200000", held[dealAmountField].Text, "the terms amount opening equals the limit and travels")
-		assert.Equal(t, "USD", held[dealCurrencyField].Text)
+		assert.Equal(t, "200000", held[dealprofile.AmountField].Text, "the terms amount opening equals the limit and travels")
+		assert.Equal(t, "USD", held[dealprofile.CurrencyField].Text)
 	}
 	assert.NotContains(t, raw, "max_total_minor")
 	page := filepath.Join(t.TempDir(), "shared.html")
@@ -929,9 +930,9 @@ func TestTermsResultCheckTakesOpeningsAsNamed(t *testing.T) {
 	pair := closedPair(t, received, received)
 	tampered := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d, fields := range m {
-			o := fields[dealAmountField]
+			o := fields[dealprofile.AmountField]
 			o.Text = "1"
-			m[d][dealAmountField] = o
+			m[d][dealprofile.AmountField] = o
 		}
 	})
 	_, result, resultPath, err := runTermsResult(t, pair.id, pair.response, "--openings", tampered)
@@ -968,10 +969,10 @@ func TestARespondCopyEndingInAReportAdmitsTheClose(t *testing.T) {
 				last = h
 			}
 		}
-		assert.Equal(t, dealReportRecordType, last.RecordType, "the respond copy ends in its sealed report")
+		assert.Equal(t, dealprofile.ReportRecordType, last.RecordType, "the respond copy ends in its sealed report")
 		half, err := admitPeerHalf(pair.id, peer, digest, openings[digest])
 		require.NoError(t, err)
 		assert.Less(t, half.header.Seq, last.Seq)
-		assert.Equal(t, dealStepRecordType, half.header.RecordType)
+		assert.Equal(t, dealprofile.StepRecordType, half.header.RecordType)
 	})
 }

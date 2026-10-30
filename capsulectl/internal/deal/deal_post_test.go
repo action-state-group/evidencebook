@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -337,7 +338,7 @@ func TestAThreadsOfferCarriesTheListingsInForce(t *testing.T) {
 	// Earlier checks keep what they sealed; a share or represent carries none.
 	var sealedValues []any
 	for _, r := range records(t, thread) {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			sealedValues = append(sealedValues, r["body"].(map[string]any)["listing_classes"])
 		}
 	}
@@ -422,7 +423,7 @@ func TestTheProfileCheckerRecomputesTheListingClasses(t *testing.T) {
 	recs, threadPath := exportRecords(t, thread)
 	var sealed []any
 	for _, r := range recs {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			sealed = append(sealed, r["body"].(map[string]any)["listing_classes"])
 		}
 	}
@@ -447,7 +448,7 @@ func TestTheProfileCheckerRecomputesTheListingClasses(t *testing.T) {
 	// A value the sale's log does not give is flagged.
 	var last int
 	for i, r := range recs {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			last = i
 		}
 	}
@@ -543,8 +544,8 @@ func TestASaleBundleCarriesThePost(t *testing.T) {
 	assert.Equal(t, "VALID", verdict, findings)
 	recs, path := exportSale(t, saleID)
 	checkProfile(t, path)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", cli.TypeProposedAction,
-		cli.TypeActionEvaluation, cli.TypeActionApproval, cli.TypeActionRecord, "sale_cut"}, saleRecordTypes(recs))
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", dealprofile.TypeProposedAction,
+		dealprofile.TypeActionEvaluation, dealprofile.TypeActionApproval, dealprofile.TypeActionRecord, "sale_cut"}, saleRecordTypes(recs))
 }
 
 // A post check counts in a period's checks, its rules answer not_applicable.
@@ -614,7 +615,7 @@ func TestTheProfileCheckerTakesTheLatestProposal(t *testing.T) {
 	// Drop A's evaluation: A, B, B's evaluation, approval, post.
 	var evalA int
 	for i, r := range recs {
-		if typeOf(r) == cli.TypeActionEvaluation {
+		if typeOf(r) == dealprofile.TypeActionEvaluation {
 			evalA = i
 			break
 		}
@@ -627,14 +628,15 @@ func TestTheProfileCheckerTakesTheLatestProposal(t *testing.T) {
 // saysWord is the guard's refusal quoting a word as written, folded.
 func saysWord(w string) string { return `says "` + foldText(w) + `"` }
 
-// listingSentenceMarksSHA256 pins testdata/sentence-marks.txt, the list
-// capsule-cli#391 and capsule-engine's promise_never/1.1.0 share.
+// listingSentenceMarksSHA256 pins the profile's sentence-marks.txt
+// (EvidenceBook dealprofile/x-deal-v0), the list capsule-cli#391 and
+// capsule-engine's promise_never/1.1.0 share.
 const listingSentenceMarksSHA256 = "8869f15bbf6896160f67e2d6f19a0da449a3f33d1e12d4cb71efb77c7877b9aa"
 
 // The listing template's sentence marks are the shared fixture, code point
 // for code point, in order, and each breaks a listing's template.
 func TestTheListingTemplatesMarksAreTheSharedFixture(t *testing.T) {
-	raw, err := os.ReadFile("testdata/sentence-marks.txt")
+	raw, err := os.ReadFile(filepath.Join(dealProfileDir, "sentence-marks.txt"))
 	require.NoError(t, err)
 	sum := sha256.Sum256(raw)
 	require.Equal(t, listingSentenceMarksSHA256, hex.EncodeToString(sum[:]))

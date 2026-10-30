@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"testing"
 
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ const rc6Records = "testdata/deal/rc6-records/jet-ski-deal.json"
 // sealed while it was written still validates, and still passes the profile's
 // own checker.
 func TestDealSchemaStillAcceptsRecordsThatNameAPack(t *testing.T) {
-	schema, err := compiledDealSchema()
+	schema, err := dealprofile.ProfileSchemaAt("")
 	require.NoError(t, err)
 	raw, err := os.ReadFile(rc6Records)
 	require.NoError(t, err)

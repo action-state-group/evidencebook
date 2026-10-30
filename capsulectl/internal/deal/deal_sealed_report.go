@@ -10,10 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
-	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // dealSealReport seals one copy's own deal text (ext: the extension that copy
@@ -24,36 +23,10 @@ import (
 // Its index row is written before the log append, as a step's is; a row
 // whose capsule never reached the log is ignored.
 func (s *dealSession) dealSealReport(ctx context.Context, dealID, audience string, ext map[string]interface{}) (string, error) {
-	nonce := make([]byte, 32)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", err
-	}
-	// The record's bytes are its JCS form, as a step's are, read back through
-	// the generic JSON shape so numbers are canonicalized as the verifier
-	// reads them.
-	raw, err := json.Marshal(map[string]interface{}{
-		"type": "deal_report", "profile": cli.DealProfile, "deal_id": dealID, "audience": audience,
-		"nonce": hex.EncodeToString(nonce), "report": ext,
-	})
-	if err != nil {
-		return "", err
-	}
-	generic, err := cli.DecodeBundleJSON(raw)
-	if err != nil {
-		return "", err
-	}
-	payload, err := canonical.JCS(generic)
-	if err != nil {
-		return "", err
-	}
 	at := cli.DealClock().UTC().Truncate(time.Second)
-	request := cli.Request{
-		Version: "capsule-seal-request/v1",
-		Capsule: emit.Input{
-			ActionID: cli.DealReportActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
-			Timestamp: at,
-		},
-		Payload: payload,
+	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext}, at)
+	if err != nil {
+		return "", err
 	}
 	if s.onBook {
 		if s.book == nil {
@@ -84,6 +57,27 @@ func (s *dealSession) dealSealReport(ctx context.Context, dealID, audience strin
 		return "", err
 	}
 	return record.CapsuleID, nil
+}
+
+// reportRequest is the seal request of a report sealed at at, under a fresh
+// 256-bit nonce, so its digest, which every later bundle carries with the
+// record withheld, confirms no guess at the text. Its payload and Capsule
+// are laid out by dealprofile.
+func (s *dealSession) reportRequest(r dealprofile.Report, at time.Time) (cli.Request, error) {
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return cli.Request{}, err
+	}
+	r.Nonce = hex.EncodeToString(nonce)
+	payload, err := dealprofile.ReportPayload(r)
+	if err != nil {
+		return cli.Request{}, err
+	}
+	capsule, err := dealprofile.ReportCapsule(s.p.Name, "capsulectl-deal", at)
+	if err != nil {
+		return cli.Request{}, err
+	}
+	return cli.Request{Version: "capsule-seal-request/v1", Capsule: capsule, Payload: payload}, nil
 }
 
 // reportIDs are the capsule ids of every report sealed for the deal.
@@ -139,36 +133,15 @@ func (s *dealSession) dealStandaloneReport(dealID, audience string, ext, b map[s
 	case last != hex.EncodeToString(s.key.Public().(ed25519.PublicKey)):
 		return "", nil, errDealKeyChanged
 	}
-	nonce := make([]byte, 32)
-	if _, err := rand.Read(nonce); err != nil {
-		return "", nil, err
-	}
-	raw, err := json.Marshal(map[string]interface{}{
-		"type": "deal_report", "profile": cli.DealProfile, "deal_id": dealID, "audience": audience,
-		"nonce": hex.EncodeToString(nonce), "report": ext, "deal_checkpoint": bound,
-	})
+	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext, Checkpoint: bound}, cli.DealClock())
 	if err != nil {
 		return "", nil, err
 	}
-	generic, err := cli.DecodeBundleJSON(raw)
+	record, err := cli.Seal(request, s.key)
 	if err != nil {
 		return "", nil, err
 	}
-	payload, err := canonical.JCS(generic)
-	if err != nil {
-		return "", nil, err
-	}
-	record, err := cli.Seal(cli.Request{
-		Version: "capsule-seal-request/v1",
-		Capsule: emit.Input{
-			ActionID: cli.DealReportActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
-			Timestamp: cli.DealClock().UTC().Truncate(time.Second),
-		},
-		Payload: payload,
-	}, s.key)
-	if err != nil {
-		return "", nil, err
-	}
+	payload := request.Payload
 	capsule, err := cli.DecodeBundleJSON(record.Capsule)
 	if err != nil {
 		return "", nil, err
@@ -189,7 +162,7 @@ func checkProducedReport(b map[string]interface{}) error {
 	// Only the standalone report the producer sealed: a bundle with none
 	// (the terminal-assurance bundle carries its text inline, and is never
 	// a copy) has nothing here to check.
-	if exts, _ := b["extensions"].(map[string]interface{}); exts[cli.DealReportExtension] == nil {
+	if exts, _ := b["extensions"].(map[string]interface{}); exts[dealprofile.ReportExtension] == nil {
 		return nil
 	}
 	raw, err := json.Marshal(b)
@@ -214,7 +187,7 @@ var errDealKeyChanged = cli.InputError("this deal's last step was signed with an
 // dealBoundCheckpoint is the deal checkpoint a bundle is assembled at, as a
 // standalone report binds it: the certificate's log id, and the
 // checkpoint's MMR size and root.
-func dealBoundCheckpoint(b map[string]interface{}) (map[string]interface{}, error) {
+func dealBoundCheckpoint(b map[string]interface{}) (*dealprofile.Checkpoint, error) {
 	cp, _ := b["checkpoint"].(map[string]interface{})
 	cert, _ := b["completeness_certificate"].(map[string]interface{})
 	logID, _ := cert["log_id"].(string)
@@ -223,7 +196,7 @@ func dealBoundCheckpoint(b map[string]interface{}) (map[string]interface{}, erro
 	if err != nil || logID == "" || root == "" {
 		return nil, errors.Join(cli.ErrConflict, err)
 	}
-	return map[string]interface{}{"log_id": logID, "mmr_size": cli.Integer(size), "root": root}, nil
+	return &dealprofile.Checkpoint{LogID: logID, MMRSize: size, Root: root}, nil
 }
 
 // bundleCheckpointTime is the signed time of the checkpoint a bundle is

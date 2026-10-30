@@ -14,6 +14,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/spf13/cobra"
 )
@@ -63,7 +64,9 @@ var (
 // compiledStatementSchema is the x-deal-v0 schema's verifier_statement
 // definition, compiled on its own.
 func compiledStatementSchema() (*jsonschema.Schema, error) {
-	statementSchemaOnce.Do(func() { statementSchema, statementSchemaErr = compileDealSchemaAt("#/$defs/" + verifierStatementDef) })
+	statementSchemaOnce.Do(func() {
+		statementSchema, statementSchemaErr = dealprofile.ProfileSchemaAt("#/$defs/" + verifierStatementDef)
+	})
 	return statementSchema, statementSchemaErr
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/action-state-group/capsule-emit/go/artifact"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -1072,8 +1073,8 @@ func (s *dealSession) composeMember(ctx context.Context, dealID string, m compos
 }
 
 // dealJoinPointer is where a copy's root record holds the deal id: the
-// top-level deal_id member a step's Capsule carries (dealIDMember).
-const dealJoinPointer = "/" + dealIDMember
+// top-level deal_id member a step's Capsule carries (dealprofile.DealIDMember).
+const dealJoinPointer = "/" + dealprofile.DealIDMember
 
 // dealJoins declares one pre_agreed_identifier join on the deal id per pair
 // of members, in the state the verifier derives: unjoined with no copy
@@ -1115,7 +1116,7 @@ func rootDealID(member map[string]interface{}) string {
 	records, _ := bundle["records"].([]interface{})
 	for _, raw := range records {
 		if record, ok := raw.(map[string]interface{}); ok && record["capsule_id"] == root {
-			id, _ := record[dealIDMember].(string)
+			id, _ := record[dealprofile.DealIDMember].(string)
 			return id
 		}
 	}
@@ -1155,7 +1156,7 @@ func (s *dealSession) sealComposition(ctx context.Context, dealID, digest string
 		ids = append(ids, m.recordID)
 	}
 	raw, err := json.Marshal(map[string]interface{}{
-		"type": "deal_composition", "profile": cli.DealProfile, "deal_id": dealID, "composed_digest": digest, "request_records": ids,
+		"type": "deal_composition", "profile": dealprofile.Profile, "deal_id": dealID, "composed_digest": digest, "request_records": ids,
 	})
 	if err != nil {
 		return nil, err

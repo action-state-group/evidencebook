@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,9 +33,9 @@ func TestCommercialBoundsVectorsMatch(t *testing.T) {
 			BoundsCommitment string         `json:"bounds_commitment"`
 		} `json:"vectors"`
 	}
-	require.NoError(t, json.Unmarshal(mustRead(t, "../../skills/deal/profile/fixtures/commercial-bounds-vectors.json"), &vec))
+	require.NoError(t, json.Unmarshal(mustRead(t, filepath.Join(dealProfileDir, "fixtures", "commercial-bounds-vectors.json")), &vec))
 	require.Len(t, vec.Vectors, 3)
-	schema, err := recordSchema(cli.TypeCommercialBounds)
+	schema, err := dealprofile.RecordSchema(dealprofile.TypeCommercialBounds)
 	require.NoError(t, err)
 	for _, x := range vec.Vectors {
 		raw, err := json.Marshal(x.Document)
@@ -44,7 +46,7 @@ func TestCommercialBoundsVectorsMatch(t *testing.T) {
 		var min int64
 		require.NoError(t, json.Unmarshal(mustJSON(t, x.Document["min_total_minor"]), &min))
 		assert.Equal(t, x.Text, commercialBoundsText(min))
-		got, err := cli.CommitText(x.Nonce, x.Text)
+		got, err := dealprofile.CommitText(x.Nonce, x.Text)
 		require.NoError(t, err)
 		assert.Equal(t, x.BoundsCommitment, got)
 	}
@@ -77,7 +79,7 @@ func TestASellersFloorStaysPrivate(t *testing.T) {
 	doc := o["document"].(map[string]any)
 	assert.Equal(t, "commercial-bounds/v0", doc["type"])
 	assert.Equal(t, float64(170000), doc["min_total_minor"])
-	c, err := cli.CommitText(o["nonce"].(string), commercialBoundsText(170000))
+	c, err := dealprofile.CommitText(o["nonce"].(string), commercialBoundsText(170000))
 	require.NoError(t, err)
 	assert.Contains(t, chain, `"bounds_commitment":"`+c+`"`)
 
@@ -187,7 +189,7 @@ func TestATypedTaskAuthorityCarriesTheFloorAsACommitment(t *testing.T) {
 		proposal = append(proposal, part[:64])
 	}
 	// The intent note's commitment is the one the confirmed version carries.
-	note, err := cli.CommitText(dealNonceOf(t, id, lowered["capsule_id"].(string), "bounds"), commercialBoundsText(160000))
+	note, err := dealprofile.CommitText(dealNonceOf(t, id, lowered["capsule_id"].(string), "bounds"), commercialBoundsText(160000))
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, strings.Count(chain, note), 2, "the note seals it, and the confirmed task authority carries it")
 	assert.NotEmpty(t, proposal)
@@ -223,7 +225,7 @@ func TestTheLocalRulesCheckerIsGivenTheFloorsOpening(t *testing.T) {
 	o := input["commercial_bounds_opening"].(map[string]any)
 	doc := o["document"].(map[string]any)
 	assert.Equal(t, map[string]any{"type": "commercial-bounds/v0", "min_total_minor": float64(170000)}, doc)
-	c, err := cli.CommitText(o["nonce"].(string), commercialBoundsText(170000))
+	c, err := dealprofile.CommitText(o["nonce"].(string), commercialBoundsText(170000))
 	require.NoError(t, err)
 	assert.Equal(t, c, o["bounds_commitment"])
 	_, chain := ownReportAndChain(t, id)

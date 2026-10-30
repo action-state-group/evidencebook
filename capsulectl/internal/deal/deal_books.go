@@ -20,6 +20,7 @@ import (
 	"github.com/action-state-group/capsule-emit/go/artifact"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // A deal opened since capsule-cli#242 PR3 is a book on the store's shelf
@@ -27,23 +28,12 @@ import (
 // profile seals itself (Book.AppendCapsule), with one constant record type
 // per kind, so a withheld step's header never says which step it is.
 const (
-	dealStepRecordType   = "deal_step"
-	dealReportRecordType = "deal_report"
 	// dealStepCompleted and dealStepFailed are the Personal-Agent History
 	// Profile's record kinds (capsule-cli#264). A later writer seals steps
 	// with them, mapped at seal time; every reader takes them as steps now,
 	// so a counterparty on this build admits that writer's halves.
 	dealStepCompleted = "step_completed"
 	dealStepFailed    = "step_failed"
-	// dealLocalField commits a step's local event (its raw values and the
-	// nonces of its x-deal-v0 commitments); its opening never leaves the
-	// device.
-	dealLocalField = "deal_local"
-	// dealAmountField and dealCurrencyField are a final close's money terms
-	// (note §2.9): set on a received close, empty on every other step, each
-	// under its own nonce, so every step's header has one shape.
-	dealAmountField   = "amount"
-	dealCurrencyField = "currency"
 )
 
 // dealNewDealsOnBooks is whether a deal opened now is kept on a book; a test
@@ -365,7 +355,7 @@ func (x shelfDealIndex) records(ctx context.Context, dealID string) ([]evidenceb
 // writes (capsule-cli#264).
 func isDealStep(recordType string) bool {
 	switch recordType {
-	case dealStepRecordType, dealStepCompleted, dealStepFailed:
+	case dealprofile.StepRecordType, dealStepCompleted, dealStepFailed:
 		return true
 	}
 	return false
@@ -385,7 +375,7 @@ func stepOfDeal(h evidencebook.Header, dealID string) bool {
 // This build seals the constant type and no correlation; tests replace it
 // to seal steps as the History profile's later writer will.
 var dealStepHeader = func(dealID string, ev dealEvent) (string, evidencebook.Correlation) {
-	return dealStepRecordType, evidencebook.Correlation{}
+	return dealprofile.StepRecordType, evidencebook.Correlation{}
 }
 
 // bookSteps are one deal's steps on its book, or every book deal's when
@@ -422,7 +412,7 @@ func (x shelfDealIndex) bookStep(ctx context.Context, r evidencebook.ShelfRecord
 		// No deal verb sets a retention in #242 (note §2.8).
 		return indexedStep{}, fmt.Errorf("%w: step record %s of %s is %s", cli.ErrConflict, r.RecordID, dealID, r.Retention)
 	}
-	local, err := x.opening(ctx, r, dealLocalField)
+	local, err := x.opening(ctx, r, dealprofile.LocalField)
 	if err != nil {
 		return indexedStep{}, err
 	}
@@ -533,7 +523,7 @@ func (x shelfDealIndex) bookReports(ctx context.Context, dealID string) ([]bookR
 	}
 	var out []bookReport
 	for _, r := range records {
-		if r.Header.RecordType != dealReportRecordType {
+		if r.Header.RecordType != dealprofile.ReportRecordType {
 			continue
 		}
 		held, err := x.held(ctx, r)
@@ -632,28 +622,14 @@ func (s *dealSession) sealBookStep(ctx context.Context, dealID string, events []
 	if err != nil {
 		return sealedEvent{}, err
 	}
-	local, err := json.Marshal(ev)
+	if err = checkSealable(request.Payload, events, ev); err != nil {
+		return sealedEvent{}, err
+	}
+	at, entry, err := s.bookStepEntry(events, ev, request.Payload)
 	if err != nil {
 		return sealedEvent{}, err
 	}
-	amount, currency, err := closedTerms(events, ev)
-	if err != nil {
-		return sealedEvent{}, err
-	}
-	at, err := time.Parse("2006-01-02T15:04:05Z", ev.At)
-	if err != nil {
-		return sealedEvent{}, cli.ErrConflict
-	}
-	var links []evidencebook.Link
-	if parent := request.Capsule.Chain; parent != nil {
-		links = []evidencebook.Link{{Type: evidencebook.Cites, Target: parent.ParentCapsuleID}}
-	}
-	recordType, correlation := dealStepHeader(dealID, ev)
-	record, err := s.appendBook(ctx, at, request, evidencebook.Entry{
-		RecordType: recordType, EpistemicType: evidencebook.ProducerClaim, Correlation: correlation,
-		SubjectRef: request.Capsule.ActionID, Links: links,
-		Fields: map[string]string{dealLocalField: string(local), dealAmountField: amount, dealCurrencyField: currency},
-	})
+	record, err := s.appendBook(ctx, at, request, entry)
 	if err != nil {
 		return sealedEvent{}, err
 	}
@@ -672,6 +648,37 @@ func (s *dealSession) sealBookStep(ctx context.Context, dealID string, events []
 		}
 	}
 	return sealedEvent{CapsuleID: record.RecordID, Digest: digest, Sequence: record.Seq, Event: ev}, nil
+}
+
+// bookStepEntry is the record header a step carries on its book, and its
+// seal time: the step's header fields as dealprofile.StepCapsule lays them
+// out, with the record type and correlation dealStepHeader gives.
+func (s *dealSession) bookStepEntry(events []sealedEvent, ev dealEvent, payload []byte) (time.Time, evidencebook.Entry, error) {
+	in, err := s.stepInput(events, ev, payload, dealCapsuleCurrent)
+	if err != nil {
+		return time.Time{}, evidencebook.Entry{}, err
+	}
+	local, err := json.Marshal(ev)
+	if err != nil {
+		return time.Time{}, evidencebook.Entry{}, err
+	}
+	in.Local = string(local)
+	if in.Amount, in.Currency, err = closedTerms(events, ev); err != nil {
+		return time.Time{}, evidencebook.Entry{}, err
+	}
+	_, h, err := dealprofile.StepCapsule(in)
+	if err != nil {
+		return time.Time{}, evidencebook.Entry{}, err
+	}
+	var links []evidencebook.Link
+	for _, c := range h.Cites {
+		links = append(links, evidencebook.Link{Type: evidencebook.Cites, Target: c})
+	}
+	recordType, correlation := dealStepHeader(ev.DealID, ev)
+	return h.CommittedAt, evidencebook.Entry{
+		RecordType: recordType, EpistemicType: evidencebook.EpistemicType(h.EpistemicType), Correlation: correlation,
+		SubjectRef: h.SubjectRef, Links: links, Fields: h.Fields,
+	}, nil
 }
 
 // dealReportsOffLog is a test hook: off, every deal seals its reports in
@@ -815,7 +822,7 @@ var dealBookSealStops = func() error { return nil }
 // Capsule, carrying its header, with no subject_ref (every report shares one
 // action id) and no link (note §2.2).
 func (s *dealSession) sealBookReport(ctx context.Context, at time.Time, request cli.Request) (string, error) {
-	record, err := s.appendBook(ctx, at, request, evidencebook.Entry{RecordType: dealReportRecordType, EpistemicType: evidencebook.ProducerClaim})
+	record, err := s.appendBook(ctx, at, request, evidencebook.Entry{RecordType: dealprofile.ReportRecordType, EpistemicType: evidencebook.ProducerClaim})
 	if err != nil {
 		return "", err
 	}

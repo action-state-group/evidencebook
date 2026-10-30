@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
-	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,8 +25,13 @@ import (
 // Capsule. Each vector also carries the inputs today's builders took (the
 // deal's local events, its deal key and the profile's signing seed, all
 // test-only values), so this test re-derives every output from them.
-// DEAL_WRITE_BASELINE_VECTORS=1 regenerates the file from the flows below.
-const baselineVectorsPath = "testdata/baseline-vectors.json"
+// The vectors moved with the profile and are EvidenceBook's
+// (dealprofile/testdata/baseline-vectors.json), whose own tests check them
+// too. DEAL_WRITE_BASELINE_VECTORS=1 writes the flows below to
+// testdata/baseline-vectors.json, for a deliberate re-freeze there.
+const baselineVectorsOut = "testdata/baseline-vectors.json"
+
+var baselineVectorsPath = filepath.Join(dealprofileDir, "testdata", "baseline-vectors.json")
 
 type baselineVectors struct {
 	Note  string         `json:"note"`
@@ -142,26 +146,16 @@ func baselineStepOf(s *dealSession, events []sealedEvent, ev dealEvent) (baselin
 	if err != nil {
 		return baselineStep{}, err
 	}
-	local, err := json.Marshal(ev)
+	at, entry, err := s.bookStepEntry(events, ev, request.Payload)
 	if err != nil {
 		return baselineStep{}, err
 	}
-	amount, currency, err := closedTerms(events, ev)
-	if err != nil {
-		return baselineStep{}, err
-	}
-	at, err := time.Parse("2006-01-02T15:04:05Z", ev.At)
-	if err != nil {
-		return baselineStep{}, err
-	}
-	recordType, correlation := dealStepHeader(ev.DealID, ev)
 	header := baselineHeader{
-		RecordType: recordType, EpistemicType: string(evidencebook.ProducerClaim), CommittedAt: at.UTC().Format(time.RFC3339Nano),
-		SubjectRef: request.Capsule.ActionID, Correlation: correlation, Links: []evidencebook.Link{},
-		Fields: map[string]string{dealLocalField: string(local), dealAmountField: amount, dealCurrencyField: currency},
+		RecordType: entry.RecordType, EpistemicType: string(entry.EpistemicType), CommittedAt: at.UTC().Format(time.RFC3339Nano),
+		SubjectRef: entry.SubjectRef, Correlation: entry.Correlation, Links: entry.Links, Fields: entry.Fields,
 	}
-	if parent := request.Capsule.Chain; parent != nil {
-		header.Links = []evidencebook.Link{{Type: evidencebook.Cites, Target: parent.ParentCapsuleID}}
+	if header.Links == nil {
+		header.Links = []evidencebook.Link{}
 	}
 	return baselineStep{
 		N: ev.N, Payload: string(request.Payload), Digest: digest,
@@ -172,22 +166,29 @@ func baselineStepOf(s *dealSession, events []sealedEvent, ev dealEvent) (baselin
 // baselineReportOf derives a report's vector as dealSealReport and
 // dealStandaloneReport build it, from the report's input and time.
 func baselineReportOf(s *dealSession, form string, at time.Time, input string) (baselineReport, error) {
-	generic, err := cli.DecodeBundleJSON([]byte(input))
+	var in struct {
+		Type       string                  `json:"type"`
+		Profile    string                  `json:"profile"`
+		DealID     string                  `json:"deal_id"`
+		Audience   string                  `json:"audience"`
+		Nonce      string                  `json:"nonce"`
+		Report     map[string]any          `json:"report"`
+		Checkpoint *dealprofile.Checkpoint `json:"deal_checkpoint"`
+	}
+	if err := cli.DecodeJSON([]byte(input), &in); err != nil {
+		return baselineReport{}, err
+	}
+	payload, err := dealprofile.ReportPayload(dealprofile.Report{
+		DealID: in.DealID, Audience: in.Audience, Nonce: in.Nonce, Body: in.Report, Checkpoint: in.Checkpoint,
+	})
 	if err != nil {
 		return baselineReport{}, err
 	}
-	payload, err := canonical.JCS(generic)
+	capsule, err := dealprofile.ReportCapsule(s.p.Name, "capsulectl-deal", at)
 	if err != nil {
 		return baselineReport{}, err
 	}
-	record, err := cli.Seal(cli.Request{
-		Version: "capsule-seal-request/v1",
-		Capsule: emit.Input{
-			ActionID: cli.DealReportActionID, ActionType: emit.ActionTypeFYI, Operator: s.p.Name, Developer: "capsulectl-deal",
-			Timestamp: at.UTC(),
-		},
-		Payload: payload,
-	}, s.key)
+	record, err := cli.Seal(cli.Request{Version: "capsule-seal-request/v1", Capsule: capsule, Payload: payload}, s.key)
 	if err != nil {
 		return baselineReport{}, err
 	}
@@ -285,7 +286,7 @@ func writeBaselineVectors(t *testing.T) {
 	}
 	out, err := json.MarshalIndent(v, "", "  ")
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(baselineVectorsPath, append(out, '\n'), 0o644))
+	require.NoError(t, os.WriteFile(baselineVectorsOut, append(out, '\n'), 0o644))
 }
 
 // baselineSessionOf opens the deal store and selects the deal.
@@ -346,7 +347,7 @@ func baselineDealOf(t *testing.T, flow, id string) baselineDeal {
 			RecordType: h.RecordType, EpistemicType: string(h.EpistemicType), CommittedAt: committed.UTC().Format(time.RFC3339Nano),
 			SubjectRef: h.SubjectRef, Correlation: correlation, Links: links, Fields: map[string]string{},
 		}
-		for _, field := range []string{dealLocalField, dealAmountField, dealCurrencyField} {
+		for _, field := range []string{dealprofile.LocalField, dealprofile.AmountField, dealprofile.CurrencyField} {
 			o, err := x.opening(t.Context(), r, field)
 			require.NoError(t, err, "step %d %s", step.N, field)
 			stored.Fields[field] = o
@@ -395,7 +396,7 @@ func baselineReportInput(t *testing.T, b map[string]interface{}, capsuleID strin
 	t.Helper()
 	exts, _ := b["extensions"].(map[string]interface{})
 	var input interface{}
-	if section, ok := exts[cli.DealReportExtension].(map[string]interface{}); ok {
+	if section, ok := exts[dealprofile.ReportExtension].(map[string]interface{}); ok {
 		input = section["agent_input"]
 	} else {
 		disclosures, _ := b["disclosures"].(map[string]interface{})
@@ -435,4 +436,80 @@ func findCapsule(v interface{}, id string) map[string]interface{} {
 		}
 	}
 	return nil
+}
+
+// A sealed step is re-derived without the seal checks: a value an earlier
+// release's checks admitted (here a run of fullwidth digits, which its ASCII
+// scan let through) re-derives to bytes and a digest, so the deal stays
+// readable, while a new step that carries it is refused before it is sealed.
+func TestRederivingAStepRunsNoSealCheck(t *testing.T) {
+	raw, err := os.ReadFile(baselineVectorsPath)
+	require.NoError(t, err)
+	var v baselineVectors
+	require.NoError(t, json.Unmarshal(raw, &v))
+	d := v.Deals[0]
+	dkey, err := hex.DecodeString(d.DealKey)
+	require.NoError(t, err)
+	var events []sealedEvent
+	for _, e := range d.Events {
+		var ev dealEvent
+		require.NoError(t, cli.DecodeJSON(e.Event, &ev))
+		if ev.Evidence == nil {
+			events = append(events, sealedEvent{CapsuleID: e.CapsuleID, Digest: e.Digest, Sequence: e.Sequence, Event: ev})
+			continue
+		}
+		ev.Evidence.Source = "agent_１２３４５６７８"
+		payload, digest, err := encodeDealRecord(ev, events, dkey)
+		require.NoError(t, err)
+		assert.Contains(t, string(payload), "１２３４５６７８")
+		assert.Len(t, digest, 64)
+		err = checkSealable(payload, events, ev)
+		require.ErrorIs(t, err, cli.ErrInput)
+		assert.Contains(t, err.Error(), "raw phone number")
+		return
+	}
+	t.Fatal("the first baseline deal has no evidence step")
+}
+
+// A refused step says why in capsulectl's words, whatever dealprofile's own
+// detail reads: each check's refusal is pinned here.
+func TestSealRefusalsKeepTheirWording(t *testing.T) {
+	raw, err := os.ReadFile(baselineVectorsPath)
+	require.NoError(t, err)
+	var v baselineVectors
+	require.NoError(t, json.Unmarshal(raw, &v))
+	d := v.Deals[0]
+	dkey, err := hex.DecodeString(d.DealKey)
+	require.NoError(t, err)
+	var events []sealedEvent
+	var evidence dealEvent
+	for _, e := range d.Events {
+		var ev dealEvent
+		require.NoError(t, cli.DecodeJSON(e.Event, &ev))
+		if ev.Evidence != nil {
+			evidence = ev
+			break
+		}
+		events = append(events, sealedEvent{CapsuleID: e.CapsuleID, Digest: e.Digest, Sequence: e.Sequence, Event: ev})
+	}
+	require.NotNil(t, evidence.Evidence)
+	for source, want := range map[string]string{
+		"agent 555 010 2044":     "refusing to seal: the record would carry a raw phone number; keep it out of claims and tokens",
+		"agent bob@shop.example": "refusing to seal: the record would carry a raw email address",
+		"agent_scam":             "refusing to seal: a record may not label or grade anyone (scam)",
+		"Agent":                  "refusing to seal: the step does not fit the x-deal-v0 profile: /body/source: value \"Agent\" does not match pattern",
+	} {
+		ev := evidence
+		e := *ev.Evidence
+		e.Source = source
+		ev.Evidence = &e
+		payload, _, err := encodeDealRecord(ev, events, dkey)
+		require.NoError(t, err, source)
+		err = checkSealable(payload, events, ev)
+		require.ErrorIs(t, err, cli.ErrInput, source)
+		assert.Contains(t, cli.SafeError(err), want, source)
+	}
+	err = scanRecord(map[string]interface{}{"body": map[string]interface{}{"text": "ask for m. torres"}}, []string{"M. Torres"})
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "refusing to seal: the record would carry a raw counterparty identifier")
 }

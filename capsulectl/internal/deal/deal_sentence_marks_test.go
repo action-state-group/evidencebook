@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,13 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sentenceMarksSHA256 pins testdata/sentence-marks.txt, the same bytes as
-// capsule-engine's tests/fixtures/sentence-marks.txt.
+// sentenceMarksSHA256 pins the profile's sentence-marks.txt (EvidenceBook
+// dealprofile/x-deal-v0), the same bytes as capsule-engine's
+// tests/fixtures/sentence-marks.txt.
 const sentenceMarksSHA256 = "8869f15bbf6896160f67e2d6f19a0da449a3f33d1e12d4cb71efb77c7877b9aa"
 
 func fixtureSentenceMarks(t *testing.T) []rune {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/sentence-marks.txt")
+	raw, err := os.ReadFile(filepath.Join(dealProfileDir, "sentence-marks.txt"))
 	require.NoError(t, err)
 	sum := sha256.Sum256(raw)
 	require.Equal(t, sentenceMarksSHA256, hex.EncodeToString(sum[:]))

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -131,7 +132,7 @@ func TestNoShareCarriesABookingsProfileFingerprint(t *testing.T) {
 		for _, audience := range []string{cli.DealAudienceCounterparty, cli.DealAudienceAdjudicator} {
 			_, raw := sharedCopy(t, id, audience, "x")
 			assert.NotContains(t, raw, steps[0].payee, audience)
-			assert.NotContains(t, raw, dealProfileFPAlg, audience)
+			assert.NotContains(t, raw, dealprofile.ProfileFPAlg, audience)
 		}
 	})
 }

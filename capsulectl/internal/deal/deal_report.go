@@ -19,6 +19,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // dealSellerExtension is the bundle extension kind every copy of a deal the
@@ -113,9 +114,9 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		if id, standalone, err = s.dealStandaloneReport(dealID, audience, ext, b); err != nil {
 			return nil, err
 		}
-		ext = map[string]interface{}{cli.DealReportPointer: id}
+		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	} else if heldReport != "" {
-		ext = map[string]interface{}{cli.DealReportPointer: heldReport}
+		ext = map[string]interface{}{dealprofile.ReportPointer: heldReport}
 	} else if sealReport {
 		id, err := s.dealSealReport(ctx, dealID, audience, ext)
 		if err != nil {
@@ -130,11 +131,11 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 		if after := witnessCoverage(events, cadence); !reflect.DeepEqual(after, coverage) {
 			return nil, cli.Hint(cli.ErrConflict, "the deal's witness state changed while the report was sealed: run the report again")
 		}
-		ext = map[string]interface{}{cli.DealReportPointer: id}
+		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	}
-	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, cli.DealProfile: ext}
+	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: ext}
 	if standalone != nil {
-		extensions[cli.DealReportExtension] = standalone
+		extensions[dealprofile.ReportExtension] = standalone
 	}
 	if dealRole(events) == dealRoleSeller {
 		extensions[dealSellerExtension] = map[string]interface{}{}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,7 +103,7 @@ func TestEveryThreadOfASaleCitesItsOneAuthority(t *testing.T) {
 		sealedAuthority := recs[1]["body"].(map[string]any)["sale_authority_commitment"].(string)
 		authorities = append(authorities, sealedAuthority)
 		// It opens, with the step's own nonce, to the sale's authority digest.
-		opened, err := cli.CommitText(dealNonceOf(t, id, chainSteps(t, id)[1].CapsuleID, "sale_authority"), authority)
+		opened, err := dealprofile.CommitText(dealNonceOf(t, id, chainSteps(t, id)[1].CapsuleID, "sale_authority"), authority)
 		require.NoError(t, err)
 		assert.Equal(t, sealedAuthority, opened)
 		raw := mustJSONString(t, recs)
@@ -119,7 +120,7 @@ func TestEveryThreadOfASaleCitesItsOneAuthority(t *testing.T) {
 			snapshot = se.CapsuleID
 		}
 	}
-	opened, err := cli.CommitText(dealNonceOf(t, a, snapshot, "item_ref"), item)
+	opened, err := dealprofile.CommitText(dealNonceOf(t, a, snapshot, "item_ref"), item)
 	require.NoError(t, err)
 	assert.Equal(t, commitments[0], opened)
 }

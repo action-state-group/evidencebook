@@ -2,6 +2,7 @@ package deal
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,9 +35,9 @@ func profileSteps(t *testing.T, dealID string) []profileStep {
 		if se.Event.Kind != "counterparty_profile" {
 			continue
 		}
-		block := records[i][cli.DealProfile].(map[string]any)
+		block := records[i][dealprofile.Profile].(map[string]any)
 		cp := block["counterparty_profile"].(map[string]any)
-		require.Equal(t, dealProfileFPAlg, cp["fp_alg"])
+		require.Equal(t, dealprofile.ProfileFPAlg, cp["fp_alg"])
 		refs := block["refs"].([]any)
 		require.Len(t, refs, 1)
 		ref := refs[0].(map[string]any)
@@ -45,7 +47,7 @@ func profileSteps(t *testing.T, dealID string) []profileStep {
 		require.Equal(t, "snapshot", check.Event.Kind, "the companion follows its check")
 		// The check's per-deal fingerprints: in its x-deal-v0 block, or in a
 		// typed deal's proposed action, where the typed record carries them.
-		holder, _ := records[i-1][cli.DealProfile].(map[string]any)
+		holder, _ := records[i-1][dealprofile.Profile].(map[string]any)
 		if holder == nil {
 			holder = bodyOf(records[i-1])
 		}
@@ -93,7 +95,7 @@ func TestNoPlainDigestOfThePayeeIsSealed(t *testing.T) {
 	require.NotEmpty(t, open.Who.Name)
 	id := retailDeal(t)
 	require.Len(t, profileSteps(t, id), 1)
-	normalized, err := normalizeID("payee", open.Who.Name)
+	normalized, err := dealprofile.Normalize("payee", open.Who.Name)
 	require.NoError(t, err)
 	var forbidden []string
 	for _, v := range []string{open.Who.Name, normalized, strings.ToLower(open.Who.Name)} {
@@ -124,7 +126,7 @@ func TestNoShareCarriesTheProfileFingerprint(t *testing.T) {
 		assert.False(t, dealRecordShareable(steps[0].record, "", audience, private), audience)
 		_, raw := sharedCopy(t, id, audience, "x")
 		assert.NotContains(t, raw, steps[0].payee, audience)
-		assert.NotContains(t, raw, dealProfileFPAlg, audience)
+		assert.NotContains(t, raw, dealprofile.ProfileFPAlg, audience)
 	}
 }
 
@@ -133,17 +135,25 @@ func TestNoShareCarriesTheProfileFingerprint(t *testing.T) {
 func TestTheProfileFingerprintVector(t *testing.T) {
 	secret, err := hex.DecodeString(strings.Repeat("11", 32))
 	require.NoError(t, err)
-	key := profileKeyFor(secret)
-	fp, err := fingerprintID(key, "payee", "Example Stickers")
+	key := dealprofile.ProfileKey(secret)
+	fp, err := dealprofile.Fingerprint(key, "payee", "Example Stickers")
 	require.NoError(t, err)
 	assert.Equal(t, hex.EncodeToString(hmacSHA256(secret, "x-deal-v0/profile-key\x00")), hex.EncodeToString(key))
 	assert.Equal(t, hex.EncodeToString(hmacSHA256(key, "x-deal-v0/fp\x00", "payee", "\x00", mustNormalize(t, "payee", "Example Stickers"))), fp)
-	assert.NotEqual(t, hex.EncodeToString(dealKeyFor(secret, "deal-0000000000000000")), hex.EncodeToString(key), "never a deal's key")
+	assert.NotEqual(t, hex.EncodeToString(dealprofile.DealKey(secret, "deal-0000000000000000")), hex.EncodeToString(key), "never a deal's key")
+}
+
+func hmacSHA256(key []byte, parts ...string) []byte {
+	m := hmac.New(sha256.New, key)
+	for _, p := range parts {
+		m.Write([]byte(p))
+	}
+	return m.Sum(nil)
 }
 
 func mustNormalize(t *testing.T, kind, raw string) string {
 	t.Helper()
-	n, err := normalizeID(kind, raw)
+	n, err := dealprofile.Normalize(kind, raw)
 	require.NoError(t, err)
 	return n
 }
@@ -254,7 +264,7 @@ func TestRegenerateProfileVectors(t *testing.T) {
 			require.NoError(t, err)
 			cases = append(cases, profileVector{
 				Name: "deal " + strconv.Itoa(n+1) + ": its pay check", CheckJCS: string(check), CompanionJCS: string(companion),
-				ExpectedTarget: "payee-fp:" + dealProfileFPAlg + ":" + se.Event.CounterpartyProfile.Payee,
+				ExpectedTarget: "payee-fp:" + dealprofile.ProfileFPAlg + ":" + se.Event.CounterpartyProfile.Payee,
 			})
 		}
 		require.NoError(t, s.close())
@@ -283,7 +293,7 @@ func TestTheProfileVectorsHold(t *testing.T) {
 		var check, companion map[string]any
 		require.NoError(t, json.Unmarshal([]byte(c.CheckJCS), &check), c.Name)
 		require.NoError(t, json.Unmarshal([]byte(c.CompanionJCS), &companion), c.Name)
-		block := companion[cli.DealProfile].(map[string]any)
+		block := companion[dealprofile.Profile].(map[string]any)
 		require.Equal(t, "counterparty_profile", block["record_type"])
 		ref := block["refs"].([]any)[0].(map[string]any)
 		require.Equal(t, "about", ref["rel"])
@@ -291,8 +301,8 @@ func TestTheProfileVectorsHold(t *testing.T) {
 		assert.Equal(t, hex.EncodeToString(sum[:]), ref["digest"], c.Name)
 		payee := wantProfileShape(t, block["counterparty_profile"])
 		assert.Equal(t, "payee-fp:hmac-sha256-profile-key:"+payee, c.ExpectedTarget, c.Name)
-		require.Equal(t, "check", check[cli.DealProfile].(map[string]any)["record_type"])
-		perDeal = append(perDeal, check[cli.DealProfile].(map[string]any)["counterparty"].(map[string]any)["ids"].(map[string]any)["payee"].(string))
+		require.Equal(t, "check", check[dealprofile.Profile].(map[string]any)["record_type"])
+		perDeal = append(perDeal, check[dealprofile.Profile].(map[string]any)["counterparty"].(map[string]any)["ids"].(map[string]any)["payee"].(string))
 		targets = append(targets, c.ExpectedTarget)
 	}
 	assert.Equal(t, targets[0], targets[1], "one merchant, one target across the profile's deals")
@@ -354,7 +364,7 @@ func TestTheEngineAgreesWithTheProfileVectors(t *testing.T) {
 	// Live input: the schema accepts what the engine keys on, and refuses
 	// every value the engine ignores.
 	compiler := jsonschema.NewCompiler()
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(mustRead(t, filepath.Join("..", "..", "skills", "deal", "profile", "external-check-input-v0.schema.json"))))
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(mustRead(t, filepath.Join(dealProfileDir, "external-check-input-v0.schema.json"))))
 	require.NoError(t, err)
 	require.NoError(t, compiler.AddResource("external-check-input-v0.schema.json", doc))
 	schema, err := compiler.Compile("external-check-input-v0.schema.json")
@@ -475,7 +485,7 @@ func sharedRecordTypes(t *testing.T, b map[string]any) ([]string, int) {
 			continue
 		}
 		input := d["agent_input"].(map[string]any)
-		if blk, ok := input[cli.DealProfile].(map[string]any); ok {
+		if blk, ok := input[dealprofile.Profile].(map[string]any); ok {
 			types = append(types, blk["record_type"].(string))
 		} else if typ, ok := input["type"].(string); ok {
 			types = append(types, typ)
@@ -572,7 +582,7 @@ func TestASaleThreadCheckNamingAPayeeSealsAWithheldCompanion(t *testing.T) {
 		disclosures, _ := b["disclosures"].(map[string]any)
 		assert.NotContains(t, disclosures, companion, "%s: the companion is withheld", audience)
 		assert.NotContains(t, raw, payee, audience)
-		assert.NotContains(t, raw, dealProfileFPAlg, audience)
+		assert.NotContains(t, raw, dealprofile.ProfileFPAlg, audience)
 	}
 
 	none := buyerThread(t, saleID, "buyer-b.example")
@@ -649,7 +659,7 @@ func sharedCopyGivesTheCompanionANeutralKind(t *testing.T, open func(t *testing.
 	require.NoError(t, json.Unmarshal([]byte(raw), &b))
 	dealRun(t, "report", "--deal", id, "--share", audience, "--to", "x", "--html", filepath.Join(dir, "page.html"))
 	for name, text := range map[string]string{"bundle": raw, "page": string(mustRead(t, filepath.Join(dir, "page.html")))} {
-		for _, word := range []string{"counterparty_profile", dealProfileFPAlg, "own history"} {
+		for _, word := range []string{"counterparty_profile", dealprofile.ProfileFPAlg, "own history"} {
 			assert.NotContains(t, text, word, "%s %s", audience, name)
 		}
 	}

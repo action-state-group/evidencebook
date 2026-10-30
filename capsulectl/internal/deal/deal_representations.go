@@ -65,7 +65,8 @@ const (
 	// Python's str.splitlines uses, and U+2026, as explicit code points so the
 	// set stays frozen whatever Go's unicode tables become. The engine's
 	// promise_never/1.1.0 reads the same list (attributed_template.sentence_marks);
-	// testdata/sentence-marks.txt holds it, byte-identical in both repositories.
+	// the profile's sentence-marks.txt (EvidenceBook dealprofile/x-deal-v0)
+	// holds it, byte-identical in both repositories.
 	attributedSentenceMarks = "" +
 		"\u000A\u000B\u000C\u000D\u001C\u001D\u001E\u0021\u002E\u003F\u0085\u0589\u061D" +
 		"\u061E\u061F\u06D4\u0700\u0701\u0702\u07F9\u0837\u0839\u083D\u083E\u0964\u0965" +

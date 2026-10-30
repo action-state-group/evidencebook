@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,10 +128,10 @@ func opensTo(opening map[string]any, sealed string) (int64, bool) {
 	doc, _ := opening["document"].(map[string]any)
 	nonce, _ := opening["nonce"].(string)
 	min, ok := doc["min_total_minor"].(float64)
-	if !ok || len(doc) != 2 || doc["type"] != cli.CommercialBoundsKind || nonce == "" || min < 0 || min > 9007199254740991 || min != float64(int64(min)) {
+	if !ok || len(doc) != 2 || doc["type"] != dealprofile.TypeCommercialBounds || nonce == "" || min < 0 || min > 9007199254740991 || min != float64(int64(min)) {
 		return 0, false
 	}
-	c, err := cli.CommitText(nonce, commercialBoundsText(int64(min)))
+	c, err := dealprofile.CommitText(nonce, commercialBoundsText(int64(min)))
 	return int64(min), err == nil && c == opening["bounds_commitment"] && c == sealed
 }
 
@@ -240,7 +241,7 @@ func TestABoundsOpeningIsACommercialBoundsDocument(t *testing.T) {
 	}
 	opening, err := boundsOpening(commercialBoundsText(170000), nonce, nonce)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"type": cli.CommercialBoundsKind, "min_total_minor": json.Number("170000")}, normalizedNumbers(opening["document"]))
+	assert.Equal(t, map[string]any{"type": dealprofile.TypeCommercialBounds, "min_total_minor": json.Number("170000")}, normalizedNumbers(opening["document"]))
 }
 
 func normalizedNumbers(v any) any {

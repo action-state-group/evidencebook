@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/dns/dnsmessage"
@@ -508,7 +509,7 @@ func TestAProbeThatFindsNothingKeepsTheSystemResolver(t *testing.T) {
 
 // key_resolver and key_dnssec come as a pair, on a dns key only.
 func TestMerchantEmailSchemaPairsResolverFields(t *testing.T) {
-	s, err := compileDealSchemaAt("#/$defs/merchant_email")
+	s, err := dealprofile.ProfileSchemaAt("#/$defs/merchant_email")
 	require.NoError(t, err)
 	base := func() map[string]any {
 		return map[string]any{

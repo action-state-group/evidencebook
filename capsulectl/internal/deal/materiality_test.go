@@ -12,6 +12,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -398,7 +399,7 @@ func TestTheMaterialityLabelIsTheUsersOwnCopyOnly(t *testing.T) {
 		o := o.(map[string]any)
 		assert.Equal(t, example.Name, o["name"])
 		assert.Equal(t, example.Version, o["version"])
-		c, err := cli.CommitText(o["nonce"].(string), materialityLabelText(cli.DealMateriality{Name: example.Name, Version: example.Version}))
+		c, err := dealprofile.CommitText(o["nonce"].(string), materialityLabelText(cli.DealMateriality{Name: example.Name, Version: example.Version}))
 		require.NoError(t, err)
 		assert.Equal(t, committed[seqOf[o["step"].(string)]], c, "the user's copy opens the sealed commitment")
 	}

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The x-deal-v0 profile is EvidenceBook's `dealprofile` (evidencebook v0.10.0,
+  evidencebook#93). The plugin seals records, steps and reports through it, and
+  `skills/deal/profile/` and the plugin's copies of the schemas, sentence marks
+  and baseline vectors are gone: the skill points to EvidenceBook's
+  `dealprofile/x-deal-v0/`. No sealed byte changes; the baseline vectors from
+  #65 still pass. `scripts/run-demo.sh` reads the profile from
+  `DEAL_PROFILE_DIR`, or from the evidencebook module when run from source.
+
 - The deal skill's "Points of no return" table lists a seller's `offer` and
   `represent`, and a test fails when the table and the plugin's action list
   differ (#23).

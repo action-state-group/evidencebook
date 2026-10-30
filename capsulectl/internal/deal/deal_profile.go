@@ -4,48 +4,17 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
-
-// The profile schema ships in skills/deal/profile/; this is a byte-identical
-// copy (a test keeps them equal) so every record is validated before sealing.
-//
-//go:embed assets/x-deal-v0.schema.json
-var dealProfileSchema []byte
-
-var (
-	dealSchemaOnce sync.Once
-	dealSchema     *jsonschema.Schema
-	dealSchemaErr  error
-)
-
-func compiledDealSchema() (*jsonschema.Schema, error) {
-	dealSchemaOnce.Do(func() { dealSchema, dealSchemaErr = compileDealSchemaAt("") })
-	return dealSchema, dealSchemaErr
-}
-
-// compileDealSchemaAt compiles the x-deal-v0 schema at fragment ("" for the
-// record schema itself, "#/$defs/<name>" for one definition).
-func compileDealSchemaAt(fragment string) (*jsonschema.Schema, error) {
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(dealProfileSchema))
-	if err != nil {
-		return nil, err
-	}
-	c := jsonschema.NewCompiler()
-	const id = "x-deal-v0.schema.json"
-	if err = c.AddResource(id, doc); err != nil {
-		return nil, err
-	}
-	return c.Compile(id + fragment)
-}
 
 // boundsText adds an intent's commercial-bounds/v0 document to the texts its
 // step commits to, when it states a floor.
@@ -237,11 +206,11 @@ func dealLocalValues(events []sealedEvent, ev dealEvent) []string {
 // fingerprint, the same in a counterparty_profile record and in a rules
 // checker's input.
 func counterpartyProfileBlock(payee string) map[string]interface{} {
-	return map[string]interface{}{"fp_alg": dealProfileFPAlg, "ids": map[string]interface{}{"payee": payee}}
+	return map[string]interface{}{"fp_alg": dealprofile.ProfileFPAlg, "ids": map[string]interface{}{"payee": payee}}
 }
 
 func digestRef(d string) map[string]interface{} {
-	return map[string]interface{}{"type": cli.DealRecordRef, "digest_alg": "SHA-256", "digest": d}
+	return map[string]interface{}{"type": dealprofile.RecordRef, "digest_alg": "SHA-256", "digest": d}
 }
 
 func relRef(rel, d string) map[string]interface{} {
@@ -304,7 +273,7 @@ func counterpartyIDs(key []byte, w dealWho) map[string]interface{} {
 		if f.value == "" {
 			continue
 		}
-		if fp, err := fingerprintID(key, f.key, f.value); err == nil {
+		if fp, err := dealprofile.Fingerprint(key, f.key, f.value); err == nil {
 			ids[f.key] = fp
 		}
 	}
@@ -621,7 +590,7 @@ func signerMatchesBaseline(v merchantEmailVerdict, first dealWho) (same, known b
 		if raw == "" {
 			continue
 		}
-		d, err := normDomain(raw)
+		d, err := dealprofile.Normalize("domain", raw)
 		if err != nil {
 			continue
 		}
@@ -648,10 +617,10 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 		if nonce == "" {
 			return "", cli.InputError("missing commitment nonce for " + name)
 		}
-		return cli.CommitText(nonce, dealTexts(ev)[name])
+		return dealprofile.CommitText(nonce, dealTexts(ev)[name])
 	}
 	block := map[string]interface{}{
-		"profile": cli.DealProfile, "canonicalization": "jcs", "deal_id": ev.DealID, "seq": ev.N, "at": ev.At,
+		"profile": dealprofile.Profile, "canonicalization": "jcs", "deal_id": ev.DealID, "seq": ev.N, "at": ev.At,
 	}
 	if ev.N > 1 {
 		block["prev"] = digestRef(events[len(events)-1].Digest)
@@ -697,7 +666,7 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 	}
 	setIDs := func(ids map[string]interface{}) {
 		if len(ids) > 0 {
-			block["counterparty"] = map[string]interface{}{"fp_alg": cli.DealFPAlg, "ids": ids}
+			block["counterparty"] = map[string]interface{}{"fp_alg": dealprofile.FPAlg, "ids": ids}
 		}
 	}
 	body := map[string]interface{}{}
@@ -932,11 +901,11 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 			// Where the user was paid, keyed per deal like every identifier
 			// a record carries: not a counterparty id (it is the user's own
 			// account), so it never reads as a change of the other party.
-			fp, err := fingerprintID(key, "payee", to)
+			fp, err := dealprofile.Fingerprint(key, "payee", to)
 			if err != nil {
 				return nil, cli.InputError("the account the payment was received to cannot be recorded: it does not normalize")
 			}
-			body["received_to"] = map[string]interface{}{"fp_alg": cli.DealFPAlg, "payee": fp}
+			body["received_to"] = map[string]interface{}{"fp_alg": dealprofile.FPAlg, "payee": fp}
 		}
 		if ev.Evidence.Who != nil {
 			setIDs(counterpartyIDs(key, *ev.Evidence.Who))
@@ -1349,9 +1318,11 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 	return record, nil
 }
 
-// encodeDealRecord returns the sealed payload (the record's JCS bytes) and its
-// record digest, after the schema check and the privacy and wording scans. A
-// record that fails any of them is not sealed.
+// encodeDealRecord returns a step's record payload (its JCS bytes) and its
+// record digest (dealprofile.Digest), re-derived from the local step. It
+// runs no seal check: a sealed step is re-derived to compare with the bytes
+// it was sealed with, which an earlier release's checks admitted, so a later
+// check must not make it unreadable. A new step passes checkSealable first.
 func encodeDealRecord(ev dealEvent, events []sealedEvent, key []byte) ([]byte, string, error) {
 	record, err := buildDealRecord(ev, events, key)
 	if err != nil {
@@ -1365,28 +1336,43 @@ func encodeDealRecord(ev dealEvent, events []sealedEvent, key []byte) ([]byte, s
 	if err != nil {
 		return nil, "", err
 	}
-	docMap, _ := doc.(map[string]interface{})
-	if err = scanRecord(docMap, dealLocalValues(events, ev)); err != nil {
-		return nil, "", err
-	}
-	schema, err := compiledDealSchema()
-	profile := "the x-deal-v0 profile"
-	if typeName, ok := docMap["type"].(string); ok {
-		schema, err = recordSchema(typeName)
-		profile = "the " + typeName + " record schema"
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	if err = schema.Validate(doc); err != nil {
-		return nil, "", cli.InputError("refusing to seal: the step does not fit " + profile + ": " + cli.FirstSchemaError(err))
-	}
 	payload, err := canonical.JCS(doc)
 	if err != nil {
 		return nil, "", err
 	}
-	digest, err := canonical.JSONDigest(doc)
+	digest, err := dealprofile.Digest(json.RawMessage(payload))
 	return payload, digest, err
+}
+
+// checkSealable refuses a new step whose record payload fails the profile's
+// record-level checks (dealprofile.Check: canonicalization, the privacy and
+// wording scans, the schema). Such a step is not sealed.
+func checkSealable(payload []byte, events []sealedEvent, ev dealEvent) error {
+	err := dealprofile.Check(json.RawMessage(payload), dealLocalValues(events, ev))
+	if err == nil {
+		return nil
+	}
+	var se *dealprofile.StageError
+	if !errors.As(err, &se) || se.Stage != dealprofile.StageSchema {
+		return sealError(err)
+	}
+	// A schema refusal is worded as capsulectl words one (cli.FirstSchemaError).
+	profile := "the x-deal-v0 profile"
+	schema, serr := dealprofile.ProfileSchemaAt("")
+	var typed struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(payload, &typed) == nil && typed.Type != "" {
+		profile = "the " + typed.Type + " record schema"
+		schema, serr = dealprofile.RecordSchema(typed.Type)
+	}
+	why := se.Detail
+	if doc, derr := jsonschema.UnmarshalJSON(bytes.NewReader(payload)); serr == nil && derr == nil {
+		if verr := schema.Validate(doc); verr != nil {
+			why = cli.FirstSchemaError(verr)
+		}
+	}
+	return cli.InputError("refusing to seal: the step does not fit " + profile + ": " + why)
 }
 
 // Inputs are normalized to the profile's tokens before anything is sealed, so

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -70,7 +71,7 @@ func TestDealBundleIsTheDealsOwnLog(t *testing.T) {
 	for _, r := range records {
 		assert.Contains(t, onLog, r.(map[string]any)["capsule_id"], "every record is on this deal's log")
 	}
-	reportID := bundle["extensions"].(map[string]any)[cli.DealProfile].(map[string]any)[cli.DealReportPointer]
+	reportID := bundle["extensions"].(map[string]any)[dealprofile.Profile].(map[string]any)[dealprofile.ReportPointer]
 	assert.Equal(t, onLog[len(onLog)-1], reportID, "the copy's sealed report is the last entry")
 	// The cadence chain rides as its own extension (it anchors the deal's
 	// checkpoint to the witness); nothing else names the cadence log.

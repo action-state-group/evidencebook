@@ -18,6 +18,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +67,7 @@ func termsPayload(dealID string, doc map[string]interface{}) ([]byte, error) {
 		return nil, err
 	}
 	return canonical.JCS(map[string]interface{}{
-		"type": "deal_terms_result", "profile": cli.DealProfile, "deal_id": dealID,
+		"type": "deal_terms_result", "profile": dealprofile.Profile, "deal_id": dealID,
 		"nonce": hex.EncodeToString(nonce), "result": doc,
 	})
 }

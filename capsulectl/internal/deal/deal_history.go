@@ -14,6 +14,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
 	emit "github.com/action-state-group/capsule-emit/go"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -303,7 +304,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		if err != nil {
 			return nil, 0, 0, err
 		}
-		extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, cli.DealProfile: map[string]interface{}{"audience": cli.DealAudienceHistory, "deal_id": dealID}}
+		extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: map[string]interface{}{"audience": cli.DealAudienceHistory, "deal_id": dealID}}
 		if dealRole(covered) == dealRoleSeller {
 			extensions[dealSellerExtension] = map[string]interface{}{}
 		}
@@ -342,7 +343,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	ext := map[string]interface{}{cli.DealReportPointer: pointer}
+	ext := map[string]interface{}{dealprofile.ReportPointer: pointer}
 	var standalone map[string]interface{}
 	if pointer == "" {
 		// A deal whose reports are off its log (capsule-cli#294) gets a
@@ -370,12 +371,12 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 			if id, standalone, err = s.dealStandaloneReport(dealID, cli.DealAudienceKeep, ext, b); err != nil {
 				return nil, 0, 0, err
 			}
-			ext = map[string]interface{}{cli.DealReportPointer: id}
+			ext = map[string]interface{}{dealprofile.ReportPointer: id}
 		}
 	}
-	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, cli.DealProfile: ext}
+	extensions := map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: ext}
 	if standalone != nil {
-		extensions[cli.DealReportExtension] = standalone
+		extensions[dealprofile.ReportExtension] = standalone
 	}
 	defer func() {
 		if err == nil && standalone != nil {

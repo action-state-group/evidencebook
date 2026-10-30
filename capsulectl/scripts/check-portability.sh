@@ -27,6 +27,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The x-deal-v0 profile's example materiality predicate, as EvidenceBook
+# ships it (dealprofile/x-deal-v0) at the version this module requires;
+# go mod download extracts the module when the cache is cold.
+neutral="$(cd "$root" && go mod download -json github.com/action-state-group/evidencebook | jq -er .Dir)/dealprofile/x-deal-v0/materiality-predicate/neutral.json"
 # go mod download extracts the module when the cache is cold (go list -m
 # alone would print an empty directory).
 core="$(cd "$root" && go mod download -json github.com/action-state-group/capsule-cli | jq -er .Dir)"
@@ -61,7 +65,7 @@ demo="$root/skills/deal/demo/retail-checkout"
 (
   cd "$session"
   export HOME="$session/home" XDG_CONFIG_HOME="$session/config" CAPSULECTL_PLUGIN_ROOTS="$session/plugins" CAPSULE_DEAL_CHECK_URL=
-  capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+  capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
   id=$(capsulectl --profile deal deal open --records typed --input "$demo/open.json" | jq -er .deal_id)
   verdict=$(capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" | jq -r .verdict)
   [[ "$verdict" == pass ]] || { echo "the demo's check did not pass: $verdict" >&2; exit 1; }

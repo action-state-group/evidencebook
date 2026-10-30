@@ -16,6 +16,7 @@ import (
 	"github.com/action-state-group/evidencebook/adapter"
 	"github.com/action-state-group/evidencebook/adapter/acp"
 	"github.com/action-state-group/evidencebook/adapter/ucp"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -561,9 +562,9 @@ func TestWrappedObjectStoreTamperFailsTheLoad(t *testing.T) {
 	var id string
 	var content []byte
 	require.NoError(t, db.QueryRow(`SELECT capsule_id, content_bytes FROM capsule_store_artifacts WHERE name = ? AND instr(content_bytes, ?) > 0`,
-		dealOpeningPrefix+dealLocalField, `\"wrapped\"`).Scan(&id, &content))
+		dealOpeningPrefix+dealprofile.LocalField, `\"wrapped\"`).Scan(&id, &content))
 	content[len(content)/2] ^= 1
-	_, err = db.Exec(`UPDATE capsule_store_artifacts SET content_bytes = ? WHERE capsule_id = ? AND name = ?`, content, id, dealOpeningPrefix+dealLocalField)
+	_, err = db.Exec(`UPDATE capsule_store_artifacts SET content_bytes = ? WHERE capsule_id = ? AND name = ?`, content, id, dealOpeningPrefix+dealprofile.LocalField)
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 	_, err = verifyObject(t, "--deal", dealID)

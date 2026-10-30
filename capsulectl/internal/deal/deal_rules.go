@@ -15,6 +15,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // This file is the deterministic half of `capsulectl deal`: the deal record
@@ -743,7 +744,7 @@ type dealEvent struct {
 	// a step sealed before records carried an action_class has none and
 	// re-derives without one.
 	TaxonomyVersion string `json:"taxonomy_version,omitempty"`
-	// CommitAlg is the construction (dealCommitAlg) the step's record's
+	// CommitAlg is the construction (dealprofile.CommitAlg) the step's record's
 	// commitments use, kept with the step like Producer: a step sealed
 	// before records declared it has none and re-derives without one.
 	CommitAlg string `json:"commit_alg,omitempty"`
@@ -785,7 +786,7 @@ type dealEvent struct {
 	// before has none and re-derives its offer as external_commitment.other.
 	OfferClass string `json:"offer_class,omitempty"`
 	// CounterpartyProfile is a counterparty_profile step: the check's payee
-	// fingerprinted under the profile's key (profileKeyFor), sealed right
+	// fingerprinted under the profile's key (dealprofile.ProfileKey), sealed right
 	// after the check, for this profile's own records only.
 	CounterpartyProfile *dealCounterpartyProfile `json:"counterparty_profile,omitempty"`
 }
@@ -935,7 +936,7 @@ func (o dealOpen) validate() error {
 // commercialBoundsText is the text a bounds_commitment binds: the JCS bytes
 // of the commercial-bounds/v0 document holding the floor.
 func commercialBoundsText(min int64) string {
-	doc, err := bundleJSON(map[string]interface{}{"type": cli.CommercialBoundsKind, "min_total_minor": min})
+	doc, err := bundleJSON(map[string]interface{}{"type": dealprofile.TypeCommercialBounds, "min_total_minor": min})
 	if err != nil {
 		return ""
 	}
@@ -950,7 +951,7 @@ func commercialBoundsText(min int64) string {
 // floor, under that step's own "bounds" nonce.
 func withBoundsCommit(i dealIntent, nonces map[string]string) dealIntent {
 	if i.MinTotalMinor != nil && nonces["bounds"] != "" {
-		i.boundsCommit, _ = cli.CommitText(nonces["bounds"], commercialBoundsText(*i.MinTotalMinor))
+		i.boundsCommit, _ = dealprofile.CommitText(nonces["bounds"], commercialBoundsText(*i.MinTotalMinor))
 	}
 	return i
 }

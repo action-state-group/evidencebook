@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,7 @@ func closeBodies(t *testing.T, id string) (outcome, closing map[string]any) {
 			kind = b["record_type"].(string)
 		}
 		switch kind {
-		case "outcome", cli.TypeActionOutcome:
+		case "outcome", dealprofile.TypeActionOutcome:
 			outcome = r["body"].(map[string]any)
 		case "close":
 			closing = r["body"].(map[string]any)
@@ -169,7 +170,7 @@ func TestATypedOutcomeCarriesTheClosesActorAndReason(t *testing.T) {
 	closeDealWith(t, id, `{"status":"not_received","reason":"merchant_rejected"}`)
 	var typed map[string]any
 	for _, r := range records(t, id) {
-		if typeOf(r) == cli.TypeActionOutcome {
+		if typeOf(r) == dealprofile.TypeActionOutcome {
 			typed = r["body"].(map[string]any)
 		}
 	}

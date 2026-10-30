@@ -29,7 +29,7 @@ host runs `deal check` from a pre-action hook. Without one:
 
 | Command | What it does |
 |---|---|
-| `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates a SQLite deal profile: store plus signing and checkpoint seeds, each mode 0600, and the profile's cadence log. The public witness is configured by default. `--materiality` pins the materiality predicate its checks evaluate, by digest: a file, or `builtin:neutral`, the one capsulectl ships (see `profile/materiality-predicate/`; change it later with `profile update --materiality FILE`, the user's to run); without one, every attribute the agent picked pauses a check. |
+| `deal init --dir DIR [--no-witness] [--materiality FILE\|builtin:neutral]` | Creates a SQLite deal profile: store plus signing and checkpoint seeds, each mode 0600, and the profile's cadence log. The public witness is configured by default. `--materiality` pins the materiality predicate its checks evaluate, by digest: a file, or `builtin:neutral`, the one capsulectl ships (see EvidenceBook's [`dealprofile/x-deal-v0/materiality-predicate/`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/materiality-predicate); change it later with `profile update --materiality FILE`, the user's to run); without one, every attribute the agent picked pauses a check. |
 | `cll checkpoint cadence [--wait-up-to D]` | The checkpoint cadence's poll. Schedule it every 5 minutes with `--wait-up-to 5m` (or every D with `--wait-up-to D`); a run with no tick due publishes nothing new. When a tick is due (every 5m, give or take 1m, by default), cuts every live deal's checkpoint locally (see Witness cadence), appends one entry to the cadence log and publishes its checkpoint to the witness; retries any delivery still pending once its backoff has passed. Deal steps never publish. |
 | `deal open --input FILE` | Seals the baseline: the user's verbatim words, who, terms, claims (each with its source) and recourse. Cuts a checkpoint. |
 | `deal open --input FILE --records typed` | The same, sealing the deal's authority steps as typed action records (`task-authority/v0`, `proposed-action/v0`, `action-evaluation/v0`, `action-approval/v0`, `action-record/v0`, `action-outcome/v0`) beside its x-deal-v0 evidence records; the user's task authority is sealed right after the baseline, and the user's answer to a check that asked needs `--shown-card`. Without the flag a deal is x-deal-v0 throughout. See the profile, section 9. |
@@ -81,7 +81,7 @@ The SQLite file is an evidencebook **shelf**: one evidence book per deal, each
 book its deal's own log.
 - A deal opened now is a book. Each step is a record the profile seals
   itself, and its Capsule carries the record header the book assigned
-  (`evidence_record_header`, see `profile/PROFILE.md`). Each copy's report is
+  (`evidence_record_header`, see the profile's `PROFILE.md`). Each copy's report is
   a signed Capsule on no log, carried in the copy and bound to the deal's
   checkpoint, so the deal's log never shows when it was shared; a deal whose
   log already holds a report keeps sealing them there.
@@ -679,9 +679,12 @@ without `--skill` says that this was not recorded.
 
 ## Records: the x-deal-v0 profile
 
-[`profile/`](profile/) is the deal record profile: `PROFILE.md` (normative),
-the JSON Schema, fixtures and `check_profile.py`. It ships with the skill and
-is not registered anywhere.
+The deal record profile ships with EvidenceBook, in
+[`dealprofile/x-deal-v0/`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0):
+`PROFILE.md` (normative), the JSON Schemas, fixtures and `check_profile.py`.
+It moved there from this skill (evidencebook#93) and is not registered
+anywhere. EvidenceBook's `dealprofile` Go package lays out each record's
+payload, digest and Capsule; this plugin decides what each step says.
 
 - Each step is sealed as one x-deal-v0 record: `{"x-deal-v0": {...}, "body":
   {...}}`, in JCS bytes, with `prev` and `baseline_ref` chaining the record
@@ -716,8 +719,9 @@ is not registered anywhere.
   refuses the step. On every read, each local step is re-derived and must
   equal the sealed record bytes.
 - `deal export --deal ID --output FILE` writes the sealed records as one JSON
-  array; `python3 profile/check_profile.py FILE` checks them. The Go code
-  that builds the records is `cli/deal_profile.go`.
+  array; `python3 check_profile.py FILE`, run from the profile's directory,
+  checks them. The Go code that builds the records is
+  `internal/deal/deal_profile.go`.
 
 ## The merchant's own email
 

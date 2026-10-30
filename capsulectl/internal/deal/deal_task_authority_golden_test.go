@@ -10,6 +10,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +76,7 @@ func TestTheTaskAuthorityGoldenHolds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(record), string(payload), "the record re-derives to the golden bytes")
 	assert.Equal(t, ref["digest"], digest)
-	assert.Equal(t, map[string]string{"type": cli.TypedRecordRef, "digest_alg": "SHA-256", "digest": golden.Events[1].Digest}, ref)
+	assert.Equal(t, map[string]string{"type": dealprofile.TypedRecordRef, "digest_alg": "SHA-256", "digest": golden.Events[1].Digest}, ref)
 
 	// What a rules engine does: SHA-256 over the record's JCS bytes, then
 	// the plan at body.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // The proposal an offer answers (capsule-cli#364, capsule-engine#193). A
@@ -85,7 +86,7 @@ func (s *dealSession) answeredProposalAt(ctx context.Context, checked string, ev
 	}
 	record, _ := sealed["agent_input"].(map[string]interface{})
 	body, _ := record["body"].(map[string]interface{})
-	block, _ := record[cli.DealProfile].(map[string]interface{})
+	block, _ := record[dealprofile.Profile].(map[string]interface{})
 	if at, _ := body["sent_at"].(string); at != "" {
 		return at, nil
 	}

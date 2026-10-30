@@ -9,6 +9,7 @@ import (
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,11 +29,11 @@ func dealReceipt(t *testing.T, id string, args ...string) (string, map[string]in
 func dealExtensionEntry(t *testing.T, result map[string]any) map[string]any {
 	t.Helper()
 	for _, x := range result["extensions"].([]any) {
-		if entry := x.(map[string]any); entry["kind"] == cli.DealProfile {
+		if entry := x.(map[string]any); entry["kind"] == dealprofile.Profile {
 			return entry
 		}
 	}
-	t.Fatalf("verify --bundle lists no %s extension: %v", cli.DealProfile, result["extensions"])
+	t.Fatalf("verify --bundle lists no %s extension: %v", dealprofile.Profile, result["extensions"])
 	return nil
 }
 
@@ -49,7 +50,7 @@ func writeBundleFile(t *testing.T, b map[string]interface{}) string {
 // reportIDOf is the sealed report a bundle's x-deal-v0 extension names.
 func reportIDOf(t *testing.T, b map[string]interface{}) string {
 	t.Helper()
-	id, ok := b["extensions"].(map[string]interface{})[cli.DealProfile].(map[string]interface{})[cli.DealReportPointer].(string)
+	id, ok := b["extensions"].(map[string]interface{})[dealprofile.Profile].(map[string]interface{})[dealprofile.ReportPointer].(string)
 	require.True(t, ok, "the extension names the copy's sealed report")
 	return id
 }
@@ -69,7 +70,7 @@ func TestDealReportTextIsSealed(t *testing.T) {
 	entry := dealExtensionEntry(t, result)
 	assert.Equal(t, "pass", entry["status"])
 	reportID := reportIDOf(t, b)
-	assert.Equal(t, reportID, entry[cli.DealReportPointer])
+	assert.Equal(t, reportID, entry[dealprofile.ReportPointer])
 	raw, err := os.ReadFile(page)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `dataset.sealed = "x-deal-v0"`)
@@ -95,14 +96,14 @@ func TestDealReportTextIsSealed(t *testing.T) {
 		"an anomaly": func(c map[string]interface{}) {
 			sealedText(c)["anomalies"] = []interface{}{map[string]interface{}{"kind": "x", "text": "Nobody sealed this."}}
 		},
-		"the extension removed": func(c map[string]interface{}) { delete(c["extensions"].(map[string]interface{}), cli.DealProfile) },
+		"the extension removed": func(c map[string]interface{}) { delete(c["extensions"].(map[string]interface{}), dealprofile.Profile) },
 		"the extension replaced by unsealed text": func(c map[string]interface{}) {
 			text := sealedText(fresh())
 			text["did_line"] = "A line nobody sealed."
-			c["extensions"].(map[string]interface{})[cli.DealProfile] = text
+			c["extensions"].(map[string]interface{})[dealprofile.Profile] = text
 		},
 		"the pointer moved to a step": func(c map[string]interface{}) {
-			c["extensions"].(map[string]interface{})[cli.DealProfile] = map[string]interface{}{cli.DealReportPointer: c["root"]}
+			c["extensions"].(map[string]interface{})[dealprofile.Profile] = map[string]interface{}{dealprofile.ReportPointer: c["root"]}
 		},
 	} {
 		c := fresh()
@@ -119,7 +120,7 @@ func TestDealReportTextIsSealed(t *testing.T) {
 	downgraded := fresh()
 	text := sealedText(fresh())
 	text["did_line"] = "A line nobody sealed."
-	downgraded["extensions"].(map[string]interface{})[cli.DealProfile] = text
+	downgraded["extensions"].(map[string]interface{})[dealprofile.Profile] = text
 	delete(downgraded["disclosures"].(map[string]interface{}), reportID)
 	result, err = verifyBundleOutput(t, writeBundleFile(t, downgraded))
 	assert.ErrorIs(t, err, cli.ErrBundleInvalid)
@@ -134,7 +135,7 @@ func TestDealReportTextIsSealed(t *testing.T) {
 func TestDealReportEntryOfABundleBeforeSealing(t *testing.T) {
 	value := map[string]interface{}{
 		"records":    []interface{}{map[string]interface{}{"capsule_id": strings.Repeat("ab", 32), "action_id": "deal-0123456789abcdef/1"}},
-		"extensions": map[string]interface{}{cli.DealProfile: map[string]interface{}{"did_line": "A line from before reports were sealed."}},
+		"extensions": map[string]interface{}{dealprofile.Profile: map[string]interface{}{"did_line": "A line from before reports were sealed."}},
 	}
 	entry := cli.DealReportEntry(value, aacbundle.VerificationResult{})
 	assert.Equal(t, "uninterpreted", entry["status"])
@@ -224,28 +225,28 @@ func TestDealRecordsDeclareCommitAlg(t *testing.T) {
 	records := disclosedRecords(b)
 	require.NotEmpty(t, records)
 	for _, r := range records {
-		block, ok := r[cli.DealProfile].(map[string]interface{})
+		block, ok := r[dealprofile.Profile].(map[string]interface{})
 		require.True(t, ok, "an x-deal-v0 deal seals x-deal-v0 records")
-		assert.Equal(t, dealCommitAlg, block["commit_alg"], "record %v", block["record_type"])
+		assert.Equal(t, dealprofile.CommitAlg, block["commit_alg"], "record %v", block["record_type"])
 	}
 
 	_, shared := dealReceipt(t, id, "--share", "counterparty", "--to", "the airline's support desk")
 	sharedRecords := disclosedRecords(shared)
 	require.NotEmpty(t, sharedRecords, "a shared copy still discloses records that declare commit_alg")
 	for _, r := range sharedRecords {
-		assert.Equal(t, dealCommitAlg, r[cli.DealProfile].(map[string]interface{})["commit_alg"])
+		assert.Equal(t, dealprofile.CommitAlg, r[dealprofile.Profile].(map[string]interface{})["commit_alg"])
 	}
 
 	typed := openTypedFlight(t)
 	_, b = dealReceipt(t, typed)
 	var typedSeen int
 	for _, r := range disclosedRecords(b) {
-		if block, ok := r[cli.DealProfile].(map[string]interface{}); ok {
-			assert.Equal(t, dealCommitAlg, block["commit_alg"])
+		if block, ok := r[dealprofile.Profile].(map[string]interface{}); ok {
+			assert.Equal(t, dealprofile.CommitAlg, block["commit_alg"])
 			continue
 		}
 		typedSeen++
-		assert.Equal(t, dealCommitAlg, r["commit_alg"], "typed record %v", r["type"])
+		assert.Equal(t, dealprofile.CommitAlg, r["commit_alg"], "typed record %v", r["type"])
 	}
 	assert.Positive(t, typedSeen, "a typed deal seals typed records")
 }

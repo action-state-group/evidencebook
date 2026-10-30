@@ -15,6 +15,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // The deal reconcile (design note §2.10): each party's final close of a deal
@@ -28,19 +29,19 @@ import (
 // both parties compute one digest from one record, whichever holds it.
 
 // dealHalfFields are the fields two halves are compared on.
-var dealHalfFields = []string{dealAmountField, dealCurrencyField}
+var dealHalfFields = []string{dealprofile.AmountField, dealprofile.CurrencyField}
 
 // dealHalfMapping is the deal profile's half mapping (DR §4.2), which
 // PROFILE.md declares. book_id is the key the record's producer signature
 // verified under: both parties' books are named deal/<deal_id>, so the
 // signer is the one per-party identity a half carries.
-var dealHalfMapping = evidencebook.HalfMapping{Profile: cli.DealProfile, Members: map[string]string{
+var dealHalfMapping = evidencebook.HalfMapping{Profile: dealprofile.Profile, Members: map[string]string{
 	evidencebook.HalfMemberDealID:             "/deal_id",
 	evidencebook.HalfMemberBookID:             "/key_id",
 	evidencebook.HalfMemberRecordedAt:         "/" + evidencebook.RecordHeaderMember + "/committed_at",
 	evidencebook.HalfMemberCommitAlg:          "/" + evidencebook.RecordHeaderMember + "/commit_alg",
-	evidencebook.HalfMemberAmountCommitment:   "/" + evidencebook.RecordHeaderMember + "/field_commitments/" + dealAmountField,
-	evidencebook.HalfMemberCurrencyCommitment: "/" + evidencebook.RecordHeaderMember + "/field_commitments/" + dealCurrencyField,
+	evidencebook.HalfMemberAmountCommitment:   "/" + evidencebook.RecordHeaderMember + "/field_commitments/" + dealprofile.AmountField,
+	evidencebook.HalfMemberCurrencyCommitment: "/" + evidencebook.RecordHeaderMember + "/field_commitments/" + dealprofile.CurrencyField,
 }}
 
 // dealHalf is one admitted half.
@@ -277,7 +278,7 @@ func lastStep(bundle map[string]interface{}, half dealHalf, leaves uint64) error
 		}
 		held[header.Seq] = true
 		switch {
-		case header.RecordType == dealReportRecordType:
+		case header.RecordType == dealprofile.ReportRecordType:
 		case isDealStep(header.RecordType):
 			if dealOf, _ := dealOfBook(half.header.BookID); !stepOfDeal(header, dealOf) {
 				return refuse
@@ -328,7 +329,7 @@ func disclosedCloseHolds(bundle map[string]interface{}, half dealHalf, openings 
 	if !ok {
 		return nil
 	}
-	block, _ := disclosed[cli.DealProfile].(map[string]interface{})
+	block, _ := disclosed[dealprofile.Profile].(map[string]interface{})
 	body, _ := disclosed["body"].(map[string]interface{})
 	if block["record_type"] != "close" || body["outcome"] == "open" {
 		return cli.InputError("record " + half.recordID + " is not a final close: the copy discloses it")
@@ -431,7 +432,7 @@ func disclosedCloseAgrees(bundle map[string]interface{}, id string, h evidencebo
 	if !ok {
 		return true
 	}
-	block, _ := closeRecord[cli.DealProfile].(map[string]interface{})
+	block, _ := closeRecord[dealprofile.Profile].(map[string]interface{})
 	body, _ := closeRecord["body"].(map[string]interface{})
 	if block["record_type"] != "close" || (body["outcome"] != "completed" && body["outcome"] != "mismatch") {
 		return false
@@ -459,12 +460,12 @@ func disclosedCloseAgrees(bundle map[string]interface{}, id string, h evidencebo
 			}
 			delivered, _ := outcome["delivered"].(map[string]interface{})
 			if price, ok := delivered["price_minor"]; ok {
-				if text, opened := h.Opened[dealAmountField]; opened && fmtAny(price) != text {
+				if text, opened := h.Opened[dealprofile.AmountField]; opened && fmtAny(price) != text {
 					return false
 				}
 			}
 			if currency, ok := delivered["currency"].(string); ok {
-				if text, opened := h.Opened[dealCurrencyField]; opened && currency != text {
+				if text, opened := h.Opened[dealprofile.CurrencyField]; opened && currency != text {
 					return false
 				}
 			}
@@ -476,8 +477,8 @@ func disclosedCloseAgrees(bundle map[string]interface{}, id string, h evidencebo
 // isOutcomeRecord is whether a deal record is an outcome: an x-deal-v0
 // record of type outcome, or the typed action-outcome record it maps to.
 func isOutcomeRecord(record map[string]interface{}) bool {
-	block, _ := record[cli.DealProfile].(map[string]interface{})
-	return block["record_type"] == "outcome" || record["type"] == cli.TypeActionOutcome
+	block, _ := record[dealprofile.Profile].(map[string]interface{})
+	return block["record_type"] == "outcome" || record["type"] == dealprofile.TypeActionOutcome
 }
 
 // disclosedPayloads are the payloads a copy discloses, by capsule id.
@@ -530,7 +531,7 @@ func (s *dealSession) closeOpenings(ctx context.Context, dealID string, b map[st
 	case own == nil:
 		return nil, "none: the deal has no final close yet", nil
 	}
-	amount, currency := held[dealAmountField].Text, held[dealCurrencyField].Text
+	amount, currency := held[dealprofile.AmountField].Text, held[dealprofile.CurrencyField].Text
 	if amount == "" || currency == "" {
 		return nil, "none: the final close commits no money terms (it was not received, or names no price or currency)", nil
 	}

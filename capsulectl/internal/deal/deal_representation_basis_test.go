@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,7 +125,7 @@ func TestAnOrderedRepresentationNeedsNoApproval(t *testing.T) {
 	dealFixture(t)
 	_, a, b := repSale(t)
 	for _, thread := range []string{a, b} {
-		before := len(recordsOfType(t, thread, cli.TypeActionApproval))
+		before := len(recordsOfType(t, thread, dealprofile.TypeActionApproval))
 		ck := represent(t, thread, repFile("represent-condition.json"))
 		require.Equal(t, "pass", ck["verdict"], "the task authority orders it: DO")
 		assert.Contains(t, ck["approval_text"], `about the condition: "The frame has one small scratch by the seat"`)
@@ -132,17 +133,17 @@ func TestAnOrderedRepresentationNeedsNoApproval(t *testing.T) {
 		assert.Equal(t, ck["check_id"], claim["authorized_by"], "authorized by its evaluation")
 		assert.Equal(t, false, claim["unchecked"])
 
-		assert.Len(t, recordsOfType(t, thread, cli.TypeActionApproval), before, "no approval event is manufactured for an ordered representation")
+		assert.Len(t, recordsOfType(t, thread, dealprofile.TypeActionApproval), before, "no approval event is manufactured for an ordered representation")
 		r := claimRecord(t, thread, "condition")
 		basis := basisOf(r)
 		require.Len(t, basis, 1, "the task authority alone")
 		entry := basis[0].(map[string]any)
 		assert.Equal(t, "task_authority", entry["type"])
-		assert.Equal(t, digestOfType(t, thread, cli.TypeTaskAuthority), entry["ref"].(map[string]any)["digest"], "this thread's own task authority")
-		assert.Equal(t, digestOfType(t, thread, cli.TypeActionEvaluation), r["body"].(map[string]any)["evaluation_ref"].(map[string]any)["digest"])
-		assert.Equal(t, digestOfType(t, thread, cli.TypeActionEvaluation), relDigest(r, "authorized_by"))
+		assert.Equal(t, digestOfType(t, thread, dealprofile.TypeTaskAuthority), entry["ref"].(map[string]any)["digest"], "this thread's own task authority")
+		assert.Equal(t, digestOfType(t, thread, dealprofile.TypeActionEvaluation), r["body"].(map[string]any)["evaluation_ref"].(map[string]any)["digest"])
+		assert.Equal(t, digestOfType(t, thread, dealprofile.TypeActionEvaluation), relDigest(r, "authorized_by"))
 		assert.NotContains(t, r["body"], "unchecked")
-		checked := recordsOfType(t, thread, cli.TypeProposedAction)
+		checked := recordsOfType(t, thread, dealprofile.TypeProposedAction)
 		representing := checked[len(checked)-1]["body"].(map[string]any)["representing"].(map[string]any)
 		assert.Equal(t, representing["text_commitment"], r["body"].(map[string]any)["text_commitment"], "sealed under the check's nonce: the words said are the words checked")
 		_, export := exportRecords(t, thread)
@@ -171,7 +172,7 @@ func TestARepresentationOutsideTheAuthorityNeedsTheUsersApproval(t *testing.T) {
 	require.Len(t, basis, 2, "the task authority, then the user's approval")
 	assert.Equal(t, "task_authority", basis[0].(map[string]any)["type"])
 	assert.Equal(t, "user_approval", basis[1].(map[string]any)["type"])
-	approval := digestOfType(t, a, cli.TypeActionApproval)
+	approval := digestOfType(t, a, dealprofile.TypeActionApproval)
 	assert.Equal(t, approval, basis[1].(map[string]any)["ref"].(map[string]any)["digest"])
 	assert.Equal(t, approval, relDigest(r, "authorized_by"))
 	_, export := exportRecords(t, a)
@@ -321,7 +322,7 @@ func TestOrderedRepresentationsChangeOnlyOnTheUsersConfirmation(t *testing.T) {
 
 func taskAuthorityDigest(t *testing.T, dealID string) string {
 	t.Helper()
-	return digestOfType(t, dealID, cli.TypeTaskAuthority)
+	return digestOfType(t, dealID, dealprofile.TypeTaskAuthority)
 }
 
 // An act checked before the user ordered a new statement is held when it is
@@ -353,11 +354,11 @@ func TestANewOrderHoldsAnApprovedAddress(t *testing.T) {
 	order := dealRun(t, "note", "--deal", id, "--kind", "intent", "--input", writeJSON(t,
 		`{"verbatim": "Tell them about the scratch first", "ordered_representations": ["condition"]}`))
 	dealRun(t, "note", "--deal", id, "--kind", "approval", "--check", order["capsule_id"].(string), "--choice", "confirm_limits", "--said", "yes, the scratch first")
-	before := len(recordsOfType(t, id, cli.TypeActionRecord))
+	before := len(recordsOfType(t, id, dealprofile.TypeActionRecord))
 	err = dealRunErr(t, "note", "--deal", id, "--kind", "disclosure", "--input", writeJSON(t,
 		`{"to":"counterparty","fields":[{"class":"address","value":"1 Example Street"}]}`))
 	require.ErrorIs(t, err, cli.ErrPaused, "a first telling nothing authorizes is held")
-	assert.Len(t, recordsOfType(t, id, cli.TypeActionRecord), before, "nothing is sealed")
+	assert.Len(t, recordsOfType(t, id, dealprofile.TypeActionRecord), before, "nothing is sealed")
 }
 
 // A seller ruleset decides from the basis: with the built-in gate off
@@ -401,7 +402,7 @@ PY`
 				opening := input["record"].(map[string]any)["representing_opening"].(map[string]any)
 				assert.Equal(t, "The frame has one small scratch by the seat", opening["text"])
 				sealed := input["record"].(map[string]any)["agent_input"].(map[string]any)["body"].(map[string]any)["representing"].(map[string]any)
-				commitment, err := cli.CommitText(opening["nonce"].(string), opening["text"].(string))
+				commitment, err := dealprofile.CommitText(opening["nonce"].(string), opening["text"].(string))
 				require.NoError(t, err)
 				assert.Equal(t, sealed["text_commitment"], commitment, "the opening opens the sealed commitment")
 			}
@@ -482,16 +483,16 @@ func sellerFloorDeal(t *testing.T) string {
 func TestTheRepresentationRulesFollowTheOpening(t *testing.T) {
 	dealFixture(t)
 	id := sellerRepOpen(t, `["warranty", "condition", "condition"]`)
-	ta := recordsOfType(t, id, cli.TypeTaskAuthority)[0]["body"].(map[string]any)
+	ta := recordsOfType(t, id, dealprofile.TypeTaskAuthority)[0]["body"].(map[string]any)
 	assert.Equal(t, []any{"condition", "warranty"}, ta["ordered_representations"], "unique and sorted")
 	plain := openTyped(t, sellerTyped)
-	ta = recordsOfType(t, plain, cli.TypeTaskAuthority)[0]["body"].(map[string]any)
+	ta = recordsOfType(t, plain, dealprofile.TypeTaskAuthority)[0]["body"].(map[string]any)
 	assert.Equal(t, []any{}, ta["ordered_representations"], "a seller's deal records an empty order")
 	_, a, _ := repSale(t)
-	ta = recordsOfType(t, a, cli.TypeTaskAuthority)[0]["body"].(map[string]any)
+	ta = recordsOfType(t, a, dealprofile.TypeTaskAuthority)[0]["body"].(map[string]any)
 	assert.Equal(t, []any{"condition"}, ta["ordered_representations"], "a thread carries its sale's order")
 	buyer := openTypedSticker(t)
-	assert.NotContains(t, recordsOfType(t, buyer, cli.TypeTaskAuthority)[0]["body"], "ordered_representations")
+	assert.NotContains(t, recordsOfType(t, buyer, dealprofile.TypeTaskAuthority)[0]["body"], "ordered_representations")
 
 	// A deal opened before: its opening intent has no order.
 	legacy := []sealedEvent{{Event: dealEvent{Kind: "open", Open: &dealOpen{Intent: dealIntent{PartyRole: dealRoleSeller}}}}}

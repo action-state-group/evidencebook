@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +36,7 @@ func latestCheck(t *testing.T, id string) (refs []any, body map[string]any) {
 	t.Helper()
 	records, _ := exportRecords(t, id)
 	for _, r := range records {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			refs, _ = r["refs"].([]any)
 			body = r["body"].(map[string]any)
 		}

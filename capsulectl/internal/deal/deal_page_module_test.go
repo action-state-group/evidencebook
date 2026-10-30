@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -286,7 +287,7 @@ func TestTheDealPageTitleSaysOnlyWhatTheCopyShows(t *testing.T) {
 	}
 
 	report := func(audience string, text string) map[string]interface{} {
-		return map[string]interface{}{"extensions": map[string]interface{}{cli.DealProfile: map[string]interface{}{
+		return map[string]interface{}{"extensions": map[string]interface{}{dealprofile.Profile: map[string]interface{}{
 			"audience": audience, "asked_opening": map[string]interface{}{"nonce": "n", "text": text}}}}
 	}
 	assert.Equal(t, "Deal report", dealPageTitle(report("keep", asked), map[string]interface{}{"asked": false}), "words not checked when the page was built are not quoted")

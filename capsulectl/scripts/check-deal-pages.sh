@@ -17,6 +17,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The x-deal-v0 profile's example materiality predicate, as EvidenceBook
+# ships it (dealprofile/x-deal-v0) at the version this module requires;
+# go mod download extracts the module when the cache is cold.
+neutral="$(cd "$root" && go mod download -json github.com/action-state-group/evidencebook | jq -er .Dir)/dealprofile/x-deal-v0/materiality-predicate/neutral.json"
 # go mod download extracts the module when the cache is cold (go list -m
 # alone would print an empty directory).
 core="$(cd "$root" && go mod download -json github.com/action-state-group/capsule-cli | jq -er .Dir)"
@@ -63,7 +67,7 @@ mkdir deal-receipt
 (
   cd deal-receipt
   export XDG_CONFIG_HOME="$work/deal-receipt/config" CAPSULE_DEAL_CHECK_URL=
-  capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+  capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
   id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
   capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" >/dev/null
   capsulectl --profile deal deal note --deal "$id" --kind act --input "$demo/act-pay.json" >/dev/null

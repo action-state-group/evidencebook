@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestProfileFallbackAcceptsEverySchemaRecordType(t *testing.T) {
 			} `json:"record_type"`
 		} `json:"$defs"`
 	}
-	require.NoError(t, json.Unmarshal(dealProfileSchema, &schema))
+	require.NoError(t, json.Unmarshal(dealprofile.ProfileSchema(), &schema))
 	types := schema.Defs.RecordType.Enum
 	require.Contains(t, types, "counterparty_profile")
 
