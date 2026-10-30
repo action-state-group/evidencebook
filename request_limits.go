@@ -21,10 +21,11 @@ import (
 // refuses the reply and records nothing, so the request stays open: an
 // unauthenticated message must not foreclose the real answer's outcome.
 // Where it falls on what the responder signed (the artifact and its
-// verification material), the envelope signature is checked first (one
-// Ed25519 check over a bounded body) and exceeding the limit records the
-// answer as received and failed, naming the limit, before any checkpoint
-// signature, proof or receipt is checked.
+// verification entries), the envelope signature (one Ed25519 check over a
+// bounded body) and the artifact's digest are checked first, so the limit
+// falls only on signed content, and exceeding it records the answer as
+// received and failed, naming the limit, before any checkpoint signature,
+// proof or receipt is checked.
 const (
 	// MaxReplyBytes bounds a reply's octets, and an Evidence Bundle's. It
 	// is the most a record's originals may hold (capsule-emit's artifact
@@ -102,7 +103,8 @@ func jsonDepthOver(data []byte, limit int) bool {
 }
 
 // checkEnvelopeLimits applies the limits on what the responder signed,
-// before any check whose cost they bound.
+// once the artifact is known to hash to the signed digest and before any
+// check whose cost they bound.
 func checkEnvelopeLimits(req EvidenceRequest, e Envelope) error {
 	if n := len(e.Verification); n > MaxReplyItems {
 		return fmt.Errorf("%w: limit: verification: %d over %d", ErrInvalid, n, MaxReplyItems)
@@ -130,7 +132,8 @@ func checkEnvelopeLimits(req EvidenceRequest, e Envelope) error {
 }
 
 // carriedReceipts reads the reply's witness_receipts member: the entries
-// for anchor, as checkpoint.witnesses entries. Anything malformed in it is
+// for anchor, as checkpoint.witnesses entries. It is read on every reply,
+// a refusal too, so the size limit holds whatever the reply is. Anything malformed in it is
 // skipped, never an error, since nothing signs it; only its size is
 // refused, before any receipt is read.
 func carriedReceipts(reply Message, anchor string) ([]json.RawMessage, error) {
@@ -153,7 +156,25 @@ func carriedReceipts(reply Message, anchor string) ([]json.RawMessage, error) {
 		if !ok {
 			continue
 		}
-		raw, err := json.Marshal(witnessed)
+		// Rebuilt from the exact member names, the three texts as texts:
+		// decodeWitnessReceipt's encoding/json would otherwise also match
+		// "TS_URL" or take a CBOR byte string as base64, where the Python
+		// port reads neither.
+		exact := map[string]any{}
+		for _, name := range []string{"ts_url", "entry_hash", "receipt_b64"} {
+			if exact[name], ok = witnessed[name].(string); !ok {
+				break
+			}
+		}
+		if !ok {
+			continue
+		}
+		for _, name := range []string{"leaf_index", "tree_size"} {
+			if value, present := witnessed[name]; present {
+				exact[name] = value
+			}
+		}
+		raw, err := json.Marshal(exact)
 		if err != nil {
 			continue
 		}

@@ -36,8 +36,9 @@
     so the request stays open for the genuine answer.
   - A responder-signed envelope over a count or artifact-depth limit is recorded as
     `artifact_verification_failed`, with `failure` naming the limit (`limit: history: 10001
-    over 10000`). This happens after the envelope signature and before any checkpoint
-    signature or proof is checked.
+    over 10000`). This happens after the envelope signature and the artifact's digest are
+    checked, so the limit falls only on signed content, and before any checkpoint signature
+    or proof is checked.
   - `VerifyBundle` refuses a bundle over the byte, depth, record or receipt limit before the
     bundle verifier runs.
 - **Witness standing.** `ResponseStatement` gains `witness`, which is `witnessed` or

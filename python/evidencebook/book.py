@@ -561,7 +561,8 @@ class Book:
             raise InvalidError("pinned responder signer and checkpoint keys are required")
         check_reply_octets(reply.octets, reply.media_type == MEDIA_TYPE_JSON)
         parsed = parse_reply(reply)
-        carried = carried_receipts(_decoded(reply), parsed.envelope.anchor_digest) if parsed.envelope else []
+        # The carrier's size is refused on any reply, a refusal too.
+        carried = carried_receipts(_decoded(reply), parsed.envelope.anchor_digest if parsed.envelope else "")
         with self._lock:
             sent = self._sent(request_record_id)
             statement = _verify_reply(sent, parsed, keys, carried)
@@ -1073,8 +1074,6 @@ def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys, carried: list
     statement["artifact_digest"] = e.artifact_digest
     statement["anchor"] = e.anchor_digest
     try:
-        check_envelope_limits(sent.request.subject.form == "record" and sent.request.derivation is None,
-                              e.artifact, len(e.verification))
         not_checked, anchor = _verify_envelope_content(sent, e, keys)
     except InvalidError as failure:
         statement["outcome"], statement["failure"] = OUTCOME_ARTIFACT_FAILED, str(failure)
@@ -1099,6 +1098,9 @@ def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> t
         raise InvalidError("subject_binding: the envelope answers a different subject or derivation")
     if _digest(e.artifact) != e.artifact_digest:
         raise InvalidError("artifact_digest: the artifact does not hash to the signed digest")
+    # The artifact is now what the responder signed: a limit it exceeds is
+    # received-and-failed, before any proof is checked.
+    check_envelope_limits(req.subject.form == "record" and req.derivation is None, e.artifact, len(e.verification))
     digests = e.verification_digests or ()
     if len(digests) != len(e.verification):
         raise InvalidError(f"verification_binding: {len(digests)} entries, {len(e.verification)} items")

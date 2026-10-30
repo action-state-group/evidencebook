@@ -177,11 +177,15 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 	if err != nil {
 		return Record{}, err
 	}
-	var carried []json.RawMessage
+	// The carrier's size is refused on any reply, a refusal too: nothing
+	// signs it, so over the limit nothing may be recorded.
+	anchor := ""
 	if parsed.Envelope != nil {
-		if carried, err = carriedReceipts(reply, parsed.Envelope.Anchor.Digest); err != nil {
-			return Record{}, err
-		}
+		anchor = parsed.Envelope.Anchor.Digest
+	}
+	carried, err := carriedReceipts(reply, anchor)
+	if err != nil {
+		return Record{}, err
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -244,10 +248,6 @@ func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys, carried []j
 			return ResponseStatement{}, err
 		}
 		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest
-		if err := checkEnvelopeLimits(sent.request, *e); err != nil {
-			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
-			return statement, nil
-		}
 		notChecked, anchor, err := verifyEnvelopeContent(sent, *e, keys)
 		statement.NotChecked = notChecked
 		if err != nil {
@@ -278,6 +278,11 @@ func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]
 	}
 	if digestBytes(e.Artifact) != e.ArtifactDigest {
 		return nil, nil, fmt.Errorf("%w: artifact_digest: the artifact does not hash to the signed digest", ErrInvalid)
+	}
+	// The artifact is now what the responder signed, so a limit it exceeds
+	// is the responder's: received-and-failed, before any proof is checked.
+	if err := checkEnvelopeLimits(req, e); err != nil {
+		return nil, nil, err
 	}
 	if len(e.Verification) != len(e.VerificationContent) {
 		return nil, nil, fmt.Errorf("%w: verification_binding: %d entries, %d items", ErrInvalid, len(e.Verification), len(e.VerificationContent))

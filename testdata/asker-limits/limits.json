@@ -1,5 +1,5 @@
 {
-  "description": "The requester's limits on a received answer (evidencebook#209). Each case names how to build its input, so no case stores megabytes: 'nest' is a JSON object whose member x nests arrays until the whole text is that many levels deep; 'pad_to' is a JSON object whose member x is a string padded so the whole text is exactly that many bytes; 'list' with 'count' is a JSON object whose named member is an array of that many zeros. 'error' is the text the refusal or failure contains, or null when the limit passes it.",
+  "description": "The requester's limits on a received answer (evidencebook#209). Each case names how to build its input, so no case stores megabytes: 'nest' is a JSON object whose member x nests arrays until the whole text is that many levels deep; 'pad_to' is a JSON object whose member x is a string padded so the whole text is exactly that many bytes; 'list' with 'count' is a JSON object whose named member is an array of that many zeros; 'utf16le' with 'nest' is {\"x\":\"\\\"\",\"y\": followed by that many nested arrays, encoded as UTF-16LE, which is not UTF-8 JSON and so is left to the content checks without being decoded deeply. 'error' is the text the refusal or failure contains, or null when the limit passes it.",
   "limits": {"reply_bytes": 8388608, "depth": 32, "items": 10000, "receipts": 64},
   "reply": [
     {"name": "depth-at-limit", "build": {"nest": 32}, "error": null},
@@ -15,7 +15,8 @@
     {"name": "checkpoints-one-over", "build": {"list": "checkpoints", "count": 10001}, "error": "limit: checkpoints: 10001 over 10000"},
     {"name": "records-one-over", "build": {"list": "records", "count": 10001}, "error": "limit: records: 10001 over 10000"},
     {"name": "depth-at-limit", "build": {"nest": 32}, "error": null},
-    {"name": "depth-one-over", "build": {"nest": 33}, "error": "limit: artifact depth: over 32"}
+    {"name": "depth-one-over", "build": {"nest": 33}, "error": "limit: artifact depth: over 32"},
+    {"name": "utf16-deep", "build": {"utf16le": true, "nest": 5000}, "error": null}
   ],
   "verification": [
     {"name": "at-limit", "count": 10000, "error": null},

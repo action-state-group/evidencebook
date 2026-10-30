@@ -14,8 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,8 +79,13 @@ def check_envelope_limits(bare_record: bool, artifact: bytes, verification_count
         return
     if json_depth_over(artifact, MAX_REPLY_DEPTH):
         raise InvalidError(f"limit: artifact depth: over {MAX_REPLY_DEPTH}")
+    from .request import strict_json  # request imports this module
+
     try:
-        fields = json.loads(artifact)
+        # As Go's DecodeJSON reads it: strict UTF-8 (json.loads would detect
+        # UTF-16, whose NULs the byte scan above cannot see through), no
+        # duplicate member.
+        fields = strict_json(artifact)
     except (ValueError, UnicodeDecodeError):
         return  # not JSON: the content checks report it
     if not isinstance(fields, dict):
@@ -179,6 +183,35 @@ def _receipt_int(value: Any) -> int:
     raise ValueError("not an integer")
 
 
+def _receipt_shape(receipt: bytes) -> bool:
+    """The receipt shape Go's checkpointed-local-log verifier accepts, which
+    scitt-cose alone is looser about: a size within the witness response
+    limit, an RFC 9162 (vds 1) EdDSA COSE_Sign1 with exactly one inclusion
+    proof."""
+    import cbor2
+    from cll.log import MAX_WITNESS_RESPONSE_BYTES
+
+    if not 1 <= len(receipt) <= MAX_WITNESS_RESPONSE_BYTES:
+        return False
+    try:
+        message = cbor2.loads(receipt)
+        if isinstance(message, cbor2.CBORTag):
+            if message.tag != 18:
+                return False
+            message = message.value
+        # cbor2 decodes arrays as lists or tuples and maps as dicts or
+        # frozendicts, depending on where they sit.
+        if not isinstance(message, (list, tuple)) or len(message) != 4:
+            return False
+        protected, unprotected = cbor2.loads(message[0]), message[1]
+        vdp = unprotected.get(396) if isinstance(unprotected, Mapping) else None
+        proofs = vdp.get(-1) if isinstance(vdp, Mapping) else None
+    except (cbor2.CBORDecodeError, ValueError, TypeError, RecursionError):
+        return False
+    return (isinstance(protected, Mapping) and protected.get(395) == 1 and protected.get(1) == -8
+            and isinstance(proofs, (list, tuple)) and len(proofs) == 1)
+
+
 def _receipt_covers(statement: bytes, entry: dict, directory: Sequence[WitnessRow]) -> bool:
     """Whether one checkpoint.witnesses entry is a receipt over
     ``statement`` from a witness in ``directory``, under its key."""
@@ -195,6 +228,8 @@ def _receipt_covers(statement: bytes, entry: dict, directory: Sequence[WitnessRo
         receipt = base64.b64decode(encoded, validate=True)
         leaf_index, tree_size = _receipt_int(entry.get("leaf_index")), _receipt_int(entry.get("tree_size"))
     except (binascii.Error, ValueError):
+        return False
+    if not _receipt_shape(receipt):
         return False
     binding, endpoint = _binding(url), _endpoint(url)
     row = next((r for r in directory if (r.binding or "cll") == binding and r.endpoint.rstrip("/") == endpoint), None)
