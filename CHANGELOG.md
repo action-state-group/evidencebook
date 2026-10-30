@@ -7,7 +7,7 @@
 - `Book.Respond` answers an underived (or shared-derivation) `correlation`
   subject under the rule of `record` and `exchange`, as Steven's amendment to
   the #114 ruling asks: under `counterparties`, the default, only to a
-  counterparty every record held under the key names; under `peers` to any
+  counterparty every servable record held under the key names; under `peers` to any
   authenticated peer; never to a stranger. A correlation key matches exactly,
   never by prefix. Before, every underived correlation was refused
   `not_authorized`. `range` and `full_history` stay refused unless a

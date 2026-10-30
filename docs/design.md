@@ -224,9 +224,11 @@ stranger is refused `not_authorized` under every tier, including `peers`,
 which means any authenticated peer. The gate is per subject
 (evidencebook#114). Under `counterparties`, the default, a `record`,
 `exchange` or `correlation` subject is answered only to a counterparty, and
-only when every record it names (the record, every record citing the half,
-or every record held under the correlation key, which matches exactly)
-names that requester in `counterparty_ref`; `prospective` is read as `counterparties`,
+only when every servable record it names (the record, every record citing
+the half, or every record held under the correlation key, which matches
+exactly) names that requester in `counterparty_ref`. The responder's own
+bookkeeping records are never served, so they never count here and nothing
+of them is disclosed; `prospective` is read as `counterparties`,
 as the mesh plugin reads it. It is decided before the subject is resolved,
 so a requester no record names gets one refusal whether a record is held or
 not; the uniform refusal policy also folds a counterparty's
