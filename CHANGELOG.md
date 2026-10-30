@@ -132,6 +132,9 @@
   `close/v1` body has no member for.
 - `Book.Close` commits a stored record still awaiting its append before it
   takes its window, and refuses a window past the log or an empty book.
+- The root package now imports `github.com/santhosh-tekuri/jsonschema/v6` at
+  run time (it was a test-only dependency of the root package), for
+  `ReadClose`'s schema check; modules that import `evidencebook` build it.
 
 ## v0.10.0 (2026-10-30)
 
