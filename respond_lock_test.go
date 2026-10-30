@@ -239,7 +239,7 @@ func TestRespondAnswersStayConsistentWhileTheLogGrows(t *testing.T) {
 				request := r.request
 				request.Profile = ProfileID
 				sent := sentRequest{digest: digestBytes(msg.Octets), request: request}
-				statement, err := verifyReply(sent, reply, keys)
+				statement, err := verifyReply(sent, reply, keys, nil)
 				if err != nil || statement.Outcome != OutcomeArtifact {
 					t.Errorf("%s: the answer does not verify against its anchor: %v %s", r.request.Subject.Kind, err, statement.Failure)
 					return
