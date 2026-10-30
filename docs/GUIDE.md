@@ -52,8 +52,8 @@ Example: [`Example (JoinTheLoop)`](https://pkg.go.dev/github.com/action-state-gr
 with a probe.
 
 On the command line, `capsulectl book doctor --probe` runs the same check over
-a book profile. It is in this repository's `capsulectl/` module on main and not
-yet in a capsulectl-book release.
+a book profile. It is in capsulectl-book `capsulectl/v0.1.0-rc24` and later, a
+release candidate (pre-release).
 
 `Doctor` reports a list of findings and never a score. `NOT_CHECKED` means the
 check was not run, never that it passed or failed.
@@ -109,8 +109,8 @@ Examples, in package `report` (`report/example_test.go`):
   seals a page and checks it, untouched and changed.
 
 On the command line these are `capsulectl book report build --seal` and
-`capsulectl book report check`. Like the doctor, they are on main and not yet
-in a capsulectl-book release.
+`capsulectl book report check`. Like the doctor, they are in capsulectl-book
+`capsulectl/v0.1.0-rc24` and later.
 
 ## Path 3: serve a History
 
