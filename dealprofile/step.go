@@ -88,6 +88,9 @@ func StepCapsule(in StepInput) (emit.Input, StepHeader, error) {
 	if in.DealID == "" || in.Seq < 1 {
 		return emit.Input{}, StepHeader{}, fmt.Errorf("dealprofile: a step needs a deal id and a seq >= 1")
 	}
+	if in.Developer == "" {
+		return emit.Input{}, StepHeader{}, fmt.Errorf("dealprofile: a step needs the producer's developer name")
+	}
 	if p := in.Parent; p != nil && p.Relation != RelationFollows && p.Relation != RelationConfirms {
 		return emit.Input{}, StepHeader{}, fmt.Errorf("dealprofile: chain relation %q is not follows or confirms", p.Relation)
 	}

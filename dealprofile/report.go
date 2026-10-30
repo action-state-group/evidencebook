@@ -75,10 +75,13 @@ func ReportPayload(r Report) ([]byte, error) {
 // plugin names "capsulectl-deal"). The producer seals it with the payload as
 // JSON (json.RawMessage) and its own key; on a book, the record header it
 // carries is ReportRecordType, with no subject_ref, link or field
-// commitment.
-func ReportCapsule(operator, developer string, at time.Time) emit.Input {
+// commitment. An empty developer is refused.
+func ReportCapsule(operator, developer string, at time.Time) (emit.Input, error) {
+	if developer == "" {
+		return emit.Input{}, fmt.Errorf("dealprofile: a report needs the producer's developer name")
+	}
 	return emit.Input{
 		ActionID: ReportActionID, ActionType: emit.ActionTypeFYI, Operator: operator, Developer: developer,
 		Timestamp: at.UTC().Truncate(time.Second),
-	}
+	}, nil
 }

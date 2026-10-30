@@ -185,13 +185,14 @@ func expectedDigests(t *testing.T) map[string]string {
 	return out
 }
 
-// schemaWordingOnly are the schema-stage negatives whose expected text is
+// schemaWordingOnly maps the schema-stage negatives whose expected text is
 // the reference validator's own wording (jsonschema 4.23), which no member
-// name or location in another validator's report carries.
-var schemaWordingOnly = map[string]bool{
-	"neg-agent-card-with-words.json":                        true, // "should not be valid under ... said_commitment"; here: /body: 'not' failed
-	"neg-typed-seller-offer-no-proposal-beside-source.json": true, // "should not be valid under"; here: /body: 'not' failed
-	"neg-typed-seller-source-on-a-commit.json":              true, // "'offer' was expected"; here: /body/action: value must be 'offer'
+// name or location in another validator's report carries, to the text this
+// package's validator reports for the same failure.
+var schemaWordingOnly = map[string]string{
+	"neg-agent-card-with-words.json":                        "/body: 'not' failed",                 // there: "should not be valid under ... said_commitment"
+	"neg-typed-seller-offer-no-proposal-beside-source.json": "/body: 'not' failed",                 // there: "should not be valid under"
+	"neg-typed-seller-source-on-a-commit.json":              "/body/action: value must be 'offer'", // there: "'offer' was expected"
 }
 
 // TestNegativeFixtures checks that every negative the reference checker
@@ -230,10 +231,11 @@ func TestNegativeFixtures(t *testing.T) {
 			continue
 		}
 		assert.Equal(t, fx.ExpectedStage, se.Stage, "%s: %v", name, err)
-		if fx.ExpectedStage == StageSchema && schemaWordingOnly[name] {
-			continue
+		want := fx.ExpectedErrorContains
+		if goText, ok := schemaWordingOnly[name]; ok && fx.ExpectedStage == StageSchema {
+			want = goText
 		}
-		assert.Contains(t, se.Error()+"\n"+strings.Join(se.Causes, "\n"), fx.ExpectedErrorContains, name)
+		assert.Contains(t, se.Error()+"\n"+strings.Join(se.Causes, "\n"), want, name)
 	}
 	t.Logf("%d negatives rejected at the record-level stages; %d are the chain stage's, which the reference checker runs", len(files)-chain, chain)
 }

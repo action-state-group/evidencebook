@@ -132,12 +132,16 @@ func TestReportPayloadRefusals(t *testing.T) {
 
 func TestReportCapsuleIsToTheSecond(t *testing.T) {
 	at := time.Date(2026, 10, 30, 1, 2, 3, 999, time.FixedZone("x", 3600))
-	c := ReportCapsule("deal", "capsulectl-deal", at)
+	c, err := ReportCapsule("deal", "capsulectl-deal", at)
+	require.NoError(t, err)
 	assert.Equal(t, "capsulectl-deal", c.Developer, "the producer names its own developer")
 	assert.Equal(t, time.Date(2026, 10, 30, 0, 2, 3, 0, time.UTC), c.Timestamp)
 	assert.Equal(t, ReportActionID, c.ActionID)
 	assert.Equal(t, emit.ActionTypeFYI, c.ActionType)
 	assert.Nil(t, c.Chain, "a report is not chained")
+
+	_, err = ReportCapsule("deal", "", at)
+	assert.ErrorContains(t, err, "developer name")
 }
 
 func TestStepCapsuleRefusals(t *testing.T) {
@@ -162,6 +166,10 @@ func TestStepCapsuleRefusals(t *testing.T) {
 	bad.DealID = ""
 	_, _, err = StepCapsule(bad)
 	assert.Error(t, err)
+	bad = in
+	bad.Developer = ""
+	_, _, err = StepCapsule(bad)
+	assert.ErrorContains(t, err, "developer name")
 	bad = in
 	bad.Parent = &emit.Chain{ParentCapsuleID: strings.Repeat("a", 64), Relation: "supersedes"}
 	_, _, err = StepCapsule(bad)
