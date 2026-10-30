@@ -10,6 +10,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
+	"github.com/action-state-group/checkpointed-local-log/go/mmr"
 )
 
 // cllMaterialSource is implemented by a substrate whose evidence stream is a
@@ -18,37 +19,48 @@ import (
 // answer would need them (FR-20: a receipt held but never verified is not
 // presented as a checkpoint or a proof).
 type cllMaterialSource interface {
-	// cllInclusionProof is the cll-inclusion-proof octets for the record at
-	// seq under at: deterministic CBOR of [index, inclusion-path].
-	cllInclusionProof(ctx context.Context, seq uint64, at Checkpoint) ([]byte, error)
-	// cllConsistencyProof is the cll-consistency-proof octets proving the
-	// tree at newSize extends the tree at oldSize: deterministic CBOR of
-	// [tree-size-1, tree-size-2, consistency-paths, right-peaks].
-	cllConsistencyProof(ctx context.Context, oldSize, newSize uint64, at Checkpoint) ([]byte, error)
+	// cllProver restores the log's MMR once, checked against at, for every
+	// proof one answer needs. A restore reads the whole log under the log
+	// store's lock, which the book's own appends also take, so an answer
+	// restores it once rather than once per proof (evidencebook#208).
+	cllProver(ctx context.Context, at Checkpoint) (*cllProver, error)
 }
 
 var _ cllMaterialSource = (*CLLSubstrate)(nil)
 
-func (s *CLLSubstrate) cllInclusionProof(ctx context.Context, seq uint64, at Checkpoint) ([]byte, error) {
-	if !at.Covers(seq) {
-		return nil, fmt.Errorf("%w: seq %d under checkpoint %s", ErrNotCovered, seq, at.ID)
-	}
+// cllProver builds the profile's CLL proofs under one anchor from one
+// restored MMR.
+type cllProver struct {
+	at   Checkpoint
+	tree *mmr.Tree
+}
+
+func (s *CLLSubstrate) cllProver(ctx context.Context, at Checkpoint) (*cllProver, error) {
 	tree, err := s.tree(ctx, at)
 	if err != nil {
 		return nil, err
 	}
-	proof, err := tree.InclusionProofAt(seq-1, at.TreeSize)
+	return &cllProver{at: at, tree: tree}, nil
+}
+
+// inclusionProof is the cll-inclusion-proof octets for the record at seq:
+// deterministic CBOR of [index, inclusion-path].
+func (p *cllProver) inclusionProof(seq uint64) ([]byte, error) {
+	if !p.at.Covers(seq) {
+		return nil, fmt.Errorf("%w: seq %d under checkpoint %s", ErrNotCovered, seq, p.at.ID)
+	}
+	proof, err := p.tree.InclusionProofAt(seq-1, p.at.TreeSize)
 	if err != nil {
 		return nil, err
 	}
 	return evidencerequest.EncodeCLLInclusionProof(seq-1, proof.Witness)
 }
 
-func (s *CLLSubstrate) cllConsistencyProof(ctx context.Context, oldSize, newSize uint64, at Checkpoint) ([]byte, error) {
-	tree, err := s.tree(ctx, at)
-	if err != nil {
-		return nil, err
-	}
+// consistencyProof is the cll-consistency-proof octets proving the tree at
+// newSize extends the tree at oldSize: deterministic CBOR of [tree-size-1,
+// tree-size-2, consistency-paths, right-peaks].
+func (p *cllProver) consistencyProof(oldSize, newSize uint64) ([]byte, error) {
+	at, tree := p.at, p.tree
 	if oldSize == 0 || oldSize > newSize || newSize > at.TreeSize {
 		return nil, fmt.Errorf("%w: consistency from %d to %d under %s", ErrInvalid, oldSize, newSize, at.ID)
 	}
@@ -75,21 +87,22 @@ func anchorDigest(cp Checkpoint) string {
 }
 
 // cllMaterial builds the §6.2.1 material for the record at seq under the
-// anchor: the anchor checkpoint, the record's inclusion proof, and, when the
-// checkpoint extends an earlier one, the proof that it does.
-func cllMaterial(ctx context.Context, source cllMaterialSource, seq uint64, at Checkpoint) ([]VerificationEntry, [][]byte, error) {
+// prover's anchor: the anchor checkpoint, the record's inclusion proof, and,
+// when the checkpoint extends an earlier one, the proof that it does.
+func cllMaterial(prover *cllProver, seq uint64) ([]VerificationEntry, [][]byte, error) {
+	at := prover.at
 	signed, err := checkpoint.ParseRecord(at.Statement)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: anchor checkpoint: %v", ErrCorrupt, err)
 	}
-	inclusion, err := source.cllInclusionProof(ctx, seq, at)
+	inclusion, err := prover.inclusionProof(seq)
 	if err != nil {
 		return nil, nil, err
 	}
 	items := [][]byte{at.Statement, inclusion}
 	kinds := []string{KindCLLCheckpoint, KindCLLInclusionProof}
 	if signed.PrevSize > 0 {
-		consistency, err := source.cllConsistencyProof(ctx, signed.PrevSize, signed.MMRSize, at)
+		consistency, err := prover.consistencyProof(signed.PrevSize, signed.MMRSize)
 		if err != nil {
 			return nil, nil, err
 		}

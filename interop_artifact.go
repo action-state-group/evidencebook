@@ -118,7 +118,11 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 		if !view.disclosureClean(body, nil) {
 			return builtArtifact{declined: true}, nil
 		}
-		verification, material, err := cllMaterial(ctx, b.commitments.(cllMaterialSource), leaves[0]+1, anchor)
+		prover, err := b.commitments.(cllMaterialSource).cllProver(ctx, anchor)
+		if err != nil {
+			return builtArtifact{}, err
+		}
+		verification, material, err := cllMaterial(prover, leaves[0]+1)
 		if err != nil {
 			return builtArtifact{}, err
 		}
@@ -171,12 +175,18 @@ func checkpointsThrough(history []Checkpoint, anchor Checkpoint) []Checkpoint {
 // no record content. This responder holds no witness receipts for its
 // checkpoints, so none are listed.
 func (b *Book) historyCard(ctx context.Context, chain []Checkpoint, anchor Checkpoint) ([]any, error) {
-	source := b.commitments.(cllMaterialSource)
+	var prover *cllProver
 	history := make([]any, len(chain))
 	for i, cp := range chain {
 		var consistency any
 		if i > 0 && chain[i-1].TreeSize < cp.TreeSize {
-			proof, err := source.cllConsistencyProof(ctx, chain[i-1].TreeSize, cp.TreeSize, anchor)
+			if prover == nil {
+				var err error
+				if prover, err = b.commitments.(cllMaterialSource).cllProver(ctx, anchor); err != nil {
+					return nil, err
+				}
+			}
+			proof, err := prover.consistencyProof(chain[i-1].TreeSize, cp.TreeSize)
 			if err != nil {
 				return nil, err
 			}

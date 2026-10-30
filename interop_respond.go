@@ -233,6 +233,8 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 	if request.MediaType != MediaTypeJSON && request.MediaType != MediaTypeCBOR {
 		return Reply{}, Record{}, fmt.Errorf("%w: a request is carried as %s or %s, not %q", ErrInvalid, MediaTypeJSON, MediaTypeCBOR, request.MediaType)
 	}
+	b.answering.RLock()
+	defer b.answering.RUnlock()
 	a := answer{book: b, ctx: ctx, request: request, opts: opts, digest: digestBytes(request.Octets)}
 	reply, err := a.run()
 	if err != nil || !a.seal {
@@ -411,7 +413,10 @@ func (a *answer) run() (Reply, error) {
 		if view, err = b.view(a.ctx, log); err != nil {
 			return Reply{}, err
 		}
-		g.named = view.named
+		// The new snapshot may hold records sealed since the first, among
+		// them one naming the requester as a counterparty.
+		a.statement.Relationship = view.relationship(a.opts.AuthenticatedRequester)
+		g.relationship, g.named = a.statement.Relationship, view.named
 		if d = decide(view, check, g, a.now, false); d.NeedAnchor {
 			d.Reason = g.uniform(ReasonCoverageUnsatisfiable)
 		}

@@ -57,6 +57,10 @@ type Config struct {
 // answers, and the book composes every proof itself.
 type Book struct {
 	mu sync.Mutex
+	// answering is held shared by every Respond in progress, which reads
+	// the store and substrate without mu, and exclusively by Release, so
+	// Release closes them only once the answers already started are done.
+	answering sync.RWMutex
 
 	id, operator, developer string
 	checkpointEvery         uint64
@@ -730,6 +734,8 @@ func (b *Book) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 // idempotent, and afterwards every write (Append, AppendCapsule, Checkpoint,
 // SetRetention) refuses with ErrReleased.
 func (b *Book) Release() error {
+	b.answering.Lock()
+	defer b.answering.Unlock()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.released {

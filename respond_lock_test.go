@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sync"
@@ -124,6 +125,49 @@ func TestRespondDoesNotHoldTheLockWhileAnswering(t *testing.T) {
 	}
 }
 
+// TestReleaseWaitsForAnswersInProgress stops an answer partway and releases
+// the book: Release must wait for the answer, which completes, rather than
+// close the store and substrate under it.
+func TestReleaseWaitsForAnswersInProgress(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	cfg := f.config(t)
+	store := &gatedStore{Store: cfg.Store, entered: make(chan struct{}), release: make(chan struct{})}
+	cfg.Store = store
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := mustAppend(t, book, observation("order-17", `{"status":"approved"}`))
+	anchorPin(t, book)
+	store.armed.Store(true)
+	release := sync.OnceFunc(func() { close(store.release) })
+	defer release()
+	replied := make(chan error, 1)
+	go func() {
+		reply, sealed, err := book.Respond(ctx, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: record.RecordID}, Coverage: fresh()}), RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+		if err == nil && (reply.Envelope == nil || sealed.RecordID == "") {
+			err = fmt.Errorf("want an answer and its sealed record, got refusal %+v", reply.Refusal)
+		}
+		replied <- err
+	}()
+	<-store.entered
+	released := make(chan error, 1)
+	go func() { released <- book.Release() }()
+	select {
+	case err := <-released:
+		t.Fatalf("Release returned (%v) while an answer was in progress", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+	if err := <-replied; err != nil {
+		t.Fatalf("the answer in progress failed: %v", err)
+	}
+	if err := <-released; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestRespondAnswersStayConsistentWhileTheLogGrows answers while another
 // goroutine seals and checkpoints. Every answer must verify against the
 // checkpoint it cites: its records, proofs and anchor all come from one
@@ -213,29 +257,30 @@ func (s *slowStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 	return s.Store.Checkpoints(ctx)
 }
 
-// Under the flood every answer costs answerCost, and sealingBound is the
-// stated bound on one seal's latency. An uncontended seal on the test
-// fixture takes a few milliseconds (two fsynced journal writes). Holding the
-// book's lock for each answer, as Respond did before #208, made every seal
-// wait out at least the answer in progress, so seals took answerCost or
-// more; the bound sits well under that, with room for the race detector and
-// a loaded runner.
+// answerCost is what every answer costs under the flood, and sealingBound
+// the stated bound on one seal's latency. A seal waits at most for the seals
+// queued ahead of it, one per answer in flight, each a few fsynced journal
+// writes; the bound leaves room for those on a loaded runner under the race
+// detector. Holding the book's lock for each answer, as Respond did before
+// #208, made every seal wait out at least the answer in progress, and in
+// practice the answers queued ahead of it: seconds.
 const (
-	answerCost   = 400 * time.Millisecond
-	sealingBound = 200 * time.Millisecond
+	answerCost   = time.Second
+	sealingBound = answerCost / 2
 )
 
 // TestRespondFloodDoesNotStallSealing is #208's load test: flooders keep
-// requests in flight continuously while the book seals at a fixed rate.
-// Every seal must land, in order, and none may take longer than
-// sealingBound. It runs once with strangers (checkpoints, history_card/1 and
+// requests in flight continuously while the book seals at a fixed rate for
+// two answer costs, so every flooder completes an answer (and, when
+// authenticated, seals its record) while it is measured. Every seal must
+// land, in order, and none may take longer than sealingBound. It runs once with strangers (checkpoints, history_card/1 and
 // a refused full_history) and once with an authenticated requester, whose
 // answers each also seal a record under the lock.
 func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 	const (
 		history  = 40
 		flooders = 8
-		seals    = 40
+		window   = 2 * answerCost
 		interval = 5 * time.Millisecond
 	)
 	for _, c := range []struct {
@@ -295,7 +340,8 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 			var latencies []time.Duration
 			var ids []string
 			tick := time.NewTicker(interval)
-			for i := range seals {
+			end := time.Now().Add(window)
+			for i := 0; time.Now().Before(end); i++ {
 				<-tick.C
 				start := time.Now()
 				record, err := book.Append(ctx, observation(fmt.Sprintf("sealed-%d", i), `{"status":"approved"}`))
@@ -311,14 +357,15 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 				}
 			}
 			tick.Stop()
+			during := answered.Load()
 			close(stop)
 			flood.Wait()
 
 			slices.Sort(latencies)
 			worst := latencies[len(latencies)-1]
-			t.Logf("%d answers during %d seals; seal latency p50 %s, max %s (bound %s)", answered.Load(), seals, latencies[len(latencies)/2], worst, sealingBound)
-			if answered.Load() == 0 {
-				t.Fatal("the flood answered nothing")
+			t.Logf("%d answers during %d seals; seal latency p50 %s, max %s (bound %s)", during, len(latencies), latencies[len(latencies)/2], worst, sealingBound)
+			if during < flooders {
+				t.Fatalf("only %d answers finished while sealing was measured; the flood did not run through it", during)
 			}
 			if worst > sealingBound {
 				t.Fatalf("a seal took %s under the flood, over the %s bound", worst, sealingBound)
@@ -341,5 +388,78 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 				last = record.Seq
 			}
 		})
+	}
+}
+
+// TestRespondRestoresTheLogOncePerAnswer: each restore reads the whole log
+// under the log store's lock, which appends also take, so a history_card/1
+// answer over many checkpoints restores it once, not once per proof.
+func TestRespondRestoresTheLogOncePerAnswer(t *testing.T) {
+	book := newFixture(t, "book-a", 1).open(t)
+	for i := range 6 {
+		mustAppend(t, book, observation(fmt.Sprintf("order-%d", i), `{"status":"approved"}`))
+		anchorPin(t, book)
+	}
+	substrate := book.commitments.(*CLLSubstrate)
+	substrate.mu.Lock()
+	before := substrate.treeLoads
+	substrate.mu.Unlock()
+	mustEnvelope(t, respondAs(t, book, strangerRequests(t)[1], ""))
+	substrate.mu.Lock()
+	defer substrate.mu.Unlock()
+	if loads := substrate.treeLoads - before; loads != 1 {
+		t.Fatalf("one history card over 6 checkpoints restored the log %d times", loads)
+	}
+}
+
+// TestRespondRelationshipIsFromTheSnapshotItAnswersFrom: when an answer
+// issues an anchor it takes a second snapshot, and the requester's
+// relationship is read from that one, the snapshot the answer and its
+// anchor come from. Here a record naming the requester as its counterparty
+// is sealed between the two snapshots.
+func TestRespondRelationshipIsFromTheSnapshotItAnswersFrom(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "book-a", 1)
+	cfg := f.config(t)
+	store := &gatedStore{Store: cfg.Store, entered: make(chan struct{}), release: make(chan struct{})}
+	cfg.Store = store
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	record := mustAppend(t, book, observation("order-17", `{"status":"approved"}`))
+	anchorPin(t, book)
+	mustAppend(t, book, observation("order-18", `{"status":"held"}`))
+	// A floor at the log's size, past the last anchor, needs an anchor
+	// issued; it is issued after the counterparty record lands.
+	request := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: record.RecordID}, Coverage: Coverage{MinFreshness: sizeFloor(book.Size())}})
+	store.armed.Store(true)
+	release := sync.OnceFunc(func() { close(store.release) })
+	defer release()
+	type result struct {
+		reply  Reply
+		sealed Record
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		reply, sealed, err := book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+		done <- result{reply, sealed, err}
+	}()
+	<-store.entered
+	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
+	release()
+	r := <-done
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	mustEnvelope(t, r.reply)
+	var statement AnsweredStatement
+	if err := json.Unmarshal(r.sealed.Header.Statement, &statement); err != nil {
+		t.Fatal(err)
+	}
+	if statement.Relationship != RelationshipCounterparty {
+		t.Fatalf("the answer under an anchor covering a record naming the requester calls it %s", statement.Relationship)
 	}
 }

@@ -9,13 +9,18 @@
   issue an anchor an authenticated requester's freshness floor needs and to
   seal the `evidence_request_answered` record. A flood of requests no longer
   stalls `Append`, `AppendCapsule`, `Checkpoint` or any other write: before,
-  each seal waited for the answers queued ahead of it. Answers are unchanged.
-  `TestRespondFloodDoesNotStallSealing` is the load test: every seal lands
-  in order, and none takes longer than 200 ms while every answer costs
-  400 ms; holding the lock, seals took over 3 s.
-- A host's `Store` (`GetRecord`, `Checkpoints`) and `Signer` are now called
-  by `Respond` concurrently with the book's writes. The stores and signer
-  this module provides already allow that.
+  each seal waited for the answers queued ahead of it. What an answer may
+  contain is unchanged; it is as of the snapshot it was built from.
+  `TestRespondFloodDoesNotStallSealing` is the load test: while every answer
+  costs 1 s, every seal lands in order within 500 ms, waiting at most for the
+  seals queued ahead of it (one per answer in flight), never for an answer;
+  holding the lock, seals took seconds.
+- A host's `Store` (`GetRecord`, `Checkpoints`), `Signer` and
+  `StandardHistorySource.Inputs` are now called by `Respond` without the
+  book's lock, concurrently with the book's writes and with other answers.
+  The stores and signer this module provides already allow that.
+  `Config.Now` and `RequestLimiter` are still called under the lock.
+  `Release` waits for the answers already in progress.
 
 ### Added: `standard_history/1` for signed requesters (evidencebook#157)
 
