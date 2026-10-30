@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.9.0 (2026-10-30)
+
 ### Changed: `report` requires the published capsule-cli v0.1.0-rc24 (evidencebook#144)
 
 - `report/go.mod` requires capsule-cli `v0.1.0-rc24`, a release tag, in place of
