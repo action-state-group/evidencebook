@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -100,7 +101,7 @@ func TestAnActSealedBeforeReDerivesWithoutACounterparty(t *testing.T) {
 		require.NoError(t, err)
 		var record map[string]any
 		require.NoError(t, json.Unmarshal(raw, &record))
-		assert.NotContains(t, record[cli.DealProfile], "counterparty")
+		assert.NotContains(t, record[dealprofile.Profile], "counterparty")
 	}
 	require.True(t, found)
 }
@@ -117,7 +118,7 @@ func TestASalesOfferAndCommitActsSealAuthorityAndTheirBuyer(t *testing.T) {
 		records, _ := exportRecords(t, id)
 		acts := map[string]bool{}
 		for _, r := range records {
-			if r["type"] != cli.TypeActionRecord {
+			if r["type"] != dealprofile.TypeActionRecord {
 				continue
 			}
 			body := r["body"].(map[string]any)
@@ -128,7 +129,7 @@ func TestASalesOfferAndCommitActsSealAuthorityAndTheirBuyer(t *testing.T) {
 			assert.Equal(t, "task_authority", basis[0].(map[string]any)["type"], action)
 			cp, ok := body["counterparty"].(map[string]any)
 			require.True(t, ok, "%s: the act names the buyer it is with", action)
-			assert.Equal(t, cli.TypedFPAlg, cp["fp_alg"], action)
+			assert.Equal(t, dealprofile.TypedFPAlg, cp["fp_alg"], action)
 			ids := cp["ids"].(map[string]any)
 			assert.Equal(t, baselineIDs(t, id), ids, action)
 			buyers[ids["domain"].(string)] = true

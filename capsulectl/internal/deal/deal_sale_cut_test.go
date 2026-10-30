@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func saleBodies(t *testing.T, bundle map[string]any, recordType string) []map[st
 	var out []map[string]any
 	for _, raw := range bundle["records"].([]any) {
 		in, _ := disclosures[raw.(map[string]any)["capsule_id"].(string)].(map[string]any)["agent_input"].(map[string]any)
-		if blk, ok := in[cli.DealProfile].(map[string]any); ok && blk["record_type"] == recordType {
+		if blk, ok := in[dealprofile.Profile].(map[string]any); ok && blk["record_type"] == recordType {
 			out = append(out, in["body"].(map[string]any))
 		}
 	}
@@ -59,13 +60,13 @@ func TestASaleBundleSealsTheReportsThenTheCutThenTheCheckpoint(t *testing.T) {
 	require.Equal(t, "VALID", res["verdict"])
 
 	recs := bundle["records"].([]any)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "thread", "thread_opened", "sale_cut"},
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "thread", "thread_opened", "sale_cut"},
 		saleRecordTypes(exportedSale(t, saleID)), "the cut is the sale log's last record")
 	cert := bundle["completeness_certificate"].(map[string]any)
 	assert.Equal(t, cli.DealLogID(saleID), cert["log_id"])
 	lastID := recs[len(recs)-1].(map[string]any)["capsule_id"].(string)
 	lastIn := bundle["disclosures"].(map[string]any)[lastID].(map[string]any)["agent_input"].(map[string]any)
-	assert.Equal(t, "sale_cut", lastIn[cli.DealProfile].(map[string]any)["record_type"], "the bundle's last certified record is the cut")
+	assert.Equal(t, "sale_cut", lastIn[dealprofile.Profile].(map[string]any)["record_type"], "the bundle's last certified record is the cut")
 	result, _ := verifyBundleOutput(t, writeBundle(t, bundle))
 	assert.Equal(t, "pass", status(result, "per_record_membership"), "under the checkpoint cut after it")
 
@@ -77,7 +78,7 @@ func TestASaleBundleSealsTheReportsThenTheCutThenTheCheckpoint(t *testing.T) {
 	for i, id := range []string{a, b} {
 		tb := threads[id].(map[string]any)
 		last := cli.LastRecordDigest(tb)
-		assert.Equal(t, cli.DealReportActionID, actionIDOf(t, tb, last), "%s: the head is the report the bundle step sealed", id)
+		assert.Equal(t, dealprofile.ReportActionID, actionIDOf(t, tb, last), "%s: the head is the report the bundle step sealed", id)
 		e := entries[i].(map[string]any)
 		head := e["head"].(map[string]any)
 		assert.Equal(t, last, head["record_digest"], id)
@@ -209,7 +210,7 @@ func withhold(t *testing.T, x map[string]any, recordType, registration string) {
 	disclosures := x["disclosures"].(map[string]any)
 	for id, d := range disclosures {
 		in, _ := d.(map[string]any)["agent_input"].(map[string]any)
-		blk, _ := in[cli.DealProfile].(map[string]any)
+		blk, _ := in[dealprofile.Profile].(map[string]any)
 		if blk["record_type"] != recordType {
 			continue
 		}
@@ -229,11 +230,11 @@ func TestASaleBundleSealsAnOpeningACrashLeftOut(t *testing.T) {
 	dealFixture(t)
 	saleID, _ := newSale(t)
 	openThreadStoppingAt(t, saleID, "authority")
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread"}, saleRecordTypes(exportedSale(t, saleID)), "the thread opened; its opening is not sealed yet")
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread"}, saleRecordTypes(exportedSale(t, saleID)), "the thread opened; its opening is not sealed yet")
 
 	bundle, res := saleBundle(t, saleID)
 	assert.Equal(t, "VALID", res["verdict"])
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)))
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)))
 	entries, _ := saleSection(bundle)
 	require.Len(t, entries, 1)
 	assert.Equal(t, cli.SaleThreadPresent, entries[0].(map[string]any)["member"])
@@ -334,7 +335,7 @@ func withholdLatestCut(t *testing.T, x map[string]any) {
 	best, id := -1.0, ""
 	for cid, d := range disclosures {
 		in, _ := d.(map[string]any)["agent_input"].(map[string]any)
-		if blk, _ := in[cli.DealProfile].(map[string]any); blk["record_type"] == "sale_cut" {
+		if blk, _ := in[dealprofile.Profile].(map[string]any); blk["record_type"] == "sale_cut" {
 			if seq := cli.RecordSeq(blk); seq > best {
 				best, id = seq, cid
 			}

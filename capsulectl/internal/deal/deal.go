@@ -23,6 +23,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -210,7 +211,7 @@ func (s *dealSession) useDeal(ctx context.Context, dealID string, create bool) e
 	if create {
 		// The deal key is stored at open, so rotating the store secret later
 		// cannot break a deal in progress.
-		s.dkey = dealKeyFor(s.secret, dealID)
+		s.dkey = dealprofile.DealKey(s.secret, dealID)
 		res, err := s.db.ExecContext(ctx, `INSERT INTO deal_keys (deal_id, deal_key) VALUES (?, ?) ON CONFLICT(deal_id) DO NOTHING`, dealID, s.dkey)
 		if err != nil {
 			return err
@@ -462,11 +463,6 @@ const dealActEffectsVersion = "1"
 // target in the sealed record).
 const dealActCounterpartyVersion = "1"
 
-// dealIDMember is the top-level Capsule member holding the deal id on every
-// step's Capsule (x-deal-v0 section 1), so a deal's copies held by two
-// parties join on it.
-const dealIDMember = "deal_id"
-
 // dealCapsuleForm is which release's Capsule a step is sealed as. A step is
 // sealed in the current form; the earlier forms are tried only to recover a
 // step an earlier release prepared but never published.
@@ -481,8 +477,9 @@ const (
 	dealCapsuleAllFYI
 )
 
-// dealCapsuleInput is a step's Capsule, claiming only what the deal record
-// shows. A record that says an action was taken under a sealed approval (an
+// stepInput is what a step's Capsule is made from (dealprofile.StepCapsule
+// lays it out), claiming only what the deal record shows. A record that says
+// an action was taken under a sealed approval (an
 // authorized act whose action has an effect type: dealEffectTypes, or
 // dealActEffectTypes on a step that carries ActEffects) is a decide
 // Capsule:
@@ -507,38 +504,58 @@ const (
 // composition joins the parties' copies on. form gives instead a Capsule an
 // earlier capsulectl release sealed, for recovering a step one of them
 // prepared (see dealCapsuleForm).
-func dealCapsuleInput(events []sealedEvent, ev dealEvent, record []byte, operator string, at time.Time, form dealCapsuleForm) emit.Input {
-	legacy := form == dealCapsuleAllFYI
-	in := emit.Input{ActionID: fmt.Sprintf("%s/%d", ev.DealID, ev.N), ActionType: emit.ActionTypeFYI, Operator: operator, Developer: "capsulectl-deal", Timestamp: at}
-	if e := ev.Evidence; !legacy && e != nil && len(e.Settlement) > 0 {
+func (s *dealSession) stepInput(events []sealedEvent, ev dealEvent, record []byte, form dealCapsuleForm) (dealprofile.StepInput, error) {
+	at, err := time.Parse("2006-01-02T15:04:05Z", ev.At)
+	if err != nil {
+		return dealprofile.StepInput{}, cli.ErrConflict
+	}
+	in := dealprofile.StepInput{DealID: ev.DealID, Seq: ev.N, Operator: s.p.Name, Developer: "capsulectl-deal", At: at}
+	// Each step's Capsule follows the one before it (ordering only), so the
+	// deal is a citation chain any Evidence Bundle verifier can close. A
+	// record sealed after the close instead CONFIRMS the close (registered
+	// chain.relation): `follows` is ordering only, and verifiers must not
+	// read it as confirming anything.
+	switch {
+	case ev.Confirms != "":
+		in.Parent = &emit.Chain{ParentCapsuleID: ev.Confirms, Relation: dealprofile.RelationConfirms}
+	case len(events) > 0:
+		in.Parent = &emit.Chain{ParentCapsuleID: events[len(events)-1].CapsuleID, Relation: dealprofile.RelationFollows}
+	}
+	if form == dealCapsuleAllFYI {
+		return in, nil
+	}
+	if e := ev.Evidence; e != nil && len(e.Settlement) > 0 {
 		// A settlement leg rides on its step's Capsule as the top-level
 		// settlement member, exactly as built and stored with the step.
-		in.Extensions = []emit.Extension{{Name: "settlement", Value: e.Settlement}}
+		in.Settlement = e.Settlement
 	}
-	if form == dealCapsuleCurrent {
-		id, _ := json.Marshal(ev.DealID) // a string always marshals
-		in.Extensions = append(in.Extensions, emit.Extension{Name: dealIDMember, Value: id})
-	}
-	if legacy || ev.Kind != "act" || ev.Act == nil || ev.Act.Unchecked {
-		return in
+	in.Decide = stepDecide(events, ev, record)
+	return in, nil
+}
+
+// stepDecide is how a decide step's action was disposed and how recoverable
+// it is, or nil for an fyi step.
+func stepDecide(events []sealedEvent, ev dealEvent, record []byte) *dealprofile.Decide {
+	if ev.Kind != "act" || ev.Act == nil || ev.Act.Unchecked {
+		return nil
 	}
 	disposition, ok, typed := basisDisposition(record)
 	if !typed {
 		disposition, ok = dealDisposition(events, ev.Act.AuthorizedBy)
 	}
 	if !ok {
-		return in
+		return nil
 	}
 	effectType, ok := dealEffectTypes[ev.Act.Action]
 	if !ok && ev.ActEffects != "" {
 		effectType, ok = dealActEffectTypes[ev.Act.Action]
 	}
 	if !ok {
-		return in
+		return nil
 	}
 	state, err := foldDeal(events)
 	if err != nil {
-		return in
+		return nil
 	}
 	irreversibility := emit.IrreversibilityOneWayConsequential
 	switch {
@@ -549,10 +566,7 @@ func dealCapsuleInput(events []sealedEvent, ev dealEvent, record []byte, operato
 	case state.agreedRecourse.Refundable != nil && *state.agreedRecourse.Refundable:
 		irreversibility = emit.IrreversibilityOneWayRecoverable
 	}
-	in.ActionType = emit.ActionTypeDecide
-	in.Disposition = &disposition
-	in.Effect = &emit.Effect{Type: effectType, Status: emit.EffectDispatched, IrreversibilityClass: irreversibility, EffectAttestation: emit.AttestationRuntimeClaimed}
-	return in
+	return &dealprofile.Decide{Disposition: disposition, EffectType: effectType, Irreversibility: irreversibility}
 }
 
 // checkedCard is the check (verdict) step an approval answers, and the card it
@@ -677,7 +691,7 @@ func basisDisposition(record []byte) (d emit.Disposition, ok, typed bool) {
 			} `json:"authority_basis"`
 		} `json:"body"`
 	}
-	if json.Unmarshal(record, &r) != nil || r.Type != cli.TypeActionRecord {
+	if json.Unmarshal(record, &r) != nil || r.Type != dealprofile.TypeActionRecord {
 		return emit.Disposition{}, false, false
 	}
 	basis := r.Body.AuthorityBasis
@@ -733,27 +747,18 @@ func (s *dealSession) stepRequest(events []sealedEvent, ev dealEvent, form dealC
 	if err != nil {
 		return cli.Request{}, "", err
 	}
-	at, err := time.Parse("2006-01-02T15:04:05Z", ev.At)
+	in, err := s.stepInput(events, ev, payload, form)
 	if err != nil {
-		return cli.Request{}, "", cli.ErrConflict
+		return cli.Request{}, "", err
 	}
-	request := cli.Request{
-		Version: "capsule-seal-request/v1",
-		Capsule: dealCapsuleInput(events, ev, payload, s.p.Name, at.UTC(), form),
-		Payload: payload,
+	capsule, _, err := dealprofile.StepCapsule(in)
+	if err != nil {
+		return cli.Request{}, "", err
 	}
-	// Each step's Capsule follows the one before it (ordering only), so the
-	// deal is a citation chain any Evidence Bundle verifier can close. A
-	// record sealed after the close instead CONFIRMS the close (registered
-	// chain.relation): `follows` is ordering only, and verifiers must not
-	// read it as confirming anything.
-	switch {
-	case ev.Confirms != "":
-		request.Capsule.Chain = &emit.Chain{ParentCapsuleID: ev.Confirms, Relation: "confirms"}
-	case len(events) > 0:
-		request.Capsule.Chain = &emit.Chain{ParentCapsuleID: events[len(events)-1].CapsuleID, Relation: "follows"}
+	if form != dealCapsuleCurrent {
+		capsule.Extensions = slices.DeleteFunc(capsule.Extensions, func(x emit.Extension) bool { return x.Name == dealprofile.DealIDMember })
 	}
-	return request, digest, nil
+	return cli.Request{Version: "capsule-seal-request/v1", Capsule: capsule, Payload: payload}, digest, nil
 }
 
 // prepareStep fixes a step's time, chain and nonces, derives its record
@@ -768,6 +773,9 @@ func (s *dealSession) prepareStep(ctx context.Context, dealID string, events []s
 	}
 	request, digest, err := s.stepRequest(events, ev, dealCapsuleCurrent)
 	if err != nil {
+		return cli.Request{}, sealedEvent{}, err
+	}
+	if err = checkSealable(request.Payload, events, ev); err != nil {
 		return cli.Request{}, sealedEvent{}, err
 	}
 	record, err := cli.Seal(request, s.key)
@@ -798,7 +806,7 @@ func (s *dealSession) fixStep(dealID string, events []sealedEvent, ev dealEvent)
 	}
 	ev.Producer = currentProducer()
 	ev.TaxonomyVersion = dealTaxonomyVersion
-	ev.CommitAlg = dealCommitAlg
+	ev.CommitAlg = dealprofile.CommitAlg
 	ev.RuleInputs = dealRuleInputsVersion
 	ev.ClaimCommit = dealClaimCommitVersion
 	ev.ReversesRef = dealReversesRefVersion

@@ -8,6 +8,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -172,8 +173,8 @@ func TestACloseAtTheLimitReconcilesForEveryone(t *testing.T) {
 	carried := mustOpenings(t, buyerCounterparty)
 	require.Len(t, carried, 1)
 	for _, held := range carried {
-		assert.Contains(t, held, dealAmountField, "the terms amount opening is not a bound field")
-		assert.Contains(t, held, dealCurrencyField, "nor is the currency's")
+		assert.Contains(t, held, dealprofile.AmountField, "the terms amount opening is not a bound field")
+		assert.Contains(t, held, dealprofile.CurrencyField, "nor is the currency's")
 	}
 	assert.NotContains(t, raw, "max_total_minor", "the bound field itself is never in a counterparty copy")
 	buyerAdjudicator, note := discloseAs(t, id, "adjudicator", "the platform")
@@ -295,7 +296,7 @@ func TestTheAdjudicatorsOutcomes(t *testing.T) {
 	}
 	noAmount := edited(a.sellerFile, func(m map[string]any) {
 		for _, v := range m {
-			delete(v.(map[string]any), dealAmountField)
+			delete(v.(map[string]any), dealprofile.AmountField)
 		}
 	})
 	out, err = asAdjudicator(t, "--check", a.result, "--copy", a.buyerFile, "--copy", noAmount, "--party-key", a.buyerKeys, "--party-key", a.sellerKeys)
@@ -304,7 +305,7 @@ func TestTheAdjudicatorsOutcomes(t *testing.T) {
 
 	tampered := edited(a.sellerFile, func(m map[string]any) {
 		for _, v := range m {
-			v.(map[string]any)[dealAmountField].(map[string]any)["text"] = "1"
+			v.(map[string]any)[dealprofile.AmountField].(map[string]any)["text"] = "1"
 		}
 	})
 	out, err = asAdjudicator(t, "--check", a.result, "--copy", a.buyerFile, "--copy", tampered, "--party-key", a.buyerKeys, "--party-key", a.sellerKeys)

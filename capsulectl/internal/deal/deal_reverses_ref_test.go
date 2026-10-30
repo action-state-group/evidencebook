@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func cancelStepsOf(t *testing.T, id string) cancelSteps {
 
 // reversesRel is the digest an act's refs[rel=reverses] names, or "".
 func reversesRel(record map[string]any) string {
-	block, _ := record[cli.DealProfile].(map[string]any)
+	block, _ := record[dealprofile.Profile].(map[string]any)
 	refs, _ := block["refs"].([]any)
 	for _, r := range refs {
 		if ref := r.(map[string]any); ref["rel"] == "reverses" {
@@ -112,7 +113,7 @@ func TestATypedRefundProposedActionNamesThePayItReverses(t *testing.T) {
 		if se.Event.Act != nil && se.Event.Act.Action == "pay" {
 			pay = se.Digest
 		}
-		if typeOf(records[i]) == cli.TypeProposedAction && bodyOf(records[i])["action"] == "cancel" {
+		if typeOf(records[i]) == dealprofile.TypeProposedAction && bodyOf(records[i])["action"] == "cancel" {
 			proposed, ref = se.Digest, bodyOf(records[i])["reverses_ref"]
 		}
 	}
@@ -190,5 +191,5 @@ func TestTheRefundReferenceSharesLikeTheActsReverses(t *testing.T) {
 	for _, k := range []string{"type", "digest_alg", "digest", "rel"} {
 		assert.True(t, dealShareKeys[k], k)
 	}
-	assert.True(t, private.clean(cli.TypedRecordRef))
+	assert.True(t, private.clean(dealprofile.TypedRecordRef))
 }

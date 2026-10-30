@@ -104,7 +104,7 @@ func TestTheReceiptNamesTheChoiceAsShown(t *testing.T) {
 // name is action-report/v0).
 func TestNoSchemaHasAReceiptKey(t *testing.T) {
 	var files []string
-	for _, dir := range []string{dealProfileDir, dealProfileDir + "/records", "assets", "assets/records"} {
+	for _, dir := range []string{dealProfileDir, dealProfileDir + "/records", "assets"} {
 		found, err := filepath.Glob(filepath.Join(dir, "*.json"))
 		require.NoError(t, err)
 		files = append(files, found...)

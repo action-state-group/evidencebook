@@ -5,6 +5,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,7 +75,7 @@ func TestHalvesAdmitTheHistoryProfilesStepHeaders(t *testing.T) {
 		require.NoError(t, err)
 		steps := 0
 		for _, r := range records {
-			if r.Header.RecordType == dealReportRecordType {
+			if r.Header.RecordType == dealprofile.ReportRecordType {
 				continue
 			}
 			steps++
@@ -135,8 +136,8 @@ func TestAStepCorrelatedToAnotherDealIsNoStepOfThisDeal(t *testing.T) {
 
 func TestStepHeaderPredicates(t *testing.T) {
 	for kind, step := range map[string]bool{
-		dealStepRecordType: true, dealStepCompleted: true, dealStepFailed: true,
-		dealReportRecordType: false, "evidence_result": false, "": false,
+		dealprofile.StepRecordType: true, dealStepCompleted: true, dealStepFailed: true,
+		dealprofile.ReportRecordType: false, "evidence_result": false, "": false,
 	} {
 		assert.Equal(t, step, isDealStep(kind), kind)
 	}
@@ -145,12 +146,12 @@ func TestStepHeaderPredicates(t *testing.T) {
 		h    evidencebook.Header
 		want bool
 	}{
-		"this build's step":           {evidencebook.Header{RecordType: dealStepRecordType, BookID: book}, true},
+		"this build's step":           {evidencebook.Header{RecordType: dealprofile.StepRecordType, BookID: book}, true},
 		"a later step of this deal":   {evidencebook.Header{RecordType: dealStepFailed, BookID: book, Correlation: &evidencebook.Correlation{ExchangeID: "deal-a"}}, true},
 		"a correlation without an id": {evidencebook.Header{RecordType: dealStepCompleted, BookID: book, Correlation: &evidencebook.Correlation{RequestDigest: "r"}}, true},
 		"another deal's correlation":  {evidencebook.Header{RecordType: dealStepCompleted, BookID: book, Correlation: &evidencebook.Correlation{ExchangeID: "deal-b"}}, false},
-		"another book":                {evidencebook.Header{RecordType: dealStepRecordType, BookID: cli.DealLogID("deal-b")}, false},
-		"a report":                    {evidencebook.Header{RecordType: dealReportRecordType, BookID: book}, false},
+		"another book":                {evidencebook.Header{RecordType: dealprofile.StepRecordType, BookID: cli.DealLogID("deal-b")}, false},
+		"a report":                    {evidencebook.Header{RecordType: dealprofile.ReportRecordType, BookID: book}, false},
 	} {
 		assert.Equal(t, c.want, stepOfDeal(c.h, "deal-a"), name)
 	}

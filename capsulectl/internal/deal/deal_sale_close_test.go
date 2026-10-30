@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +21,7 @@ func TestASaleCloses(t *testing.T) {
 	a := buyerThread(t, saleID, "buyer-a.example")
 	closed := dealRun(t, "sale", "close", "--sale", saleID)
 	assert.Equal(t, saleID, closed["sale_id"])
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "sale_close"}, saleRecordTypes(exportedSale(t, saleID)))
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_close"}, saleRecordTypes(exportedSale(t, saleID)))
 
 	_, err := invoke(t, "", "--profile", "deal", "deal", "sale", "close", "--sale", saleID)
 	require.ErrorIs(t, err, cli.ErrInput)
@@ -39,7 +40,7 @@ func TestASaleCloses(t *testing.T) {
 	assert.Equal(t, true, res["closed"])
 	verdict, findings := verifySale(t, bundle)
 	assert.Equal(t, "VALID", verdict, "core verify --bundle reads a closed sale: %v", findings)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "sale_close", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)), "only a cut follows the close")
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_close", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)), "only a cut follows the close")
 	checkSaleProfile(t, saleID)
 
 	out, err := invoke(t, "", "--profile", "deal", "deal", "list", "--json")
@@ -72,13 +73,13 @@ func TestASaleCloseSealsAnOpeningACrashLeftOut(t *testing.T) {
 	dealFixture(t)
 	saleID, _ := newSale(t)
 	openThreadStoppingAt(t, saleID, "authority")
-	require.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread"}, saleRecordTypes(exportedSale(t, saleID)))
+	require.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread"}, saleRecordTypes(exportedSale(t, saleID)))
 	dealRun(t, "close", "--deal", chainSteps(t, saleID)[2].Event.Thread.ThreadID, "--input", writeJSON(t, received))
 	dealRun(t, "sale", "close", "--sale", saleID)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "sale_close"}, saleRecordTypes(exportedSale(t, saleID)))
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_close"}, saleRecordTypes(exportedSale(t, saleID)))
 	_, res := saleBundle(t, saleID)
 	assert.Equal(t, "VALID", res["verdict"])
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened", "sale_close", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)))
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_close", "sale_cut"}, saleRecordTypes(exportedSale(t, saleID)))
 	checkSaleProfile(t, saleID)
 }
 
@@ -92,7 +93,7 @@ func TestAClosedSaleRefusesToReuseARegistration(t *testing.T) {
 	openThreadStoppingAt(t, saleID, "keyed")
 	dealRun(t, "sale", "close", "--sale", saleID)
 	before := saleRecordTypes(exportedSale(t, saleID))
-	require.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "sale_close"}, before)
+	require.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "sale_close"}, before)
 	_, err := invoke(t, "", "--profile", "deal", "deal", "open", "--sale", saleID, "--input", writeJSON(t,
 		`{"channel": "marketplace", "who": {"name": "Example Buyer", "domain": "buyer-a.example"}, "terms": {"price_minor": 190000}}`))
 	require.ErrorIs(t, err, cli.ErrInput)

@@ -20,6 +20,17 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"golang.org/x/text/cases"
+)
+
+// Patterns the share gates and the merchant-email reader find identifiers
+// with. They are the plugin's own; a sealed record's scans are dealprofile's.
+var (
+	foldCase   = cases.Fold()
+	nonDigit   = regexp.MustCompile(`\D`)
+	scanPhone  = regexp.MustCompile(`\+?\(?\d[\d\s().-]{6,}\d`)
+	scanEmail  = regexp.MustCompile(`[^\s@]+@[^\s@]+\.[^\s@]+`)
+	scanExempt = regexp.MustCompile(`^([0-9a-f]{16,}|(deal|sale)-[0-9a-f]+|\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?|[a-z0-9-]+/[a-z0-9-]+/\d+\.\d+\.\d+)$`)
 )
 
 // dealWithheldFields is, per shared audience, what the copy leaves out, in

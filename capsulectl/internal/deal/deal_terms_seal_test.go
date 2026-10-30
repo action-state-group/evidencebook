@@ -12,6 +12,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,7 +96,7 @@ func TestTermsResultRetriesAndNewIssuances(t *testing.T) {
 	pair := closedPair(t, received, received)
 	missing := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	setDealClock(t, "2026-10-19T12:00:00Z")
@@ -187,7 +188,7 @@ func TestTermsResultShareDisclosesOneResult(t *testing.T) {
 	pair := closedPair(t, received, received)
 	missing := editOpenings(t, pair.sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	setDealClock(t, "2026-10-19T12:00:00Z")
@@ -396,7 +397,7 @@ func TestAResultsBookLeavesAndReturnsWithItsDeal(t *testing.T) {
 
 	missing := editOpenings(t, sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	_, _, _, err = runTermsResult(t, id, response, "--openings", missing)
@@ -436,7 +437,7 @@ func TestASecondResultIsPartlyWitnessed(t *testing.T) {
 
 	missing := editOpenings(t, sellerFile, func(m map[string]map[string]evidencebook.Opening) {
 		for d := range m {
-			delete(m[d], dealAmountField)
+			delete(m[d], dealprofile.AmountField)
 		}
 	})
 	second, _, _, err := runTermsResult(t, id, response, "--openings", missing)

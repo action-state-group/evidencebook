@@ -1,9 +1,9 @@
 package deal
 
 import (
-	"encoding/hex"
-	"encoding/json"
-	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -11,41 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const dealProfileDir = "../../skills/deal/profile"
+// dealprofileDir is EvidenceBook's dealprofile package as this module
+// requires it, and dealProfileDir the x-deal-v0 profile it ships: its
+// schemas, fixtures, reference checker (check_profile.py) and test data.
+var (
+	dealprofileDir = func() string {
+		out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/action-state-group/evidencebook").Output()
+		if err != nil {
+			panic("locating the evidencebook module: " + err.Error())
+		}
+		return filepath.Join(strings.TrimSpace(string(out)), "dealprofile")
+	}()
+	dealProfileDir = filepath.Join(dealprofileDir, "x-deal-v0")
+)
 
-// The Go port reproduces the profile's fingerprint and commitment vectors.
-func TestDealFingerprintVectors(t *testing.T) {
-	raw, err := os.ReadFile(dealProfileDir + "/fixtures/fingerprint-vectors.json")
-	require.NoError(t, err)
-	var v struct {
-		StoreSecretHex string `json:"store_secret_hex"`
-		DealID         string `json:"deal_id"`
-		DealKeyHex     string `json:"deal_key_hex"`
-		Vectors        []struct{ Kind, Raw, Normalized, FP string }
-		Commitments    []struct{ Label, Nonce, Text, Commitment string }
-	}
-	require.NoError(t, json.Unmarshal(raw, &v))
-	secret, err := hex.DecodeString(v.StoreSecretHex)
-	require.NoError(t, err)
-	key := dealKeyFor(secret, v.DealID)
-	assert.Equal(t, v.DealKeyHex, hex.EncodeToString(key))
-	for _, x := range v.Vectors {
-		n, err := normalizeID(x.Kind, x.Raw)
-		require.NoError(t, err, x.Raw)
-		assert.Equal(t, x.Normalized, n, "%s %q", x.Kind, x.Raw)
-		fp, err := fingerprintID(key, x.Kind, x.Raw)
-		require.NoError(t, err)
-		assert.Equal(t, x.FP, fp, "%s %q", x.Kind, x.Raw)
-	}
-	for _, x := range v.Commitments {
-		c, err := cli.CommitText(x.Nonce, x.Text)
-		require.NoError(t, err)
-		assert.Equal(t, x.Commitment, c, x.Label)
-	}
-	for _, bad := range [][2]string{{"phone", "call me"}, {"phone", "555 0100"}, {"email", "nobody"}, {"name", "Inc."}, {"domain", "localhost"}} {
-		_, err := normalizeID(bad[0], bad[1])
-		assert.ErrorIs(t, err, errNotNormalizable, bad[1])
-	}
+// sameID compares identifiers as their fingerprints would.
+func TestDealSameID(t *testing.T) {
 	assert.True(t, sameID("phone", "+1 555 010 2000", "(555) 010-2000"))
 	assert.True(t, sameID("domain", "book.coastaljetrentals.example", "https://CoastalJetRentals.example/"))
 	assert.False(t, sameID("payee", "Coastal Jet Rentals LLC", "M. Torres"))

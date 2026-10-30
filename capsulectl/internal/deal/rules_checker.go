@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -563,7 +564,7 @@ func (s *dealSession) rulesInput(ctx context.Context, capsuleID string, events [
 				if err != nil {
 					return nil, nil, err
 				}
-				if record, ok := ta["agent_input"].(map[string]interface{}); ok && record["type"] == cli.TypeTaskAuthority {
+				if record, ok := ta["agent_input"].(map[string]interface{}); ok && record["type"] == dealprofile.TypeTaskAuthority {
 					input["task_authority_record"] = record
 				}
 			}
@@ -720,7 +721,7 @@ func boundsOpeningInForce(events []sealedEvent) (map[string]interface{}, error) 
 			if nonce == "" {
 				return nil, errors.New("refusing to check: the task authority in force sets a floor but its opening is not on this device, so the rules checker cannot be given it")
 			}
-			if commitment, err = cli.CommitText(nonce, dealTexts(se.Event)["bounds"]); err != nil {
+			if commitment, err = dealprofile.CommitText(nonce, dealTexts(se.Event)["bounds"]); err != nil {
 				return nil, errors.New("refusing to check: the task authority's floor could not be opened for the rules checker")
 			}
 		}
@@ -734,7 +735,7 @@ func boundsOpeningInForce(events []sealedEvent) (map[string]interface{}, error) 
 		if !ok || nonce == "" {
 			continue
 		}
-		if c, err := cli.CommitText(nonce, text); err == nil && c == commitment {
+		if c, err := dealprofile.CommitText(nonce, text); err == nil && c == commitment {
 			return boundsOpening(text, nonce, c)
 		}
 	}
@@ -746,7 +747,7 @@ func boundsOpeningInForce(events []sealedEvent) (map[string]interface{}, error) 
 // commercial-bounds document.
 func boundsOpening(text, nonce, commitment string) (map[string]interface{}, error) {
 	var doc map[string]interface{}
-	if json.Unmarshal([]byte(text), &doc) != nil || doc["type"] != cli.CommercialBoundsKind {
+	if json.Unmarshal([]byte(text), &doc) != nil || doc["type"] != dealprofile.TypeCommercialBounds {
 		return nil, errors.New("refusing to check: the floor in force opens to something other than a commercial-bounds document, so the rules checker cannot be given it")
 	}
 	return map[string]interface{}{"document": doc, "nonce": nonce, "bounds_commitment": commitment}, nil

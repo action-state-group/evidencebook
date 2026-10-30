@@ -9,6 +9,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +62,7 @@ func ruleInputs(t *testing.T, id, check string) (sealed, given, input map[string
 	records, export := exportRecords(t, id)
 	checkProfile(t, export)
 	for _, r := range records {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			sealed = r["body"].(map[string]any)
 		} else if b, ok := r["x-deal-v0"].(map[string]any); ok && b["record_type"] == "check" {
 			sealed = r["body"].(map[string]any)

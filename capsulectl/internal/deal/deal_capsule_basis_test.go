@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/action-state-group/capsule-cli/cli"
 	emit "github.com/action-state-group/capsule-emit/go"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +66,7 @@ func TestBasisDispositionReadsTheRecord(t *testing.T) {
 		for i, l := range layers {
 			basis[i] = map[string]any{"type": l, "ref": typedRef("00")}
 		}
-		raw, err := json.Marshal(map[string]any{"type": cli.TypeActionRecord, "body": map[string]any{"action": "pay", "authority_basis": basis}})
+		raw, err := json.Marshal(map[string]any{"type": dealprofile.TypeActionRecord, "body": map[string]any{"action": "pay", "authority_basis": basis}})
 		require.NoError(t, err)
 		return raw
 	}

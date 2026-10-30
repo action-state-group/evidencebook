@@ -18,6 +18,10 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The x-deal-v0 profile's example materiality predicate, as EvidenceBook
+# ships it (dealprofile/x-deal-v0) at the version this module requires;
+# go mod download extracts the module when the cache is cold.
+neutral="$(cd "$root" && go mod download -json github.com/action-state-group/evidencebook | jq -er .Dir)/dealprofile/x-deal-v0/materiality-predicate/neutral.json"
 here="$root/scripts/presentation-goldens"
 out="${PRESENTATION_OUT:-$root/testdata/presentation}"
 work="$(mktemp -d)"
@@ -115,7 +119,7 @@ meta 1-rules-comparison "$(jq -n --arg v "$(verdict bundle.json)" '{kind: "rules
 fixture 2-unilateral-receipt
 demo="$root/skills/deal/demo/retail-checkout"
 export CAPSULE_DEAL_CHECK_URL=
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
 capsulectl --profile deal deal check --deal "$id" --input "$demo/check-pay.json" >/dev/null
 capsulectl --profile deal deal note --deal "$id" --kind act --input "$demo/act-pay.json" >/dev/null
@@ -140,7 +144,7 @@ printf '%s' '{"schema":"external-check-result/v0","ruleset_id":"example-rules/1.
 STUB
 chmod 0755 "$plugins/example-rules"
 export CAPSULECTL_PLUGIN_ROOTS="$plugins:$work/plugins"
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 jq -n --arg c "$plugins/example-rules" '{command: [$c]}' >pin.json
 capsulectl --profile deal profile update --rules-checker pin.json >/dev/null
 id=$(capsulectl --profile deal deal open --input "$demo/open.json" | jq -r .deal_id)
@@ -160,7 +164,7 @@ export CAPSULECTL_PLUGIN_ROOTS="$work/plugins"
 # user's own. Synthetic.
 fixture 8-seller-buyer-copy
 export CAPSULE_DEAL_CHECK_URL=
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "demo": true, "channel": "marketplace",
  "intent": {"verbatim": "Sell my example bicycle; ask 1900. Tell them about the scratch.", "party_role": "seller",
@@ -207,7 +211,7 @@ meta 8-seller-buyer-copy "$(jq -n --arg v "$(verdict bundle.json)" '{kind: "sell
 fixture 9-seller-later-evidence
 export CAPSULE_DEAL_CHECK_URL=
 src="$root/internal/deal/testdata/deal/seller-later-evidence"
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 id=$(capsulectl --profile deal deal open --records typed --input "$src/open.json" | jq -r .deal_id)
 note() { capsulectl --profile deal deal note --deal "$id" "$@"; }
 note --kind claim --check "$(represent "$id" "$src/represent-condition.json")" --input "$src/claim-condition.json" >/dev/null
@@ -243,7 +247,7 @@ mkdir -p buyer seller
 # side PARTY: act as that party, in its own config and directory.
 side() { export XDG_CONFIG_HOME="$work/3-bilateral-composed/$1/config"; cd "$work/3-bilateral-composed/$1"; }
 side buyer
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "channel": "web",
  "intent": {"verbatim": "buy me the example bicycle for at most 1900", "max_total_minor": 190000, "allowed": ["pay"]},
@@ -256,7 +260,7 @@ id=$(capsulectl --profile deal deal open --input open.json | jq -r .deal_id)
 buyer_key=$(capsulectl profile show deal | jq -er '.TrustedKeys[0]')
 buyer_checkpoint=$(capsulectl profile show deal | jq -er '.Checkpoint.TrustedKeys[0]')
 side seller
-capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$root/skills/deal/profile/materiality-predicate/neutral.json" >/dev/null
+capsulectl deal init --profile deal --dir ./deal --no-witness --materiality "$neutral" >/dev/null
 cat >open.json <<'JSON'
 {"type": "purchase", "demo": true, "channel": "web",
  "intent": {"verbatim": "Sell my example bicycle; ask 1900", "party_role": "seller",

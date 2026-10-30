@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func TestASaleThreadCheckSealsItsBuyer(t *testing.T) {
 		for name, body := range map[string]map[string]any{"sealed": sealed, "given to the checker": given} {
 			cp, ok := body["counterparty"].(map[string]any)
 			require.True(t, ok, "%s: %s carries the buyer", domain, name)
-			assert.Equal(t, cli.TypedFPAlg, cp["fp_alg"], name)
+			assert.Equal(t, dealprofile.TypedFPAlg, cp["fp_alg"], name)
 			ids := cp["ids"].(map[string]any)
 			assert.Equal(t, baselineIDs(t, id), ids, "%s: the same keyed fingerprints the thread's opening sealed", name)
 			for kind, fp := range ids {

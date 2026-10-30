@@ -22,7 +22,7 @@ type dealListing struct {
 	OpenedAt     string `json:"opened_at"`
 	LastRecordAt string `json:"last_record_at"`
 	// CounterpartyFingerprint is the payee fingerprint of the deal's latest
-	// counterparty_profile step (profileKeyFor), or null when it has none.
+	// counterparty_profile step (dealprofile.ProfileKey), or null when it has none.
 	CounterpartyFingerprint *string `json:"counterparty_fingerprint"`
 	LogID                   string  `json:"log_id"`
 	// Result is a deal's result (dealResult): bought, sold, called_off,

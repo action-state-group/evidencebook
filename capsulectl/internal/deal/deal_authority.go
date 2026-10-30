@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // dealAuthorityOrder says how an AUTHORITY block is ordered, wherever it is
@@ -73,8 +73,8 @@ func buildDealAuthority(events []sealedEvent, records [][]byte) []dealAuthorityB
 		}
 		e := se.Event
 		switch {
-		case rec.Type == cli.TypeActionRecord:
-		case rec.Type == cli.TypeActionOutcome && e.Kind == "act" && e.Act != nil && e.Act.Unchecked:
+		case rec.Type == dealprofile.TypeActionRecord:
+		case rec.Type == dealprofile.TypeActionOutcome && e.Kind == "act" && e.Act != nil && e.Act.Unchecked:
 			what := actText(*e.Act, currency)
 			blocks = append(blocks, dealAuthorityBlock{Action: what, Step: se.CapsuleID, Layers: []dealAuthorityLayer{{
 				Layer: "action", At: e.At, Step: se.CapsuleID, Text: "Done without a passing check or your approval: " + what, Note: e.Act.Reason}}})

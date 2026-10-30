@@ -28,7 +28,23 @@ if [[ -z "$bin" ]]; then
 fi
 deal() { "$bin" --profile demo deal "$@"; }
 
-deal init --dir "$work/store" --materiality "$skill_dir/profile/materiality-predicate/neutral.json" >/dev/null
+# The x-deal-v0 profile ships with EvidenceBook (dealprofile/x-deal-v0):
+# DEAL_PROFILE_DIR names a copy of it, else the one this repository builds
+# against when the source is here. Without one, the demo pins capsulectl's
+# built-in predicate, whose attributes are the same, and skips the checker.
+profile_dir="${DEAL_PROFILE_DIR:-}"
+if [[ -z "$profile_dir" && -f "$skill_dir/../../go.mod" ]] && command -v go >/dev/null; then
+  # Offline or with no module cache, this finds nothing and the demo falls back.
+  if dir="$(cd "$skill_dir/../.." && go mod download -json github.com/action-state-group/evidencebook 2>/dev/null | jq -er .Dir)"; then
+    profile_dir="$dir/dealprofile/x-deal-v0"
+  fi
+fi
+materiality=builtin:neutral
+if [[ -n "$profile_dir" ]]; then
+  materiality="$profile_dir/materiality-predicate/neutral.json"
+fi
+
+deal init --dir "$work/store" --materiality "$materiality" >/dev/null
 id=$(deal open --input "$demo/01-open.json" | jq -r .deal_id)
 deal note --deal "$id" --kind message --input "$demo/02-message-quote.json" >/dev/null
 deal note --deal "$id" --kind message --input "$demo/03-message-switch.json" >/dev/null
@@ -51,8 +67,8 @@ check_id=$(jq -r .check_id "$work/check.json")
 deal note --deal "$id" --kind approval --check "$check_id" --choice hold --said "hold" >/dev/null
 # The sealed records carry no raw values; check them against the profile.
 deal export --deal "$id" --output "$work/records.json" >/dev/null
-if command -v python3 >/dev/null; then
-  python3 "$skill_dir/profile/check_profile.py" "$work/records.json" | tail -1
+if [[ -n "$profile_dir" ]] && command -v python3 >/dev/null; then
+  python3 "$profile_dir/check_profile.py" "$work/records.json" | tail -1
 fi
 
 if [[ -n "${1:-}" ]]; then

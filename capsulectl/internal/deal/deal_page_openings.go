@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // dealPageOpenings checks, before a deal page is written, the words the page
@@ -54,7 +55,7 @@ func dealPageOpenings(b map[string]interface{}) (map[string]interface{}, error) 
 		if !ok1 || !ok2 || !ok3 {
 			return false, false
 		}
-		got, err := cli.CommitText(nonce, text)
+		got, err := dealprofile.CommitText(nonce, text)
 		return true, err == nil && got == want
 	}
 
@@ -99,7 +100,7 @@ func dealPageOpenings(b map[string]interface{}) (map[string]interface{}, error) 
 			switch {
 			case block["record_type"] == "approval":
 				commitment = body["card_commitment"]
-			case record["type"] == cli.TypeActionApproval:
+			case record["type"] == dealprofile.TypeActionApproval:
 				commitment = body["rendering_commitment"]
 			}
 			if present, ok := opens(opening, commitment); !present || !ok || seen[step] {

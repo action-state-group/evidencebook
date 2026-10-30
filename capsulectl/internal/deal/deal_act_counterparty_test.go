@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +66,7 @@ func TestARepeatedBookingsActNamesTheChecksCounterparty(t *testing.T) {
 		assert.Contains(t, ids, "payee", "the payee a dedupe rule compares")
 		want := "hmac-sha256-deal-key"
 		if typed {
-			want = cli.TypedFPAlg
+			want = dealprofile.TypedFPAlg
 		}
 		assert.Equal(t, want, act["counterparty"].(map[string]any)["fp_alg"])
 	})

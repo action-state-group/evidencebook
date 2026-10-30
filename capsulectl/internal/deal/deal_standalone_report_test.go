@@ -16,6 +16,7 @@ import (
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/capsule-cli/cli"
 	emit "github.com/action-state-group/capsule-emit/go"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ import (
 // standaloneOf is a copy's x-deal-report/v0 section.
 func standaloneOf(t *testing.T, b map[string]any) map[string]any {
 	t.Helper()
-	x, ok := b["extensions"].(map[string]any)[cli.DealReportExtension].(map[string]any)
+	x, ok := b["extensions"].(map[string]any)[dealprofile.ReportExtension].(map[string]any)
 	require.True(t, ok, "the copy carries a standalone report")
 	return x
 }
@@ -49,7 +50,7 @@ func verdictOf(t *testing.T, b map[string]any) (string, []any) {
 	t.Helper()
 	result, _ := verifyBundleOutput(t, writeBundle(t, b))
 	for _, raw := range result["extensions"].([]any) {
-		if e := raw.(map[string]any); e["kind"] == cli.DealProfile {
+		if e := raw.(map[string]any); e["kind"] == dealprofile.Profile {
 			findings, _ := e["findings"].([]any)
 			return result["verdict"].(string), findings
 		}
@@ -74,7 +75,7 @@ func TestACopyCarriesItsOwnReportOnly(t *testing.T) {
 		raw string
 	}{{first, firstRaw}, {second, secondRaw}} {
 		for _, r := range c.b["records"].([]any) {
-			assert.NotEqual(t, cli.DealReportActionID, r.(map[string]any)["action_id"], "the log holds steps only")
+			assert.NotEqual(t, dealprofile.ReportActionID, r.(map[string]any)["action_id"], "the log holds steps only")
 		}
 		verdict, findings := verdictOf(t, c.b)
 		assert.Equal(t, "VALID", verdict, "%v", findings)
@@ -91,13 +92,13 @@ func resealed(t *testing.T, b map[string]any, key ed25519.PrivateKey, mutate fun
 	require.NoError(t, err)
 	out, err := cli.DecodeBundleJSON(raw)
 	require.NoError(t, err)
-	x := out["extensions"].(map[string]any)[cli.DealReportExtension].(map[string]any)
+	x := out["extensions"].(map[string]any)[dealprofile.ReportExtension].(map[string]any)
 	input := x["agent_input"].(map[string]any)
 	mutate(input)
 	payload, err := canonical.JCS(input)
 	require.NoError(t, err)
 	record, err := cli.Seal(cli.Request{Version: "capsule-seal-request/v1", Capsule: emit.Input{
-		ActionID: cli.DealReportActionID, ActionType: emit.ActionTypeFYI, Operator: "deal", Developer: "capsulectl-deal",
+		ActionID: dealprofile.ReportActionID, ActionType: emit.ActionTypeFYI, Operator: "deal", Developer: "capsulectl-deal",
 		Timestamp: time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC),
 	}, Payload: payload}, key)
 	require.NoError(t, err)
@@ -108,7 +109,7 @@ func resealed(t *testing.T, b map[string]any, key ed25519.PrivateKey, mutate fun
 	generic, err := cli.DecodeBundleJSON(payload)
 	require.NoError(t, err)
 	x["record"], x["agent_input"] = capsule, generic
-	out["extensions"].(map[string]any)[cli.DealProfile] = map[string]any{cli.DealReportPointer: record.CapsuleID}
+	out["extensions"].(map[string]any)[dealprofile.Profile] = map[string]any{dealprofile.ReportPointer: record.CapsuleID}
 	return out
 }
 
@@ -135,7 +136,7 @@ func TestAStandaloneReportIsCheckedWhole(t *testing.T) {
 		return c
 	}
 	sectionOf := func(c map[string]any) map[string]any {
-		return c["extensions"].(map[string]any)[cli.DealReportExtension].(map[string]any)
+		return c["extensions"].(map[string]any)[dealprofile.ReportExtension].(map[string]any)
 	}
 	for name, c := range map[string]map[string]any{
 		"1: a signature that does not verify": edit(func(c map[string]any) {
@@ -158,11 +159,11 @@ func TestAStandaloneReportIsCheckedWhole(t *testing.T) {
 		"7: another as_of": resealed(t, b, key, func(in map[string]any) {
 			in["report"].(map[string]any)["lifecycle"].(map[string]any)["as_of"] = "2020-01-01T00:00:00Z"
 		}),
-		"no pointer": edit(func(c map[string]any) { c["extensions"].(map[string]any)[cli.DealProfile] = map[string]any{} }),
+		"no pointer": edit(func(c map[string]any) { c["extensions"].(map[string]any)[dealprofile.Profile] = map[string]any{} }),
 		"stripped to inline text": edit(func(c map[string]any) {
 			exts := c["extensions"].(map[string]any)
-			exts[cli.DealProfile] = sectionOf(c)["agent_input"].(map[string]any)["report"]
-			delete(exts, cli.DealReportExtension)
+			exts[dealprofile.Profile] = sectionOf(c)["agent_input"].(map[string]any)["report"]
+			delete(exts, dealprofile.ReportExtension)
 		}),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -354,7 +355,7 @@ func TestCountersignRefusesAnEditedStandaloneReport(t *testing.T) {
 	dealRun(t, "report", "--deal", id, "--bundle", path)
 	b, err := cli.DecodeBundleJSON(mustRead(t, path))
 	require.NoError(t, err)
-	b["extensions"].(map[string]any)[cli.DealReportExtension].(map[string]any)["agent_input"].(map[string]any)["report"].(map[string]any)["scope"] = "edited"
+	b["extensions"].(map[string]any)[dealprofile.ReportExtension].(map[string]any)["agent_input"].(map[string]any)["report"].(map[string]any)["scope"] = "edited"
 	edited := writeBundle(t, b)
 	out, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--from-bundle", edited)
 	require.ErrorIs(t, err, cli.ErrInput, out)
@@ -371,10 +372,10 @@ func TestCountersignRefusesAStrippedCopy(t *testing.T) {
 	b, err := cli.DecodeBundleJSON(mustRead(t, path))
 	require.NoError(t, err)
 	exts := b["extensions"].(map[string]any)
-	report := exts[cli.DealReportExtension].(map[string]any)["agent_input"].(map[string]any)["report"].(map[string]any)
+	report := exts[dealprofile.ReportExtension].(map[string]any)["agent_input"].(map[string]any)["report"].(map[string]any)
 	report["scope"] = "edited"
-	exts[cli.DealProfile] = report
-	delete(exts, cli.DealReportExtension)
+	exts[dealprofile.Profile] = report
+	delete(exts, dealprofile.ReportExtension)
 	stripped := writeBundle(t, b)
 	out, err := invoke(t, "", "--profile", "deal", "deal", "report", "--deal", id, "--from-bundle", stripped)
 	require.ErrorIs(t, err, cli.ErrInput, out)
@@ -408,7 +409,7 @@ func TestVerifySaysWhenAStandaloneReportIsAsOf(t *testing.T) {
 	b, _ := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
 	result, _ := verifyBundleOutput(t, writeBundle(t, b))
 	for _, raw := range result["extensions"].([]any) {
-		if e := raw.(map[string]any); e["kind"] == cli.DealProfile {
+		if e := raw.(map[string]any); e["kind"] == dealprofile.Profile {
 			assert.Equal(t, "as of the deal's last step at 2026-09-27T18:00:00Z (the producer's time); not witnessed", e["as_of"])
 			return
 		}
@@ -495,7 +496,7 @@ func TestAStandaloneCopyHoldsNoReportRecord(t *testing.T) {
 	b, err := cli.DecodeBundleJSON(mustRead(t, path))
 	require.NoError(t, err)
 	require.NoError(t, cli.CheckDealStandaloneReport(b), "the copy as written")
-	b["records"] = append(b["records"].([]any), map[string]any{"capsule_id": strings.Repeat("e", 64), "action_id": cli.DealReportActionID})
+	b["records"] = append(b["records"].([]any), map[string]any{"capsule_id": strings.Repeat("e", 64), "action_id": dealprofile.ReportActionID})
 	assert.ErrorIs(t, cli.CheckDealStandaloneReport(b), cli.ErrBundleInvalid)
 }
 
@@ -518,7 +519,7 @@ func TestTheAsOfLineOnWitnessedCopies(t *testing.T) {
 		t.Helper()
 		result, _ := verifyWithDirectory(t, path, directory)
 		for _, raw := range result["extensions"].([]any) {
-			if e := raw.(map[string]any); e["kind"] == cli.DealProfile {
+			if e := raw.(map[string]any); e["kind"] == dealprofile.Profile {
 				return fmt.Sprint(e["as_of"])
 			}
 		}

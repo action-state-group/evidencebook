@@ -11,6 +11,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,14 +103,14 @@ func TestANewDealsStepsAreRecordsOnItsBook(t *testing.T) {
 	for i, r := range records {
 		h := r.Header
 		assert.Equal(t, uint64(i+1), r.Seq)
-		assert.Equal(t, dealStepRecordType, h.RecordType)
+		assert.Equal(t, dealprofile.StepRecordType, h.RecordType)
 		assert.Equal(t, evidencebook.ProducerClaim, h.EpistemicType)
 		assert.Equal(t, cli.DealLogID(dealID), h.BookID)
 		assert.Equal(t, evidencebook.Available, h.RetentionState)
 		assert.Equal(t, evidencebook.CommitAlgNonce256, h.CommitAlg)
 		assert.Len(t, h.PayloadCommitments, 1, "the x-deal-v0 record, and nothing else")
 		require.Len(t, h.FieldCommitments, 3, "every step commits one field-name set")
-		for _, field := range []string{dealLocalField, dealAmountField, dealCurrencyField} {
+		for _, field := range []string{dealprofile.LocalField, dealprofile.AmountField, dealprofile.CurrencyField} {
 			c, ok := h.FieldCommitments[field]
 			require.True(t, ok, field)
 			assert.Len(t, c, 64)
@@ -117,7 +118,7 @@ func TestANewDealsStepsAreRecordsOnItsBook(t *testing.T) {
 			seen[c] = true
 		}
 		var ev dealEvent
-		require.NoError(t, json.Unmarshal([]byte(bookOpening(t, r, dealLocalField)), &ev))
+		require.NoError(t, json.Unmarshal([]byte(bookOpening(t, r, dealprofile.LocalField)), &ev))
 		assert.Equal(t, int64(i+1), ev.N)
 		assert.Equal(t, ev.At, h.CommittedAt, "one time per record: the step's own")
 		assert.Equal(t, dealID+"/"+strconv.FormatInt(ev.N, 10), h.SubjectRef)
@@ -127,7 +128,7 @@ func TestANewDealsStepsAreRecordsOnItsBook(t *testing.T) {
 			assert.Equal(t, []evidencebook.Link{{Type: evidencebook.Cites, Target: parent}}, h.Links)
 		}
 		parent = r.RecordID
-		amount, currency := bookOpening(t, r, dealAmountField), bookOpening(t, r, dealCurrencyField)
+		amount, currency := bookOpening(t, r, dealprofile.AmountField), bookOpening(t, r, dealprofile.CurrencyField)
 		if ev.Kind == "close" {
 			assert.Equal(t, "38000", amount)
 			assert.Equal(t, "USD", currency)
@@ -155,7 +156,7 @@ func TestASealedReportIsARecordOnTheDealsBook(t *testing.T) {
 	require.Len(t, records, steps+2)
 	for _, r := range records[steps:] {
 		h := r.Header
-		assert.Equal(t, dealReportRecordType, h.RecordType)
+		assert.Equal(t, dealprofile.ReportRecordType, h.RecordType)
 		assert.Empty(t, h.SubjectRef)
 		assert.Empty(t, h.Links)
 		assert.Empty(t, h.FieldCommitments)
@@ -187,7 +188,7 @@ func TestCommittedAtIsTheStepsTimeWhenTheClockMovesOn(t *testing.T) {
 	dealRun(t, "note", "--deal", dealID, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":38000}`))
 	for _, r := range bookRecords(t, dealID) {
 		var ev dealEvent
-		require.NoError(t, json.Unmarshal([]byte(bookOpening(t, r, dealLocalField)), &ev))
+		require.NoError(t, json.Unmarshal([]byte(bookOpening(t, r, dealprofile.LocalField)), &ev))
 		assert.Equal(t, ev.At, r.Header.CommittedAt)
 	}
 }
@@ -220,7 +221,7 @@ func TestWithheldStepsHeadersHaveOneShape(t *testing.T) {
 	for _, raw := range records {
 		header, _ := raw.(map[string]any)[evidencebook.RecordHeaderMember].(map[string]any)
 		require.NotNil(t, header, "every capsule carries its header inline")
-		if header["record_type"] != dealStepRecordType {
+		if header["record_type"] != dealprofile.StepRecordType {
 			continue
 		}
 		steps++
@@ -239,7 +240,7 @@ func TestWithheldStepsHeadersHaveOneShape(t *testing.T) {
 		assert.Equal(t, names, these, "every step's header has the same field names")
 	}
 	assert.GreaterOrEqual(t, steps, 3, "open, act and close are all in the copy")
-	assert.Equal(t, []string{dealAmountField, dealCurrencyField, dealLocalField}, names)
+	assert.Equal(t, []string{dealprofile.AmountField, dealprofile.CurrencyField, dealprofile.LocalField}, names)
 }
 
 // A store holds legacy deals and book deals together (note §3.1), and every
@@ -362,7 +363,7 @@ func TestGetPrintsNoOpeningOfABookStep(t *testing.T) {
 	dealFixture(t)
 	dealID := dealRun(t, "open", "--input", filepath.Join(bookingFixture, "open.json"))["deal_id"].(string)
 	r := bookRecords(t, dealID)[0]
-	local := bookOpening(t, r, dealLocalField)
+	local := bookOpening(t, r, dealprofile.LocalField)
 	for _, args := range [][]string{{}, {"--raw"}} {
 		out, err := invoke(t, "", append([]string{"get", "--profile", "deal", "--capsule-id", r.RecordID}, args...)...)
 		require.NoError(t, err, out)

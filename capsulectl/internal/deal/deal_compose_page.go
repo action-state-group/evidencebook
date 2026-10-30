@@ -7,6 +7,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // The composer's both-halves page (evidencebook-deal#31, option b). A
@@ -63,7 +64,7 @@ func privateHalfOf(path, dealID string, composition map[string]interface{}, w cl
 	if audience, _ := report["audience"].(string); audience != cli.DealAudienceKeep {
 		return nil, cli.InputError("--keep must be your own copy (`deal report --bundle`, audience keep); a shared copy is not your private half")
 	}
-	if id, _ := report[dealIDMember].(string); id != dealID {
+	if id, _ := report[dealprofile.DealIDMember].(string); id != dealID {
 		return nil, cli.InputError(fmt.Sprintf("--keep is a copy of deal %q, not of the composed deal %q; the page is not written", id, dealID))
 	}
 	if keepKey, composer := bundleRootKey(keep), bundleRootKey(composition); keepKey == "" || keepKey != composer {

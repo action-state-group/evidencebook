@@ -675,7 +675,8 @@ capsulectl --profile deal deal init --dir ~/.local/share/capsule-deal
 This creates a local SQLite store and two signing seeds (mode 0600), and
 turns on the public witness by default (`--no-witness` turns it off). Raw
 names, numbers, addresses and message text stay in this local store: each
-sealed step is an x-deal-v0 record (see `profile/PROFILE.md`) that carries
+sealed step is an x-deal-v0 record (see EvidenceBook's
+[`dealprofile/x-deal-v0/PROFILE.md`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/PROFILE.md)) that carries
 only fingerprints of identifiers and commitments to text.
 
 Which of your own picks (a size, a delivery option the user never named)
@@ -683,7 +684,8 @@ pause a check is set by a materiality predicate the profile pins:
 `deal init --materiality builtin:neutral` (the predicate built into
 capsulectl: a quantity of 1 does not pause, a size, variant, delivery or other
 quantity does) or a FILE of the user's own, or later `profile update
---materiality` (see `profile/materiality-predicate/`). With none configured, every attribute you
+--materiality` (see EvidenceBook's
+[`dealprofile/x-deal-v0/materiality-predicate/`](https://github.com/action-state-group/evidencebook/tree/v0.10.0/dealprofile/x-deal-v0/materiality-predicate)). With none configured, every attribute you
 picked pauses the check and the user is asked about it. **Setting or changing
 the predicate is the user's policy: never do it yourself.** If a check refuses
 because the predicate changed since it was pinned, tell the user; re-pinning is

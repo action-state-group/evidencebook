@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -103,7 +104,7 @@ func counterpartyKeys(w dealWho, channel string) []string {
 		if strings.TrimSpace(v) == "" {
 			return
 		}
-		n, err := normalizeID(kind, v)
+		n, err := dealprofile.Normalize(kind, v)
 		if err != nil {
 			return
 		}
@@ -131,7 +132,7 @@ func counterpartyKeys(w dealWho, channel string) []string {
 // marketplace host's domain names the platform itself. With no domain, its
 // other identities.
 func platformKeys(w dealWho) []string {
-	if n, err := normalizeID("domain", w.Domain); err == nil && strings.TrimSpace(w.Domain) != "" {
+	if n, err := dealprofile.Normalize("domain", w.Domain); err == nil && strings.TrimSpace(w.Domain) != "" {
 		if apex, err := publicsuffix.EffectiveTLDPlusOne(n); err == nil {
 			n = apex
 		}

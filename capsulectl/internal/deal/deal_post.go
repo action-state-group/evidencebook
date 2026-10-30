@@ -14,6 +14,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -68,7 +69,8 @@ type dealPosting struct {
 // The listing template is the represent check's (deal_representations.go):
 // attributedPrefix, attributedSuffix and the one list of sentence marks,
 // attributedSentenceMarks (capsule-cli#391), which capsule-engine's
-// promise_never/1.1.0 reads too; testdata/sentence-marks.txt holds it.
+// promise_never/1.1.0 reads too; the profile's sentence-marks.txt
+// (EvidenceBook dealprofile/x-deal-v0) holds it.
 
 // authenticityStems and authenticityWholeWords are the words that read as an
 // authenticity claim: a stem matches every word it starts, a whole word only
@@ -368,7 +370,7 @@ func normalizePosting(p *dealPosting) error {
 	}
 	sort.Strings(classes)
 	p.Classes = classes
-	platform, err := normDomain(p.Platform)
+	platform, err := dealprofile.Normalize("domain", p.Platform)
 	if err != nil {
 		return cli.InputError(`posting.platform is the site the listing goes on, by its domain (for example "marketplace.example")`)
 	}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func offerRecordAt(t *testing.T, id string) string {
 	records, _ := exportRecords(t, id)
 	at := ""
 	for _, r := range records {
-		if b, ok := r["body"].(map[string]any); ok && typeOf(r) == cli.TypeProposedAction && b["action"] == offerAction {
+		if b, ok := r["body"].(map[string]any); ok && typeOf(r) == dealprofile.TypeProposedAction && b["action"] == offerAction {
 			at = r["at"].(string)
 		}
 	}

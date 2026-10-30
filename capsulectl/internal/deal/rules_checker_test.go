@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,7 +178,7 @@ func TestATypedDenyIsDENYAndNamesTheRuleset(t *testing.T) {
 	_, records := recordsOf(t, id)
 	var evaluation map[string]any
 	for _, r := range records {
-		if typeOf(r) == cli.TypeActionEvaluation {
+		if typeOf(r) == dealprofile.TypeActionEvaluation {
 			evaluation = r["body"].(map[string]any)
 		}
 	}

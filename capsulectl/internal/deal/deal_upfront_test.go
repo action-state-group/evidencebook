@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func sealedCheckBody(t *testing.T, id string) map[string]any {
 	records, export := exportRecords(t, id)
 	checkProfile(t, export)
 	for _, r := range records {
-		if typeOf(r) == cli.TypeProposedAction {
+		if typeOf(r) == dealprofile.TypeProposedAction {
 			return r["body"].(map[string]any)
 		}
 		if b, ok := r["x-deal-v0"].(map[string]any); ok && b["record_type"] == "check" {

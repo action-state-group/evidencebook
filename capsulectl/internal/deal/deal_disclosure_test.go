@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,7 +104,7 @@ func TestDealDisclosureLedgerNamesWhatWhoWhenAndAuthority(t *testing.T) {
 	assertNoDisclosedValue(t, string(raw))
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	require.NoError(t, err)
-	schema, err := compiledDealSchema()
+	schema, err := dealprofile.ProfileSchemaAt("")
 	require.NoError(t, err)
 	var disclosures []map[string]any
 	for i, r := range doc.([]any) {

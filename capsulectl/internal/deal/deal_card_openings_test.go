@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,7 +70,7 @@ func TestTheOwnCopyOpensTheCardsTheUserAnsweredOn(t *testing.T) {
 			assert.Equal(t, answered, opening["step"])
 			assert.Equal(t, card, opening["text"])
 			sealed := b["disclosures"].(map[string]interface{})[answered].(map[string]interface{})["agent_input"].(map[string]interface{})
-			got, err := cli.CommitText(opening["nonce"].(string), opening["text"].(string))
+			got, err := dealprofile.CommitText(opening["nonce"].(string), opening["text"].(string))
 			require.NoError(t, err)
 			assert.Equal(t, sealed["body"].(map[string]interface{})[c.field], got)
 			_, err = dealPageOpenings(b)

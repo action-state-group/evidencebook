@@ -13,6 +13,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-cli/settlement"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -133,7 +134,7 @@ func settlementNoteEvent(c *cobra.Command, kind string) (dealEvent, error) {
 				return dealEvent{}, err
 			}
 			nonce := hex.EncodeToString(raw)
-			if in.TrackingDigest, err = cli.CommitText(nonce, tracking); err != nil {
+			if in.TrackingDigest, err = dealprofile.CommitText(nonce, tracking); err != nil {
 				return dealEvent{}, err
 			}
 			ev.Evidence.SettlementNonces = map[string]string{"tracking": nonce}

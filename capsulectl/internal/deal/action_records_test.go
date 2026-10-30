@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -248,7 +249,7 @@ func TestTypedMerchantChangedPlatformApprovalDoesNotAnswerTheAsk(t *testing.T) {
 			displayed, err := renderingCommitment(se.Event.Nonces["displayed_text"], "Approve $558.80 purchase")
 			require.NoError(t, err)
 			assert.Equal(t, displayed, platformBody["displayed_text_digest"])
-			returned, err := cli.CommitText(se.Event.Nonces["returned_user_text"], "Approve")
+			returned, err := dealprofile.CommitText(se.Event.Nonces["returned_user_text"], "Approve")
 			require.NoError(t, err)
 			assert.Equal(t, returned, platformBody["returned_user_text_digest"])
 		}
@@ -424,28 +425,28 @@ func TestTypedApprovalDoesNotSurviveAChangedProposedAction(t *testing.T) {
 func TestCheckContractRoundTrips(t *testing.T) {
 	predicateDigest := strings.Repeat("8", 64)
 	ref := func(c string) *CheckRef {
-		return &CheckRef{Type: cli.TypedRecordRef, DigestAlg: "SHA-256", Digest: strings.Repeat(c, 64)}
+		return &CheckRef{Type: dealprofile.TypedRecordRef, DigestAlg: "SHA-256", Digest: strings.Repeat(c, 64)}
 	}
 	req := CheckRequest{
-		Type: cli.TypeCheckRequest, Phase: "proposed", Platform: &CheckPlatform{ID: "example-platform", DisplayName: "Example Platform"},
+		Type: dealprofile.TypeCheckRequest, Phase: "proposed", Platform: &CheckPlatform{ID: "example-platform", DisplayName: "Example Platform"},
 		RulesetRef: "rules/everyday", RulesetDigest: strings.Repeat("1", 64), TaskAuthorityRef: ref("2"), RootIntentRef: ref("3"),
 		ParentDelegationRef: nil, ProposedAction: map[string]interface{}{"action": "pay", "amount_minor": float64(55880)},
 		HistoryRefs: []CheckRef{*ref("4")}, AgentAssessment: map[string]interface{}{"note": "merchant changed"},
 		PlatformApprovalRefs: []CheckRef{*ref("5")},
 	}
 	resp := CheckResponse{
-		Type: cli.TypeCheckResponse, Disposition: "ASK", ValidUntil: "2026-10-06T09:28:00Z", ProposedActionDigest: strings.Repeat("6", 64),
+		Type: dealprofile.TypeCheckResponse, Disposition: "ASK", ValidUntil: "2026-10-06T09:28:00Z", ProposedActionDigest: strings.Repeat("6", 64),
 		Findings:       []CheckFinding{{Question: "who", Rule: "payee_or_contact_changed", Field: "payee"}},
 		AuthorityBasis: []CheckAuthority{{Type: "task_authority", Ref: *ref("2")}},
 		EvaluationRef:  *ref("7"), RulesetDigest: strings.Repeat("1", 64), TaskAuthorityRef: *ref("2"),
-		Materiality: cli.MaterialityModePredicate, MaterialityDigest: &predicateDigest,
+		Materiality: dealprofile.MaterialityModePredicate, MaterialityDigest: &predicateDigest,
 	}
-	for typeName, v := range map[string]any{cli.TypeCheckRequest: &req, cli.TypeCheckResponse: &resp} {
+	for typeName, v := range map[string]any{dealprofile.TypeCheckRequest: &req, dealprofile.TypeCheckResponse: &resp} {
 		raw, err := json.Marshal(v)
 		require.NoError(t, err)
 		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 		require.NoError(t, err)
-		schema, err := recordSchema(typeName)
+		schema, err := dealprofile.RecordSchema(typeName)
 		require.NoError(t, err)
 		require.NoError(t, schema.Validate(doc), typeName)
 	}
@@ -459,17 +460,17 @@ func TestCheckContractRoundTrips(t *testing.T) {
 	}
 	// No predicate is stated, not left out: null with the fail-safe mode.
 	none := resp
-	none.Materiality, none.MaterialityDigest = cli.MaterialityModeNone, nil
+	none.Materiality, none.MaterialityDigest = dealprofile.MaterialityModeNone, nil
 	raw, err = json.Marshal(none)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"materiality":"none_fail_safe"`)
 	assert.Contains(t, string(raw), `"materiality_digest":null`)
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	require.NoError(t, err)
-	schema, err := recordSchema(cli.TypeCheckResponse)
+	schema, err := dealprofile.RecordSchema(dealprofile.TypeCheckResponse)
 	require.NoError(t, err)
 	require.NoError(t, schema.Validate(doc))
-	none.Materiality = cli.MaterialityModePredicate
+	none.Materiality = dealprofile.MaterialityModePredicate
 	raw, err = json.Marshal(none)
 	require.NoError(t, err)
 	doc, err = jsonschema.UnmarshalJSON(bytes.NewReader(raw))
@@ -482,24 +483,20 @@ func TestCheckContractRoundTrips(t *testing.T) {
 	assert.Equal(t, req, backReq)
 }
 
-// No new record type, schema file or field name carries "deal", and the
-// schemas ship identically with the skill.
+// No new record type, schema file or field name carries "deal".
 func TestNoNewRecordTypeCarriesDeal(t *testing.T) {
-	entries, err := recordSchemaFiles.ReadDir("assets/records")
+	entries, err := os.ReadDir(filepath.Join(dealProfileDir, "records"))
 	require.NoError(t, err)
 	key := regexp.MustCompile(`"([a-z_]+)":`)
 	for _, e := range entries {
 		assert.NotContains(t, e.Name(), "deal")
-		raw, err := recordSchemaFiles.ReadFile("assets/records/" + e.Name())
+		raw, err := os.ReadFile(filepath.Join(dealProfileDir, "records", e.Name()))
 		require.NoError(t, err)
 		for _, m := range key.FindAllStringSubmatch(string(raw), -1) {
 			assert.NotContains(t, m[1], "deal", "%s: field %s", e.Name(), m[1])
 		}
-		shipped, err := os.ReadFile(filepath.Join(dealProfileDir, "records", e.Name()))
-		require.NoError(t, err)
-		assert.Equal(t, string(shipped), string(raw), "the skill ships %s unchanged", e.Name())
 	}
-	for _, n := range []string{cli.TypeTaskAuthority, cli.TypeProposedAction, cli.TypeActionEvaluation, cli.TypeActionApproval, cli.TypeActionRecord, cli.TypeActionOutcome, cli.TypeActionReport} {
+	for _, n := range []string{dealprofile.TypeTaskAuthority, dealprofile.TypeProposedAction, dealprofile.TypeActionEvaluation, dealprofile.TypeActionApproval, dealprofile.TypeActionRecord, dealprofile.TypeActionOutcome, dealprofile.TypeActionReport} {
 		assert.NotContains(t, n, "deal")
 	}
 }
@@ -534,11 +531,11 @@ func TestRulesetDigestCoversRulesAndMateriality(t *testing.T) {
 func TestPolicyChangeApprovalShape(t *testing.T) {
 	h := strings.Repeat("c", 64)
 	record := map[string]interface{}{
-		"type": cli.TypeActionApproval, "canonicalization": "jcs", "chain_id": "chain-" + strings.Repeat("d", 16), "seq": 2,
+		"type": dealprofile.TypeActionApproval, "canonicalization": "jcs", "chain_id": "chain-" + strings.Repeat("d", 16), "seq": 2,
 		"at": "2026-10-07T09:00:00Z", "prev": typedRef(h), "chain_root": typedRef(h),
 		"body": policyChangeApproval(strings.Repeat("1", 64), strings.Repeat("2", 64), strings.Repeat("3", 64), strings.Repeat("4", 64)),
 	}
-	schema, err := recordSchema(cli.TypeActionApproval)
+	schema, err := dealprofile.RecordSchema(dealprofile.TypeActionApproval)
 	require.NoError(t, err)
 	require.NoError(t, schema.Validate(toPlain(t, record)))
 	delete(record["body"].(map[string]interface{}), "semantic_diff_digest")
@@ -600,9 +597,9 @@ func TestTypedOnePromptForSeveralFindings(t *testing.T) {
 	var evaluations, prompts []map[string]any
 	for _, r := range records {
 		switch {
-		case r["type"] == cli.TypeActionEvaluation:
+		case r["type"] == dealprofile.TypeActionEvaluation:
 			evaluations = append(evaluations, r)
-		case r["type"] == cli.TypeActionApproval && bodyOf(r)["authority"] == "user_approval":
+		case r["type"] == dealprofile.TypeActionApproval && bodyOf(r)["authority"] == "user_approval":
 			prompts = append(prompts, r)
 		}
 	}
@@ -622,7 +619,7 @@ func TestTypedOnePromptForSeveralFindings(t *testing.T) {
 }
 
 // neutralMaterialityDigest is the digest of the example materiality predicate
-// (skills/deal/profile/materiality-predicate/neutral.json) the deal tests
+// (the profile's materiality-predicate/neutral.json) the deal tests
 // configure: the SHA-256 of its JCS bytes.
 const neutralMaterialityDigest = "53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1"
 

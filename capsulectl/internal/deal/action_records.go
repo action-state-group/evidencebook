@@ -1,91 +1,24 @@
 package deal
 
 import (
-	"bytes"
-	"embed"
-	"path"
-	"sync"
-
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
-
-// The record schemas ship in skills/deal/profile/records/; these are
-// byte-identical copies (a test keeps them equal).
-//
-//go:embed assets/records/*.schema.json
-var recordSchemaFiles embed.FS
-
-var (
-	recordSchemasOnce sync.Once
-	recordSchemas     map[string]*jsonschema.Schema
-	recordSchemasErr  error
-)
-
-// recordSchema is the compiled schema of a typed record or contract type.
-func recordSchema(typeName string) (*jsonschema.Schema, error) {
-	recordSchemasOnce.Do(func() {
-		c := jsonschema.NewCompiler()
-		entries, err := recordSchemaFiles.ReadDir("assets/records")
-		if err != nil {
-			recordSchemasErr = err
-			return
-		}
-		for _, e := range entries {
-			raw, err := recordSchemaFiles.ReadFile(path.Join("assets/records", e.Name()))
-			if err != nil {
-				recordSchemasErr = err
-				return
-			}
-			doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-			if err != nil {
-				recordSchemasErr = err
-				return
-			}
-			if err = c.AddResource("https://agentactioncapsule.org/records/"+e.Name(), doc); err != nil {
-				recordSchemasErr = err
-				return
-			}
-		}
-		recordSchemas = map[string]*jsonschema.Schema{}
-		for _, t := range []string{cli.TypeTaskAuthority, cli.TypeProposedAction, cli.TypeActionEvaluation, cli.TypeActionApproval,
-			cli.TypeActionRecord, cli.TypeActionOutcome, cli.TypeActionReport, cli.TypeCheckRequest, cli.TypeCheckResponse, cli.TypeCommercialBounds} {
-			s, err := c.Compile("https://agentactioncapsule.org/records/" + schemaFile(t))
-			if err != nil {
-				recordSchemasErr = err
-				return
-			}
-			recordSchemas[t] = s
-		}
-	})
-	if recordSchemasErr != nil {
-		return nil, recordSchemasErr
-	}
-	s, ok := recordSchemas[typeName]
-	if !ok {
-		return nil, cli.InputError("unknown record type " + typeName)
-	}
-	return s, nil
-}
-
-func schemaFile(typeName string) string {
-	return string(bytes.ReplaceAll([]byte(typeName), []byte("/"), []byte("-"))) + ".schema.json"
-}
 
 func typedRef(digest string) map[string]interface{} {
-	return map[string]interface{}{"type": cli.TypedRecordRef, "digest_alg": "SHA-256", "digest": digest}
+	return map[string]interface{}{"type": dealprofile.TypedRecordRef, "digest_alg": "SHA-256", "digest": digest}
 }
 
 // typedRecord derives the typed record of a step from its x-deal-v0 record
 // (v0), or returns nil when the step stays an x-deal-v0 evidence record.
 func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) (map[string]interface{}, error) {
-	block := v0[cli.DealProfile].(map[string]interface{})
+	block := v0[dealprofile.Profile].(map[string]interface{})
 	body := v0["body"].(map[string]interface{})
 	var typeName string
 	var out map[string]interface{}
 	switch block["record_type"] {
 	case "check":
-		typeName, out = cli.TypeProposedAction, cloneBody(body)
+		typeName, out = dealprofile.TypeProposedAction, cloneBody(body)
 		moveCounterparty(block, out)
 		// The task authority in force, as an opaque reference a rules
 		// checker binds the plan it is given to.
@@ -95,7 +28,7 @@ func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) 
 			}
 		}
 	case "verdict":
-		typeName = cli.TypeActionEvaluation
+		typeName = dealprofile.TypeActionEvaluation
 		ev, err := evaluationBody(ev, events, body)
 		if err != nil {
 			return nil, err
@@ -107,7 +40,7 @@ func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) 
 			return nil, nil // a late answer changes nothing: it stays an x-deal-v0 approval
 		}
 		if a.Choice == "confirm_limits" {
-			typeName = cli.TypeTaskAuthority
+			typeName = dealprofile.TypeTaskAuthority
 			ta, err := confirmedAuthorityBody(ev, events, body)
 			if err != nil {
 				return nil, err
@@ -115,7 +48,7 @@ func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) 
 			out = ta
 			break
 		}
-		typeName = cli.TypeActionApproval
+		typeName = dealprofile.TypeActionApproval
 		out = map[string]interface{}{"choice": body["choice"], "proceed": body["proceed"]}
 		switch a.Approver {
 		case "user":
@@ -134,13 +67,13 @@ func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) 
 			out["rendering_commitment"] = c
 		}
 	case "action":
-		typeName, out = cli.TypeActionRecord, cloneBody(body)
+		typeName, out = dealprofile.TypeActionRecord, cloneBody(body)
 		moveCounterparty(block, out)
 		if err := addAuthority(out, events, ev.Act.AuthorizedBy, ev.Act.AmountMinor); err != nil {
 			return nil, err
 		}
 	case "outcome":
-		typeName = cli.TypeActionOutcome
+		typeName = dealprofile.TypeActionOutcome
 		out = map[string]interface{}{"status": body["status"], "outcome": body["outcome"], "findings": body["differences"]}
 		for _, k := range []string{"delivered", "note_commitment", "actor", "reason"} {
 			if v, ok := body[k]; ok {
@@ -154,7 +87,7 @@ func typedRecord(ev dealEvent, events []sealedEvent, v0 map[string]interface{}) 
 		if body["authority"] != "approval" {
 			return nil, nil // told without approval: stays an x-deal-v0 disclosure
 		}
-		typeName = cli.TypeActionRecord
+		typeName = dealprofile.TypeActionRecord
 		d := ev.Disclosure
 		out = map[string]interface{}{"action": d.action(), "disclosed": map[string]interface{}{"to": body["to"], "fields": body["fields"]}}
 		for _, k := range []string{"action_class", "taxonomy_version"} {
@@ -191,7 +124,7 @@ func typedHeader(typeName string, block, body map[string]interface{}) map[string
 		typed := make([]interface{}, len(refs))
 		for i, x := range refs {
 			ref := x.(map[string]interface{})
-			typed[i] = map[string]interface{}{"rel": ref["rel"], "type": cli.TypedRecordRef, "digest_alg": "SHA-256", "digest": ref["digest"]}
+			typed[i] = map[string]interface{}{"rel": ref["rel"], "type": dealprofile.TypedRecordRef, "digest_alg": "SHA-256", "digest": ref["digest"]}
 		}
 		r["refs"] = typed
 	}
@@ -216,7 +149,7 @@ func cloneBody(body map[string]interface{}) map[string]interface{} {
 // typed body: the same keyed fingerprints, named for the chain.
 func moveCounterparty(block, body map[string]interface{}) {
 	if cp, ok := block["counterparty"].(map[string]interface{}); ok {
-		body["counterparty"] = map[string]interface{}{"fp_alg": cli.TypedFPAlg, "ids": cp["ids"]}
+		body["counterparty"] = map[string]interface{}{"fp_alg": dealprofile.TypedFPAlg, "ids": cp["ids"]}
 	}
 }
 
@@ -278,7 +211,7 @@ func taskAuthorityRecord(ev dealEvent, events []sealedEvent, commit func(string)
 	if ev.SaleRegistration != "" {
 		block["refs"] = append(block["refs"].([]interface{}), relRef("registration", ev.SaleRegistration))
 	}
-	return typedHeader(cli.TypeTaskAuthority, block, body), nil
+	return typedHeader(dealprofile.TypeTaskAuthority, block, body), nil
 }
 
 // confirmedAuthorityBody is a new version of the task authority: the user's
@@ -295,7 +228,7 @@ func confirmedAuthorityBody(ev dealEvent, events []sealedEvent, body map[string]
 	if proposal == nil || proposal.Event.Intent == nil {
 		return nil, cli.InputError("confirm_limits answers no proposal of this deal")
 	}
-	verbatim, err := cli.CommitText(proposal.Event.Nonces["verbatim"], proposal.Event.Intent.Verbatim)
+	verbatim, err := dealprofile.CommitText(proposal.Event.Nonces["verbatim"], proposal.Event.Intent.Verbatim)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +324,7 @@ func renderingCommitment(nonce, text string) (string, error) {
 	if nonce == "" {
 		return "", cli.InputError("a rendering commitment needs its rendering's nonce")
 	}
-	return cli.CommitText(nonce, text)
+	return dealprofile.CommitText(nonce, text)
 }
 
 // shownCommitment commits to what the person was shown when they answered an
@@ -511,7 +444,7 @@ func platformApprovalRecord(ev dealEvent, events []sealedEvent, commit func(stri
 		}
 		body["currency"] = cur
 	}
-	return typedHeader(cli.TypeActionApproval, block, body), nil
+	return typedHeader(dealprofile.TypeActionApproval, block, body), nil
 }
 
 // counterpartyAcceptanceKind names the acceptance observation shape.
@@ -543,7 +476,7 @@ func acceptanceRecord(ev dealEvent, events []sealedEvent, commit func(string) (s
 	if a.Channel != "" {
 		body["channel"] = a.Channel
 	}
-	return typedHeader(cli.TypeActionApproval, block, body), nil
+	return typedHeader(dealprofile.TypeActionApproval, block, body), nil
 }
 
 // policyChangeApproval is the body of the user's confirmation of a policy
@@ -622,12 +555,12 @@ type CheckResponse struct {
 // checkResponseFor is the check response of a sealed evaluation step.
 func checkResponseFor(ev dealEvent, events []sealedEvent, digest string) CheckResponse {
 	ck := ev.Check
-	task := CheckRef{Type: cli.TypedRecordRef, DigestAlg: "SHA-256", Digest: taskAuthorityAt(events, "")}
+	task := CheckRef{Type: dealprofile.TypedRecordRef, DigestAlg: "SHA-256", Digest: taskAuthorityAt(events, "")}
 	resp := CheckResponse{
-		Type: cli.TypeCheckResponse, Disposition: map[string]string{"pass": "DO", "pause": "ASK", "deny": "DENY"}[ck.Verdict],
+		Type: dealprofile.TypeCheckResponse, Disposition: map[string]string{"pass": "DO", "pause": "ASK", "deny": "DENY"}[ck.Verdict],
 		ValidUntil: ck.ValidUntil, Findings: []CheckFinding{},
 		AuthorityBasis: []CheckAuthority{{Type: "task_authority", Ref: task}},
-		EvaluationRef:  CheckRef{Type: cli.TypedRecordRef, DigestAlg: "SHA-256", Digest: digest},
+		EvaluationRef:  CheckRef{Type: dealprofile.TypedRecordRef, DigestAlg: "SHA-256", Digest: digest},
 		RulesetDigest:  ck.RulesetDigest, TaskAuthorityRef: task,
 	}
 	resp.Materiality, resp.MaterialityDigest = ck.Materiality.Mode()

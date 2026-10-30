@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,7 +125,7 @@ func TestAnAttributedClaimAsksAndOnlyTheUsersWordsAuthorizeIt(t *testing.T) {
 			assert.Equal(t, "user", sealed["attributed_to"])
 			assert.Equal(t, "authenticity", sealed["class"])
 			assert.Equal(t, attributedText, rec["representing_opening"].(map[string]any)["text"])
-			checked := recordsOfType(t, id, cli.TypeProposedAction)
+			checked := recordsOfType(t, id, dealprofile.TypeProposedAction)
 			assert.Equal(t, "user", checked[len(checked)-1]["body"].(map[string]any)["representing"].(map[string]any)["attributed_to"])
 
 			_, err := answerCheck(t, id, ck["check_id"].(string), "yes, say it's authentic, that's my claim", ck["card"].(string))
@@ -197,7 +198,7 @@ func TestAnAttributedClaimOnASaleThreadAsks(t *testing.T) {
 	ck := represent(t, a, writeJSON(t, attributedCheck(attributedText)))
 	require.Equal(t, "pause", ck["verdict"])
 	assert.True(t, ruleOf(t, ck, ruleAttributedClaim))
-	checked := recordsOfType(t, a, cli.TypeProposedAction)
+	checked := recordsOfType(t, a, dealprofile.TypeProposedAction)
 	assert.Equal(t, "user", checked[len(checked)-1]["body"].(map[string]any)["representing"].(map[string]any)["attributed_to"])
 	_, err := answerCheck(t, a, ck["check_id"].(string), "yes, that's my claim", ck["card"].(string))
 	require.NoError(t, err)

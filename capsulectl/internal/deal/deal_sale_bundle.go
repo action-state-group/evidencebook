@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
@@ -143,7 +144,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 	if predate {
 		section["threads_predate_registration"] = true
 	}
-	b["extensions"] = map[string]interface{}{cli.DealCadenceExtension: cadence, cli.DealProfile: section, cli.DealSaleExtension: map[string]interface{}{"threads": threads}}
+	b["extensions"] = map[string]interface{}{cli.DealCadenceExtension: cadence, dealprofile.Profile: section, cli.DealSaleExtension: map[string]interface{}{"threads": threads}}
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, nil, err
 	}

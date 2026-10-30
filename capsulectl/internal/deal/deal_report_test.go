@@ -18,6 +18,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,7 +123,7 @@ func dealReportIsOneLocalVerifyingPage(t *testing.T, inLog bool) {
 		assert.Len(t, b["records"], 10, "exactly this deal's 9 steps (its check's counterparty_profile among them) and this copy's sealed report, nothing from any other deal")
 	} else {
 		assert.Len(t, b["records"], 9, "exactly this deal's 9 steps (its check's counterparty_profile among them), nothing from any other deal; the report rides off the log")
-		_, ok := b["extensions"].(map[string]interface{})[cli.DealReportExtension]
+		_, ok := b["extensions"].(map[string]interface{})[dealprofile.ReportExtension]
 		assert.True(t, ok, "the page's own text is the standalone report")
 	}
 	for _, d := range v.Disclosures {
@@ -163,13 +164,10 @@ func embeddedBundle(t *testing.T, html string) map[string]interface{} {
 	return b
 }
 
-// Every sealed step is an x-deal-v0 record that validates against the schema
-// shipped in the skill, and the whole deal passes the profile's own checker.
+// Every sealed step is an x-deal-v0 record that validates against the
+// profile's schema, and the whole deal passes the profile's own checker.
 func TestDealRecordsFollowTheProfile(t *testing.T) {
-	shipped, err := os.ReadFile(dealProfileDir + "/x-deal-v0.schema.json")
-	require.NoError(t, err)
-	assert.Equal(t, string(shipped), string(dealProfileSchema), "cli/assets copy must equal the skill's schema")
-	schema, err := compiledDealSchema()
+	schema, err := dealprofile.ProfileSchemaAt("")
 	require.NoError(t, err)
 
 	dealFixture(t)
@@ -241,7 +239,7 @@ func TestDealReportAskedIsCheckable(t *testing.T) {
 	ext := dealReportOf(b)
 	opening, ok := ext["asked_opening"].(map[string]interface{})
 	require.True(t, ok, "the report carries the opening of the user's words")
-	commitment, err := cli.CommitText(opening["nonce"].(string), opening["text"].(string))
+	commitment, err := dealprofile.CommitText(opening["nonce"].(string), opening["text"].(string))
 	require.NoError(t, err)
 	baseline := b["disclosures"].(map[string]interface{})[ext["asked_step"].(string)].(map[string]interface{})["agent_input"].(map[string]interface{})
 	intent := baseline["body"].(map[string]interface{})["intent"].(map[string]interface{})

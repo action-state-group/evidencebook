@@ -22,7 +22,7 @@ const bookingFixture = "testdata/deal/booking"
 
 // dealFixture creates a fresh deal profile named "deal" in a temp config dir.
 // neutralMateriality is the example predicate the deal skill's profile docs ship.
-const neutralMateriality = "../../skills/deal/profile/materiality-predicate/neutral.json"
+var neutralMateriality = filepath.Join(dealProfileDir, "materiality-predicate", "neutral.json")
 
 func dealFixture(t *testing.T) string {
 	t.Helper()
@@ -514,7 +514,7 @@ func TestDealDemoScriptIgnoresTrailingWhitespace(t *testing.T) {
 	bin := filepath.Join(installedCapsulectl(t), "capsulectl")
 
 	skill := filepath.Join(work, "deal")
-	for _, dir := range []string{"scripts", "demo/jet-ski", "profile"} {
+	for _, dir := range []string{"scripts", "demo/jet-ski"} {
 		require.NoError(t, os.CopyFS(filepath.Join(skill, dir), os.DirFS(filepath.Join("../../skills/deal", dir))))
 	}
 	want, err := os.ReadFile(filepath.Join(jetSkiDemo, "expected-card.txt"))
@@ -524,7 +524,7 @@ func TestDealDemoScriptIgnoresTrailingWhitespace(t *testing.T) {
 
 	demo := func() (string, error) {
 		run := exec.Command("bash", filepath.Join(skill, "scripts/run-demo.sh"))
-		run.Env = append(os.Environ(), "CAPSULECTL="+bin)
+		run.Env = append(os.Environ(), "CAPSULECTL="+bin, "DEAL_PROFILE_DIR="+dealProfileDir)
 		out, err := run.CombinedOutput()
 		return string(out), err
 	}

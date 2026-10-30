@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -146,9 +146,10 @@ func TestDealApprovedActsAreDecideAndOthersStayFYI(t *testing.T) {
 		require.Equal(t, dealActEffectsVersion, se.Event.ActEffects)
 		before := se.Event
 		before.ActEffects = ""
-		in := dealCapsuleInput(events[:i], before, nil, p.Name, time.Now(), dealCapsuleCurrent)
-		assert.Equal(t, "fyi", string(in.ActionType))
-		assert.Nil(t, in.Effect)
+		request, _, err := s.stepRequest(events[:i], before, dealCapsuleCurrent)
+		require.NoError(t, err)
+		assert.Equal(t, "fyi", string(request.Capsule.ActionType))
+		assert.Nil(t, request.Capsule.Effect)
 	}
 	assert.Equal(t, map[string]string{"pay": "send_payment"}, dealEffectTypes, "pay's effect type is unchanged")
 }
@@ -194,9 +195,10 @@ func TestDealOverCapPaymentIsSelectedByItsClass(t *testing.T) {
 	events, err := s.load(t.Context(), id)
 	require.NoError(t, err)
 	last := events[len(events)-1]
-	legacy := dealCapsuleInput(events[:len(events)-1], last.Event, nil, p.Name, time.Now(), dealCapsuleAllFYI)
-	assert.Equal(t, "fyi", string(legacy.ActionType))
-	assert.Nil(t, legacy.Effect, "nothing for a check keyed on the class to select")
+	legacy, _, err := s.stepRequest(events[:len(events)-1], last.Event, dealCapsuleAllFYI)
+	require.NoError(t, err)
+	assert.Equal(t, "fyi", string(legacy.Capsule.ActionType))
+	assert.Nil(t, legacy.Capsule.Effect, "nothing for a check keyed on the class to select")
 }
 
 // A step an earlier release prepared (all fyi) but never published is still
@@ -414,7 +416,7 @@ func TestDealRecoversAStepPreparedBeforeDealID(t *testing.T) {
 	c := checkAct(t, id, "pay", 600)
 	require.Equal(t, "pass", c["verdict"])
 	for _, capsule := range dealCapsules(t, id) {
-		if capsule["action_id"] != cli.DealReportActionID {
+		if capsule["action_id"] != dealprofile.ReportActionID {
 			assert.Equal(t, id, capsule["deal_id"], "every step carries its deal id")
 		}
 	}

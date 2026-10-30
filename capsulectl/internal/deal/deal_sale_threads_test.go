@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +55,7 @@ func verifySale(t *testing.T, b map[string]any) (string, []string) {
 
 func saleSection(b map[string]any) (entries []any, threads map[string]any) {
 	exts := b["extensions"].(map[string]any)
-	entries = exts[cli.DealProfile].(map[string]any)["sale_threads"].([]any)
+	entries = exts[dealprofile.Profile].(map[string]any)["sale_threads"].([]any)
 	threads = exts[cli.DealSaleExtension].(map[string]any)["threads"].(map[string]any)
 	return entries, threads
 }
@@ -69,19 +70,19 @@ func TestAThreadIsRegisteredOnTheSalesLogBeforeItOpens(t *testing.T) {
 
 	recs, path := exportSale(t, saleID)
 	checkProfile(t, path)
-	require.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "root, task authority, the registration, its opening")
+	require.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "root, task authority, the registration, its opening")
 	reg := recs[2]
 	assert.Equal(t, "thread", reg["x-deal-v0"].(map[string]any)["record_type"])
 	assert.Equal(t, []string{"thread_ref_commitment"}, keysOf(reg["body"].(map[string]any)))
 	raw := mustJSONString(t, recs)
 	assert.NotContains(t, raw, a, "the thread's id only as a commitment")
-	opened, err := cli.CommitText(dealNonceOf(t, saleID, chainSteps(t, saleID)[2].CapsuleID, "thread_ref"), a)
+	opened, err := dealprofile.CommitText(dealNonceOf(t, saleID, chainSteps(t, saleID)[2].CapsuleID, "thread_ref"), a)
 	require.NoError(t, err)
 	assert.Equal(t, reg["body"].(map[string]any)["thread_ref_commitment"], opened)
 
 	thread := records(t, a)
 	ta := thread[1]
-	require.Equal(t, cli.TypeTaskAuthority, ta["type"])
+	require.Equal(t, dealprofile.TypeTaskAuthority, ta["type"])
 	var names []string
 	for _, r := range ta["refs"].([]any) {
 		ref := r.(map[string]any)
@@ -140,7 +141,7 @@ func TestARetriedOpenReusesAnUnopenedRegistration(t *testing.T) {
 	a := buyerThread(t, saleID, "buyer-a.example")
 	assert.Equal(t, orphan, a, "the unopened registration is the thread's")
 	recs, _ := exportSale(t, saleID)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "one registration, not two")
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "one registration, not two")
 }
 
 // Two threads: the sale bundle certifies the sale's whole log, carries both
@@ -223,7 +224,7 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 		}, "INVALID", "registration_opening_does_not_match"},
 		"a registration left out of sale_threads": {func(x map[string]any) {
 			exts := x["extensions"].(map[string]any)
-			sec := exts[cli.DealProfile].(map[string]any)
+			sec := exts[dealprofile.Profile].(map[string]any)
 			sec["sale_threads"] = sec["sale_threads"].([]any)[:1]
 			delete(exts[cli.DealSaleExtension].(map[string]any)["threads"].(map[string]any), b)
 		}, "INVALID", "sale_threads_do_not_match_the_registrations"},
@@ -235,13 +236,13 @@ func TestASaleBundleThatDoesNotBindItsThreadsIsNotValid(t *testing.T) {
 			_, threads := saleSection(x)
 			tb := threads[a].(map[string]any)
 			for _, d := range tb["disclosures"].(map[string]any) {
-				if in, ok := d.(map[string]any)["agent_input"].(map[string]any); ok && in["type"] == cli.TypeTaskAuthority {
+				if in, ok := d.(map[string]any)["agent_input"].(map[string]any); ok && in["type"] == dealprofile.TypeTaskAuthority {
 					in["body"].(map[string]any)["max_total_minor"] = json.Number("1")
 				}
 			}
 		}, "INVALID", "thread_invalid:"},
 		"threads that predate registration": {func(x map[string]any) {
-			x["extensions"].(map[string]any)[cli.DealProfile].(map[string]any)["threads_predate_registration"] = true
+			x["extensions"].(map[string]any)[dealprofile.Profile].(map[string]any)["threads_predate_registration"] = true
 		}, "INCOMPLETE", "threads_predate_registration"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -373,7 +374,7 @@ func TestAnOpenStoppedAfterItsKeyRowIsTakenUpAgain(t *testing.T) {
 	assert.Equal(t, registered, a, "the retry opens the registered thread")
 	recs, path := exportSale(t, saleID)
 	checkProfile(t, path)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "one registration, not two")
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened"}, saleRecordTypes(recs), "one registration, not two")
 
 	bundle, res := saleBundle(t, saleID)
 	assert.Equal(t, "VALID", res["verdict"])
@@ -399,7 +400,7 @@ func TestAnOpenStoppedAfterItsBaselineLeavesTheRegistrationNeverOpened(t *testin
 	a := buyerThread(t, saleID, "buyer-a.example")
 	assert.NotEqual(t, first, a)
 	recs, _ := exportSale(t, saleID)
-	assert.Equal(t, []string{"sale", cli.TypeTaskAuthority, "thread", "thread", "thread_opened"}, saleRecordTypes(recs), "a second registration; only the second opened")
+	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread", "thread_opened"}, saleRecordTypes(recs), "a second registration; only the second opened")
 
 	bundle, res := saleBundle(t, saleID)
 	assert.Equal(t, "VALID", res["verdict"])
