@@ -120,9 +120,11 @@
 - Output: `close` prints the sealed body as `close`. `reconciliation` is the
   reconciliation a fresh Close ran; a repeat prints the one an older Close
   sealed, and none for a `close/v1` Close.
-- Closes sealed before this change keep working: a repeat finds them by their
-  profile string, `--since-last` starts after their `to_seq`, and `result
-  build` reads their period and tallies as before.
+- Closes sealed before this change keep working for `close`: a repeat finds
+  them by their profile string, and `--since-last` starts after their
+  `to_seq`. `result build` now refuses a close or reconcile claim citing one,
+  since Result v0 §4.1 makes a claim's `close_ref` cite a `close/v1` Close;
+  seal a new Close for the period and cite that.
 - `--period month` closes or reconciles a UTC calendar month (`month:YYYY-MM`,
   `[start, end)`); without `--date` it takes the last month that has ended.
 
