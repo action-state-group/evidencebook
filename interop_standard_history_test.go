@@ -255,3 +255,42 @@ func TestStandardHistoryIsRecordedByTheRequester(t *testing.T) {
 		t.Fatalf("recorded %s", statement)
 	}
 }
+
+// The card is as of its anchor: the host is given the records the anchor
+// covers, never the responder's own bookkeeping even once an anchor covers
+// it, and a deal after the anchor changes only a later card.
+func TestStandardHistoryIsAsOfItsAnchor(t *testing.T) {
+	var seen [][]Record
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(&seen)}, nil)
+	first := anchorPin(t, book)
+	before := mustEnvelope(t, askStandardHistory(t, book, "carol", "peers", first)).Artifact
+	mustAppend(t, book, Entry{RecordType: "deal_terms", EpistemicType: ProducerClaim, Statement: json.RawMessage(
+		`{"role":"provided","amount":{"value":"5","assetCode":"USD","assetScale":0},"outcome":"held","happened":"no_record","disputes":[]}`)})
+	// The asking above sealed an evidence_request_answered record; the new
+	// anchor covers it.
+	second := anchorPin(t, book)
+	covered := false
+	for _, id := range book.order {
+		covered = covered || book.records[id].Header.RecordType == RecordTypeRequestAnswered
+	}
+	if !covered {
+		t.Fatal("the book holds no answered record for the new anchor to cover")
+	}
+	seen = nil
+	after := mustEnvelope(t, askStandardHistory(t, book, "carol", "peers", second)).Artifact
+	for _, r := range seen[0] {
+		if r.Header.RecordType == RecordTypeRequestAnswered || r.Header.RecordType == RecordTypeDisclosure {
+			t.Fatalf("the host was given a %s record", r.Header.RecordType)
+		}
+	}
+	if again := mustEnvelope(t, askStandardHistory(t, book, "carol", "peers", first)).Artifact; !bytes.Equal(again, before) {
+		t.Fatal("a deal after the anchor changed the card as of it")
+	}
+	var a, b map[string]any
+	if json.Unmarshal(before, &a) != nil || json.Unmarshal(after, &b) != nil {
+		t.Fatal("cards do not read")
+	}
+	if a["in_window"].(map[string]any)["of"] != 3.0 || b["in_window"].(map[string]any)["of"] != 4.0 {
+		t.Fatalf("in_window before %v, after %v", a["in_window"], b["in_window"])
+	}
+}

@@ -16,6 +16,9 @@
   `go/standardhistory` and checks it against those inputs before answering.
   Without the source the token is `derivation_unsupported`. The manifest
   lists `standard_history/1` when it is served.
+- `Book.Doctor`'s identified view says an authenticated requester gets
+  `standard_history/1` whatever the tier when it is served, and names
+  `correlation` beside `record` and `exchange` (evidencebook#114).
 - Requires agent-action-capsule `go` v0.16.0 (was v0.11.0) for
   `go/standardhistory`.
 

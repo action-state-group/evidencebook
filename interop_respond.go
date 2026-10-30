@@ -101,7 +101,9 @@ func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
 // peer; "off" answers no one. "prospective" is accepted and read as
 // "counterparties", as the mesh plugin reads it. A correlation subject is
 // an exact-key lookup (bookView.Correlated), so it is gated like an
-// exchange. Whatever the setting, range and full_history are refused. A recipient-specific derivation is the
+// exchange. Whatever the setting, range and full_history are refused, but
+// for full_history under standard_history/1 when the host serves it
+// (StandardHistorySource). A recipient-specific derivation is the
 // holder's grant and is not gated by the setting: it is answered to its
 // recipient over every form it declares, "off" included
 // (gate.responderPolicy).
@@ -324,7 +326,8 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 			default:
 				// range and full_history reach records no one requester is
 				// party to; nothing but a recipient-specific derivation
-				// grants them.
+				// grants them, or the counts-only standard_history/1 card
+				// (above).
 				return false
 			}
 		},
