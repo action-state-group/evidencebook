@@ -414,61 +414,6 @@ func isHalf(h Header, recordType string) bool {
 	return h.Correlation != nil && (recordType == "" || h.RecordType == recordType)
 }
 
-// CloseStatement is the body of a Close record.
-type CloseStatement struct {
-	Counterparty   string         `json:"counterparty"`
-	Profile        string         `json:"profile"`
-	Reconciliation Reconciliation `json:"reconciliation"`
-	Reason         string         `json:"reason,omitempty"`
-}
-
-// CloseInput states what a Close binds. The book computes the
-// reconciliation itself from Reconcile; a caller never supplies tallies.
-// Supersedes names a prior Close this one adjusts; the prior Close is never
-// rewritten.
-type CloseInput struct {
-	Reconcile    ReconcileInput
-	Counterparty string
-	// Profile names the contract or profile version whose comparator and
-	// windows produced the reconciliation.
-	Profile    string
-	Supersedes string
-	Reason     string
-}
-
-// Close reconciles, then seals a Close record: a closes link to every own
-// record the reconciliation placed, and the full state population in its
-// statement. Its status is read later from the links other records make to it.
-func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
-	if in.Counterparty == "" || in.Profile == "" {
-		return Record{}, fmt.Errorf("%w: a Close names its counterparty and profile", ErrInvalid)
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	links := []Link{}
-	if in.Supersedes != "" {
-		prior, ok := b.records[in.Supersedes]
-		if !ok || prior.Header.RecordType != RecordTypeClose {
-			return Record{}, fmt.Errorf("%w: %s is not a Close in this book", ErrNotFound, in.Supersedes)
-		}
-		links = append(links, Link{Type: Supersedes, Target: in.Supersedes})
-	}
-	recon, err := b.reconcileLocked(ctx, in.Reconcile)
-	if err != nil {
-		return Record{}, err
-	}
-	for _, pair := range recon.Pairs {
-		if pair.A != "" {
-			links = append(links, Link{Type: Closes, Target: pair.A})
-		}
-	}
-	body, err := json.Marshal(CloseStatement{Counterparty: in.Counterparty, Profile: in.Profile, Reconciliation: recon, Reason: in.Reason})
-	if err != nil {
-		return Record{}, err
-	}
-	return b.appendLocked(ctx, Entry{RecordType: RecordTypeClose, EpistemicType: DerivedMetric, Links: links, CounterpartyRef: in.Counterparty, Statement: body})
-}
-
 // Acknowledge records that this book has seen and holds a counterparty's
 // Close, which is what makes that Close AGREED from the counterparty's side.
 func (b *Book) Acknowledge(ctx context.Context, peerCloseID, counterparty string) (Record, error) {

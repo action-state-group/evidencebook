@@ -99,6 +99,43 @@
   `not_authorized`. `range` and `full_history` stay refused unless a
   recipient-specific derivation grants them.
 
+### Changed (breaking): a Close seals the `close/v1` body (#125)
+
+- `Book.Close` seals agent-action-capsule's `close/v1` body
+  (`schemas/judge/close-v1.json` at `5ce8c94`, vendored as
+  `schemas/vendor/close-v1.json`) with `record_version: "close/v1"`, and the
+  record's `epistemic_type` is `producer_claim` (it was `derived_metric`). The
+  body states `record_id`, `closed_at` (the header's `committed_at`), the
+  caller's `period`, `counts_by_kind` and `head`. Only when
+  `CloseInput.PeerClose` names the counterparty's Close for the period does it
+  add `reconcile` (the six tallies, `status` `UNILATERAL`) and one `cites` link
+  to that Close in `x-evidence-links`; otherwise the Close states counts only.
+- `record_id` is a locator, `<book_id>#<seq>` (the record capsule's
+  `action_id`). The record's identity is still its capsule id: every link
+  target, `head.digest` and the `x-evidence-links` target is a record id
+  (that digest), never the locator.
+- `head` and `counts_by_kind` describe the own window the Close binds
+  (`ReconcileInput.FromSeq`/`ToSeq`, an open end resolved to the log), not
+  the log's tip: `head` is the record at the window's last position (for an
+  empty window, the record just before it) and `counts_by_kind` counts every
+  record in it. A window a caller starts before
+  `period.start` is counted as given. `CloseStatement.Window` recovers the
+  window and refuses counts that do not fit the head.
+- `CloseInput` takes `Period` and `PeerClose`, and loses `Profile` and
+  `Reason`. `CloseStatement` is now the `close/v1` body; the body Closes
+  carried before (`counterparty`, `profile`, `reconciliation`, `reason`) is
+  `LegacyCloseStatement`. `ReadClose` reads either by `record_version`; a
+  `close/v1` body must validate against the vendored schema and agree with
+  its header (`record_id`, `closed_at`, `producer_claim`). Closes sealed before this
+  change still verify and read as legacy; they carry the whole
+  reconciliation (pairs and windows) and the profile string, which a
+  `close/v1` body has no member for.
+- `Book.Close` commits a stored record still awaiting its append before it
+  takes its window, and refuses a window past the log or an empty book.
+- The root package now imports `github.com/santhosh-tekuri/jsonschema/v6` at
+  run time (it was a test-only dependency of the root package), for
+  `ReadClose`'s schema check; modules that import `evidencebook` build it.
+
 ## v0.10.0 (2026-10-30)
 
 ### Changed: the third-party verifier guide's two-node exchange is one whose records name both halves (#41)

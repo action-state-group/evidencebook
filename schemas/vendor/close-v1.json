@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentactioncapsule.org/schemas/judge/close-v1.json",
+  "title": "Close v1",
+  "description": "Companion schema for spec/judge-record-family-v1.md section 3. The root schema validates a Close record per the Evidence Layer's reconcile model (draft-mih-agent-evidence-layer-00.md section 'Reconcile and Close'): period, counts by kind, and the head digest at close time, with an optional reconcile block. The same schema serves both a single-store period Close (reconcile absent) and capsule-emit-mesh's two-party Close (reconcile.peer_close cites the other side's Close record) -- one shape, not a parallel family. epistemic_type is fixed to producer_claim: a Close is the store's own statement about its own history, never self-certifying its own AGREED/UNILATERAL/CONTESTED status (that status is read from acknowledges/rebuts links pointing AT this record, per the owning document; reconcile.status below is a reporting convenience, not the authoritative source) The link from a two-party Close to the peer's Close is an Evidence Layer typed link (draft-mih-agent-evidence-layer-00, section 'Typed Links'; REGISTRY.md section 18), carried in the x-prefixed extension `x-evidence-links` -- NOT a Capsule `citation_purpose` (REGISTRY.md section 11) and not a `chain.relation` (section 6). The Evidence Layer draft does not yet define how its links are carried on a record outside its own header shape, so this carriage is defined in spec/judge-record-family-v1.md section 0a and is x-prefixed until a published spec registers it (ruled 2026-10-04). The earlier `reconcile.peer_close` citation (citation_purpose `reconciles_with`, an unregistered token) is removed; its released vector stays frozen at vectors/judge/close/pos-example-org-close.json.",
+  "$ref": "#/$defs/Close",
+  "$defs": {
+    "HexDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "DigestRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest_alg", "digest"],
+      "properties": {
+        "digest_alg": { "const": "SHA-256" },
+        "digest": { "$ref": "#/$defs/HexDigest" }
+      }
+    },
+    "EvidenceLinkType": {
+      "description": "The Evidence Layer's closed link-type vocabulary (draft-mih-agent-evidence-layer-00, section 'Typed Links'; REGISTRY.md section 18), mirrored here, never redefined. Distinct from Capsule `chain.relation` (section 6) and `citation_purpose` (section 11).",
+      "enum": ["cites", "adjudicates", "supersedes", "acknowledges", "rebuts", "closes"]
+    },
+    "EvidenceLink": {
+      "description": "One Evidence Layer typed link, shaped as the draft's record-header `links` entry ({type, target}): a typed, directed reference to the target record by its digest (lowercase-hex SHA-256 of the target's JCS bytes). A link never mutates its target.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "target"],
+      "properties": {
+        "type": { "$ref": "#/$defs/EvidenceLinkType" },
+        "target": { "$ref": "#/$defs/HexDigest" }
+      }
+    },
+    "Period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ReconcileTallies": {
+      "description": "The Evidence Layer's six-state reconcile vocabulary (section 'Reconcile and Close'), mirrored here, never redefined. One_only/other_only are not disagreement; only CONFLICTING is.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matched", "a_only", "b_only", "conflicting", "insufficient", "unresolved"],
+      "properties": {
+        "matched": { "type": "integer", "minimum": 0 },
+        "a_only": { "type": "integer", "minimum": 0 },
+        "b_only": { "type": "integer", "minimum": 0 },
+        "conflicting": { "type": "integer", "minimum": 0 },
+        "insufficient": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Reconcile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tallies", "status"],
+      "properties": {
+        "tallies": { "$ref": "#/$defs/ReconcileTallies" },
+        "status": { "enum": ["AGREED", "UNILATERAL", "CONTESTED"] }
+      }
+    },
+    "Close": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_version", "record_id", "epistemic_type", "closed_at",
+        "period", "counts_by_kind", "head"
+      ],
+      "properties": {
+        "record_version": { "const": "close/v1" },
+        "record_id": { "type": "string", "minLength": 1 },
+        "epistemic_type": { "const": "producer_claim" },
+        "closed_at": { "type": "string", "format": "date-time" },
+        "period": { "$ref": "#/$defs/Period" },
+        "counts_by_kind": {
+          "description": "Record count by record_type over the period, e.g. {\"observation\": 12, \"evaluation-report\": 3}. Open keys -- record_type is itself an open token (Evidence Layer, section 'The Record Model').",
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "head": { "$ref": "#/$defs/DigestRef" },
+        "reconcile": { "$ref": "#/$defs/Reconcile" },
+        "x-evidence-links": {
+          "description": "Evidence Layer typed links this record carries (spec/judge-record-family-v1.md section 0a), x-prefixed until a published spec registers the carriage. When `reconcile` is present the record MUST carry exactly one `cites` link, and its `target` is the digest of the peer store's Close for the same period: the reconcile tallies are intelligible only with reference to that Close. The link is present under every reconcile.status, including UNILATERAL. A `cites` link changes no Close status: status is read only from `acknowledges` / `rebuts` links a counterparty record makes TO a Close.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceLink" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["reconcile"] },
+          "then": {
+            "required": ["x-evidence-links"],
+            "properties": {
+              "x-evidence-links": {
+                "contains": { "properties": { "type": { "const": "cites" } } },
+                "minContains": 1,
+                "maxContains": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
