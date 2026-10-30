@@ -127,6 +127,23 @@ jobs:
           test "$(ls "$RUNNER_TEMP/built-chains" | wc -l)" -ge 10
           (cd dealprofile/x-deal-v0 && python check_profile.py "$RUNNER_TEMP"/built-chains/*.json) | tee "$RUNNER_TEMP/built.out"
           tail -n 1 "$RUNNER_TEMP/built.out" | grep -qx "ALL OK"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Run check_profile.py over every chain the Rust crate's deal module builds, and match them to Go's
+        run: |
+          mkdir -p "$RUNNER_TEMP/built-chains-rust"
+          (cd rust && EVIDENCEBOOK_DEAL_BUILT_CHAINS="$RUNNER_TEMP/built-chains-rust" cargo test --locked --features deal -p evidencebook --test deal baseline_steps)
+          test "$(ls "$RUNNER_TEMP/built-chains-rust" | wc -l)" -ge 10
+          (cd dealprofile/x-deal-v0 && python check_profile.py "$RUNNER_TEMP"/built-chains-rust/*.json) | tee "$RUNNER_TEMP/built-rust.out"
+          tail -n 1 "$RUNNER_TEMP/built-rust.out" | grep -qx "ALL OK"
+          # The same chains, record for record: the same file names, and
+          # each record the same JCS bytes (numbers kept as written).
+          diff <(ls "$RUNNER_TEMP/built-chains") <(ls "$RUNNER_TEMP/built-chains-rust")
+          for f in "$RUNNER_TEMP"/built-chains/*.json; do
+            python -c 'import json, sys; a, b = (json.load(open(p), parse_int=lambda s: ("int", s), parse_float=lambda s: ("float", s)) for p in sys.argv[1:]); sys.exit(a != b)' "$f" "$RUNNER_TEMP/built-chains-rust/$(basename "$f")"
+          done
 
   python-cll-interop:
     name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)

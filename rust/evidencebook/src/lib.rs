@@ -44,10 +44,20 @@
 //! | Reconcile and Close | [`reconcile`] |
 //! | Privacy Considerations: What a Checkpoint Reveals | [`padding`] |
 //! | (record identity: JCS and JSON-DIGEST) | [`canonical`] |
+//!
+//! One module is not Evidence Layer semantics but an opt-in reference
+//! profile, built only with the cargo feature `deal`: `deal`, the x-deal-v0
+//! deal record profile (its names, identifier fingerprints, record checks
+//! and the members of the Capsules a deal's steps and reports are sealed
+//! with), byte for byte with the Go package `dealprofile`. Nothing else in
+//! the crate depends on it, and without the feature none of its dependencies
+//! is built.
 
 pub mod answer;
 pub mod ask;
 pub mod canonical;
+#[cfg(feature = "deal")]
+pub mod deal;
 pub mod derivation;
 pub mod disclosure;
 mod ed25519;

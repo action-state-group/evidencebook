@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Changes
+
+- **`deal`, the x-deal-v0 deal record profile, behind the new feature
+  `deal`** (off by default; evidencebook#93). The Rust counterpart of the Go
+  package `dealprofile`, byte for byte in its payloads, digests and Capsule
+  members (a sealed Capsule's layout is the sealer's; the module docs say
+  where capsule-emit 0.0.8's differs from Go's): the profile's names; `deal_key`,
+  `profile_key`, `normalize`, `fingerprint` and `commit_text`; `encode`,
+  `check`, `digest` and `check_digest`, which refuse a record at its first
+  failed record-level stage (canonicalization, personal_data, wording,
+  schema, digest) as a `StageError`; `report_payload` and `report_capsule`;
+  and `step_capsule`, which returns a step's Capsule members as plain data
+  and its record header fields, for the producer to seal. The profile's
+  schemas and golang.org/x/net v0.59.0's public suffix tables are vendored.
+  The chain stage stays with the reference checker. The feature's
+  dependencies (`boon`, `hmac`, `icu_casemap`, `icu_normalizer`,
+  `icu_properties`, `idna`, `regex`) are built only with it.
+
 ## 0.0.9
 
 ### Breaking changes and how to migrate
