@@ -23,7 +23,7 @@ set -euo pipefail
 AAC=9d653f41419d2d2bac4714137b763315947ec754
 CLL=0f74297761f3a0b81d27a116f32ac556c0ecb59d
 LOOP=cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8
-DEAL=202d8da362734eecfd01713192b65ae61cefa5c9
+DEAL=5905bf0970c76e8bf419a47e86a1b151b018d47a
 WORK=${WORK:-$HOME/eb-verifier-test}
 EB_REF=${EB_REF:-main}
 
@@ -194,11 +194,11 @@ H1=held-18 H2=held-11 # the held file of stevenmih-1 and of stevenmih-2
 want_sha $X/stevenmih-1/$H1.json f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603
 want_sha $X/stevenmih-1/$H1-inclusion.json f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea
 want_sha $X/stevenmih-1/$H1-citing.json fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639
-want_sha $X/stevenmih-1/checks.json 98c6fee06eecf12232f381bd159f78792328da516a14ca66c3405cda9e58bd42
+want_sha $X/stevenmih-1/checks.json 63b5ffd93a7ffb5e3400b705fef7689e74b178219fa0066baca50260fa031132
 want_sha $X/stevenmih-2/$H2.json 54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683
 want_sha $X/stevenmih-2/$H2-inclusion.json b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd
 want_sha $X/stevenmih-2/$H2-citing.json 8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b
-want_sha $X/stevenmih-2/checks.json 8dc5f40518fd3a65efe445609ea638bb6fd9e757fa79e357d5878725dd3696f2
+want_sha $X/stevenmih-2/checks.json 50cdd2af9aa9d15e197557124be178aadfc1461cc54b8913cbab501f85a64112
 grep -q '"key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26"' \
   loop/nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json ||
   fail "stevenmih-2's listing does not name its key"

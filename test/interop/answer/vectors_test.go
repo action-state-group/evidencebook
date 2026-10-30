@@ -25,7 +25,7 @@ const (
 	// exchange (§7.4).
 	cllCommit     = "0f74297761f3a0b81d27a116f32ac556c0ecb59d"
 	loopCommit    = "cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8"
-	dealCommit    = "202d8da362734eecfd01713192b65ae61cefa5c9"
+	dealCommit    = "5905bf0970c76e8bf419a47e86a1b151b018d47a"
 	vectorsSHA256 = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
 )
 
