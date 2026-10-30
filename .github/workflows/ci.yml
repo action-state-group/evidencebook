@@ -97,6 +97,25 @@ jobs:
       - name: Test .github/release.py
         run: python -m pytest -q .github/test_release.py
 
+  deal-profile:
+    name: x-deal-v0 reference checker over the profile's fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install jsonschema
+        run: python -m pip install "jsonschema==4.23.0"
+      - name: Run check_profile.py (without jsonschema it skips the schema-stage negatives, so anything but ALL OK fails)
+        working-directory: dealprofile/x-deal-v0
+        run: |
+          python check_profile.py | tee "$RUNNER_TEMP/check_profile.out"
+          tail -n 1 "$RUNNER_TEMP/check_profile.out" | grep -qx "ALL OK"
+
   python-cll-interop:
     name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)
     runs-on: ubuntu-latest

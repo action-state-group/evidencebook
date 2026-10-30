@@ -67,6 +67,7 @@ text.
 | Path | Contents |
 |---|---|
 | repository root | Go package `evidencebook` (the book, its substrates, indexes, requests and interop carriage) |
+| `dealprofile/` | Go package `dealprofile`: the x-deal-v0 deal record profile (names, fingerprints, record payload and checks, report payload, step Capsule members); `x-deal-v0/` beside it holds PROFILE.md, the schemas, fixtures and `check_profile.py` |
 | `adapter/` | Go adapters for foreign evidence (`acp`, `ucp`, `x402`) |
 | `report/` | the nested module `github.com/action-state-group/evidencebook/report`: package `report`, which renders a verified Result-rooted bundle into an offline page and seals the page's digest (what `capsulectl book report` runs); its own module so the root's graph gains no CLI (`report/v*` tags) |
 | `cmd/evidencebook/` | the `evidencebook` command, which runs the adapters |
