@@ -890,3 +890,55 @@ fn baseline_reports() {
         "an in-log report is frozen"
     );
 }
+
+// --- numbers as Go reads them -------------------------------------------------
+
+#[test]
+fn numbers_read_as_go_reads_them() {
+    // Numbers are kept as written: the integer -0 is 0, as Go's json.Number
+    // and canonical JCS read it.
+    assert_eq!(deal::digest(b"-0").unwrap(), deal::digest(b"0").unwrap());
+    assert_eq!(
+        deal::digest(br#"{"a":[-0,1]}"#).unwrap(),
+        deal::digest(br#"{"a":[0,1]}"#).unwrap()
+    );
+    // A number written as a float, -0.0 and one too large for an f64
+    // included, is refused as Go's noFloats words it.
+    let rec = |n: &str| {
+        format!(
+            r#"{{"x-deal-v0":{{"profile":"x-deal-v0","canonicalization":"jcs","deal_id":"deal-0123456789abcdef","record_type":"close","seq":3,"at":"2026-10-30T01:02:03Z"}},"body":{{"n":{n}}}}}"#
+        )
+    };
+    for n in ["1e400", "-0.0", "1.5"] {
+        let err = deal::check(rec(n).as_bytes(), &[]).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "[canonicalization] floating-point value at $.body.n; money is integer minor units",
+            "{n}"
+        );
+    }
+    // An integer beyond the 64-bit range is refused as Go's JCS words it.
+    let err = deal::check(rec("18446744073709551616").as_bytes(), &[]).unwrap_err();
+    assert_eq!(stage_of(&err), deal::STAGE_CANONICALIZATION, "{err}");
+    assert!(err.to_string().contains("unsafe integer"), "{err}");
+    // The integer -0 passes canonicalization (the schema refuses the body).
+    let err = deal::check(rec("-0").as_bytes(), &[]).unwrap_err();
+    assert_eq!(stage_of(&err), deal::STAGE_SCHEMA, "{err}");
+}
+
+#[test]
+fn report_lines_read_whole_floats_as_integers() {
+    let report = |body: Value| Report {
+        deal_id: "deal-0123456789abcdef".into(),
+        audience: deal::AUDIENCE_KEEP.into(),
+        nonce: "a".repeat(64),
+        body: body.as_object().unwrap().clone(),
+        checkpoint: None,
+    };
+    assert_eq!(
+        deal::report_payload(&report(json!({"n": 1.0, "m": [-0.0, 2]}))).unwrap(),
+        deal::report_payload(&report(json!({"n": 1, "m": [0, 2]}))).unwrap()
+    );
+    assert!(deal::report_payload(&report(json!({"n": 1.5}))).is_err());
+    assert!(deal::report_payload(&report(json!({"n": 9_007_199_254_740_992.0_f64}))).is_err());
+}

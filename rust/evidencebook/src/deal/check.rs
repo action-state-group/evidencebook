@@ -111,7 +111,9 @@ pub fn check_digest(record: &[u8], claimed: &str) -> Result<(), Error> {
 
 /// Reads `record` as JSON. JSON text must be valid UTF-8 with no lone
 /// surrogate escape, which a decoder would replace or refuse unseen; such
-/// text is refused at the canonicalization stage.
+/// text is refused at the canonicalization stage. Numbers are kept as
+/// written (serde_json's `arbitrary_precision`), as Go's decoder keeps them
+/// (`json.Number`).
 pub(crate) fn decode(record: &[u8]) -> Result<Value, Error> {
     check_text(record)?;
     Ok(serde_json::from_slice(record)?)
@@ -244,8 +246,9 @@ fn stage_canonicalization(doc: &Value) -> Result<(), Error> {
     no_floats(doc, "$")?;
     match jcs(doc) {
         Ok(_) => Ok(()),
-        // Go's canonical.JCS words an unsafe integer so.
-        Err(JcsError::UnsafeInteger(_)) => Err(stage_err(
+        // Go's canonical.JCS words an unsafe integer so. An integer beyond
+        // the 64-bit range, which `no_floats` has let through, is one too.
+        Err(JcsError::UnsafeInteger(_) | JcsError::FloatInDigest) => Err(stage_err(
             STAGE_CANONICALIZATION,
             format!("not JCS-serializable: unsafe integer at : outside ±{MAX_SAFE_INTEGER} (§5.1)"),
         )),
@@ -262,12 +265,11 @@ fn sorted_keys(m: &Map<String, Value>) -> Vec<&String> {
     keys
 }
 
-// serde_json reads a number with a fraction or an exponent as a float, and
-// also an integer beyond the 64-bit range, which Go reads as an unsafe
-// integer; both are refused at this stage.
+// A number written with a fraction or an exponent is a float, as Go's
+// `noFloats` reads `json.Number`; numbers are kept as written.
 fn no_floats(v: &Value, path: &str) -> Result<(), Error> {
     match v {
-        Value::Number(n) if n.is_f64() => Err(stage_err(
+        Value::Number(n) if n.to_string().contains(['.', 'e', 'E']) => Err(stage_err(
             STAGE_CANONICALIZATION,
             format!("floating-point value at {path}; money is integer minor units"),
         )),

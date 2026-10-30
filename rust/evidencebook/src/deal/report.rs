@@ -55,14 +55,38 @@ pub fn report_payload(r: &Report) -> Result<Vec<u8>, Error> {
             "report nonce must be 64 lowercase hex".into(),
         ));
     }
+    let mut body = Value::Object(r.body.clone());
+    integral_floats_as_integers(&mut body);
     let mut m = json!({
         "type": REPORT_TYPE, "profile": PROFILE, "deal_id": r.deal_id, "audience": r.audience,
-        "nonce": r.nonce, "report": r.body,
+        "nonce": r.nonce, "report": body,
     });
     if let Some(c) = &r.checkpoint {
         m["deal_checkpoint"] = json!({"log_id": c.log_id, "mmr_size": c.mmr_size, "root": c.root});
     }
     Ok(jcs(&m)?)
+}
+
+/// Reads a whole-number float in the report's lines as the integer it is,
+/// as Go's `ReportPayload` does (it writes the body as JSON and reads its
+/// numbers back): a body decoded from JSON text may hold `1.0` for 1. A
+/// fraction, and a whole number beyond ±2^53, stay floats, which JCS
+/// refuses.
+fn integral_floats_as_integers(v: &mut Value) {
+    const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
+    match v {
+        Value::Number(n) if n.is_f64() => {
+            if let Some(f) = n
+                .as_f64()
+                .filter(|f| f.fract() == 0.0 && f.abs() <= MAX_SAFE)
+            {
+                *v = Value::from(f as i64);
+            }
+        }
+        Value::Object(m) => m.values_mut().for_each(integral_floats_as_integers),
+        Value::Array(a) => a.iter_mut().for_each(integral_floats_as_integers),
+        _ => {}
+    }
 }
 
 /// A report's Capsule members, sealed at `at` (seconds since the Unix epoch)

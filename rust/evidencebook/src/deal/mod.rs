@@ -14,10 +14,21 @@
 //! logic: what a step says, what it is approved by and what a report's lines
 //! read are the producer's. It seals nothing either: it returns the bytes
 //! and plain Capsule members ([`Capsule`]), and the producer seals them with
-//! its own sealer and key, on its own book.
+//! its own sealer and key, on its own book. The sealed Capsule's layout is
+//! the sealer's; the [`Capsule`] docs say where capsule-emit 0.0.8's differs
+//! from the one Go seals.
 //!
 //! The chain stage, which reads a record against the records before it, is
 //! not here; the reference checker (`check_profile.py`) runs it.
+//!
+//! A refusal matches Go's in its stage, and in its text wherever the
+//! profile's fixtures name one. Two diagnostics are written differently: a
+//! `canonicalization` value that is not a string is shown as JSON, not as
+//! Go's `%v` prints it, and a quoted value is not escaped where Go's `%q`
+//! escapes a non-printable character beyond ASCII. The personal-data and
+//! wording scans' character classes come from the `regex` crate's Unicode
+//! 16 tables, where Go 1.27's are Unicode 17, so a character added in
+//! Unicode 17 may be read differently.
 
 mod capsule;
 mod check;

@@ -83,7 +83,7 @@ jobs:
           fi
 
       - name: Publish dry run (no upload)
-        run: cargo publish --locked --dry-run -p evidencebook
+        run: cargo publish --locked --dry-run -p evidencebook --all-features
 
   interop:
     name: Interop (the History run byte for byte, and the profile verifier over the responder's replies)

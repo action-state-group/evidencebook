@@ -55,7 +55,9 @@ regex = { version = "1", optional = true }
 default = []
 # The x-deal-v0 deal record profile (module `deal`), an opt-in reference
 # profile.
-deal = ["dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:icu_properties", "dep:idna", "dep:regex"]
+# Its record checks read numbers as written, as Go's json.Number does
+# (agent-action-capsule's `strict` already turns this on).
+deal = ["dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:icu_properties", "dep:idna", "dep:regex", "serde_json/arbitrary_precision"]
 
 [package.metadata.docs.rs]
 all-features = true

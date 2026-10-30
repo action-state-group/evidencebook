@@ -26,7 +26,7 @@ go test -race ./...
 (cd rust && cargo clippy --locked --all-targets --all-features -- -D warnings)
 (cd rust && cargo test --locked --all-features)
 (cd rust && RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --all-features)
-(cd rust && cargo publish --locked --dry-run -p evidencebook)
+(cd rust && cargo publish --locked --dry-run -p evidencebook --all-features)
 (cd rust && cargo build --locked -p evidencebook-interop)   # the runs the rust.yml interop job checks
 
 # Python (python/, the package capsule-evidencebook, imported as evidencebook;

@@ -138,8 +138,11 @@ jobs:
           test "$(ls "$RUNNER_TEMP/built-chains-rust" | wc -l)" -ge 10
           (cd dealprofile/x-deal-v0 && python check_profile.py "$RUNNER_TEMP"/built-chains-rust/*.json) | tee "$RUNNER_TEMP/built-rust.out"
           tail -n 1 "$RUNNER_TEMP/built-rust.out" | grep -qx "ALL OK"
+          # The same chains, record for record: the same file names, and
+          # each record the same JCS bytes (numbers kept as written).
+          diff <(ls "$RUNNER_TEMP/built-chains") <(ls "$RUNNER_TEMP/built-chains-rust")
           for f in "$RUNNER_TEMP"/built-chains/*.json; do
-            python -c 'import json, sys; a, b = (json.load(open(p)) for p in sys.argv[1:]); sys.exit(a != b)' "$f" "$RUNNER_TEMP/built-chains-rust/$(basename "$f")"
+            python -c 'import json, sys; a, b = (json.load(open(p), parse_int=lambda s: ("int", s), parse_float=lambda s: ("float", s)) for p in sys.argv[1:]); sys.exit(a != b)' "$f" "$RUNNER_TEMP/built-chains-rust/$(basename "$f")"
           done
 
   python-cll-interop:

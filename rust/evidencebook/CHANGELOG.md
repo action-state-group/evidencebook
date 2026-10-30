@@ -6,7 +6,9 @@
 
 - **`deal`, the x-deal-v0 deal record profile, behind the new feature
   `deal`** (off by default; evidencebook#93). The Rust counterpart of the Go
-  package `dealprofile`, byte for byte: the profile's names; `deal_key`,
+  package `dealprofile`, byte for byte in its payloads, digests and Capsule
+  members (a sealed Capsule's layout is the sealer's; the module docs say
+  where capsule-emit 0.0.8's differs from Go's): the profile's names; `deal_key`,
   `profile_key`, `normalize`, `fingerprint` and `commit_text`; `encode`,
   `check`, `digest` and `check_digest`, which refuse a record at its first
   failed record-level stage (canonicalization, personal_data, wording,

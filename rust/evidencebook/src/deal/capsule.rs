@@ -1,8 +1,7 @@
 //! The Capsule members a step or a report is sealed with: plain data, one
 //! member for each field Go's `dealprofile` fills in capsule-emit's
 //! `emit.Input`. The producer seals them with the payload as the agent
-//! input, with its own sealer and key, as Go's producer seals an
-//! `emit.Input` with `emit.Seal`.
+//! input, with its own sealer and key.
 
 use serde_json::Value;
 
@@ -22,6 +21,18 @@ pub const RELATION_CONFIRMS: &str = "confirms";
 
 /// A Capsule's members before sealing (Go `emit.Input`, the fields a step or
 /// report sets).
+///
+/// What matches Go byte for byte is the payload, its digest and these
+/// members, not a sealed Capsule: the Capsule's own layout is the sealer's.
+/// Go's `emit.Seal` (capsule-emit/go v0.3.0) lays out exactly these members.
+/// The Rust capsule-emit 0.0.8 `seal` does not: it always writes members
+/// Go's leaves out (`runtime`, `attestation_refs`, `store_nonce` and two
+/// that name the agent's runtime); it gives every Capsule an `effect` and a `disposition`,
+/// fyi included; its `effect` has no `irreversibility_class`; and its
+/// `disposition` always writes `verdict_class` and never `reason_digest`.
+/// A producer that needs the Capsule Go seals lays out the body from these
+/// members itself and finishes the seal with its sealer (in capsule-emit
+/// 0.0.8, `capsule::finish_seal`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Capsule {
     pub action_id: String,
