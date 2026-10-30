@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc24 and `report` v0.3.0
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc24` and `report` `v0.3.0`,
+  release tags in place of pseudo-versions, so `capsulectl/v0.1.0-rc24` pairs with
+  that capsulectl release. It carries `book report build --wording` (#155, #159)
+  and `book result build --plan` (#107).
+
 ## v0.9.0 (2026-10-30)
 
 ### Changed: `report` requires the published capsule-cli v0.1.0-rc24 (evidencebook#144)
