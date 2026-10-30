@@ -236,11 +236,21 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		findings = append(findings, DoctorFinding{Check: DoctorNotChecked, State: DoctorStateNone, Detail: "no received answer in this book carries an unchecked property"})
 	}
 
-	unsupported := "range and full_history are answered to no one except through a recipient-specific derivation; every derivation other than history_card/1"
-	if registered := len(b.derivations); registered > 0 {
-		unsupported += fmt.Sprintf(" and the %d registered here", registered)
+	unsupported := "range and full_history are answered to no one except through a recipient-specific derivation"
+	if b.standardHistory != nil {
+		unsupported += " or, to an authenticated requester, standard_history/1"
 	}
-	unsupported += " is refused derivation_unsupported"
+	served := []string{"history_card/1"}
+	if b.standardHistory != nil {
+		served = append(served, "standard_history/1")
+	}
+	if registered := len(b.derivations); registered > 0 {
+		served = append(served, fmt.Sprintf("the %d registered here", registered))
+	}
+	if len(served) > 1 {
+		served = []string{strings.Join(served[:len(served)-1], ", ") + " and " + served[len(served)-1]}
+	}
+	unsupported += "; every derivation other than " + served[0] + " is refused derivation_unsupported"
 	if !isCLL {
 		unsupported += "; this book's substrate is not a Checkpointed Local Log, so it serves no anchors and every request is refused"
 	}
@@ -268,7 +278,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		stranger = "refusals only: checkpoints and history_card/1 are public, but there is no checkpoint to answer with; every other subject is refused not_authorized"
 	}
 	findings = append(findings, DoctorFinding{Check: DoctorStrangerView, State: DoctorStateAnswered, Detail: stranger})
-	identified := identifiedView(p, b.derivations)
+	identified := identifiedView(p, b.derivations, b.standardHistory != nil)
 	if !isCLL {
 		identified = "refusals only: this book serves no anchors, so every request is refused"
 	}
@@ -279,15 +289,18 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 // identifiedView is what an authenticated requester that no record names
 // as its counterparty receives, by the same gate Respond applies
 // (gate.responderPolicy, SharePolicy.mayHave).
-func identifiedView(p SharePolicy, derivations map[string]derivationEntry) string {
+func identifiedView(p SharePolicy, derivations map[string]derivationEntry, standardHistory bool) string {
 	var view string
 	switch p.HistorySegments {
 	case "peers":
-		view = "what a stranger receives, plus the records and exchanges it asks for by digest"
+		view = "what a stranger receives, plus the records, exchanges and correlations it asks for"
 	case "counterparties", "prospective":
-		view = "what a stranger receives; record and exchange subjects are refused until a record names it as counterparty, and then it receives those records"
+		view = "what a stranger receives; record, exchange and correlation subjects are refused until a record names it as counterparty, and then it receives those records"
 	default:
-		view = "what a stranger receives; record and exchange subjects are refused (history_segments=off)"
+		view = "what a stranger receives; record, exchange and correlation subjects are refused (history_segments=off)"
+	}
+	if standardHistory {
+		view += "; whatever the tier, standard_history/1: a card of deal counts, the same for every requester"
 	}
 	granted := 0
 	for _, entry := range derivations {

@@ -149,7 +149,7 @@ func TestDoctorSharingOff(t *testing.T) {
 	if f := findingOf(t, findings, DoctorSharing); f.State != DoctorStateOn {
 		t.Errorf("sharing = %+v", f)
 	}
-	if f := findingOf(t, findings, DoctorIdentifiedView); !strings.Contains(f.Detail, "by digest") {
+	if f := findingOf(t, findings, DoctorIdentifiedView); !strings.Contains(f.Detail, "correlations it asks for") {
 		t.Errorf("identified view = %+v", f)
 	}
 }
@@ -371,6 +371,45 @@ func TestDoctorUnanchoredSubstrate(t *testing.T) {
 		t.Errorf("checkpoint = %+v", f)
 	}
 	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "serves no anchors") {
+		t.Errorf("unsupported = %+v", f)
+	}
+}
+
+// A book serving standard_history/1 says so in what an authenticated
+// requester receives, whatever the tier, and in what is not refused
+// derivation_unsupported.
+func TestDoctorReportsStandardHistory(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	anchorPin(t, book)
+	off := SharePolicy{RecordAtCompletion: "off", HistorySegments: "off", Adjudications: "off"}
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorIdentifiedView); !strings.Contains(f.Detail, "whatever the tier, standard_history/1") {
+		t.Errorf("identified view = %+v", f)
+	}
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 and standard_history/1 is refused") {
+		t.Errorf("unsupported = %+v", f)
+	}
+	if _, err := book.RegisterDerivation(DerivationDefinition{Document: []byte(`{"for":"carol"}`), Recipient: "carol", Forms: []SubjectKind{SubjectRecord}, Fields: []string{"record_type"}}); err != nil {
+		t.Fatal(err)
+	}
+	if findings, err = book.Doctor(ctx, DoctorOptions{Policy: off}); err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1, standard_history/1 and the 1 registered here is refused") {
+		t.Errorf("unsupported = %+v", f)
+	}
+	plain := checkpointedBook(t, "plain", 3)
+	if findings, err = plain.Doctor(ctx, DoctorOptions{Policy: off}); err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorIdentifiedView); strings.Contains(f.Detail, "standard_history") {
+		t.Errorf("identified view = %+v", f)
+	}
+	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 is refused") {
 		t.Errorf("unsupported = %+v", f)
 	}
 }
