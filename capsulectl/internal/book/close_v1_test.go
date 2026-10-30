@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package book
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/action-state-group/evidencebook"
+)
+
+var periodDay0 = period{key: "day:2026-09-24", start: time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), end: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)}
+
+// A Close against the counterparty's Close bundle cites that Close and
+// seals the tallies; the peer window is the one the cited Close binds.
+func TestCloseCitesThePeersCloseForThePeriod(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	set := bookClock(t, day0)
+	a, _ := bookProfile(t, "a")
+	b, bKeys := bookProfile(t, "b")
+	appendHalves(t, a, half{"same", "r1", "p1"}, half{"a-only", "r3", "p3"})
+	appendHalves(t, b, half{"same", "r1", "p1"}, half{"b-only", "r4", "p4"})
+	set(day1)
+	bundle := peerBundle(t, "b")
+	peerClose, err := runClose(t, "--profile", "b", "--period", "day", "--date", "2026-09-24", "--counterparty", "a")
+	require.NoError(t, err)
+	require.True(t, peerClose.AlreadyClosed)
+
+	result, err := runClose(t, "--profile", "a", "--period", "day", "--counterparty", "b", "--peer", bundle, "--peer-checkpoint-key", hex.EncodeToString(bKeys.checkpoint))
+	require.NoError(t, err)
+	assert.Equal(t, peerClose.RecordID, result.PeerClose)
+	var body evidencebook.CloseStatement
+	require.NoError(t, json.Unmarshal(result.Close, &body))
+	require.NotNil(t, body.Reconcile)
+	assert.Equal(t, evidencebook.ResultTallies{Matched: 1, AOnly: 1, BOnly: 1}, body.Reconcile.Tallies)
+	assert.Equal(t, []evidencebook.Link{{Type: evidencebook.Cites, Target: peerClose.RecordID}}, body.EvidenceLinks)
+	assert.Equal(t, evidencebook.Tallies{Matched: 1, AOnly: 1, BOnly: 1}, result.Reconciliation.Tallies)
+	var peerBody evidencebook.CloseStatement
+	require.NoError(t, json.Unmarshal(peerClose.Close, &peerBody))
+	assert.Nil(t, peerBody.Reconcile, "the first book to close had no peer Close to cite")
+}
+
+// fullBundle verifies a bundle of every record in p's book.
+func fullBundle(t *testing.T, p cli.Profile) evidencebook.VerifiedBundle {
+	t.Helper()
+	var verified evidencebook.VerifiedBundle
+	withBook(t, p, func(book *evidencebook.Book) {
+		anchor, err := book.Checkpoint(t.Context())
+		require.NoError(t, err)
+		all, err := book.Query(t.Context(), evidencebook.Filter{ToSeq: anchor.Entries})
+		require.NoError(t, err)
+		ids := make([]string, len(all))
+		for i, r := range all {
+			ids[i] = r.RecordID
+		}
+		bundle, err := book.Bundle(t.Context(), evidencebook.BundleRequest{Root: ids[len(ids)-1], Include: ids, At: &anchor})
+		require.NoError(t, err)
+		verified, err = evidencebook.VerifyBundle(bundle.JSON)
+		require.NoError(t, err)
+	})
+	return verified
+}
+
+// sealPeerClose has p's book seal a Close for day0 against counterparty a,
+// superseding supersedes when it is set.
+func sealPeerClose(t *testing.T, p cli.Profile, supersedes string) string {
+	t.Helper()
+	var id string
+	withBook(t, p, func(book *evidencebook.Book) {
+		sealed, err := book.Close(t.Context(), evidencebook.CloseInput{
+			Reconcile:    evidencebook.ReconcileInput{FromSeq: 1, ToSeq: 1, Compare: evidencebook.SamePayloadCommitments},
+			Counterparty: "a", Period: evidencebook.ClosePeriod{Start: periodDay0.start, End: periodDay0.end}, Supersedes: supersedes,
+		})
+		require.NoError(t, err)
+		id = sealed.RecordID
+	})
+	return id
+}
+
+func TestCitablePeerCloseDropsSupersededClosesAndRefusesAmbiguity(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	set := bookClock(t, day0)
+	b, _ := bookProfile(t, "b")
+	appendHalves(t, b, half{"x1", "r1", "p1"})
+	set(day1)
+
+	cited, _, _, err := citablePeerClose(fullBundle(t, b), "a", periodDay0)
+	require.NoError(t, err)
+	assert.Nil(t, cited, "no Close disclosed: the Close states counts only")
+
+	first := sealPeerClose(t, b, "")
+	second := sealPeerClose(t, b, first)
+	cited, from, to, err := citablePeerClose(fullBundle(t, b), "a", periodDay0)
+	require.NoError(t, err)
+	require.NotNil(t, cited)
+	assert.Equal(t, second, cited.record.RecordID, "the superseded Close is dropped")
+	assert.Equal(t, [2]uint64{1, 1}, [2]uint64{from, to}, "the peer window is the cited Close's")
+
+	// The window is placed from the cited Close's head: a bundle that does
+	// not disclose it, or counts its head cannot hold, are refused.
+	withoutHead := fullBundle(t, b)
+	var head string
+	for _, r := range withoutHead.Records {
+		if r.RecordID == second {
+			var body evidencebook.CloseStatement
+			require.NoError(t, json.Unmarshal(r.Header.Statement, &body))
+			head = body.Head.Digest
+		}
+	}
+	kept := withoutHead.Records[:0]
+	for _, r := range withoutHead.Records {
+		if r.RecordID != head {
+			kept = append(kept, r)
+		}
+	}
+	withoutHead.Records = kept
+	_, _, _, err = citablePeerClose(withoutHead, "a", periodDay0)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.ErrorContains(t, err, "does not disclose the head")
+
+	overcounted := fullBundle(t, b)
+	for i, r := range overcounted.Records {
+		if r.RecordID == second {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(r.Header.Statement, &body))
+			body["counts_by_kind"] = map[string]int{"exchange": 5}
+			raw, err := json.Marshal(body)
+			require.NoError(t, err)
+			header := *r.Header
+			header.Statement = raw
+			overcounted.Records[i].Header = &header
+		}
+	}
+	_, _, _, err = citablePeerClose(overcounted, "a", periodDay0)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.ErrorContains(t, err, "states a window its head cannot hold")
+
+	cited, _, _, err = citablePeerClose(fullBundle(t, b), "c", periodDay0)
+	require.NoError(t, err)
+	assert.Nil(t, cited, "a Close against another book is not this book's peer Close")
+	other := periodDay0
+	other.start, other.end = other.start.AddDate(0, 0, 1), other.end.AddDate(0, 0, 1)
+	cited, _, _, err = citablePeerClose(fullBundle(t, b), "a", other)
+	require.NoError(t, err)
+	assert.Nil(t, cited, "a Close for another period is not cited")
+
+	third := sealPeerClose(t, b, "")
+	_, _, _, err = citablePeerClose(fullBundle(t, b), "a", periodDay0)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.ErrorContains(t, err, "2 Closes for this period that none supersedes")
+	assert.ErrorContains(t, err, third)
+}
+
+// A Close sealed before close/v1 still makes a repeat a repeat, and
+// --since-last starts after the window it sealed.
+func TestALegacyCloseStillAnswersRepeatsAndSinceLast(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	set := bookClock(t, day0)
+	a, _ := bookProfile(t, "a")
+	appendHalves(t, a, half{"x1", "r1", "p1"})
+	set(day1)
+	var legacyID string
+	withBook(t, a, func(book *evidencebook.Book) {
+		body, err := json.Marshal(evidencebook.LegacyCloseStatement{Counterparty: "b", Profile: closeProfile(periodDay0), Reconciliation: evidencebook.Reconciliation{FromSeq: 1, ToSeq: 1, Tallies: evidencebook.Tallies{Insufficient: 1}}})
+		require.NoError(t, err)
+		record, err := book.Append(t.Context(), evidencebook.Entry{RecordType: evidencebook.RecordTypeClose, EpistemicType: evidencebook.DerivedMetric, CounterpartyRef: "b", Links: []evidencebook.Link{}, Statement: body})
+		require.NoError(t, err)
+		legacyID = record.RecordID
+	})
+
+	again, err := runClose(t, "--profile", "a", "--period", "day", "--date", "2026-09-24", "--counterparty", "b")
+	require.NoError(t, err)
+	assert.True(t, again.AlreadyClosed)
+	assert.Equal(t, legacyID, again.RecordID)
+	require.NotNil(t, again.Reconciliation, "a legacy Close prints the reconciliation it sealed")
+	assert.Equal(t, 1, again.Reconciliation.Tallies.Insufficient)
+
+	appendHalves(t, a, half{"x2", "r2", "p2"})
+	set(day1.AddDate(0, 0, 1))
+	next, err := runClose(t, "--profile", "a", "--period", "day", "--date", "2026-09-25", "--counterparty", "b", "--since-last")
+	require.NoError(t, err)
+	assert.False(t, next.AlreadyClosed)
+	assert.Equal(t, uint64(2), next.Reconciliation.FromSeq, "the window starts just after the legacy Close's to_seq")
+}

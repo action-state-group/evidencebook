@@ -122,7 +122,33 @@ func TestParsePeriod(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "week:2026-W38", p.key, "the current week (W39) has not ended")
 
-	for _, bad := range [][2]string{{"day", "2026-09-26"}, {"week", "2026-09-21"}, {"month", ""}, {"day", "26/09/2026"}} {
+	p, err = parsePeriod("month", "", now)
+	require.NoError(t, err)
+	assert.Equal(t, "month:2026-08", p.key, "the current month has not ended")
+	assert.Equal(t, time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), p.start)
+	assert.Equal(t, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), p.end)
+
+	// The default is last month even on the 31st, where AddDate(0, -1, 0)
+	// would land in this month.
+	p, err = parsePeriod("month", "", time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	assert.Equal(t, "month:2026-02", p.key)
+
+	for _, tc := range []struct {
+		date, key  string
+		start, end time.Time
+	}{
+		{"2024-02-29", "month:2024-02", time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)},  // leap February
+		{"2025-12-31", "month:2025-12", time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, // December into January
+	} {
+		p, err = parsePeriod("month", tc.date, now)
+		require.NoError(t, err)
+		assert.Equal(t, tc.key, p.key)
+		assert.Equal(t, tc.start, p.start, tc.date)
+		assert.Equal(t, tc.end, p.end, tc.date)
+	}
+
+	for _, bad := range [][2]string{{"day", "2026-09-26"}, {"week", "2026-09-21"}, {"month", "2026-09-01"}, {"year", ""}, {"day", "26/09/2026"}} {
 		_, err = parsePeriod(bad[0], bad[1], now)
 		assert.ErrorIs(t, err, cli.ErrInput, "%v", bad)
 	}
@@ -272,7 +298,9 @@ func TestCloseIsIdempotentOnPeriodAndCounterparty(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, again.AlreadyClosed)
 	assert.Equal(t, first.RecordID, again.RecordID)
-	assert.Equal(t, first.Reconciliation, again.Reconciliation)
+	assert.JSONEq(t, string(first.Close), string(again.Close), "a repeat prints the sealed body")
+	assert.NotNil(t, first.Reconciliation, "a fresh Close prints the reconciliation it ran")
+	assert.Nil(t, again.Reconciliation, "a close/v1 body has no pairs to print on a repeat")
 	assert.Equal(t, size, bookSize(t, p), "a repeated close signs nothing")
 
 	other, err := runClose(t, "--profile", "a", "--period", "day", "--counterparty", "c")
@@ -538,7 +566,8 @@ func TestAlreadyClosedDoesNotReportAnUnappliedPeerBundle(t *testing.T) {
 	assert.True(t, again.AlreadyClosed)
 	assert.Equal(t, first.RecordID, again.RecordID)
 	assert.Empty(t, again.PeerBundle)
-	assert.Equal(t, first.Reconciliation, again.Reconciliation)
+	assert.Empty(t, again.PeerClose)
+	assert.JSONEq(t, string(first.Close), string(again.Close))
 }
 
 func TestCloseRefusesAnUntrustedCheckpointKey(t *testing.T) {
