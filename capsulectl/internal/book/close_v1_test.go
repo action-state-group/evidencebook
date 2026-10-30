@@ -259,6 +259,56 @@ func TestCitablePeerCloseReadsALegacyCloseAndSkipsUnverifiedOnes(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, cited, "a Close the bundle did not verify is never cited")
 	}
+	// A Close past the interval the authenticated checkpoint covers is not
+	// cited either.
+	uncovered := fullBundle(t, b)
+	for _, r := range uncovered.Records {
+		if r.RecordID == legacyID {
+			uncovered.IntervalLast = r.Seq - 1
+		}
+	}
+	cited, _, _, err = citablePeerClose(uncovered, "a", periodDay0)
+	require.NoError(t, err)
+	assert.Nil(t, cited, "a Close the checkpoint does not cover is never cited")
+}
+
+// result build reads a Close sealed before close/v1: its period from the
+// profile string, its tallies from the reconciliation it sealed.
+func TestResultBuildReadsALegacyClose(t *testing.T) {
+	b := newResultBook(t)
+	appendHalves(t, b.profile, half{"x1", "r1", "p1"})
+	b.set(day1)
+	var closeID string
+	withBook(t, b.profile, func(book *evidencebook.Book) {
+		_, err := book.Checkpoint(t.Context())
+		require.NoError(t, err)
+		body, err := json.Marshal(evidencebook.LegacyCloseStatement{Counterparty: "peer-b", Profile: closeProfile(periodDay0), Reconciliation: evidencebook.Reconciliation{FromSeq: 1, ToSeq: 3, Tallies: evidencebook.Tallies{Insufficient: 1}}})
+		require.NoError(t, err)
+		record, err := book.Append(t.Context(), evidencebook.Entry{RecordType: evidencebook.RecordTypeClose, EpistemicType: evidencebook.DerivedMetric, CounterpartyRef: "peer-b", Links: []evidencebook.Link{}, Statement: body})
+		require.NoError(t, err)
+		closeID = record.RecordID
+	})
+	sealed := map[string]any{"matched": 0, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 1, "unresolved": 0}
+
+	wrongPeriod := closeClaim("close-1", "UNILATERAL", "peer-b", "", closeID)
+	wrongPeriod["close"].(map[string]any)["period"] = map[string]any{"start": "2026-09-23T00:00:00Z", "end": "2026-09-24T00:00:00Z"}
+	_, _, err := runResultBuild(t, b.profile, resultDoc(wrongPeriod))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "but Close "+closeID+" was sealed for 2026-09-24T00:00:00Z to 2026-09-25T00:00:00Z")
+
+	restated := map[string]any{"matched": 1, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 0, "unresolved": 0}
+	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", restated, closeID)))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "tallies matched=1, but Close "+closeID+" recorded matched=0")
+
+	satisfied := reconcileClaim("rec-1", "peer-b", sealed, closeID)
+	satisfied["sufficiency"], satisfied["verdict"] = "SATISFIED", "met"
+	_, _, err = runResultBuild(t, b.profile, resultDoc(satisfied))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "'s tallies make it GAP")
+
+	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", sealed, closeID)))
+	require.NoError(t, err, "the legacy Close's own tallies and period")
 }
 
 // A repeat with --bundle-out discloses the window the Close sealed, though
