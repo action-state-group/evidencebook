@@ -108,7 +108,7 @@ def test_an_artifact_reply_is_verified_and_recorded(clock, responder):
     assert record.header.statement == {
         "request_digest": sent.digest, "outcome": eb.OUTCOME_ARTIFACT, "key_id": r.key_id,
         "checkpoint_key_id": keys_of(r).checkpoint, "artifact_digest": records[0].record_id,
-        "anchor": r.checkpoints()[-1].anchor_digest,
+        "anchor": r.checkpoints()[-1].anchor_digest, "witness": eb.UNWITNESSED,
     }
     assert q.reply_octets(record.record_id) == reply.message.octets
     assert record.header.payload_commitments == (hashlib.sha256(reply.message.octets).hexdigest(),)

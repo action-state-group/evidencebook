@@ -36,6 +36,7 @@ from agent_action_capsule.evidence_request import (
 from agent_action_capsule.interop_profile import _cbor
 from agent_action_capsule.interop_profile._common import is_profile_time
 
+from ._limits import MAX_REPLY_DEPTH, json_depth_over
 from .errors import InvalidError
 
 __all__ = [
@@ -209,8 +210,12 @@ def _lone_surrogate(value: Any) -> bool:
 
 def strict_json(octets: bytes) -> Any:
     """JSON read as Go's ``evidencerequest.DecodeJSON`` reads it: UTF-8, no
-    duplicate member, no NaN or infinity, no unpaired surrogate. Raises
-    ``ValueError``."""
+    duplicate member, no NaN or infinity, no unpaired surrogate, nested no
+    deeper than :data:`MAX_REPLY_DEPTH` (Go's decoder refuses deeper input
+    too, and ``json.loads`` would otherwise recurse past Python's limit).
+    Raises ``ValueError``."""
+    if json_depth_over(octets, MAX_REPLY_DEPTH):
+        raise ValueError(f"limit: depth: over {MAX_REPLY_DEPTH}")
     value = json.loads(octets.decode("utf-8"), object_pairs_hook=_object, parse_constant=_reject_constant)
     if _lone_surrogate(value):
         raise ValueError("a text holds an unpaired surrogate")
@@ -298,10 +303,14 @@ def encode_envelope(envelope: Envelope, media_type: str) -> Reply:
 
 def parse_reply(message: Message) -> Reply:
     """Read a received reply: exactly one of an envelope or a refusal. Every
-    failure is :class:`InvalidError`. Parsing authenticates nothing."""
+    failure is :class:`InvalidError`. Parsing authenticates nothing. JSON
+    nested deeper than :data:`MAX_REPLY_DEPTH` is refused before it is
+    decoded."""
     binding = _BINDINGS.get(message.media_type)
     if binding is None:
         raise InvalidError(f"a reply is carried as {MEDIA_TYPE_JSON} or {MEDIA_TYPE_CBOR}")
+    if message.media_type == MEDIA_TYPE_JSON and json_depth_over(message.octets, MAX_REPLY_DEPTH):
+        raise InvalidError(f"limit: reply depth: over {MAX_REPLY_DEPTH}")
     try:
         parsed = _parse_reply(message.octets, binding)
     except (VerificationError, ValueError) as err:

@@ -474,8 +474,13 @@ type VerifiedBundle struct {
 	// Witnesses are the witness receipts the bundle carries
 	// (checkpoint.witnesses), as given. Nothing here verifies them: a
 	// requester checks them against the anchor under its own witness
-	// directory (RecordResponse does, through ResponderKeys.Witnesses).
-	Witnesses     []json.RawMessage
+	// directory (VerifyBundleAnswer does, through ResponderKeys.Witnesses).
+	Witnesses []json.RawMessage
+	// Witnessed is set by VerifyBundleAnswer when at least one carried
+	// receipt verified under the requester's directory. Otherwise it adds
+	// the finding "unwitnessed": the bundle verifies only against its
+	// holder's own signatures.
+	Witnessed     bool
 	IntervalFirst uint64
 	IntervalLast  uint64
 	Records       []PeerRecord
@@ -529,6 +534,10 @@ func (v VerifiedBundle) Covers(seq uint64) bool {
 // verifier must pass every claim, the anchor must be a checkpoint signed by
 // keys.Checkpoint, and every witness receipt carried on it must verify
 // against that checkpoint under the requester's own witness directory. A
+// bundle that carries no receipt still verifies, with Witnessed false and
+// the finding "unwitnessed". Unlike a reply's carried receipts, a bundle's
+// must all verify: a bundle is checked on its own, with no open request
+// whose outcome a forged receipt could foreclose. A
 // bundle is never the canonical Artifact of an evidence request; this is the
 // separate disclosure path (profile §6.6).
 func VerifyBundleAnswer(data []byte, keys ResponderKeys) (VerifiedBundle, error) {
@@ -548,6 +557,9 @@ func VerifyBundleAnswer(data []byte, keys ResponderKeys) (VerifiedBundle, error)
 	if err := verifyCarriedReceipts(verified.AnchorStatement, verified.Witnesses, keys.Witnesses); err != nil {
 		return verified, err
 	}
+	if verified.Witnessed = len(verified.Witnesses) > 0; !verified.Witnessed {
+		verified.Findings = append(verified.Findings, Unwitnessed)
+	}
 	return verified, nil
 }
 
@@ -560,7 +572,17 @@ func VerifyBundleAnswer(data []byte, keys ResponderKeys) (VerifiedBundle, error)
 // members: a second copy of a member under a case-variant key ("Disclosures",
 // "CHECKPOINT") is refused outright, and a member present only under a
 // case-variant key is simply absent, exactly as the verifier sees it.
+//
+// The requester's limits apply before the bundle verifier runs: at most
+// MaxReplyBytes, MaxReplyDepth deep, MaxReplyItems records and
+// MaxReplyReceipts witness receipts. Over one is an error naming it.
 func VerifyBundle(data []byte) (VerifiedBundle, error) {
+	if len(data) > MaxReplyBytes {
+		return VerifiedBundle{}, fmt.Errorf("%w: limit: bundle bytes: %d over %d", ErrInvalid, len(data), MaxReplyBytes)
+	}
+	if jsonDepthOver(data, MaxReplyDepth) {
+		return VerifiedBundle{}, fmt.Errorf("%w: limit: bundle depth: over %d", ErrInvalid, MaxReplyDepth)
+	}
 	decoded, err := decodeJSON(data)
 	if err != nil {
 		return VerifiedBundle{}, fmt.Errorf("%w: bundle JSON: %v", ErrInvalid, err)
@@ -571,6 +593,12 @@ func VerifyBundle(data []byte) (VerifiedBundle, error) {
 	}
 	if err := rejectFoldedKeys(tree, "$"); err != nil {
 		return VerifiedBundle{}, err
+	}
+	if n := len(tree.get("records").items()); n > MaxReplyItems {
+		return VerifiedBundle{}, fmt.Errorf("%w: limit: records: %d over %d", ErrInvalid, n, MaxReplyItems)
+	}
+	if n := len(tree.get("checkpoint").get("witnesses").items()); n > MaxReplyReceipts {
+		return VerifiedBundle{}, fmt.Errorf("%w: limit: witness receipts: %d over %d", ErrInvalid, n, MaxReplyReceipts)
 	}
 	result := aacbundle.VerifyBundle(decoded)
 	out := VerifiedBundle{

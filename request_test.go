@@ -164,7 +164,7 @@ func TestRespondResolvesEverySubjectForm(t *testing.T) {
 			if len(e.Verification) != 0 {
 				t.Fatal("for checkpoints and history_card/1 the artifact is the material")
 			}
-			if err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
+			if _, err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
 				t.Fatal(err)
 			}
 		})

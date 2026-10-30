@@ -362,6 +362,39 @@ Bundles a holder discloses (`Bundle`) are a separate path, checked with
 `VerifyBundleAnswer`, which also checks every witness receipt carried on the
 anchor under the requester's own witness directory.
 
+**A hostile answer.** A responder can shape an answer to make the requester's
+checks expensive, so the requester states its limits and checks each before
+the work it bounds (`MaxReplyBytes`, `MaxReplyDepth`, `MaxReplyItems`,
+`MaxReplyReceipts`).
+
+- A limit on what nothing has authenticated yet (the reply's size and
+  nesting, and the unsigned receipt carrier) refuses the reply and records
+  nothing. This follows the rule above: a forged message must not foreclose
+  the real one.
+- A limit on what the responder signed (its verification entries, the
+  artifact's checkpoints, history entries or records, the artifact's
+  nesting) is checked after the one envelope signature and the artifact's
+  digest, so it falls only on signed content, and before any checkpoint
+  signature or proof. Exceeding it is received-and-failed, with the limit
+  named.
+
+A chain can verify against the responder's own signatures and still be a
+private fork that no witness ever saw. So a verified artifact also records
+`witness`. It reads `witnessed` only when a receipt for the anchor, from a
+witness in the requester's directory, verifies over the anchor's signed
+checkpoint statement. Otherwise it reads `unwitnessed`, and that includes
+answers whose material carries no anchor checkpoint. Receipts come from the
+reply's `witness_receipts` member, which is outside the profile and unsigned,
+so a receipt can only ever add `witnessed`: one that does not verify counts
+for nothing. The receipt carrier's size is limited on every reply, a refusal
+too. `witness` is the requester's reading under its own witness directory
+when it recorded the answer, not a property of the answer: another reader
+may list other witnesses. The carried receipts stay in the response record's
+original (the reply octets), so anyone holding it can check them again under
+their own directory. An Evidence Bundle still fails on a carried receipt
+that does not verify: it is checked on its own, with no open request whose
+outcome a forged receipt could foreclose.
+
 **Reconcile correlation.** Pairing runs in two passes over all halves, so it
 does not depend on input order: `exchange_id` first, preferring a counterpart
 whose `request_digest` also agrees, then `request_digest` for halves still

@@ -417,7 +417,7 @@ func (t probeTarget) probe(ctx context.Context, send DoctorTransport, check stri
 	if keys.Checkpoint == "" {
 		keys.Checkpoint = keys.Signer // nothing to pin; every checkpoint then fails to verify
 	}
-	st, err := verifyReply(sent, parsed, keys)
+	st, err := verifyReply(sent, parsed, keys, nil)
 	anchored := false
 	if err == nil && st.Outcome == OutcomeArtifact {
 		if anchored, err = t.anchored(ctx, st.Anchor); err != nil {

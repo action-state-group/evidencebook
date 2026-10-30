@@ -349,7 +349,7 @@ func TestHistoryCardProofsAreVerified(t *testing.T) {
 		}
 	}
 	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: fresh()}), ""))
-	if err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
+	if _, err := verifyCheckpointChain(e, checkpointKeyID(1)); err != nil {
 		t.Fatalf("an honest history card does not verify: %v", err)
 	}
 	var card map[string]any
@@ -367,10 +367,10 @@ func TestHistoryCardProofsAreVerified(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.Artifact = swapped
-	if err := verifyCheckpointChain(e, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
+	if _, err := verifyCheckpointChain(e, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
 		t.Fatal("swapped consistency proofs verified")
 	}
-	if err := verifyCheckpointChain(e, checkpointKeyID(77)); !errors.Is(err, ErrInvalid) {
+	if _, err := verifyCheckpointChain(e, checkpointKeyID(77)); !errors.Is(err, ErrInvalid) {
 		t.Fatal("a card under another checkpoint key verified")
 	}
 }

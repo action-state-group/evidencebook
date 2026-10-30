@@ -78,7 +78,7 @@ func TestRecordMaterialProvesTheArtifact(t *testing.T) {
 	if len(e.Verification) != 3 || e.Verification[2].Kind != KindCLLConsistencyProof {
 		t.Fatalf("an anchor extending an earlier checkpoint carries its consistency proof: %+v", e.Verification)
 	}
-	if err := verifyRecordInclusion(e, checkpointKeyID(1)); err != nil {
+	if _, err := verifyRecordInclusion(e, checkpointKeyID(1)); err != nil {
 		t.Fatal(err)
 	}
 	for i := 1; i < 3; i++ {
@@ -87,7 +87,7 @@ func TestRecordMaterialProvesTheArtifact(t *testing.T) {
 		item := slices.Clone(e.VerificationContent[i])
 		item[len(item)-1] ^= 1
 		tampered.VerificationContent[i] = item
-		if err := verifyRecordInclusion(tampered, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
+		if _, err := verifyRecordInclusion(tampered, checkpointKeyID(1)); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("a changed %s verified", e.Verification[i].Kind)
 		}
 	}
@@ -99,7 +99,7 @@ func TestRecordMaterialProvesTheArtifact(t *testing.T) {
 		t.Fatal("an anchor resolved under min_freshness states what it attains")
 	}
 	for _, env := range []Envelope{sized, timed} {
-		if err := verifyRecordInclusion(env, checkpointKeyID(1)); err != nil {
+		if _, err := verifyRecordInclusion(env, checkpointKeyID(1)); err != nil {
 			t.Fatal(err)
 		}
 	}
