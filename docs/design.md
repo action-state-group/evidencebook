@@ -235,7 +235,16 @@ not; the uniform refusal policy also folds a counterparty's
 `no_such_subject` into `policy_declined`. `range` and `full_history` reach
 records no one requester is party to, and are refused
 under every tier: only a recipient-specific derivation, the holder's grant
-to the one requester it names, answers them. An artifact carries the
+to the one requester it names, answers them. One more question is answered
+when the host sets `Config.StandardHistory` (evidencebook#157):
+`full_history` under `standard_history/1` (agent-action-capsule
+`spec/standard-history-v0.md`), to any authenticated requester whatever the
+tier. Its artifact is a card of counts with no record, name, amount or
+digest of a record, the same bytes for every requester, derived from the
+policy's digest and window and the deal entries the host reads from the
+book's servable records under the anchor; the book defines neither the
+policy format nor how records make deals. A stranger still has only the
+public questions answered. An artifact carries the
 records its subject names and nothing else: a cited record appears only as
 the digest in the citing record's links, and payloads only as their
 commitments. The book does not authenticate anyone

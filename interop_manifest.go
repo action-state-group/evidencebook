@@ -59,11 +59,17 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 	if policy == "" {
 		policy = RefusalPolicySpecific
 	}
+	// A registered derivation is never listed: one names its recipient.
+	// standard_history/1 is a registered token, the same for everyone.
+	derivations := []any{DerivationHistoryCard}
+	if b.standardHistory != nil {
+		derivations = append(derivations, DerivationStandardHistory)
+	}
 	manifest := map[string]any{
 		"profiles":       []any{ProfileID},
 		"drafts":         []any{RequestDraft},
 		"subject_forms":  forms,
-		"derivations":    []any{DerivationHistoryCard},
+		"derivations":    derivations,
 		"bindings":       listed,
 		"refusal_policy": policy,
 	}

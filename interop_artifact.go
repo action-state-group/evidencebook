@@ -25,6 +25,7 @@ import (
 //     evidence_stream, subject}, each checkpoint its signed statement in hex;
 //   - history_card/1: JCS of {anchor, derivation, evidence_stream, history,
 //     subject}, each entry {checkpoint, consistency_from_previous} (ER §8.1);
+//   - standard_history/1: JCS of the card (SH §4), counts only;
 //   - a registered derivation: JCS of {anchor, derivation, evidence_stream,
 //     records, subject}, each record carrying only its digest, its position
 //     and the definition's declared fields (profile §6.5).
@@ -60,6 +61,11 @@ var (
 )
 
 func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
+	if req.Derivation == DerivationStandardHistory {
+		// A card of counts whatever the history's length: the item cap
+		// bounds record lists, and the card lists none.
+		return b.standardHistoryLocked(ctx, view, anchor, leaves)
+	}
 	maxItems := b.responder.MaxAnswerItems
 	if maxItems == 0 {
 		maxItems = DefaultMaxAnswerItems

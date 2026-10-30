@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added: `standard_history/1` for signed requesters (evidencebook#157)
+
+- `Config.StandardHistory` (`StandardHistorySource`) has `Book.Respond`
+  answer `full_history` under `standard_history/1`
+  (agent-action-capsule `spec/standard-history-v0.md`) to any authenticated
+  requester, whatever the share policy's tier: a card of counts, the same
+  bytes for every requester, with no verification material. A stranger still
+  gets only `checkpoints` and `history_card/1`. The host supplies its holder
+  kind, and a function returning the policy's digest and window and the deal
+  entries (SH §5.2) it reads from the book's servable records under the
+  anchor; the book derives the card with agent-action-capsule's
+  `go/standardhistory` and checks it against those inputs before answering.
+  Without the source the token is `derivation_unsupported`. The manifest
+  lists `standard_history/1` when it is served.
+- Requires agent-action-capsule `go` v0.16.0 (was v0.11.0) for
+  `go/standardhistory`.
+
 ### Changed: a correlation subject is answered under the per-record rule (evidencebook#114)
 
 - `Book.Respond` answers an underived (or shared-derivation) `correlation`

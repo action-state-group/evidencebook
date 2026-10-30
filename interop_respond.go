@@ -268,11 +268,13 @@ func (a *answer) refuse(reason, detail string) (Reply, error) {
 // gate is what a decision reads besides the evidence: who asks, and under
 // which policies.
 type gate struct {
-	requester     string // the authenticated requester, or ""
-	relationship  string
-	policy        SharePolicy
-	derivations   map[string]derivationEntry
-	refusalPolicy string
+	requester    string // the authenticated requester, or ""
+	relationship string
+	policy       SharePolicy
+	derivations  map[string]derivationEntry
+	// standardHistory: the host serves standard_history/1.
+	standardHistory bool
+	refusalPolicy   string
 	// cll: the book's substrate is a Checkpointed Local Log, the only one
 	// whose anchors and proofs are served.
 	cll bool
@@ -293,6 +295,9 @@ func (g gate) uniform(reason string) string {
 func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 	return evidencerequest.Policy{
 		Derivation: func(name string) ([]SubjectKind, bool) {
+			if name == DerivationStandardHistory {
+				return []SubjectKind{SubjectFullHistory}, g.standardHistory
+			}
 			entry, ok := g.derivations[name]
 			return entry.def.Forms, ok
 		},
@@ -303,6 +308,11 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 			switch {
 			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard:
 				return true // public: commitments only
+			case req.Derivation == DerivationStandardHistory:
+				// Counts only, the same for every requester it is answered
+				// to (SH §3): any authenticated requester, whatever the
+				// tier; never a stranger.
+				return g.requester != ""
 			case req.Derivation != "" && g.derivations[req.Derivation].def.Recipient != "":
 				// The holder's grant to the one requester it names.
 				return g.requester == g.derivations[req.Derivation].def.Recipient
@@ -372,7 +382,7 @@ func (a *answer) run() (Reply, error) {
 		return Reply{}, err
 	}
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
 		if _, err := b.checkpointLocked(a.ctx); err != nil {
