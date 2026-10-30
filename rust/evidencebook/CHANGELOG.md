@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.10 (2026-10-30)
+
 ### Changes
 
 - **`deal` record types** (feature `deal`; evidencebook#93): `Record` (the

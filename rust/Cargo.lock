@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "evidencebook"
-version = "0.0.9"
+version = "0.0.10"
 dependencies = [
  "agent-action-capsule",
  "base64",
