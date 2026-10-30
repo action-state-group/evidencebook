@@ -34,6 +34,17 @@ func (s *gatedStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 	return s.Store.Checkpoints(ctx)
 }
 
+// waitEntered waits for the gated answer to reach the store, failing rather
+// than hanging when it never does.
+func (s *gatedStore) waitEntered(t *testing.T) {
+	t.Helper()
+	select {
+	case <-s.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the answer never reached the store")
+	}
+}
+
 // strangerRequests are the requests anyone may send: the checkpoints
 // subject, the history_card/1 derivation, and one form refused to every
 // stranger.
@@ -102,7 +113,7 @@ func TestRespondDoesNotHoldTheLockWhileAnswering(t *testing.T) {
 				}
 				replied <- reply
 			}()
-			<-store.entered
+			store.waitEntered(t)
 			within(t, 10*time.Second, "Append", func() error {
 				_, err := book.Append(ctx, observation("order-18", `{"status":"held"}`))
 				return err
@@ -151,7 +162,7 @@ func TestReleaseWaitsForAnswersInProgress(t *testing.T) {
 		}
 		replied <- err
 	}()
-	<-store.entered
+	store.waitEntered(t)
 	released := make(chan error, 1)
 	go func() { released <- book.Release() }()
 	select {
@@ -269,14 +280,24 @@ func (s *slowStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 const (
 	answerCost   = time.Second
 	sealingBound = answerCost / 2
+	// strangerCeiling is a hard bound on every seal under a stranger flood,
+	// loose enough for one seal stalled on the scheduler or the disk under
+	// the race detector. Before #208 a seal waited out the answers queued
+	// ahead of it, several answer costs.
+	strangerCeiling = 2 * answerCost
 )
 
 // TestRespondFloodDoesNotStallSealing is #208's load test: flooders keep
 // requests in flight continuously while the book seals at a fixed rate for
 // two answer costs, so answers complete (and, when authenticated, seal
 // their records) while it is measured. Every seal must
-// land, in order, and 95% of them within sealingBound. The flooders start
-// staggered across one answer cost, as independent askers would. It runs once with strangers (checkpoints, history_card/1 and
+// land, in order, and 95% of them within sealingBound. Strangers never
+// seal, so no seal of theirs can queue ahead of the book's, and under a
+// stranger flood every seal must also finish within strangerCeiling. The
+// flooders start staggered across one answer cost, as independent askers
+// would. TestRespondDoesNotHoldTheLockWhileAnswering is the deterministic
+// check that an answer in progress never blocks a seal; this test bounds
+// the latency under load. It runs once with strangers (checkpoints, history_card/1 and
 // a refused full_history) and once with an authenticated requester, whose
 // answers each also seal a record under the lock.
 func TestRespondFloodDoesNotStallSealing(t *testing.T) {
@@ -374,6 +395,9 @@ func TestRespondFloodDoesNotStallSealing(t *testing.T) {
 			if p95 > sealingBound {
 				t.Fatalf("95%% of seals took up to %s under the flood, over the %s bound", p95, sealingBound)
 			}
+			if worst := latencies[len(latencies)-1]; c.requester == "" && worst > strangerCeiling {
+				t.Fatalf("a seal took %s under a stranger flood, over the %s ceiling", worst, strangerCeiling)
+			}
 			// No seal is lost: each is in the reopened book, in the order
 			// it was sealed.
 			if err := book.Release(); err != nil {
@@ -451,7 +475,7 @@ func TestRespondRelationshipIsFromTheSnapshotItAnswersFrom(t *testing.T) {
 		reply, sealed, err := book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
 		done <- result{reply, sealed, err}
 	}()
-	<-store.entered
+	store.waitEntered(t)
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "peer-1"})
 	release()
 	r := <-done
@@ -487,15 +511,27 @@ func TestRespondIgnoresCheckpointsPastItsSnapshot(t *testing.T) {
 	store.armed.Store(true)
 	release := sync.OnceFunc(func() { close(store.release) })
 	defer release()
-	replied := make(chan Reply, 1)
-	go func() { replied <- respondAs(t, book, strangerRequests(t)[0], "") }()
-	<-store.entered
+	request := strangerRequests(t)[0]
+	type result struct {
+		reply Reply
+		err   error
+	}
+	replied := make(chan result, 1)
+	go func() {
+		reply, _, err := book.Respond(ctx, request, RespondOptions{Policy: policyWith("peers")})
+		replied <- result{reply, err}
+	}()
+	store.waitEntered(t)
 	mustAppend(t, book, observation("order-18", `{"status":"held"}`))
 	if anchorPin(t, book) == pin {
 		t.Fatal("the second checkpoint is the first")
 	}
 	release()
-	if e := mustEnvelope(t, <-replied); e.Anchor.Digest != pin {
+	r := <-replied
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	if e := mustEnvelope(t, r.reply); e.Anchor.Digest != pin {
 		t.Fatalf("the answer cites anchor %s, issued after its snapshot; want %s", e.Anchor.Digest, pin)
 	}
 }
@@ -513,11 +549,21 @@ func TestRespondIssuesOneAnchorForConcurrentFloors(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: records[0].RecordID}, Coverage: Coverage{MinFreshness: sizeFloor(book.Size())}})
+	replies := make([]Reply, 8)
+	errs := make([]error, 8)
 	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() { mustEnvelope(t, respondAs(t, book, request, "peer-1")) })
+	for i := range replies {
+		wg.Go(func() {
+			replies[i], _, errs[i] = book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: "peer-1", Policy: policyWith("peers")})
+		})
 	}
 	wg.Wait()
+	for i, reply := range replies {
+		if errs[i] != nil {
+			t.Fatal(errs[i])
+		}
+		mustEnvelope(t, reply)
+	}
 	after, err := book.Checkpoints(ctx)
 	if err != nil {
 		t.Fatal(err)

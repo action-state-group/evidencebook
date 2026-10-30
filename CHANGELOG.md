@@ -14,7 +14,8 @@
   `TestRespondFloodDoesNotStallSealing` is the load test: while every answer
   costs 1 s, every seal lands in order and 95% of seals take at most 500 ms,
   waiting for the seals queued ahead of them (one per answer in flight),
-  never for an answer; holding the lock, seals took seconds.
+  never for an answer; under a flood of strangers, who never seal, no seal
+  takes over 2 s. Holding the lock, seals took seconds.
 - Concurrent answers that each need an anchor for the same freshness floor
   issue one between them.
 - A host's `Store` (`GetRecord`, `Checkpoints`), `Signer` and
