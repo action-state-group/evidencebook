@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -173,12 +174,17 @@ def _endpoint(url: str) -> str:
     return url.rstrip("/")
 
 
+_ASCII_INT = re.compile(r"[+-]?[0-9]+")
+
+
 def _receipt_int(value: Any) -> int:
     if isinstance(value, bool):
         raise ValueError("not an integer")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.lstrip("+-").isdigit():
+    # ASCII digits only, as Go's strconv.ParseInt reads them: str.isdigit
+    # and int() would also take "５" or "٥".
+    if isinstance(value, str) and _ASCII_INT.fullmatch(value):
         return int(value)
     raise ValueError("not an integer")
 

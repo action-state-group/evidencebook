@@ -169,8 +169,11 @@ func carriedReceipts(reply Message, anchor string) ([]json.RawMessage, error) {
 		if !ok {
 			continue
 		}
+		// Positions as numbers or texts, never a CBOR byte string, which
+		// would marshal to base64 text the reader might take as digits.
 		for _, name := range []string{"leaf_index", "tree_size"} {
-			if value, present := witnessed[name]; present {
+			switch value := witnessed[name].(type) {
+			case evidencerequest.JSONNumber, string, uint64, int64:
 				exact[name] = value
 			}
 		}

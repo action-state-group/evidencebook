@@ -242,6 +242,12 @@ func writeWitnessVectors(t *testing.T, path string) {
 			{Name: "malformed", Carried: []json.RawMessage{entry(malformed)}, Want: Unwitnessed},
 			{Name: "bogus-receipt-bytes", Carried: []json.RawMessage{entry(tampered)}, Want: Unwitnessed},
 			{Name: "two-inclusion-proofs", Carried: []json.RawMessage{entry(doubled)}, Want: Unwitnessed},
+			{Name: "non-ascii-digit-position", Carried: []json.RawMessage{entry(map[string]any{
+				"ts_url": testWitnessURL, "entry_hash": good0["entry_hash"], "receipt_b64": good0["receipt_b64"], "leaf_index": "\uff10", "tree_size": "1",
+			})}, Want: Unwitnessed},
+			{Name: "text-positions", Carried: []json.RawMessage{entry(map[string]any{
+				"ts_url": testWitnessURL, "entry_hash": good0["entry_hash"], "receipt_b64": good0["receipt_b64"], "leaf_index": "0", "tree_size": "1",
+			})}, Want: Witnessed},
 			{Name: "case-varied-member-names", Carried: []json.RawMessage{entry(map[string]any{
 				"TS_URL": testWitnessURL, "Entry_Hash": good0["entry_hash"], "RECEIPT_B64": good0["receipt_b64"], "leaf_index": 0, "tree_size": 1,
 			})}, Want: Unwitnessed},
