@@ -217,10 +217,50 @@ fn record_refusals() {
         ("a member in another case", format!(r#"{{"x-deal-v0":{sale},"Body":{{}}}}"#)),
         ("an unknown body member", format!(r#"{{"x-deal-v0":{sale},"body":{{"note":"x"}}}}"#)),
         ("an unknown record member", format!(r#"{{"x-deal-v0":{sale},"body":{{}},"extra":1}}"#)),
-        ("a duplicate member", format!(r#"{{"x-deal-v0":{sale},"body":{{}},"body":{{}}}}"#)),
+        ("a null body", format!(r#"{{"x-deal-v0":{sale},"body":null}}"#)),
+        ("a block member in another case", format!(r#"{{"x-deal-v0":{},"body":{{}}}}"#, sale.replace(r#""seq""#, r#""Seq""#))),
     ] {
         assert!(deal::decode::<Record>(text.as_bytes()).is_err(), "{why}");
     }
+    // A key repeated in an object is read last-wins, in the record, its
+    // block, its body and a typed document alike, as Go's Decode and Check
+    // and the reference checker read it.
+    let thread = r#"{"profile":"x-deal-v0","canonicalization":"jcs","deal_id":"sale-0123456789abcdef","record_type":"thread","seq":2,"at":"2026-10-30T01:02:03Z","baseline_ref":{"type":"deal-record","digest_alg":"SHA-256","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"prev":{"type":"deal-record","digest_alg":"SHA-256","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}"#;
+    let a = "a".repeat(64);
+    let b = "b".repeat(64);
+    let rec: Record = deal::decode(
+        format!(r#"{{"x-deal-v0":{thread},"body":{{"thread_ref_commitment":"{a}","thread_ref_commitment":"{b}"}}}}"#)
+            .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        rec.body,
+        Body::Thread(deal::ThreadBody {
+            thread_ref_commitment: b.clone()
+        })
+    );
+    let rec: Record = deal::decode(
+        format!(
+            r#"{{"x-deal-v0":{},"body":{{"thread_ref_commitment":"{a}"}}}}"#,
+            thread.replace(r#""seq":2"#, r#""seq":9,"seq":2"#)
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(rec.block.seq, 2);
+    let rec: Record =
+        deal::decode(format!(r#"{{"x-deal-v0":{sale},"body":{{"x":1}},"body":{{}}}}"#).as_bytes())
+            .unwrap();
+    assert_eq!(rec.body, Body::SaleClose(SaleCloseBody {}));
+    let bounds: deal::CommercialBounds =
+        deal::decode(br#"{"type":"commercial-bounds/v0","min_total_minor":1,"min_total_minor":2}"#)
+            .unwrap();
+    assert_eq!(bounds.min_total_minor, 2);
+    // A typed record refuses a member in another case, as Go's does.
+    assert!(
+        deal::decode::<deal::TaskAuthority>(br#"{"type":"task-authority/v0","Type":"x"}"#).is_err()
+    );
+
     // A required nullable member read from an absent member would encode
     // as null: the text is not this record.
     let text = r#"{"type":"check-request/v0","phase":"proposed","ruleset_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","proposed_action":{}}"#;
