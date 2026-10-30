@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+## 0.0.10 (2026-10-30)
+
 ### Changes
+
+- **Requires agent-action-capsule 0.5.0** (was 0.4.1): witness receipts are
+  verified with strict Ed25519 (agent-action-capsule#447). 0.5.0 adds fields to
+  its `WitnessReceiptResult` and `ReceiptCheck`; evidencebook builds none by
+  literal, so no code here changes.
 
 - **`deal` record types** (feature `deal`; evidencebook#93): `Record` (the
   x-deal-v0 block and a `Body`, one variant per record type), the typed
