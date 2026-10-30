@@ -445,13 +445,6 @@ func checkCloseState(claim resultClaim, closeID, state, linker string, ignored [
 	return nil
 }
 
-// reconcileTallyKeys maps a Result's lowercase tally keys onto the Close
-// statement's state names.
-var reconcileTallyKeys = []struct{ claim, close string }{
-	{"matched", "MATCHED"}, {"a_only", "A_ONLY"}, {"b_only", "B_ONLY"},
-	{"conflicting", "CONFLICTING"}, {"insufficient", "INSUFFICIENT"}, {"unresolved", "UNRESOLVED"},
-}
-
 // checkReconcileClaim: the claim's tallies are the ones the Close it cites
 // sealed, state for state, and its peer is that Close's counterparty. A
 // reconciliation is on record only as a Close (`reconcile` adds no record),
@@ -471,27 +464,27 @@ func checkReconcileClaim(claim resultClaim, resolved map[string]evidencebook.Rec
 	if err := checkClaimPeriod(claim, "reconcile", closeRecord.RecordID, sealed); err != nil {
 		return err
 	}
-	var tallies evidencebook.Tallies
+	var sealedTallies evidencebook.ResultTallies
 	switch {
 	case sealed.legacy != nil:
-		tallies = sealed.legacy.Reconciliation.Tallies
+		t := sealed.legacy.Reconciliation.Tallies
+		sealedTallies = evidencebook.ResultTallies{Matched: t.Matched, AOnly: t.AOnly, BOnly: t.BOnly, Conflicting: t.Conflicting, Insufficient: t.Insufficient, Unresolved: t.Unresolved}
 	case sealed.v1.Reconcile != nil:
-		t := sealed.v1.Reconcile.Tallies
-		tallies = evidencebook.Tallies{Matched: t.Matched, AOnly: t.AOnly, BOnly: t.BOnly, Conflicting: t.Conflicting, Insufficient: t.Insufficient, Unresolved: t.Unresolved}
+		sealedTallies = sealed.v1.Reconcile.Tallies
 	default:
 		return cli.Hint(cli.ErrInput, fmt.Sprintf("%s is a reconcile claim, but Close %s sealed counts only: it cites no peer Close, so it holds no tallies to report", claim.Label(), closeRecord.RecordID))
 	}
-	var sealedTallies map[string]int64
-	raw, err := json.Marshal(tallies)
-	if err == nil {
-		err = json.Unmarshal(raw, &sealedTallies)
-	}
-	if err != nil {
-		return err
-	}
-	for _, key := range reconcileTallyKeys {
-		if claim.ReconcileTallies[key.claim] != sealedTallies[key.close] {
-			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s tallies %s=%d, but Close %s recorded %s=%d; tallies are what the Close sealed, never restated", claim.Label(), key.claim, claim.ReconcileTallies[key.claim], closeRecord.RecordID, key.close, sealedTallies[key.close]))
+	// The claim's keys are the Close's own lowercase keys (Result v0 and
+	// close/v1 share them).
+	for _, tally := range []struct {
+		key string
+		n   int
+	}{
+		{"matched", sealedTallies.Matched}, {"a_only", sealedTallies.AOnly}, {"b_only", sealedTallies.BOnly},
+		{"conflicting", sealedTallies.Conflicting}, {"insufficient", sealedTallies.Insufficient}, {"unresolved", sealedTallies.Unresolved},
+	} {
+		if claim.ReconcileTallies[tally.key] != int64(tally.n) {
+			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s tallies %s=%d, but Close %s recorded %s=%d; tallies are what the Close sealed, never restated", claim.Label(), tally.key, claim.ReconcileTallies[tally.key], closeRecord.RecordID, tally.key, tally.n))
 		}
 	}
 	// Sufficiency on a reconcile claim is derived from the two non-finding
@@ -499,9 +492,9 @@ func checkReconcileClaim(claim resultClaim, resolved map[string]evidencebook.Rec
 	// UNRESOLVED > 0 is UNKNOWN, else SATISFIED.
 	want := "SATISFIED"
 	switch {
-	case sealedTallies["INSUFFICIENT"] > 0:
+	case sealedTallies.Insufficient > 0:
 		want = "GAP"
-	case sealedTallies["UNRESOLVED"] > 0:
+	case sealedTallies.Unresolved > 0:
 		want = "UNKNOWN"
 	}
 	if claim.Sufficiency != want {

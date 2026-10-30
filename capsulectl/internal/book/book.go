@@ -606,8 +606,9 @@ func priorCloses(ctx context.Context, book *evidencebook.Book, counterparty stri
 	return closes, nil
 }
 
-// reconcileInput builds the windows both verbs share. A zero peer (no
-// --peer) is an account that proves nothing, so every own exchange in the
+// reconcileInput builds the windows both verbs share; peerWindowFromPeriod
+// places the peer's window by the period (with no peer Close to take it
+// from). A zero peer (no --peer) is an account that proves nothing, so every own exchange in the
 // window reads INSUFFICIENT: one half unavailable is never disagreement.
 //
 // The book reconciles every correlated record in the window; it cannot
@@ -615,7 +616,7 @@ func priorCloses(ctx context.Context, book *evidencebook.Book, counterparty stri
 // different counterparty is refused: counting it would report A_ONLY to a
 // party that never saw it and link the Close to it. An exchange that names
 // no counterparty is counted in every Close.
-func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, counterparty string, peer evidencebook.VerifiedBundle, hasPeer bool) (evidencebook.ReconcileInput, error) {
+func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, counterparty string, peer evidencebook.VerifiedBundle, peerWindowFromPeriod bool) (evidencebook.ReconcileInput, error) {
 	from, to, err := ownWindow(ctx, book, p)
 	if err != nil {
 		return evidencebook.ReconcileInput{}, err
@@ -632,7 +633,7 @@ func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, coun
 		}
 	}
 	in := evidencebook.ReconcileInput{Peer: peer, FromSeq: from, ToSeq: to, Compare: evidencebook.SamePayloadCommitments}
-	if hasPeer {
+	if peerWindowFromPeriod {
 		if in.PeerFromSeq, in.PeerToSeq, err = peerWindow(peer, p); err != nil {
 			return evidencebook.ReconcileInput{}, err
 		}
@@ -904,24 +905,28 @@ func closeCommand() *cobra.Command {
 			// The window is fixed, and refused if it must be, before anything
 			// is written. Then a checkpoint covers every own record in it, so
 			// the book's own account of the period is complete.
-			in, e := reconcileInput(c.Context(), book, a.period, a.counterparty, a.peer, a.hasPeer)
+			// A cited peer Close fixes the peer window, so it is chosen before
+			// any window is derived from the period: the period's placement
+			// in the peer's log is then never consulted.
+			closeIn := evidencebook.CloseInput{Counterparty: a.counterparty, Period: evidencebook.ClosePeriod{Start: a.period.start, End: a.period.end}}
+			var cited *peerCloseCandidate
+			var peerFrom, peerTo uint64
+			if a.hasPeer {
+				ownBook, _ := book.Info()
+				if cited, peerFrom, peerTo, e = citablePeerClose(a.peer, ownBook, a.period); e != nil {
+					return e
+				}
+			}
+			in, e := reconcileInput(c.Context(), book, a.period, a.counterparty, a.peer, a.hasPeer && cited == nil)
 			if e != nil {
 				return e
+			}
+			if cited != nil {
+				closeIn.PeerClose, in.PeerFromSeq, in.PeerToSeq = cited.record.RecordID, peerFrom, peerTo
 			}
 			if sinceLast && len(closes) > 0 {
 				if in.FromSeq, e = sinceLastFrom(c.Context(), book, closes, in.FromSeq); e != nil {
 					return e
-				}
-			}
-			closeIn := evidencebook.CloseInput{Counterparty: a.counterparty, Period: evidencebook.ClosePeriod{Start: a.period.start, End: a.period.end}}
-			if a.hasPeer {
-				ownBook, _ := book.Info()
-				cited, peerFrom, peerTo, e := citablePeerClose(a.peer, ownBook, a.period)
-				if e != nil {
-					return e
-				}
-				if cited != nil {
-					closeIn.PeerClose, in.PeerFromSeq, in.PeerToSeq = cited.record.RecordID, peerFrom, peerTo
 				}
 			}
 			if e = refuseExchangelessWindowWithPinnedTail(c.Context(), book, a.period, in); e != nil {

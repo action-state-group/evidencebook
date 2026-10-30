@@ -837,7 +837,7 @@ func TestResultBuildRecomputesReconcileTalliesFromTheClose(t *testing.T) {
 	restated := map[string]any{"matched": 1, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 0, "unresolved": 0}
 	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", restated, closeID)))
 	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "tallies matched=1, but Close "+closeID+" recorded MATCHED=0")
+	assert.Contains(t, cli.SafeError(err), "tallies matched=1, but Close "+closeID+" recorded matched=0")
 
 	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "other", sealed, closeID)))
 	assert.Contains(t, cli.SafeError(err), `names peer "other", but Close`)
