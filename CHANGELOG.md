@@ -101,7 +101,7 @@
 
 ### Changed (breaking): capsulectl-book seals and reads `close/v1` Closes, and takes `--period month` (#125, #122)
 
-- `book close` seals the `close/v1` body (above): the period, and the counts
+- `book close` seals the `close/v1` body (below): the period, and the counts
   by record type and head of the window the Close binds. Under `--since-last`
   that window can start before `period.start`, and the counts and head say so;
   the period stays the calendar period, which repeats and peer matching key on.
