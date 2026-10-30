@@ -647,7 +647,7 @@ nonce: each names the half it holds as `cited_capsule_id` and its own half as
 `own_half_capsule_id`, and each one's own half is the half the other holds
 (`587eea74…` and `a930596b…`). A third link: each holder's own record chains
 to its own half (`chain.parent_capsule_id`: `1ed02f21…` to `587eea74…`,
-`d195e7ac…` to `a930596b…`).
+`d195e7ac…` to `a930596b…`). Do not join on `serving_provenance.exchange_id`: each side's half has its own.
 
 This shows that the two nodes each signed their own account of one exchange,
 each holds the other's under the other's signed checkpoint, and each one's
@@ -658,9 +658,12 @@ record names both halves. It does not show:
   halves are sealed before either side knows the other's `capsule_id`; only
   the holder's record names both);
 - that the holder accepted the push under anything stronger than the peer
-  identity its host announced (`accepted_via` is `host_announced`; the
-  `controller_binding_digest` and `same_controller_as_receiver` members the
-  records also carry are not checked here).
+  identity its host announced (`accepted_via` is `host_announced`). The
+  records' `controller_binding_digest` and `same_controller_as_receiver`
+  members, and the `accepted` member of `checks.json`, which records that the
+  digest equals the one in the sender's published commitment
+  (`nodes/commitments/…` in loop), belong to a check this test neither
+  fetches nor specifies.
 
 ## 8. Running it all in a clean room
 
