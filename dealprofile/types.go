@@ -623,6 +623,33 @@ type ActionEvaluation struct {
 	Body             ActionEvaluationBody `json:"body"`
 }
 
+// ActionOutcomeBody is the body member of ActionOutcome.
+type ActionOutcomeBody struct {
+	Status         string          `json:"status"`
+	Outcome        string          `json:"outcome"`
+	Findings       []TypedFinding  `json:"findings"`
+	Attempted      json.RawMessage `json:"attempted,omitzero"`
+	Delivered      json.RawMessage `json:"delivered,omitzero"`
+	NoteCommitment string          `json:"note_commitment,omitzero"`
+	Actor          string          `json:"actor,omitzero"`
+	Reason         string          `json:"reason,omitzero"`
+}
+
+// ActionOutcome is an action-outcome/v0 record.
+type ActionOutcome struct {
+	Type             string            `json:"type"`
+	Canonicalization string            `json:"canonicalization"`
+	ChainID          string            `json:"chain_id"`
+	Seq              int64             `json:"seq"`
+	At               string            `json:"at"`
+	Prev             TypedRef          `json:"prev"`
+	ChainRoot        TypedRef          `json:"chain_root"`
+	Refs             []TypedRelRef     `json:"refs,omitzero"`
+	Producer         *Producer         `json:"producer,omitzero"`
+	CommitAlg        string            `json:"commit_alg,omitzero"`
+	Body             ActionOutcomeBody `json:"body"`
+}
+
 // TypedDisclosedFieldsItem is an item of the fields member of TypedDisclosed.
 type TypedDisclosedFieldsItem struct {
 	Class           string `json:"class"`
@@ -639,52 +666,6 @@ type TypedDisclosed struct {
 type TypedCounterparty struct {
 	FPAlg string            `json:"fp_alg"`
 	IDs   map[string]string `json:"ids"`
-}
-
-// TypedActionBody is action_body in record-common-v0.
-type TypedActionBody struct {
-	Action                string             `json:"action"`
-	ActionClass           string             `json:"action_class,omitzero"`
-	TaxonomyVersion       string             `json:"taxonomy_version,omitzero"`
-	SpendMinor            *int64             `json:"spend_minor,omitzero"`
-	FeeMinor              *int64             `json:"fee_minor,omitzero"`
-	CancelledAmountMinor  *int64             `json:"cancelled_amount_minor,omitzero"`
-	AmountMinor           *int64             `json:"amount_minor,omitzero"`
-	Currency              string             `json:"currency,omitzero"`
-	Rail                  string             `json:"rail,omitzero"`
-	Direction             string             `json:"direction,omitzero"`
-	ReferenceCommitment   string             `json:"reference_commitment,omitzero"`
-	DescriptionCommitment string             `json:"description_commitment,omitzero"`
-	Disclosed             *TypedDisclosed    `json:"disclosed,omitzero"`
-	Channel               *string            `json:"channel,omitzero"`
-	Counterparty          *TypedCounterparty `json:"counterparty,omitzero"`
-}
-
-// ActionOutcomeBody is the body member of ActionOutcome.
-type ActionOutcomeBody struct {
-	Status         string           `json:"status"`
-	Outcome        string           `json:"outcome"`
-	Findings       []TypedFinding   `json:"findings"`
-	Attempted      *TypedActionBody `json:"attempted,omitzero"`
-	Delivered      json.RawMessage  `json:"delivered,omitzero"`
-	NoteCommitment string           `json:"note_commitment,omitzero"`
-	Actor          string           `json:"actor,omitzero"`
-	Reason         string           `json:"reason,omitzero"`
-}
-
-// ActionOutcome is an action-outcome/v0 record.
-type ActionOutcome struct {
-	Type             string            `json:"type"`
-	Canonicalization string            `json:"canonicalization"`
-	ChainID          string            `json:"chain_id"`
-	Seq              int64             `json:"seq"`
-	At               string            `json:"at"`
-	Prev             TypedRef          `json:"prev"`
-	ChainRoot        TypedRef          `json:"chain_root"`
-	Refs             []TypedRelRef     `json:"refs,omitzero"`
-	Producer         *Producer         `json:"producer,omitzero"`
-	CommitAlg        string            `json:"commit_alg,omitzero"`
-	Body             ActionOutcomeBody `json:"body"`
 }
 
 // ActionRecordBody is the body member of ActionRecord.

@@ -19,9 +19,12 @@
   behind the closed `Body` interface, and the typed action records and
   contract documents (PROFILE.md §9) have a type each. They follow the
   schemas member for member and carry no rule: `Encode` takes a `Record` as
-  it takes the record's text and checks it the same way. Every record in the
-  profile's positive fixtures and the baseline vectors decodes into them and
-  encodes to the same bytes.
+  it takes the record's text and checks it the same way. `Decode` reads a
+  record into them, refusing text they would not encode back to (such as a
+  member name in another case, which `encoding/json` reads). Every record in
+  the profile's positive fixtures and the baseline vectors, and a hand-built
+  sample of each type they lack, decodes into them and encodes to the same
+  bytes.
 
 ### Added: package `dealprofile`, the x-deal-v0 deal record profile (#93)
 
