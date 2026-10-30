@@ -21,8 +21,8 @@ import (
 var testPeriod = ClosePeriod{Start: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)}
 
 // closeV1SchemaSHA256 pins schemas/vendor/close-v1.json, vendored from
-// agent-action-capsule schemas/judge/close-v1.json at 5ce8c94 (#176).
-const closeV1SchemaSHA256 = "183774e7eeb50f50aae545f5dca50c966624e14c1bc78d17f16922e2c6ae2f03"
+// agent-action-capsule schemas/judge/close-v1.json at 201f4df (#176, #474).
+const closeV1SchemaSHA256 = "d67471ac4c26f0b69ad4407e7f64d914ca453e2e21e16a97481d91b45210ad83"
 
 // pinnedCloseSchema is the close/v1 schema ReadClose embeds, checked to be
 // the pinned agent-action-capsule copy on disk.

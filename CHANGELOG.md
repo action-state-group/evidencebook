@@ -133,7 +133,7 @@
 ### Changed (breaking): a Close seals the `close/v1` body (#125)
 
 - `Book.Close` seals agent-action-capsule's `close/v1` body
-  (`schemas/judge/close-v1.json` at `5ce8c94`, vendored as
+  (`schemas/judge/close-v1.json` at `201f4df`, vendored as
   `schemas/vendor/close-v1.json`) with `record_version: "close/v1"`, and the
   record's `epistemic_type` is `producer_claim` (it was `derived_metric`). The
   body states `record_id`, `closed_at` (the header's `committed_at`), the

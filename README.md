@@ -155,7 +155,7 @@ corpus's own test. It does the same for a run that files each step under
   - `schemas/vendor/epistemic-types.json`: the epistemic type value set
     (`TestEpistemicTypeThreeWayParity`);
   - `schemas/vendor/close-v1.json`: agent-action-capsule's `close/v1` schema
-    at `5ce8c94`, pinned by SHA-256, which every Close `Book.Close` seals
+    at `201f4df`, pinned by SHA-256, which every Close `Book.Close` seals
     validates against (`TestCloseSealsTheCloseV1Body`);
   - `testdata/refusal-interop/`: a refusal signed in Python, verified here;
     a refusal signed here is verified in Python;
