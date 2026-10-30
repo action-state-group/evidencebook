@@ -404,7 +404,7 @@ func (a *answer) run() (Reply, error) {
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
 		b.mu.Lock()
-		_, err := b.checkpointLocked(a.ctx)
+		err := b.issueAnchorLocked(a.ctx, check)
 		log = b.logLocked()
 		b.mu.Unlock()
 		if err != nil {
@@ -461,6 +461,26 @@ func (a *answer) run() (Reply, error) {
 	}
 	a.statement.Outcome, a.statement.Anchor, a.statement.ArtifactDigest = OutcomeArtifact, envelope.Anchor.Digest, envelope.ArtifactDigest
 	return evidencerequest.EncodeReply(a.request.MediaType, &envelope, nil)
+}
+
+// issueAnchorLocked issues an anchor meeting check's freshness floor unless one
+// already does: answers decide from their own snapshots, so several may
+// find the floor unmet at once, and only the first issues one.
+func (b *Book) issueAnchorLocked(ctx context.Context, check requestCheck) error {
+	stored, err := b.store.Checkpoints(ctx)
+	if err != nil {
+		return err
+	}
+	for _, cp := range slices.Backward(stored) {
+		if cp.Kind == SubstrateKindCLL {
+			if evidencerequest.AnchorMeets(evidencerequest.AnchorView{Entries: cp.Entries, IssuedAt: cp.IssuedAt}, check.request.Coverage.MinFreshness, check.floorTime) {
+				return nil
+			}
+			break
+		}
+	}
+	_, err = b.checkpointLocked(ctx)
+	return err
 }
 
 // relationship classifies an authenticated requester by counterparty_ref

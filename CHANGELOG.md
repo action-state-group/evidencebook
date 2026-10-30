@@ -12,9 +12,11 @@
   each seal waited for the answers queued ahead of it. What an answer may
   contain is unchanged; it is as of the snapshot it was built from.
   `TestRespondFloodDoesNotStallSealing` is the load test: while every answer
-  costs 1 s, every seal lands in order within 500 ms, waiting at most for the
-  seals queued ahead of it (one per answer in flight), never for an answer;
-  holding the lock, seals took seconds.
+  costs 1 s, every seal lands in order and 95% of seals take at most 500 ms,
+  waiting for the seals queued ahead of them (one per answer in flight),
+  never for an answer; holding the lock, seals took seconds.
+- Concurrent answers that each need an anchor for the same freshness floor
+  issue one between them.
 - A host's `Store` (`GetRecord`, `Checkpoints`), `Signer` and
   `StandardHistorySource.Inputs` are now called by `Respond` without the
   book's lock, concurrently with the book's writes and with other answers.
