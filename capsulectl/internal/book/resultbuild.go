@@ -385,14 +385,16 @@ func closeProfilePeriod(profile string) (start, end time.Time, ok bool) {
 
 // citedV1Close reads the Close a claim cites. Result v0 section 4.1 makes a
 // claim's close_ref cite a close/v1 Close, so a legacy one, which book close
-// and since-last still read, is refused here.
+// and since-last still read, is refused here. book close returns a period's
+// legacy Close as a repeat and never supersedes it (#201), so such a period
+// cannot back a claim.
 func citedV1Close(claim resultClaim, record evidencebook.Record) (*evidencebook.CloseStatement, error) {
 	sealed, err := readSealedClose(record)
 	if err != nil {
 		return nil, err
 	}
 	if sealed.v1 == nil {
-		return nil, cli.Hint(cli.ErrInput, fmt.Sprintf("%s cites Close %s, a legacy Close sealed before close/v1; a claim must cite a close/v1 Close, so seal a new Close for the period with book close and cite that", claim.Label(), record.RecordID))
+		return nil, cli.Hint(cli.ErrInput, fmt.Sprintf("%s cites Close %s, a legacy Close sealed before close/v1, but a claim must cite a close/v1 Close; book close returns that legacy Close for its period and cannot supersede it yet, so this period cannot back a claim", claim.Label(), record.RecordID))
 	}
 	return sealed.v1, nil
 }

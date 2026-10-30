@@ -274,7 +274,8 @@ func TestCitablePeerCloseReadsALegacyCloseAndSkipsUnverifiedOnes(t *testing.T) {
 
 // Result v0 section 4.1: a claim's close_ref cites a close/v1 Close. result
 // build refuses a close or reconcile claim on a Close sealed before close/v1,
-// even one whose period and tallies the claim states correctly.
+// even one whose period and tallies the claim states correctly; book close
+// cannot yet replace it, and the hint says so rather than suggest it.
 func TestResultBuildRefusesALegacyClose(t *testing.T) {
 	b := newResultBook(t)
 	appendHalves(t, b.profile, half{"x1", "r1", "p1"})
@@ -298,7 +299,7 @@ func TestResultBuildRefusesALegacyClose(t *testing.T) {
 		_, _, err := runResultBuild(t, b.profile, resultDoc(claim))
 		require.ErrorIs(t, err, cli.ErrInput, name)
 		assert.Contains(t, cli.SafeError(err), "cites Close "+closeID+", a legacy Close sealed before close/v1", name)
-		assert.Contains(t, cli.SafeError(err), "seal a new Close for the period with book close", name)
+		assert.Contains(t, cli.SafeError(err), "cannot supersede it yet, so this period cannot back a claim", name)
 	}
 	assert.Equal(t, before, bookSize(t, b.profile), "nothing sealed")
 }

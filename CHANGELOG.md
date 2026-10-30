@@ -122,9 +122,11 @@
   sealed, and none for a `close/v1` Close.
 - Closes sealed before this change keep working for `close`: a repeat finds
   them by their profile string, and `--since-last` starts after their
-  `to_seq`. `result build` now refuses a close or reconcile claim citing one,
-  since Result v0 §4.1 makes a claim's `close_ref` cite a `close/v1` Close;
-  seal a new Close for the period and cite that.
+  `to_seq`. But `result build` now refuses a close or reconcile claim citing
+  one, since Result v0 §4.1 makes a claim's `close_ref` cite a `close/v1`
+  Close, and `close` returns a period's legacy Close as a repeat rather than
+  superseding it: a period closed before this change cannot back a Result
+  claim until #201 lets `close` supersede its Close.
 - `--period month` closes or reconciles a UTC calendar month (`month:YYYY-MM`,
   `[start, end)`); without `--date` it takes the last month that has ended.
 

@@ -35,7 +35,8 @@ claim whose tallies are not what the cited Close sealed, or whose
 `sufficiency` is not the one those tallies derive (`INSUFFICIENT > 0` is GAP,
 else `UNRESOLVED > 0` is UNKNOWN, else SATISFIED); a close or reconcile
 claim citing a Close sealed before close/v1 (Result v0 §4.1: `close_ref`
-cites a close/v1 Close; seal a new Close for the period and cite that); a
+cites a close/v1 Close; `book close` returns that period's older Close and
+cannot supersede it yet, so such a period backs no claim); a
 close or reconcile claim whose `period` is not the `period` its Close sealed;
 a reconcile claim citing a Close
 that sealed counts only (it cited no peer Close, so it holds no tallies); any

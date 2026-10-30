@@ -192,8 +192,10 @@ plugin bumping its require to that merge commit's pseudo-version, as
   as stored. The CHANGELOG notes the output change.
 - **Result claims (`resultbuild.go`).** Result v0 §4.1 (AAC#474) makes a
   claim's `close_ref` cite a close/v1 Close, so a close or reconcile claim
-  citing a legacy Close is refused, with a hint to seal a new Close for the
-  period and cite that; `close` and `--since-last` still read legacy Closes.
+  citing a legacy Close is refused; `close` and `--since-last` still read
+  legacy Closes. Since `close` returns a period's legacy Close as a repeat and
+  never supersedes it, a period closed before close/v1 backs no Result claim
+  until #201 lets `close` supersede a Close; the refusal says so.
   A claim's period is checked against the v1 Close's `period`, and a
   reconcile claim's tallies against its `reconcile.tallies`. A reconcile
   claim citing a v1 Close with no `reconcile` is refused ("that Close sealed
