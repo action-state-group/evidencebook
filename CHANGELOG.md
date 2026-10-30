@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed: `report` requires the published capsule-cli v0.1.0-rc24 (evidencebook#144)
+
+- `report/go.mod` requires capsule-cli `v0.1.0-rc24`, a release tag, in place of
+  a pseudo-version, so `report/v0.3.0` can be tagged. The one pseudo-version left
+  is agent-action-capsule's `go` module, which capsule-cli rc24 itself requires
+  (no tag carries that commit yet). No code changes.
+
 ### Added: the third-party verifier guide checks one exchange between two live nodes (#41)
 
 - `docs/THIRD-PARTY-VERIFIER.md` §7.4 adds both halves of one exchange
