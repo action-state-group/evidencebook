@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changes
+
+- `respond` answers an underived (or shared-derivation) `correlation`
+  subject under the rule of a record or citing-records subject, as Go's
+  `Respond` now does (evidencebook#114): under `counterparties`, the default,
+  only to a counterparty every record held under the key names; under
+  `peers` to any authenticated peer; never to a stranger. Before, every
+  underived correlation was refused `not_authorized`. `range` and
+  `full_history` stay refused unless a recipient-specific derivation grants
+  them.
+
 ## 0.0.10 (2026-10-30)
 
 ### Changes

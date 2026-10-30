@@ -236,7 +236,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		findings = append(findings, DoctorFinding{Check: DoctorNotChecked, State: DoctorStateNone, Detail: "no received answer in this book carries an unchecked property"})
 	}
 
-	unsupported := "range, correlation and full_history are answered to no one except through a recipient-specific derivation; every derivation other than history_card/1"
+	unsupported := "range and full_history are answered to no one except through a recipient-specific derivation; every derivation other than history_card/1"
 	if registered := len(b.derivations); registered > 0 {
 		unsupported += fmt.Sprintf(" and the %d registered here", registered)
 	}

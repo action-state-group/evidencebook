@@ -102,8 +102,7 @@ func TestCorrelationFallbackAndSharedKeySpace(t *testing.T) {
 
 // A correlation answer carries no proof that its set is complete: no
 // verification material at all (profile v0 has no material for record
-// sets, P-13), so no index proof can stand in for one. Underived, it is not
-// answered at all.
+// sets, P-13), so no index proof can stand in for one, derived or not.
 func TestCorrelationAnswerCarriesNoCompletenessMaterial(t *testing.T) {
 	book, _ := correlatedBook(t)
 	id := forPeer(t, book)
@@ -112,7 +111,10 @@ func TestCorrelationAnswerCarriesNoCompletenessMaterial(t *testing.T) {
 	if len(e.Verification) != 0 || len(e.VerificationContent) != 0 {
 		t.Fatal("a correlation answer carries verification material")
 	}
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonNotAuthorized)
+	underived := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCorrelation, Correlation: "deal-a"}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"))
+	if len(underived.Verification) != 0 || len(underived.VerificationContent) != 0 {
+		t.Fatal("an underived correlation answer carries verification material")
+	}
 }
 
 func TestSubjectIndexProofIsNotACorrelationSetsCompleteness(t *testing.T) {

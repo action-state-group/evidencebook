@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed: a correlation subject is answered under the per-record rule (evidencebook#114)
+
+- `Book.Respond` answers an underived (or shared-derivation) `correlation`
+  subject under the rule of `record` and `exchange`, as Steven's amendment to
+  the #114 ruling asks: under `counterparties`, the default, only to a
+  counterparty every servable record held under the key names; under `peers` to any
+  authenticated peer; never to a stranger. A correlation key matches exactly,
+  never by prefix. Before, every underived correlation was refused
+  `not_authorized`. `range` and `full_history` stay refused unless a
+  recipient-specific derivation grants them.
+
 ## v0.10.0 (2026-10-30)
 
 ### Changed: the third-party verifier guide's two-node exchange is one whose records name both halves (#41)
