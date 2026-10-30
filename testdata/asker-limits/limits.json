@@ -1,0 +1,28 @@
+{
+  "description": "The requester's limits on a received answer (evidencebook#209). Each case names how to build its input, so no case stores megabytes: 'nest' is a JSON object whose member x nests arrays until the whole text is that many levels deep; 'pad_to' is a JSON object whose member x is a string padded so the whole text is exactly that many bytes; 'list' with 'count' is a JSON object whose named member is an array of that many zeros. 'error' is the text the refusal or failure contains, or null when the limit passes it.",
+  "limits": {"reply_bytes": 8388608, "depth": 32, "items": 10000, "receipts": 64},
+  "reply": [
+    {"name": "depth-at-limit", "build": {"nest": 32}, "error": null},
+    {"name": "depth-one-over", "build": {"nest": 33}, "error": "limit: reply depth: over 32"},
+    {"name": "depth-hostile", "build": {"nest": 100000}, "error": "limit: reply depth: over 32"},
+    {"name": "bytes-at-limit", "build": {"pad_to": 8388608}, "error": null},
+    {"name": "bytes-one-over", "build": {"pad_to": 8388609}, "error": "limit: reply bytes: 8388609 over 8388608"},
+    {"name": "brackets-inside-a-string", "build": {"text": "{\"x\":\"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\\\"[[[\"}"}, "error": null}
+  ],
+  "artifact": [
+    {"name": "history-at-limit", "build": {"list": "history", "count": 10000}, "error": null},
+    {"name": "history-one-over", "build": {"list": "history", "count": 10001}, "error": "limit: history: 10001 over 10000"},
+    {"name": "checkpoints-one-over", "build": {"list": "checkpoints", "count": 10001}, "error": "limit: checkpoints: 10001 over 10000"},
+    {"name": "records-one-over", "build": {"list": "records", "count": 10001}, "error": "limit: records: 10001 over 10000"},
+    {"name": "depth-at-limit", "build": {"nest": 32}, "error": null},
+    {"name": "depth-one-over", "build": {"nest": 33}, "error": "limit: artifact depth: over 32"}
+  ],
+  "verification": [
+    {"name": "at-limit", "count": 10000, "error": null},
+    {"name": "one-over", "count": 10001, "error": "limit: verification: 10001 over 10000"}
+  ],
+  "receipts": [
+    {"name": "at-limit", "count": 64, "error": null},
+    {"name": "one-over", "count": 65, "error": "limit: witness receipts: 65 over 64"}
+  ]
+}

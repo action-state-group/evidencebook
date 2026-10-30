@@ -47,6 +47,20 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from . import _decide
+from ._limits import (
+    MAX_REPLY_BYTES,
+    MAX_REPLY_DEPTH,
+    MAX_REPLY_ITEMS,
+    MAX_REPLY_RECEIPTS,
+    UNWITNESSED,
+    WITNESS_RECEIPTS_MEMBER,
+    WITNESSED,
+    WitnessRow,
+    carried_receipts,
+    check_envelope_limits,
+    check_reply_octets,
+    witness_standing,
+)
 from ._capsule import capsule_preimage, seal_record
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
@@ -85,6 +99,7 @@ from .request import (
     refusal_conforming,
     strict_hex,
     strict_json,
+    _decoded,
 )
 from .signer import EvidenceSigner, Signer, key_id
 from .store import MemoryStore, Store, StoredRecord
@@ -94,6 +109,14 @@ __all__ = [
     "DEFAULT_MAX_REQUEST_BYTES",
     "DEFAULT_MAX_ANSWER_ITEMS",
     "MINIMUM_ABSENCE_WINDOW",
+    "MAX_REPLY_BYTES",
+    "MAX_REPLY_DEPTH",
+    "MAX_REPLY_ITEMS",
+    "MAX_REPLY_RECEIPTS",
+    "WITNESSED",
+    "UNWITNESSED",
+    "WITNESS_RECEIPTS_MEMBER",
+    "WitnessRow",
     "OUTCOME_ARTIFACT",
     "OUTCOME_REFUSAL",
     "OUTCOME_ARTIFACT_FAILED",
@@ -270,10 +293,13 @@ class SentRequest:
 class ResponderKeys:
     """The responder's keys as the requester obtained them, independently of
     any reply: ``signer`` signs refusals and envelopes, ``checkpoint`` the
-    checkpoints an artifact is anchored to (lowercase hex)."""
+    checkpoints an artifact is anchored to (lowercase hex). ``witnesses`` is
+    the requester's witness directory: the witnesses whose receipts it
+    counts on a reply's anchor."""
 
     signer: str
     checkpoint: str
+    witnesses: tuple[WitnessRow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -526,13 +552,19 @@ class Book:
         record's payload. A reply not signed under the pinned signer key for
         this request's digest is refused and not recorded; a genuinely signed
         reply that fails a check of profile §7.2 is recorded as received and
-        failed, never as a grant and never as an absence."""
+        failed, never as a grant and never as an absence. The requester's
+        limits (:data:`MAX_REPLY_BYTES` and the rest) apply first: over one
+        on the reply's unauthenticated octets, the reply is refused and the
+        request stays open; over one on what the responder signed, the
+        answer is received and failed, naming the limit."""
         if not keys.signer or not keys.checkpoint:
             raise InvalidError("pinned responder signer and checkpoint keys are required")
+        check_reply_octets(reply.octets, reply.media_type == MEDIA_TYPE_JSON)
         parsed = parse_reply(reply)
+        carried = carried_receipts(_decoded(reply), parsed.envelope.anchor_digest) if parsed.envelope else []
         with self._lock:
             sent = self._sent(request_record_id)
-            statement = _verify_reply(sent, parsed, keys)
+            statement = _verify_reply(sent, parsed, keys, carried)
             if self._outcome_recorded(request_record_id):
                 raise InvalidError(f"an outcome is already recorded for request {sent.digest}")
             return self._append(Entry(RECORD_TYPE_RESPONSE, OBSERVED_EVENT, links=(Link(CITES, request_record_id),),
@@ -1008,11 +1040,13 @@ def _mentions_any(document: bytes, strings: set[str]) -> bool:
 # --- receiving --------------------------------------------------------------------
 
 
-def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys) -> dict:
+def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys, carried: list[dict]) -> dict:
     """The response record's statement for a parsed reply, under the pinned
     responder keys. A reply not signed under the pinned signer key for this
     request's digest raises :class:`InvalidError`; a genuinely signed
-    artifact that fails a check of profile §7.2 is received-and-failed."""
+    artifact that fails a check of profile §7.2, or is over a limit, is
+    received-and-failed. ``carried`` is the witness receipts the reply
+    carries for its anchor."""
     statement: dict[str, Any] = {"request_digest": sent.digest, "key_id": keys.signer,
                                  "checkpoint_key_id": keys.checkpoint}
     if parsed.refusal is not None:
@@ -1039,18 +1073,23 @@ def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys) -> dict:
     statement["artifact_digest"] = e.artifact_digest
     statement["anchor"] = e.anchor_digest
     try:
-        not_checked = _verify_envelope_content(sent, e, keys)
+        check_envelope_limits(sent.request.subject.form == "record" and sent.request.derivation is None,
+                              e.artifact, len(e.verification))
+        not_checked, anchor = _verify_envelope_content(sent, e, keys)
     except InvalidError as failure:
         statement["outcome"], statement["failure"] = OUTCOME_ARTIFACT_FAILED, str(failure)
     else:
         if not_checked:
             statement["not_checked"] = not_checked
+        statement["witness"] = witness_standing(anchor, carried, keys.witnesses)
     return {k: v for k, v in statement.items() if v != ""}
 
 
-def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> list[str]:
+def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> tuple[list[str], bytes | None]:
     """The checks of profile §7.3 that follow the envelope signature. Returns
-    the properties it could not check; raises naming the first that failed."""
+    the properties it could not check and the anchor's signed checkpoint
+    statement when the material carried and verified it; raises naming the
+    first that failed."""
     req = sent.request
     if e.profile != req.profile:
         raise InvalidError(f"profile_version: requested {req.profile}, got {e.profile}")
@@ -1080,14 +1119,12 @@ def _verify_envelope_content(sent: _Sent, e: Envelope, keys: ResponderKeys) -> l
     return _verify_anchor_inclusion(req, e, keys.checkpoint)
 
 
-def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: str) -> list[str]:
+def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: str) -> tuple[list[str], bytes | None]:
     half_pin = req.subject.form == "exchange" and req.coverage.expected_pin == req.subject.content
     if req.subject.form == "record" and req.derivation is None:
-        _verify_record_inclusion(e, checkpoint_key)
-        return []
+        return [], _verify_record_inclusion(e, checkpoint_key)
     if req.subject.form == "checkpoints" or req.derivation == DERIVATION_HISTORY_CARD:
-        _verify_checkpoint_chain(e, checkpoint_key)
-        return []
+        return [], _verify_checkpoint_chain(e, checkpoint_key)
     # Record sets and registered derivations: the profile defines no
     # material kind for them (P-13). Their bodies and anchor member are
     # checked; inclusion is not.
@@ -1100,7 +1137,7 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
             raw = strict_hex(entry["body"])
             if raw is None or _digest(raw) != entry.get("digest"):
                 raise InvalidError(f"anchor_inclusion: record {i} does not hash to its digest")
-    return ["anchor_inclusion"]
+    return ["anchor_inclusion"], None
 
 
 def _json_object(octets: bytes) -> dict:
@@ -1123,8 +1160,9 @@ def _signed_checkpoint(statement: bytes, pinned: str) -> Checkpoint:
     return cp
 
 
-def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> None:
-    """The §6.2.1 procedure under the pinned checkpoint key."""
+def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:
+    """The §6.2.1 procedure under the pinned checkpoint key. Returns the
+    anchor's checkpoint statement."""
     items: dict[str, bytes] = {}
     for kind, octets in e.verification:
         if kind in items:
@@ -1152,13 +1190,15 @@ def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> None:
         if isinstance(exc, InvalidError):
             raise
         raise InvalidError(f"anchor_inclusion: {exc}") from None
+    return items[KIND_CLL_CHECKPOINT]
 
 
-def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> None:
+def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
     """A checkpoints or history_card/1 artifact is its own material: every
     checkpoint signed under the pinned key for one log, sizes strictly
     growing, each consistency proof a history card carries reaching the next
-    commitment, and the last checkpoint the envelope's anchor."""
+    commitment, and the last checkpoint the envelope's anchor, whose
+    statement it returns."""
     fields = _json_object(e.artifact)
     card = isinstance(fields.get("history"), list)
     if card:
@@ -1192,3 +1232,4 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> None:
         if i == len(pairs) - 1 and _digest(raw) != e.anchor_digest:
             raise InvalidError("anchor_inclusion: the last checkpoint is not the anchor")
         previous = cp
+    return raw

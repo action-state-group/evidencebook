@@ -22,6 +22,43 @@
 - Requires agent-action-capsule `go` v0.16.0 (was v0.11.0) for
   `go/standardhistory`.
 
+### Added: the requester bounds a hostile answer, and records whether a witness covers its anchor (evidencebook#209)
+
+- **Stated limits, checked before the work they bound.** These are new exported constants:
+  - `MaxReplyBytes` is 8 MiB, the most a record's originals may hold.
+  - `MaxReplyDepth` is 32 levels of JSON nesting.
+  - `MaxReplyItems` is 10,000 verification entries, and 10,000 checkpoints, history
+    entries or records in an artifact.
+  - `MaxReplyReceipts` is 64 carried witness receipts.
+- **What exceeding a limit does depends on what it falls on.**
+  - `Book.RecordResponse` refuses a reply over a limit on its unauthenticated octets (size,
+    nesting, the receipt carrier) with an `ErrInvalid` naming the limit. It records nothing,
+    so the request stays open for the genuine answer.
+  - A responder-signed envelope over a count or artifact-depth limit is recorded as
+    `artifact_verification_failed`, with `failure` naming the limit (`limit: history: 10001
+    over 10000`). This happens after the envelope signature and before any checkpoint
+    signature or proof is checked.
+  - `VerifyBundle` refuses a bundle over the byte, depth, record or receipt limit before the
+    bundle verifier runs.
+- **Witness standing.** `ResponseStatement` gains `witness`, which is `witnessed` or
+  `unwitnessed` for an artifact that verified, and absent otherwise.
+  - It reads `witnessed` only when the material carried the anchor's signed checkpoint (a
+    `record`, `checkpoints` or `history_card/1` answer) and a receipt for that anchor, from a
+    witness in `ResponderKeys.Witnesses`, verifies over it.
+  - Receipts are read from the reply's unsigned top-level `witness_receipts` member
+    (`WitnessReceiptsMember`), the carrier capsules-plugin sends. Nothing signs it, so a
+    receipt that is malformed, forged, for another checkpoint or from an unlisted witness
+    counts for nothing and never fails the answer.
+  - A chain that verifies only against its holder's own signatures, which could be a private
+    fork, reads `unwitnessed`. Answers with no anchor checkpoint in hand, such as
+    `correlation`, always do.
+  - `VerifyBundleAnswer` sets `VerifiedBundle.Witnessed` and adds the finding `unwitnessed`
+    when a bundle carries no receipt.
+  - This repository's responders carry no receipts yet (#214), so answers between two
+    evidencebook books read `unwitnessed`.
+- The vectors in `testdata/asker-limits/` (`limits.json`, `witness.json`) are read by the Go
+  and Python tests alike.
+
 ### Changed: a correlation subject is answered under the per-record rule (evidencebook#114)
 
 - `Book.Respond` answers an underived (or shared-derivation) `correlation`

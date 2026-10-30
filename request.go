@@ -124,7 +124,10 @@ type ResponseStatement struct {
 	// not check for a recorded artifact, for example anchor_inclusion where
 	// the profile defines no material kind for the subject (P-13).
 	NotChecked []string `json:"not_checked,omitempty"`
-	Failure    string   `json:"failure,omitempty"`
+	// Witness is Witnessed or Unwitnessed for an artifact that verified,
+	// and absent otherwise.
+	Witness string `json:"witness,omitempty"`
+	Failure string `json:"failure,omitempty"`
 }
 
 // Response outcomes as recorded by a requester. Artifact and refusal are two
@@ -145,8 +148,9 @@ const (
 type ResponderKeys struct {
 	Signer     string
 	Checkpoint string
-	// Witnesses is the requester's witness directory, used when it checks an
-	// Evidence Bundle (VerifyBundleAnswer).
+	// Witnesses is the requester's witness directory: the witnesses whose
+	// receipts it counts, on a reply's anchor (RecordResponse) and on an
+	// Evidence Bundle's (VerifyBundleAnswer).
 	Witnesses []WitnessRow
 }
 
@@ -157,14 +161,27 @@ type ResponderKeys struct {
 // digest is refused and is not recorded: an unauthenticated message can
 // neither become an outcome nor foreclose the real one. A reply genuinely
 // signed by the responder that fails a check of profile §7.2 is recorded as
-// received-and-failed, never as a grant and never as an absence.
+// received-and-failed, never as a grant and never as an absence. The
+// requester's limits (MaxReplyBytes and the rest) apply first: over one on
+// the reply's unauthenticated octets, the reply is refused and the request
+// stays open; over one on what the responder signed, the answer is
+// received-and-failed naming the limit.
 func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply Message, keys ResponderKeys) (Record, error) {
 	if keys.Signer == "" || keys.Checkpoint == "" {
 		return Record{}, fmt.Errorf("%w: pinned responder signer and checkpoint keys are required", ErrInvalid)
 	}
+	if err := checkReplyOctets(reply); err != nil {
+		return Record{}, err
+	}
 	parsed, err := ParseReply(reply)
 	if err != nil {
 		return Record{}, err
+	}
+	var carried []json.RawMessage
+	if parsed.Envelope != nil {
+		if carried, err = carriedReceipts(reply, parsed.Envelope.Anchor.Digest); err != nil {
+			return Record{}, err
+		}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -172,7 +189,7 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 	if err != nil {
 		return Record{}, err
 	}
-	statement, err := verifyReply(sent, parsed, keys)
+	statement, err := verifyReply(sent, parsed, keys, carried)
 	if err != nil {
 		return Record{}, err
 	}
@@ -192,8 +209,10 @@ func (b *Book) RecordResponse(ctx context.Context, requestRecordID string, reply
 // verifyReply checks a parsed reply against the request it answers under
 // the pinned responder keys. A reply not signed under the pinned signer key
 // for this request's digest is an error; a genuinely signed artifact that
-// fails a check of profile §7.2 is returned as received-and-failed.
-func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys) (ResponseStatement, error) {
+// fails a check of profile §7.2, or is over a limit, is returned as
+// received-and-failed. carried is the witness receipts the reply carries
+// for its anchor.
+func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys, carried []json.RawMessage) (ResponseStatement, error) {
 	statement := ResponseStatement{RequestDigest: sent.digest, KeyID: keys.Signer, CheckpointKey: keys.Checkpoint}
 	switch {
 	case parsed.Refusal != nil:
@@ -225,10 +244,16 @@ func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys) (ResponseSt
 			return ResponseStatement{}, err
 		}
 		statement.Outcome, statement.Artifact, statement.Anchor = OutcomeArtifact, e.ArtifactDigest, e.Anchor.Digest
-		notChecked, err := verifyEnvelopeContent(sent, *e, keys)
+		if err := checkEnvelopeLimits(sent.request, *e); err != nil {
+			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
+			return statement, nil
+		}
+		notChecked, anchor, err := verifyEnvelopeContent(sent, *e, keys)
 		statement.NotChecked = notChecked
 		if err != nil {
 			statement.Outcome, statement.Failure = OutcomeArtifactFailed, err.Error()
+		} else {
+			statement.Witness = witnessStanding(anchor, carried, keys.Witnesses)
 		}
 	}
 	return statement, nil
@@ -237,43 +262,44 @@ func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys) (ResponseSt
 // verifyEnvelopeContent runs the checks of profile §7.3 that follow the
 // envelope signature: profile_version, issued_at_form, subject_binding,
 // artifact_digest, verification_binding, anchor_match and anchor_inclusion.
-// It returns the properties it could not check (never failures), and an
-// error naming the first check that failed.
-func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]string, error) {
+// It returns the properties it could not check (never failures), the
+// anchor's signed checkpoint statement when the material carried and
+// verified it, and an error naming the first check that failed.
+func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]string, []byte, error) {
 	req := sent.request
 	if e.Profile != req.Profile {
-		return nil, fmt.Errorf("%w: profile_version: requested %s, got %s", ErrInvalid, req.Profile, e.Profile)
+		return nil, nil, fmt.Errorf("%w: profile_version: requested %s, got %s", ErrInvalid, req.Profile, e.Profile)
 	}
 	if _, ok := evidencerequest.ParseProfileTime(e.IssuedAt); !ok {
-		return nil, fmt.Errorf("%w: issued_at_form: %q", ErrInvalid, e.IssuedAt)
+		return nil, nil, fmt.Errorf("%w: issued_at_form: %q", ErrInvalid, e.IssuedAt)
 	}
 	if e.Subject != req.Subject || e.Derivation != req.Derivation {
-		return nil, fmt.Errorf("%w: subject_binding: the envelope answers a different subject or derivation", ErrInvalid)
+		return nil, nil, fmt.Errorf("%w: subject_binding: the envelope answers a different subject or derivation", ErrInvalid)
 	}
 	if digestBytes(e.Artifact) != e.ArtifactDigest {
-		return nil, fmt.Errorf("%w: artifact_digest: the artifact does not hash to the signed digest", ErrInvalid)
+		return nil, nil, fmt.Errorf("%w: artifact_digest: the artifact does not hash to the signed digest", ErrInvalid)
 	}
 	if len(e.Verification) != len(e.VerificationContent) {
-		return nil, fmt.Errorf("%w: verification_binding: %d entries, %d items", ErrInvalid, len(e.Verification), len(e.VerificationContent))
+		return nil, nil, fmt.Errorf("%w: verification_binding: %d entries, %d items", ErrInvalid, len(e.Verification), len(e.VerificationContent))
 	}
 	for i, item := range e.VerificationContent {
 		if digestBytes(item) != e.Verification[i].Digest {
-			return nil, fmt.Errorf("%w: verification_binding: item %d", ErrInvalid, i)
+			return nil, nil, fmt.Errorf("%w: verification_binding: item %d", ErrInvalid, i)
 		}
 	}
 	// anchor_match.
 	if pin := req.Coverage.ExpectedPin; pin != "" {
 		if e.Anchor.Digest != pin {
-			return nil, fmt.Errorf("%w: anchor_match: the anchor is not the pinned one", ErrInvalid)
+			return nil, nil, fmt.Errorf("%w: anchor_match: the anchor is not the pinned one", ErrInvalid)
 		}
 	} else if floor := req.Coverage.MinFreshness; floor != nil {
 		switch {
 		case floor.Size != nil && (e.Anchor.FreshnessSize == nil || *e.Anchor.FreshnessSize < *floor.Size):
-			return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a size meeting the floor", ErrInvalid)
+			return nil, nil, fmt.Errorf("%w: anchor_match: the anchor does not state a size meeting the floor", ErrInvalid)
 		case floor.Size == nil:
 			attained, ok := evidencerequest.ParseProfileTime(e.Anchor.FreshnessTime)
 			if !ok || attained.Before(sent.floorTime) {
-				return nil, fmt.Errorf("%w: anchor_match: the anchor does not state a time meeting the floor", ErrInvalid)
+				return nil, nil, fmt.Errorf("%w: anchor_match: the anchor does not state a time meeting the floor", ErrInvalid)
 			}
 		}
 	}
@@ -281,14 +307,17 @@ func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]
 }
 
 // verifyAnchorInclusion checks the artifact against its anchor by the method
-// its form allows (profile §6.2 point 4, §6.2.1).
-func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string) ([]string, error) {
+// its form allows (profile §6.2 point 4, §6.2.1), and returns the anchor's
+// signed checkpoint statement when that method verified it.
+func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string) ([]string, []byte, error) {
 	halfPin := req.Subject.Kind == SubjectExchange && req.Coverage.ExpectedPin == req.Subject.Digest
 	switch {
 	case req.Subject.Kind == SubjectRecord && req.Derivation == "":
-		return nil, verifyRecordInclusion(e, checkpointKey)
+		anchor, err := verifyRecordInclusion(e, checkpointKey)
+		return nil, anchor, err
 	case req.Subject.Kind == SubjectCheckpoints || req.Derivation == DerivationHistoryCard:
-		return nil, verifyCheckpointChain(e, checkpointKey)
+		anchor, err := verifyCheckpointChain(e, checkpointKey)
+		return nil, anchor, err
 	}
 	// Record sets and registered derivations: the profile defines no material
 	// kind for them (P-13). Their bodies and their anchor member are checked;
@@ -296,10 +325,10 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)
 	if err != nil || !ok {
-		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
+		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
 	}
 	if anchor, _ := fields["anchor"].(string); !halfPin && anchor != e.Anchor.Digest {
-		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact names another anchor", ErrInvalid)
+		return nil, nil, fmt.Errorf("%w: anchor_inclusion: the artifact names another anchor", ErrInvalid)
 	}
 	records, _ := fields["records"].([]any)
 	for i, item := range records {
@@ -309,63 +338,63 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 			text, _ := body.(string)
 			raw, err := hex.DecodeString(text)
 			if err != nil || digestBytes(raw) != digest {
-				return nil, fmt.Errorf("%w: anchor_inclusion: record %d does not hash to its digest", ErrInvalid, i)
+				return nil, nil, fmt.Errorf("%w: anchor_inclusion: record %d does not hash to its digest", ErrInvalid, i)
 			}
 		}
 	}
-	return []string{"anchor_inclusion"}, nil
+	return []string{"anchor_inclusion"}, nil, nil
 }
 
 // verifyRecordInclusion is the §6.2.1 procedure, steps 2 to 13, under the
-// pinned checkpoint key.
-func verifyRecordInclusion(e Envelope, checkpointKey string) error {
+// pinned checkpoint key. It returns the anchor's checkpoint statement.
+func verifyRecordInclusion(e Envelope, checkpointKey string) ([]byte, error) {
 	items := map[string][]byte{}
 	for i, entry := range e.Verification {
 		if _, repeated := items[entry.Kind]; repeated {
-			return fmt.Errorf("%w: anchor_inclusion: kind %s appears more than once", ErrInvalid, entry.Kind)
+			return nil, fmt.Errorf("%w: anchor_inclusion: kind %s appears more than once", ErrInvalid, entry.Kind)
 		}
 		if !slices.Contains([]string{KindCLLCheckpoint, KindCLLInclusionProof, KindCLLConsistencyProof}, entry.Kind) {
-			return fmt.Errorf("%w: anchor_inclusion: kind %q is not one this requester implements", ErrInvalid, entry.Kind)
+			return nil, fmt.Errorf("%w: anchor_inclusion: kind %q is not one this requester implements", ErrInvalid, entry.Kind)
 		}
 		items[entry.Kind] = e.VerificationContent[i]
 	}
 	if items[KindCLLCheckpoint] == nil || items[KindCLLInclusionProof] == nil {
-		return fmt.Errorf("%w: anchor_inclusion: the checkpoint or the inclusion proof is not present", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint or the inclusion proof is not present", ErrInvalid)
 	}
 	if e.Subject.Digest != e.ArtifactDigest {
-		return fmt.Errorf("%w: anchor_inclusion: the record is not named by its artifact digest", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: the record is not named by its artifact digest", ErrInvalid)
 	}
 	if digestBytes(items[KindCLLCheckpoint]) != e.Anchor.Digest {
-		return fmt.Errorf("%w: anchor_inclusion: the checkpoint is not the anchor", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: the checkpoint is not the anchor", ErrInvalid)
 	}
 	cp, err := readSignedCheckpoint(items[KindCLLCheckpoint], checkpointKey)
 	if err != nil {
-		return fmt.Errorf("anchor_inclusion: %w", err)
+		return nil, fmt.Errorf("anchor_inclusion: %w", err)
 	}
 	if e.Anchor.FreshnessSize != nil && *e.Anchor.FreshnessSize != cp.TreeSize ||
 		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != evidencerequest.ProfileTime(cp.IssuedAt) {
-		return fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
 	}
 	entry, err := hex.DecodeString(e.ArtifactDigest)
 	if err != nil {
-		return fmt.Errorf("%w: anchor_inclusion: artifact digest", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: artifact digest", ErrInvalid)
 	}
 	if err := checkCLLInclusion(cp, entry, items[KindCLLInclusionProof], items[KindCLLConsistencyProof]); err != nil {
-		return fmt.Errorf("anchor_inclusion: %w", err)
+		return nil, fmt.Errorf("anchor_inclusion: %w", err)
 	}
-	return nil
+	return items[KindCLLCheckpoint], nil
 }
 
 // verifyCheckpointChain checks a checkpoints or history_card/1 artifact,
 // which is its own verification material (ER §4.1): every checkpoint signed
 // under the pinned key for one log, sizes strictly growing, each consistency
 // proof present in a history card reaching the next commitment, and the
-// last checkpoint the envelope's anchor.
-func verifyCheckpointChain(e Envelope, checkpointKey string) error {
+// last checkpoint the envelope's anchor, whose statement it returns.
+func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
 	fields, ok := artifact.(map[string]any)
 	if err != nil || !ok {
-		return fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: the artifact is not a JSON object", ErrInvalid)
 	}
 	var statements, proofs []string
 	if history, isCard := fields["history"].([]any); isCard {
@@ -383,40 +412,42 @@ func verifyCheckpointChain(e Envelope, checkpointKey string) error {
 		}
 	}
 	if len(statements) == 0 {
-		return fmt.Errorf("%w: anchor_inclusion: no checkpoints", ErrInvalid)
+		return nil, fmt.Errorf("%w: anchor_inclusion: no checkpoints", ErrInvalid)
 	}
 	var previous signedCheckpoint
+	var last []byte
 	for i, text := range statements {
 		raw, err := hex.DecodeString(text)
 		if err != nil {
-			return fmt.Errorf("%w: anchor_inclusion: checkpoint %d is not hex", ErrInvalid, i)
+			return nil, fmt.Errorf("%w: anchor_inclusion: checkpoint %d is not hex", ErrInvalid, i)
 		}
 		cp, err := readSignedCheckpoint(raw, checkpointKey)
 		if err != nil {
-			return fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
+			return nil, fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
 		}
 		if i > 0 {
 			if cp.LogID != previous.LogID || cp.TreeSize <= previous.TreeSize {
-				return fmt.Errorf("%w: anchor_inclusion: checkpoint %d does not extend the log", ErrInvalid, i)
+				return nil, fmt.Errorf("%w: anchor_inclusion: checkpoint %d does not extend the log", ErrInvalid, i)
 			}
 			if proofs[i] != "" {
 				proof, err := hex.DecodeString(proofs[i])
 				if err != nil {
-					return fmt.Errorf("%w: anchor_inclusion: consistency proof %d is not hex", ErrInvalid, i)
+					return nil, fmt.Errorf("%w: anchor_inclusion: consistency proof %d is not hex", ErrInvalid, i)
 				}
 				if err := checkCLLConsistency(previous.commitment, cp.commitment, proof); err != nil {
-					return fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
+					return nil, fmt.Errorf("anchor_inclusion: checkpoint %d: %w", i, err)
 				}
 			} else if _, isCard := fields["history"]; isCard {
-				return fmt.Errorf("%w: anchor_inclusion: history entry %d has no consistency proof", ErrInvalid, i)
+				return nil, fmt.Errorf("%w: anchor_inclusion: history entry %d has no consistency proof", ErrInvalid, i)
 			}
 		}
 		if i == len(statements)-1 && digestBytes(raw) != e.Anchor.Digest {
-			return fmt.Errorf("%w: anchor_inclusion: the last checkpoint is not the anchor", ErrInvalid)
+			return nil, fmt.Errorf("%w: anchor_inclusion: the last checkpoint is not the anchor", ErrInvalid)
 		}
 		previous = cp
+		last = raw
 	}
-	return nil
+	return last, nil
 }
 
 func (b *Book) outcomeRecordedLocked(requestRecordID string) bool {
