@@ -34,8 +34,12 @@ or a record linking to it, whose Producer Envelope does not verify under its
 claim whose tallies are not what the cited Close sealed, or whose
 `sufficiency` is not the one those tallies derive (`INSUFFICIENT > 0` is GAP,
 else `UNRESOLVED > 0` is UNKNOWN, else SATISFIED); a close or reconcile
-claim whose `period` is not the window its Close sealed, when this tool's
-`book close` sealed it (its `capsulectl-close/v1` profile names the period); any
+claim citing a Close sealed before close/v1 (Result v0 §4.1: `close_ref`
+cites a close/v1 Close; `book close` returns that period's older Close and
+cannot supersede it yet, so such a period backs no claim); a
+close or reconcile claim whose `period` is not the `period` its Close sealed;
+a reconcile claim citing a Close
+that sealed counts only (it cited no peer Close, so it holds no tallies); any
 headline count or tally written as other than an integer literal (`7.0`,
 `7e0`). On success one
 `evidence_result` record is appended -- its statement is the document, its
@@ -65,8 +69,7 @@ states `plan_ref` or `dataset_ref` without `--plan` is refused: the verb never
 seals them as stated.
 
 Sealed as the producer states them, not checked: a reconcile claim's
-`join_key` and `state_of_record`; the `period` of a claim whose Close
-another producer sealed; a close claim's `verdict` and `sufficiency` beyond
+`join_key` and `state_of_record`; a close claim's `verdict` and `sufficiency` beyond
 the schema's rule that a CONTESTED Close is never met.
 
 **Only UNILATERAL close claims can be sealed end to end today.** A link

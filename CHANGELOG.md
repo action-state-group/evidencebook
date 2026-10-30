@@ -99,6 +99,37 @@
   `not_authorized`. `range` and `full_history` stay refused unless a
   recipient-specific derivation grants them.
 
+### Changed (breaking): capsulectl-book seals and reads `close/v1` Closes, and takes `--period month` (#125, #122)
+
+- `book close` seals the `close/v1` body (below): the period, and the counts
+  by record type and head of the window the Close binds. Under `--since-last`
+  that window can start before `period.start`, and the counts and head say so;
+  the period stays the calendar period, which repeats and peer matching key on.
+- It seals tallies only when the `--peer` bundle discloses the counterparty's
+  Close for this period, which it then cites (`peer_close` in the output), and
+  it reconciles against the peer positions that Close binds. Only Closes the
+  bundle verified under its authenticated checkpoint count; one another
+  disclosed Close supersedes is dropped; two left is refused. A head the
+  bundle does not disclose, or counts the head cannot hold, is refused.
+- What users lose: a Close sealed without a citable peer Close has no tallies,
+  so `book result build` refuses a reconcile claim citing it (a no-peer Close
+  used to back GAP from its INSUFFICIENT counts). Of two books closing one
+  period, the first to close has no peer Close to cite and its Close states
+  counts only; a later `close --peer` returns that Close. Superseding it once
+  the peer's Close is citable is #201.
+- Output: `close` prints the sealed body as `close`. `reconciliation` is the
+  reconciliation a fresh Close ran; a repeat prints the one an older Close
+  sealed, and none for a `close/v1` Close.
+- Closes sealed before this change keep working for `close`: a repeat finds
+  them by their profile string, and `--since-last` starts after their
+  `to_seq`. But `result build` now refuses a close or reconcile claim citing
+  one, since Result v0 §4.1 makes a claim's `close_ref` cite a `close/v1`
+  Close, and `close` returns a period's legacy Close as a repeat rather than
+  superseding it: a period closed before this change cannot back a Result
+  claim until #201 lets `close` supersede its Close.
+- `--period month` closes or reconciles a UTC calendar month (`month:YYYY-MM`,
+  `[start, end)`); without `--date` it takes the last month that has ended.
+
 ### Changed (breaking): a Close seals the `close/v1` body (#125)
 
 - `Book.Close` seals agent-action-capsule's `close/v1` body

@@ -190,10 +190,14 @@ plugin bumping its require to that merge commit's pseudo-version, as
   the live reconciliation on a fresh Close and is omitted on a repeat of a v1
   Close (the body has no pairs). A new `close` member carries the sealed body
   as stored. The CHANGELOG notes the output change.
-- **Result claims (`resultbuild.go`).** A close or reconcile claim's period
-  is checked against a v1 Close's `period` directly, and against a legacy
-  Close's profile string as today. A reconcile claim's tallies come from
-  `reconcile.tallies` (v1) or `reconciliation.tallies` (legacy). A reconcile
+- **Result claims (`resultbuild.go`).** Result v0 §4.1 (AAC#474) makes a
+  claim's `close_ref` cite a close/v1 Close, so a close or reconcile claim
+  citing a legacy Close is refused; `close` and `--since-last` still read
+  legacy Closes. Since `close` returns a period's legacy Close as a repeat and
+  never supersedes it, a period closed before close/v1 backs no Result claim
+  until #201 lets `close` supersede a Close; the refusal says so.
+  A claim's period is checked against the v1 Close's `period`, and a
+  reconcile claim's tallies against its `reconcile.tallies`. A reconcile
   claim citing a v1 Close with no `reconcile` is refused ("that Close sealed
   counts only").
 - **`--period month`** (#122): the UTC calendar month, `[start, end)`, keyed
@@ -232,7 +236,7 @@ another supersedes, and one whose header is unverified; the peer window taken
 from a cited v1 and a cited legacy Close, a cited v1 Close whose head is not
 disclosed, and an anchored peer Close whose counts sum past its head's seq
 (refused); repeats with `--bundle-out` disclose the same window as the
-first run; claim checks on v1 and legacy Closes, the reconcile-claim tests
+first run; claim checks on v1 Closes and a claim on a legacy Close refused, the reconcile-claim tests
 moved to a fixture whose Close cites a peer Close, and a reconcile claim
 against a counts-only Close refused; month boundaries (leap February,
 December to January).

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -334,8 +335,9 @@ func bookError(err error) error {
 
 // -- periods and windows ---------------------------------------------------
 
-// period is one UTC day or one ISO week (Monday start). Its key is what a
-// Close is idempotent on.
+// period is one UTC day, one ISO week (Monday start) or one UTC calendar
+// month. A Close is idempotent on its bounds (on its key, for a Close sealed
+// before close/v1).
 type period struct {
 	key        string
 	start, end time.Time
@@ -353,6 +355,10 @@ func parsePeriod(kind, date string, now time.Time) (period, error) {
 			day = now.AddDate(0, 0, -1)
 		case "week":
 			day = now.AddDate(0, 0, -7)
+		case "month":
+			// The first of last month: AddDate(0, -1, 0) on the 31st can
+			// land in this month.
+			day = time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, time.UTC)
 		}
 	} else {
 		parsed, err := time.Parse(time.DateOnly, date)
@@ -370,8 +376,11 @@ func parsePeriod(kind, date string, now time.Time) (period, error) {
 		start := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
 		year, week := start.ISOWeek()
 		p = period{key: fmt.Sprintf("week:%04d-W%02d", year, week), start: start, end: start.AddDate(0, 0, 7)}
+	case "month":
+		start := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, time.UTC)
+		p = period{key: "month:" + start.Format("2006-01"), start: start, end: start.AddDate(0, 1, 0)}
 	default:
-		return period{}, cli.InputError("--period must be day or week")
+		return period{}, cli.InputError("--period must be day, week or month")
 	}
 	if p.end.After(now) {
 		return period{}, cli.InputError("the period has not ended yet")
@@ -512,10 +521,9 @@ func readPeer(path, key, counterparty string) (evidencebook.VerifiedBundle, erro
 
 const closeComparator = "same_payload_commitments"
 
-// closeProfile is the value a Close states as the profile that produced its
-// reconciliation: this verb's version, the period, and the comparator.
-// A second close for the same counterparty and period finds it and returns
-// the existing Close instead of signing another.
+// closeProfile is the profile string a Close sealed before close/v1 stated:
+// this verb's version, the period, and the comparator. A legacy Close with
+// this profile is this period's Close.
 func closeProfile(p period) string {
 	return "capsulectl-close/v1 " + p.key + " comparator=" + closeComparator
 }
@@ -526,36 +534,81 @@ type reconcileResult struct {
 	Reconciliation evidencebook.Reconciliation `json:"reconciliation"`
 }
 
+// closeResult is what `close` prints. Reconciliation is the reconciliation
+// a fresh Close ran (pairs and windows); a repeat prints the one a legacy
+// Close sealed, and none for a close/v1 Close, whose body has no pairs.
+// Close is the sealed body as stored.
 type closeResult struct {
-	RecordID       string                      `json:"record_id"`
-	Seq            uint64                      `json:"seq"`
-	Period         string                      `json:"period"`
-	Counterparty   string                      `json:"counterparty"`
-	AlreadyClosed  bool                        `json:"already_closed"`
-	PeerBundle     string                      `json:"peer_bundle,omitempty"`
-	Reconciliation evidencebook.Reconciliation `json:"reconciliation"`
-	Capsule        string                      `json:"capsule,omitempty"`
-	Bundle         string                      `json:"bundle,omitempty"`
-	BundleDigest   string                      `json:"bundle_digest,omitempty"`
+	RecordID       string                       `json:"record_id"`
+	Seq            uint64                       `json:"seq"`
+	Period         string                       `json:"period"`
+	Counterparty   string                       `json:"counterparty"`
+	AlreadyClosed  bool                         `json:"already_closed"`
+	PeerBundle     string                       `json:"peer_bundle,omitempty"`
+	PeerClose      string                       `json:"peer_close,omitempty"`
+	Reconciliation *evidencebook.Reconciliation `json:"reconciliation,omitempty"`
+	Close          json.RawMessage              `json:"close"`
+	Capsule        string                       `json:"capsule,omitempty"`
+	Bundle         string                       `json:"bundle,omitempty"`
+	BundleDigest   string                       `json:"bundle_digest,omitempty"`
+}
+
+// sealedClose is one Close read by its record_version: exactly one of v1
+// and legacy is set.
+type sealedClose struct {
+	record evidencebook.Record
+	v1     *evidencebook.CloseStatement
+	legacy *evidencebook.LegacyCloseStatement
+}
+
+func readSealedClose(record evidencebook.Record) (sealedClose, error) {
+	v1, legacy, err := evidencebook.ReadClose(record.Header)
+	if err != nil {
+		return sealedClose{}, fmt.Errorf("close %s: %w", record.RecordID, err)
+	}
+	return sealedClose{record: record, v1: v1, legacy: legacy}, nil
+}
+
+// closes reports whether c is this book's Close for p: a close/v1 Close
+// states p's bounds, a legacy one closeProfile(p).
+func (c sealedClose) closes(p period) bool {
+	if c.v1 != nil {
+		return c.v1.Period.Start.Equal(p.start) && c.v1.Period.End.Equal(p.end)
+	}
+	return c.legacy.Profile == closeProfile(p)
+}
+
+// window returns the own positions c binds: a legacy Close sealed them; a
+// close/v1 Close's are recovered from its head and counts.
+func (c sealedClose) window(ctx context.Context, book *evidencebook.Book) (from, to uint64, err error) {
+	if c.legacy != nil {
+		return c.legacy.Reconciliation.FromSeq, c.legacy.Reconciliation.ToSeq, nil
+	}
+	head, err := book.Get(ctx, c.v1.Head.Digest)
+	if err != nil {
+		return 0, 0, fmt.Errorf("close %s: head: %w", c.record.RecordID, err)
+	}
+	return c.v1.Window(head.Seq, c.record.Seq)
 }
 
 // priorCloses returns this book's Closes for one counterparty, in log order.
-func priorCloses(ctx context.Context, book *evidencebook.Book, counterparty string) ([]evidencebook.Record, []evidencebook.CloseStatement, error) {
+func priorCloses(ctx context.Context, book *evidencebook.Book, counterparty string) ([]sealedClose, error) {
 	records, err := book.Query(ctx, evidencebook.Filter{RecordType: evidencebook.RecordTypeClose, CounterpartyRef: counterparty})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	statements := make([]evidencebook.CloseStatement, len(records))
+	closes := make([]sealedClose, len(records))
 	for i, r := range records {
-		if err := json.Unmarshal(r.Header.Statement, &statements[i]); err != nil {
-			return nil, nil, fmt.Errorf("close %s: statement: %w", r.RecordID, err)
+		if closes[i], err = readSealedClose(r); err != nil {
+			return nil, err
 		}
 	}
-	return records, statements, nil
+	return closes, nil
 }
 
-// reconcileInput builds the windows both verbs share. A zero peer (no
-// --peer) is an account that proves nothing, so every own exchange in the
+// reconcileInput builds the windows both verbs share; peerWindowFromPeriod
+// places the peer's window by the period (with no peer Close to take it
+// from). A zero peer (no --peer) is an account that proves nothing, so every own exchange in the
 // window reads INSUFFICIENT: one half unavailable is never disagreement.
 //
 // The book reconciles every correlated record in the window; it cannot
@@ -563,7 +616,7 @@ func priorCloses(ctx context.Context, book *evidencebook.Book, counterparty stri
 // different counterparty is refused: counting it would report A_ONLY to a
 // party that never saw it and link the Close to it. An exchange that names
 // no counterparty is counted in every Close.
-func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, counterparty string, peer evidencebook.VerifiedBundle, hasPeer bool) (evidencebook.ReconcileInput, error) {
+func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, counterparty string, peer evidencebook.VerifiedBundle, peerWindowFromPeriod bool) (evidencebook.ReconcileInput, error) {
 	from, to, err := ownWindow(ctx, book, p)
 	if err != nil {
 		return evidencebook.ReconcileInput{}, err
@@ -580,7 +633,7 @@ func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, coun
 		}
 	}
 	in := evidencebook.ReconcileInput{Peer: peer, FromSeq: from, ToSeq: to, Compare: evidencebook.SamePayloadCommitments}
-	if hasPeer {
+	if peerWindowFromPeriod {
 		if in.PeerFromSeq, in.PeerToSeq, err = peerWindow(peer, p); err != nil {
 			return evidencebook.ReconcileInput{}, err
 		}
@@ -589,7 +642,7 @@ func reconcileInput(ctx context.Context, book *evidencebook.Book, p period, coun
 }
 
 func periodFlags(c *cobra.Command) {
-	c.Flags().String("period", "", "day or week (UTC; weeks start Monday)")
+	c.Flags().String("period", "", "day, week or month (UTC; weeks start Monday)")
 	c.Flags().String("date", "", "Any date inside the period, YYYY-MM-DD; default: the most recent period that has ended")
 	c.Flags().String("counterparty", "", "The counterparty's book id; a peer bundle must be from that book")
 	c.Flags().String("peer", "", "A held Evidence Bundle from the counterparty's book (never fetched)")
@@ -717,15 +770,93 @@ func refuseExchangelessWindowWithPinnedTail(ctx context.Context, book *evidenceb
 // position any earlier Close with this counterparty reached, so an unclosed
 // day between two Closes is not skipped. A previous Close that already
 // reached into this window (a period closed out of order) is refused.
-func sinceLastFrom(statements []evidencebook.CloseStatement, from uint64) (uint64, error) {
+func sinceLastFrom(ctx context.Context, book *evidencebook.Book, closes []sealedClose, from uint64) (uint64, error) {
 	var reached uint64
-	for _, st := range statements {
-		reached = max(reached, st.Reconciliation.ToSeq)
+	for _, c := range closes {
+		_, to, err := c.window(ctx, book)
+		if err != nil {
+			return 0, err
+		}
+		reached = max(reached, to)
 	}
 	if reached >= from {
 		return 0, cli.InputError("an earlier Close with this counterparty already reaches into this period; --since-last needs periods closed in order")
 	}
 	return reached + 1, nil
+}
+
+// peerCloseCandidate is a Close the peer bundle discloses for this period.
+type peerCloseCandidate struct {
+	record evidencebook.PeerRecord
+	close  sealedClose
+}
+
+// citablePeerClose picks the counterparty's Close for this period that a
+// Close cites, and the peer positions that Close binds, which the
+// reconciliation then runs over so its tallies answer the Close it cites.
+// Only records the bundle verified and its authenticated checkpoint covers
+// count. A candidate is a Close from the counterparty's book naming this
+// book as its counterparty, for this period (close/v1 bounds, or a legacy
+// profile whose period closeProfilePeriod derives). A candidate another
+// candidate supersedes is dropped. None: nil, and the Close states counts
+// only. More than one: refused, since the bundle does not say which Close
+// the tallies would answer.
+func citablePeerClose(peer evidencebook.VerifiedBundle, ownBook string, p period) (*peerCloseCandidate, uint64, uint64, error) {
+	var candidates []peerCloseCandidate
+	superseded := map[string]bool{}
+	for _, r := range peer.Records {
+		if r.Header == nil || !r.HeaderVerified || !r.CapsuleOK || !peer.Covers(r.Seq) || r.Header.RecordType != evidencebook.RecordTypeClose || r.Header.CounterpartyRef != ownBook {
+			continue
+		}
+		c, err := readSealedClose(evidencebook.Record{RecordID: r.RecordID, Seq: r.Seq, Header: *r.Header})
+		if err != nil {
+			return nil, 0, 0, errors.Join(cli.InputError(fmt.Sprintf("the peer bundle's Close at position %d does not read as a Close", r.Seq)), err)
+		}
+		if !c.closes(p) {
+			if c.legacy == nil {
+				continue
+			}
+			start, end, ok := closeProfilePeriod(c.legacy.Profile)
+			if !ok || !start.Equal(p.start) || !end.Equal(p.end) {
+				continue
+			}
+		}
+		candidates = append(candidates, peerCloseCandidate{record: r, close: c})
+		for _, target := range r.Header.LinksTo(evidencebook.Supersedes) {
+			superseded[target] = true
+		}
+	}
+	var current []peerCloseCandidate
+	for _, c := range candidates {
+		if !superseded[c.record.RecordID] {
+			current = append(current, c)
+		}
+	}
+	switch len(current) {
+	case 0:
+		return nil, 0, 0, nil
+	case 1:
+	default:
+		ids := make([]string, len(current))
+		for i, c := range current {
+			ids[i] = c.record.RecordID
+		}
+		return nil, 0, 0, cli.InputError(fmt.Sprintf("the peer bundle discloses %d Closes for this period that none supersedes (%s); a Close cites exactly one", len(current), strings.Join(ids, ", ")))
+	}
+	cited := current[0]
+	if cited.close.legacy != nil {
+		return &cited, cited.close.legacy.Reconciliation.FromSeq, cited.close.legacy.Reconciliation.ToSeq, nil
+	}
+	for _, r := range peer.Records {
+		if r.RecordID == cited.close.v1.Head.Digest {
+			from, to, err := cited.close.v1.Window(r.Seq, cited.record.Seq)
+			if err != nil {
+				return nil, 0, 0, errors.Join(cli.InputError(fmt.Sprintf("the peer's Close %s states a window its head cannot hold", cited.record.RecordID)), err)
+			}
+			return &cited, from, to, nil
+		}
+	}
+	return nil, 0, 0, cli.InputError(fmt.Sprintf("the peer bundle does not disclose the head of the peer's Close %s, so the positions it binds cannot be placed", cited.record.RecordID))
 }
 
 func closeCommand() *cobra.Command {
@@ -752,14 +883,21 @@ func closeCommand() *cobra.Command {
 		}
 		book := opened.book
 		result := closeResult{Period: a.period.key, Counterparty: a.counterparty}
-		records, statements, e := priorCloses(c.Context(), book, a.counterparty)
+		closes, e := priorCloses(c.Context(), book, a.counterparty)
 		if e != nil {
 			return e
 		}
 		var sealed evidencebook.Record
-		for i, st := range statements {
-			if st.Profile == closeProfile(a.period) {
-				sealed, result.AlreadyClosed, result.Reconciliation = records[i], true, st.Reconciliation
+		var from, to uint64
+		for _, prior := range closes {
+			if prior.closes(a.period) {
+				sealed, result.AlreadyClosed = prior.record, true
+				if prior.legacy != nil {
+					result.Reconciliation = &prior.legacy.Reconciliation
+				}
+				if from, to, e = prior.window(c.Context(), book); e != nil {
+					return e
+				}
 				break
 			}
 		}
@@ -767,12 +905,27 @@ func closeCommand() *cobra.Command {
 			// The window is fixed, and refused if it must be, before anything
 			// is written. Then a checkpoint covers every own record in it, so
 			// the book's own account of the period is complete.
-			in, e := reconcileInput(c.Context(), book, a.period, a.counterparty, a.peer, a.hasPeer)
+			// A cited peer Close fixes the peer window, so it is chosen before
+			// any window is derived from the period: the period's placement
+			// in the peer's log is then never consulted.
+			closeIn := evidencebook.CloseInput{Counterparty: a.counterparty, Period: evidencebook.ClosePeriod{Start: a.period.start, End: a.period.end}}
+			var cited *peerCloseCandidate
+			var peerFrom, peerTo uint64
+			if a.hasPeer {
+				ownBook, _ := book.Info()
+				if cited, peerFrom, peerTo, e = citablePeerClose(a.peer, ownBook, a.period); e != nil {
+					return e
+				}
+			}
+			in, e := reconcileInput(c.Context(), book, a.period, a.counterparty, a.peer, a.hasPeer && cited == nil)
 			if e != nil {
 				return e
 			}
-			if sinceLast && len(statements) > 0 {
-				if in.FromSeq, e = sinceLastFrom(statements, in.FromSeq); e != nil {
+			if cited != nil {
+				closeIn.PeerClose, in.PeerFromSeq, in.PeerToSeq = cited.record.RecordID, peerFrom, peerTo
+			}
+			if sinceLast && len(closes) > 0 {
+				if in.FromSeq, e = sinceLastFrom(c.Context(), book, closes, in.FromSeq); e != nil {
 					return e
 				}
 			}
@@ -782,22 +935,26 @@ func closeCommand() *cobra.Command {
 			if _, e = book.Checkpoint(c.Context()); e != nil {
 				return e
 			}
-			if sealed, e = book.Close(c.Context(), evidencebook.CloseInput{Reconcile: in, Counterparty: a.counterparty, Profile: closeProfile(a.period)}); e != nil {
+			// The reconciliation Close runs, printed with its pairs: the body
+			// carries only its tallies, and only when it cites a peer Close.
+			recon, e := book.Reconcile(c.Context(), in)
+			if e != nil {
 				return bookError(e)
 			}
-			var st evidencebook.CloseStatement
-			if e = json.Unmarshal(sealed.Header.Statement, &st); e != nil {
-				return e
+			closeIn.Reconcile = in
+			if sealed, e = book.Close(c.Context(), closeIn); e != nil {
+				return bookError(e)
 			}
-			result.Reconciliation = st.Reconciliation
+			result.Reconciliation, from, to = &recon, in.FromSeq, in.ToSeq
+			result.PeerClose = closeIn.PeerClose
 			if a.hasPeer {
 				result.PeerBundle = a.peer.Digest
 			}
 		}
-		result.RecordID, result.Seq = sealed.RecordID, sealed.Seq
+		result.RecordID, result.Seq, result.Close = sealed.RecordID, sealed.Seq, sealed.Header.Statement
 		// The Close is sealed from here on: a failure writing either file
 		// still reports its record_id, so the caller never loses it.
-		if e = closeOutputs(c, opened, p, &result, sealed); e != nil {
+		if e = closeOutputs(c, opened, p, &result, sealed, from, to); e != nil {
 			return errors.Join(e, cli.Output(c, result))
 		}
 		return cli.Output(c, result)
@@ -809,7 +966,7 @@ func closeCommand() *cobra.Command {
 	return cmd
 }
 
-func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *closeResult, sealed evidencebook.Record) error {
+func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *closeResult, sealed evidencebook.Record, from, to uint64) error {
 	if path, _ := c.Flags().GetString("capsule-out"); path != "" {
 		if err := exportRecord(c.Context(), opened.store, p, sealed.RecordID, path); err != nil {
 			return err
@@ -820,7 +977,7 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	if path == "" {
 		return nil
 	}
-	include, err := closeBundleRecords(c.Context(), opened.book, result.Counterparty, result.Reconciliation, sealed.RecordID)
+	include, err := closeBundleRecords(c.Context(), opened.book, result.Counterparty, from, to, sealed.RecordID)
 	if err != nil {
 		return err
 	}
@@ -854,8 +1011,8 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 // at either edge, the counterparty reads that edge as unproven, which is
 // safe. The bundle withholds every payload; reconciliation compares the
 // payload commitments the headers carry.
-func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterparty string, window evidencebook.Reconciliation, closeID string) ([]string, error) {
-	records, err := book.Query(ctx, evidencebook.Filter{FromSeq: max(window.FromSeq, 2) - 1, ToSeq: window.ToSeq + 1})
+func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterparty string, from, to uint64, closeID string) ([]string, error) {
+	records, err := book.Query(ctx, evidencebook.Filter{FromSeq: max(from, 2) - 1, ToSeq: to + 1})
 	if err != nil {
 		return nil, err
 	}

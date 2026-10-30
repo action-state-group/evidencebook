@@ -606,6 +606,30 @@ func closeFixture(t *testing.T, b resultBook) string {
 	return result.RecordID
 }
 
+// citingCloseFixture seals, at day1, a Close over one exchange of day0 that
+// cites a peer Close, so it carries tallies: with no peer account the
+// exchange is INSUFFICIENT. The cited id names no record this book holds;
+// result build reads only the tallies.
+func citingCloseFixture(t *testing.T, b resultBook) string {
+	t.Helper()
+	appendHalves(t, b.profile, half{"x1", "r1", "p1"})
+	b.set(day1)
+	var id string
+	withBook(t, b.profile, func(book *evidencebook.Book) {
+		_, err := book.Checkpoint(t.Context())
+		require.NoError(t, err)
+		sealed, err := book.Close(t.Context(), evidencebook.CloseInput{
+			Reconcile:    evidencebook.ReconcileInput{Compare: evidencebook.SamePayloadCommitments},
+			Counterparty: "peer-b",
+			Period:       evidencebook.ClosePeriod{Start: time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC), End: time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)},
+			PeerClose:    strings.Repeat("ab", 32),
+		})
+		require.NoError(t, err)
+		id = sealed.RecordID
+	})
+	return id
+}
+
 // closeClaim builds a close claim whose close_ref is its first evidence
 // digest (the walk rule: close_ref is among evidence[]); peerRef, when
 // given, is added to evidence[] too.
@@ -792,9 +816,20 @@ func reconcileClaim(id, peer string, tallies map[string]any, digests ...string) 
 	return c
 }
 
-func TestResultBuildRecomputesReconcileTalliesFromTheClose(t *testing.T) {
+// A Close sealed without a peer Close to cite holds no tallies, so no
+// reconcile claim can report it.
+func TestResultBuildRefusesAReconcileClaimOnACountsOnlyClose(t *testing.T) {
 	b := newResultBook(t)
 	closeID := closeFixture(t, b)
+	sealed := map[string]any{"matched": 0, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 1, "unresolved": 0}
+	_, _, err := runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", sealed, closeID)))
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "sealed counts only: it cites no peer Close")
+}
+
+func TestResultBuildRecomputesReconcileTalliesFromTheClose(t *testing.T) {
+	b := newResultBook(t)
+	closeID := citingCloseFixture(t, b)
 	sealed := map[string]any{"matched": 0, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 1, "unresolved": 0}
 	_, _, err := runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", sealed, closeID)))
 	require.NoError(t, err, "one exchange, no peer account: INSUFFICIENT 1 is what the Close sealed")
@@ -802,7 +837,7 @@ func TestResultBuildRecomputesReconcileTalliesFromTheClose(t *testing.T) {
 	restated := map[string]any{"matched": 1, "a_only": 0, "b_only": 0, "conflicting": 0, "insufficient": 0, "unresolved": 0}
 	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "peer-b", restated, closeID)))
 	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "tallies matched=1, but Close "+closeID+" recorded MATCHED=0")
+	assert.Contains(t, cli.SafeError(err), "tallies matched=1, but Close "+closeID+" recorded matched=0")
 
 	_, _, err = runResultBuild(t, b.profile, resultDoc(reconcileClaim("rec-1", "other", sealed, closeID)))
 	assert.Contains(t, cli.SafeError(err), `names peer "other", but Close`)
@@ -1038,7 +1073,7 @@ func TestResultBuildCheckpointsARepeatTheFirstRunLeftUncovered(t *testing.T) {
 // tallies derive.
 func TestResultBuildChecksPeriodAndSufficiencyAgainstTheClose(t *testing.T) {
 	b := newResultBook(t)
-	closeID := closeFixture(t, b)
+	closeID := citingCloseFixture(t, b)
 	p := b.profile
 	before := bookSize(t, p)
 
@@ -1074,14 +1109,14 @@ func TestResultBuildChecksPeriodAndSufficiencyAgainstTheClose(t *testing.T) {
 // year boundary, and declines a profile it did not write.
 func TestCloseProfilePeriodInvertsCloseProfile(t *testing.T) {
 	now := time.Date(2027, 2, 1, 0, 0, 0, 0, time.UTC)
-	for _, tc := range []struct{ kind, date string }{{"day", "2026-09-24"}, {"week", "2026-09-24"}, {"week", "2026-01-01"}, {"week", "2027-01-03"}, {"day", "2026-12-31"}} {
+	for _, tc := range []struct{ kind, date string }{{"day", "2026-09-24"}, {"week", "2026-09-24"}, {"week", "2026-01-01"}, {"week", "2027-01-03"}, {"day", "2026-12-31"}, {"month", "2026-12-31"}, {"month", "2024-02-29"}} {
 		p, err := parsePeriod(tc.kind, tc.date, now)
 		require.NoError(t, err)
 		start, end, ok := closeProfilePeriod(closeProfile(p))
 		require.True(t, ok, closeProfile(p))
 		assert.True(t, start.Equal(p.start) && end.Equal(p.end), "%s %s: %s..%s, want %s..%s", tc.kind, tc.date, start, end, p.start, p.end)
 	}
-	for _, profile := range []string{"", "other-close/v1 day:2026-09-24", "capsulectl-close/v1 month:2026-09", "capsulectl-close/v1 day:24-09-2026"} {
+	for _, profile := range []string{"", "other-close/v1 day:2026-09-24", "capsulectl-close/v1 month:2026-9", "capsulectl-close/v1 day:24-09-2026"} {
 		_, _, ok := closeProfilePeriod(profile)
 		assert.False(t, ok, profile)
 	}

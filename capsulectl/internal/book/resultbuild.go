@@ -327,11 +327,11 @@ func checkCloseClaim(ctx context.Context, book *evidencebook.Book, store recordS
 	if err != nil {
 		return err
 	}
-	statement, err := closeStatementOf(closeRecord)
+	sealed, err := citedV1Close(claim, closeRecord)
 	if err != nil {
 		return err
 	}
-	if err := checkClaimPeriod(claim, "close", closeRecord.RecordID, statement); err != nil {
+	if err := checkClaimPeriod(claim, "close", closeRecord.RecordID, sealed); err != nil {
 		return err
 	}
 	state, linker, ignored, err := closeStateInBook(ctx, book, store, closeRecord, closeKey, claim.ClosePeer)
@@ -341,20 +341,12 @@ func checkCloseClaim(ctx context.Context, book *evidencebook.Book, store recordS
 	return checkCloseState(claim, closeRecord.RecordID, state, linker, ignored)
 }
 
-func closeStatementOf(closeRecord evidencebook.Record) (evidencebook.CloseStatement, error) {
-	var statement evidencebook.CloseStatement
-	if err := json.Unmarshal(closeRecord.Header.Statement, &statement); err != nil {
-		return statement, fmt.Errorf("close %s: statement: %w", closeRecord.RecordID, err)
-	}
-	return statement, nil
-}
-
-// closeProfilePeriod reads the period back out of a Close this tool sealed:
-// `close` states its profile as closeProfile(p) -- "capsulectl-close/v1
-// day:YYYY-MM-DD ..." or "... week:YYYY-Www ..." -- so the window the Close
-// reconciled is derivable from the Close itself. ok is false for a Close
-// whose profile is not in that form (another producer's); its period cannot
-// be derived here, and the claim's is then producer-asserted.
+// closeProfilePeriod reads the period back out of a legacy Close this tool
+// sealed: `close` stated its profile as closeProfile(p) --
+// "capsulectl-close/v1 day:YYYY-MM-DD ...", "... week:YYYY-Www ..." or
+// "... month:YYYY-MM ..." -- so the period it closed is derivable from the
+// Close itself. book close reads it to match a legacy peer Close to a
+// period. ok is false for a profile not in that form (another producer's).
 func closeProfilePeriod(profile string) (start, end time.Time, ok bool) {
 	fields := strings.Fields(profile)
 	if len(fields) < 2 || fields[0] != "capsulectl-close/v1" {
@@ -381,17 +373,36 @@ func closeProfilePeriod(profile string) (start, end time.Time, ok bool) {
 		monday := jan4.AddDate(0, 0, -((int(jan4.Weekday()) + 6) % 7))
 		start = monday.AddDate(0, 0, 7*(week-1))
 		return start, start.AddDate(0, 0, 7), true
+	case "month":
+		month, err := time.Parse("2006-01", value)
+		if err != nil {
+			return start, end, false
+		}
+		return month, month.AddDate(0, 1, 0), true
 	}
 	return start, end, false
 }
 
-// checkClaimPeriod: a claim's period is the window the cited Close sealed,
-// whenever that window is derivable from the Close (closeProfilePeriod).
-func checkClaimPeriod(claim resultClaim, body, closeID string, statement evidencebook.CloseStatement) error {
-	start, end, ok := closeProfilePeriod(statement.Profile)
-	if !ok {
-		return nil
+// citedV1Close reads the Close a claim cites. Result v0 section 4.1 makes a
+// claim's close_ref cite a close/v1 Close, so a legacy one, which book close
+// and since-last still read, is refused here. book close returns a period's
+// legacy Close as a repeat and never supersedes it (#201), so such a period
+// cannot back a claim.
+func citedV1Close(claim resultClaim, record evidencebook.Record) (*evidencebook.CloseStatement, error) {
+	sealed, err := readSealedClose(record)
+	if err != nil {
+		return nil, err
 	}
+	if sealed.v1 == nil {
+		return nil, cli.Hint(cli.ErrInput, fmt.Sprintf("%s cites Close %s, a legacy Close sealed before close/v1, but a claim must cite a close/v1 Close; book close returns that legacy Close for its period and cannot supersede it yet, so this period cannot back a claim", claim.Label(), record.RecordID))
+	}
+	return sealed.v1, nil
+}
+
+// checkClaimPeriod: a claim's period is the period the cited Close sealed
+// (Result v0 section 4.1).
+func checkClaimPeriod(claim resultClaim, body, closeID string, c *evidencebook.CloseStatement) error {
+	start, end := c.Period.Start, c.Period.End
 	claimStart, errStart := time.Parse(time.RFC3339, claim.PeriodStart)
 	claimEnd, errEnd := time.Parse(time.RFC3339, claim.PeriodEnd)
 	if errStart != nil || errEnd != nil || !claimStart.Equal(start) || !claimEnd.Equal(end) {
@@ -437,13 +448,6 @@ func checkCloseState(claim resultClaim, closeID, state, linker string, ignored [
 	return nil
 }
 
-// reconcileTallyKeys maps a Result's lowercase tally keys onto the Close
-// statement's state names.
-var reconcileTallyKeys = []struct{ claim, close string }{
-	{"matched", "MATCHED"}, {"a_only", "A_ONLY"}, {"b_only", "B_ONLY"},
-	{"conflicting", "CONFLICTING"}, {"insufficient", "INSUFFICIENT"}, {"unresolved", "UNRESOLVED"},
-}
-
 // checkReconcileClaim: the claim's tallies are the ones the Close it cites
 // sealed, state for state, and its peer is that Close's counterparty. A
 // reconciliation is on record only as a Close (`reconcile` adds no record),
@@ -456,24 +460,28 @@ func checkReconcileClaim(claim resultClaim, resolved map[string]evidencebook.Rec
 	if closeRecord.Header.CounterpartyRef != claim.ReconcilePeer {
 		return cli.Hint(cli.ErrInput, fmt.Sprintf("%s names peer %q, but Close %s was sealed against counterparty %q", claim.Label(), claim.ReconcilePeer, closeRecord.RecordID, closeRecord.Header.CounterpartyRef))
 	}
-	statement, err := closeStatementOf(closeRecord)
+	sealed, err := citedV1Close(claim, closeRecord)
 	if err != nil {
 		return err
 	}
-	if err := checkClaimPeriod(claim, "reconcile", closeRecord.RecordID, statement); err != nil {
+	if err := checkClaimPeriod(claim, "reconcile", closeRecord.RecordID, sealed); err != nil {
 		return err
 	}
-	var sealed map[string]int64
-	raw, err := json.Marshal(statement.Reconciliation.Tallies)
-	if err == nil {
-		err = json.Unmarshal(raw, &sealed)
+	if sealed.Reconcile == nil {
+		return cli.Hint(cli.ErrInput, fmt.Sprintf("%s is a reconcile claim, but Close %s sealed counts only: it cites no peer Close, so it holds no tallies to report", claim.Label(), closeRecord.RecordID))
 	}
-	if err != nil {
-		return err
-	}
-	for _, key := range reconcileTallyKeys {
-		if claim.ReconcileTallies[key.claim] != sealed[key.close] {
-			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s tallies %s=%d, but Close %s recorded %s=%d; tallies are what the Close sealed, never restated", claim.Label(), key.claim, claim.ReconcileTallies[key.claim], closeRecord.RecordID, key.close, sealed[key.close]))
+	sealedTallies := sealed.Reconcile.Tallies
+	// The claim's keys are the Close's own lowercase keys (Result v0 and
+	// close/v1 share them).
+	for _, tally := range []struct {
+		key string
+		n   int
+	}{
+		{"matched", sealedTallies.Matched}, {"a_only", sealedTallies.AOnly}, {"b_only", sealedTallies.BOnly},
+		{"conflicting", sealedTallies.Conflicting}, {"insufficient", sealedTallies.Insufficient}, {"unresolved", sealedTallies.Unresolved},
+	} {
+		if claim.ReconcileTallies[tally.key] != int64(tally.n) {
+			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s tallies %s=%d, but Close %s recorded %s=%d; tallies are what the Close sealed, never restated", claim.Label(), tally.key, claim.ReconcileTallies[tally.key], closeRecord.RecordID, tally.key, tally.n))
 		}
 	}
 	// Sufficiency on a reconcile claim is derived from the two non-finding
@@ -481,9 +489,9 @@ func checkReconcileClaim(claim resultClaim, resolved map[string]evidencebook.Rec
 	// UNRESOLVED > 0 is UNKNOWN, else SATISFIED.
 	want := "SATISFIED"
 	switch {
-	case sealed["INSUFFICIENT"] > 0:
+	case sealedTallies.Insufficient > 0:
 		want = "GAP"
-	case sealed["UNRESOLVED"] > 0:
+	case sealedTallies.Unresolved > 0:
 		want = "UNKNOWN"
 	}
 	if claim.Sufficiency != want {
