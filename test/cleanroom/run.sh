@@ -23,6 +23,7 @@ set -euo pipefail
 AAC=9d653f41419d2d2bac4714137b763315947ec754
 CLL=0f74297761f3a0b81d27a116f32ac556c0ecb59d
 LOOP=cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8
+DEAL=202d8da362734eecfd01713192b65ae61cefa5c9
 WORK=${WORK:-$HOME/eb-verifier-test}
 EB_REF=${EB_REF:-main}
 
@@ -142,10 +143,14 @@ done
 NODE=findings/2026-10-28-live/02-book/stevenmih-1
 for f in "$NODE/bundle.json" "$NODE/verify.json" \
   nodes/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json \
-  lab/runs/2026-10-28/join/stevenmih-1/book.json \
-  nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json \
-  findings/2026-10-29-live/05-deal/stevenmih-{1,2}/{held-1,held-1-inclusion,held-1-citing,checks}.json; do
+  lab/runs/2026-10-28/join/stevenmih-1/book.json; do
   fetch evidence-network/loop "$LOOP" "$f" "loop/$f"
+done
+XD=findings/2026-10-30-live/05-deal
+for f in nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json \
+  $XD/stevenmih-1/{held-18,held-18-inclusion,held-18-citing,checks}.json \
+  $XD/stevenmih-2/{held-11,held-11-inclusion,held-11-citing,checks}.json; do
+  fetch evidence-network/loop "$DEAL" "$f" "loop/$f"
 done
 want_sha "loop/$NODE/bundle.json" aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0
 want_sha "loop/$NODE/verify.json" 9a1ad3b2c39c7d7862d259cce52dab46df9eb686b1a6f915816f9d6597b5e244
@@ -183,58 +188,71 @@ grep -q 'sequences 4 to 6' "$GUIDE" && grep -q '"first_seq":4' "$B" && grep -q '
   fail "§7's sequence range is not the bundle's"
 grep -q '`log_size` is 10' "$GUIDE" && grep -q '"mmr_size":10' "$B" || fail "§7's log size is not the bundle's"
 
-step "§7.4 two nodes, one exchange"
-X=loop/findings/2026-10-29-live/05-deal
-want_sha $X/stevenmih-1/held-1.json 07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9
-want_sha $X/stevenmih-1/held-1-inclusion.json f252e1720b5a51516ba7ec8e69cb9605628a493f61cc83296aa8a102a1c8b811
-want_sha $X/stevenmih-1/held-1-citing.json 314d54d90dc2d8e313acb0c57d5494b6b3574d8bf4eedbf8a7c56def64bccaa4
-want_sha $X/stevenmih-1/checks.json b96e991fa50f4c4b2a6196ffc418d6484558ce851f0138e9b8787e27105cf0cb
-want_sha $X/stevenmih-2/held-1.json 3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694
-want_sha $X/stevenmih-2/held-1-inclusion.json 07b6a1bec0545ea5be8dccffacb8999c7aad1479b650d3b48e699e9d0a42d451
-want_sha $X/stevenmih-2/held-1-citing.json 2fa153cfc0549864cbb9cb8420447cfcc3ea58dff9e5f99a21b23253aface154
-want_sha $X/stevenmih-2/checks.json 7f02f94ec73ffa92b0c47ba99f4f516ba3bb93dd8144a22ccea39e70f0b76896
+step "§7.4 two nodes, one exchange (evidence-network/loop $DEAL)"
+X=loop/findings/2026-10-30-live/05-deal
+H1=held-18 H2=held-11 # the held file of stevenmih-1 and of stevenmih-2
+want_sha $X/stevenmih-1/$H1.json f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603
+want_sha $X/stevenmih-1/$H1-inclusion.json f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea
+want_sha $X/stevenmih-1/$H1-citing.json fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639
+want_sha $X/stevenmih-1/checks.json 98c6fee06eecf12232f381bd159f78792328da516a14ca66c3405cda9e58bd42
+want_sha $X/stevenmih-2/$H2.json 54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683
+want_sha $X/stevenmih-2/$H2-inclusion.json b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd
+want_sha $X/stevenmih-2/$H2-citing.json 8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b
+want_sha $X/stevenmih-2/checks.json 8dc5f40518fd3a65efe445609ea638bb6fd9e757fa79e357d5878725dd3696f2
 grep -q '"key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26"' \
   loop/nodes/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json ||
   fail "stevenmih-2's listing does not name its key"
+file() { echo $X/stevenmih-$1/$([ "$1" = 1 ] && echo $H1 || echo $H2)$2.json; } # SIDE SUFFIX
 # Every value §7.4 states is the files' own.
 for n in 1 2; do
   # Full values for the checkpoint and the nonce; the page names records by their first eight hex digits.
-  for v in $(grep -o '"\(checkpoint_digest\|log_id\)": *"[^"]*"' $X/stevenmih-$n/held-1-inclusion.json | cut -d'"' -f4) \
-    $(grep -o '"half_capsule_id": *"[0-9a-f]*"' $X/stevenmih-$n/held-1-inclusion.json | cut -d'"' -f4 | cut -c1-8) \
-    $(grep -o '"capsule_id": *"[0-9a-f]*"' $X/stevenmih-$n/held-1-citing.json | head -1 | cut -d'"' -f4 | cut -c1-8) \
-    $(grep -o '"client_nonce": *"[^"]*"' $X/stevenmih-$n/held-1.json | cut -d'"' -f4); do
+  for v in $(grep -o '"\(checkpoint_digest\|log_id\)": *"[^"]*"' "$(file $n -inclusion)" | cut -d'"' -f4) \
+    $(grep -o '"half_capsule_id": *"[0-9a-f]*"' "$(file $n -inclusion)" | cut -d'"' -f4 | cut -c1-8) \
+    $(grep -o '"capsule_id": *"[0-9a-f]*"' "$(file $n -citing)" | head -1 | cut -d'"' -f4 | cut -c1-8) \
+    $(grep -o '"own_half_capsule_id": *"[0-9a-f]*"' "$(file $n -citing)" | cut -d'"' -f4 | cut -c1-8) \
+    $(grep -o '"client_nonce": *"[^"]*"' "$(file $n '')" | cut -d'"' -f4); do
     grep -qF "$v" "$GUIDE" || fail "§7.4 does not state $v (stevenmih-$n)"
   done
-  grep -q '"leaf_index": *32' $X/stevenmih-$n/held-1-inclusion.json || fail "§7.4's leaf_index 32 is not stevenmih-$n's"
-  grep -q '"mmr_size": *127' $X/stevenmih-$n/held-1-inclusion.json || fail "§7.4's mmr_size 127 is not stevenmih-$n's"
-  grep -q '"citation_purpose": *"counterparty_half"' $X/stevenmih-$n/held-1-citing.json || fail "stevenmih-$n's record does not cite counterparty_half"
-  grep -q '"accepted_via": *"host_announced"' $X/stevenmih-$n/held-1-citing.json || fail "stevenmih-$n's acceptance is not host_announced"
+  grep -q '"citation_purpose": *"counterparty_half"' "$(file $n -citing)" || fail "stevenmih-$n's record does not cite counterparty_half"
+  grep -q '"accepted_via": *"host_announced"' "$(file $n -citing)" || fail "stevenmih-$n's acceptance is not host_announced"
 done
-# Every `leaf_index` and `mmr_size` the page states is the files' value.
-[ "$(grep -o '`leaf_index` [0-9]*' "$GUIDE" | sort -u)" = '`leaf_index` 32' ] || fail "§7.4 states a leaf_index other than 32"
-[ "$(grep -o '`mmr_size` [0-9]*' "$GUIDE" | sort -u)" = '`mmr_size` 127' ] || fail "§7.4 states an mmr_size other than 127"
+# The leaf_index and mmr_size the page states are each side's own.
+for n in 1 2; do
+  for k in leaf_index mmr_size; do
+    v=$(grep -o "\"$k\": *[0-9]*" "$(file $n -inclusion)" | head -1 | grep -o '[0-9]*$')
+    grep -qF "\`$k\` $v" "$GUIDE" || fail "§7.4 does not state $k $v (stevenmih-$n)"
+  done
+done
+[ "$(grep -o '`leaf_index` [0-9]*' "$GUIDE" | sort -u | tr '\n' ' ')" = '`leaf_index` 609 `leaf_index` 960 ' ] || fail "§7.4 states a leaf_index that is not a side's"
+[ "$(grep -o '`mmr_size` [0-9]*' "$GUIDE" | sort -u | tr '\n' ' ')" = '`mmr_size` 1278 `mmr_size` 1979 ' ] || fail "§7.4 states an mmr_size that is not a side's"
 # Each side's values sit in its own column: on the table row that states them,
 # stevenmih-1's value comes before stevenmih-2's.
 side() { grep -o "\"$2\": *\"[0-9a-f]*\"" "$1" | head -1 | cut -d'"' -f4; }
-row_order() { # ROW-PREFIX FILE FIELD WIDTH
+row_order() { # ROW-PREFIX SUFFIX FIELD WIDTH
   local a b line
-  a=$(side $X/stevenmih-1/$2 $3 | cut -c1-$4) b=$(side $X/stevenmih-2/$2 $3 | cut -c1-$4)
+  a=$(side "$(file 1 $2)" $3 | cut -c1-$4) b=$(side "$(file 2 $2)" $3 | cut -c1-$4)
   line=$(grep -F "| $1" "$GUIDE" | head -1)
   [ -n "$line" ] || fail "§7.4 has no row '$1'"
   grep -q "$a.*$b" <<<"$line" || fail "§7.4 row '$1' does not put $a (stevenmih-1) before $b (stevenmih-2)"
 }
-row_order "The held half" held-1-inclusion.json half_capsule_id 8
-row_order "The checkpoint it was pushed under" held-1-inclusion.json checkpoint_digest 64
-row_order "The holder's own record" held-1-citing.json capsule_id 8
-row_order "The holder's own record" held-1-inclusion.json half_capsule_id 8
+row_order "The held half" -inclusion half_capsule_id 8
+row_order "The checkpoint it was pushed under" -inclusion checkpoint_digest 64
+row_order "The holder's own record" -citing capsule_id 8
+row_order "The holder's own record" -inclusion half_capsule_id 8
+row_order "The holder's own half" -citing own_half_capsule_id 8
 K1=1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9
 K2=6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26
-[ "$(side $X/stevenmih-1/held-1-inclusion.json key_id)" = "$K2" ] || fail "stevenmih-1 holds a checkpoint not signed by stevenmih-2's key"
-[ "$(side $X/stevenmih-2/held-1-inclusion.json key_id)" = "$K1" ] || fail "stevenmih-2 holds a checkpoint not signed by stevenmih-1's key"
-grep -q '"received_from": *"91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9"' $X/stevenmih-1/held-1-inclusion.json ||
+[ "$(side "$(file 1 -inclusion)" key_id)" = "$K2" ] || fail "stevenmih-1 holds a checkpoint not signed by stevenmih-2's key"
+[ "$(side "$(file 2 -inclusion)" key_id)" = "$K1" ] || fail "stevenmih-2 holds a checkpoint not signed by stevenmih-1's key"
+grep -q '"received_from": *"91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9"' "$(file 1 -inclusion)" ||
   fail "stevenmih-1's half did not come from stevenmih-2"
-grep -q '"received_from": *"16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"' $X/stevenmih-2/held-1-inclusion.json ||
+grep -q '"received_from": *"16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"' "$(file 2 -inclusion)" ||
   fail "stevenmih-2's half did not come from stevenmih-1"
+# The tie: each record's own half is the half the other side holds, and each names the half it holds.
+cited() { grep -o '"cited_capsule_id": *"[0-9a-f]*"' "$(file $1 -citing)" | cut -d'"' -f4; }
+own() { grep -o '"own_half_capsule_id": *"[0-9a-f]*"' "$(file $1 -citing)" | cut -d'"' -f4; }
+[ -n "$(cited 1)" ] && [ "$(own 1)" = "$(cited 2)" ] && [ "$(own 2)" = "$(cited 1)" ] || fail "the two records do not name each other's halves"
+[ "$(side "$(file 1 -inclusion)" half_capsule_id)" = "$(cited 1)" ] || fail "stevenmih-1's record does not cite the half it holds"
 
 echo "run.sh: every input the page names is in place under $WORK"
 if [ -n "${VERIFIER:-}" ]; then
