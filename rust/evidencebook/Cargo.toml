@@ -1,6 +1,6 @@
 [package]
 name = "evidencebook"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -37,7 +37,7 @@ ciborium = "0.2"
 evidence-request = { version = "0.2", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
-agent-action-capsule = { version = "0.4.1", default-features = false, features = ["strict"] }
+agent-action-capsule = { version = "0.5.0", default-features = false, features = ["strict"] }
 # The `deal` feature's dependencies (the x-deal-v0 reference profile, module
 # `deal`): its schemas' validator, the normalization of counterparty
 # identifiers (Unicode normalization, case mapping, general categories, IDNA,
