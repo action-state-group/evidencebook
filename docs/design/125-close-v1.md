@@ -58,8 +58,11 @@ CHANGELOG says so.
 taken against the log the Close lands in. It then resolves the own window:
 `FromSeq == 0` is 1, `ToSeq == 0` is the book's size; `ToSeq` beyond the size,
 or `FromSeq > ToSeq + 1`, is refused (`ErrInvalid`). A book with no record is
-refused: there is nothing for `head` to name. The same resolved window feeds the
-reconciliation, the counts and the head.
+refused: there is nothing for `head` to name. The resolved window feeds the
+counts and the head only; the reconciliation takes the input as given, so
+`Close` and `Reconcile` keep one completeness rule for an open window
+(`reconcile.go:374`). A root test has an open window with records past the
+last checkpoint.
 
 **`head` and `counts_by_kind`.** `head` is the record id at the resolved
 `ToSeq`. `counts_by_kind` counts every record in `[FromSeq, ToSeq]` by
@@ -69,6 +72,13 @@ head record's `seq`, and `FromSeq = ToSeq - Σcounts + 1`. An empty window
 (`FromSeq = ToSeq + 1`, `Σcounts = 0`) still has a head: the record just
 before the window. This replaces the sealed `reconciliation.from_seq/to_seq`
 that `--since-last` and `--bundle-out` read.
+
+One root function recovers the window, for the plugin's own Closes and for
+peer Closes alike: given the body and the head record's `seq`, it refuses a
+negative count (the schema's `minimum: 0`), a sum that overflows, `Σcounts >
+head seq`, and a head at or after the Close's own `seq`. A signed body is not
+proof that its counts fit its head, so a peer Close that fails this is
+refused, not read as an empty or wrapped window.
 
 Both describe the records the Close binds, which is narrower than the
 schema's wording: `head` is not the log tip when the Close is appended
@@ -208,7 +218,9 @@ Root: a v1 body validates against the vendored schema (counts only, and with
 `counts_by_kind` match the header and window; an empty window, whose head is
 the record before it; open windows (`FromSeq`/`ToSeq` zero) and refusals for
 `ToSeq` past the size, `FromSeq > ToSeq + 1` and an empty book; a pending
-record flushed before the window is taken; `ReadClose` on a v1 body, a legacy
+record flushed before the window is taken; window recovery refusing a negative
+count, an overflowing sum, `Σcounts > head seq` and a head at or after the
+Close; `ReadClose` on a v1 body, a legacy
 body (the existing `testdata/legacy-citation-purpose` book's Closes still read
 and verify), an unknown version, a non-Close record, and a v1 body whose
 `record_id` or `closed_at` disagrees with its header; refusals for a missing
@@ -217,8 +229,9 @@ period, `start >= end`, and a `PeerClose` that is not a record id.
 Plugin: idempotency against a v1 and a legacy prior Close; `--since-last`
 after each; `--peer` with zero, one and two matching peer Closes, one that
 another supersedes, and one whose header is unverified; the peer window taken
-from a cited v1 and a cited legacy Close, and a cited v1 Close whose head is
-not disclosed; repeats with `--bundle-out` disclose the same window as the
+from a cited v1 and a cited legacy Close, a cited v1 Close whose head is not
+disclosed, and an anchored peer Close whose counts sum past its head's seq
+(refused); repeats with `--bundle-out` disclose the same window as the
 first run; claim checks on v1 and legacy Closes, the reconcile-claim tests
 moved to a fixture whose Close cites a peer Close, and a reconcile claim
 against a counts-only Close refused; month boundaries (leap February,
