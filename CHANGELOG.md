@@ -53,8 +53,13 @@
   - A chain that verifies only against its holder's own signatures, which could be a private
     fork, reads `unwitnessed`. Answers with no anchor checkpoint in hand, such as
     `correlation`, always do.
+  - `witness` is the requester's reading under its own directory when it recorded the
+    answer. The carried receipts stay in the response record's original (the reply octets),
+    so anyone holding it can check them again under their own directory.
   - `VerifyBundleAnswer` sets `VerifiedBundle.Witnessed` and adds the finding `unwitnessed`
-    when a bundle carries no receipt.
+    when a bundle carries no receipt. A bundle still fails on a carried receipt that does not
+    verify, as before: a bundle is checked on its own, with no open request whose outcome a
+    forged receipt could foreclose.
   - This repository's responders carry no receipts yet (#214), so answers between two
     evidencebook books read `unwitnessed`.
 - The vectors in `testdata/asker-limits/` (`limits.json`, `witness.json`) are read by the Go

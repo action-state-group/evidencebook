@@ -535,7 +535,9 @@ func (v VerifiedBundle) Covers(seq uint64) bool {
 // keys.Checkpoint, and every witness receipt carried on it must verify
 // against that checkpoint under the requester's own witness directory. A
 // bundle that carries no receipt still verifies, with Witnessed false and
-// the finding "unwitnessed". A
+// the finding "unwitnessed". Unlike a reply's carried receipts, a bundle's
+// must all verify: a bundle is checked on its own, with no open request
+// whose outcome a forged receipt could foreclose. A
 // bundle is never the canonical Artifact of an evidence request; this is the
 // separate disclosure path (profile §6.6).
 func VerifyBundleAnswer(data []byte, keys ResponderKeys) (VerifiedBundle, error) {

@@ -387,7 +387,13 @@ answers whose material carries no anchor checkpoint. Receipts come from the
 reply's `witness_receipts` member, which is outside the profile and unsigned,
 so a receipt can only ever add `witnessed`: one that does not verify counts
 for nothing. The receipt carrier's size is limited on every reply, a refusal
-too.
+too. `witness` is the requester's reading under its own witness directory
+when it recorded the answer, not a property of the answer: another reader
+may list other witnesses. The carried receipts stay in the response record's
+original (the reply octets), so anyone holding it can check them again under
+their own directory. An Evidence Bundle still fails on a carried receipt
+that does not verify: it is checked on its own, with no open request whose
+outcome a forged receipt could foreclose.
 
 **Reconcile correlation.** Pairing runs in two passes over all halves, so it
 does not depend on input order: `exchange_id` first, preferring a counterpart
