@@ -69,24 +69,68 @@ pub fn report_payload(r: &Report) -> Result<Vec<u8>, Error> {
 
 /// Reads a whole-number float in the report's lines as the integer it is,
 /// as Go's `ReportPayload` does (it writes the body as JSON and reads its
-/// numbers back): a body decoded from JSON text may hold `1.0` for 1. A
-/// fraction, and a whole number beyond ±2^53, stay floats, which JCS
-/// refuses.
+/// numbers back): a body decoded from JSON text may hold `1.0` for 1. The
+/// number is read exactly as written, so a fraction (`1.0000000000000001`,
+/// `1e-400`) and a whole number beyond ±2^53 stay floats, which JCS refuses.
 fn integral_floats_as_integers(v: &mut Value) {
-    const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
     match v {
         Value::Number(n) if n.is_f64() => {
-            if let Some(f) = n
-                .as_f64()
-                .filter(|f| f.fract() == 0.0 && f.abs() <= MAX_SAFE)
-            {
-                *v = Value::from(f as i64);
+            if let Some(i) = exact_safe_integer(&n.to_string()) {
+                *v = Value::from(i);
             }
         }
         Value::Object(m) => m.values_mut().for_each(integral_floats_as_integers),
         Value::Array(a) => a.iter_mut().for_each(integral_floats_as_integers),
         _ => {}
     }
+}
+
+/// The integer a JSON number literal is exactly, when it is a whole number
+/// within ±2^53 - 1.
+fn exact_safe_integer(lit: &str) -> Option<i64> {
+    let (neg, rest) = match lit.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, lit),
+    };
+    let (mantissa, exp) = match rest.find(['e', 'E']) {
+        Some(k) => (&rest[..k], rest[k + 1..].parse::<i64>().ok()?),
+        None => (rest, 0),
+    };
+    let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits: String = format!("{int}{frac}");
+    let scale = exp.checked_sub(i64::try_from(frac.len()).ok()?)?;
+    let digits = digits.trim_start_matches('0');
+    let whole = if scale >= 0 {
+        if digits.is_empty() {
+            String::new()
+        } else {
+            // Beyond 16 digits the value is past 2^53 anyway.
+            if digits.len() as i64 + scale > 16 {
+                return None;
+            }
+            format!("{digits}{}", "0".repeat(scale as usize))
+        }
+    } else {
+        let cut = digits.len() as i64 + scale;
+        let (head, tail) = if cut <= 0 {
+            ("", digits)
+        } else {
+            digits.split_at(cut as usize)
+        };
+        if tail.bytes().any(|b| b != b'0') {
+            return None;
+        }
+        head.to_string()
+    };
+    let n: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    if n > crate::canonical::MAX_SAFE_INTEGER {
+        return None;
+    }
+    Some(if neg { -n } else { n })
 }
 
 /// A report's Capsule members, sealed at `at` (seconds since the Unix epoch)

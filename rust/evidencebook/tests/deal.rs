@@ -940,5 +940,30 @@ fn report_lines_read_whole_floats_as_integers() {
         deal::report_payload(&report(json!({"n": 1, "m": [0, 2]}))).unwrap()
     );
     assert!(deal::report_payload(&report(json!({"n": 1.5}))).is_err());
+    // Read exactly as written: no fraction is rounded away.
+    let parsed = |text: &str| serde_json::from_str::<Value>(text).unwrap();
+    for text in [
+        r#"{"n":1.0000000000000001}"#,
+        r#"{"n":1e-400}"#,
+        r#"{"n":9007199254740992}"#,
+        r#"{"n":1.5e0}"#,
+    ] {
+        assert!(
+            deal::report_payload(&report(parsed(text))).is_err(),
+            "{text}"
+        );
+    }
+    for (text, want) in [
+        (r#"{"n":2.000}"#, r#"{"n":2}"#),
+        (r#"{"n":1e3}"#, r#"{"n":1000}"#),
+        (r#"{"n":-0.0}"#, r#"{"n":0}"#),
+        (r#"{"n":12.50e1}"#, r#"{"n":125}"#),
+    ] {
+        assert_eq!(
+            deal::report_payload(&report(parsed(text))).unwrap(),
+            deal::report_payload(&report(parsed(want))).unwrap(),
+            "{text}"
+        );
+    }
     assert!(deal::report_payload(&report(json!({"n": 9_007_199_254_740_992.0_f64}))).is_err());
 }

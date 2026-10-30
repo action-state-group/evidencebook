@@ -25,10 +25,11 @@
 //! profile's fixtures name one. Two diagnostics are written differently: a
 //! `canonicalization` value that is not a string is shown as JSON, not as
 //! Go's `%v` prints it, and a quoted value is not escaped where Go's `%q`
-//! escapes a non-printable character beyond ASCII. The personal-data and
-//! wording scans' character classes come from the `regex` crate's Unicode
-//! 16 tables, where Go 1.27's are Unicode 17, so a character added in
-//! Unicode 17 may be read differently.
+//! escapes a non-printable character beyond ASCII. The Unicode tables are
+//! not Go's: the personal-data and wording scans' character classes come
+//! from the `regex` crate (Unicode 16) and identifier normalization and
+//! case mapping from ICU4X's data, where Go 1.27's tables are Unicode 17, so
+//! a character newer than a table may be read differently.
 
 mod capsule;
 mod check;
