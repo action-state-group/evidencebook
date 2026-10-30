@@ -5,7 +5,7 @@
 ### Changed: the third-party verifier guide's two-node exchange is one whose records name both halves (#41)
 
 - `docs/THIRD-PARTY-VERIFIER.md` §7.4 now takes the exchange from evidence-network/loop
-  `202d8da` (step 05 of 2026-10-30, a lab build with capsules-plugin#138), in place of
+  `5905bf0` (step 05 of 2026-10-30, a lab build with capsules-plugin#138), in place of
   the 2026-10-29 one at `cfeaf09`. Each holder's record carries
   `received_half.own_half_capsule_id`, so the two records name each other's halves; §7.4
   adds that row and the join through it, and its other values are the new exchange's.
