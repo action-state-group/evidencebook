@@ -21,9 +21,11 @@ const (
 	regeneratedCommit = "e706487d37561a7e7aae5c169d7c45e76305973b"
 	// The guide's §7: checkpointed-local-log at tag
 	// crates/checkpointed-local-log-v0.3.1, and the evidence-network/loop
-	// commit that holds the node's bundle and the two-node exchange (§7.4).
+	// commit that holds the node's bundle, and the one that holds the two-node
+	// exchange (§7.4).
 	cllCommit     = "0f74297761f3a0b81d27a116f32ac556c0ecb59d"
 	loopCommit    = "cfeaf098bde73d31ed9b08a0ba38a56cd8c333f8"
+	dealCommit    = "202d8da362734eecfd01713192b65ae61cefa5c9"
 	vectorsSHA256 = "5dc5078642df32969dd91ab57371fd4a8f1900b1505ec55e77b44dabc509b10b"
 )
 
@@ -111,6 +113,7 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 		{"AAC", aacCommit, 3}, // §1, §6.1 and §7.1
 		{"CLL", cllCommit, 1},
 		{"LOOP", loopCommit, 1},
+		{"DEAL", dealCommit, 1},
 	} {
 		set := regexp.MustCompile(`(?m)^` + p.name + `=(\S+)$`)
 		pins := set.FindAllStringSubmatch(guide, -1)
@@ -141,7 +144,7 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 	}
 	for _, sha := range regexp.MustCompile("`([0-9a-f]{40})`").FindAllStringSubmatch(guide, -1) {
 		switch sha[1] {
-		case aacCommit, regeneratedCommit, cllCommit, loopCommit, "43f3cb1b955d647bc92cb4da0d823973d1981cad":
+		case aacCommit, regeneratedCommit, cllCommit, loopCommit, dealCommit, "43f3cb1b955d647bc92cb4da0d823973d1981cad":
 		default:
 			t.Errorf("the guide names another commit: %s", sha[1])
 		}
