@@ -23,7 +23,11 @@ func TestDisclosureScanRefusesLinkableArtifacts(t *testing.T) {
 		"undeclared top member":   `{"anchor":"a","evidence_stream":"s","records":[],"subject":{"full_history":null},"producer":"x"}`,
 		"undeclared entry member": `{"anchor":"a","evidence_stream":"s","records":[{"body":"","digest":"d","leaf_index":0,"verification":{}}],"subject":{"full_history":null}}`,
 	} {
-		if book.disclosureClean([]byte(artifact), &recordSetFields) {
+		view, err := book.view(t.Context(), book.log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if view.disclosureClean([]byte(artifact), &recordSetFields) {
 			t.Fatalf("%s passed the disclosure scan", name)
 		}
 	}

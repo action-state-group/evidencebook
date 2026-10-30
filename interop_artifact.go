@@ -60,11 +60,14 @@ var (
 	historyFields     = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
 )
 
-func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
+// buildArtifact builds the canonical Artifact from view's snapshot. It
+// reads the store and substrate, which lock themselves, and nothing else the
+// book changes, so it runs without the book's lock.
+func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
 	if req.Derivation == DerivationStandardHistory {
 		// A card of counts whatever the history's length: the item cap
 		// bounds record lists, and the card lists none.
-		return b.standardHistoryLocked(ctx, view, anchor, leaves)
+		return b.standardHistoryCard(ctx, view, anchor, leaves)
 	}
 	maxItems := b.responder.MaxAnswerItems
 	if maxItems == 0 {
@@ -83,7 +86,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 			return builtArtifact{declined: true}, nil
 		}
 		if req.Derivation == DerivationHistoryCard {
-			history, err := b.historyCardLocked(ctx, chain, anchor)
+			history, err := b.historyCard(ctx, chain, anchor)
 			if err != nil {
 				return builtArtifact{}, err
 			}
@@ -96,15 +99,15 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 			head["checkpoints"], declared = list, checkpointsFields
 		}
 	case def != nil:
-		records, err := b.projectLocked(ctx, leaves, def)
+		records, err := b.project(ctx, view, leaves, def)
 		if err != nil {
 			return builtArtifact{}, err
 		}
 		head["derivation"], head["records"] = def.id, records
 		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: append([]string{"digest", "leaf_index"}, def.def.Fields...), list: "records"}
 	case req.Subject.Kind == SubjectRecord:
-		id := b.order[leaves[0]]
-		stored, err := b.storedLocked(ctx, id)
+		id := view.log[leaves[0]].RecordID
+		stored, err := b.store.GetRecord(ctx, id)
 		if err != nil {
 			return builtArtifact{}, err
 		}
@@ -112,7 +115,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 		if err != nil {
 			return builtArtifact{}, err
 		}
-		if !b.disclosureClean(body, nil) {
+		if !view.disclosureClean(body, nil) {
 			return builtArtifact{declined: true}, nil
 		}
 		verification, material, err := cllMaterial(ctx, b.commitments.(cllMaterialSource), leaves[0]+1, anchor)
@@ -123,8 +126,8 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 	default:
 		records := make([]any, len(leaves))
 		for i, leaf := range leaves {
-			id := b.order[leaf]
-			stored, err := b.storedLocked(ctx, id)
+			id := view.log[leaf].RecordID
+			stored, err := b.store.GetRecord(ctx, id)
 			if err != nil {
 				return builtArtifact{}, err
 			}
@@ -140,7 +143,7 @@ func (b *Book) buildArtifactLocked(ctx context.Context, view *bookView, req Evid
 	if err != nil {
 		return builtArtifact{}, err
 	}
-	if !b.disclosureClean(artifact, &declared) {
+	if !view.disclosureClean(artifact, &declared) {
 		return builtArtifact{declined: true}, nil
 	}
 	built.artifact = artifact
@@ -162,12 +165,12 @@ func checkpointsThrough(history []Checkpoint, anchor Checkpoint) []Checkpoint {
 	return out
 }
 
-// historyCardLocked is history_card/1 (ER §8.1): for each checkpoint from
+// historyCard is history_card/1 (ER §8.1): for each checkpoint from
 // the stream's first to the anchor, the checkpoint and the consistency proof
 // from the previous one (cll-consistency-proof octets, hex). The card holds
 // no record content. This responder holds no witness receipts for its
 // checkpoints, so none are listed.
-func (b *Book) historyCardLocked(ctx context.Context, chain []Checkpoint, anchor Checkpoint) ([]any, error) {
+func (b *Book) historyCard(ctx context.Context, chain []Checkpoint, anchor Checkpoint) ([]any, error) {
 	source := b.commitments.(cllMaterialSource)
 	history := make([]any, len(chain))
 	for i, cp := range chain {
@@ -191,10 +194,10 @@ func (b *Book) historyCardLocked(ctx context.Context, chain []Checkpoint, anchor
 // itself when it is a bare record, must contain no principal or
 // counterparty reference this book holds, and no entry may be a record the
 // responder keeps for its own bookkeeping.
-func (b *Book) disclosureClean(artifact []byte, declared *declaredFields) bool {
+func (v *bookView) disclosureClean(artifact []byte, declared *declaredFields) bool {
 	identities := map[string]bool{}
-	for _, id := range b.order {
-		h := b.records[id].Header
+	for _, record := range v.log {
+		h := record.Header
 		for _, ref := range []string{h.PrincipalRef, h.CounterpartyRef} {
 			if ref != "" {
 				identities[ref] = true
@@ -230,7 +233,7 @@ func (b *Book) disclosureClean(artifact []byte, declared *declaredFields) bool {
 			}
 		}
 		if digest, ok := entry["digest"].(string); ok {
-			if record, held := b.records[digest]; held && (record.Header.RecordType == RecordTypeRequestAnswered || record.Header.RecordType == RecordTypeDisclosure) {
+			if record, held := v.record(digest); held && (record.Header.RecordType == RecordTypeRequestAnswered || record.Header.RecordType == RecordTypeDisclosure) {
 				return false
 			}
 		}
@@ -279,13 +282,13 @@ func mentionsAny(document []byte, strs map[string]bool) bool {
 	return walk(root)
 }
 
-// projectLocked builds a registered derivation's records: each record's
+// project builds a registered derivation's records: each record's
 // digest, its position, and the declared header fields it carries.
-func (b *Book) projectLocked(ctx context.Context, leaves []uint64, def *derivationEntry) ([]any, error) {
+func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def *derivationEntry) ([]any, error) {
 	records := make([]any, len(leaves))
 	for i, leaf := range leaves {
-		id := b.order[leaf]
-		stored, err := b.storedLocked(ctx, id)
+		id := view.log[leaf].RecordID
+		stored, err := b.store.GetRecord(ctx, id)
 		if err != nil {
 			return nil, err
 		}

@@ -188,7 +188,7 @@ func (t probeTarget) anchored(ctx context.Context, anchor string) (bool, error) 
 }
 
 func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, *Checkpoint, error) {
-	view, err := b.viewLocked(ctx)
+	view, err := b.view(ctx, b.logLocked())
 	if err != nil {
 		return nil, nil, err
 	}

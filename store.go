@@ -29,6 +29,10 @@ type StoredRecord struct {
 // Store holds complete records and the checkpoints the book has observed. A
 // record is stored before its identity is appended to the substrate, so the
 // substrate never commits an identity the book cannot produce.
+//
+// The book writes under its own lock, but Respond reads GetRecord and
+// Checkpoints without it, so they must be safe to call concurrently with
+// the writes.
 type Store interface {
 	PutRecord(ctx context.Context, record StoredRecord) error
 	GetRecord(ctx context.Context, recordID string) (StoredRecord, error)

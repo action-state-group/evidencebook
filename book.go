@@ -72,7 +72,13 @@ type Book struct {
 
 	records map[string]Record
 	order   []string
-	roots   map[string]IndexRoot
+	// log is the committed records in seq order: log[i].RecordID is
+	// order[i], and both grow only in admitLocked and Open.
+	// It is append-only and its elements are never changed, so a prefix
+	// taken under mu (logLocked) stays a consistent view of the log after mu
+	// is released: Respond answers from one without holding the lock.
+	log   []Record
+	roots map[string]IndexRoot
 	// pending is a record already in the store whose substrate append
 	// failed. It holds the next position until the append succeeds, so a
 	// transient substrate error never lets two records claim one seq.
@@ -161,6 +167,7 @@ func (b *Book) recover(ctx context.Context) error {
 		}
 		b.records[record.RecordID] = record
 		b.order = append(b.order, record.RecordID)
+		b.log = append(b.log, record)
 	}
 	committed, err := b.commitments.Size(ctx)
 	if err != nil {
@@ -236,10 +243,17 @@ func (b *Book) flushPendingLocked(ctx context.Context) error {
 func (b *Book) admitLocked(ctx context.Context, record Record) error {
 	b.records[record.RecordID] = record
 	b.order = append(b.order, record.RecordID)
+	b.log = append(b.log, record)
 	if err := errors.Join(b.operational.Add(ctx, record), b.discovery.Add(ctx, record), b.addAuthenticated(record)); err != nil {
 		return fmt.Errorf("index record %s: %w", record.RecordID, err)
 	}
 	return nil
+}
+
+// logLocked is the committed log as of now. Its capacity is its length, so
+// nothing appended to the book later can reach its backing array through it.
+func (b *Book) logLocked() []Record {
+	return b.log[:len(b.log):len(b.log)]
 }
 
 // decodeStored re-derives a record from its durable form and checks that the

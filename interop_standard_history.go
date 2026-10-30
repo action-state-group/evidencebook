@@ -34,9 +34,9 @@ type StandardHistorySource struct {
 	// (its digest and window, SH §5.1) and one deal entry per deal the
 	// stream holds at the anchor (SH §5.2), read from records: the book's
 	// servable records the anchor covers, in log order. Respond calls it
-	// holding the book's lock, so it must not call the Book. Its result
-	// must depend on its arguments only, so the card does not depend on
-	// who asks (ER §5).
+	// without the book's lock, and may call it for several requests at
+	// once. Its result must depend on its arguments only, so the card does
+	// not depend on who asks (ER §5).
 	Inputs func(ctx context.Context, anchor Checkpoint, records []Record) (standardhistory.Policy, []standardhistory.Deal, error)
 }
 
@@ -53,18 +53,18 @@ func (s *StandardHistorySource) validate() error {
 	return nil
 }
 
-// standardHistoryLocked builds the card as of anchor from the host's
+// standardHistoryCard builds the card as of anchor from the host's
 // inputs over leaves, the full_history subject's servable records under
 // the anchor. The card is the whole artifact (SH §3) and carries no
 // verification material: anchor_inclusion is NOT_CHECKED for a derivation
 // (IP P-13). Before it is released the card is checked against the very
 // inputs it was derived from (SH §6), so a host's inputs that make no
 // standard card are an error, never an answer.
-func (b *Book) standardHistoryLocked(ctx context.Context, view *bookView, anchor Checkpoint, leaves []uint64) (builtArtifact, error) {
+func (b *Book) standardHistoryCard(ctx context.Context, view *bookView, anchor Checkpoint, leaves []uint64) (builtArtifact, error) {
 	source := b.standardHistory
 	records := make([]Record, len(leaves))
 	for i, leaf := range leaves {
-		records[i] = b.records[b.order[leaf]].detached()
+		records[i] = view.log[leaf].detached()
 	}
 	policy, deals, err := source.Inputs(ctx, anchor, records)
 	if err != nil {

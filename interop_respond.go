@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -219,6 +220,12 @@ type AnsweredStatement struct {
 // seals an evidence_request_answered record and returns it; otherwise the
 // returned Record is zero. Malformed and unauthenticated traffic never
 // grows the log and never forces a checkpoint (FR-37).
+//
+// Respond answers from a snapshot of the log and holds the book's lock only
+// to take it, to issue an anchor an authenticated requester's freshness
+// floor needs, and to seal the evidence_request_answered record. Answering,
+// however many requests arrive at once, never holds Append, Checkpoint or
+// any other writer for longer than that (evidencebook#208).
 func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions) (Reply, Record, error) {
 	if err := opts.Policy.Validate(); err != nil {
 		return Reply{}, Record{}, err
@@ -226,9 +233,7 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 	if request.MediaType != MediaTypeJSON && request.MediaType != MediaTypeCBOR {
 		return Reply{}, Record{}, fmt.Errorf("%w: a request is carried as %s or %s, not %q", ErrInvalid, MediaTypeJSON, MediaTypeCBOR, request.MediaType)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	a := answer{book: b, ctx: ctx, request: request, opts: opts, now: b.now(), digest: digestBytes(request.Octets)}
+	a := answer{book: b, ctx: ctx, request: request, opts: opts, digest: digestBytes(request.Octets)}
 	reply, err := a.run()
 	if err != nil || !a.seal {
 		return reply, Record{}, err
@@ -237,6 +242,8 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 	if err != nil {
 		return Reply{}, Record{}, err
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	record, err := b.appendLocked(ctx, Entry{RecordType: RecordTypeRequestAnswered, EpistemicType: ObservedEvent, Links: []Link{}, Statement: body})
 	if err != nil {
 		return Reply{}, Record{}, err
@@ -244,7 +251,7 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 	return reply, record, nil
 }
 
-// answer is one request being answered, under the book's lock.
+// answer is one request being answered, from a snapshot of the book's log.
 type answer struct {
 	book      *Book
 	ctx       context.Context
@@ -365,12 +372,18 @@ func (a *answer) run() (Reply, error) {
 	if limit == 0 {
 		limit = DefaultMaxRequestBytes
 	}
+	// The lock is held only for what must be serialized with the book's
+	// writers: its clock, the limiter (which the book has always called
+	// under its lock) and the snapshot.
+	b.mu.Lock()
+	a.now = b.now()
 	// Cost policy first: an oversized or over-limit request is declined
 	// before any parsing or resolution work (FR-37).
-	if len(a.request.Octets) > limit {
-		return a.refuse(ReasonPolicyDeclined, "")
-	}
-	if l := b.responder.Limiter; l != nil && !l.Allow(a.opts.AuthenticatedRequester, a.now) {
+	oversized := len(a.request.Octets) > limit
+	limited := !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
+	log, derivations := b.logLocked(), maps.Clone(b.derivations)
+	b.mu.Unlock()
+	if oversized || limited {
 		return a.refuse(ReasonPolicyDeclined, "")
 	}
 	check := readRequest(a.request)
@@ -378,20 +391,24 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
-	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: b.relationshipLocked(a.opts.AuthenticatedRequester)}
-	a.seal = a.statement.Relationship != RelationshipStranger
-	view, err := b.viewLocked(a.ctx)
+	view, err := b.view(a.ctx, log)
 	if err != nil {
 		return Reply{}, err
 	}
+	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
+	a.seal = a.statement.Relationship != RelationshipStranger
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: b.derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
-		if _, err := b.checkpointLocked(a.ctx); err != nil {
+		b.mu.Lock()
+		_, err := b.checkpointLocked(a.ctx)
+		log = b.logLocked()
+		b.mu.Unlock()
+		if err != nil {
 			return Reply{}, err
 		}
-		if view, err = b.viewLocked(a.ctx); err != nil {
+		if view, err = b.view(a.ctx, log); err != nil {
 			return Reply{}, err
 		}
 		g.named = view.named
@@ -404,7 +421,7 @@ func (a *answer) run() (Reply, error) {
 	}
 	r, def := d.Resolution, d.def
 	anchor := view.checkpoints[r.Anchor]
-	built, err := b.buildArtifactLocked(a.ctx, view, req, anchor, r.Leaves, def)
+	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -412,7 +429,7 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(ReasonPolicyDeclined, "")
 	}
 	if req.Deadline != "" {
-		if deadline, _ := evidencerequest.ParseRequestTime(req.Deadline); b.now().After(deadline) {
+		if deadline, _ := evidencerequest.ParseRequestTime(req.Deadline); b.clock().After(deadline) {
 			return a.refuse(ReasonDeadlineUnmet, "")
 		}
 	}
@@ -441,49 +458,62 @@ func (a *answer) run() (Reply, error) {
 	return evidencerequest.EncodeReply(a.request.MediaType, &envelope, nil)
 }
 
-// relationshipLocked classifies an authenticated requester by counterparty_ref
+// relationship classifies an authenticated requester by counterparty_ref
 // on the book's own records. It is only ever given the authenticated
 // identity: a counterparty_ref value is not a credential, so knowing one
 // grants nothing. Records of answered requests name no requester, so asking
 // never makes a stranger a counterparty.
-func (b *Book) relationshipLocked(authenticated string) string {
+func (v *bookView) relationship(authenticated string) string {
 	if authenticated == "" {
 		return RelationshipStranger
 	}
-	for _, id := range b.order {
-		if b.records[id].Header.CounterpartyRef == authenticated {
+	for _, record := range v.log {
+		if record.Header.CounterpartyRef == authenticated {
 			return RelationshipCounterparty
 		}
 	}
 	return RelationshipIdentified
 }
 
-// bookView is the Book's evidencerequest.View, built under the book's lock.
+// clock reads the book's clock under its lock: Config.Now has only ever
+// been called with the lock held.
+func (b *Book) clock() time.Time {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.now()
+}
+
+// bookView is the Book's evidencerequest.View over one snapshot of its log
+// (Book.logLocked). It reads nothing the book changes after the snapshot,
+// so it needs no lock. Its checkpoints are the stored ones that cover no
+// record past the snapshot: every anchor it resolves, and so every proof
+// built at that anchor's size, is about records the snapshot holds, however
+// far the log has grown since (evidencebook#208).
 type bookView struct {
-	book        *Book
+	log         []Record
 	checkpoints []Checkpoint
 	views       []evidencerequest.AnchorView
 	leaves      map[string]uint64
 	commitments []retentionCommitment
 }
 
-func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
+func (b *Book) view(ctx context.Context, log []Record) (*bookView, error) {
 	history, err := b.store.Checkpoints(ctx)
 	if err != nil {
 		return nil, err
 	}
-	v := &bookView{book: b, leaves: make(map[string]uint64, len(b.order))}
+	v := &bookView{log: log, leaves: make(map[string]uint64, len(log))}
 	for _, cp := range history {
-		if cp.Kind != SubstrateKindCLL {
+		if cp.Kind != SubstrateKindCLL || cp.Entries > uint64(len(log)) {
 			continue
 		}
 		v.checkpoints = append(v.checkpoints, cp)
 		v.views = append(v.views, evidencerequest.AnchorView{Digest: anchorDigest(cp), Entries: cp.Entries, IssuedAt: cp.IssuedAt})
 	}
-	for i, id := range b.order {
-		v.leaves[id] = uint64(i)
-		if b.records[id].Header.RecordType == RecordTypeRetentionCommitment {
-			if c, ok := readRetentionCommitment(b.records[id].Header.Statement); ok {
+	for i, record := range log {
+		v.leaves[record.RecordID] = uint64(i)
+		if record.Header.RecordType == RecordTypeRetentionCommitment {
+			if c, ok := readRetentionCommitment(record.Header.Statement); ok {
 				v.commitments = append(v.commitments, c)
 			}
 		}
@@ -491,8 +521,17 @@ func (b *Book) viewLocked(ctx context.Context) (*bookView, error) {
 	return v, nil
 }
 
+// record is the snapshot's record with id, if it holds one.
+func (v *bookView) record(id string) (Record, bool) {
+	leaf, ok := v.leaves[id]
+	if !ok {
+		return Record{}, false
+	}
+	return v.log[leaf], true
+}
+
 func (v *bookView) Anchors() []evidencerequest.AnchorView { return v.views }
-func (v *bookView) LogEntries() uint64                    { return uint64(len(v.book.order)) }
+func (v *bookView) LogEntries() uint64                    { return uint64(len(v.log)) }
 
 func (v *bookView) LeafOf(digest string) (uint64, bool) {
 	leaf, ok := v.leaves[digest]
@@ -503,10 +542,10 @@ func (v *bookView) LeafOf(digest string) (uint64, bool) {
 // disclosed is never served, so one requester's asking or receiving can
 // never be read by another (NFR-2, NFR-4).
 func (v *bookView) Servable(leaf uint64) bool {
-	if leaf >= uint64(len(v.book.order)) {
+	if leaf >= uint64(len(v.log)) {
 		return false
 	}
-	switch v.book.records[v.book.order[leaf]].Header.RecordType {
+	switch v.log[leaf].Header.RecordType {
 	case RecordTypeRequestAnswered, RecordTypeDisclosure:
 		return false
 	}
@@ -515,8 +554,8 @@ func (v *bookView) Servable(leaf uint64) bool {
 
 func (v *bookView) matching(match func(Header) bool) []uint64 {
 	var out []uint64
-	for i, id := range v.book.order {
-		if match(v.book.records[id].Header) && v.Servable(uint64(i)) {
+	for i, record := range v.log {
+		if match(record.Header) && v.Servable(uint64(i)) {
 			out = append(out, uint64(i))
 		}
 	}
@@ -558,7 +597,7 @@ func (v *bookView) named(subject Subject) []Header {
 	}
 	headers := make([]Header, len(leaves))
 	for i, leaf := range leaves {
-		headers[i] = v.book.records[v.book.order[leaf]].Header
+		headers[i] = v.log[leaf].Header
 	}
 	return headers
 }
