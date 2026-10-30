@@ -2,7 +2,7 @@
 
 Issue: https://github.com/action-state-group/evidencebook-deal/issues/62.
 Follows https://github.com/action-state-group/evidencebook-deal/pull/60 (5a19f35, fix for #26).
-Status: in review (Codex, Kimi's Claude stand-in, Sherlock2). No code until it converges.
+Status: converged (#63); implemented in the code PR for #62.
 
 ## Problem
 
@@ -70,14 +70,16 @@ regions, and only when it is still a whole id after the steps that run before th
    a non-JSON copy are returned as now. `dealPageGate` passes `nil` and reads exactly what it reads
    today.
 2. **Field.** The hook walks each region with `json.Decoder.Token` and masks the string value
-   of every object member whose key, as decoded, is exactly `cose`, at any depth. A key is known by
+   of every object member whose key, as decoded, is exactly `cose` and whose object is a `checkpoint` member's value or the root. A key is known by
    its position (the first string after `{` or after a member), not by its bytes, so a key such as
    `"\"cose"` or `"prefix\"cose"` is not `cose`, and a `cose` value that is an object or an array
    is not masked. The value is masked only when its raw bytes are the decoded value between two
    quotes (no escapes); `Decoder.InputOffset` gives its end. Two regex drafts of this rule each
    missed a case in review (prose imitating JSON, then a key holding an escaped quote), so the
    rule is a token walk, not a pattern.
-   `cose` is the one base64url field in the counterparty copy dumped for this note: the checkpoint
+   `cose` is masked only when its object is a `checkpoint` member's value or the document root:
+   `terms.conditions` takes any lowercase name, so a `cose` condition is free text (round 1 of the
+   code review). `cose` is the one base64url field in the counterparty copy dumped for this note: the checkpoint
    (`evidencebook` `substrate_cll.go:332`); a cadence chain's checkpoint (`cadence_chain.go:79`)
    has the same key. Every other string value in that copy is hex, a date, a word or prose, and
    its extensions are `x-cadence-witness/v0`, `x-deal-report/v0` and `x-deal-v0` only.
@@ -101,7 +103,9 @@ The money reader (`deal_money_text.go`), the bound-name checks and `removeHexTok
 A base64url field the list misses brings back #26's random refusals for that field (a false
 positive, never a missed bound). The code PR adds a guard test that builds every copy kind the
 suite can produce (counterparty and adjudicator bundles, the history copy, the terms Result bundle,
-the evidence-request copy and the counterparty page, with a cadence witness configured), walks
+the evidence-request copy and the counterparty page, with a cadence witness configured; the code PR's
+test builds the two bundles and the page of a short merchant deal, and the other kinds stay
+unbuilt, covered by the producer reading above), walks
 each JSON region, and lists every mixed-case id-shaped string value under a key other than `cose`.
 That list is a signal to investigate, not a rule to extend the mask. A field joins the mask only
 when the producer code shows it holds machine-encoded bytes only (a base64url encoding of a
@@ -164,7 +168,8 @@ Random ids (must pass), from `TestARandomIdIsNotTheLimit` and #60's rounds:
 | 800 | `{"cose":"8gbp-Qlhh6xzsywqlv3kuyf8b1xtzkQ"}` | P | P |
 | 800 | `{"cose":"8usd_K3j2h1xxxxxxxxxxxxxxxxxx"}`, `{"cose":"8eur-Ab3xxxxxxxxxxxxxxxxxxxxxxx"}`, `{"cose":"8chf-Xz9xxxxxxxxxxxxxxxxxxxxxxxx"}` | P | P |
 | 800 | page whose bundle is `{"checkpoint":{"cose":"8krSiljccsfh-Gc4lpkxi8m4j8wl"}}` | P | P |
-| 800 | `{"a":{"cose":"8krSiljccsfh-Gc4lpkxi8m4j8wl"},"b":"x"}` | P | P |
+| 800 | `{"checkpoint":{"cose":"8krSiljccsfh-Gc4lpkxi8m4j8wl"},"b":"x"}` | P | P |
+| 800 | `{"a":{"cose":"8krSiljccsfh-Gc4lpkxi8m4j8wl"},"b":"x"}`, `{"terms":{"conditions":{"cose":"8USD-Per-Month-Plan-ok"}}}` (a `cose` outside a checkpoint is text) | P | R |
 | 800 | `{"cose" : "8krSiljccsfh-Gc4lpkxi8m4j8wl"}` (whitespace before the colon: main's pattern misses it; no producer writes it) | R | P |
 | 800 | `{"k":"8A3Cad8E9f0a1b2c3d4"}` and `{"cose":"8A3Cad8E9f0a1b2c3d4"}` (mixed-case hex: blanked by `removeHexTokens`) | P | P |
 

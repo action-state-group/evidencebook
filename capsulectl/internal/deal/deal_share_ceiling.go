@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -164,45 +166,99 @@ func removeHexTokens(text []byte) []byte {
 	return out
 }
 
-// idString is a JSON string value (after a key's colon) of 16 or more
-// base64url characters and nothing else.
-var idString = regexp.MustCompile(`":\s*"([0-9A-Za-z_-]{16,})"`)
-
-// maskOpaqueIDs turns the leading digits of every JSON string value that is
-// entirely one random id in base64url (a COSE checkpoint, a signature) into
-// a letter, in the text the money checks read. The money reader would
-// otherwise read an amount at the start of such an id ("8krSil…" as 8 kr,
-// "8gbp-…" as 8 GBP) and refuse a copy at random (issue #26). The values of
-// such fields are an open set (the bundle's own fields, and any the spec
-// adds), so the string's shape names them, not a key list: the whole value
-// is 16 or more of [0-9A-Za-z_-] with an upper-case and a lower-case letter,
-// and it stands after a key's colon, so a quoted word in prose is not one.
-// A number written inside any longer text, and the text around the string,
-// are read as before; the bound names are looked for in the whole text, not
-// in this one.
+// maskCoseIDs returns the hook dealGateText applies to a shared copy's JSON
+// regions for the money checks. It turns the leading digits of the string
+// value of every object member whose key is exactly "cose" and whose object
+// is a "checkpoint" member's value (or the document root), as the producers
+// write it (a COSE checkpoint, base64url bytes), into a letter, so the money reader does not
+// read an amount at the start of a random id ("8krSil…" as 8 kr, "8gbp-…" as
+// 8 GBP: issue #26). The member is found by walking the region with
+// json.Decoder.Token, so its key is known by position, not by bytes: prose
+// that imitates JSON, or a key such as "\"cose", is never one (issue #62). A
+// "cose" key elsewhere (terms.conditions takes any lowercase name) is free
+// text and is read as money.
+// A value is masked only when its raw bytes are the decoded value between two
+// quotes and it is still a whole mixed-case id of 16 or more [0-9A-Za-z_-]
+// after the deal's own ids and the whole hex tokens are taken out, as the
+// gate takes them out before it reads money.
 //
-// Known residual (evidencebook-deal#62): the shape cannot tell a JSON value
-// from prose that imitates one, so JSON-looking prose with a quoted slug of
-// 16 or more mixed-case characters that starts with the exact limit
-// (My "limit": "8USD-Per-Month-Plan-2026".) is missed. Closing it takes
-// masking by parsed JSON structure, which #62 designs.
-func maskOpaqueIDs(text []byte) []byte {
-	out := append([]byte(nil), text...)
-	for _, loc := range idString.FindAllSubmatchIndex(text, -1) {
-		start, end := loc[2], loc[3]
-		var upper, lower bool
-		for _, b := range text[start:end] {
-			upper = upper || b >= 'A' && b <= 'Z'
-			lower = lower || b >= 'a' && b <= 'z'
+// Declared residual (false positives only, never a missed bound): a cose
+// value in a copy that is not valid JSON, written with escapes, or held in a
+// data script that does not decode is read as money, as before #60. Any other
+// base64url field is not masked; see TestNoOtherFieldHoldsAnID.
+func maskCoseIDs(events []sealedEvent) func([]byte) []byte {
+	return func(text []byte) []byte {
+		out := append([]byte(nil), text...)
+		dec := json.NewDecoder(bytes.NewReader(text))
+		type frame struct {
+			object, expectKey bool
+			key               string
+			// checkpoint: the object is a "checkpoint" member's value or the
+			// document root, the only places a producer writes "cose".
+			checkpoint bool
 		}
-		if !upper || !lower {
-			continue
-		}
-		for i := start; i < end && text[i] >= '0' && text[i] <= '9'; i++ {
-			out[i] = 'x'
+		var stack []frame
+		for {
+			tok, err := dec.Token()
+			if err != nil {
+				return out
+			}
+			end := int(dec.InputOffset())
+			switch v := tok.(type) {
+			case json.Delim:
+				if v == '{' || v == '[' {
+					n := len(stack)
+					at := n == 0 || stack[n-1].object && stack[n-1].key == "checkpoint"
+					stack = append(stack, frame{object: v == '{', expectKey: v == '{', checkpoint: at})
+					continue
+				}
+				stack = stack[:len(stack)-1]
+			case string:
+				n := len(stack)
+				if n > 0 && stack[n-1].object && stack[n-1].expectKey {
+					stack[n-1].key, stack[n-1].expectKey = v, false
+					continue
+				}
+				if n > 0 && stack[n-1].object && stack[n-1].key == "cose" && stack[n-1].checkpoint {
+					if start := end - len(v) - 1; start >= 1 && string(text[start-1:end]) == `"`+v+`"` && isWholeID(events, v) {
+						for i := start; i < end-1 && text[i] >= '0' && text[i] <= '9'; i++ {
+							out[i] = 'x'
+						}
+					}
+				}
+			}
+			// A value ended: the enclosing object expects a key next.
+			if n := len(stack); n > 0 && stack[n-1].object {
+				stack[n-1].expectKey = true
+			}
 		}
 	}
-	return out
+}
+
+// isWholeID reports whether v is one random id: 16 or more of [0-9A-Za-z_-]
+// with an upper-case and a lower-case letter, unchanged when the deal's own
+// ids and the whole hex tokens are taken out of it.
+func isWholeID(events []sealedEvent, v string) bool {
+	if len(v) < 16 {
+		return false
+	}
+	var upper, lower bool
+	for _, b := range []byte(v) {
+		switch {
+		case b >= 'A' && b <= 'Z':
+			upper = true
+		case b >= 'a' && b <= 'z':
+			lower = true
+		case b >= '0' && b <= '9', b == '-', b == '_':
+		default:
+			return false
+		}
+	}
+	w := []byte(v)
+	for _, id := range dealOwnIDs(events) {
+		w = removeWholeToken(w, []byte(id))
+	}
+	return upper && lower && bytes.Equal(removeHexTokens(w), []byte(v))
 }
 
 // dealCeilingGate refuses a shared copy that carries a bound it may not: the
@@ -215,6 +271,8 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 		return nil
 	}
 	counterparty := audience == cli.DealAudienceCounterparty
+	// data is the raw copy: dealGateText masks the cose ids in its JSON regions.
+	data = dealGateText(data, maskCoseIDs(events))
 	// The deal's own ids and every digest, key and signature are taken out
 	// first, as the page gate takes out the ids it allows: a run of hex is
 	// never prose, and one that holds "3cad8" is not 8 Canadian dollars.
@@ -240,7 +298,7 @@ func dealCeilingGate(data []byte, events []sealedEvent, audience string) error {
 	// The bound as money in any of the ways prose writes it ("$1,700.00",
 	// "1.700,00 €", "USD 1 700", "lowest I'll take is 1700"), compared by
 	// value.
-	money := string(maskOpaqueIDs(data))
+	money := string(data)
 	switch statesBound(money, events, counterparty) {
 	case "intent.min_total_minor":
 		return refuseFloor
@@ -284,5 +342,5 @@ func dealShareGate(data []byte, events []sealedEvent, audience string) error {
 	if err := dealPageGate(data, events, allowed...); err != nil {
 		return err
 	}
-	return dealCeilingGate(dealGateText(data), events, audience)
+	return dealCeilingGate(data, events, audience)
 }

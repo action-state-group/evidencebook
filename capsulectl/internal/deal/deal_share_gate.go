@@ -48,7 +48,7 @@ import (
 // JSON-escaped, before any check, so it neither trips the checks nor hides
 // anything else.
 func dealPageGate(page []byte, events []sealedEvent, allowed ...string) error {
-	data := dealGateText(page)
+	data := dealGateText(page, nil)
 	// Fold first, as the scan does, so the allowed values are taken out of the
 	// same text the scan reads: a zero-width space, a soft hyphen or a
 	// fullwidth or Arabic-Indic digit after an allowed id is then a digit or
@@ -91,9 +91,21 @@ var gateDataPrefixes = []string{"window.__BUNDLE__ =", "globalThis.capsulectlDea
 // two vendored scripts where they are found byte for byte. A copy is a page
 // only when it starts as the emitter's shell does, with an HTML doctype: a
 // bundle's JSON whose text holds script-like markup is not one.
-func dealGateText(page []byte) []byte {
+//
+// jsonValue, when not nil, is applied to the raw bytes of each real JSON
+// region: a data script's decoded value, and a copy that is not a page only
+// when the whole copy (less the vendored scripts) is valid JSON. Markup, a
+// data script that does not decode and a non-JSON copy never reach it.
+func dealGateText(page []byte, jsonValue func([]byte) []byte) []byte {
+	if jsonValue == nil {
+		jsonValue = func(b []byte) []byte { return b }
+	}
 	if !bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(page[:min(len(page), 64)])), []byte("<!doctype html")) {
-		return dealWithoutVendored(page)
+		whole := dealWithoutVendored(page)
+		if json.Valid(whole) {
+			return jsonValue(whole)
+		}
+		return whole
 	}
 	var out []byte
 	last, bundle := 0, false
@@ -116,7 +128,7 @@ func dealGateText(page []byte) []byte {
 				out = append(append(out, body...), ' ')
 				break
 			}
-			value = rest[:dec.InputOffset()]
+			value = jsonValue(rest[:dec.InputOffset()])
 			if i == 0 {
 				// As the page writes it, so gateUnits finds the bundle and
 				// reads a place's words in its values only.

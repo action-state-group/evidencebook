@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The spending-limit gate masks a random id by the copy's JSON structure: only
+  the value of a `cose` member found by walking the copy's real JSON regions,
+  not any quoted id-shaped string found by a pattern. Prose that imitates
+  JSON (`My "limit": "8USD-Per-Month-Plan-2026".`) and a field value shaped
+  like an id (a seller's agent claim) no longer hide a bound from the gate
+  (#62; design note `docs/design/limit-gate-structural-id-mask.md`).
+
 - The x-deal-v0 profile is EvidenceBook's `dealprofile` (evidencebook v0.10.0,
   evidencebook#93). The plugin seals records, steps and reports through it, and
   `skills/deal/profile/` and the plugin's copies of the schemas, sentence marks
