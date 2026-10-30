@@ -4,6 +4,14 @@
 
 ### Changes
 
+- **`deal` record types** (feature `deal`; evidencebook#93): `Record` (the
+  x-deal-v0 block and a `Body`, one variant per record type), the typed
+  action records and contract documents, and `decode`, which reads a
+  record's text into them and refuses text they would not encode back to.
+  They follow the schemas member for member, as Go's `dealprofile` types
+  do, and carry no rule: `encode` checks a record built from them as it
+  checks its text. Every record in the profile's fixtures and the baseline,
+  and a sample of each type they lack, round-trips byte for byte.
 - **`deal`, the x-deal-v0 deal record profile, behind the new feature
   `deal`** (off by default; evidencebook#93). The Rust counterpart of the Go
   package `dealprofile`, byte for byte in its payloads, digests and Capsule

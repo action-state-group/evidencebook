@@ -5,9 +5,10 @@
 //! this repository, and produces the same bytes: the profile's names, the
 //! keys and fingerprints that keep raw identifiers out of a record, a
 //! record's payload and digest, the record-level checks a sealed record must
-//! pass, the sealed `deal_report`'s payload, and the members of a step's
-//! Capsule. The normative text is `dealprofile/x-deal-v0/PROFILE.md`; its
-//! schemas are vendored here byte for byte.
+//! pass, the sealed `deal_report`'s payload, the members of a step's
+//! Capsule, and the record types ([`Record`]). The normative text is
+//! `dealprofile/x-deal-v0/PROFILE.md`; its schemas are vendored here byte
+//! for byte.
 //!
 //! It is a profile the crate carries, not part of the Evidence Layer
 //! semantics: nothing else in the crate depends on it. It holds no deal
@@ -36,9 +37,11 @@ mod check;
 mod keys;
 mod names;
 mod publicsuffix;
+mod record;
 mod report;
 mod schema;
 mod step;
+mod types;
 
 pub use capsule::{
     Capsule, Chain, Disposition, Effect, Extension, ACTION_TYPE_DECIDE, ACTION_TYPE_FYI,
@@ -52,6 +55,8 @@ pub use keys::{
     commit_text, deal_key, fingerprint, kinds, normalize, profile_key, NotNormalizable,
 };
 pub use names::*;
+pub use record::{decode, Body, Record};
 pub use report::{report_capsule, report_payload, Checkpoint, Report};
 pub use schema::profile_schema;
 pub use step::{step_capsule, Decide, StepHeader, StepInput};
+pub use types::*;
