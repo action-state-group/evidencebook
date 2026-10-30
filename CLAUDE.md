@@ -25,7 +25,7 @@ go test -race ./...
 (cd rust && cargo fmt --all -- --check)
 (cd rust && cargo clippy --locked --all-targets --all-features -- -D warnings)
 (cd rust && cargo test --locked --all-features)
-(cd rust && RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps)
+(cd rust && RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps --all-features)
 (cd rust && cargo publish --locked --dry-run -p evidencebook)
 (cd rust && cargo build --locked -p evidencebook-interop)   # the runs the rust.yml interop job checks
 
@@ -55,8 +55,9 @@ CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
 `rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`testdata/evidence-request/`, the Go and Python interop programs it compares
-with (`test/interop/personal-history/`, `test/interop/responder/`,
+`testdata/evidence-request/`, `dealprofile/` (the x-deal-v0 profile the
+crate's `deal` feature implements: its schemas, fixtures and Go package), the
+Go and Python interop programs it compares with (`test/interop/personal-history/`, `test/interop/responder/`,
 `test/interop/python-profile/`, `test/interop/python-personal/`, and the root
 Go package's `*.go`, `go.mod` and `go.sum`), `.github/scripts/check_crate_metadata.py`
 or the workflow itself changes. `leak-lint.yml` scans public material for internal workflow
