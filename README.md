@@ -22,7 +22,7 @@ Terms Packs (packs): EU AI Act Obligations and Outcomes (draft) are published at
 Requires Go 1.27 or newer.
 
 ```bash
-go get github.com/action-state-group/evidencebook@v0.8.1
+go get github.com/action-state-group/evidencebook@v0.9.0
 ```
 
 ## Guide

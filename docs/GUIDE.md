@@ -7,7 +7,7 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook`](https://pkg.go.dev/github.com/action-state-group/evidencebook)
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
-Every Example below renders there with its output, from v0.8.1 for the root
+Every Example below renders there with its output, from v0.9.0 for the root
 module and `report/v0.1.0` for the report module. To run them from a
 checkout:
 
@@ -25,7 +25,7 @@ the same files.
 Requires Go 1.27 or newer.
 
 ```bash
-go get github.com/action-state-group/evidencebook@v0.8.1
+go get github.com/action-state-group/evidencebook@v0.9.0
 ```
 
 The report builder is its own module, so the root module does not depend on
