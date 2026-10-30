@@ -9,6 +9,10 @@
   that capsulectl release. It carries `book report build --wording` (#155, #159)
   and `book result build --plan` (#107).
 
+### Changed: the install lines name v0.9.0
+
+- The install lines in the README and the guide name v0.9.0.
+
 ## v0.9.0 (2026-10-30)
 
 ### Changed: `report` requires the published capsule-cli v0.1.0-rc24 (evidencebook#144)
