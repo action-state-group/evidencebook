@@ -483,7 +483,7 @@ func hostWordingDigest(pack string) string {
 // that names an http(s) URL, a stylesheet url() or @import. The runtime's own
 // source may mention a URL in a comment or as a namespace string (the
 // vendored curves name the paper they follow); that loads nothing.
-var remoteLoad = regexp.MustCompile(`(?i)\b(src|href|action)\s*=\s*["']?https?://|url\(\s*["']?https?://|@import`)
+var remoteLoad = regexp.MustCompile(`(?i)\b(src|href|action)\s*=\s*["']?(https?:)?//|url\(\s*["']?(https?:)?//|@import\s+(url\(|["'])|\b(fetch|import)\s*\(\s*["'` + "`" + `]?(https?:)?//|new\s+(WebSocket|EventSource)\s*\(\s*["'` + "`" + `]wss?:|\bXMLHttpRequest\b[^;]{0,80}\bopen\s*\(\s*["'][A-Z]+["']\s*,\s*["'` + "`" + `]https?:`)
 
 func assertLoadsNothing(t *testing.T, html string) {
 	t.Helper()

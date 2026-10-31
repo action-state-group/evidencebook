@@ -269,27 +269,51 @@ func CheckPage(ctx context.Context, book *evidencebook.Book, page []byte) (Check
 	return out, nil
 }
 
-// bundleElement is the start tag of the JSON data element that carries the
-// bundle in a page built by capsule-viewer 0.4.0 or later (capsule-viewer#109).
-var bundleElement = regexp.MustCompile(`(?is)<script\b[^>]*\btype\s*=\s*["']?application/json["']?[^>]*>`)
+// bundleLoader is the script capsule-viewer 0.4.0 and later writes right
+// after the bundle's data element: it sets window.__BUNDLE__ from the element
+// immediately before it. The page shows that element, so that is the bundle
+// the checks must read, whatever other JSON elements the page holds.
+var bundleLoader = regexp.MustCompile(`<script>\s*window\.__BUNDLE__ = JSON\.parse\(document\.currentScript\.previousElementSibling\.textContent\);\s*</script>`)
+
+// bundleElementStart is a JSON data element's start tag, ending the text
+// before the loader.
+var bundleElementStart = regexp.MustCompile(`(?is)^<script(?:\s[^>]*\s|\s)type\s*=\s*["']?application/json["']?(?:\s[^>]*)?>$`)
 
 // embeddedBundle is the Evidence Bundle a report page embeds. A page built by
-// capsule-viewer 0.4.0 or later carries it as the text of its first
-// `<script type="application/json">` element, with every "<" escaped, so the
-// first "</script>" after the start tag ends the JSON. A page sealed before
-// that wrote `window.__BUNDLE__ = <json>;` and is still read, so its seal
-// still checks.
+// capsule-viewer 0.4.0 or later carries it as the text of the
+// `<script type="application/json">` element the page's loader reads, with
+// every "<" escaped, so the "</script>" before the loader ends the JSON. A
+// page sealed before that wrote `window.__BUNDLE__ = <json>;` and is still
+// read, so its seal still checks.
 func embeddedBundle(page []byte) (map[string]interface{}, error) {
 	if !bytes.HasPrefix(bytes.TrimSpace(page), []byte("<!")) {
 		return nil, refusal("not a report page: it embeds no Evidence Bundle")
 	}
-	if m := bundleElement.FindIndex(page); m != nil {
-		rest := page[m[1]:]
-		j := bytes.Index(rest, []byte("</script>"))
-		if j < 0 {
-			return nil, refusal("not a report page: its embedded Evidence Bundle is not terminated")
+	if m := bundleLoader.FindIndex(page); m != nil {
+		before := bytes.TrimRight(page[:m[0]], " \t\r\n")
+		// Comments between the element and the loader (a formatter's
+		// directive) are skipped.
+		for bytes.HasSuffix(before, []byte("-->")) {
+			k := bytes.LastIndex(before, []byte("<!--"))
+			if k < 0 {
+				break
+			}
+			before = bytes.TrimRight(before[:k], " \t\r\n")
 		}
-		return decodeEmbedded(rest[:j])
+		const closing = "</script>"
+		if !bytes.HasSuffix(before, []byte(closing)) {
+			return nil, refusal("not a report page: no bundle element before its loader")
+		}
+		body := before[:len(before)-len(closing)]
+		open := bytes.LastIndex(body, []byte("<script"))
+		if open < 0 {
+			return nil, refusal("not a report page: no bundle element before its loader")
+		}
+		gt := bytes.IndexByte(body[open:], '>')
+		if gt < 0 || !bundleElementStart.Match(body[open:open+gt+1]) {
+			return nil, refusal("not a report page: the element before the loader is not a JSON data element")
+		}
+		return decodeEmbedded(body[open+gt+1:])
 	}
 	const start, end = "window.__BUNDLE__ = ", ";</script>"
 	i := bytes.Index(page, []byte(start))

@@ -4,6 +4,7 @@ package report
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -250,7 +251,7 @@ func TestCheckPageRefusesAFileThatIsNotAReportPage(t *testing.T) {
 // JSON data element.
 func jsonElementStart(t *testing.T, html string) int {
 	t.Helper()
-	m := bundleElement.FindStringIndex(html)
+	m := jsonStartTag.FindStringIndex(html)
 	require.NotNil(t, m, "the page carries its bundle in a JSON element")
 	return m[1] + strings.Index(html[m[1]:], "{")
 }
@@ -259,10 +260,11 @@ func jsonElementStart(t *testing.T, html string) int {
 // `window.__BUNDLE__ = `; its seal must still check.
 func TestInspectPageReadsAPageSealedBeforeTheJSONElement(t *testing.T) {
 	html := string(builtPage(t).HTML)
-	m := bundleElement.FindStringIndex(html)
+	m := jsonStartTag.FindStringIndex(html)
 	require.NotNil(t, m)
 	end := m[1] + strings.Index(html[m[1]:], "</script>")
-	old := html[:m[0]] + "<script>window.__BUNDLE__ = " + strings.TrimSpace(html[m[1]:end]) + ";</script>" + html[end+len("</script>"):]
+	rest := bundleLoader.ReplaceAllString(html[end+len("</script>"):], "")
+	old := html[:m[0]] + "<script>window.__BUNDLE__ = " + strings.TrimSpace(html[m[1]:end]) + ";</script>" + rest
 	require.NotContains(t, old, "application/json")
 	want, err := InspectPage([]byte(html))
 	require.NoError(t, err)
@@ -274,9 +276,32 @@ func TestInspectPageReadsAPageSealedBeforeTheJSONElement(t *testing.T) {
 // The bundle is data in a JSON element, never code: a member named
 // "__proto__" stays a member of the decoded bundle.
 func TestEmbeddedBundleKeepsAProtoMember(t *testing.T) {
-	page := []byte(`<!doctype html><script type="application/json">{"__proto__":{"x":1},"root":"r"}</script>`)
+	page := []byte(`<!doctype html><script type="application/json">{"__proto__":{"x":1},"root":"r"}</script><script>window.__BUNDLE__ = JSON.parse(document.currentScript.previousElementSibling.textContent);</script>`)
 	value, err := embeddedBundle(page)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"x": json.Number("1")}, value["__proto__"])
 	assert.Equal(t, "r", value["root"])
+}
+
+var jsonStartTag = regexp.MustCompile(`(?is)<script\b[^>]*\btype\s*=\s*["']?application/json["']?[^>]*>`)
+
+// The bundle is the element the page's loader reads, not the first JSON
+// element in the page: a decoy before it is not what the page shows.
+func TestEmbeddedBundleIsTheElementTheLoaderReads(t *testing.T) {
+	loader := `<script>window.__BUNDLE__ = JSON.parse(document.currentScript.previousElementSibling.textContent);</script>`
+	page := func(parts string) []byte { return []byte("<!doctype html>" + parts) }
+	value, err := embeddedBundle(page(`<script type="application/json">{"root":"decoy"}</script><script type="application/json">{"root":"shown"}</script>
+<!-- prettier-ignore -->
+` + loader))
+	require.NoError(t, err)
+	assert.Equal(t, "shown", value["root"])
+	for name, parts := range map[string]string{
+		"a loader with no element before it":    loader,
+		"a non-JSON element before the loader":  `<script type="application/json-seq">{"root":"x"}</script>` + loader,
+		"a data-type attribute is not the type": `<script data-type="application/json">{"root":"x"}</script>` + loader,
+		"a script, not data, before the loader": `<script>var x = 1;</script>` + loader,
+	} {
+		_, err := embeddedBundle(page(parts))
+		require.ErrorIs(t, err, ErrRefused, name)
+	}
 }
