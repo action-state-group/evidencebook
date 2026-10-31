@@ -57,9 +57,7 @@ func (s *StandardHistorySource) validate() error {
 // inputs over leaves, the full_history subject's servable records under
 // the anchor. The card is the whole artifact (SH §3) and carries no
 // verification material: anchor_inclusion is NOT_CHECKED for a derivation
-// (IP P-13). Before it is released the card is checked against the very
-// inputs it was derived from (SH §6), so a host's inputs that make no
-// standard card are an error, never an answer.
+// (IP P-13). DeriveStandardHistory checks it against its own inputs.
 func (b *Book) standardHistoryCard(ctx context.Context, view *bookView, anchor Checkpoint, leaves []uint64) (builtArtifact, error) {
 	source := b.standardHistory
 	records := make([]Record, len(leaves))
@@ -70,35 +68,52 @@ func (b *Book) standardHistoryCard(ctx context.Context, view *bookView, anchor C
 	if err != nil {
 		return builtArtifact{}, err
 	}
-	if deals == nil {
-		deals = []standardhistory.Deal{}
-	}
 	asOf := standardhistory.AsOf{
 		Anchor:              anchorDigest(anchor),
 		AnchorTime:          evidencerequest.ProfileTime(anchor.IssuedAt),
 		FirstCheckpointTime: evidencerequest.ProfileTime(view.checkpoints[0].IssuedAt),
 	}
-	controller := map[string]string{"person": "person_declared", "node": "node_declared"}[source.HolderKind]
-	derived, err := standardhistory.Derive(source.HolderKind, controller, asOf, policy, deals)
+	card, err := DeriveStandardHistory(source.HolderKind, asOf, policy, deals)
 	if err != nil {
-		return builtArtifact{}, fmt.Errorf("%w: standard history: %v", ErrInvalid, err)
+		return builtArtifact{}, err
+	}
+	return builtArtifact{artifact: card}, nil
+}
+
+// DeriveStandardHistory is the standard_history/1 card (SH §4) as of asOf,
+// in its JCS octets: the card a Book answers and the card a host derives
+// over a shelf as of a cadence tick (Cadence.StandardHistoryAnchor). Before
+// it returns, the card is checked against the very inputs it was derived
+// from (SH §6), so inputs that make no standard card are ErrInvalid, never
+// a card.
+func DeriveStandardHistory(holderKind string, asOf standardhistory.AsOf, policy standardhistory.Policy, deals []standardhistory.Deal) ([]byte, error) {
+	if deals == nil {
+		deals = []standardhistory.Deal{}
+	}
+	controller, ok := map[string]string{"person": "person_declared", "node": "node_declared"}[holderKind]
+	if !ok {
+		return nil, fmt.Errorf("%w: standard history holder kind %q is neither person nor node", ErrInvalid, holderKind)
+	}
+	derived, err := standardhistory.Derive(holderKind, controller, asOf, policy, deals)
+	if err != nil {
+		return nil, fmt.Errorf("%w: standard history: %v", ErrInvalid, err)
 	}
 	decoded, err := evidencerequest.DecodeJSON(derived)
 	if err != nil {
-		return builtArtifact{}, err
+		return nil, err
 	}
 	card, err := evidencerequest.EncodeJCS(decoded)
 	if err != nil {
-		return builtArtifact{}, err
+		return nil, err
 	}
 	properties, err := standardhistory.Check(card, &policy, &asOf, deals)
 	if err != nil {
-		return builtArtifact{}, fmt.Errorf("%w: standard history: %v", ErrInvalid, err)
+		return nil, fmt.Errorf("%w: standard history: %v", ErrInvalid, err)
 	}
 	for _, property := range standardhistory.Properties {
 		if properties[property] != standardhistory.Pass {
-			return builtArtifact{}, fmt.Errorf("%w: standard history: the card fails %s against its own inputs", ErrInvalid, property)
+			return nil, fmt.Errorf("%w: standard history: the card fails %s against its own inputs", ErrInvalid, property)
 		}
 	}
-	return builtArtifact{artifact: card}, nil
+	return card, nil
 }

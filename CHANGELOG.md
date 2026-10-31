@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added: the History card over a deal profile's shelf (evidencebook#237, evidencebook-deal#85)
+
+- `Cadence.StandardHistoryAnchor` is a cadence tick as the anchor of a
+  profile's `standard_history/1` card: its `as_of` (the tick's cadence
+  checkpoint, its time, and the cadence log's first checkpoint time) and, per
+  log, how many records the tick commits (the largest checkpoint of the log
+  any tick up to it carried).
+- `DeriveStandardHistory` derives the card and checks it against its own
+  inputs, as `Book.Respond` does for a book.
+- `dealprofile.StandardHistoryDeal` fills a deal's SH §5.2 entry from its
+  sealed x-deal-v0 records and Results (x-deal-v0 PROFILE.md §11). A deal
+  whose agreeing step rests on a check with no amount is `ErrUnpriced`, and
+  the card is refused. `dealprofile.MinorUnits` is ISO 4217's minor units.
+
 ### Added: `capsulectl book holder-page` draws the holder's own pages from Steven's 9b canvas (evidencebook#156, #158, #239)
 
 - `book holder-page --view share|asked|prompt --out PAGE.html` writes frame 2
