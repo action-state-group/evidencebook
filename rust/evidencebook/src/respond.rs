@@ -570,6 +570,27 @@ enum NamedProfile {
     NotText,
 }
 
+/// The profile identifier a request's octets ask for: its `profile` member
+/// when it is non-empty text, `evidence-interop/0` when it is absent or
+/// empty (profile §3.3 step 2; an empty one names nothing, as step 5 reads
+/// it), `None` when the member is not text. JSON is tried first, as a JSON
+/// map never parses as CBOR.
+pub(crate) fn requested_profile(octets: &[u8]) -> Option<String> {
+    let binding = if serde_json::from_slice::<Value>(octets).is_ok() {
+        Binding::Json
+    } else {
+        Binding::Cbor
+    };
+    match named_profile(octets, binding) {
+        NamedProfile::Absent => Some(evidence_request::envelope::PROFILE.to_string()),
+        NamedProfile::Text(profile) if profile.is_empty() => {
+            Some(evidence_request::envelope::PROFILE.to_string())
+        }
+        NamedProfile::Text(profile) => Some(profile),
+        NamedProfile::NotText => None,
+    }
+}
+
 fn named_profile(octets: &[u8], binding: Binding) -> NamedProfile {
     match binding {
         Binding::Json => match serde_json::from_slice::<Value>(octets)

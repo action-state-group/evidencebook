@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 evidencebook = { path = "../evidencebook" }
-evidence-request = { version = "0.2", default-features = false, features = ["cll"] }
+evidence-request = { version = "0.3", default-features = false, features = ["cll"] }
 ciborium = "0.2"
 ed25519-dalek = "2"
 hex = "0.4"

@@ -63,7 +63,9 @@ use evidence_request::cll_material::{
     encode_consistency_proof, encode_inclusion_proof, KIND_CHECKPOINT, KIND_CONSISTENCY,
     KIND_INCLUSION,
 };
-use evidence_request::envelope::{sign, Anchor, AnchorFreshness, Envelope, EnvelopeParts, Signer};
+use evidence_request::envelope::{
+    sign_with_profile, Anchor, AnchorFreshness, Envelope, EnvelopeParts, Signer,
+};
 use evidence_request::request::{Coverage, Derivation, Freshness, Request, Subject};
 use evidence_request::resolve::{self, ResolvedAnchor};
 use serde_json::{json, Map, Value};
@@ -452,7 +454,14 @@ pub fn build(
         ))),
         Coverage::ExpectedPin(_) => None,
     };
-    Ok(sign(
+    // The envelope names the profile the request asked for (profile §3.3);
+    // `sign_with_profile` refuses one evidence-request does not implement.
+    let profile = match crate::respond::requested_profile(request_bytes) {
+        Some(profile) => profile,
+        None => evidence_request::envelope::PROFILE.to_string(),
+    };
+    Ok(sign_with_profile(
+        &profile,
         request_bytes,
         EnvelopeParts {
             subject: request.subject.clone(),

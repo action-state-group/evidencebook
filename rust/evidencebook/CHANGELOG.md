@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Breaking: `evidence-request` 0.3, and the envelope names the profile asked for
+
+- `evidencebook` and `interop` require `evidence-request` `0.3`
+  (agent-action-capsule#485), which registers the Evidence Request -02 refusal
+  reasons `capacity_exceeded` and `request_unauthenticated` and reads
+  `evidence-interop/1`. `evidence-request` types are in this crate's API
+  (`AnswerError::Sign`, `Reason`), so a dependent moves with it, and a
+  dependent that keeps one `evidence-request` in its graph needs this to take
+  0.3.
+- `request::reasons::ALL` lists the registry's ten tokens (`[&str; 10]`).
+  `Refusal::reason_is_registered` stays the check of `evidence-interop/0`, the
+  only profile this crate answers and asks under: its eight ER -01 tokens, as
+  Go and Python check, so a refusal carrying either -02 token is not
+  registered here.
+- `answer::build` signs the envelope under the profile the request's octets
+  name (`evidence-interop/0` when they name none or an empty one), so a
+  caller that answers an `evidence-interop/1` request gets a /1 envelope. A
+  request naming a profile `evidence-request` does not implement is
+  `AnswerError::Sign`. This crate's own `respond` still refuses anything but
+  /0 before it builds.
+
 ### Changes
 
 - `respond` answers an underived (or shared-derivation) `correlation`

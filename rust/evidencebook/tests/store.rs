@@ -245,6 +245,48 @@ fn a_record_whose_octets_do_not_recompute_its_entry_is_never_served() {
     ));
 }
 
+/// The envelope names the profile the request asked for (profile §3.3): a
+/// request with none is `evidence-interop/0`, one naming
+/// `evidence-interop/1` is signed under /1 with the same artifact (ER §5),
+/// and one naming a profile evidence-request does not implement is not
+/// signed.
+#[test]
+fn the_envelope_is_signed_under_the_profile_the_request_names() {
+    let f = foreign();
+    let at = pinned(&f, 1);
+    let under = |profile: Option<&str>| {
+        let mut map =
+            json!({"subject": {"range": [1, 3]}, "coverage": {"expected_pin": at.digest()}});
+        if let Some(p) = profile {
+            map["profile"] = json!(p);
+        }
+        let bytes = serde_json::to_vec(&map).unwrap();
+        let req = parse_json(&bytes).unwrap();
+        let selection = select(&f, &f, &req, &at, 100).unwrap();
+        build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &selection,
+            Options::default(),
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    let v0 = under(None).unwrap();
+    assert_eq!(v0.profile, evidence_request::envelope::PROFILE);
+    let v1 = under(Some(evidence_request::envelope::PROFILE_V1)).unwrap();
+    assert_eq!(v1.profile, evidence_request::envelope::PROFILE_V1);
+    assert_eq!(v1.artifact, v0.artifact);
+    assert!(v1.verify().is_ok());
+    assert!(matches!(
+        under(Some("evidence-interop/9")),
+        Err(AnswerError::Sign(_))
+    ));
+}
+
 #[test]
 fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
     let f = foreign();
