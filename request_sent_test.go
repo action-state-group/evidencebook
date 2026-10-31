@@ -59,6 +59,10 @@ func TestRequestSentLive16(t *testing.T) {
 		if !bytes.Equal(sent.Bytes, octets) {
 			t.Fatalf("%s: the recorded request is not the one sent", name)
 		}
+		var asked RequestStatement
+		if err := json.Unmarshal(book.records[sent.RecordID].Header.Statement, &asked); err != nil || !asked.ComposedElsewhere || !bytes.Equal(asked.Request, octets) {
+			t.Fatalf("%s: the request record %+v (%v) does not mark the request composed elsewhere", name, asked, err)
+		}
 		var reply struct {
 			RequestDigest string `json:"request_digest"`
 		}
@@ -115,6 +119,14 @@ func TestRequestSentRefusesWhatWasNotSent(t *testing.T) {
 	// Book.Request refuses a nonce RequestSent used, too.
 	if _, err := book.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh(), Nonce: "n1"}, "responder"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("Request reused RequestSent's nonce: %v", err)
+	}
+	// A request the book composed is not marked.
+	made, err := book.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh()}, "responder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statement := book.records[made.RecordID].Header.Statement; bytes.Contains(statement, []byte("composed_elsewhere")) {
+		t.Fatalf("a request the book composed is marked: %s", statement)
 	}
 	const noNonce = `{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}}`
 	for range 2 {

@@ -11,6 +11,9 @@
   well-formed request in JCS, so the recorded digest is the one the responder
   signed its reply over. `RecordResponse` and `RecordAbsence` work on it as on
   a request `Book.Request` made. A nonce the book already used is refused.
+  Its record marks the request `composed_elsewhere`, so the book is not read
+  as vouching for members it keeps but never checks, such as
+  `requester_auth`.
 - A requester's book records `evidence-interop/1` requests and verifies the
   replies to them: a refusal's reason conforms under the profile the request
   asked for, so the two reasons ER -02 adds conform only under `/1`.

@@ -21,6 +21,12 @@ import (
 type RequestStatement struct {
 	Request      json.RawMessage `json:"request"`
 	ResponderRef string          `json:"responder_ref,omitempty"`
+	// ComposedElsewhere marks a request RequestSent recorded: another tool
+	// composed it, and the book checked only that it is a well-formed
+	// request. Members it does not define, such as a deployment profile's
+	// audience or requester authentication, are kept as sent and never
+	// checked, so the record does not vouch for them.
+	ComposedElsewhere bool `json:"composed_elsewhere,omitempty"`
 }
 
 // SentRequest is a request as transmitted: its octets (JCS JSON), their
@@ -56,7 +62,7 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	if err != nil {
 		return SentRequest{}, err
 	}
-	return b.recordRequest(ctx, data, req.Nonce, responder)
+	return b.recordRequest(ctx, RequestStatement{Request: data, ResponderRef: responder}, req.Nonce)
 }
 
 // RequestSent records a request that another tool composed and sent to
@@ -85,19 +91,19 @@ func (b *Book) RequestSent(ctx context.Context, request Message, responder strin
 	if jcs, err := evidencerequest.EncodeJCS(value); err != nil || !bytes.Equal(jcs, request.Octets) {
 		return SentRequest{}, fmt.Errorf("%w: a sent request must be in JCS (RFC 8785), as it was transmitted", ErrInvalid)
 	}
-	return b.recordRequest(ctx, slices.Clone(request.Octets), check.request.Nonce, responder)
+	return b.recordRequest(ctx, RequestStatement{Request: slices.Clone(request.Octets), ResponderRef: responder, ComposedElsewhere: true}, check.request.Nonce)
 }
 
-// recordRequest commits the request octets data, as transmitted to
-// responder, refusing a nonce this book already used.
-func (b *Book) recordRequest(ctx context.Context, data []byte, nonce, responder string) (SentRequest, error) {
+// recordRequest commits statement, whose request octets are as transmitted,
+// refusing a nonce this book already used.
+func (b *Book) recordRequest(ctx context.Context, statement RequestStatement, nonce string) (SentRequest, error) {
 	// The record holds the transmitted bytes exactly: encoding/json would
 	// rewrite <, > and & inside them as \u escapes, and the request read back
 	// from the record would no longer be the request that was sent.
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(RequestStatement{Request: data, ResponderRef: responder}); err != nil {
+	if err := encoder.Encode(statement); err != nil {
 		return SentRequest{}, err
 	}
 	body := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
@@ -118,7 +124,7 @@ func (b *Book) recordRequest(ctx context.Context, data []byte, nonce, responder 
 	if err != nil {
 		return SentRequest{}, err
 	}
-	return SentRequest{Bytes: data, Digest: digestBytes(data), RecordID: record.RecordID}, nil
+	return SentRequest{Bytes: statement.Request, Digest: digestBytes(statement.Request), RecordID: record.RecordID}, nil
 }
 
 // sentRequest is a request re-read from its committed record.
