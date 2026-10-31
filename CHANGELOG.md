@@ -21,8 +21,8 @@
 
 ### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc26 and capsule-viewer 0.6.0
 
-- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc26` and capsule-viewer
-  `v0.6.0`, so `capsulectl/v0.1.0-rc26` pairs with that capsulectl commit. It
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc26` and
+  capsule-viewer `v0.6.0`, so `capsulectl/v0.1.0-rc26` pairs with that capsulectl commit. It
   carries the History card module as a plugin presentation (evidencebook#235,
   #236), the holder pages (#240), and the report pages' new outcome headline
   and tile wording from the viewer's page runtime.
