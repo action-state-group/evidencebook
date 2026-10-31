@@ -35,19 +35,19 @@
     "priority": 1,
     "executable": {
       "carrier": "module-slot",
-      "script_sha256": "20e1c2e2b650d2d6bade2bb18203b5dd8a317bf8ebcc3d60da01ef7362555e93",
+      "script_sha256": "62f031d3a27392ba4e32d49844d52ae420a49ce97456b384ee113e5a4b3eb3e7",
       "style_sha256": [
         "246cfdc8ae83e682a220a2c13cef8134c7515999365b33965d4e924bb871f3ea",
-        "ccd9d2091d8a3d897f9f19e0b848d0025c8bab8bb94e95d2e5170490a84b4648"
+        "c117347f1ddbf59af20ba1a0081bb610966e300ab4a769957281fb8fc7226673"
       ],
-      "wording_sha256": "33ddcb6755fa58b530d5e8953693026bb6a3013d06d87655d4dcc78c5e88f8aa"
+      "wording_sha256": "853d12ce98d25cb59f677d264f9755f7e0d987a892795ed9a5d02468f60cb5c0"
     }
   },
   "files": [
     {
       "role": "script",
       "path": "standard-history-module/standard_history_card.js",
-      "sha256": "20e1c2e2b650d2d6bade2bb18203b5dd8a317bf8ebcc3d60da01ef7362555e93"
+      "sha256": "62f031d3a27392ba4e32d49844d52ae420a49ce97456b384ee113e5a4b3eb3e7"
     },
     {
       "role": "style",
@@ -57,12 +57,12 @@
     {
       "role": "style",
       "path": "standard-history-module/standard_history.css",
-      "sha256": "ccd9d2091d8a3d897f9f19e0b848d0025c8bab8bb94e95d2e5170490a84b4648"
+      "sha256": "c117347f1ddbf59af20ba1a0081bb610966e300ab4a769957281fb8fc7226673"
     },
     {
       "role": "wording",
       "path": "standard-history-module/wording-consumer-en.json",
-      "sha256": "33ddcb6755fa58b530d5e8953693026bb6a3013d06d87655d4dcc78c5e88f8aa"
+      "sha256": "853d12ce98d25cb59f677d264f9755f7e0d987a892795ed9a5d02468f60cb5c0"
     }
   ]
 }

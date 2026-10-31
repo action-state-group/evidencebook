@@ -56,9 +56,6 @@
     "sizes.none": "No counted deal, so no size range.",
     "size.range": "{low} to under {high} {currency}",
     "size.zero": "zero amount, {currency}",
-    "size.row": "{of} {deals}: {held} went as agreed · {did_not_hold} didn't · {undecided} we couldn't tell",
-    "size.deal": "deal",
-    "size.deals": "deals",
     "heading.happened": "The other side agreed it happened",
     "happened.stamped_by_both": "Stamped by both sides",
     "happened.receipt_only": "Your receipt only",
@@ -137,6 +134,12 @@
     "checks.not_held.deals": "the deal entries",
     "window.as_of": "as of {month} {day} {hh}:{mm} UTC",
     "lead.level": "Level they see: Standard · {window} · snapshot {date}",
-    "card.not_counted": "{n} of {of} deals in the window are not counted."
+    "card.not_counted": "{n} of {of} deals in the window are not counted.",
+    "size.under": "under {amount}",
+    "size.between": "{low} – {high}",
+    "size.chip.all": "all as agreed",
+    "size.chip.held": "{n} as agreed",
+    "size.chip.did_not_hold": "{n} didn't",
+    "size.chip.undecided": "{n} unsure"
   }
 }
