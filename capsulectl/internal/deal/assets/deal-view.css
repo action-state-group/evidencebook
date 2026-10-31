@@ -1,6 +1,6 @@
-#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; line-height: 1.45; overflow-wrap: anywhere; }
-@media (prefers-color-scheme: dark) { #deal { --deal-warn: #ffb07a; --deal-ok: #7fd49a; } }
-#deal h1 { font-size: 1.5rem; margin: 0.2rem 0; }
+#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; --deal-ours: #e4edf5; --deal-ours-line: #2b5a85; --deal-theirs: #fbefd9; --deal-theirs-line: #8a6a2f; --deal-none: #eceae5; --deal-none-line: #a9afb8; --deal-good: #e3f1ea; --deal-good-line: #2e7d5b; --deal-pill: #f4f1ea; --deal-ink: #232f42; line-height: 1.45; overflow-wrap: anywhere; max-width: 34rem; margin: 0 auto; }
+@media (prefers-color-scheme: dark) { #deal { --deal-warn: #ffb07a; --deal-ok: #7fd49a; --deal-ours: #1d2c3d; --deal-ours-line: #6fa3d4; --deal-theirs: #3a2f1a; --deal-theirs-line: #d1a85c; --deal-none: #2a2c30; --deal-none-line: #6b717b; --deal-good: #173326; --deal-good-line: #4fae83; --deal-pill: #2b2a27; --deal-ink: #e8edf5; } }
+#deal h1 { font-size: 1.2rem; margin: 0; }
 #deal h2 { font-size: 1.15rem; margin-top: 1.6rem; }
 #deal h3 { font-size: 0.95rem; color: var(--aac-muted); margin: 1rem 0 0.3rem; }
 #deal .deal-flag summary { color: var(--deal-warn); }
@@ -21,3 +21,28 @@
 #deal .deal-rung { font-weight: 600; margin: 0.2rem 0; }
 #deal .deal-scope { font-weight: 600; margin: 0.2rem 0 0.6rem; }
 #deal .deal-claims { border: none; padding: 0; }
+#deal .deal-bar { display: flex; align-items: baseline; gap: 10px; padding: 4px 0 10px; border-bottom: 1px solid var(--aac-line); }
+#deal .deal-bar span { margin-left: auto; color: var(--aac-muted); font-size: 0.85rem; }
+#deal .deal-col { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+#deal .deal-box { border: 1px solid var(--aac-line); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner { border: 1px solid var(--deal-theirs-line); background: var(--deal-theirs); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner b { display: block; }
+#deal .deal-small { font-size: 0.8rem; color: var(--aac-muted); }
+#deal .deal-caps { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--aac-muted); }
+#deal .deal-card { border: 2px solid var(--deal-ink); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-quote { font-size: 1.05rem; font-weight: 600; }
+#deal .deal-half { border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-ours { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); }
+#deal .deal-theirs { background: var(--deal-theirs); border: 1px solid var(--deal-theirs-line); }
+#deal .deal-none { background: var(--deal-none); border: 1px dashed var(--deal-none-line); }
+#deal .deal-stamps { border-radius: 12px; }
+#deal .deal-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--deal-pill); font-weight: 600; margin-left: 8px; }
+#deal .deal-stamp { display: flex; gap: 8px; padding: 7px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-stamp b.deal-mark { flex: none; }
+#deal .deal-list { list-style: none; margin: 6px 0 0; padding: 0; }
+#deal .deal-list li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-list li:first-child { border-top: none; }
+#deal .deal-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--deal-none-line); }
+#deal .deal-dot.deal-yes { background: var(--deal-good-line); }
+#deal .deal-say { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-say b { color: var(--deal-ours-line); }

@@ -62,13 +62,18 @@ if (edit === "withhold") {
   const model = await resolution.module.buildModel(ctx);
   const L0 = new Node("div");
   resolution.module.render(model, { L0 });
-  const headings = L0.all((n) => n.tag === "h2").map((n) => n.textContent);
   const rows = L0.all((n) => n.dataset.journey !== undefined);
+  const banner = L0.all((n) => n.dataset.checked !== undefined)[0];
   process.stdout.write(JSON.stringify({
+    banner: banner ? banner.dataset.checked : "",
+    bannerText: banner ? banner.children[0].textContent : "",
+    stamps: L0.all((n) => n.dataset.stamp !== undefined).map((n) => n.dataset.stamp),
+    pill: (L0.all((n) => /\bdeal-pill\b/.test(n.className))[0] || { textContent: "" }).textContent,
+    restsNote: L0.all((n) => n.dataset.sealed !== undefined || n.dataset.unchecked !== undefined).length,
     refusal: model.refusal || "",
-    shown: headings.includes("How it went"),
+    shown: rows.length > 0,
     labels: rows.map((n) => n.dataset.journey),
-    rows: rows.map((n) => n.children[0].textContent),
+    rows: rows.map((n) => n.textContent),
     words: Object.keys(words).filter((k) => k.startsWith("journey.") || k.startsWith("class.")),
   }));
 })();
@@ -116,8 +121,8 @@ func TestTheDealPageShowsTheJourney(t *testing.T) {
 	rows := got["rows"].([]any)
 	require.Len(t, rows, len(labels))
 	assert.Regexp(t, `^\S.* · You · Asked$`, rows[0], "the first row says its time")
-	assert.Equal(t, "Your agent · Couldn't (AliExpress sign-in)", rows[4], "the same time is said once")
-	assert.Equal(t, "You · Switched to eBay", rows[5], "the switch is the user's")
+	assert.Regexp(t, `^\S.* · Your agent · Couldn't \(AliExpress sign-in\)$`, rows[4], "every row says its time, as the receipt's frames do")
+	assert.Regexp(t, `^\S.* · You · Switched to eBay$`, rows[5], "the switch is the user's")
 
 	shared := renderJourney(t, id, true)
 	require.Empty(t, shared["refusal"])
@@ -129,6 +134,35 @@ func TestTheDealPageShowsTheJourney(t *testing.T) {
 	withheld := renderJourney(t, id, false, "withhold")
 	require.Empty(t, withheld["refusal"])
 	assert.Equal(t, "You · Switched to eBay · step not verified in this report", withheld["rows"].([]any)[5], "and gives no time")
+}
+
+// The receipt's face says only what this page checked: the banner says
+// "checked" only when every step and the asked words were, a stamp is "passed"
+// only for a check that ran, a withheld or unreadable one is "not checked" or
+// "failed", and the note on what the words rest on is on the face.
+func TestTheReceiptFaceSaysOnlyWhatWasChecked(t *testing.T) {
+	dealFixture(t)
+	id, _, _ := fawnDeal(t)
+
+	own := renderJourney(t, id, false)
+	require.Empty(t, own["refusal"])
+	assert.Equal(t, "yes", own["banner"])
+	assert.Equal(t, "Your copy only · checked", own["bannerText"])
+	assert.Equal(t, []any{"passed", "passed", "not checked", "missing", "not checked"}, own["stamps"], "the deal is witnessed but the page cannot check the witness, and the other side is not in the file")
+	assert.Equal(t, "2 passed · 3 not checkable here", own["pill"], "no failure to name, and the unchecked ones are said")
+	assert.EqualValues(t, 1, own["restsNote"], "what the words rest on is on the face")
+
+	shared := renderJourney(t, id, true)
+	require.Empty(t, shared["refusal"])
+	assert.Equal(t, "not checked", shared["stamps"].([]any)[0], "withheld words are not a passed check")
+
+	// A step whose disclosure is gone is not verified: the banner stops saying "checked".
+	withheld := renderJourney(t, id, false, "withhold")
+	require.Empty(t, withheld["refusal"])
+	assert.Equal(t, "no", withheld["banner"])
+	assert.Equal(t, "Your copy only · not fully checked", withheld["bannerText"])
+	assert.Equal(t, "failed", withheld["stamps"].([]any)[1])
+	assert.Equal(t, "1 passed · 1 failed · 3 not checkable here", withheld["pill"], "a check that ran and failed is on the pill")
 }
 
 // The sealed report's journey is facts only: no word from a wording pack,

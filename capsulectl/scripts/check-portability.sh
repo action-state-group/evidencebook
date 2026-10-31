@@ -117,7 +117,7 @@ portable_checks() {
   # included (capsule-viewer 0.4.0), so it reads verified with no check unrun.
   check "the page says its bundle verified" contains page.html.dom 'class="cv-pill" data-verify="verified"'
   check "the page ran every check" no_check_unrun page.html.dom
-  check "the page renders the deal" contains page.html.dom '<h1>Deal report</h1>'
+  check "the page renders the deal" contains page.html.dom '<h1>Receipt</h1>'
   check "the page says its text is sealed and checked" contains page.html.dom 'data-sealed="x-deal-v0"'
   page_bundle page.html >bundle.json
   check "every bundle record is on the deal's book" on_book bundle.json
