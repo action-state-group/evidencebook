@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.11.0 (2026-10-31)
+
 ### Added: the History card over a deal profile's shelf (evidencebook#237, evidencebook-deal#85)
 
 - `Cadence.StandardHistoryAnchor` is a cadence tick as the anchor of a
