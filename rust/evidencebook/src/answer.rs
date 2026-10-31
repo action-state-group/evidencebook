@@ -1,7 +1,8 @@
 //! Building the artifact response to an evidence request over the book's
 //! Checkpointed Local Log, in the interop profile's form
 //! (`evidence-interop/0`, agent-action-capsule `spec/interop-profile-v0.md`
-//! §6.2 and §6.2.1).
+//! §6.2 and §6.2.1, and `evidence-interop/1`, whose envelope is the same and
+//! names the profile the request asked for).
 //!
 //! I-D section: *Answering a Request*. The request protocol itself (parsing,
 //! resolution, refusals, the envelope and its verification) is the

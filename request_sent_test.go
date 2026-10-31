@@ -172,25 +172,85 @@ func TestRefusalReasonsUnderTheRequestedProfile(t *testing.T) {
 	}
 }
 
-// TestRespondAnswersEvidenceInterop0Only: agent-action-capsule reads
-// evidence-interop/1 requests, but the book answers /0 only, so a /1
-// request is refused as an unknown profile is, naming /0 alone.
-func TestRespondAnswersEvidenceInterop0Only(t *testing.T) {
-	book := newFixture(t, "responder", 44).open(t)
-	for _, profile := range []string{evidencerequest.ProfileIDv1, "evidence-interop/9"} {
-		octets := []byte(`{"coverage":{"min_freshness":1},"profile":"` + profile + `","subject":{"checkpoints":null}}`)
-		refusal := mustRefusal(t, respondAs(t, book, Message{Octets: octets, MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
-		if refusal.Detail != "profiles supported: "+ProfileID {
-			t.Fatalf("%s: detail %q", profile, refusal.Detail)
-		}
+// TestRespondAnswersEvidenceInterop1 is evidencebook#248: the book answers
+// evidence-interop/1 as it answers /0, the same artifact in an envelope
+// naming /1 (v1 §3.3 step 3), and a requester's book verifies that reply. A
+// request naming /0 or no profile is answered under /0; an unknown profile
+// is refused naming both (§3.3 step 4).
+func TestRespondAnswersEvidenceInterop1(t *testing.T) {
+	ctx := context.Background()
+	responder := newFixture(t, "responder", 44).open(t)
+	requester := newFixture(t, "requester", 45).open(t)
+	octets := []byte(`{"coverage":{"min_freshness":1},"profile":"evidence-interop/9","subject":{"checkpoints":null}}`)
+	refusal := mustRefusal(t, respondAs(t, responder, Message{Octets: octets, MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
+	if refusal.Detail != "profiles supported: evidence-interop/0, evidence-interop/1" {
+		t.Fatalf("detail %q", refusal.Detail)
 	}
-	// /0, named or not, is answered.
-	for _, octets := range []string{`{"coverage":{"min_freshness":1},"profile":"evidence-interop/0","subject":{"checkpoints":null}}`, `{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}}`} {
-		mustAppend(t, book, observation("s", "p"))
-		if _, err := book.Checkpoint(context.Background()); err != nil {
+	mustAppend(t, responder, observation("s", "p"))
+	pin := anchorPin(t, responder)
+	artifacts := map[string][]byte{}
+	for asked, want := range map[string]string{"": ProfileID, ProfileID: ProfileID, ProfileIDv1: ProfileIDv1} {
+		octets := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n` + asked + `",` + map[bool]string{true: "", false: `"profile":"` + asked + `",`}[asked == ""] + `"subject":{"checkpoints":null}}`)
+		sent, err := requester.RequestSent(ctx, Message{Octets: octets, MediaType: MediaTypeJSON}, "responder")
+		if err != nil {
 			t.Fatal(err)
 		}
-		mustEnvelope(t, respondAs(t, book, Message{Octets: []byte(octets), MediaType: MediaTypeJSON}, ""))
+		reply := respondAs(t, responder, Message{Octets: octets, MediaType: MediaTypeJSON}, "")
+		envelope := mustEnvelope(t, reply)
+		if envelope.Profile != want {
+			t.Fatalf("asked %q: envelope names %q, want %q", asked, envelope.Profile, want)
+		}
+		artifacts[asked] = envelope.Artifact
+		recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(responder, 44))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var statement ResponseStatement
+		if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil {
+			t.Fatal(err)
+		}
+		if statement.Outcome != OutcomeArtifact || statement.Failure != "" {
+			t.Fatalf("asked %q: the requester recorded %+v", asked, statement)
+		}
+	}
+	if !bytes.Equal(artifacts[ProfileIDv1], artifacts[ProfileID]) || !bytes.Equal(artifacts[""], artifacts[ProfileID]) {
+		t.Fatal("the profile changed the artifact")
+	}
+}
+
+// TestRequestProfile: a request refused for a limit asks for the profile of
+// a well-formed request, /0 for any other, so the reason follows the
+// request reader's one definition of well formed.
+func TestRequestProfile(t *testing.T) {
+	const asks = `{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}`
+	for octets, want := range map[string]string{
+		asks + `,"profile":"evidence-interop/1"}`: ProfileIDv1,
+		asks + `,"profile":"evidence-interop/0"}`: ProfileID,
+		asks + `}`:              ProfileID,
+		asks + `,"profile":""}`: ProfileID,
+		asks + `,"profile":"evidence-interop/9"}`: ProfileID,
+		asks + `,"profile":1}`:                    ProfileID,
+		`{"profile":"evidence-interop/1"}`:        ProfileID,
+		`{"coverage":{},"profile":"evidence-interop/1","subject":{"checkpoints":null}}`: ProfileID,
+		`["evidence-interop/1"]`: ProfileID,
+		`{"profile":`:            ProfileID,
+		asks + `,"profile":"evidence-interop/1","profile":"evidence-interop/1"}`: ProfileID,
+	} {
+		if got := requestProfile(Message{Octets: []byte(octets), MediaType: MediaTypeJSON}); got != want {
+			t.Fatalf("%s: %q, want %q", octets, got, want)
+		}
+	}
+	cbor, err := EncodeRequest(EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: fresh(), Profile: ProfileIDv1}, MediaTypeCBOR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestProfile(Message{Octets: cbor, MediaType: MediaTypeCBOR}); got != ProfileIDv1 {
+		t.Fatalf("CBOR: %q", got)
+	}
+	for profile, want := range map[string]string{ProfileID: ReasonPolicyDeclined, ProfileIDv1: evidencerequest.ReasonCapacityExceeded, "evidence-interop/9": ReasonPolicyDeclined} {
+		if got := limitReason(profile); got != want {
+			t.Fatalf("limitReason(%s) = %s, want %s", profile, got, want)
+		}
 	}
 }
 

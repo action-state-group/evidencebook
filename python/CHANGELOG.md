@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- `Book.respond` answers `evidence-interop/1` requests (evidencebook#248).
+  - A request naming `/1` gets the same artifact as under `/0`, in an envelope naming
+    `/1`; a request naming `/0` or no profile is answered as before. An unknown profile
+    is refused `request_malformed` with the detail `profiles supported:
+    evidence-interop/0, evidence-interop/1`. `PROFILE_V1` names the identifier.
+  - A `/1` request refused for a limit of the book's own, its size, the rate limiter or
+    the answer item cap, is refused `capacity_exceeded`, under either refusal policy
+    (ER -02 §11). A `/0` request keeps `policy_declined`.
+  - `refusal_conforming` takes the profile the request asked for, `PROFILE` by default:
+    the two reasons ER -02 adds conform only under `/1`. The book still asks under `/0`.
+  - The package requires `agent-action-capsule` 0.14, which reads `/1`.
+
 - `Book.record_response` applies the requester's limits as Go's `RecordResponse` does
   (evidencebook#209).
   - The constants are `MAX_REPLY_BYTES` (8 MiB), `MAX_REPLY_DEPTH` (32),

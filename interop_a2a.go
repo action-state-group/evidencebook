@@ -41,7 +41,7 @@ const (
 )
 
 const (
-	a2aDescription             = "Answers evidence requests (draft-mih-agent-evidence-request, profile evidence-interop/0). A request is one Message with one raw Part holding the request octets; the reply is one task Artifact with one raw Part holding a signed response envelope or a signed refusal, in the request's encoding. It says what can be asked, never what exists."
+	a2aDescription             = "Answers evidence requests (draft-mih-agent-evidence-request, profile evidence-interop/0 or evidence-interop/1). A request is one Message with one raw Part holding the request octets; the reply is one task Artifact with one raw Part holding a signed response envelope or a signed refusal, in the request's encoding. It says what can be asked, never what exists."
 	a2aDefaultAgentDescription = "An evidence responder: it answers evidence requests about its own records with signed, verifiable replies."
 	a2aTaskStateCompleted      = "TASK_STATE_COMPLETED"
 	a2aRoleUser                = "ROLE_USER"

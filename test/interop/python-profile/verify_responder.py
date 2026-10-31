@@ -6,8 +6,9 @@ responder's output, case by case against the profile's conformance vectors.
 
 <responder.json> is written by `go run ./test/interop/responder`. The checkout
 supplies the verifier (python/agent_action_capsule/interop_profile) and the
-vectors (vectors/interop-profile-v0/vectors.json); both are read, never
-modified. Every vector case is accounted for in exactly one of three ways:
+vectors (vectors/interop-profile-v0/vectors.json, or interop-profile-v1 when
+<responder.json> names evidence-interop/1 as its profile, from `-profile
+evidence-interop/1`); both are read, never modified. Every vector case is accounted for in exactly one of three ways:
 
 - run: the responder answered the vector's request (made against its own log)
   and the verifier's result matches the case's expected block;
@@ -65,13 +66,21 @@ from agent_action_capsule.interop_profile import (  # noqa: E402
     VerificationPolicy,
 )
 
-VECTORS = json.loads((AAC / "vectors" / "interop-profile-v0" / "vectors.json").read_text(encoding="utf-8"))
+PRODUCED = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+# The profile the run's requests name; a run under /0 writes none.
+PROFILE = PRODUCED.get("profile", "evidence-interop/0")
+VECTOR_SETS = {"evidence-interop/0": "interop-profile-v0", "evidence-interop/1": "interop-profile-v1"}
+if PROFILE not in VECTOR_SETS:
+    raise SystemExit(f"no vectors for the profile {PROFILE!r}")
+VECTORS = json.loads((AAC / "vectors" / VECTOR_SETS[PROFILE] / "vectors.json").read_text(encoding="utf-8"))
 CASES = {c["id"]: c for c in VECTORS["cases"]}
 CONTRACT = VECTORS["contract"]["document"]
-PRODUCED = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
 
 RUN = ["valid-exchange", "invariance-two-nonces-two-transports", "declined", "missing-evidence-no-such-subject",
        "unsupported-version-refused", "missing-evidence-recorded-absence"]
+if PROFILE == "evidence-interop/1":
+    # The cost-policy refusal: capacity_exceeded under /1 (ER -02 §11).
+    RUN.append("capacity-exceeded")
 MUTATIONS = ["tampered-artifact", "wrong-request-digest", "envelope-bad-signature", "envelope-untrusted-responder",
              "envelope-subject-mismatch", "envelope-anchor-not-the-pin", "verification-material-tampered",
              "inclusion-proof-forged-and-signed", "forged-refusal-untrusted-key", "forged-refusal-bad-signature"]
@@ -88,13 +97,17 @@ CARRIAGE_MUTATIONS = ["carriage-mcp-rehashes-json", "carriage-mcp-error-no-reply
                       "carriage-manifest-count-member"]
 SKIP_PREFIX = {
     "unsupported-version-mismatch": "verifier-side: an envelope naming a profile other than the one requested; a "
-                                    "conforming evidence-interop/0 responder never emits one",
+                                    "conforming responder never emits one",
     "unsupported-version-absent": "verifier-side: an envelope with no profile member, from a responder implementing "
                                   "the request draft alone; this responder always sends profile",
     "unsupported-version-unimplemented": "verifier-side: an envelope naming a profile the verifier does not "
-                                         "implement; this responder implements evidence-interop/0 only",
+                                         "implement; this responder implements every profile its requests name",
     "foreign-native-check-": "the case's Artifact carries a foreign signed object at a member path; this "
                              "responder's canonical Artifacts are its own AAC records and carry none",
+    "capacity-exceeded-under-v0": "verifier-side: capacity_exceeded answering an evidence-interop/0 request; this "
+                                  "responder refuses a limit policy_declined under /0",
+    "request-unauthenticated": "this responder defines no requester authentication, so no request of it fails "
+                               "to verify",
     "acceptance-": "§11.1 acceptance records and receipts: not responder output, and not in this item",
     "lifecycle-": "§11.2 lifecycle statements: not responder output, and not in this item",
 }
@@ -566,7 +579,7 @@ def main() -> int:
     print(f"invariance: canonical Artifact octets across ['a2a', 'mcp', 'native'] for request R (CBOR): "
           f"{'byte-identical' if same else 'DIFFERENT'} (sha256 {sha(a_native)})")
     manifests = [*PRODUCED["manifests"], a2a_params(), PRODUCED["mcp_manifest"]["structuredContent"]]
-    form = manifest_form(manifests[0], frozenset({"evidence-interop/0"}))
+    form = manifest_form(manifests[0], frozenset(VECTOR_SETS))
     consistency = manifest_consistency(manifests)
     print(f"manifest: manifest_form {form.status}{' (' + form.detail + ')' if form.detail else ''}; "
           f"manifest_consistency across {len(manifests)} copies (native before and after answering, the A2A "

@@ -3,8 +3,12 @@
 //! conformance vectors, answered by this crate.
 //!
 //! ```text
-//! cargo run -p evidencebook-interop --bin responder -- <dir> <out.json>
+//! cargo run -p evidencebook-interop --bin responder -- [-profile evidence-interop/1] <dir> <out.json>
 //! ```
+//!
+//! Every request names `-profile`, `evidence-interop/0` by default, as Go's
+//! `-profile` does: under /1 the cost-policy refusal is the
+//! `capacity-exceeded` exchange and `declined` is a uniform-policy refusal.
 //!
 //! It makes the calls `test/interop/responder/main.go` makes, in the same
 //! order, with the same keys and clock, and writes the same members of its
@@ -29,7 +33,7 @@ use evidencebook::ask::{self, AskedRequest, Entry, SentRequest};
 use evidencebook::derivation::Derivations;
 use evidencebook::record::{EpistemicType, Link, LinkType};
 use evidencebook::respond::{
-    respond, RequestLimiter, RespondOptions, Responder, ResponderPolicy, SharePolicy,
+    respond, RefusalPolicy, RequestLimiter, RespondOptions, Responder, ResponderPolicy, SharePolicy,
 };
 use evidencebook_interop::{epoch, go_marshal_indent, rfc3339, seeded, sha256_hex, Clock, MemBook};
 use serde_json::{json, Map, Value};
@@ -39,6 +43,7 @@ const RESPONDER_LABEL: &str =
 const LOG_LABEL: &str = "evidence-interop/0 worked example: CLL log key";
 const LOG_ID: &str = "evidence-stream-1";
 const PROFILE: &str = "evidence-interop/0";
+const PROFILE_V1: &str = "evidence-interop/1";
 const MEDIA_TYPE_JSON: &str = "application/json";
 const MEDIA_TYPE_CBOR: &str = "application/cbor";
 
@@ -127,8 +132,12 @@ struct Answered {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [dir, out_path] = args.as_slice() else {
-        eprintln!("usage: responder <dir> <out.json>");
+    let (profile, rest) = match args.as_slice() {
+        [flag, profile, rest @ ..] if flag == "-profile" => (profile.as_str(), rest),
+        rest => (PROFILE, rest),
+    };
+    let [dir, out_path] = rest else {
+        eprintln!("usage: responder [-profile evidence-interop/1] <dir> <out.json>");
         std::process::exit(2);
     };
     let out_dir = Path::new(dir);
@@ -240,14 +249,14 @@ fn main() {
         subject.clone(),
         &pin,
         "2026-10-12T00:00:10Z/c",
-        PROFILE,
+        profile,
         MEDIA_TYPE_JSON,
     );
     let req_d = request(
         subject.clone(),
         &pin,
         "2026-10-12T00:00:20Z/d",
-        PROFILE,
+        profile,
         MEDIA_TYPE_CBOR,
     );
     let reply_c = answer(&mut book, &default_policy, &req_c, "alice");
@@ -273,7 +282,7 @@ fn main() {
         subject.clone(),
         &pin,
         "2026-10-12T00:00:10Z/c",
-        PROFILE,
+        profile,
         MEDIA_TYPE_CBOR,
     );
     for _ in 0..3 {
@@ -304,7 +313,7 @@ fn main() {
             json!({"exchange": records[2]}),
             &pin,
             nonce,
-            PROFILE,
+            profile,
             media_type,
         );
         let artifact = answer(&mut book, &default_policy, &m, requester)
@@ -318,7 +327,7 @@ fn main() {
         json!({"record": sha256_hex(b"never recorded")}),
         &pin,
         "2026-10-12T00:00:10Z/c",
-        PROFILE,
+        profile,
         MEDIA_TYPE_JSON,
     );
     let reply = answer(&mut book, &default_policy, &missing, "alice");
@@ -348,7 +357,7 @@ fn main() {
             json!({"record": records[1]}),
             &pin,
             "2026-10-12T00:00:10Z/c",
-            PROFILE,
+            profile,
             MEDIA_TYPE_JSON,
         )
         .carry(),
@@ -359,7 +368,7 @@ fn main() {
             subject.clone(),
             &anchor_digest(&earlier),
             "2026-10-12T00:00:10Z/c",
-            PROFILE,
+            profile,
             MEDIA_TYPE_JSON,
         )
         .carry(),
@@ -368,10 +377,20 @@ fn main() {
     // The same request C to a responder whose cost policy declines it.
     let mut declining = open_book("responder");
     let reply = answer(&mut declining, &declining_policy, &req_c, "alice");
-    exchanges.insert(
-        "declined".into(),
-        json!({"requests": [req_c.carry()], "replies": [reply.message.carry()]}),
-    );
+    let mut declined = json!({"requests": [req_c.carry()], "replies": [reply.message.carry()]});
+    if profile == PROFILE_V1 {
+        // Under /1 a limit is capacity_exceeded; policy_declined is policy:
+        // a uniform-policy book that holds no such record.
+        exchanges.insert("capacity-exceeded".into(), declined);
+        let uniform_policy = ResponderPolicy {
+            refusal_policy: RefusalPolicy::Uniform,
+            ..ResponderPolicy::default()
+        };
+        let mut uniform = open_book("responder");
+        let reply = answer(&mut uniform, &uniform_policy, &req_c, "alice");
+        declined = json!({"requests": [req_c.carry()], "replies": [reply.message.carry()]});
+    }
+    exchanges.insert("declined".into(), declined);
 
     // A requester's own absence record: request C sent from another book, no reply in a one-minute window.
     let mut requester = open_book("responder");
@@ -439,7 +458,7 @@ fn main() {
                 .collect(),
         )
     };
-    let out = json!({
+    let mut out = json!({
         "responder_key": hex::encode(signer.verifying_key().to_bytes()),
         "log_keys": log_keys,
         "exchanges": sorted(exchanges),
@@ -447,5 +466,8 @@ fn main() {
         "invariance_record_set_artifacts_hex": sorted(record_sets),
         "other_requests": sorted(others),
     });
+    if profile != PROFILE {
+        out["profile"] = json!(profile);
+    }
     std::fs::write(out_path, go_marshal_indent(&out, " ")).unwrap();
 }

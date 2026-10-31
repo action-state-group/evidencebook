@@ -1,8 +1,8 @@
 # capsule-evidencebook
 
 An evidence book over a Checkpointed Local Log, and the evidence request
-interaction (`draft-mih-agent-evidence-request-00`, profile
-`evidence-interop/0`) on both sides of it, in Python. Import it as
+interaction (`draft-mih-agent-evidence-request-00`, profiles
+`evidence-interop/0` and `evidence-interop/1`) on both sides of it, in Python. Import it as
 `evidencebook`.
 
 It implements the same semantics as the Go module in this repository: for

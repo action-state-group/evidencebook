@@ -2,7 +2,7 @@
 """The responder side of the evidence interoperability profile's conformance
 vectors, answered by this repository's Python package.
 
-    python responder.py <dir> <out.json>
+    python responder.py [--profile evidence-interop/1] <dir> <out.json>
 
 It makes the calls test/interop/responder/main.go makes, in the same order,
 with the same keys and clock, and writes the same members of its output for
@@ -12,6 +12,10 @@ MCP is answered natively here (the A2A and MCP handlers make that one
 Respond call), the book's state stays Go's, and the output carries no
 carriage, manifest, Agent Card or MCP members: the verifier skips the
 carriage cases. Every reply it does write is the bytes Go's run writes.
+
+Every request names --profile, evidence-interop/0 by default, as Go's
+-profile does: under /1 the cost-policy refusal is the capacity-exceeded
+exchange and declined is a uniform-policy refusal.
 
 The keys are test keys. Never use them for anything else.
 """
@@ -46,7 +50,7 @@ def carry(m: eb.Message) -> dict:
     return {"media_type": m.media_type, "octets_hex": m.octets.hex()}
 
 
-def main(directory: str, out_path: str) -> None:
+def main(directory: str, out_path: str, profile: str = eb.PROFILE) -> None:
     out_dir = Path(directory)
     clock = [datetime(2026, 10, 12, tzinfo=timezone.utc)]
 
@@ -78,7 +82,8 @@ def main(directory: str, out_path: str) -> None:
     def respond(m: eb.Message, requester: str, on: eb.Book = book) -> eb.Reply:
         return on.respond(m, eb.RespondOptions(authenticated_requester=requester, policy=peers))[0]
 
-    out: dict = {
+    out: dict = {} if profile == eb.PROFILE else {"profile": profile}
+    out |= {
         "responder_key": seeded(RESPONDER_LABEL).public_key().hex(),
         "log_keys": [{"iss": cp.log_id, "kid": cp.key_id, "sub": f"{cp.log_id}#{cp.tree_size}"}
                      for cp in book.checkpoints()],
@@ -90,8 +95,8 @@ def main(directory: str, out_path: str) -> None:
     exchanges = out["exchanges"]
 
     # Request C (JSON) by alice and request D (CBOR, another nonce) by bob.
-    req_c = request(subject, pin, "2026-10-12T00:00:10Z/c", eb.PROFILE, eb.MEDIA_TYPE_JSON)
-    req_d = request(subject, pin, "2026-10-12T00:00:20Z/d", eb.PROFILE, eb.MEDIA_TYPE_CBOR)
+    req_c = request(subject, pin, "2026-10-12T00:00:10Z/c", profile, eb.MEDIA_TYPE_JSON)
+    req_d = request(subject, pin, "2026-10-12T00:00:20Z/d", profile, eb.MEDIA_TYPE_CBOR)
     reply_c, reply_d = respond(req_c, "alice"), respond(req_d, "bob")
     if reply_c.envelope is None or reply_d.envelope is None:
         raise SystemExit("requests C and D were refused")
@@ -104,7 +109,7 @@ def main(directory: str, out_path: str) -> None:
     (out_dir / "artifact-bob-cbor-nonce-d.bin").write_bytes(reply_d.envelope.artifact)
 
     # Request R, request C in CBOR: Go sends it natively, over MCP and over A2A.
-    r = request(subject, pin, "2026-10-12T00:00:10Z/c", eb.PROFILE, eb.MEDIA_TYPE_CBOR)
+    r = request(subject, pin, "2026-10-12T00:00:10Z/c", profile, eb.MEDIA_TYPE_CBOR)
     for _ in range(3):
         if respond(r, "alice").envelope is None:
             raise SystemExit("request R was refused")
@@ -113,7 +118,7 @@ def main(directory: str, out_path: str) -> None:
     for name, nonce, media_type, requester in (
             ("exchange-alice-json-nonce-c", "2026-10-12T00:00:10Z/c", eb.MEDIA_TYPE_JSON, "alice"),
             ("exchange-bob-cbor-nonce-d", "2026-10-12T00:00:20Z/d", eb.MEDIA_TYPE_CBOR, "bob")):
-        reply = respond(request(eb.Subject("exchange", records[2].record_id), pin, nonce, eb.PROFILE, media_type),
+        reply = respond(request(eb.Subject("exchange", records[2].record_id), pin, nonce, profile, media_type),
                         requester)
         if reply.envelope is None:
             raise SystemExit(f"exchange request {name} was refused")
@@ -121,7 +126,7 @@ def main(directory: str, out_path: str) -> None:
 
     # A record this book does not hold: no_such_subject.
     missing = request(eb.Subject("record", hashlib.sha256(b"never recorded").hexdigest()), pin,
-                      "2026-10-12T00:00:10Z/c", eb.PROFILE, eb.MEDIA_TYPE_JSON)
+                      "2026-10-12T00:00:10Z/c", profile, eb.MEDIA_TYPE_JSON)
     exchanges["missing-evidence-no-such-subject"] = {"requests": [carry(missing)],
                                                      "replies": [carry(respond(missing, "alice").message)]}
 
@@ -131,13 +136,20 @@ def main(directory: str, out_path: str) -> None:
 
     # The requests the envelope mutations are paired with.
     out["other_requests"]["another-record"] = carry(request(eb.Subject("record", records[1].record_id), pin,
-                                                            "2026-10-12T00:00:10Z/c", eb.PROFILE, eb.MEDIA_TYPE_JSON))
+                                                            "2026-10-12T00:00:10Z/c", profile, eb.MEDIA_TYPE_JSON))
     out["other_requests"]["another-pin"] = carry(request(subject, earlier.anchor_digest, "2026-10-12T00:00:10Z/c",
-                                                         eb.PROFILE, eb.MEDIA_TYPE_JSON))
+                                                         profile, eb.MEDIA_TYPE_JSON))
 
     # The same request C to a responder whose cost policy declines it.
     declining = open_book("responder", eb.ResponderPolicy(limiter=_LimitNone()))
-    exchanges["declined"] = {"requests": [carry(req_c)], "replies": [carry(respond(req_c, "alice", declining).message)]}
+    declined = {"requests": [carry(req_c)], "replies": [carry(respond(req_c, "alice", declining).message)]}
+    if profile == eb.PROFILE_V1:
+        # Under /1 a limit is capacity_exceeded; policy_declined is policy:
+        # a uniform-policy book that holds no such record.
+        exchanges["capacity-exceeded"] = declined
+        uniform = open_book("responder", eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_UNIFORM))
+        declined = {"requests": [carry(req_c)], "replies": [carry(respond(req_c, "alice", uniform).message)]}
+    exchanges["declined"] = declined
 
     # A requester's own absence record: request C sent from another book, no reply in a one-minute window.
     requester = open_book("responder")
@@ -175,6 +187,10 @@ def absence_statement(record: eb.Record) -> bytes:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: responder.py <dir> <out.json>")
-    main(sys.argv[1], sys.argv[2])
+    args = sys.argv[1:]
+    chosen = eb.PROFILE
+    if args[:1] == ["--profile"] and len(args) >= 2:
+        chosen, args = args[1], args[2:]
+    if len(args) != 2:
+        raise SystemExit("usage: responder.py [--profile evidence-interop/1] <dir> <out.json>")
+    main(args[0], args[1], chosen)

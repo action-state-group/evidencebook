@@ -34,8 +34,8 @@ const (
 
 // RequestLimiter decides whether a requester may be answered now. The
 // requester is the authenticated identity, or "" for every caller the
-// transport did not authenticate. A request over the limit is refused
-// policy_declined.
+// transport did not authenticate. A request over the limit is refused for a
+// limit: capacity_exceeded under evidence-interop/1, policy_declined under /0.
 type RequestLimiter interface {
 	Allow(requester string, now time.Time) bool
 }
@@ -51,7 +51,8 @@ type ResponderPolicy struct {
 	// MaxRequestBytes caps a request's size; zero is DefaultMaxRequestBytes.
 	MaxRequestBytes int
 	// MaxAnswerItems caps the records or checkpoints one artifact carries; a
-	// larger answer is refused policy_declined. Zero is DefaultMaxAnswerItems.
+	// larger answer is refused for a limit, as a request over the limiter is.
+	// Zero is DefaultMaxAnswerItems.
 	MaxAnswerItems int
 }
 
@@ -265,6 +266,33 @@ type answer struct {
 	seal      bool
 }
 
+// limitReason is the reason a request asking for profile is refused for a
+// limit of the book's own: its size, the rate limiter or the answer's item
+// cap. evidence-interop/1 (ER -02 §4.2, §11) refuses load shedding
+// capacity_exceeded whatever the refusal policy, so policy_declined stays a
+// statement about policy; /0 registers no such token and keeps
+// policy_declined, as does a profile the book does not implement.
+func limitReason(profile string) string {
+	if profile == evidencerequest.ProfileIDv1 {
+		return evidencerequest.ReasonCapacityExceeded
+	}
+	return ReasonPolicyDeclined
+}
+
+// requestProfile is the profile a request refused for a limit asks for, so
+// the refusal conforms under it: the profile of a request the book reads as
+// well formed, ProfileID for any other (§3.3 step 2). It runs only once the
+// cost checks have declined the request, and reads it as an answer would, so
+// a request is read under one definition of well formed (readRequest) and
+// no resolution work runs; the carriages bound a message before it reaches
+// the book.
+func requestProfile(m Message) string {
+	if check := readRequest(m); check.reason == "" {
+		return check.request.Profile
+	}
+	return ProfileID
+}
+
 func (a *answer) refuse(reason, detail string) (Reply, error) {
 	b := a.book
 	refusal := Refusal{RequestDigest: a.digest, Reason: reason, IssuedAt: evidencerequest.ProfileTime(a.now), KeyID: KeyID(b.signer), Detail: detail}
@@ -380,23 +408,18 @@ func (a *answer) run() (Reply, error) {
 	b.mu.Lock()
 	a.now = b.now()
 	// Cost policy first: an oversized or over-limit request is declined
-	// before any parsing or resolution work (FR-37).
+	// before it is resolved (FR-37); it is read only to pick the reason
+	// (requestProfile).
 	oversized := len(a.request.Octets) > limit
 	limited := !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)
 	b.mu.Unlock()
 	if oversized || limited {
-		return a.refuse(ReasonPolicyDeclined, "")
+		return a.refuse(limitReason(requestProfile(a.request)), "")
 	}
+	// The book answers evidence-interop/0 and /1 (evidencerequest.Profiles),
+	// and an unknown profile's detail lists both (§3.3 step 4).
 	check := readRequest(a.request)
-	// The book answers evidence-interop/0 only, as the Rust crate and the
-	// Python package do. agent-action-capsule reads /1 requests too (a
-	// requester's book records them with RequestSent and verifies replies to
-	// them), so a /1 request is refused here, and an unknown profile's detail
-	// (set for nothing else) lists /0 alone (§3.3 step 4).
-	if (check.reason == "" && check.request.Profile != ProfileID) || check.detail != "" {
-		return a.refuse(ReasonRequestMalformed, "profiles supported: "+ProfileID)
-	}
 	if check.reason != "" {
 		return a.refuse(check.reason, check.detail)
 	}
@@ -437,6 +460,9 @@ func (a *answer) run() (Reply, error) {
 	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def)
 	if err != nil {
 		return Reply{}, err
+	}
+	if built.overLimit {
+		return a.refuse(limitReason(req.Profile), "")
 	}
 	if built.declined {
 		return a.refuse(ReasonPolicyDeclined, "")

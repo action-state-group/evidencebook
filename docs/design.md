@@ -177,7 +177,11 @@ no exported function other than its own methods accepts it.
 
 **The profile, and what it pins.** `Respond` implements the responder side
 of `evidence-interop/0` (agent-action-capsule `spec/interop-profile-v0.md`)
-and nothing the profile does not define. The request map is the request
+and `evidence-interop/1` (`spec/interop-profile-v1.md`), and nothing either
+profile does not define. The artifact is the same under both; the envelope
+names the profile the request asked for, and a limit of the book's own
+(request size, rate, answer items) is refused `capacity_exceeded` under `/1`
+and `policy_declined` under `/0`, which registers no such token. The request map is the request
 draft's (§6.1): a one-member subject map, `expected_pin` as a digest,
 `min_freshness` as a size or a time, unknown members ignored, member names
 matched exactly, and the profile's validation order, so both coverage members

@@ -66,8 +66,8 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 		derivations = append(derivations, DerivationStandardHistory)
 	}
 	manifest := map[string]any{
-		"profiles":       []any{ProfileID},
-		"drafts":         []any{RequestDraft},
+		"profiles":       []any{ProfileID, ProfileIDv1},
+		"drafts":         []any{RequestDraft, RequestDraft01, RequestDraft02},
 		"subject_forms":  forms,
 		"derivations":    derivations,
 		"bindings":       listed,

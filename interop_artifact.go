@@ -39,9 +39,12 @@ type builtArtifact struct {
 	artifact     []byte
 	verification []VerificationEntry
 	material     [][]byte
-	// declined: the answer would exceed the cost policy or failed the
-	// disclosure scan; it is refused policy_declined.
+	// declined: the answer failed the disclosure scan; it is refused
+	// policy_declined.
 	declined bool
+	// overLimit: the answer would carry more items than the cost policy
+	// allows; it is refused for a limit (limitReason).
+	overLimit bool
 }
 
 // declaredFields is the field set an artifact form may carry (NFR-2). The
@@ -74,7 +77,7 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 		maxItems = DefaultMaxAnswerItems
 	}
 	if len(leaves) > maxItems {
-		return builtArtifact{declined: true}, nil
+		return builtArtifact{overLimit: true}, nil
 	}
 	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.Value()}
 	var built builtArtifact
@@ -83,7 +86,7 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 	case req.Derivation == DerivationHistoryCard || req.Subject.Kind == SubjectCheckpoints:
 		chain := checkpointsThrough(view.checkpoints, anchor)
 		if len(chain) > maxItems {
-			return builtArtifact{declined: true}, nil
+			return builtArtifact{overLimit: true}, nil
 		}
 		if req.Derivation == DerivationHistoryCard {
 			history, err := b.historyCard(ctx, chain, anchor)

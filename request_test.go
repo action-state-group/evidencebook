@@ -74,7 +74,13 @@ func mustRefusal(t *testing.T, reply Reply, reason string) Refusal {
 	if reply.Refusal.Reason != reason {
 		t.Fatalf("refusal reason %s, want %s", reply.Refusal.Reason, reason)
 	}
-	if err := reply.Refusal.Verify(); err != nil || !reply.Refusal.Conforming() {
+	// capacity_exceeded is registered under evidence-interop/1 only, the
+	// profile the book sends it to (limitReason).
+	profile := ProfileID
+	if reason == evidencerequest.ReasonCapacityExceeded {
+		profile = ProfileIDv1
+	}
+	if err := reply.Refusal.Verify(); err != nil || !reply.Refusal.ConformingUnder(profile) {
 		t.Fatalf("refusal does not verify or does not conform: %v", err)
 	}
 	parsed, err := ParseReply(reply.Message)

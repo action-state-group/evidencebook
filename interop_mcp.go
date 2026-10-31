@@ -58,13 +58,13 @@ var mcpTools = []any{
 	map[string]any{
 		"name":        MCPToolManifest,
 		"title":       "Evidence request manifest",
-		"description": "Returns this responder's evidence request manifest (profile evidence-interop/0): the profiles, request drafts, subject forms, derivations and bindings it answers. It says what can be asked, never what exists.",
+		"description": "Returns this responder's evidence request manifest (profiles evidence-interop/0 and evidence-interop/1): the profiles, request drafts, subject forms, derivations and bindings it answers. It says what can be asked, never what exists.",
 		"inputSchema": map[string]any{"type": "object", "additionalProperties": false},
 	},
 	map[string]any{
 		"name":         MCPToolRequest,
 		"title":        "Evidence request",
-		"description":  "Carries one evidence request (draft-mih-agent-evidence-request, profile evidence-interop/0) as opaque octets in base64url without padding, and returns the responder's reply octets: a signed response envelope or a signed refusal, in the request's encoding.",
+		"description":  "Carries one evidence request (draft-mih-agent-evidence-request, profile evidence-interop/0 or evidence-interop/1) as opaque octets in base64url without padding, and returns the responder's reply octets: a signed response envelope or a signed refusal, in the request's encoding.",
 		"inputSchema":  mcpOpaqueSchema("request"),
 		"outputSchema": mcpOpaqueSchema("reply"),
 	},
