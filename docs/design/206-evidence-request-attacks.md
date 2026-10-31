@@ -65,7 +65,7 @@ Status: decided; not built.
 
 **Answer.** Evidence Request -02 §4.7, "Unavailable-Window Statements" (agent-action-capsule#473; spec PR agent-action-capsule#476). The holder may seal a signed statement giving a start, an end and a `reason_class` from a closed list (`flood`, `maintenance`, `outage`, `other_declared`). Only a receipt from a transparency service the reader accepts as independent of the holder registers and dates it. A reader that holds an absence and a covering statement shows "no answer; holder states unavailability" with the class and the stated period, never as a refusal or as proof of an attack, and labels it "stated afterwards" when it was registered after the asker's window closed. The absence and the retention commitment are unchanged; how much the statement weighs is relying-party policy. Vectors: `vectors/evidence-request/unavailable-window.json` in agent-action-capsule (35 cases).
 
-Status: decided in spec; ER -02 §4.7 merged in agent-action-capsule#476 (`d3bd61b`). Implementation, not built: #223 (seal and read statements), capsule-viewer#164 (draw it), agent-action-capsule#477 (the Go and Rust readers run the vectors).
+Status: decided in spec; ER -02 §4.7 merged in agent-action-capsule#476 (`d3bd61b`), and -02 is posted as `draft-mih-agent-evidence-request-02` (dated 30 October 2026; the IETF archive copy's SHA-256 is `ee5e2b90bda08fd956c271f512b52f4a834bcff3a1cae0144f644f5955bef948`). Implementation, not built: #223 (seal and read statements), capsule-viewer#164 (draw it), agent-action-capsule#477 (the Go and Rust readers run the vectors).
 
 ### Asker side
 
