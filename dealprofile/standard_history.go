@@ -23,7 +23,9 @@ import (
 //   - A deal is a deal's own log holding an `action` (or typed
 //     `action-record/v0`) `commit` or `pay`. A sale's log is not a deal; a
 //     deal that never reached such a step was never agreed.
-//   - agreed_at is that first step's committed_at.
+//   - agreed_at is that first step's committed_at, to the minute: a tick's
+//     anchor time is a minute floor, and a step sealed after it within the
+//     same minute would sort after the anchor and drop out of every count.
 //   - role is the baseline intent's party_role: seller is "provided", buyer
 //     or absent "bought".
 //   - amount is the amount_minor and currency of the check (typed
@@ -71,8 +73,9 @@ type HistoryInput struct {
 	// the anchor would change a card that claims to be as of it, and the
 	// card could not be reproduced.
 	Results []HistoryResult
-	// CounterpartyHalfVerified is whether the counterparty's half of the
-	// deal is received and its signature verifies.
+	// CounterpartyHalfVerified is, under the anchor like every other input,
+	// whether the counterparty's half of the deal is received and its
+	// signature verifies.
 	CounterpartyHalfVerified bool
 }
 
@@ -183,7 +186,7 @@ func StandardHistoryDeal(in HistoryInput) (deal standardhistory.Deal, ok bool, e
 	}
 	return standardhistory.Deal{
 		Deal:     dealID,
-		AgreedAt: agreed.committedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		AgreedAt: agreed.committedAt.UTC().Truncate(time.Minute).Format("2006-01-02T15:04:05Z"),
 		Role:     dealRole(records),
 		Amount:   amount,
 		Outcome:  reconcileOutcome(in.Results),
@@ -308,7 +311,7 @@ func MinorUnits(currency string) (scale int, ok bool) {
 	return 0, false
 }
 
-// ISO 4217's active codes with minor units other than two.
+// ISO 4217 codes with minor units other than two.
 var minorUnitExceptions = map[string]int{
 	"BIF": 0, "CLP": 0, "DJF": 0, "GNF": 0, "ISK": 0, "JPY": 0, "KMF": 0, "KRW": 0, "PYG": 0,
 	"RWF": 0, "UGX": 0, "UYI": 0, "VND": 0, "VUV": 0, "XAF": 0, "XOF": 0, "XPF": 0,
@@ -316,7 +319,8 @@ var minorUnitExceptions = map[string]int{
 	"CLF": 4, "UYW": 4,
 }
 
-// ISO 4217's active codes with two minor units.
+// ISO 4217 codes with two minor units, including ANG and BGN, withdrawn
+// for XCG and EUR but still on older deals.
 const twoDecimalCurrencies = " AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BMD BND BOB BOV BRL BSD BTN BWP BYN BZD" +
 	" CAD CDF CHE CHF CHW CNY COP COU CRC CUP CVE CZK DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GTQ GYD" +
 	" HKD HNL HTG HUF IDR ILS INR IRR JMD KES KGS KHR KPW KYD KZT LAK LBP LKR LRD LSL MAD MDL MGA MKD MMK MNT MOP MRU" +

@@ -4,6 +4,7 @@ package dealprofile
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -154,6 +155,47 @@ func TestAResultSealedAfterTheAnchorIsNotPassed(t *testing.T) {
 	later, _, err := StandardHistoryDeal(HistoryInput{Records: records, Results: sealed})
 	require.NoError(t, err)
 	assert.Equal(t, "held", later.Outcome, "unbounded, the later Result changes the card")
+}
+
+// agreed_at is coarsened to the minute, as a tick's anchor time is, so a
+// step sealed within the anchor's minute never sorts after the anchor.
+func TestAgreedAtIsTheMinute(t *testing.T) {
+	c := classicDeal(t, "", map[string]any{"action": "commit", "amount_minor": 100, "currency": "USD"})
+	c.records[len(c.records)-1].CommittedAt = time.Date(2026, 10, 6, 12, 0, 30, 123456000, time.UTC)
+	deal, ok, err := StandardHistoryDeal(HistoryInput{Records: c.records})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "2026-10-06T12:00:00Z", deal.AgreedAt)
+}
+
+// The holder's last final close decides the receipt: an open close is not
+// final, and a later close of a received outcome is not undone by an
+// earlier one; a typed action-outcome counts as an outcome.
+func TestHappenedFollowsTheLastFinalClose(t *testing.T) {
+	for name, tc := range map[string]struct {
+		outcomeType string
+		closes      []string // the status of the outcome each close names, "" for an open close
+		want        string
+	}{
+		"received then open":         {TypeOutcome, []string{"received", ""}, "receipt_only"},
+		"received then not received": {TypeOutcome, []string{"received", "not_received"}, "no_record"},
+		"typed received":             {TypeActionOutcome, []string{"received"}, "receipt_only"},
+	} {
+		c := classicDeal(t, "", map[string]any{"action": "commit", "amount_minor": 100, "currency": "USD"})
+		for i, status := range tc.closes {
+			if status == "" {
+				c.add(fmt.Sprintf("close%d", i), TypeClose, nil, map[string]any{"outcome": "open"})
+				continue
+			}
+			name := fmt.Sprintf("outcome%d", i)
+			c.add(name, tc.outcomeType, nil, map[string]any{"status": status, "outcome": "completed"})
+			c.add(fmt.Sprintf("close%d", i), TypeClose, map[string]string{"outcome": name}, map[string]any{"outcome": "completed"})
+		}
+		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: c.records})
+		require.NoError(t, err, name)
+		require.True(t, ok, name)
+		assert.Equal(t, tc.want, deal.Happened, name)
+	}
 }
 
 // A seller's commit: the role is provided, the check's amount is scaled by

@@ -1239,12 +1239,12 @@ of that book that any tick up to the anchor carries, never one sealed after the 
 | Member | From |
 |---|---|
 | deal | a deal's own log that holds an `action` (or `action-record/v0`) whose `action` is `commit` or `pay`. A sale's own log is not a deal, and neither is a deal that never reached such a step. `deal` is the deal id. |
-| `agreed_at` | the `committed_at` of the first such step, to the second |
+| `agreed_at` | the `committed_at` of the first such step, to the minute: a tick's anchor time is a minute floor, and a step sealed later in the same minute would sort after it and fall out of every count |
 | `role` | the baseline intent's `party_role`: `seller` is `provided`; `buyer` or absent is `bought` |
 | `amount` | the `amount_minor` and `currency` of the check the step rests on (`authorized_by` → `approval` → `approves` → `verdict` → `checks` → `check`; for a typed step, `evaluation_ref` → `action-evaluation/v0` → `proposed_action_digest` → `proposed-action/v0`), with `assetScale` the currency's ISO 4217 minor units |
 | `counterparty_class` | absent: this profile records no SH §7 class |
 | `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; any claim `not_met` is `did_not_hold`; anything else, no verified Result included, is `undecided` |
-| `happened` | `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
+| `happened` | (every input bounded by the anchor, as above) `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
 | `disputes` | empty: this profile seals no IP §11.2 `disputes` statement |
 
 **No amount.** A check may omit `amount_minor` and `currency` (section 3), and SH gives an amount
