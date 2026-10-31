@@ -65,7 +65,11 @@ type HistoryInput struct {
 	// Records are the deal log's records the anchor commits, in log order.
 	Records []HistoryRecord
 	// Results are the deal's sealed Results the anchor commits, oldest
-	// first.
+	// first. Results live on the deal's results book (deal/<id>/results),
+	// not on its log, so the host passes only those within the results
+	// book's extent in StandardHistoryAnchor.Extents: a Result sealed after
+	// the anchor would change a card that claims to be as of it, and the
+	// card could not be reproduced.
 	Results []HistoryResult
 	// CounterpartyHalfVerified is whether the counterparty's half of the
 	// deal is received and its signature verifies.

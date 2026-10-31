@@ -113,6 +113,7 @@ func TestATypedDealsEntry(t *testing.T) {
 	}
 	_, _, err = StandardHistoryDeal(HistoryInput{Records: cut})
 	require.ErrorIs(t, err, ErrUnpriced)
+	assert.ErrorContains(t, err, "deal deal-7a1e5c0d9b2f4e68: ")
 }
 
 // The reconcile outcome is the newest verified Result's: every claim met is
@@ -138,6 +139,21 @@ func TestTheOutcomeIsTheNewestVerifiedResult(t *testing.T) {
 		require.True(t, ok, name)
 		assert.Equal(t, tc.want, deal.Outcome, name)
 	}
+}
+
+// The host bounds Results by the anchor: it passes only those within the
+// results book's extent under the anchor, so a Result sealed after the
+// anchor never changes the card (PROFILE.md section 11).
+func TestAResultSealedAfterTheAnchorIsNotPassed(t *testing.T) {
+	records := fixtureHistory(t, "positive-typed")
+	sealed := []HistoryResult{result(true, "not_met"), result(true, "met")}
+	const underAnchor = 1 // the results book's extent under the anchor, in records
+	at, _, err := StandardHistoryDeal(HistoryInput{Records: records, Results: sealed[:underAnchor]})
+	require.NoError(t, err)
+	assert.Equal(t, "did_not_hold", at.Outcome)
+	later, _, err := StandardHistoryDeal(HistoryInput{Records: records, Results: sealed})
+	require.NoError(t, err)
+	assert.Equal(t, "held", later.Outcome, "unbounded, the later Result changes the card")
 }
 
 // A seller's commit: the role is provided, the check's amount is scaled by
@@ -177,6 +193,7 @@ func TestADealWithNoAmountIsRefused(t *testing.T) {
 	} {
 		_, _, err := StandardHistoryDeal(HistoryInput{Records: classicDeal(t, "", check).records})
 		require.ErrorIs(t, err, ErrUnpriced, name)
+		assert.ErrorContains(t, err, "deal deal-0123456789abcdef: ", name)
 	}
 }
 

@@ -1232,7 +1232,9 @@ with no sealed record behind it is never guessed.
 **The anchor.** A profile's card is as of a cadence tick: its anchor is the profile's cadence
 checkpoint, which commits every deal log's checkpoint, never one deal log's checkpoint. A deal's
 records under the anchor are those of the largest checkpoint of its log that any tick up to the
-anchor carries.
+anchor carries. A deal's Results live in a separate book, `deal/<deal_id>/results` (section 10),
+so they are bounded the same way: the host passes only the Results within the largest checkpoint
+of that book that any tick up to the anchor carries, never one sealed after the anchor.
 
 | Member | From |
 |---|---|
@@ -1241,7 +1243,7 @@ anchor carries.
 | `role` | the baseline intent's `party_role`: `seller` is `provided`; `buyer` or absent is `bought` |
 | `amount` | the `amount_minor` and `currency` of the check the step rests on (`authorized_by` → `approval` → `approves` → `verdict` → `checks` → `check`; for a typed step, `evaluation_ref` → `action-evaluation/v0` → `proposed_action_digest` → `proposed-action/v0`), with `assetScale` the currency's ISO 4217 minor units |
 | `counterparty_class` | absent: this profile records no SH §7 class |
-| `outcome` | the newest Result for the deal (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; any claim `not_met` is `did_not_hold`; anything else, no verified Result included, is `undecided` |
+| `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; any claim `not_met` is `did_not_hold`; anything else, no verified Result included, is `undecided` |
 | `happened` | `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
 | `disputes` | empty: this profile seals no IP §11.2 `disputes` statement |
 
