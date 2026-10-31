@@ -329,8 +329,8 @@ Unauthenticated and malformed traffic never grows the log and never forces a
 checkpoint, and a time floor in the future is refused without work.
 
 **Refusal signatures.** A refusal signs the sorted, compact JSON of
-`issued_at`, `reason` and `request_digest`, the same body `capsule_emit`
-signs and the profile pins (§6.3), with `issued_at` at seconds precision. The
+`issued_at`, `reason` and `request_digest`, the same body Python
+`agent_action_capsule.evidence_request` signs and the profile pins (§6.3), with `issued_at` at seconds precision. The
 reason tokens are the request draft's registry and nothing else.
 
 **Recorded absence belongs to the requester.** A responder grants or refuses.
@@ -446,7 +446,7 @@ never rewritten.
 | Ed25519 verification (record envelopes, checkpoint signatures and statements in the Rust crate): strict, refusing small-order and non-canonical keys and R, and S >= L | checkpointed-local-log `checkpoint-conformance-vectors/ed25519-vectors.json` (54 raw cases, 14 COSE statements), vendored at c45422a | `rust/evidencebook/src/ed25519.rs`, Rust CI job `Rust tests` |
 | Every registry-governed value a record capsule carries is registered on its own axis (no link type in `references[].citation_purpose`); records from the previous writer fail the check | `agent_action_capsule.registry_conformance` (AAC #241, merged `7fabe9a5`) | `test/interop/capsules`, `testdata/legacy-citation-purpose/`, `TestRecordCapsulesCarryNoLinkTypeAsCitationPurpose`, CI job `registry-conformance` |
 | Reconcile correlation | `capsule-emit-mesh` `served_request_join.join_served_request`, on halves sealed by its sidecar | `testdata/reconcile-parity/` (generator and fixture), `TestReconcileParityWithMeshCorrelator` |
-| Refusal signing body, both directions | Python `capsule_emit` | Python-signed, verified in Go: `testdata/refusal-interop/`, `TestRefusalSignedByCapsuleEmitVerifies`. Go-signed, verified by Python: `test/interop/python-cll/verify_refusal.py` in CI |
+| Refusal signing body, both directions | Python `agent_action_capsule.evidence_request` (the committed vector was first signed by the removed `capsule_emit.evidence_request`; same body) | Python-signed, verified in Go: `testdata/refusal-interop/`, `TestRefusalSignedByCapsuleEmitVerifies`. Go-signed, verified by Python: `test/interop/python-cll/verify_refusal.py` in CI |
 | Epistemic type value set | the vendored `epistemic-types.json` shared with other implementations | `TestEpistemicTypeThreeWayParity` |
 
 The reconcile parity is correlation parity. The mesh correlator decides which
@@ -506,7 +506,7 @@ not by validating produced headers against it.
   witness receipts for its own checkpoints, so `history_card/1` lists each
   checkpoint and its consistency proof only.
 - **The refusal signing body has no context member.** It is the profile's
-  and `capsule_emit`'s body exactly (`issued_at`, `reason`,
+  and `agent_action_capsule.evidence_request`'s body exactly (`issued_at`, `reason`,
   `request_digest`); the envelope's signed members differ (it always carries
   `profile` and `artifact_digest`), so neither signature verifies as the other.
 - **The signer is called with the book locked.** A slow remote signer
