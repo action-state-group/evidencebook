@@ -105,7 +105,7 @@ func TestReportCheckReportsAFailedEvidenceVerificationApartFromTheSeal(t *testin
 	// A change inside the embedded bundle is a different bundle: no seal for
 	// it, and the evidence is what fails.
 	raw := mustRead(t, page)
-	i := strings.Index(string(raw), "window.__BUNDLE__ = ")
+	i := strings.Index(string(raw), jsonElementOpen)
 	require.NotEqual(t, -1, i)
 	j := i + strings.Index(string(raw[i:]), "\"records\"")
 	broken := append(append([]byte{}, raw[:j]...), append([]byte("\"recordz\""), raw[j+len("\"records\""):]...)...)
@@ -167,7 +167,7 @@ func TestReportCheckRefusesAFileThatIsNotAReportPage(t *testing.T) {
 
 	_, page, err := runReportBuild(t, bundle, "--card", "outcome")
 	require.NoError(t, err)
-	_, err = checkPageFile(t, p, editedPage(t, page, "window.__BUNDLE__ = {", "window.__BUNDLE__ = ["))
+	_, err = checkPageFile(t, p, editedPage(t, page, jsonElementOpen+"{", jsonElementOpen+"["))
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "--page's embedded Evidence Bundle does not decode")
 }

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc25 and `report` v0.3.1
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc25`, capsule-viewer `v0.5.0`
+  and `report` `v0.3.1`, so `capsulectl/v0.1.0-rc25` pairs with that capsulectl
+  release. Its report pages carry the bundle in a JSON data element
+  (capsule-viewer#109) and `book report check` reads it from there (#164). The
+  tests find the bundle in that element, and the network test looks for what a
+  page or the runtime loads instead of the text `https://`.
+
 ### Changed: the report module reads a page's bundle from its JSON element (evidencebook#164, capsule-viewer#109)
 
 - `report` requires capsule-cli `v0.1.0-rc25` and capsule-viewer `v0.5.0`.

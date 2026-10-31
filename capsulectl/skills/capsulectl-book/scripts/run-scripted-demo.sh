@@ -209,7 +209,10 @@ sizes=("$(book_size "$store")" "$(book_size "$peer_store")") # after disclose, w
 jq -e '.verification=="pass" and .form=="book" and .claims==2 and .unsupported_claims==0 and (.permalink|startswith("https://"))' \
   "$work/report-build.json" >/dev/null || {
   echo "FAIL: report build should verify the book-form Result bundle and render both claims supported" >&2; exit 1; }
-grep -q 'renderEvidenceGraph(window.__BUNDLE__' "$work/report.html" && ! grep -q 'https\?://' "$work/report.html" || {
+# Nothing is loaded from the network: no src/href/action/url()/@import/fetch()/
+# import()/socket names a URL. The vendored runtime's comments may mention one.
+remote_load='(src|href|action)[[:space:]]*=[[:space:]]*["'"'"']?(https?:)?//|url\([[:space:]]*["'"'"']?(https?:)?//|@import[[:space:]]+(url\(|["'"'"'])|(fetch|import)[[:space:]]*\([[:space:]]*["'"'"'`]?(https?:)?//|new[[:space:]]+(WebSocket|EventSource)[[:space:]]*\([[:space:]]*["'"'"'`]wss?:'
+grep -q 'renderEvidenceGraph(window.__BUNDLE__' "$work/report.html" && ! grep -Eiq "$remote_load" "$work/report.html" || {
   echo "FAIL: report.html must be self-contained (inline runtime, nothing loaded from the network)" >&2; exit 1; }
 set +e
 "$bin" book report build --bundle "$work/peer-close-bundle.json" --card outcome --out "$work/report-wrong.html" >/dev/null 2>&1

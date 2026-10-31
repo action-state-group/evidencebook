@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -30,8 +31,7 @@ func TestIIFEIsPinned(t *testing.T) {
 	text := string(pageruntime.IIFE)
 	assert.True(t, strings.HasPrefix(text, "\"use strict\";\n"), "the runtime runs in strict mode, as aac and capsule-viewer build and test it")
 	assert.Contains(t, text, "globalThis.renderEvidenceGraph", "the IIFE exports the entry point the shell calls")
-	assert.NotContains(t, text, "http://")
-	assert.NotContains(t, text, "https://")
+	assert.False(t, remoteLoad.MatchString(text), "the runtime loads nothing from the network")
 }
 
 // book report build reads its bundle, and book report check the page that
@@ -118,14 +118,22 @@ func rewriteBundle(t *testing.T, path string, edit func(map[string]interface{}))
 	return out
 }
 
+// remoteLoad is a way a page or script loads from the network. The vendored
+// runtime may name a URL in a comment or as a namespace string; that loads
+// nothing.
+var remoteLoad = regexp.MustCompile(`(?i)\b(src|href|action)\s*=\s*["']?(https?:)?//|url\(\s*["']?(https?:)?//|@import\s+(url\(|["'])|\b(fetch|import)\s*\(\s*["'` + "`" + `]?(https?:)?//|new\s+(WebSocket|EventSource)\s*\(\s*["'` + "`" + `]wss?:|\bXMLHttpRequest\b[^;]{0,80}\bopen\s*\(\s*["'][A-Z]+["']\s*,\s*["'` + "`" + `]https?:`)
+
+// jsonElementOpen is the start tag of the data element a report page carries
+// its bundle in (capsule-viewer 0.4.0 and later).
+const jsonElementOpen = `<script type="application/json">`
+
 // embeddedBundle reads the bundle a report page embeds, as the shell does.
 func reportEmbeddedBundle(t *testing.T, html string) map[string]interface{} {
 	t.Helper()
-	const open, close = "window.__BUNDLE__ = ", ";</script>"
-	start := strings.Index(html, open)
+	start := strings.Index(html, jsonElementOpen)
 	require.NotEqual(t, -1, start)
-	rest := html[start+len(open):]
-	end := strings.Index(rest, close)
+	rest := html[start+len(jsonElementOpen):]
+	end := strings.Index(rest, "</script>")
 	require.NotEqual(t, -1, end)
 	value, err := cli.DecodeBundleJSON([]byte(rest[:end]))
 	require.NoError(t, err)
@@ -219,8 +227,7 @@ func TestReportBuildRendersABookFormResultRoot(t *testing.T) {
 	html := string(raw)
 	assert.Contains(t, html, `renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"))`)
 	assert.Contains(t, html, "globalThis.renderEvidenceGraph", "the runtime is inline")
-	assert.NotContains(t, html, "http://")
-	assert.NotContains(t, html, "https://", "the page loads nothing from the network")
+	assert.False(t, remoteLoad.MatchString(html), "the page loads nothing from the network")
 	embedded := reportEmbeddedBundle(t, html)
 	digest, err := aacbundle.BundleDigest(embedded)
 	require.NoError(t, err)
