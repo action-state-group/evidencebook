@@ -12,7 +12,10 @@ trap 'rm -rf "$dir"' EXIT
 
 tar -xzf "$ARCHIVE" -C "$dir"
 meta=$("$BIN" cli-plugin-metadata)
-stated=$(jq -r '.presentations[].files[] | "\(.sha256)  \(.path)"' <<<"$meta" | LC_ALL=C sort -k2)
+# Two presentations may share a file (the deal view's two modules are one
+# script and one stylesheet), and the archive holds it once. A path stated
+# with two digests stays twice, and fails.
+stated=$(jq -r '.presentations[].files[] | "\(.sha256)  \(.path)"' <<<"$meta" | LC_ALL=C sort -u | LC_ALL=C sort -k2)
 [ -n "$stated" ] || { echo "the handshake states no presentation files: $meta"; exit 1; }
 if command -v sha256sum >/dev/null; then sum=(sha256sum); else sum=(shasum -a 256); fi
 held=$(cd "$dir" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | xargs "${sum[@]}" | LC_ALL=C sort -k2)

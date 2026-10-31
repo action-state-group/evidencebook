@@ -446,22 +446,13 @@ func dealReportHTML(b map[string]interface{}, countersign dealCountersignView, v
 	if err != nil {
 		return "", err
 	}
-	openings, err := dealPageOpenings(b)
+	boot, openings, err := dealPageBoot(b, countersign, w)
 	if err != nil {
 		return "", err
 	}
-	countersign = dealCountersignForPage(b, countersign)
+	boot["verify_command"] = verifyCommand
 	// json.Marshal escapes <, > and &, so the data cannot close its element.
-	words := map[string]string{}
-	for _, k := range pageWords {
-		if v, ok := w.Entries[k]; ok {
-			words[k] = v
-		}
-	}
-	if audience, _ := dealPageReport(b)["audience"].(string); audience == cli.DealAudienceKeep {
-		maps.Copy(words, journeyPageWords(w))
-	}
-	data, err := json.Marshal(map[string]interface{}{"countersign": countersign, "openings": openings, "verify_command": verifyCommand, "words": words})
+	data, err := json.Marshal(boot)
 	if err != nil {
 		return "", err
 	}
@@ -474,6 +465,28 @@ renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined
 		Modules:           []emitter.Module{module},
 		Bootstrap:         bootstrap,
 	})
+}
+
+// dealPageBoot is what the deal view reads from the bootstrap for one deal
+// bundle and cannot recompute: the countersign rung, the openings that
+// recomputed against their sealed commitments, and the page's words (the
+// journey's only on the user's own copy). It returns the openings too, for
+// the page title.
+func dealPageBoot(b map[string]interface{}, countersign dealCountersignView, w cli.Wording) (map[string]interface{}, map[string]interface{}, error) {
+	openings, err := dealPageOpenings(b)
+	if err != nil {
+		return nil, nil, err
+	}
+	words := map[string]string{}
+	for _, k := range pageWords {
+		if v, ok := w.Entries[k]; ok {
+			words[k] = v
+		}
+	}
+	if audience, _ := dealPageReport(b)["audience"].(string); audience == cli.DealAudienceKeep {
+		maps.Copy(words, journeyPageWords(w))
+	}
+	return map[string]interface{}{"countersign": dealCountersignForPage(b, countersign), "openings": openings, "words": words}, openings, nil
 }
 
 // dealPageTitleWords caps the words a page title quotes.

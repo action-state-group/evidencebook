@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-rGqAoH4LdeotDx/luvKmMpN5OS+7maGVR2BlxWgolzM=' 'sha256-KCHJI1cFeVXqDkCELgfHu7uuyHqo+wACK3E00qp3IV0='; style-src 'sha256-NYy5Us2EFHKB0p0fTYQ7d4JBKIeRiLiCt9pjzj4xSI4=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-w9oSunNNmif5CoP02NLplHXca9CVm+zLneHixK8rjBk=' 'sha256-K2ikZWWwx3wmPY3E7ECP0/0SPLYT9Z7fSSMVmvsoKXk=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-nRJWvY3MTkcv7A1bvOFQ+cy4zVL5ULKF6hmud3yBlrk=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-rGqAoH4LdeotDx/luvKmMpN5OS+7maGVR2BlxWgolzM=' 'sha256-EpR1IYB85yOcCSTrHdU06CKBvzXkdHsPwBVNDBKd1l4=' 'sha256-RnE6jaINN9q0Gyyg6nKzUud0uU4ri1n2mzwQw/tgfcQ='; style-src 'sha256-NYy5Us2EFHKB0p0fTYQ7d4JBKIeRiLiCt9pjzj4xSI4=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-w9oSunNNmif5CoP02NLplHXca9CVm+zLneHixK8rjBk=' 'sha256-K2ikZWWwx3wmPY3E7ECP0/0SPLYT9Z7fSSMVmvsoKXk=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-nRJWvY3MTkcv7A1bvOFQ+cy4zVL5ULKF6hmud3yBlrk=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-BHWcE+xl3QJkUUnLfQCRU3Erj4wxAn/XOSPfNelfgnk='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Deal: both halves</title>
     <style>
@@ -25288,26 +25288,1226 @@ ${pad.repeat(depth)}`;
 globalThis.renderEvidenceGraph = EvidenceGraph.renderEvidenceGraph;
 </script>
     <!-- prettier-ignore -->
-    
+    <script>// deal-view.js: the deal page's presentation module, capsulectl.deal-view/v0,
+// for the page `capsulectl deal report --html` writes. Three parts: what you
+// asked, what the agent did, anomalies on either side. Each item expands to its
+// sealed steps.
+//
+// It is a module-slot script (agent-action-capsule's presentation contract):
+// it registers its module with the page's runtime at load, and the runtime's
+// resolver selects it for a verified deal bundle. It never verifies and never
+// reads the bundle's records or disclosures itself: buildModel reads the
+// verified context the runtime built, and what capsulectl checked when it
+// built the page (the countersign line, and the words it recomputed against
+// their sealed commitments), which the page's bootstrap sets as
+// capsulectlDealPage before the page renders. render writes the model into the
+// host. A step's line is shown only when its sealed record's disclosure
+// verified, otherwise the step shows its capsule_id only. All text is set with
+// textContent; nothing from the bundle is parsed as HTML.
+//
+// Its manifest is assets/deal-view.manifest.json; the copy below is the same
+// manifest except executable.script_sha256, which a script cannot carry for
+// itself (it is all zeros here). Its stylesheet is DEAL_VIEW_CSS, inserted
+// once at render and pinned by the manifest's style_sha256 (assets/deal-view.css
+// holds the same bytes).
+// versionBefore reports whether version a is older than b: "v0.1.0-rc3" style,
+// numbers compared as numbers, a pre-release before its release. An
+// unparsable version, or a development build, is never called older.
+function versionBefore(a, b) {
+  const parse = (v) => {
+    const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(v || "");
+    return m ? { n: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] } : undefined;
+  };
+  const x = parse(a), y = parse(b);
+  // A development build is built from source, older or newer than any tag:
+  // never call it, or anything next to it, older.
+  if (!x || !y || x.pre === "dev" || y.pre === "dev") return false;
+  for (let i = 0; i < 3; i++) if (x.n[i] !== y.n[i]) return x.n[i] < y.n[i];
+  if (x.pre === y.pre) return false;
+  if (x.pre === undefined) return false;
+  if (y.pre === undefined) return true;
+  const num = (p) => (/^(.*?)(\d+)$/.exec(p) || [p, p, ""]);
+  const [, xa, xd] = num(x.pre), [, ya, yd] = num(y.pre);
+  if (xa === ya && xd !== "" && yd !== "") return Number(xd) < Number(yd);
+  return x.pre < y.pre;
+}
+
+// dealJourneyLabel words one move of the sealed journey (capsule-cli#370)
+// from the page's words, as capsulectl's Wording.Line words the report's
+// journey: a key the page has no word for, or a placeholder with no value,
+// words nothing. The facts are sealed without any pack's words: a reason is
+// its token (an "other" reason is its own detail) and the classes told are
+// tokens, which the page's words (capsulectl worded each reason and class
+// already) put into words.
+const dealJourneyLabel = (words, move) => {
+  const text = words[move.key];
+  if (typeof text !== "string") return "";
+  const facts = move.facts && typeof move.facts === "object" ? move.facts : {};
+  const vals = {};
+  // An "other" reason's detail is the reason's value, never a placeholder
+  // of its own: the report words the same values.
+  for (const [k, v] of Object.entries(facts)) if (typeof v === "string" && k !== "detail") vals[k] = v;
+  if (typeof facts.reason === "string") {
+    const word = words["journey.reason." + facts.reason];
+    vals.reason = facts.reason === "other" ? facts.detail : typeof word === "string" ? word : "";
+  }
+  if (Array.isArray(facts.classes)) {
+    const named = facts.classes.map((c) => (typeof words["class." + c] === "string" ? words["class." + c] : String(c).replace(/_/g, " ")));
+    vals.classes = named.length < 2 ? named.join("") : `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
+  }
+  let missing = false;
+  const filled = text.replace(/\{([a-z_]+)\}/g, (_, k) => {
+    if (typeof vals[k] !== "string") missing = true;
+    return typeof vals[k] === "string" ? vals[k] : "";
+  });
+  return missing ? "" : filled;
+};
+
+// The model: everything render shows, read from the verified context and the
+// page's build-time checks. Stricter than the core's gate in one place:
+// membership must be proven, not unbound (canRender).
+const dealViewVerified = (context) => {
+  const verification = context.verification;
+  return (
+    verification !== undefined &&
+    verification.graphClosure.status === "pass" &&
+    verification.intervalCoverage.status === "pass" &&
+    verification.perRecordMembership.status === "pass" &&
+    Object.values(verification.capsuleResults).every((r) => r.ok) &&
+    verification.disclosures.every((d) => d.status === "disclosure_match" || d.status === "withheld")
+  );
+};
+
+// A copy's standalone report (capsule-cli#294) rides in x-deal-report/v0,
+// on no log, bound to the deal checkpoint the copy is made at. The page
+// checks what `capsulectl verify` checks: its signature, under the key
+// that signed the deal's last step (each step's envelope verified here,
+// its key_id held to the key it verified under); its disclosure; that it
+// is this deal's report for a copy audience; that it binds this bundle's
+// checkpoint and states that checkpoint's time; and that the bundle holds
+// no report record. Anything less is refused, never shown as checked.
+// The evidence record header types of a deal's steps on its book.
+const dealStepTypes = ["deal_step", "step_completed", "step_failed"];
+const dealHexBytes = (hex) => {
+  if (typeof hex !== "string" || hex.length % 2 !== 0 || !/^[0-9a-f]*$/u.test(hex)) return undefined;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
+  return out;
+};
+const dealBytesHex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const dealVerifiedKey = async (record) => {
+  const sig = dealHexBytes(record && record.signature);
+  if (!sig || typeof record.capsule_id !== "string" || typeof record.key_id !== "string") return undefined;
+  const result = await EvidenceGraph.verifyProducerEnvelope(record.capsule_id, sig);
+  if (!result || !result.ok || !result.publicKey) return undefined;
+  const key = dealBytesHex(result.publicKey);
+  return key === record.key_id ? key : undefined;
+};
+const dealStandaloneReport = async (context, bundle, x, sealedId) => {
+  const refused = { refusal: "⚠️ The deal's text could not be checked against its sealed report. Do not rely on it." };
+  if (!EvidenceGraph.ed25519Available()) {
+    return { refusal: "⚠️ This viewer cannot check the report's signature here. Run capsulectl verify on the file before relying on it." };
+  }
+  if (!x || typeof x !== "object" || Object.keys(x).length !== 2) return refused;
+  const record = x.record;
+  const input = x.agent_input;
+  if (!record || !input || typeof input !== "object" || record.capsule_id !== sealedId || record.action_id !== "capsulectl-deal-report") return refused;
+  const reportKey = await dealVerifiedKey(record);
+  if (!reportKey) return refused;
+  const memberships = ((bundle.completeness_certificate || {}).memberships) || {};
+  let lastKey;
+  let lastSeq = -1;
+  for (const r of context.records) {
+    const header = r && r.evidence_record_header;
+    if (!header || !dealStepTypes.includes(header.record_type)) continue;
+    const key = await dealVerifiedKey(r);
+    if (!key) return refused;
+    const seq = Number((((memberships[r.capsule_id] || {}).log_coordinates) || {}).seq);
+    if (Number.isFinite(seq) && seq > lastSeq) {
+      lastSeq = seq;
+      lastKey = key;
+    }
+  }
+  if (!lastKey || lastKey !== reportKey) return refused;
+  const capsule = {};
+  for (const [k, v] of Object.entries(record)) if (k !== "signature" && k !== "key_id") capsule[k] = v;
+  const disclosed = await EvidenceGraph.verifyDisclosureEnvelope({ capsule, disclosures: { agent_input: input } });
+  if (!disclosed || !disclosed.ok) return refused;
+  const logId = ((bundle.completeness_certificate || {}).log_id) || "";
+  const audiences = ["counterparty", "adjudicator", "keep"];
+  if (input.type !== "deal_report" || input.profile !== "x-deal-v0" || "deal/" + input.deal_id !== logId || !audiences.includes(input.audience)) return refused;
+  const cp = bundle.checkpoint || {};
+  const bound = input.deal_checkpoint || {};
+  if (Object.keys(bound).length !== 3 || bound.log_id !== logId || String(bound.mmr_size) !== String(cp.mmr_size) || bound.root !== cp.root) return refused;
+  if (context.records.some((r) => r && r.action_id === "capsulectl-deal-report")) return refused;
+  const report = input.report;
+  if (!report || typeof report !== "object") return refused;
+  const asOf = Date.parse((report.lifecycle || {}).as_of);
+  if (!Number.isFinite(asOf) || asOf !== Date.parse(cp.timestamp)) return refused;
+  return { report };
+};
+
+// lifecycleText is the lifecycle's sentence with the close date in the
+// viewer's zone, as the page's times are (evidencebook-deal#57): capsulectl wrote
+// the sentence with the close's UTC day (closed_date); the day closed_at falls
+// on here replaces it. A report without those fields keeps its sentence.
+const lifecycleText = (life) => {
+  const t = Date.parse(life.closed_at);
+  if (Number.isNaN(t) || typeof life.closed_date !== "string" || life.closed_date === "" || !life.text.includes(life.closed_date)) return life.text;
+  return life.text.replace(life.closed_date, new Date(t).toLocaleDateString(undefined, { dateStyle: "medium" }));
+};
+
+// dealBuildsCompared compares the builds that sealed the steps with the build
+// that made this page: page_producer when the plugin wrote one
+// (capsule-cli#326), else the core version a page built inside capsule-cli
+// carries. Versions compare only between builds of the same name. On a
+// capsulectl-deal page a step sealed by capsulectl itself, with or without a
+// recorded version, predates any capsulectl-deal: it is an earlier build, said
+// apart, not an older version. The plugin names its own release notes; a page
+// without them is from a build inside capsule-cli. buildNote is the sentence
+// the page shows, empty when there is nothing to say.
+const dealBuildsCompared = (builds, report) => {
+  const pp = report.page_producer && typeof report.page_producer === "object" ? report.page_producer : {};
+  const pageBuild = {
+    name: typeof pp.name === "string" && pp.name ? pp.name : "capsulectl",
+    version: typeof pp.version === "string" ? pp.version : typeof report.page_version === "string" ? report.page_version : "",
+  };
+  const earlier = (b) => b.producer === "capsulectl" && pageBuild.name === "capsulectl-deal";
+  const olderBuilds = builds
+    .filter((b) => !earlier(b) && b.producer === pageBuild.name && (b.version === undefined || versionBefore(b.version, pageBuild.version)))
+    .map((b) => b.version || "unrecorded");
+  const earlierBuilds = builds.filter(earlier).map((b) => (b.version === undefined ? b.name : `${b.producer} ${b.version}`));
+  const releaseNotes = typeof report.release_notes === "string" && report.release_notes.startsWith("https://") ? report.release_notes : "https://github.com/action-state-group/capsule-cli/releases";
+  const said = [];
+  if (pageBuild.version && olderBuilds.length > 0) said.push(`Produced by an older version (${olderBuilds.join(", ")}) than the ${pageBuild.name} that made this page (${pageBuild.version}).`);
+  if (pageBuild.version && earlierBuilds.length > 0) {
+    const what = earlierBuilds.length > 1 ? "the builds that sealed" : "the build that sealed";
+    said.push(`Some steps were sealed by ${earlierBuilds.join(", ")}, ${what} deals before ${pageBuild.name} did; ${pageBuild.name} ${pageBuild.version} made this page.`);
+  }
+  return { pageBuild, olderBuilds, earlierBuilds, releaseNotes, buildNote: said.join(" ") };
+};
+
+const dealViewModel = async (context) => {
+  const page = globalThis.capsulectlDealPage || {};
+  // The context's own frozen copy of the bundle, read only for what no
+  // record seals: the extension blocks.
+  const bundle = context.bundle;
+  const payload = (id) => EvidenceGraph.verifiedPayload(context, id, "agent_input");
+  // In the verifier's disclosure order, as the context resolved each one.
+  const matched = [
+    ...new Set(
+      context.verification.disclosures
+        .filter((d) => d.member === "agent_input" && EvidenceGraph.disclosureOf(context, d.capsuleId, "agent_input").state === "disclosed")
+        .map((d) => d.capsuleId),
+    ),
+  ];
+  // The deal's text: the input of the sealed report the x-deal-v0 extension
+  // points at, checked like every record (its disclosure matched). A bundle
+  // written before reports were sealed carries the text in the extension
+  // itself, which no record seals, and the page says so.
+  const dealExt = (bundle.extensions || {})["x-deal-v0"] || {};
+  const sealedId = typeof dealExt.sealed_report === "string" ? dealExt.sealed_report : undefined;
+  const otherReports = matched.filter((id) => {
+    const input = payload(id);
+    return id !== sealedId && input && input.type === "deal_report";
+  });
+  // A sealed report's record stays in every later bundle (it is signed, and
+  // on the log the bundle covers), so a bundle holding one whose extension
+  // names none had its text swapped for unsealed text: refused, never shown
+  // under the "not checked" label.
+  const reportRecords = context.records.filter((r) => r && r.action_id === "capsulectl-deal-report");
+  let report = dealExt;
+  // The deal a sealed report names: on a deal's own log the log says it; on
+  // a node's one ledger (a Mesh payer's receipt) the report's payload does.
+  let reportDealId = "";
+  const standalone = (bundle.extensions || {})["x-deal-report/v0"];
+  // A copy of a deal on a book whose log holds no report record names a
+  // standalone one: inline text there is a stripped copy, refused.
+  const logId = ((bundle.completeness_certificate || {}).log_id) || "";
+  const bookSteps = context.records.some((r) => r && r.evidence_record_header && dealStepTypes.includes(r.evidence_record_header.record_type));
+  if (standalone !== undefined) {
+    if (sealedId === undefined || Object.keys(dealExt).length !== 1) {
+      return { refusal: "⚠️ The deal's text could not be checked against its sealed report. Do not rely on it." };
+    }
+    const checked = await dealStandaloneReport(context, bundle, standalone, sealedId);
+    if (checked.refusal) return checked;
+    report = checked.report;
+  } else if (sealedId !== undefined || otherReports.length > 0 || reportRecords.length > 0) {
+    const input = sealedId !== undefined ? payload(sealedId) : undefined;
+    if (otherReports.length > 0 || !input || input.type !== "deal_report" || typeof input.report !== "object" || input.report === null) {
+      return { refusal: "⚠️ The deal's text could not be checked against its sealed record. Do not rely on it." };
+    }
+    report = input.report;
+    if (typeof input.deal_id === "string") reportDealId = input.deal_id;
+  } else if (bookSteps) {
+    return { refusal: "⚠️ The deal's text could not be checked against its sealed report. Do not rely on it." };
+  }
+  const shared = report.audience === "counterparty" || report.audience === "adjudicator";
+  const base = payload(report.asked_step);
+  if (!shared && (!base || !base["x-deal-v0"] || base["x-deal-v0"].record_type !== "baseline")) {
+    return { refusal: "⚠️ The deal's opening step is not in this report." };
+  }
+
+  // Which build sealed the steps, read from the records this page verified
+  // (not from the summary), compared with the build that made this page.
+  // Both are already in this file: nothing is fetched to do it.
+  const builds = [];
+  matched.forEach((id) => {
+    const rec = payload(id) || {};
+    // An x-deal-v0 record names its producer in its block; a typed record, in its header.
+    const p = (rec["x-deal-v0"] || rec).producer;
+    const producer = (p && p.name) || "capsulectl";
+    const name = p && typeof p.version === "string" ? `${producer} ${p.version} (${p.commit || "unknown"})` : "an earlier capsulectl that did not record its version";
+    if (!builds.some((b) => b.name === name)) builds.push({ name, producer, version: p && p.version });
+  });
+  const { pageBuild, olderBuilds, earlierBuilds, releaseNotes, buildNote } = dealBuildsCompared(builds, report);
+
+  // Each statement's class, as sealed with it (undefined when its sealed step
+  // holds no such claim).
+  const claimClasses = (report.representations || []).map((r) => {
+    const rec = payload(r.step);
+    const body = rec && rec.body;
+    const claim = body && (Number.isInteger(r.index) ? (body.claims || [])[r.index] : body);
+    return claim ? claim.class : undefined;
+  });
+
+  return {
+    page,
+    report,
+    sealed: sealedId !== undefined,
+    standalone: standalone !== undefined,
+    shared,
+    demo: !!(base && base.body && base.body.demo),
+    matched,
+    recorded: [...context.recordIndex.keys()],
+    builds,
+    pageBuild,
+    olderBuilds,
+    earlierBuilds,
+    releaseNotes,
+    buildNote,
+    claimClasses,
+    dealId: logId.startsWith("deal/") ? logId.slice(5) : reportDealId,
+    witnessed: (bundle.extensions || {})["x-cadence-witness/v0"] !== undefined,
+  };
+};
+
+// Inserted once, at the head: its bytes hash to the manifest's style_sha256,
+// which the page's Content-Security-Policy lists.
+// The receipt with the other party's half (9b frames 6 and 7,
+// docs/design/two-sided-receipt.md): a composed/v1 bundle whose root is the
+// composer's deal composition record, read by capsulectl.deal-view-composed/v0.
+// Your half is the composer's keep copy, carried in the page's bootstrap
+// (capsulectlDealPage.keep), or the containing bundle's own deal records
+// (a Mesh node's one ledger). Their half is each member another party
+// answered with, and each absence your agent recorded. The page states only
+// what it checked itself: the block's join states are never read as
+// "stamped by both".
+const dealCompositionActionID = "capsulectl-deal-composition";
+const dealRootRecord = (bundle, records) => records.find((r) => r && r.capsule_id === bundle.root);
+const dealComposedResult = (context) => {
+  const x = (context.verification.extensions || []).find((e) => e && e.kind === "composed/v1");
+  return x && x.composed;
+};
+// The root a deal composition is sealed under (V0's first check); any other
+// composition is not this module's.
+const dealComposedCanRender = (context) => {
+  const root = dealRootRecord(context.bundle, context.records);
+  return root !== undefined && root.action_id === dealCompositionActionID && dealComposedResult(context) !== undefined;
+};
+const dealNonceSources = ["client_supplied", "host_forwarded_nonce"];
+const dealMeshHalf = (record) => {
+  const poc = (((record || {}).model_attestation || {}).compute_attestation || {})["x-mesh-poc-v1"];
+  return poc && typeof poc === "object" ? poc : undefined;
+};
+// A Mesh half names one exchange only by a client nonce the client sent:
+// the placeholder sources name none (D4).
+const dealExchangeNonce = (record) => {
+  const poc = dealMeshHalf(record);
+  return poc && dealNonceSources.includes(poc.client_nonce_source) && typeof poc.client_nonce === "string" && poc.client_nonce !== "" ? poc.client_nonce : undefined;
+};
+const dealRequestDigest = (record) => (record && record.effect && typeof record.effect.request_digest === "string" ? record.effect.request_digest : undefined);
+
+// Whether a carried response names the member bundle's checkpoint as its
+// anchor (V3). The deal wire's response names it `root:mmr_size`. An
+// evidence-interop envelope names it by the digest of the checkpoint's
+// octets, which this module does not compute (it never hashes): that
+// binding, like the envelope's signature, is capsulectl verify's, and the
+// page only holds the envelope to its profile.
+const dealInteropProfiles = ["evidence-interop/0", "evidence-interop/1"];
+const dealAnchorIsCheckpoint = (response, cp) => {
+  if (typeof response.anchor === "string") return response.anchor === `${cp.root}:${cp.mmr_size}`;
+  return dealInteropProfiles.includes(response.profile) && !!response.anchor && typeof response.anchor.digest === "string";
+};
+
+// One of their artifact members, checked V1 to V4. It returns the member's
+// state and, for the box, what its sealed record says.
+// The payer's citing record for a received half (a Mesh half that was also
+// pushed): compute_attestation.received_half, naming the half it cites.
+const dealCitingRecord = (records, cited) =>
+  records
+    .map((r) => (((r || {}).model_attestation || {}).compute_attestation || {}).received_half)
+    .find((h) => h && typeof h === "object" && h.cited_capsule_id === cited);
+const dealTheirArtifact = async (member, dealID, mine, meshOwn, payerRecords) => {
+  const witnessed = ((member.bundle || {}).extensions || {})["x-cadence-witness/v0"] !== undefined;
+  const ctx = await EvidenceGraph.buildVerifiedBundleContext(member.bundle);
+  const root = dealRootRecord(ctx.bundle, ctx.records);
+  const mesh = dealMeshHalf(root) !== undefined;
+  const failed = (check) => ({ state: "failed", check, witnessed, mesh });
+  // V1: as strict as a single-book page.
+  if (!dealViewVerified(ctx)) return failed("V1");
+  const cp = ctx.bundle.checkpoint || {};
+  // V2: their half's own signature, under the observer it is declared as,
+  // anchored under that observer's custody domain.
+  if (!root || (await dealVerifiedKey(root)) !== member.observer || cp.key_id !== member.custody) return failed("V2");
+  // A Mesh half that was also pushed has the payer's citing record: the key
+  // it accepted the half under is their observer, and not one operator on
+  // both sides (D4). An ask-only half has none, which proves nothing.
+  const citing = mesh ? dealCitingRecord(payerRecords, root.capsule_id) : undefined;
+  if (citing && (citing.sender_key_id !== member.observer || citing.same_controller_as_receiver === true)) return failed("V2");
+  // V3 beyond the core: the response answered with this very checkpoint.
+  if (!member.response || !dealAnchorIsCheckpoint(member.response, cp)) return failed("V3");
+  const at = cp.timestamp;
+  if (mesh) {
+    // V4 for Mesh: the same exchange as the payer's own half.
+    const nonce = dealExchangeNonce(root);
+    if (!meshOwn || nonce === undefined || nonce !== dealExchangeNonce(meshOwn) || dealRequestDigest(root) === undefined || dealRequestDigest(root) !== dealRequestDigest(meshOwn)) return failed("V4");
+    return { state: "verified", mesh: true, at: root.timestamp, stamped: at, key: member.observer, witnessed };
+  }
+  // V4 for a deal copy: their copy of this deal, its text checked as a
+  // single-book page checks it.
+  const theirs = await dealViewModel(ctx);
+  if (theirs.refusal !== undefined) return failed("V1");
+  if (theirs.dealId !== dealID || (mine && mine.dealId !== dealID)) return failed("V4");
+  return { state: "verified", mesh: false, report: theirs.report, stamped: at, key: member.observer, witnessed };
+};
+
+const dealComposedModel = async (context) => {
+  const refused = (why) => ({ refusal: `⚠️ ${why} Do not rely on it; run capsulectl verify on the file.` });
+  const bundle = context.bundle;
+  // Every half here is checked by its signature: a viewer that cannot check
+  // Ed25519 says so, and never calls their record bad (Sherlock2, #86).
+  if (!EvidenceGraph.ed25519Available()) {
+    return { refusal: "⚠️ This viewer can't check the signatures in this file here. Run capsulectl verify on the file before relying on it." };
+  }
+  // V0: the composition itself.
+  if (!dealViewVerified(context)) return refused("This file's composition did not verify.");
+  const root = dealRootRecord(bundle, context.records);
+  const composer = await dealVerifiedKey(root);
+  const input = EvidenceGraph.verifiedPayload(context, root.capsule_id, "agent_input");
+  const block = (bundle.extensions || {})["composed/v1"] || {};
+  const composed = dealComposedResult(context);
+  if (!composer || !input || input.type !== "deal_composition" || input.profile !== "x-deal-v0" || typeof input.deal_id !== "string") {
+    return refused("This file's composition record could not be checked.");
+  }
+  const memberFailed = (r) => r.digest === "mismatch" || r.refusalSignature === "invalid" || r.responseSignature === "invalid" || (r.bundle && Object.values(r.bundle).some((c) => c.status === "fail")) || r.findings.length > 0;
+  if (
+    composed.malformed ||
+    composed.status === "fail" ||
+    !composed.composedDigest.matches ||
+    input.composed_digest !== block.composed_digest ||
+    composed.compositionClosure.status !== "pass" ||
+    composed.joins.some((j) => j.result === "join_state_mismatch") ||
+    composed.members.some(memberFailed)
+  ) {
+    return refused("This file's composition does not hold up.");
+  }
+  const dealID = input.deal_id;
+  const custody = (bundle.checkpoint || {}).key_id;
+
+  // Your half (D2).
+  const page = globalThis.capsulectlDealPage || {};
+  let mine;
+  let mineContext;
+  if (page.keep !== undefined) mineContext = await EvidenceGraph.buildVerifiedBundleContext(page.keep);
+  else if ((bundle.extensions || {})["x-deal-v0"] !== undefined) mineContext = context;
+  if (mineContext !== undefined) {
+    const mineRoot = dealRootRecord(mineContext.bundle, mineContext.records);
+    if (!dealViewVerified(mineContext)) return refused("Your own copy on this page did not verify.");
+    mine = await dealViewModel(mineContext);
+    if (mine.refusal !== undefined) return mine;
+    // On a node's one ledger the root is the composition itself, so the
+    // sealed report the half is read from is held to the composer's key too.
+    const sealedId = ((mineContext.bundle.extensions || {})["x-deal-v0"] || {}).sealed_report;
+    const sealedRecord = mineContext.records.find((r) => r && r.capsule_id === sealedId);
+    const sealedKey = sealedRecord ? await dealVerifiedKey(sealedRecord) : composer;
+    if (mine.report.audience !== "keep" || !mineRoot || (await dealVerifiedKey(mineRoot)) !== composer || sealedKey !== composer || mine.dealId !== dealID) {
+      return refused("The copy shown as yours is not the composer's own copy of this deal.");
+    }
+  }
+  // The payer's own exchange half, on a Mesh composition: the record its
+  // sealed report cites in did[].steps.
+  let meshOwn;
+  if (mine && mineContext === context) {
+    const cited = new Set((mine.report.did || []).flatMap((d) => (Array.isArray(d.steps) ? d.steps : [])));
+    meshOwn = context.records.find((r) => r && cited.has(r.capsule_id) && dealMeshHalf(r));
+    // A Mesh composition whose payer half its report does not cite does not
+    // say which exchange it is about (D4).
+    if (!meshOwn && (block.members || []).some((m) => m.outcome === "artifact" && dealMeshHalf(dealRootRecord(m.bundle || {}, (m.bundle || {}).records || [])))) {
+      return refused("Your own record of this exchange is not cited by your receipt.");
+    }
+  }
+
+  // Their members (D2), and that they are not you.
+  const observers = new Map((block.observers || []).map((o) => [o.id, o]));
+  const results = new Map(composed.members.map((r) => [r.id, r]));
+  const others = new Set();
+  const theirs = [];
+  for (const m of block.members || []) {
+    if (m.outcome === "absence") {
+      theirs.push({ outcome: "absence", state: "absent", at: ((m.absence || {}).window || {}).to });
+      continue;
+    }
+    if (m.observer === composer) continue;
+    const obs = observers.get(m.observer) || {};
+    others.add(m.observer);
+    // They are not you (D2): none of their observer, its custody domain or
+    // (for an artifact) its root's key is your key or your checkpoint key.
+    const mRoot = m.outcome === "artifact" ? dealRootRecord(m.bundle || {}, (m.bundle || {}).records || []) : undefined;
+    const yours = new Set([composer, custody]);
+    if ([m.observer, obs.custody_domain, mRoot && mRoot.key_id].some((k) => typeof k === "string" && yours.has(k))) {
+      return refused("A record shown as theirs is yours under another label.");
+    }
+    if (m.outcome === "refusal") {
+      const r = results.get(m.id) || {};
+      theirs.push({ outcome: "refusal", state: r.refusalSignature === "verified" ? "refused" : "refused_unchecked", at: (m.refusal || {}).issued_at });
+      continue;
+    }
+    theirs.push({ outcome: "artifact", ...(await dealTheirArtifact({ ...m, custody: obs.custody_domain }, dealID, mine, meshOwn, context.records)) });
+  }
+  if (others.size > 1) return refused("This file holds records from more than one other party.");
+
+  // The case (D3), in order.
+  const latest = (state) => theirs.filter((t) => t.state === state || (state === "refused" && t.state === "refused_unchecked")).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+  let theirCase;
+  let shown;
+  if ((shown = theirs.find((t) => t.state === "failed"))) theirCase = "only";
+  else if ((shown = theirs.find((t) => t.state === "verified"))) theirCase = "both";
+  else if ((shown = latest("refused"))) theirCase = "only";
+  else if ((shown = latest("absent"))) theirCase = "only";
+  else theirCase = "none";
+  // Without your own copy the page still draws its frame: an empty report,
+  // nothing checked on your side.
+  const base = mine || { page, report: { steps: [], did: [] }, sealed: false, standalone: false, shared: false, demo: false, matched: [], recorded: [], builds: [], ...dealBuildsCompared([], {}), claimClasses: [], dealId: dealID, witnessed: false };
+  return { ...base, composed: { mine: mine !== undefined, theirCase, shown, also: theirs.filter((t) => t !== shown).sort((a, b) => String(a.at).localeCompare(String(b.at))), dealId: dealID } };
+};
+
+const DEAL_VIEW_CSS = `#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; --deal-ours: #e4edf5; --deal-ours-line: #2b5a85; --deal-theirs: #fbefd9; --deal-theirs-line: #8a6a2f; --deal-none: #eceae5; --deal-none-line: #a9afb8; --deal-good: #e3f1ea; --deal-good-line: #2e7d5b; --deal-pill: #f4f1ea; --deal-ink: #232f42; line-height: 1.45; overflow-wrap: anywhere; max-width: 34rem; margin: 0 auto; }
+@media (prefers-color-scheme: dark) { #deal { --deal-warn: #ffb07a; --deal-ok: #7fd49a; --deal-ours: #1d2c3d; --deal-ours-line: #6fa3d4; --deal-theirs: #3a2f1a; --deal-theirs-line: #d1a85c; --deal-none: #2a2c30; --deal-none-line: #6b717b; --deal-good: #173326; --deal-good-line: #4fae83; --deal-pill: #2b2a27; --deal-ink: #e8edf5; } }
+#deal h1 { font-size: 1.2rem; margin: 0; }
+#deal h2 { font-size: 1.15rem; margin-top: 1.6rem; }
+#deal h3 { font-size: 0.95rem; color: var(--aac-muted); margin: 1rem 0 0.3rem; }
+#deal .deal-flag summary { color: var(--deal-warn); }
+#deal .deal-steps { margin: 8px 0 0; padding-left: 1.4rem; }
+#deal .deal-steps li { margin: 4px 0; overflow-wrap: anywhere; }
+#deal .deal-at { color: var(--aac-muted); font-size: 0.85rem; }
+#deal .deal-note { color: var(--aac-muted); font-size: 0.9rem; }
+#deal .deal-demo { display: inline-block; border: 1px solid var(--deal-warn); color: var(--deal-warn); padding: 0 6px; border-radius: 4px; font-size: 0.8rem; }
+#deal .deal-bad { color: var(--deal-warn); font-weight: 600; }
+#deal details { border: 1px solid var(--aac-line); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+#deal summary { cursor: pointer; font-weight: 600; }
+#deal table.deal-merchant { border-collapse: collapse; width: 100%; margin: 6px 0; }
+#deal table.deal-merchant th, #deal table.deal-merchant td { border: 1px solid var(--aac-line); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+#deal table.deal-merchant th { color: var(--aac-muted); font-weight: 600; width: 40%; }
+#deal .deal-ok { color: var(--deal-ok); font-weight: 600; }
+#deal code { color: var(--aac-muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+#deal .deal-assurance { border: 1px solid var(--aac-line); border-radius: 6px; padding: 8px 12px; margin: 8px 0 16px; }
+#deal .deal-rung { font-weight: 600; margin: 0.2rem 0; }
+#deal .deal-scope { font-weight: 600; margin: 0.2rem 0 0.6rem; }
+#deal .deal-claims { border: none; padding: 0; }
+#deal .deal-bar { display: flex; align-items: baseline; gap: 10px; padding: 4px 0 10px; border-bottom: 1px solid var(--aac-line); }
+#deal .deal-bar span { margin-left: auto; color: var(--aac-muted); font-size: 0.85rem; }
+#deal .deal-col { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+#deal .deal-box { border: 1px solid var(--aac-line); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner { border: 1px solid var(--deal-theirs-line); background: var(--deal-theirs); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner b { display: block; }
+#deal .deal-small { font-size: 0.8rem; color: var(--aac-muted); }
+#deal .deal-caps { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--aac-muted); }
+#deal .deal-card { border: 2px solid var(--deal-ink); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-quote { font-size: 1.05rem; font-weight: 600; }
+#deal .deal-half { border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-ours { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); }
+#deal .deal-theirs { background: var(--deal-theirs); border: 1px solid var(--deal-theirs-line); }
+#deal .deal-none { background: var(--deal-none); border: 1px dashed var(--deal-none-line); }
+#deal .deal-stamps { border-radius: 12px; }
+#deal .deal-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--deal-pill); font-weight: 600; margin-left: 8px; }
+#deal .deal-stamp { display: flex; gap: 8px; padding: 7px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-stamp b.deal-mark { flex: none; }
+#deal .deal-list { list-style: none; margin: 6px 0 0; padding: 0; }
+#deal .deal-list li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-list li:first-child { border-top: none; }
+#deal .deal-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--deal-none-line); }
+#deal .deal-dot.deal-yes { background: var(--deal-good-line); }
+#deal .deal-say { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-say b { color: var(--deal-ours-line); }
+`;
+
+// The stamps ladder's five consumer words (9b, "The stamps"). A stamp the
+// page did not check says "not checked", never "passed"; one side missing is
+// "missing", never "failed"; "failed" is only a check that ran and did not hold.
+const dealStampWords = ["passed", "failed", "missing", "not checked", "unclear"];
+
+const dealViewRender = (model, regions) => {
+  if (!document.getElementById("capsulectl-deal-view-style")) {
+    const style = document.createElement("style");
+    style.id = "capsulectl-deal-view-style";
+    style.textContent = DEAL_VIEW_CSS;
+    document.head.append(style);
+  }
+  const host = document.createElement("div");
+  host.id = "deal";
+  regions.L0.append(host);
+  const el = (tag, text, cls) => {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  };
+  if (model.refusal !== undefined) {
+    host.append(el("p", model.refusal, "deal-bad"));
+    return;
+  }
+  const { page, report, sealed, shared } = model;
+  const matched = new Set(model.matched);
+  const recorded = new Set(model.recorded);
+  const byId = new Map((report.steps || []).map((s) => [s.capsule_id, s]));
+  const recordOk = (id) => recorded.has(id);
+  // Today as the reader's own calendar has it (YYYY-MM-DD, to compare with
+  // the report's dates).
+  const localDay = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  // A YYYY-MM-DD date as a reader says it ("Oct 22, 2026").
+  const readDay = (ymd) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(undefined, { dateStyle: "medium" }) : ymd;
+  };
+  // Times as the reader's own clock shows them (capsule-cli#341); a value
+  // that is not a time is shown as written.
+  const local = (at) => {
+    const t = Date.parse(at);
+    return Number.isNaN(t) ? at : new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  };
+  // The receipt's own short time: "Oct 7, 08:12", no year, on a 24-hour clock.
+  const short = (at) => {
+    const t = Date.parse(at);
+    return Number.isNaN(t) ? at : new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  };
+  const shortDay = (at) => {
+    const t = Date.parse(at);
+    return Number.isNaN(t) ? at : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+  // In "What the agent did", each step is listed once, under the first item
+  // read from it: an approval is the check's, not again the act's
+  // (capsule-cli#341). The other sections keep every step they cite.
+  let listed;
+  const steps = (ids) => {
+    const list = el("ol", undefined, "deal-steps");
+    ids.forEach((id) => {
+      if (listed) {
+        if (listed.has(id)) return;
+        listed.add(id);
+      }
+      const step = byId.get(id);
+      const li = el("li");
+      if (step && matched.has(id)) {
+        li.append(el("span", `${local(step.at)} · `, "deal-at"), el("span", step.line));
+      } else if (shared && step && step.withheld && recordOk(id)) {
+        // A withheld step: its record and its place in the log verified;
+        // its contents are not in this copy.
+        li.append(el("span", `${local(step.at)} · `, "deal-at"), el("span", step.line), el("span", " · contents withheld", "deal-at"));
+      } else {
+        li.append(el("span", "step not verified in this report "), el("code", id));
+      }
+      list.append(li);
+    });
+    return list;
+  };
+  // An item's own step (an act, a close) is the item: its line would say
+  // the same thing again, so it is checked but not listed.
+  const item = (text, ids, cls, self) => {
+    const d = el("details", undefined, cls);
+    if (typeof self === "string" && self) {
+      const step = byId.get(self);
+      const withheld = shared && step && step.withheld && recordOk(self);
+      if (!matched.has(self) && !withheld) text += " · step not verified in this report";
+      else if (withheld) text += " · contents withheld";
+      if (listed) listed.add(self);
+      d.dataset.self = self;
+    }
+    d.append(el("summary", text), steps(ids));
+    return d;
+  };
+  // The page's words come from the wording pack chat speaks with, when the
+  // page carries one (capsulectlDealPage.words).
+  const words = (page && page.words) || {};
+  // A part of the receipt's face: a titled box.
+  const box = (title, open) => {
+    const d = el("details", undefined, "deal-box");
+    d.open = open;
+    d.append(el("summary", title));
+    return d;
+  };
+  const bullets = (lines, yes) => {
+    const ul = el("ul", undefined, "deal-list");
+    lines.forEach((t) => {
+      const li = el("li");
+      li.append(el("span", undefined, yes ? "deal-dot deal-yes" : "deal-dot"), el("span", t));
+      ul.append(li);
+    });
+    return ul;
+  };
+
+  // What the deal's records can be read as, on this page: the other side's
+  // half is not in a deal's own file, so the page never says "stamped by
+  // both" or "your receipt only"; it says what this file holds.
+  const opening = report.asked_opening || {};
+  const askedChecked = !!(page && page.openings && page.openings.asked === true) && typeof opening.text === "string";
+  const askedStep = byId.get(report.asked_step);
+  const col = el("div", undefined, "deal-col");
+
+  if (model.demo) host.append(el("span", "DEMO", "deal-demo"));
+  const bar = el("div", undefined, "deal-bar");
+  bar.append(el("h1", "Receipt"), el("span", shared ? "A shared copy" : "Your copy"));
+  host.append(bar, col);
+
+  // The verdict: said once, in the receipt's own words.
+  const banner = el("div", undefined, "deal-banner");
+  const stepsAll = report.steps || [];
+  const allMatched = stepsAll.length > 0 && stepsAll.every((st) => matched.has(st.capsule_id) || (shared && st.withheld && recordOk(st.capsule_id)));
+  const holds = allMatched && (askedChecked || shared);
+  banner.dataset.checked = holds ? "yes" : "no";
+  const composed = model.composed;
+  if (composed) {
+    const theirShown = composed.shown;
+    const label = !composed.mine
+      ? "Your copy is not in this file"
+      : composed.theirCase === "both"
+        ? "Stamped by both sides"
+        : composed.theirCase === "only"
+          ? "Your receipt only"
+          : "No record";
+    const said = {
+      verified: `Their record is about ${composed.shown && composed.shown.mesh ? "the same exchange" : "the same deal"} as yours${allMatched ? ", and each is stamped into its own book" : ""}.`,
+      failed: "Their record is in this file, but it did not check.",
+      refused: "They did not share their record.",
+      refused_unchecked: "A refusal in their name is in this file.",
+      absent: "Your agent asked for their record and nothing came back.",
+    };
+    const ok = composed.mine && holds;
+    banner.dataset.checked = ok ? "yes" : "no";
+    banner.dataset.case = composed.theirCase;
+    const sub = !composed.mine ? "Your own copy of this deal is not in this file." : theirShown ? said[theirShown.state] : "Nothing from their side is in this file.";
+    banner.append(el("b", `${label} · ${ok ? "checked" : "not fully checked"}`), el("div", sub, "deal-small"));
+    // The keep copy rides in this page whole: said on its face, since
+    // people forward receipts (Sherlock2, #86 round 2).
+    if (page && page.keep !== undefined) {
+      const own = el("div", "This page is your private copy: it carries your own record of this deal in full. To share this receipt, send the composed bundle file, not this page.", "deal-small");
+      own.dataset.private = "keep";
+      banner.append(own);
+    }
+  } else if (shared) {
+    const who = report.audience === "counterparty" ? "the other party" : "an adjudicator";
+    banner.append(el("b", holds ? "A shared copy · checked" : "A shared copy · not fully checked"), el("div", `Made for ${who}. Left out of this copy: ${(report.withheld || []).join(", ")}.`, "deal-small"));
+  } else {
+    banner.append(
+      el("b", holds ? "Your copy only · checked" : "Your copy only · not fully checked"),
+      el("div", "This file holds your side of the deal. The other side's record is not in it, so this page cannot say whether they agree.", "deal-small"),
+    );
+  }
+  col.append(banner);
+  // What the deal's text rests on, said on the face of every copy: sealed with
+  // the page and checked unchanged, or (a bundle written before reports were
+  // sealed) read from the x-deal-v0 extension, which no record seals.
+  const rests = el(
+    "p",
+    sealed
+      ? "The words below were written by capsulectl when this page was made and sealed in this file; this page checked they have not changed since. They are capsulectl's summary of the steps, not the steps themselves."
+      : "The words below were written by capsulectl when this page was made, and this page does not check them. It checks the sealed records in this file, not those words." + (shared || !askedChecked ? "" : " Only the words you asked, marked ✓ under More on this deal, are checked against their sealed record."),
+    "deal-note",
+  );
+  if (sealed) rests.dataset.sealed = "x-deal-v0";
+  else rests.dataset.unchecked = "x-deal-v0";
+  if (!composed || composed.mine) col.append(rests);
+
+  // The receipt: what was asked, in the person's words, then what was done.
+  const card = el("div", undefined, "deal-card");
+  card.append(el("div", model.dealId ? `Receipt · deal ${model.dealId}` : "Receipt", "deal-caps"));
+  if (shared) {
+    card.append(el("div", "What was asked is withheld from this copy.", "deal-small"));
+  } else if (askedChecked) {
+    card.append(el("div", askedStep && typeof askedStep.at === "string" ? `You asked, ${shortDay(askedStep.at)}` : "You asked", "deal-small"));
+    const quote = el("div", `“${opening.text}”`, "deal-quote");
+    quote.dataset.asked = report.asked_step;
+    card.append(quote);
+  } else {
+    card.append(el("div", "⚠️ The words you asked could not be checked against the sealed record.", "deal-bad"));
+  }
+  const did = report.did || [];
+  if (did.length > 0) {
+    const last = did[did.length - 1];
+    const lifeNow = report.lifecycle;
+    card.append(el("div", `${lifeNow && lifeNow.state === "open" ? "So far" : "Done"}: ${String(last && last.text).replace(/^Did: /, "")}`));
+  } else {
+    card.append(el("div", "Nothing done yet.", "deal-small"));
+  }
+  if (report.money && typeof report.money.text === "string") card.append(el("div", report.money.text));
+  card.append(el("div", shared ? (report.audience === "counterparty" ? "This is a shared copy. It shows only what the other party may see." : "This is a shared copy. It shows only what an adjudicator may see.") : "This is your copy. It shows everything in your book.", "deal-small"));
+  if (!composed || composed.mine) col.append(card);
+
+  // Your side, in your book: the errand's moves in order, a time on every row
+  // as the frames show. Each row says whether its sealed step verified.
+  const ours = el("div", undefined, "deal-half deal-ours");
+  ours.append(el("div", shared ? "The holder's side · in their book" : "Your side · in your book", "deal-caps"));
+  const journey = Array.isArray(report.journey) ? report.journey.filter((m) => m && typeof m === "object") : [];
+  const row = (when, text, tail) => {
+    const line = el("div");
+    line.append(el("b", when ? `${when} · ` : ""), el("span", text));
+    if (tail) line.append(el("span", ` · ${tail}`, "deal-small"));
+    return line;
+  };
+  const verified = (id) => matched.has(id) || (shared && byId.get(id) && byId.get(id).withheld && recordOk(id));
+  // A withheld step on a shared copy is verified present; what it says is not in the copy.
+  const rowTail = (id) => (matched.has(id) ? "" : verified(id) ? "contents withheld" : "step not verified in this report");
+  if (!shared && journey.length === 0 && askedChecked && askedStep) ours.append(row(short(askedStep.at), "you asked for it", "your words, sealed"));
+  const movers = { user: "You", agent: "Your agent", other: "The other side" };
+  if (!shared && journey.length > 0) {
+    journey.forEach((m) => {
+      const step = byId.get(m.step);
+      const label = dealJourneyLabel(words, m);
+      const who = Object.hasOwn(movers, m.by) ? movers[m.by] : "Someone";
+      const r = row(step && matched.has(m.step) && typeof step.at === "string" ? short(step.at) : "", `${who}${label ? ` · ${label}` : ""}`, rowTail(m.step));
+      r.dataset.journey = label;
+      ours.append(r);
+    });
+  } else {
+    did.forEach((i) => {
+      const hasSelf = typeof i.self === "string" && i.self !== "";
+      const ok = !hasSelf || verified(i.self);
+      ours.append(row(ok && typeof i.at === "string" && i.at ? short(i.at) : "", i.text, hasSelf ? rowTail(i.self) : ""));
+    });
+  }
+  const life = report.lifecycle;
+  if (life && typeof life.text === "string") ours.append(row("", lifecycleText(life), ""));
+  if (composed && !composed.mine) {
+    // A composition without your own copy: your side is not on this page.
+    const none = el("div", undefined, "deal-half deal-none");
+    none.append(el("div", "Your side", "deal-caps"), el("div", "Not in this file. This page cannot show your own record of this deal."));
+    col.append(none);
+  } else col.append(ours);
+
+  // Their side: on a deal's own file only ever "not in this file"; on a
+  // composition, what their member is, as this page checked it (D3).
+  const theirShown = composed && composed.shown;
+  const theirs = el("div", undefined, theirShown && theirShown.state === "verified" ? "deal-half deal-theirs" : "deal-half deal-none");
+  if (!composed) {
+    theirs.append(el("div", shared ? "The other side" : "Their side", "deal-caps"));
+    theirs.append(el("div", "Not in this file. The other side's own record, if it keeps one, is held in its book; this page does not show it and does not say whether it exists."));
+  } else if (theirShown && theirShown.state === "verified") {
+    theirs.dataset.their = "verified";
+    theirs.append(el("div", "Their side · in their book · as received", "deal-caps"));
+    if (theirShown.mesh) {
+      theirs.append(row(short(theirShown.at), "their record of the exchange", ""));
+      theirs.append(el("div", "Their words: not stated", "deal-small"));
+    } else {
+      (theirShown.report.did || []).forEach((i) => theirs.append(row(typeof i.at === "string" && i.at ? short(i.at) : "", i.text, "")));
+      const theirLife = theirShown.report.lifecycle;
+      if (theirLife && typeof theirLife.text === "string") theirs.append(row("", lifecycleText(theirLife), ""));
+    }
+    theirs.append(el("div", `Stamped into their book ${short(theirShown.stamped)}`, "deal-small"));
+  } else {
+    theirs.dataset.their = theirShown ? theirShown.state : "none";
+    theirs.append(el("div", "Their side", "deal-caps"));
+    const day = theirShown && typeof theirShown.at === "string" ? shortDay(theirShown.at) : "";
+    const line = !theirShown
+      ? "No record. Nothing from their side is in this file."
+      : theirShown.state === "failed"
+        ? "Their record is in this file, but it did not check: failed. Do not rely on it."
+        : theirShown.state === "refused"
+          ? `They answered that they would not share their record, on ${day}.`
+          : theirShown.state === "refused_unchecked"
+            ? `A refusal in their name came back on ${day}; its signature was not checked here.`
+            : `No record. Your agent asked and nothing came back by ${day}; that is written down too.`;
+    theirs.append(el("div", line));
+  }
+  // Their side's fold-out: whose key it is (only "their key" and its
+  // digits, never a name the composer declared), what this page left to
+  // capsulectl verify, and their other answers by date (D2, D3; Sherlock2,
+  // #86 rounds 2 and 5).
+  if (composed && theirShown) {
+    const more = el("details", undefined, "deal-their-more");
+    more.append(el("summary", "More on their side"));
+    if (theirShown.key) {
+      more.append(el("div", `Their key ${String(theirShown.key).slice(0, 16)}…`, "deal-small"));
+      more.append(el("div", "Their reply's signature, and the checkpoint it names, are checked by capsulectl verify, not on this page.", "deal-small"));
+    }
+    composed.also
+      .filter((t) => t.state !== "verified" && t.state !== "failed")
+      .forEach((t) => {
+        const day = typeof t.at === "string" ? shortDay(t.at) : "";
+        const also = t.state === "absent" ? `Also: your agent asked and nothing came back by ${day}.` : t.state === "refused" ? `Also: they answered on ${day} that they would not share.` : `Also: a refusal in their name came back on ${day}; its signature was not checked here.`;
+        more.append(el("div", also, "deal-small"));
+      });
+    theirs.append(more);
+  }
+  col.append(theirs);
+
+  // The stamps: the proofs ladder in the five consumer words, closed until
+  // opened. Only what this page checked, or says it did not.
+  const countersign = page && page.countersign && typeof page.countersign.text === "string" ? page.countersign : undefined;
+  // [word, line, detail]: a word is "passed" only for a check this page ran.
+  const theirArtifact = composed && composed.shown && (composed.shown.state === "verified" || composed.shown.state === "failed") ? composed.shown : undefined;
+  const sameWhat = theirArtifact && theirArtifact.mesh ? "the same exchange" : "the same deal";
+  const anyWitness = model.witnessed || (composed && [composed.shown, ...composed.also].some((t) => t && t.witnessed));
+  const stamps = composed ? [
+    askedChecked
+      ? ["passed", "Your words are sealed exactly as you said them", "checked when this page was built"]
+      : ["not checked", "Your words could not be checked against their sealed record", ""],
+    !composed.mine
+      ? ["missing", "Each side's record is stamped into its own book and can't be changed after", "your record is not in this file"]
+      : !theirArtifact
+      ? ["missing", "Each side's record is stamped into its own book and can't be changed after", "their record is not in this file"]
+      : allMatched && !(theirArtifact.state === "failed" && (theirArtifact.check === "V1" || theirArtifact.check === "V2"))
+        ? ["passed", "Each side's record is stamped into its own book and can't be changed after", ""]
+        : ["failed", "Each side's record is stamped into its own book and can't be changed after", allMatched ? "their record did not check" : "see More on this deal"],
+    !composed.mine
+      ? ["missing", `Their record and yours are about ${sameWhat}`, "your record is not in this file"]
+      : !theirArtifact
+      ? ["missing", `Their record and yours are about ${sameWhat}`, "their record is not in this file"]
+      : theirArtifact.state === "verified"
+        ? ["passed", `Their record and yours are about ${sameWhat}`, theirArtifact.mesh ? "both records name the same request; neither points at the other" : "both records name the same deal; neither points at the other"]
+        : ["failed", `Their record and yours are about ${sameWhat}`, "their record did not check"],
+    ["not checked", "The payment is confirmed by its payment network, not by either agent", "this page checks no settlement"],
+    [anyWitness ? "not checked" : "missing", "An outside witness recorded both books' snapshots", anyWitness ? "this page can't check the witness's signature" : ""],
+  ] : [
+    shared
+      ? ["not checked", "The words asked are withheld from this copy", ""]
+      : askedChecked
+        ? ["passed", "Your words are sealed exactly as you said them", "checked when this page was built"]
+        : ["not checked", "Your words could not be checked against their sealed record", ""],
+    stepsAll.length === 0
+      ? ["not checked", "No step is listed in this copy", ""]
+      : allMatched
+        ? ["passed", shared ? "Each step's record is in the holder's book, and a change after would show" : "Each step's record is in your book, and a change after would show", ""]
+        : ["failed", "A step's record could not be found in this deal's log", "see More on this deal"],
+    [model.witnessed ? "not checked" : "missing", shared ? "An outside witness saw the holder's book" : "An outside witness saw your book", model.witnessed ? "this page can't check the witness's signature" : ""],
+    ["missing", "Nothing points back from the other side's book", "it is not in this file"],
+    ["not checked", "\"It happened\" rests on what the agent reported", "no one else has checked it"],
+  ];
+  const passed = stamps.filter((s) => s[0] === "passed").length;
+  const stampBox = el("details", undefined, "deal-box deal-stamps");
+  const sum = el("summary", "The stamps");
+  const failed = stamps.filter((st) => st[0] === "failed").length;
+  const rest = stamps.length - passed - failed;
+  const pill = el("span", [`${passed} passed`, failed > 0 ? `${failed} failed` : "", rest > 0 ? `${rest} not checkable here` : ""].filter((t) => t !== "").join(" · "), failed > 0 ? "deal-pill deal-bad" : "deal-pill");
+  sum.append(pill);
+  stampBox.append(sum, el("div", "What is under it:", "deal-small"));
+  stamps.forEach(([word, text, detail]) => {
+    const line = el("div", undefined, "deal-stamp");
+    line.dataset.stamp = word;
+    line.append(el("b", word === "passed" ? "✓" : "—", "deal-mark " + (word === "passed" ? "deal-ok" : "deal-bad")), el("span", `${text} · ${word}${detail ? ` · ${detail}` : ""}`));
+    stampBox.append(line);
+  });
+  if (countersign) stampBox.append(el("div", countersign.text, countersign.flag === true ? "deal-small deal-bad" : "deal-small"));
+  stampBox.append(el("div", `Five words for any stamp: ${dealStampWords.join(" · ")}.`, "deal-small"));
+  col.append(stampBox);
+
+  // What this receipt proves, and what it does not: only what this page checked.
+  const proves = box("What this receipt proves", true);
+  const provesLines = [];
+  if (askedChecked && !shared) provesLines.push("The words you asked are sealed, exactly as said, and this page checked them against the record.");
+  if (allMatched) provesLines.push("Every step listed here is in this deal's log and unchanged since it was sealed.");
+  const authority = report.authority || [];
+  if (sealed && authority.length > 0 && authority.every((b) => b.covered)) provesLines.push("Each action recorded here has an approval or a rule recorded for it.");
+  if (theirArtifact && theirArtifact.state === "verified") provesLines.push(`Their record of ${sameWhat} is in this file, signed with their key and stamped into their book, and this page checked it.`);
+  if (provesLines.length === 0) provesLines.push("Nothing on this page is vouched for beyond the stamps above.");
+  proves.append(bullets(provesLines, true));
+  col.append(proves);
+  const doesnt = box("What it doesn't", true);
+  const doesntLines = [
+    "That what the agent reported is true. It records what the agent reported.",
+    "Who made the records. It shows a change after they were sealed would show.",
+    "That the merchant shipped, delivered or refunded anything.",
+  ];
+  if (typeof report.scope === "string" && report.scope) doesntLines.push(report.scope);
+  if (shared) doesntLines.push("Anything left out of this copy: the steps marked contents withheld are proven present, not shown.");
+  if (composed) doesntLines.push("Who the other side is. The key shown as theirs is the one the composer of this file named.");
+  doesnt.append(bullets(doesntLines, false));
+  col.append(doesnt);
+
+  // Tell your agent: only what the deal skill does today.
+  if (!shared) {
+    const say = el("div", undefined, "deal-say");
+    say.append(el("div", "Tell your agent", "deal-caps"), el("b", "“Send me this receipt”"), el("b", "“Make a copy for the other side”"));
+    col.append(say);
+  }
+
+  // Everything else the receipt knows, behind one fold-out: its steps, authority, what was told, dates, anomalies.
+  const more = el("details", undefined, "deal-more");
+  more.append(el("summary", "More on this deal: steps, authority, what was told, anomalies"));
+  col.append(more);
+
+  if (typeof report.did_line === "string") more.append(el("p", report.did_line, "deal-note"));
+  more.append(el("h2", "What the agent did"));
+  more.append(
+    el(
+      "p",
+      sealed
+        ? "The summary lines below, and each step's line, were written by capsulectl on this device and sealed with this page: " +
+            "this page checked they were not changed since, not that they are right. Open an item to see the steps it was read from; each step's sealed record is checked."
+        : "The summary lines below, and each step's line, are written by capsulectl on this device and are not checked by this page. " +
+            "Open an item to see the steps it was read from; each step's sealed record is checked, not its line.",
+      "deal-note",
+    ),
+  );
+  if (did.length === 0) more.append(el("p", "Nothing yet.", "deal-note"));
+  listed = new Set();
+  did.forEach((i) => more.append(item(typeof i.at === "string" && i.at ? `${local(i.at)} · ${i.text}` : i.text, i.steps, undefined, i.self)));
+  listed = undefined;
+  more.append(el("h2", "What you asked"));
+  if (shared) more.append(el("p", "Withheld from this copy.", "deal-note"));
+  else if (askedChecked) more.append(item(`“${opening.text}”`, [report.asked_step]));
+  if (askedChecked && !shared) more.append(el("p", "✓ These are the exact words sealed when the deal opened, checked when this page was built.", "deal-note"));
+
+  const authorityBlocks = report.authority || [];
+  if (authorityBlocks.length > 0) {
+    more.append(el("h2", "Authority"));
+    if (typeof report.authority_order === "string") more.append(el("p", report.authority_order, "deal-note"));
+    authorityBlocks.forEach((b) => {
+      more.append(el("h3", `${b.covered ? "" : "⚠️ "}${b.action}`));
+      (b.layers || []).forEach((l) => {
+        const line = item(`${local(l.at)} · ${l.text}`, [l.step], b.covered || l.layer !== "action" ? undefined : "deal-flag");
+        if (typeof l.note === "string" && l.note) line.append(el("p", l.note, "deal-note"));
+        more.append(line);
+      });
+    });
+  }
+
+  if (life && typeof life.text === "string") {
+    more.append(el("h2", "Where this deal stands"), el("p", lifecycleText(life)));
+    (life.later || []).forEach((l) => more.append(item(`${local(l.at)} · confirms the close: ${l.text}`, [l.capsule_id])));
+    more.append(el("p", `${life.may_change} (as of ${local(life.as_of)})`, "deal-note"));
+    // A report off the deal's log (capsule-cli#294) states the deal as of
+    // its checkpoint, the deal's last step. Where it stands today, the page
+    // works out from the viewer's clock, apart, and says so: it is not part
+    // of the report.
+    if (model.standalone) {
+      const today = localDay();
+      const due = life.open && typeof life.open.expect_close_by === "string" ? life.open.expect_close_by : "";
+      const passedDue = life.state === "open" && due !== "" && due < today ? ` The expected close, ${readDay(due)}, has passed as of today.` : "";
+      more.append(el("p", `This report states the deal as of its checkpoint at ${local(life.as_of)} (the producer's time).`, "deal-note"));
+      more.append(el("p", `Not part of the report, worked out by this page when you opened it: today is ${readDay(today)}.${passedDue}`, "deal-note"));
+    }
+  }
+
+  // What this receipt can prove and how to check it.
+  const header = el("section", undefined, "deal-assurance");
+  header.append(el("p", report.scope || "This receipt covers this one deal. It is not a record of everything the agent did.", "deal-scope"));
+  // The countersign rung, as capsulectl checked it when it wrote this page
+  // (a page cannot resolve a signer against a directory): "Not
+  // countersigned" unless the bundle carried a countersignature that
+  // verified, and a self-countersignature is NOT INDEPENDENT. The page
+  // renders the line capsulectl wrote; it names no rung itself.
+  let rung = { text: "The countersign line could not be read from this file." };
+  if (countersign) rung = countersign;
+  header.append(el("p", rung.text, rung.flag === true ? "deal-rung deal-bad" : "deal-rung"));
+  if (typeof rung.note === "string" && rung.note) header.append(el("p", rung.note, "deal-note"));
+  const provenance = el("section", undefined, "deal-provenance");
+  const builds = model.builds;
+  if (builds.length > 0) provenance.append(el("p", `Produced by ${builds.map((b) => b.name).join(", then ")}.`, "deal-note"));
+  if (typeof report.instructions === "string" && report.instructions) provenance.append(el("p", report.instructions, "deal-note"));
+  const { releaseNotes, buildNote } = model;
+  if (buildNote) {
+    const what = el("p", `${buildNote} What changed: `, "deal-note");
+    const link = document.createElement("a");
+    link.href = releaseNotes;
+    link.textContent = "the release notes";
+    link.rel = "noopener";
+    what.append(link);
+    provenance.append(what);
+  }
+  const notClaimed = el("details", undefined, "deal-claims");
+  notClaimed.open = true;
+  notClaimed.append(el("summary", "What this does not claim"));
+  const claims = el("ul");
+  [
+    "It is tamper-evident, not non-repudiation: it shows these records were not changed after they were sealed, not who made them.",
+    "It records what the agent reported. It does not show that what was reported was true.",
+    "It does not prove the merchant shipped, delivered or refunded anything.",
+  ].forEach((t) => claims.append(el("li", t)));
+  notClaimed.append(claims);
+  header.append(notClaimed);
+  if (shared) {
+    const who = report.audience === "counterparty" ? "the other party" : "an adjudicator";
+    header.append(el("p", `A shared copy for ${who}. Left out of this copy: ${(report.withheld || []).join(", ")}.`, "deal-note"));
+  }
+  more.append(header, provenance);
+
+  // What the agent told whom about the user: each telling, its time and the
+  // approval that covered it, or that none did. Your own copy shows what was
+  // given; a shared copy names only the kind of thing.
+  more.append(el("h2", "What your agent told whom"));
+  const told = report.told || [];
+  if (told.length === 0) more.append(el("p", "Nothing about you was recorded as shared.", "deal-note"));
+  told.forEach((t) => {
+    const flagged = t.authority === "none";
+    const fields = (t.fields || []).map((f) => (typeof f.value === "string" ? `${f.label}: ${f.value}` : f.label)).join("; ");
+    more.append(item(`${flagged ? "⚠️ " : ""}${t.text} · ${local(t.at)} · ${t.authority_text}${shared ? "" : ` (${fields})`}`, t.steps, flagged ? "deal-flag" : undefined));
+  });
+  more.append(el("p", "Only what the agent sealed as shared is listed here; something it told without sealing it is not.", "deal-note"));
+
+  // Where the user sells: what their agent told the buyer, each claim's words
+  // checked here against the commitment its sealed step carries, labelled by
+  // the class sealed with it. A claim that is not the agent's own, or whose
+  // words do not match, is never shown as said.
+  const said = report.representations || [];
+  if (said.length > 0) {
+    const labels = {
+      price: "Price", condition: "Condition", features: "Features", authenticity: "Authenticity",
+      availability: "Availability", delivery_date: "Delivery date", service_scope: "Service scope",
+      warranty: "Warranty", refund_terms: "Refund terms", payment_methods: "Payment methods",
+      pickup: "Pickup", deadline: "Deadline", address: "Address", other: "Other",
+      delivery_promise: "Delivery promise", // a claim sealed before delivery_date
+    };
+    const heading = !shared ? "What your agent told the buyer" : report.audience === "counterparty" ? "What the seller's agent told you" : "What the seller's agent told the buyer";
+    more.append(el("h2", heading));
+    const checked = (page && page.openings && page.openings.representations) || [];
+    for (const [i, r] of said.entries()) {
+      // Checked against its sealed commitment when this page was built.
+      const claimClass = model.claimClasses[i];
+      const ok = checked[i] === true && claimClass !== undefined && typeof r.text === "string";
+      if (ok) {
+        const label = labels[claimClass];
+        more.append(item(`${label ? `${label}: ` : ""}“${r.text}” ✓`, [r.step]));
+      } else {
+        more.append(item("⚠️ A statement here could not be checked against its sealed step.", [r.step], "deal-flag"));
+      }
+    }
+    more.append(el("p", "✓ These are the exact words sealed when the agent said them, checked when this page was built; this page does not check that they are true.", "deal-note"));
+  }
+
+  // Cancel-by dates (the point of no return is a date passing) and due
+  // dates (what the user owes by a date). Recorded, never enforced.
+  const deadlines = report.deadlines || [];
+  if (deadlines.length > 0) {
+    more.append(el("h2", deadlines.some((d) => d.due_by) ? "Cancel-by and due dates" : "Cancel-by dates"));
+    const list = el("ul", undefined, "deal-steps");
+    deadlines.forEach((d) => {
+      const live = d.status === "open" || d.status === "carried_at_close";
+      const li = el("li", undefined, live ? "deal-bad" : undefined);
+      li.append(el("span", `${d.cancel_by || d.due_by} · ${d.marking || d.status}: `), el("span", `${d.text}. ${d.holds || ""}`));
+      // A report off the deal's log is as of its checkpoint: a date that has
+      // passed since, the page says so when opened, apart from the report.
+      const date = d.cancel_by || d.due_by || "";
+      const today = localDay();
+      if (model.standalone && live && date !== "" && date < today) {
+        li.append(el("span", ` Not part of the report, worked out by this page when you opened it: this date has passed as of today, ${readDay(today)}.`, "deal-note"));
+      }
+      list.append(li);
+    });
+    more.append(list, el("p", deadlines[0].note, "deal-note"));
+  }
+  // A cancellation: exactly what is shown, and what is not.
+  (report.cancellations || []).forEach((c) => {
+    more.append(el("h2", "Your cancellation"));
+    const shows = el("details", undefined, c.merchant === "confirmed" ? undefined : "deal-flag");
+    shows.open = true;
+    shows.append(el("summary", "What this shows"));
+    const proven = el("ul");
+    (c.proven || []).forEach((p) => proven.append(el("li", p)));
+    const notProven = el("ul", undefined, "deal-note");
+    (c.not_proven || []).forEach((p) => notProven.append(el("li", p)));
+    shows.append(proven, el("h3", "What this does not show"), notProven, steps(c.steps || []));
+    more.append(shows);
+  });
+
+  // The merchant's own emails. Two statements, never one: the merchant's
+  // DKIM signature (independent of the agent) and our seal (our own record).
+  const merchant = report.merchant || [];
+  if (merchant.length > 0) {
+    more.append(el("h2", "The merchant's own email"));
+    more.append(
+      el(
+        "p",
+        "Two different things stand behind each email. The signing domain's DKIM signature is checked against its published key, " +
+          "saved when the email was sealed; it shows what that domain signed, and it does not depend on the agent. " +
+          "Our seal shows this device held these exact bytes no later than the seal time; who signed them is checked by that DKIM signature, not by our seal. " +
+          "Amounts, dates and order numbers below are read from the email by capsulectl and may be misread.",
+        "deal-note",
+      ),
+    );
+    if (typeof report.email_scope === "string") more.append(el("p", report.email_scope, "deal-scope"));
+    merchant.forEach((m) => {
+      const d = el("details", undefined, m.verified ? undefined : "deal-flag");
+      d.open = true;
+      d.append(el("summary", m.order_id ? `Order ${m.order_id}` : "Merchant email"));
+      d.append(el("p", `DKIM signature: ${m.merchant_says}`, m.verified ? "deal-ok" : "deal-bad"));
+      d.append(el("p", `Our seal: ${m.we_say}`, "deal-note"));
+      if (m.key_source === "supplied") {
+        d.append(el("p", "The signing domain's key was supplied by hand, not read from its DNS.", "deal-bad"));
+      }
+      const table = el("table", undefined, "deal-merchant");
+      const row = (label, value) => {
+        if (!value) return;
+        const tr = el("tr");
+        tr.append(el("th", label), el("td", value));
+        table.append(tr);
+      };
+      row(m.approved_basis ? `You approved (${m.approved_basis})` : "You approved", m.approved);
+      row("The agent reported paying", m.agent_reported);
+      row("The merchant's email says (read from the email)", m.charged);
+      row("Charged on (the email's date)", m.charged_on);
+      row("Cancel by (read from the email)", m.cancel_by);
+      row("Items (read from the email)", (m.items || []).join(" · "));
+      row("Signing domain", m.domains);
+      row("Signing domain's key", m.key_size ? `${m.key_size}, sealed when the email was sealed` : "");
+      d.append(table, steps(m.steps || []));
+      more.append(d);
+    });
+  }
+
+  more.append(el("h2", "Anomalies"));
+  const anomalies = report.anomalies || [];
+  [
+    ["agent", "Agent side"],
+    ["counterparty", "Counterparty side"],
+  ].forEach(([side, label]) => {
+    const mine = anomalies.filter((a) => a.side === side);
+    more.append(el("h3", label));
+    if (mine.length === 0) more.append(el("p", "None found.", "deal-note"));
+    mine.forEach((a) => more.append(item(`⚠️ ${a.text}`, a.steps, "deal-flag")));
+  });
+
+  more.append(
+    el(
+      "p",
+      "This page checked each step's sealed record and its place in this deal's log; the verification below says what was and was not checked. " +
+        "The records carry fingerprints, not names or numbers; the words shown come from this device. " +
+        (shared ? "Steps marked contents withheld are proven present and unchanged; what they say is not in this copy. " : "") +
+        "The seal key is on the agent's machine, so this shows the record was not changed after it was made, not who made it. " +
+        "It covers this skill's own records only, never the agent host's own store.",
+      "deal-note",
+    ),
+  );
+};
+
+EvidenceGraph.registerPresentation({
+  manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-deal-v0"]}}, "forbids": {"extensions": ["composed/v1", "x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"]}},
+  canRender: dealViewVerified,
+  buildModel: dealViewModel,
+  render: dealViewRender,
+});
+
+EvidenceGraph.registerPresentation({
+  manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view-composed/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["composed/v1"]}}, "forbids": {"extensions": ["x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"]}},
+  canRender: dealComposedCanRender,
+  buildModel: dealComposedModel,
+  render: dealViewRender,
+});
+</script>
     <!-- prettier-ignore -->
-    <script>globalThis.capsulectlDealPage = Object.freeze({"private_half":{"label":"Your half (private)","note":"This page is only for you. To share, send the composed bundle, not this page.","deal_id":"deal-381313aa878fd629","asked":"buy me the example bicycle for at most 1900","did":[]},"verify_command":"capsulectl verify --bundle page.html"});
-renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });
-(function () {
-  var half = capsulectlDealPage.private_half;
-  if (!half) { return; }
-  var el = function (tag, text) { var e = document.createElement(tag); if (text) { e.textContent = text; } return e; };
-  var section = el("section");
-  section.setAttribute("data-private-half", "keep");
-  section.style.margin = "1.5rem auto";
-  section.style.maxWidth = "60rem";
-  section.style.padding = "0 1rem";
-  section.appendChild(el("h2", half.label));
-  section.appendChild(el("p", half.note));
-  if (half.asked) { section.appendChild(el("p", half.asked)); }
-  var list = el("ul");
-  half.did.forEach(function (line) { list.appendChild(el("li", line)); });
-  section.appendChild(list);
-  document.getElementById("app").after(section);
-})();</script>
+    <script>globalThis.capsulectlDealPage = Object.freeze({"countersign":{"finding":"not_countersigned","text":"Not countersigned: no other party has signed this record. It stands on the agent's own seal and any witness receipt this file carries."},"keep":{"bundle_kind":"evidence-bundle/v2","bundle_version":"2","checkpoint":{"cose":"0oRYhqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCBA659Kj7biyZpxoBEg93CqAUQp76Zyd_mLyJyiv0CzWA-iAXgaZGVhbC9kZWFsLTM4MTMxM2FhODc4ZmQ2MjkCeBxkZWFsL2RlYWwtMzgxMzEzYWE4NzhmZDYyOSMxoFiKpmRraW5kbmNsbC1jaGVja3BvaW50aGxvZ19zaXplAWlpc3N1ZWRfYXR0MjAyNi0xMC0zMVQxOTozODo1OVppcHJldl9zaXplAGpjb21taXRtZW50WCOBWCDFgPxA4QmzCZTI8NCkwDdI6gmT8fObmOcOoVKU-fjNAG9wcmV2X2NvbW1pdG1lbnRAWEAuxBM_Ziq7wJK_lo0oVfssXHIa8TNizXjKXaqULjNCwYd28nK6x1IH2AZJSbQl6h2gK-p4zlJDBT1qQNvGVk8J","key_id":"40eb9f4a8fb6e2c99a71a01120f770aa014429efa67277f98bc89ca2bf40b358","log_id":"deal/deal-381313aa878fd629","mmr_size":1,"prev_root":"","prev_size":0,"root":"c580fc40e109b30994c8f0d0a4c03748ea0993f1f39b98e70ea15294f9f8cd00","timestamp":"2026-10-31T19:38:59Z"},"completeness":{"closure_depth":0,"missing":[],"payloads_mode":"selected","records_mode":"complete","suppressed_fields":[]},"completeness_certificate":{"body_digests":["f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa"],"first_seq":1,"last_seq":1,"log_id":"deal/deal-381313aa878fd629","memberships":{"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa":{"inclusion_proof":{"kind":"inclusion","leaf_index":0,"peaks_left":[],"peaks_right":[],"size":1,"v":1,"witness":[]},"log_coordinates":{"leaf_index":0,"log_id":"deal/deal-381313aa878fd629","seq":1}}},"range_proof":{"from_index":0,"from_seq":1,"size":1,"to_index":0,"to_seq":1,"witness":[]},"range_root":"c580fc40e109b30994c8f0d0a4c03748ea0993f1f39b98e70ea15294f9f8cd00"},"disclosures":{"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa":{"agent_input":{"body":{"deal_type":"purchase","expect_close_by":"2026-11-14","intent":{"allowed":["pay"],"max_total_minor":190000,"verbatim_commitment":"df5d70a9e6e12fcbb9f219d1d8cfde031ca752257722bddbbf46a6a76f123e57"},"materiality":{"digest":"53af8695f236e1351c36c7996efadcc8665c7185862f95d9ac8acf070ad6b6d1","label_commitment":"27014c56e517916115b6b4f8703a6c1e8c00f82ad43cc438be36bdd34785a0ab"},"recourse":{"rail":"card","refundable":false},"terms":{"currency":"USD","item":"example bicycle","price_minor":190000}},"x-deal-v0":{"at":"2026-10-31T19:38:59Z","canonicalization":"jcs","channel":"web","commit_alg":"sha256-jcs-nonce256","counterparty":{"fp_alg":"hmac-sha256-deal-key","ids":{"domain":"7254f522f37eaa6bcab5b75ec6e9487afb197f0ecddc52d888322beba3e9ce4a","name":"b1c990198d3b34032519e576cd768bcf14536282a8167b4efa8b0acf713e2abd","payee":"217ceeb1e4ab5696c909659e9431ef2879a7519fa75badc8b4bd334aa3a743cb"}},"deal_id":"deal-381313aa878fd629","producer":{"commit":"unknown","name":"capsulectl","version":"0.1.0-dev"},"profile":"x-deal-v0","record_type":"baseline","seq":1}}}},"extensions":{"x-cadence-witness/v0":{"state":"not_configured"},"x-deal-report/v0":{"agent_input":{"audience":"keep","deal_checkpoint":{"log_id":"deal/deal-381313aa878fd629","mmr_size":1,"root":"c580fc40e109b30994c8f0d0a4c03748ea0993f1f39b98e70ea15294f9f8cd00"},"deal_id":"deal-381313aa878fd629","nonce":"4af97a024091f4a9cb9fab8c4ed86ae75f7ec522ba90d24bae442f4ef91e85ac","profile":"x-deal-v0","report":{"anomalies":[],"asked":"buy me the example bicycle for at most 1900","asked_opening":{"nonce":"f92b902a63944f0699cc84d4f01729c98f4d4f6848cda9e77e495ffa3536f304","text":"buy me the example bicycle for at most 1900"},"asked_step":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa","audience":"keep","bounds_openings":[],"cancellations":null,"card_openings":[],"claim_openings":[],"deadlines":null,"deal_id":"deal-381313aa878fd629","did":[],"did_line":"What you asked, what was proposed and what you approved are sealed on the agent's device, where they happened. What the agent did is the agent's own report: no independent source, such as the merchant's own email, is attached.","email_scope":"This covers one email from the merchant about this deal. It is not a record of everything the merchant sent or charged.","instructions":"Which skill instructions were present was not recorded (the deal was opened without --skill).","journey":[{"by":"user","facts":{},"key":"journey.user.asked","move":"asked","step":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa"}],"lifecycle":{"as_of":"2026-10-31T19:38:59Z","later":[],"may_change":"Records can be linked to this deal after this receipt was made (a merchant's confirmation, a shipping notice, a refund). This receipt shows those sealed when it was made; to see later ones, make a new report with `capsulectl deal report`.","open":{"as_of":"2026-10-31T19:38:59Z","deal_id":"deal-381313aa878fd629","expect_close_by":"2026-11-14","opened_at":"2026-10-31T19:38:59Z","past_expected":false,"state":"open","text":"Open: waiting for the merchant's receipt. It is expected to close by Nov 14, 2026."},"state":"open","text":"Open: waiting for the merchant's receipt. It is expected to close by Nov 14, 2026."},"materiality_openings":[{"name":"example, not policy: the attributes capsulectl paused on before predicates","nonce":"27a75340001526d6707a40ce8493e003d944c7ed8aa4665c8cb44f43550ac47b","step":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa","version":"0.1.0"}],"merchant":[],"page_built_by":"capsulectl 0.1.0-dev (unknown)","page_producer":{"commit":"unknown","name":"capsulectl","version":"0.1.0-dev"},"page_version":"0.1.0-dev","produced_by":["capsulectl 0.1.0-dev (unknown)"],"representations":[],"scope":"This receipt covers this one deal. It is not a record of everything the agent did.","steps":[{"at":"2026-10-31T19:38:59Z","capsule_id":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa","kind":"open","line":"Opened: \"buy me the example bicycle for at most 1900\"","n":1}],"told":[],"verify_command":"capsulectl verify --bundle receipt.html"},"type":"deal_report"},"record":{"action_id":"capsulectl-deal-report","action_type":"fyi","assurance":{"attestation_mode":"self_attested","effect_mode":"not_applicable","ledger_mode":"standalone"},"canonicalization_id":"jcs","capsule_id":"c28b3dd9a8609f16f01c8c6b91e9c44a63e5b4350c0cdf19efba2d5cb27e081f","developer":"capsulectl-deal","format_version":"4","key_id":"a482bf71e6e45ffc6c99bf770007e6cdbfdca6c5a32ff6ade654342e4f038a16","model_attestation":{"compute_attestation":{"agent_input_digest":"a177fa76227acc0c4418b7be1d12694fab5193eb3d97c7cdd8410cca609922d9"}},"operator":"deal","signature":"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820a482bf71e6e45ffc6c99bf770007e6cdbfdca6c5a32ff6ade654342e4f038a160127a05820c28b3dd9a8609f16f01c8c6b91e9c44a63e5b4350c0cdf19efba2d5cb27e081f5840d68827223c7394836595b93adf093240f6bb10fe56bfa3c10a1d64973f7d78f417f4e417a39c729cb6fa70e5bbea92597521c2d227bcfbe3cb8443268d1a9401","spec_version":"draft-mih-scitt-agent-action-capsule-05","timestamp":"2026-10-31T19:39:00Z"}},"x-deal-v0":{"sealed_report":"c28b3dd9a8609f16f01c8c6b91e9c44a63e5b4350c0cdf19efba2d5cb27e081f"}},"records":[{"action_id":"deal-381313aa878fd629/1","action_type":"fyi","assurance":{"attestation_mode":"self_attested","effect_mode":"not_applicable","ledger_mode":"standalone"},"canonicalization_id":"jcs","capsule_id":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa","deal_id":"deal-381313aa878fd629","developer":"capsulectl-deal","evidence_record_header":{"book_id":"deal/deal-381313aa878fd629","commit_alg":"sha256-jcs-nonce256","committed_at":"2026-10-31T19:38:59Z","epistemic_type":"producer_claim","field_commitments":{"amount":"a6ad6fe9ab89557223c3ff48fbd69e02f400c108e6819c23d7892fbdb6ef48d7","currency":"6983eab42353ab07f9d3047fc5aa4780e509e6cc30b88bc39e7835acdc48eaab","deal_local":"668f8e3cab917a7f1b977e18979376efc6019a03702e312d7efb88c47a60467a"},"links":[],"payload_commitments":["90d8c43f53d76225d30ab3f9ba95bc1678f288bf4292d21657ac7c0f246bba1d"],"record_type":"deal_step","retention_state":"AVAILABLE","seq":1,"subject_ref":"deal-381313aa878fd629/1","v":1},"format_version":"4","key_id":"a482bf71e6e45ffc6c99bf770007e6cdbfdca6c5a32ff6ade654342e4f038a16","model_attestation":{"compute_attestation":{"agent_input_digest":"90d8c43f53d76225d30ab3f9ba95bc1678f288bf4292d21657ac7c0f246bba1d"}},"operator":"deal","signature":"d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820a482bf71e6e45ffc6c99bf770007e6cdbfdca6c5a32ff6ade654342e4f038a160127a05820f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa584054b0a8994a05d9996c3fdf379cd6db29dd43d5febea19fd379dd944d389a229b2281d8ad80e5f5f1bbb113def76784f9bbd095183e7e56e5893e3728c6dcdd05","spec_version":"draft-mih-scitt-agent-action-capsule-05","timestamp":"2026-10-31T19:38:59Z"}],"root":"f032a162f73f9aeef58f80dbe2c4c1e5eb2d2a6cb4876fef39ba6a1769f494fa","verification":{"checks":["graph_closure","interval_coverage","per_record_membership"],"producer":"capsulectl"}},"openings":{"asked":true,"representations":[]},"verify_command":"capsulectl verify --bundle page.html","words":{"class.address":"address","class.credential":"login","class.email":"email","class.home_address":"home address","class.id_document":"ID document","class.name":"name","class.other_contact":"contact details","class.payment_card":"payment card","class.phone":"phone","class.pickup_area":"pickup area","class.pickup_location":"pickup location","class.verification_code":"verification code","journey.agent.act.cancel":"Cancelled","journey.agent.act.commit":"Booked","journey.agent.act.offer":"Made an offer","journey.agent.act.other":"Done","journey.agent.act.pay":"Paid {amount}","journey.agent.act.pay.no_amount":"Paid","journey.agent.act.pay.within":"Paid {amount} within your {limit} limit","journey.agent.act.sign":"Signed","journey.agent.asked_seller":"Asked the seller","journey.agent.checked":"Checked","journey.agent.chose":"Chose for you","journey.agent.chose.item":"Chose {item} for you","journey.agent.couldnt":"Couldn't ({reason})","journey.agent.couldnt.who":"Couldn't ({who} {reason})","journey.agent.options":"Showed you {count} options","journey.agent.paused":"Waited for your OK","journey.agent.recommended":"Recommended","journey.agent.searched":"Searched","journey.agent.told":"Told {who} your {classes}","journey.other.changed":"Seller changed","journey.other.said":"Seller said","journey.reason.blocked":"blocked","journey.reason.cannot_ship_here":"can't ship here","journey.reason.out_of_stock":"out of stock","journey.reason.payment_declined":"payment declined","journey.reason.sign_in_required":"sign-in","journey.reason.site_error":"site error","journey.user.approved.commit":"OK'd agreeing to {amount}","journey.user.approved.offer":"OK'd offering {amount}","journey.user.approved.other":"OK'd it","journey.user.approved.pay":"OK'd paying {amount}","journey.user.approved.share_contact":"OK'd sharing your {classes}","journey.user.asked":"Asked","journey.user.called_off":"Called off","journey.user.changed":"Changed what you asked","journey.user.declined.commit":"Said no to agreeing to {amount}","journey.user.declined.offer":"Said no to offering {amount}","journey.user.declined.other":"Said no","journey.user.declined.pay":"Said no to paying {amount}","journey.user.declined.share_contact":"Said no to sharing your {classes}","journey.user.narrowed":"Narrowed","journey.user.picked":"Picked","journey.user.raised":"Raised","journey.user.switched":"Switched to {who}","journey.user.switched.item":"Switched to {item}","report.title":"Deal report"}});
+renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });</script>
   </body>
 </html>

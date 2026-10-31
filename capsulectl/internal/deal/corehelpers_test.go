@@ -512,6 +512,9 @@ type pageView struct {
 	// scriptsOff loads the page with JavaScript off, as a script-blocking
 	// viewer or a host's inline preview shows it.
 	scriptsOff bool
+	// before runs in the page before any of its own scripts, to take a
+	// capability away from it (for example Ed25519 in WebCrypto).
+	before string
 }
 
 var presentationViews = []pageView{
@@ -578,6 +581,9 @@ func (c *headlessChrome) load(t *testing.T, url string, view pageView) openedPag
 	require.NoError(t, c.call(s, "Target.setAutoAttach", map[string]any{
 		"autoAttach": true, "waitForDebuggerOnStart": true, "flatten": true}, nil))
 	require.NoError(t, c.call(s, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": errorHook}, nil))
+	if view.before != "" {
+		require.NoError(t, c.call(s, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": view.before}, nil))
+	}
 	require.NoError(t, c.call(s, "Emulation.setDeviceMetricsOverride", map[string]any{
 		"width": view.width, "height": view.height, "deviceScaleFactor": 1, "mobile": view.mobile}, nil))
 	require.NoError(t, c.call(s, "Emulation.setEmulatedMedia", map[string]any{"media": view.media}, nil))

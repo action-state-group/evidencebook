@@ -10,26 +10,15 @@ import (
 	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
-// The composer's both-halves page (evidencebook-deal#31, option b). A
-// composed/v1 bundle carries the copy the composer was served and the copy it
-// cut for the other party; the composer's own keep copy (item, amounts and
-// story held back from a shared copy) is never a member. On the composer's
-// own page only, `deal compose --html --keep` joins that keep bundle to the
-// composition at the page: it rides in the bootstrap beside the bundle, the
-// way the countersign rung does, so the composed bundle, its digest and
-// anything shared are unchanged. The join states stay what the served
-// members derive; the private half is shown, never counted.
-
-// dealPrivateHalf is the keep copy as the page shows it: what the composer
-// asked (only when its words recompute to their sealed commitment) and what
-// the agent did. Nothing here is a bundle member.
-type dealPrivateHalf struct {
-	Label  string   `json:"label"`
-	Note   string   `json:"note"`
-	DealID string   `json:"deal_id"`
-	Asked  string   `json:"asked,omitempty"`
-	Did    []string `json:"did"`
-}
+// The composer's receipt with the other party's half (evidencebook-deal#31,
+// #79; docs/design/two-sided-receipt.md). A composed/v1 bundle carries the
+// answers the composer recorded; the composer's own keep copy (item, amounts
+// and story held back from a shared copy) is never a member. On the
+// composer's own page only, `deal compose --html --keep` carries that keep
+// bundle in the bootstrap beside the composition, the way the countersign
+// rung rides, so the composed bundle, its digest and anything shared are
+// unchanged. The deal view's composed module (capsulectl.deal-view-composed/v0)
+// verifies the keep bundle in the page and reads it as your half.
 
 // bundleRootKey is the key_id of a bundle's root record, or "".
 func bundleRootKey(bundle map[string]interface{}) string {
@@ -44,11 +33,12 @@ func bundleRootKey(bundle map[string]interface{}) string {
 	return ""
 }
 
-// privateHalfOf reads the keep bundle at path and joins it to the
+// keepCopyOf reads the keep bundle at path and joins it to the
 // composition: it must verify VALID, be the composer's own copy (audience
 // keep), and name the same deal id and the same composer (the key that
-// sealed the composition) as the composition, or the page is refused.
-func privateHalfOf(path, dealID string, composition map[string]interface{}, w cli.Wording) (*dealPrivateHalf, error) {
+// sealed the composition) as the composition, or the page is refused. The
+// page checks the same again.
+func keepCopyOf(path, dealID string, composition map[string]interface{}) (map[string]interface{}, error) {
 	raw, err := cli.ReadBundleInput(path)
 	if err != nil {
 		return nil, err
@@ -70,70 +60,50 @@ func privateHalfOf(path, dealID string, composition map[string]interface{}, w cl
 	if keepKey, composer := bundleRootKey(keep), bundleRootKey(composition); keepKey == "" || keepKey != composer {
 		return nil, cli.InputError("--keep was not sealed by the composer of this composition; the page is not written")
 	}
-	return privateHalfFrom(keep, dealID, w)
+	return keep, nil
 }
 
-// privateHalfFrom is the half a verified keep bundle makes on the page.
-func privateHalfFrom(keep map[string]interface{}, dealID string, w cli.Wording) (*dealPrivateHalf, error) {
-	report, _, _ := cli.DealSealedReport(keep)
-	openings, err := dealPageOpenings(keep)
-	if err != nil {
-		return nil, err
-	}
-	half := &dealPrivateHalf{Label: w.Line("report.private_half", nil), Note: w.Line("report.private_half_note", nil), DealID: dealID, Did: []string{}}
-	if openings["asked"] == true {
-		opening, _ := report["asked_opening"].(map[string]interface{})
-		half.Asked, _ = opening["text"].(string)
-	}
-	did, _ := report["did"].([]interface{})
-	for _, raw := range did {
-		if step, ok := raw.(map[string]interface{}); ok {
-			if text, _ := step["text"].(string); text != "" {
-				half.Did = append(half.Did, text)
-			}
-		}
-	}
-	return half, nil
-}
-
-// composedPageHTML renders the composed bundle as one local page, with the
-// private half beside it when there is one. The page gate is the same as
-// every page's: the composition must verify VALID.
-func composedPageHTML(composition map[string]interface{}, half *dealPrivateHalf, verifyCommand string, w cli.Wording) (string, error) {
+// composedPageHTML renders the composed bundle as one local page through the
+// deal view's composed module, with the keep copy in the bootstrap when
+// there is one, and beside it what the deal view reads from the bootstrap
+// for that copy and cannot recompute (dealReportHTML's openings,
+// countersign and words). The page gate is the same as every page's: the
+// composition must verify VALID.
+func composedPageHTML(composition, keep map[string]interface{}, verifyCommand string, w cli.Wording) (string, error) {
 	if err := cli.PageGate(composition); err != nil {
 		return "", err
 	}
-	boot := map[string]interface{}{"verify_command": verifyCommand}
-	if half != nil {
-		boot["private_half"] = half
+	return composedPage(composition, keep, verifyCommand, w)
+}
+
+// composedPage is the page composedPageHTML writes once the gate passed. The
+// deal view checks the composition again in the page, since a viewer that
+// opens the bundle itself runs no gate.
+func composedPage(composition, keep map[string]interface{}, verifyCommand string, w cli.Wording) (string, error) {
+	module, err := dealViewModule()
+	if err != nil {
+		return "", err
 	}
+	boot := map[string]interface{}{}
+	if keep != nil {
+		if boot, _, err = dealPageBoot(keep, dealNotCountersigned(), w); err != nil {
+			return "", err
+		}
+		boot["keep"] = keep
+	}
+	boot["verify_command"] = verifyCommand
+	// json.Marshal escapes <, > and &, so the data cannot close its element.
 	data, err := json.Marshal(boot)
 	if err != nil {
 		return "", err
 	}
 	bootstrap := `globalThis.capsulectlDealPage = Object.freeze(` + string(data) + `);
-renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });
-(function () {
-  var half = capsulectlDealPage.private_half;
-  if (!half) { return; }
-  var el = function (tag, text) { var e = document.createElement(tag); if (text) { e.textContent = text; } return e; };
-  var section = el("section");
-  section.setAttribute("data-private-half", "keep");
-  section.style.margin = "1.5rem auto";
-  section.style.maxWidth = "60rem";
-  section.style.padding = "0 1rem";
-  section.appendChild(el("h2", half.label));
-  section.appendChild(el("p", half.note));
-  if (half.asked) { section.appendChild(el("p", half.asked)); }
-  var list = el("ul");
-  half.did.forEach(function (line) { list.appendChild(el("li", line)); });
-  section.appendChild(list);
-  document.getElementById("app").after(section);
-})();`
+renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });`
 	return emitter.EmitEvidenceGraphHTMLWithOptions(composition, pageruntime.IIFE, emitter.Options{
 		Title:             w.Line("report.both_halves_title", nil),
 		ThemeCSS:          dealThemeCSS,
 		CoreRuntimeSHA256: pageruntime.SHA256,
+		Modules:           []emitter.Module{module},
 		Bootstrap:         bootstrap,
 	})
 }
