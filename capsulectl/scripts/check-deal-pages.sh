@@ -32,11 +32,12 @@ export XDG_CONFIG_HOME="$work/config"
 source "$core/scripts/lib/page-checks.sh"
 
 # The reasons the page names for the checks it did not run: the parenthesised
-# codes of its banner detail. "incomplete" covers any check that did not run,
-# so the pages must name this one and no other, or a regression that skips
-# more checks (producer signatures, say) would pass as "incomplete".
+# codes of its banner detail. A page whose records and checkpoint verify runs
+# every check (capsule-viewer 0.4.0: the browser verifies the checkpoint
+# signature), so it names none; a regression that skips a check would put its
+# code here.
 unrun_reasons() { grep -o '<p class="cv-banner-detail" data-banner-detail="">[^<]*</p>' "$1" | grep -o '([a-z_][a-z_]*)' | tr '\n' ' '; }
-only_checkpoint_unrun() { [[ "$(unrun_reasons "$1")" == "(checkpoint_verifier_unavailable) " ]]; }
+no_check_unrun() { [[ -z "$(unrun_reasons "$1")" ]]; }
 find_chrome || { echo "check-deal-pages: no Chrome or Chromium found (set CHROME)" >&2; exit 2; }
 
 mkdir -p "$work/bin"
@@ -89,31 +90,23 @@ check "deal-receipt: the page renders its sealed summary line" contains receipt.
 # capsulectl's own presentation build, so the page and its runtime are the
 # host's, not the ones this plugin embeds. Against capsule-cli main
 # (core-main.yml) this is main rendering what the newest deal build produces.
-# It renders as an evidence page none of whose checks failed (the viewer's
-# "incomplete" state: the browser has no CLL checkpoint verifier, so under
-# AAC 0.8.0's strict mode the page cannot check the checkpoint signature and
-# reports checkpoint_verifier_unavailable); the deal section itself comes only
-# from this plugin's `deal report`.
+# It renders as an evidence page that verified (the browser checks the
+# checkpoint signature, capsule-viewer 0.4.0, so no check is left unrun); the
+# deal section itself comes only from this plugin's `deal report`.
 capsulectl presentation build --bundle receipt.json --out receipt-rebuilt.html >/dev/null
 render receipt-rebuilt.html
 check "deal-receipt-rebuilt: no console.error, uncaught error or unhandled rejection" no_render_errors receipt-rebuilt.html.dom
-check "deal-receipt-rebuilt: the page says none of the bundle's checks failed" contains receipt-rebuilt.html.dom 'class="cv-pill" data-verify="incomplete"'
-check "deal-receipt-rebuilt: the only check the page did not run is the checkpoint signature" only_checkpoint_unrun receipt-rebuilt.html.dom
+check "deal-receipt-rebuilt: the page says the bundle verified" contains receipt-rebuilt.html.dom 'class="cv-pill" data-verify="verified"'
+check "deal-receipt-rebuilt: the page ran every check" no_check_unrun receipt-rebuilt.html.dom
 
 # deal-receipt-edited: one line of the signed report edited. The bundle's own
 # records still verify, so the page's runtime runs the deal view, which
 # refuses: the report's signature no longer verifies.
 jq -c '.extensions["x-deal-report/v0"].agent_input.report.did_line = "A line nobody sealed."' receipt.json >receipt-edited.json
+# The bundle is data in a JSON element (capsule-viewer 0.4.0), so the edit
+# needs no change to the page's CSP, which pins only executable scripts.
 replace_bundle receipt.html receipt-edited.json >receipt-edited.html
-rehash_bundle_csp receipt.html receipt-edited.html
 check "deal-receipt-edited: the page carries the edited line" contains receipt-edited.html 'A line nobody sealed.'
-# The same edit without touching the policy: the edited bundle script is not
-# the one the CSP pins, so the browser does not run it and the page shows no
-# deal text at all.
-replace_bundle receipt.html receipt-edited.json >receipt-unpinned.html
-render receipt-unpinned.html
-check "deal-receipt-unpinned: an edited bundle the CSP does not pin shows no deal text" lacks receipt-unpinned.html.dom '<p class="deal-note">A line nobody sealed.</p>'
-check "deal-receipt-unpinned: and no deal section" lacks receipt-unpinned.html.dom '<h1>Deal report</h1>'
 render receipt-edited.html
 check "deal-receipt-edited: the page says the text could not be checked" contains receipt-edited.html.dom "<p class=\"deal-bad\">⚠️ The deal's text could not be checked against its sealed report"
 check "deal-receipt-edited: the page shows no edited line" lacks receipt-edited.html.dom '<p class="deal-note">A line nobody sealed.</p>'
@@ -128,7 +121,6 @@ check "deal-receipt-edited: verify --bundle: INVALID, exit 1" test "$verdict" -e
 jq -c '.extensions["x-deal-report/v0"].agent_input.report as $text
   | .extensions["x-deal-v0"] = ($text | .did_line = "A line nobody sealed.") | del(.extensions["x-deal-report/v0"])' receipt.json >receipt-downgraded.json
 replace_bundle receipt.html receipt-downgraded.json >receipt-downgraded.html
-rehash_bundle_csp receipt.html receipt-downgraded.html
 check "deal-receipt-downgraded: the page carries the inline line" contains receipt-downgraded.html 'A line nobody sealed.'
 render receipt-downgraded.html
 check "deal-receipt-downgraded: the page says the text could not be checked" contains receipt-downgraded.html.dom "<p class=\"deal-bad\">⚠️ The deal's text could not be checked against its sealed report"

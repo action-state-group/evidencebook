@@ -796,7 +796,7 @@ func checkPrivateHalfPage(t *testing.T, id string, composer, other dealParty, me
 	refuse("not VALID", "--keep", tampered)
 	sharedPage := filepath.Join(dir, "shared.html")
 	dealRun(t, "report", "--deal", id, "--share", "counterparty", "--to", "the shop's support desk", "--html", sharedPage)
-	_, embedded, ok := strings.Cut(string(mustRead(t, sharedPage)), "__BUNDLE__ = ")
+	embedded, ok := pageBundleText(string(mustRead(t, sharedPage)))
 	require.True(t, ok)
 	sharedBundle := filepath.Join(dir, "shared-bundle.json")
 	var one json.RawMessage

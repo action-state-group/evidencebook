@@ -113,13 +113,10 @@ portable_checks() {
   render page.html
   check "the page ran offline with no console.error, uncaught error or unhandled rejection" no_render_errors page.html.dom
   # The pill element itself: the page's stylesheet names data-verify values too.
-  # None of the bundle's checks failed, and the viewer says one was not run:
-  # the browser has no CLL checkpoint verifier, so under AAC 0.8.0's strict
-  # mode the page cannot check the checkpoint signature
-  # (checkpoint_verifier_unavailable). Its "incomplete" state, not "verified"
-  # (capsule-viewer's presentation contract).
-  check "the page says none of its bundle's checks failed" contains page.html.dom 'class="cv-pill" data-verify="incomplete"'
-  check "the only check the page did not run is the checkpoint signature" only_checkpoint_unrun page.html.dom
+  # The page verifies its bundle in the browser, checkpoint signature
+  # included (capsule-viewer 0.4.0), so it reads verified with no check unrun.
+  check "the page says its bundle verified" contains page.html.dom 'class="cv-pill" data-verify="verified"'
+  check "the page ran every check" no_check_unrun page.html.dom
   check "the page renders the deal" contains page.html.dom '<h1>Deal report</h1>'
   check "the page says its text is sealed and checked" contains page.html.dom 'data-sealed="x-deal-v0"'
   page_bundle page.html >bundle.json
@@ -154,11 +151,12 @@ portable_checks() {
 contains_text() { [[ -n "$1" && "$1" == *"$2"* ]]; }
 
 # The reasons the page names for the checks it did not run: the parenthesised
-# codes of its banner detail. "incomplete" covers any check that did not run,
-# so the pages must name this one and no other, or a regression that skips
-# more checks (producer signatures, say) would pass as "incomplete".
+# codes of its banner detail. A page whose records and checkpoint verify runs
+# every check (capsule-viewer 0.4.0: the browser verifies the checkpoint
+# signature), so it names none; a regression that skips a check would put its
+# code here.
 unrun_reasons() { grep -o '<p class="cv-banner-detail" data-banner-detail="">[^<]*</p>' "$1" | grep -o '([a-z_][a-z_]*)' | tr '\n' ' '; }
-only_checkpoint_unrun() { [[ "$(unrun_reasons "$1")" == "(checkpoint_verifier_unavailable) " ]]; }
+no_check_unrun() { [[ -z "$(unrun_reasons "$1")" ]]; }
 
 # record_line RECORDS TYPE FILTER: FILTER (jq) on the body of the one record
 # of TYPE, with money its amount as the page writes it ($6.27); a stand-in
@@ -260,21 +258,32 @@ cd "$work/out"
 page_bundle recipient.html >bundle.json
 
 # broken-bundle: the action record's payload commitment edited in the page's
-# bundle, and its CSP re-pinned so the page runs it.
+# bundle (data in a JSON element, so the page's CSP needs no change).
 jq -c --arg last "$(jq -r '.records | max_by(.evidence_record_header.seq) | .capsule_id' bundle.json)" \
   '(.records[] | select(.capsule_id == $last)).evidence_record_header.payload_commitments[0] |= (if startswith("0") then "1" else "0" end + .[1:])' bundle.json>broken-bundle.json
 replace_bundle recipient.html broken-bundle.json >broken-bundle.html
-rehash_bundle_csp recipient.html broken-bundle.html
 check "broken-bundle: the copy differs" differs recipient.html broken-bundle.html
-broken broken-bundle broken-bundle.html records.json "verify --bundle: VALID, exit 0" "the page says none of its bundle's checks failed"
+broken broken-bundle broken-bundle.html records.json "verify --bundle: VALID, exit 0" "the page says its bundle verified"
 check "broken-bundle: the page says its bundle failed" refused broken-bundle.html
 
 # dropped-record: the bundle without its last record (the action taken).
 jq -c '.records |= (sort_by(.evidence_record_header.seq) | .[:-1])' bundle.json >dropped-record.json
 replace_bundle recipient.html dropped-record.json >dropped-record.html
-rehash_bundle_csp recipient.html dropped-record.html
-broken dropped-record dropped-record.html records.json "verify --bundle: VALID, exit 0" "the page says none of its bundle's checks failed"
+broken dropped-record dropped-record.html records.json "verify --bundle: VALID, exit 0" "the page says its bundle verified"
 check "dropped-record: the page says its bundle failed" refused dropped-record.html
+
+# forged-checkpoint: a byte of the log checkpoint's signature changed. The
+# records still verify, so only the checkpoint check can catch it: the page,
+# which verifies the checkpoint signature itself (capsule-viewer 0.4.0), and
+# verify --bundle must both call the bundle failed.
+jq -c '.checkpoint.cose |= (.[:-8] + (if .[-8:-7] == "A" then "B" else "A" end) + .[-7:])' bundle.json >forged-checkpoint.json
+replace_bundle recipient.html forged-checkpoint.json >forged-checkpoint.html
+check "forged-checkpoint: the copy differs" differs recipient.html forged-checkpoint.html
+check "forged-checkpoint: the page says its bundle failed" refused forged-checkpoint.html
+check "forged-checkpoint: and names the checkpoint as the invalid part" contains forged-checkpoint.html.dom ' data-checkpoint="invalid"'
+check "the unforged page's checkpoint is not invalid" lacks page.html.dom ' data-checkpoint="invalid"'
+capsulectl verify --bundle forged-checkpoint.html >/dev/null 2>&1 && verdict=0 || verdict=$?
+check "forged-checkpoint: verify --bundle: INVALID, exit 1" test "$verdict" -eq 1
 
 # broken-records: the exported action record says $62.70 was paid.
 jq -c '(.[] | select(.type == "action-record/v0") | .body.amount_minor) |= 6270' records.json | tr -d '\n' >broken-records.json

@@ -159,12 +159,14 @@ const vm = require("vm");
 const { webcrypto } = require("crypto");
 const html = fs.readFileSync(process.argv[2], "utf8");
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-const bundleScript = scripts.find((s) => s.startsWith("window.__BUNDLE__ = "));
+const bundleJSON = scripts.find((s) => html.slice(0, html.indexOf(s)).endsWith('<script type="application/json">'));
+const bundleScript = "window.__BUNDLE__ = JSON.parse(" + JSON.stringify(bundleJSON) + ");";
+const bundleParser = scripts.find((s) => s.startsWith("window.__BUNDLE__ = JSON.parse("));
 const runtime = scripts.find((s) => s.includes("var EvidenceGraph = "));
 const bootstrap = scripts.find((s) => s.includes('document.getElementById("app")'));
 const context = vm.createContext({ console, TextEncoder, TextDecoder, atob, btoa, URL, setTimeout, clearTimeout, queueMicrotask, crypto: webcrypto });
 vm.runInContext("globalThis.window = globalThis;", context);
-for (const source of [bundleScript, runtime, ...scripts.filter((s) => s !== bundleScript && s !== runtime && s !== bootstrap)]) vm.runInContext(source, context);
+for (const source of [bundleScript, runtime, ...scripts.filter((s) => s !== bundleJSON && s !== bundleParser && s !== runtime && s !== bootstrap)]) vm.runInContext(source, context);
 const EG = vm.runInContext("EvidenceGraph", context);
 ` + verifiedContextJS + `(async () => {
   const ctx = await verifiedContext(context, EG, vm.runInContext("window.__BUNDLE__", context));

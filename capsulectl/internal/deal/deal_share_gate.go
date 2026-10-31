@@ -75,9 +75,15 @@ func dealPageGate(page []byte, events []sealedEvent, allowed ...string) error {
 // closing tag ends the element.
 var gateElement = regexp.MustCompile(`(?is)<script\b[^>]*>(.*?)</script\s*>|<style\b[^>]*>(.*?)</style\s*>`)
 
+// gateJSONElement is the start tag of a JSON data element, which carries the
+// bundle in a page built by capsule-viewer 0.4.0 or later.
+var gateJSONElement = regexp.MustCompile(`(?is)^<script\b[^>]*\btype\s*=\s*["']?application/json["']?[^>]*>$`)
+
 // gateDataPrefixes start the page's two data scripts: the emitter's bundle,
 // and the deal page's bootstrap data (dealReportHTML). Each is followed by
 // one JSON value.
+// A page built before 0.4.0 carries the bundle after window.__BUNDLE__ = and
+// is still read.
 var gateDataPrefixes = []string{"window.__BUNDLE__ =", "globalThis.capsulectlDealPage = Object.freeze("}
 
 // dealGateText is what the gates read of a shared copy (capsule-cli#247).
@@ -116,6 +122,21 @@ func dealGateText(page []byte, jsonValue func([]byte) []byte) []byte {
 			continue // a stylesheet
 		}
 		body := bytes.TrimSpace(page[m[2]:m[3]])
+		if gateJSONElement.Match(page[m[0]:m[2]]) {
+			// The emitter's bundle since capsule-viewer 0.4.0 (#109): the
+			// element's text is the JSON, with no prefix. It is read as the
+			// bundle, and whole when it does not decode, so it is never
+			// skipped.
+			bundle = true
+			var value json.RawMessage
+			if json.Unmarshal(body, &value) != nil {
+				out = append(append(out, body...), ' ')
+				continue
+			}
+			out = append(append(out, []byte("<script>window.__BUNDLE__ = ")...), bytes.TrimSpace(jsonValue(body))...)
+			out = append(out, []byte(";</script> ")...)
+			continue
+		}
 		for i, prefix := range gateDataPrefixes {
 			rest, ok := bytes.CutPrefix(body, []byte(prefix))
 			if !ok {
