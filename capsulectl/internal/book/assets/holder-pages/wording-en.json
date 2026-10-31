@@ -88,7 +88,7 @@
     "prompt.more.longer": "A longer history",
     "prompt.more.deals": "Specific deals I pick",
     "prompt.more.anon": "Askers that won't say who they are",
-    "prompt.more.note": "Proof means snapshots and witness receipts, never counts. The receipt for a deal always goes to the other side of that deal. The never-list is not a setting.",
+    "prompt.more.note": "Proof means dated snapshots, never counts. The receipt for a deal always goes to the other side of that deal. The never-list is not a setting.",
     "prompt.then.title": "Then",
     "prompt.then.rebuild": "Rebuild my History card and my receipts, and show me what they see",
     "prompt.then.report": "Make an EvidenceBook report for last month",
