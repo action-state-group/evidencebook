@@ -159,7 +159,11 @@ func parseExternalCheck(out []byte) (externalCheckResult, error) {
 // It runs exactly the bytes it hashed: the executable is read once, hashed,
 // and run from a private copy, so a file swapped after the check is not what
 // runs.
-func runRulesChecker(ctx context.Context, p cli.Profile, input []byte, history *dealRulesHistory) dealRules {
+//
+// role is the side the check acts as: the answer is held to that role's
+// pinned definition digests (cli.ProfileRulesChecker.ForRole), so swapping one
+// role's pin changes only that role's check.
+func runRulesChecker(ctx context.Context, p cli.Profile, role string, input []byte, history *dealRulesHistory) dealRules {
 	pin := p.RulesChecker
 	if len(pin.Command) == 0 {
 		return dealRules{Status: "not_configured"}
@@ -204,7 +208,7 @@ func runRulesChecker(ctx context.Context, p cli.Profile, input []byte, history *
 	if err != nil {
 		return notEvaluated("unreadable", "the rules checker's answer could not be read: "+err.Error())
 	}
-	if pinned := pin.PinnedDigests(); len(pinned) > 0 && !slices.Contains(pinned, result.DefinitionDigest) {
+	if pinned := pin.ForRole(role).PinnedDigests(); len(pinned) > 0 && !slices.Contains(pinned, result.DefinitionDigest) {
 		return notEvaluated("ruleset_changed", "the ruleset changed since it was pinned ("+result.RulesetID+" reports another definition digest)"+rePinHint)
 	}
 	return dealRules{Status: "evaluated", RulesetID: result.RulesetID, DefinitionDigest: result.DefinitionDigest, CheckerSHA256: pin.SHA256,
