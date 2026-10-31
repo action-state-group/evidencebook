@@ -106,7 +106,7 @@ type AskedResult struct {
 	Own string `json:"own"`
 	// Record is the provider's record it matched (its RecordID), when LOGGED.
 	Record string `json:"record,omitempty"`
-	// Why says what decided OMITTED or UNRESOLVED.
+	// Why says what decided OMITTED, REFUSED or UNRESOLVED.
 	Why string `json:"why,omitempty"`
 }
 

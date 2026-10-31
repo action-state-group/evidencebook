@@ -71,7 +71,7 @@ Tests: `TestReconcileAskedNamesExactlyTheUnsealed` (a provider seals 4 of 10 exc
 
 - Bilateral traffic only: an exchange the requester never sealed cannot be asked about, so one both sides left out stays invisible (Mesh-LLM/mesh-llm#1965 §6).
 - OMITTED sets the provider's signed "no record" against the requester's own half. To a third party that is a contradiction between two parties, not proof that the exchange happened, unless the half carries something only the provider could have made, such as a provider-signed response. In S08 the asker's halves are its own sealed records of the digests it sent and received; they carry no provider signature, so S08 shows the contradiction, signed by both sides.
-- A provider that refuses uniformly (`policy_declined`) leaves the omitted halves UNRESOLVED: the requester's own half still shows the exchange happened, but the provider's answer does not confirm it holds none.
+- A provider that refuses uniformly (`policy_declined`) leaves the halves it left out REFUSED, not OMITTED, and the pair's verdict UNRESOLVED: the requester's own half still shows the exchange happened, and the refusal is a finding of its own, but the provider's answer does not confirm it holds none.
 - Failed exchanges, which need a half on each side to count, are #205.
 - Go only; Rust and Python parity is not built.
 
