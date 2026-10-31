@@ -391,7 +391,7 @@ func TestDealPermanentDeliveryIsNotSaidToBeRetried(t *testing.T) {
 	withBundle = dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
 	assurance = withBundle["assurance"].(map[string]any)
 	assert.Equal(t, "refused", assurance["witness_reason"])
-	assert.Contains(t, assurance["text"], "Witness pending: the request was refused (HTTP 403), by the witness or by a network gate on this host; it is retried at every tick.")
+	assert.Contains(t, assurance["text"], "Witness pending: the request was refused (HTTP 403), by the witness or by a network gate on this host; it is tried again on a later capsulectl run, after a wait that grows up to an hour.")
 	assert.Contains(t, assurance["text"], `a standing grant ("Always allow this site")`)
 }
 
@@ -407,7 +407,7 @@ func TestWitnessPendingReasons(t *testing.T) {
 	// What the witness answered is kept (its status, never its body) and said.
 	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, LastError: "witness returned HTTP 503: " + cli.WitnessFailureBody(429)}, cli.DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)
-	assert.Equal(t, "pending: the witness answered with an error (HTTP 429); it is retried at every tick.", text)
+	assert.Equal(t, "pending: the witness answered with an error (HTTP 429); it is tried again on a later capsulectl run, after a wait that grows up to an hour.", text)
 	// A conflict is failed for good, and not said to be retried.
 	reason, text = cli.WitnessPendingReason(cll.WitnessState{Attempts: 1, Permanent: true, LastError: "witness returned HTTP 400: " + cli.WitnessFailureBody(409)}, cli.DealDefaultWitness)
 	assert.Equal(t, "witness_error", reason)

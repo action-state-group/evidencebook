@@ -2252,7 +2252,7 @@ func dealCheckCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				rules = runRulesChecker(ctx, s.p, input, history)
+				rules = runRulesChecker(ctx, s.p, dealRole(events), input, history)
 				// The card reads the thread's acceptance against the same
 				// cutoff the checker's history was read from.
 				state.historySince = history.Since
