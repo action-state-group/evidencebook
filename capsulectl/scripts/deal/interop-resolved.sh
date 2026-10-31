@@ -63,7 +63,12 @@ echo "== Go -> Python: a bundle built by evidencebook as resolved here, verified
 go run "$eb/test/interop/bundle" "$work/book" "$work/bundle.json" "$work/refusal.json"
 python "$py/python-aac/verify_bundle.py" "$work/bundle.json"
 python "$py/python-cll/verify_bundle.py" "$work/bundle.json"
-python "$py/python-cll/verify_refusal.py" "$work/refusal.json"
+# The -00 refusal verifier is agent-action-capsule 0.8.0 and later, newer than the
+# 0.6.0 the bundle verifier above pins, so it runs in a venv of its own, as
+# evidencebook's CI does (evidencebook v0.11.0, ci.yml).
+python -m venv "$work/aac-00"
+"$work/aac-00/bin/python" -m pip install --quiet "agent-action-capsule==0.13.0" cryptography
+"$work/aac-00/bin/python" "$py/python-cll/verify_refusal.py" "$work/refusal.json"
 tamper "$work/bundle.json"
 expect_reject "Python AAC, a changed record" "record_identity_invalid" \
   python "$py/python-aac/verify_bundle.py" "$work/bundle.record-changed.json"

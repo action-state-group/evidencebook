@@ -1,0 +1,54 @@
+{
+  "bundle_digest": "ebfb7d8c8eb3383d354af8bef4cb6e539b0391e344b8aab008dc1135a64b983c",
+  "checkpoint": {
+    "findings": [],
+    "status": "pass"
+  },
+  "countersignatures": [],
+  "disclosures": [
+    {
+      "capsule_id": "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98",
+      "member": "agent_input",
+      "status": "disclosure_match"
+    }
+  ],
+  "extensions": [
+    {
+      "kind": "x-standard-history/v0",
+      "status": "uninterpreted"
+    }
+  ],
+  "graph_closure": {
+    "findings": [],
+    "status": "pass"
+  },
+  "interval_coverage": {
+    "findings": [],
+    "status": "pass"
+  },
+  "per_record_membership": {
+    "findings": [],
+    "status": "pass"
+  },
+  "producer_signatures": {
+    "findings": [],
+    "status": "pass"
+  },
+  "record_identity": {
+    "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98": "passed"
+  },
+  "record_signatures": {
+    "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98": "authored"
+  },
+  "say": "Checked: unchanged since it was locked.",
+  "spec_version": "capsule-cli-result/v1",
+  "verdict": "VALID",
+  "voice": "report",
+  "witnesses": {
+    "findings": [
+      "witness_receipt_absent"
+    ],
+    "receipts": [],
+    "status": "withheld"
+  }
+}
