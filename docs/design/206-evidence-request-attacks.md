@@ -27,23 +27,76 @@ Three parties can be attacked: the responder (the holder's node), the asker (the
 
 **R1. The responder holds the book lock while answering.** `Book.Respond` takes `b.mu` for the whole answer (`interop_respond.go` lines 225 to 226), and the rate limiter (R2) runs under it too, so even a rate-limited refusal takes the lock. Under a flood, even of cheap refused requests, the lock is held continuously and the node's own `Seal`, `Checkpoint` and receipt of a pushed half wait behind it. A denial of service against the endpoint becomes a denial of service against the node's own evidence. The security review marked it "load test before publishing". Owner: **#208**. Answer shape: a short-lock snapshot for reads, or separate locks with sealing taking precedence, and a load test with a stated sealing-latency bound.
 
+**Answer.** `Respond` answers from a snapshot of the log taken under a short lock (#215, merged as `0dcf547`). It takes the lock again only to issue an anchor for an authenticated freshness floor and to seal `evidence_request_answered`. Two tests cover it:
+
+- `TestRespondDoesNotHoldTheLockWhileAnswering` shows that an answer in progress never blocks a seal.
+- `TestRespondFloodDoesNotStallSealing` (`respond_lock_test.go`) is the load test. Flooders keep requests in flight, every answer costs 1 s, and the book seals at a fixed rate. Every seal must land, and in order. With an authenticated requester flooding, 95% of seals finish within 500 ms; with strangers flooding (`checkpoints`, `history_card/1` and a refused `full_history`), every seal finishes within 2 s. Before #215, seals took seconds.
+
+**Residual.**
+
+- An authenticated flood seals one `evidence_request_answered` record per answer under the lock, so a seal can queue behind those, and the log grows by one record per answer.
+- The rate limiter and the snapshot still share the short lock, so a rate-limited refusal takes it briefly.
+- A seal can wait for one CLL tree read already in progress, because the log store reads under the same lock its appends take.
+- capsules-plugin's answer path has its own bounded in-flight pools (`mesh_evidence_bridge.rs`: 8 permits for proven principals, 2 for strangers); the book's responder has none.
+
+Status: answered (#208).
+
 **R2. Per-asker rate limiting is off by default.** #206 item 3. The Go responder has a per-requester limiter (`ResponderPolicy.Limiter`, `WindowLimiter`), applied before parsing, but it is nil by default and every unauthenticated caller shares one `""` bucket. Every refusal is signed. The receipt GET that cuts a checkpoint since capsules-plugin#145 is the owner's own local route, so a remote asker cannot make the log write. Owner: **#206**. The staple removes the stranger case; the per-asker limit still matters for authenticated peers.
 
 **R3. Replay across a restart, and the unbound-key nonce pool.** #206 items 1 and 2. Replay state is in memory, so a restart forgets it; that is open. The shared unbound-key pool can fill, but a request it cannot hold is answered as unsigned (ruling u290 §2), so item 2 needs only its citation. Owner: **#206**.
 
 **R4. Locating a withheld record, and cadence leakage.** #206 items 4 and 5. `range` is refused to every asker, so bisection is not open. But a counterparty asking `correlation`, `exchange` or `exchange_corroboration/1` over a key gets a refusal of the whole answer when a matched record is `never_leaves`, which locates a withheld record. Log size and cadence are public in the checkpoint list; what a counterparty gains beyond that is only which refusal it gets. Owner: **#206**; item 5 may be accepted in writing.
 
+**Decision, item 4.** Fix (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9). A `never_leaves` record leaves no one's answer, so it drops out of the matched set for every remote asker before counting and gating, and the answer is the same whether or not one exists. Every remote answer stays INCOMPLETE, so dropping a record never yields a false COMPLETE. It lands after the vectors of #206 row 7. Implementation: Mesh-LLM/capsules-plugin#161. The book's Go responder has no `never_leaves` equivalent.
+
+Status: decided; not built.
+
 **R5. Requester key rotation and compromise.** #206 item 6. Owner: **#206**.
+
+**R6. The unheld-key oracle under `specific`.** #206 row 8, from #207. Under `RefusalPolicySpecific`, the reason a counterparty gets for a key it doesn't hold (`not_authorized` against `no_such_subject` or `retention_expired`) tells it whether the holder has the record. `RefusalPolicyUniform` folds them into one answer (`TestRefusalsDoNotEnumerateRecords`, uniform case). Owner: **#206**.
+
+**Decision.** `uniform` becomes the default refusal policy, with `specific` an operator opt-in (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9), reversing his Q3 on #114. Implementation: #225, in Go, Rust and Python; a breaking change to the default.
+
+Status: decided; not built.
 
 ### Rule side
 
 **P1. Recorded absence as a weapon.** The discipline that makes operators answer, "not answering is worse than answering", is also an attack surface: flood a holder during a dispute window and every legitimate asker records an absence against it. Two limits already exist: an absence is never a refusal, and it is chargeable only against a retention commitment. Nothing says what a reader does with an absence recorded while the holder was under attack. Owner: **agent-action-capsule#473**, which proposes a holder-sealed, witnessed "unavailable window" record that a reader shows beside the absence as the holder's statement, never as proof. Steven approved it on 2026-10-30, amended so the window's witness time is shown relative to the absence and the reason class is a closed list (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=c2a3350f17c9dc910f8bc618b2c606cd0e899042ee35a4b2729fdfd358497b7f). This is a ruling and spec text, not a code change.
 
+**Answer.** Evidence Request -02 §4.7, "Unavailable-Window Statements" (agent-action-capsule#473; spec PR agent-action-capsule#476). The holder may seal a signed statement giving a start, an end and a `reason_class` from a closed list (`flood`, `maintenance`, `outage`, `other_declared`). Only a receipt from a transparency service the reader accepts as independent of the holder registers and dates it. A reader that holds an absence and a covering statement shows "no answer; holder states unavailability" with the class and the stated period, never as a refusal or as proof of an attack, and labels it "stated afterwards" when it was registered after the asker's window closed. The absence and the retention commitment are unchanged; how much the statement weighs is relying-party policy. Vectors: `vectors/evidence-request/unavailable-window.json` in agent-action-capsule (35 cases).
+
+Status: decided in spec; ER -02 §4.7 merged in agent-action-capsule#476 (`d3bd61b`), and -02 is posted as `draft-mih-agent-evidence-request-02` (dated 30 October 2026; the IETF archive copy's SHA-256 is `ee5e2b90bda08fd956c271f512b52f4a834bcff3a1cae0144f644f5955bef948`). Implementation, not built: #223 (seal and read statements), capsule-viewer#164 (draw it), agent-action-capsule#477 (the Go and Rust readers run the vectors).
+
 ### Asker side
 
 **A1. A hostile answer built to exhaust the verifier.** The plugin caps answer bytes; the Go reader in `request.go` has no stated caps on records, inclusion proofs, receipts or JSON depth before cryptography runs (the only size checks found at `5cf7016` are the MCP and A2A "message too large" guards on the request path). agent-action-capsule#456 records that Rust and Python readers already diverge past 128 nesting levels. Owner: **#209**. Answer shape: stated limits applied before any signature or proof check; exceeding one is received-and-failed with the limit named.
 
+**Answer.** The requester states its limits and checks each one before the work it bounds (#216, merged as `3234231`). The limits are exported constants, with the same values in Python (`python/evidencebook/_limits.py`):
+
+| Limit | Go | Value |
+|---|---|---|
+| Reply or bundle size | `MaxReplyBytes` | 8 MiB |
+| JSON nesting | `MaxReplyDepth` | 32 |
+| Verification entries, checkpoints, history entries, records | `MaxReplyItems` | 10,000 |
+| Carried witness receipts | `MaxReplyReceipts` | 64 |
+
+What happens over a limit depends on what it falls on:
+
+- Unauthenticated octets (the reply's size, its outer JSON nesting, the carried receipts): the reply is refused unrecorded, and the request stays open for the genuine answer. Recording octets nobody signed would let anyone on the path decide the outcome of the real answer.
+- What the responder signed (the counts, and the artifact's own JSON nesting; a bare `record` artifact is hashed and never decoded, so it has no depth check): checked once the artifact hashes to the signed digest, and before any checkpoint signature or proof check. Over a limit, the reply is received and failed, as `artifact_verification_failed` with the limit named.
+- Bundles: `VerifyBundle` refuses a bundle over any limit before the AAC verifier runs.
+
+Vectors are in `testdata/asker-limits/limits.json`, and Go (`TestLimitVectors`) and Python (`test_limits.py`) agree on them. `TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen` shows each octet refusal and the genuine answer recording after it; `TestASignedEnvelopeOverACountLimitIsReceivedAndFailed` and `TestBundleLimits` cover the other two cases. Each refusal has a stated time bound, and the tests fail past it: every limit vector is refused within 1 s, and a hostile reply through `RecordResponse` or a bundle over a limit within 2 s.
+
+Status: answered (#209).
+
 **A2. A fork that verifies.** A holder can answer `checkpoints` with a chain that is internally consistent, every consistency proof holding, but was never registered with a witness the asker trusts, or only with one the holder controls. Every per-property check passes. Only the witness receipt against the asker's trust set distinguishes it, and today the requester is silent: for `checkpoints` and `history_card/1` it checks signatures and consistency only and reports no finding (the witness directory is read only by `VerifyBundleAnswer`). Owner: **#209**. Answer shape: an `unwitnessed` finding distinct from `NOT_CHECKED`; a page never says "checked" of a chain that only self-verifies.
+
+**Answer.** `ResponseStatement.witness` reads `witnessed` only when the material carried the anchor's signed checkpoint and a receipt from a witness in the requester's `ResponderKeys.Witnesses` verifies over that checkpoint (#216). Anything else that verifies reads `unwitnessed`: a chain that verifies only against its holder's signatures, a fork witnessed only by a holder-run witness the requester doesn't list, and an answer kind with no anchor checkpoint in hand. A receipt that fails to verify counts for nothing and never fails the answer: nothing signs the receipt carrier, so a forged receipt cannot decide a genuine answer's outcome. `VerifyBundleAnswer` adds the finding `unwitnessed`. Vectors: `testdata/asker-limits/witness.json` (`TestWitnessVectors`, `test_limits.py`). Tests: `TestRecordResponseWitnessStanding`, `TestBundleWitnessStanding`.
+
+The pages say it too: `capsulectl book request --response` prints the standing (#221), capsule-viewer's evidence report and banner show an unwitnessed chain as unwitnessed (capsule-viewer#163, capsule-viewer#165), capsule-cli documents the flag (capsule-cli#496), and the capsules-plugin Evidence tab marks only an anchor with a trusted receipt as witnessed (Mesh-LLM/capsules-plugin#156).
+
+Status: answered (#209).
 
 ### Report side
 
@@ -55,13 +108,13 @@ Stop answering strangers over the request path. The commitment already carries t
 
 ## Issue map
 
-| Item | Issue | Repo | Kind |
-|---|---|---|---|
-| R1 responder lock | #208 | evidencebook | code, load test |
-| R2–R5 flooding, replay, range, keys | #206 | evidencebook | answer doc, tests, decisions |
-| P1 absence under attack | #473 | agent-action-capsule | ruling, spec text |
-| A1, A2 asker-side limits and forks | #209 | evidencebook | code, vectors |
-| N1 Sybil staples | #170 | evidence-network/loop | report rule, wording |
+| Item | Issue | Repo | Kind | Status |
+|---|---|---|---|---|
+| R1 responder lock | #208 | evidencebook | code, load test | answered: #215 |
+| R2–R6 flooding, replay, range, keys, refusal oracle | #206 | evidencebook | answer doc, tests, decisions | R4 item 4 and R6 decided: Mesh-LLM/capsules-plugin#161, #225; the rest open: #206's rows |
+| P1 absence under attack | #473 | agent-action-capsule | ruling, spec text | decided: ER -02 §4.7, merged in agent-action-capsule#476; implementation open: #223, capsule-viewer#164, agent-action-capsule#477 |
+| A1, A2 asker-side limits and forks | #209 | evidencebook | code, vectors | answered: #216, #221, capsule-viewer#163 and #165, Mesh-LLM/capsules-plugin#156 |
+| N1 Sybil staples | #170 | evidence-network/loop | report rule, wording | open |
 
 Each of #208, #209, #473 and loop#170 asks for its row in #206's answer doc, so #206 stays the one list.
 
