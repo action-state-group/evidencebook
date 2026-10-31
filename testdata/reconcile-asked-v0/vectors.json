@@ -1,0 +1,609 @@
+{
+  "description": "Vectors for ReconcileAsked (evidencebook#206 row 9): the requester's own halves of one pair, what came back when it asked the provider for each, and the reconcile's result.",
+  "cases": [
+    {
+      "name": "s08-capture",
+      "note": "S08 dry run on mc53-u755-provider, 2026-10-31 04:43Z: the liar (lab mesh-llm 3ffa5c4f1, capsules 0.1.6 plus selective-log.patch) sealed every second of 6 exchanges with the asker. Each ask is the asker's signed correlation request by the exchange's two digests, verified by the asker's capsules plugin; answered records are the ones it then held.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "546ae2dcae159c399587057e2ea1bc3b2a7daacdd86e8f37f9812c48bb038283",
+            "request_digest": "e17a76c7d347c9ca49a9fe022052aead50557793fe9ea1b385a8c5121abe5496",
+            "response_digest": "6a94e721fde4b7ad70694f283cf1bda3fc16ee7e50d4dc549772ae5956c4a7e5"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "0999f603b65d6eac653d0123ab84d401936f85285bbb7391f801c19b9545c106",
+              "request_digest": "e17a76c7d347c9ca49a9fe022052aead50557793fe9ea1b385a8c5121abe5496",
+              "response_digest": "6a94e721fde4b7ad70694f283cf1bda3fc16ee7e50d4dc549772ae5956c4a7e5",
+              "seq": 1,
+              "prev_seq": null
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "a13bdc8f7f01426e777e401652a6a2d8a01b012eb52821f15738d53dc2e2f98c",
+            "request_digest": "3d900a4f52a3f4ec2f21d692114c12fc34c50f61b9105ecadd6905cc7adf193d",
+            "response_digest": "36aeb71aa2aac3ab8133c4598a43dc5188d9b4e196492b5fb0a863888b868dc7"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "f7b359950b2b604577110ca1d6d6b20bc4bc1fe4c81fc1fa4e0dc8401257bd58",
+            "request_digest": "6d0d003bef9067532b21de15d842e21826f17acaa3c8e80f3fd6768bba750617",
+            "response_digest": "45222696521536800b2faa4f5dd93ecfea9560f8fda5453422bf1519d4434b3e"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "87850d69ab88ac8dbcb57b48cc6ed085d6f93cc29c1fd8568babf8795c1a85d4",
+              "request_digest": "6d0d003bef9067532b21de15d842e21826f17acaa3c8e80f3fd6768bba750617",
+              "response_digest": "45222696521536800b2faa4f5dd93ecfea9560f8fda5453422bf1519d4434b3e",
+              "seq": 2,
+              "prev_seq": 1
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "7a3d882d71dabdaa13f9939e86e3d377520808d540597e98608a431296df0f6e",
+            "request_digest": "789b80bd64819311558639ca70681c205318ea39ef69ad054913909dc56413dd",
+            "response_digest": "8ac001fe861664a144ef30b944db366d8ffd46a0e420fcbc912fef4cf8be1c0e"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "b2dcd9ec7b6e73aed04b0db037107b736fa30f9fe07701a0b27e4caf32c80708",
+            "request_digest": "ee319ae601186e2272ce11573712dee520d024c1a78ce05ec9b547164cac2a16",
+            "response_digest": "4e8deaf49f9f979de64073e42e0e2f8f31b817f7b918ae9b27d05c09a58c03d3"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "61a22e98e51fb1c9e6477dd2270a282b6e0a9ff2bc5a83a7e8c6c3746b3cd00e",
+              "request_digest": "ee319ae601186e2272ce11573712dee520d024c1a78ce05ec9b547164cac2a16",
+              "response_digest": "4e8deaf49f9f979de64073e42e0e2f8f31b817f7b918ae9b27d05c09a58c03d3",
+              "seq": 3,
+              "prev_seq": 2
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "7b40c594709b63a8ee2e2c5848bcc913678dfd44d4f54f07f03c370a902dbdb1",
+            "request_digest": "0cef9ffa67e5b5c5c991a757ef6dea40e5a26f88591f5261bc43b526ba60fcd5",
+            "response_digest": "57e4c25bd7680136d553f2f51bbba21a484ab92610a7f0d2872de50ec73c81c2"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "a13bdc8f7f01426e777e401652a6a2d8a01b012eb52821f15738d53dc2e2f98c",
+          "7a3d882d71dabdaa13f9939e86e3d377520808d540597e98608a431296df0f6e",
+          "7b40c594709b63a8ee2e2c5848bcc913678dfd44d4f54f07f03c370a902dbdb1"
+        ],
+        "states": [
+          "LOGGED",
+          "OMITTED",
+          "LOGGED",
+          "OMITTED",
+          "LOGGED",
+          "OMITTED"
+        ],
+        "run": {
+          "seqs": [
+            1,
+            2,
+            3
+          ],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "uniform-refusals-are-refused-not-omitted",
+      "note": "policy_declined and not_authorized read the same whether the record exists, so they never count as omitted; they are REFUSED, and the verdict is UNRESOLVED.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-1",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 4,
+              "prev_seq": 3
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "refused",
+          "reason": "policy_declined",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-3",
+            "request_digest": "0303030303030303030303030303030303030303030303030303030303030303",
+            "response_digest": "6767676767676767676767676767676767676767676767676767676767676767"
+          },
+          "outcome": "refused",
+          "reason": "not_authorized",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "LOGGED",
+          "REFUSED",
+          "REFUSED"
+        ],
+        "run": {
+          "seqs": [
+            4
+          ],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "verified-answer-without-the-record",
+      "note": "A verified answer to the ask for this exchange that carries no record of it is the provider saying it holds none.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-9",
+              "request_digest": "0909090909090909090909090909090909090909090909090909090909090909",
+              "response_digest": "6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d",
+              "seq": 7,
+              "prev_seq": 6
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "own-1"
+        ],
+        "states": [
+          "OMITTED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "one-record-for-two-equal-exchanges",
+      "note": "Two exchanges with the same request and answer, and the provider holds one record: each record matches one half only.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1a",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-1",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 2,
+              "prev_seq": 1
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-1b",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-1",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 2,
+              "prev_seq": 1
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "own-1b"
+        ],
+        "states": [
+          "LOGGED",
+          "OMITTED"
+        ],
+        "run": {
+          "seqs": [
+            2
+          ],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "a-removed-sealed-record-leaves-a-gap",
+      "note": "Sequence numbers catch deleting a sealed record.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-1",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 1,
+              "prev_seq": null
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-2",
+              "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+              "response_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+              "seq": 3,
+              "prev_seq": 2
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "NO_OMISSION_FOUND",
+        "omitted": [],
+        "states": [
+          "LOGGED",
+          "LOGGED"
+        ],
+        "run": {
+          "seqs": [
+            1,
+            3
+          ],
+          "gapless": false
+        }
+      }
+    },
+    {
+      "name": "absent-and-failed-are-unresolved",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "absent"
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "failed"
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED",
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "an-omission-outranks-unresolved",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "absent"
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "own-1"
+        ],
+        "states": [
+          "OMITTED",
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "all-logged-is-never-complete",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-1",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 5,
+              "prev_seq": 4
+            }
+          ],
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "prov-2",
+              "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+              "response_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+              "seq": 6,
+              "prev_seq": 5
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "NO_OMISSION_FOUND",
+        "omitted": [],
+        "states": [
+          "LOGGED",
+          "LOGGED"
+        ],
+        "run": {
+          "seqs": [
+            5,
+            6
+          ],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "nothing-asked",
+      "asked": [],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "no-digests-refused-no-such-subject-is-unresolved",
+      "note": "With no digests the ask could not have named this exchange.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-x",
+            "request_digest": "",
+            "response_digest": ""
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "an-anchor-not-covering-the-exchange-is-unresolved",
+      "note": "An answer or a no_such_subject at an anchor that predates the provider's record says nothing about it.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [],
+          "covers": false
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": false
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED",
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "a-record-without-an-id-is-unresolved",
+      "note": "A matching record with no record id cannot be matched, and does not make the half omitted.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 1,
+              "prev_seq": null
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "an-omission-beside-a-refusal",
+      "note": "A REFUSED half never hides an OMITTED one; the verdict is OMISSIONS_FOUND.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "refused",
+          "reason": "policy_declined",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "own-1"
+        ],
+        "states": [
+          "OMITTED",
+          "REFUSED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    }
+  ]
+}

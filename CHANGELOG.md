@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added: `ReconcileAsked` names the exchanges a provider left out before sealing (evidencebook#206 row 9)
+
+- `ReconcileAsked` checks what a provider answered about a pair against the
+  requester's own sealed halves of that pair, one ask per half by the
+  exchange's two digests, and names every half the provider confirmed it
+  holds no record of: a verified answer without it, or a signed
+  `no_such_subject`, each only at an anchor the caller states covers the
+  exchange (`Covers`). Any other verified refusal is REFUSED, reported on its
+  own and never omitted. An absence, a failed answer, an older anchor, or a
+  half with no digests is UNRESOLVED. Halves match
+  records as a maximum one-to-one matching, so input order never changes how
+  many are omitted. The verdict is `OMISSIONS_FOUND`, `NO_OMISSION_FOUND` or
+  `UNRESOLVED`, never complete, and the provider's `seq`/`prev_seq` run over
+  the matched records is reported beside it. The caller verifies the answers;
+  the reconcile does not. Vectors: `testdata/reconcile-asked-v0`.
+
 ### Changed: `capsulectl book request --response` prints the answer's witness standing (evidencebook#209)
 
 - The result now carries `witness`, as the response record holds it (#216):
