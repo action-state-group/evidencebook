@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added: `Book.RequestSent` records a request another tool sent, so its replies verify (evidencebook#245)
+
+- `Book.RequestSent` records a request that another tool composed and sent,
+  exactly as given: every member is kept, including those the request draft
+  does not define (the capsules plugin's `audience`, `requester_id` and
+  `requester_auth`), and no nonce or profile is added. The octets must be a
+  well-formed request in JCS, so the recorded digest is the one the responder
+  signed its reply over. `RecordResponse` and `RecordAbsence` work on it as on
+  a request `Book.Request` made. A nonce the book already used is refused.
+- A requester's book records `evidence-interop/1` requests and verifies the
+  replies to them: a refusal's reason conforms under the profile the request
+  asked for, so the two reasons ER -02 adds conform only under `/1`.
+- A record-set artifact's record matches its digest when its body is the
+  capsule preimage, as a book serves it, or the capsule as the capsules
+  plugin's ledger holds it, whose `capsule_id` is that digest. The live-16
+  replies to the plugin's requests (`testdata/live16-ask/`) verify as
+  artifacts.
+- As a responder the book still answers `evidence-interop/0` only: a `/1`
+  request is refused `request_malformed` with `profiles supported:
+  evidence-interop/0`, as before.
+
+### Changed: agent-action-capsule Go v0.18.0
+
+- The module requires `agent-action-capsule/go` v0.18.0, which reads
+  `evidence-interop/1` and nests JSON at most 128 levels deep everywhere. A
+  bundle extension or derivation definition deeper than that is refused; the
+  derivation vectors' `too-deep` definition is now 129 levels.
+
 ## v0.11.0 (2026-10-31)
 
 ### Added: the History card over a deal profile's shelf (evidencebook#237, evidencebook-deal#85)

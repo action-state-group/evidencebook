@@ -177,7 +177,8 @@ func TestDerivationVectors(t *testing.T) {
 		{Name: "not-json", Document: `{"computation":`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "duplicate-member", Document: `{"a":1,"a":2}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "duplicate-member-escaped", Document: `{"a":1,"\u0061":2}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
-		{Name: "too-deep", Document: `{"deep":` + strings.Repeat("[", 33) + strings.Repeat("]", 33) + `}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
+		// One level past the shared JSON nesting limit (128, agent-action-capsule's canonical.MaxNestingDepth).
+		{Name: "too-deep", Document: `{"deep":` + strings.Repeat("[", 128) + strings.Repeat("]", 128) + `}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "trailing-data", Document: `{} {}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "leading-zero", Document: `{"a":01}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
 		{Name: "duplicate-in-private-member", Document: `{"$serde_json::private::Number":{"a":1,"a":2}}`, Forms: []SubjectKind{SubjectRecord}, Fields: []string{"seq"}},
