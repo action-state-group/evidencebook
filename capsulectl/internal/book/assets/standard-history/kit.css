@@ -1,0 +1,169 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * kit.css -- the presentation component kit's stylesheet.
+ *
+ * The token block below is generated from capsule_viewer/kit/tokens.py
+ * (python -m capsule_viewer.kit tokens --write); tests/test_kit_tokens.py
+ * fails if the two disagree. Every colour in the component rules is a
+ * var(--cv-*) reference -- the same test refuses a literal colour outside the
+ * generated block.
+ *
+ * Phone behaviour lives here, in the primitives: each responsive component is
+ * its own size container and reflows on ITS width (@container), so a module
+ * that places a MetricGrid or DataTable in a narrow column gets the phone
+ * layout without writing a media query. Nothing in the kit scrolls the page
+ * sideways: long tokens (digests, ids) wrap anywhere.
+ */
+/* BEGIN GENERATED TOKENS (capsule_viewer.kit.tokens) -- do not edit by hand */
+:root {
+  --cv-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cv-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --cv-font-size-sm: 0.8125rem;
+  --cv-font-size-md: 0.9375rem;
+  --cv-font-size-lg: 1.125rem;
+  --cv-line-height: 1.5;
+  --cv-space-1: 0.25rem;
+  --cv-space-2: 0.5rem;
+  --cv-space-3: 0.75rem;
+  --cv-space-4: 1rem;
+  --cv-space-5: 1.5rem;
+  --cv-radius: 0.5rem;
+  --cv-radius-pill: 999px;
+  --cv-color-text: #1b1f27;
+  --cv-color-text-muted: #4d5564;
+  --cv-color-surface: #ffffff;
+  --cv-color-surface-sunken: #f4f5f7;
+  --cv-color-border: #d3d7de;
+  --cv-color-accent: #2445a8;
+  --cv-color-positive-fg: #17603a;
+  --cv-color-positive-bg: #e6f3eb;
+  --cv-color-negative-fg: #a31d1d;
+  --cv-color-negative-bg: #fbe9e9;
+  --cv-color-caution-fg: #6f4700;
+  --cv-color-caution-bg: #fcf1dc;
+  --cv-color-neutral-fg: #3d4452;
+  --cv-color-neutral-bg: #eceef2;
+  --cv-color-info-fg: #1f3c94;
+  --cv-color-info-bg: #e7ecfb;
+}
+/* END GENERATED TOKENS */
+
+.cv-kit { font-family: var(--cv-font-sans); font-size: var(--cv-font-size-md); line-height: var(--cv-line-height); color: var(--cv-color-text); background: var(--cv-color-surface); overflow-wrap: anywhere; }
+body.cv-kit { margin: 0; }
+.cv-page { max-width: 60rem; margin: 0 auto; padding: var(--cv-space-5) var(--cv-space-4); }
+.cv-kit *, .cv-kit *::before, .cv-kit *::after { box-sizing: border-box; }
+.cv-kit :where(h1, h2, h3, h4, p, ul, ol, dl, dd, figure) { margin: 0; padding: 0; }
+.cv-kit :where(ul, ol) { list-style: none; }
+.cv-mono { font-family: var(--cv-font-mono); font-size: var(--cv-font-size-sm); }
+.cv-muted { color: var(--cv-color-text-muted); }
+
+/* Section */
+.cv-section { margin: 0 0 var(--cv-space-5); }
+.cv-section__title { font-size: var(--cv-font-size-lg); font-weight: 600; margin-bottom: var(--cv-space-3); }
+.cv-section__body { display: flex; flex-direction: column; gap: var(--cv-space-3); min-width: 0; }
+
+/* MetricGrid: as many columns as fit, never narrower than the label needs; one column on a phone. */
+.cv-metrics-wrap { container-type: inline-size; }
+.cv-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); gap: var(--cv-space-3); }
+.cv-metric { min-width: 0; border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }
+.cv-metric__label { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }
+.cv-metric__value { font-size: var(--cv-font-size-lg); font-weight: 600; }
+.cv-metric__note { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); }
+@container (max-width: 24rem) { .cv-metrics { grid-template-columns: 1fr; } }
+
+/* DataTable: a real table when there is room; stacked label/value rows when there is not. */
+.cv-table-wrap { container-type: inline-size; }
+.cv-table { width: 100%; border-collapse: collapse; font-size: var(--cv-font-size-sm); }
+.cv-table caption { text-align: left; font-weight: 600; padding-bottom: var(--cv-space-2); }
+.cv-table th, .cv-table td { text-align: left; vertical-align: top; padding: var(--cv-space-2); border-bottom: 1px solid var(--cv-color-border); min-width: 0; }
+.cv-table th { color: var(--cv-color-text-muted); font-weight: 600; background: var(--cv-color-surface-sunken); }
+@container (max-width: 40rem) {
+  .cv-table, .cv-table tbody, .cv-table tr, .cv-table td { display: block; width: 100%; }
+  .cv-table caption { display: block; }
+  .cv-table thead { display: none; }
+  .cv-table tr { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); margin-bottom: var(--cv-space-2); }
+  .cv-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--cv-space-2); }
+  .cv-table td::before { content: attr(data-label); color: var(--cv-color-text-muted); font-weight: 600; }
+  .cv-table tr > td:last-child { border-bottom: 0; }
+}
+
+/* CalendarGrid: always seven columns; the cells shrink, the text wraps. */
+.cv-calendar { font-size: var(--cv-font-size-sm); }
+.cv-calendar__title { font-weight: 600; margin-bottom: var(--cv-space-2); }
+.cv-calendar__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.cv-calendar__dow { text-align: center; color: var(--cv-color-text-muted); font-weight: 600; padding: var(--cv-space-1) 0; }
+.cv-calendar__day { min-width: 0; min-height: 3rem; border: 1px solid var(--cv-color-border); border-radius: 4px; padding: 2px var(--cv-space-1); background: var(--cv-color-surface); }
+.cv-calendar__day--blank { border-color: transparent; background: transparent; }
+.cv-calendar__num { font-weight: 600; }
+.cv-calendar__mark { display: block; font-size: 0.6875rem; line-height: 1.25; border-radius: 3px; padding: 0 2px; }
+
+/* Tones shared by badges, pills, calendar marks and verification outcomes. */
+.cv-tone--positive { color: var(--cv-color-positive-fg); background: var(--cv-color-positive-bg); }
+.cv-tone--negative { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); }
+.cv-tone--caution { color: var(--cv-color-caution-fg); background: var(--cv-color-caution-bg); }
+.cv-tone--neutral { color: var(--cv-color-neutral-fg); background: var(--cv-color-neutral-bg); }
+.cv-tone--info { color: var(--cv-color-info-fg); background: var(--cv-color-info-bg); }
+
+/* Receipt sides: ours blue, theirs amber (always "as received"), a missing side grey and dashed. No side is ever the negative tone: one side missing is not a finding. */
+.cv-sides { display: flex; flex-direction: column; gap: var(--cv-space-2); margin: 0 0 var(--cv-space-3); }
+.cv-sides__case { padding: var(--cv-space-1) var(--cv-space-3); border-radius: var(--cv-radius); font-weight: 600; font-size: var(--cv-font-size-sm); }
+.cv-half { min-width: 0; border-radius: var(--cv-radius); padding: var(--cv-space-1) var(--cv-space-3) var(--cv-space-2); border: 1px solid var(--cv-color-border); }
+.cv-half > .cv-section { margin-bottom: 0; }
+.cv-half__label { font-size: var(--cv-font-size-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--cv-color-text-muted); margin-bottom: var(--cv-space-1); }
+.cv-half--ours { background: var(--cv-color-info-bg); border-color: var(--cv-color-info-fg); }
+.cv-half--theirs { background: var(--cv-color-caution-bg); border-color: var(--cv-color-caution-fg); }
+.cv-half--missing { background: var(--cv-color-neutral-bg); border: 1px dashed var(--cv-color-neutral-fg); }
+.cv-actions { display: flex; flex-wrap: wrap; column-gap: var(--cv-space-3); font-size: var(--cv-font-size-sm); font-weight: 600; color: var(--cv-color-info-fg); }
+.cv-actions__heading { font-weight: 400; color: var(--cv-color-text-muted); }
+
+/* DisclosureBadge and VerdictPill. The pill is scoped to the kit wrapper: the page shell's verification banner is a .cv-pill outside it, and a module's stylesheet must not restyle the banner (the frame check refuses the module). */
+.cv-badge, .cv-kit .cv-pill { display: inline-block; max-width: 100%; font-size: var(--cv-font-size-sm); font-weight: 600; border-radius: var(--cv-radius-pill); padding: 0 var(--cv-space-2); border: 1px solid currentColor; }
+.cv-badge { letter-spacing: 0.02em; }
+/* A state label breaks between words, never inside one. */
+.cv-badge, .cv-kit .cv-pill { overflow-wrap: normal; }
+.cv-refusal { color: var(--cv-color-negative-fg); background: var(--cv-color-negative-bg); border: 1px dashed currentColor; }
+
+/* CitationList */
+.cv-citations { display: flex; flex-direction: column; gap: var(--cv-space-2); counter-reset: cv-cite; }
+.cv-citation { counter-increment: cv-cite; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--cv-space-2); }
+.cv-citation::before { content: "[" counter(cv-cite) "]"; color: var(--cv-color-text-muted); }
+.cv-citation__ref { display: block; color: var(--cv-color-text-muted); }
+
+/* Drilldown: native details/summary -- opens with no script; prints open. */
+.cv-drilldown { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); background: var(--cv-color-surface); }
+.cv-drilldown > summary { cursor: pointer; padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; color: var(--cv-color-accent); }
+.cv-drilldown__body { padding: 0 var(--cv-space-3) var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-2); min-width: 0; }
+
+/* EvidenceDetails */
+.cv-evidence { display: flex; flex-direction: column; gap: var(--cv-space-2); }
+.cv-evidence__item { border-left: 3px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-1); }
+.cv-evidence__head { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }
+.cv-evidence__label { font-weight: 600; }
+
+/* VerificationDetails */
+.cv-verification { display: flex; flex-direction: column; gap: var(--cv-space-2); }
+.cv-verification__outcome { border-radius: var(--cv-radius); padding: var(--cv-space-2) var(--cv-space-3); font-weight: 600; }
+.cv-checks { display: flex; flex-direction: column; gap: var(--cv-space-1); }
+.cv-check { display: flex; flex-wrap: wrap; gap: var(--cv-space-2); align-items: baseline; }
+
+/* PartyCard */
+.cv-party { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }
+.cv-party__role { font-size: var(--cv-font-size-sm); color: var(--cv-color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-party__name { font-weight: 600; }
+.cv-party__facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--cv-space-1) var(--cv-space-3); margin-top: var(--cv-space-2); font-size: var(--cv-font-size-sm); }
+.cv-party__facts dt { color: var(--cv-color-text-muted); }
+.cv-party-wrap { container-type: inline-size; }
+@container (max-width: 20rem) { .cv-party__facts { grid-template-columns: minmax(0, 1fr); } }
+
+/* Timeline: entries in the order given. */
+.cv-timeline { border-left: 2px solid var(--cv-color-border); padding-left: var(--cv-space-3); display: flex; flex-direction: column; gap: var(--cv-space-3); }
+.cv-timeline__at { display: block; color: var(--cv-color-text-muted); }
+.cv-timeline__label { font-weight: 600; }
+
+@media print {
+  .cv-kit { background: none; }
+  .cv-drilldown > summary { color: var(--cv-color-text); }
+  /* A closed drilldown still prints its body (Chromium's details-content). */
+  .cv-drilldown::details-content { content-visibility: visible; display: block; }
+  .cv-section, .cv-metric, .cv-party, .cv-table tr, .cv-evidence__item { break-inside: avoid; }
+}

@@ -13,6 +13,16 @@ It moved here from [capsule-cli](https://github.com/action-state-group/capsule-c
 contract it implements is capsule-cli's
 [docs/PLUGINS.md](https://github.com/action-state-group/capsule-cli/blob/main/docs/PLUGINS.md).
 
+## The History card page
+
+The plugin offers capsule-viewer's History card module
+(`capsuleviewer.standard-history/v0`) to `capsulectl presentation list|build`
+in its handshake. The release's `standard-history-VERSION.tar.gz` holds the
+module's files; unpack it beside the launcher, and a standard_history/1 bundle
+resolves to the module. Where the files came from is in
+`internal/book/assets/standard-history/SOURCE.txt`; a release of capsule-viewer
+is re-vendored by copying its `standard-history-module` bundle there.
+
 ## Agent skill
 
 [skills/capsulectl-book](skills/capsulectl-book/SKILL.md) is the agent skill for

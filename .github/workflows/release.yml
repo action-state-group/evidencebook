@@ -100,6 +100,8 @@ jobs:
         env:
           COMMIT: ${{ github.sha }}
         run: scripts/release-build.sh "$VERSION" "$COMMIT" dist
+      - name: Check the History card archive against the handshake
+        run: scripts/check-standard-history-archive.sh "dist/capsulectl-book-$VERSION-linux-amd64" "dist/standard-history-$VERSION.tar.gz"
       - name: Check the versions the plugin reports
         run: |
           meta="$(dist/capsulectl-book-"$VERSION"-linux-amd64 cli-plugin-metadata)"
@@ -111,6 +113,7 @@ jobs:
         with:
           subject-path: |
             capsulectl/dist/capsulectl-book-*
+            capsulectl/dist/standard-history-*
       - name: Attach the attestation bundle
         env:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
