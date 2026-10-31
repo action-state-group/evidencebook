@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Requires capsule-viewer `v0.7.0` (the frames merged since 0.6.0:
+  capsule-viewer#186, #187, #188, #189, #190, #192, #193). The presentation
+  goldens are rebuilt with `build-fixtures.sh` against it (capsulectl-book from
+  evidencebook#244), their snapshots regenerated with Chrome.
+
 ## v0.1.0-rc26
 
 Built against capsulectl v0.1.0-rc26 and capsule-viewer v0.6.0 (RELEASING.md).

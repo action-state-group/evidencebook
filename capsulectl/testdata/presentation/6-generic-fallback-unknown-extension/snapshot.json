@@ -19,8 +19,8 @@
     "section": []
   },
   "evidence_ids": [
-    "07cf334f9a6400498b355f09fbe3b33bd819c081ab119566698c700ac4b6a467",
     "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
+    "522739ae3804e031802218ca612bddaffd092d57a7268e46b867061d962636e6",
     "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b"
   ],
   "text": [
@@ -33,7 +33,7 @@
     "· 10 of 10 checks passed · 1 record",
     "Verification",
     "bundle digest",
-    "\"07cf334f9a6400498b355f09fbe3b33bd819c081ab119566698c700ac4b6a467\"",
+    "\"522739ae3804e031802218ca612bddaffd092d57a7268e46b867061d962636e6\"",
     "checkpoint root",
     "\"4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047\"",
     "checkpoint size",

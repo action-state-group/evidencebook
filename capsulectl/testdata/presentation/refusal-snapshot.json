@@ -17,9 +17,9 @@
     "section": []
   },
   "evidence_ids": [
+    "1e6c4695481cfc9aa74ac58c0c6f0e21d898702bd9e5c2b9fe12dd9d419961b9",
     "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
-    "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b",
-    "8ea07a6e97eabbe759d3653ac6da5e03935892afa8a310c4d19c8044facc1121"
+    "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b"
   ],
   "text": [
     "✗ This bundle did not verify: do not rely on it",
@@ -30,7 +30,7 @@
     "· 3 of 10 checks failed · 2 checks on this page failed · 1 record",
     "Verification",
     "bundle digest",
-    "\"8ea07a6e97eabbe759d3653ac6da5e03935892afa8a310c4d19c8044facc1121\"",
+    "\"1e6c4695481cfc9aa74ac58c0c6f0e21d898702bd9e5c2b9fe12dd9d419961b9\"",
     "checkpoint root",
     "\"4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047\"",
     "checkpoint size",
