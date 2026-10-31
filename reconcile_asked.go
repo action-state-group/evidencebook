@@ -19,9 +19,14 @@ const (
 	// carried none that correlates, or a verified refusal with the reason
 	// no_such_subject.
 	AskedOmitted AskedState = "OMITTED"
-	// AskedUnresolved: nothing says either way. Any other refusal (a uniform
-	// policy_declined or a not_authorized reads the same whether the record
-	// exists or not), an absence, or an answer that failed verification.
+	// AskedRefused: the provider refused, verified and signed, with a reason
+	// other than no_such_subject. It says nothing about whether the record
+	// exists (a uniform policy_declined reads the same either way), but it is a
+	// finding of its own: an honest provider does not refuse its counterparty
+	// about their own exchange.
+	AskedRefused AskedState = "REFUSED"
+	// AskedUnresolved: nothing says either way: an absence, an answer that
+	// failed verification, or an answer that cannot be about this exchange.
 	AskedUnresolved AskedState = "UNRESOLVED"
 )
 
@@ -36,7 +41,7 @@ const (
 	// NoOmissionFound: every half is AskedLogged.
 	NoOmissionFound AskedVerdict = "NO_OMISSION_FOUND"
 	// AskedInconclusive: no half is AskedOmitted and at least one is
-	// AskedUnresolved.
+	// AskedRefused or AskedUnresolved.
 	AskedInconclusive AskedVerdict = "UNRESOLVED"
 )
 
@@ -185,7 +190,7 @@ func ReconcileAsked(asked []AskedExchange) AskedReport {
 				r.State, r.Why = AskedUnresolved, "no_such_subject at an anchor not stated to cover this exchange"
 			}
 		case a.Outcome == AskRefused:
-			r.State, r.Why = AskedUnresolved, "refused, reason "+a.Reason+": it reads the same whether the record exists or not"
+			r.State, r.Why = AskedRefused, "refused, signed, reason "+a.Reason+": it does not say whether the record exists"
 		case a.Outcome == AskAbsent:
 			r.State, r.Why = AskedUnresolved, "no answer came back"
 		default:
@@ -194,7 +199,7 @@ func ReconcileAsked(asked []AskedExchange) AskedReport {
 		switch r.State {
 		case AskedOmitted:
 			report.Omitted = append(report.Omitted, r.Own)
-		case AskedUnresolved:
+		case AskedUnresolved, AskedRefused:
 			unresolved = true
 		}
 		report.Results = append(report.Results, r)

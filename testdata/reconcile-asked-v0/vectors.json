@@ -116,8 +116,8 @@
       }
     },
     {
-      "name": "uniform-refusals-are-unresolved",
-      "note": "policy_declined and not_authorized read the same whether the record exists, so they never count as omitted.",
+      "name": "uniform-refusals-are-refused-not-omitted",
+      "note": "policy_declined and not_authorized read the same whether the record exists, so they never count as omitted; they are REFUSED, and the verdict is UNRESOLVED.",
       "asked": [
         {
           "own": {
@@ -163,8 +163,8 @@
         "omitted": [],
         "states": [
           "LOGGED",
-          "UNRESOLVED",
-          "UNRESOLVED"
+          "REFUSED",
+          "REFUSED"
         ],
         "run": {
           "seqs": [
@@ -558,6 +558,46 @@
         "omitted": [],
         "states": [
           "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "an-omission-beside-a-refusal",
+      "note": "A REFUSED half never hides an OMITTED one; the verdict is OMISSIONS_FOUND.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "refused",
+          "reason": "policy_declined",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "OMISSIONS_FOUND",
+        "omitted": [
+          "own-1"
+        ],
+        "states": [
+          "OMITTED",
+          "REFUSED"
         ],
         "run": {
           "seqs": [],

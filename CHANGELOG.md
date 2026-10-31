@@ -9,8 +9,9 @@
   exchange's two digests, and names every half the provider confirmed it
   holds no record of: a verified answer without it, or a signed
   `no_such_subject`, each only at an anchor the caller states covers the
-  exchange (`Covers`). Any other refusal, an absence, a failed answer, an
-  older anchor, or a half with no digests is UNRESOLVED. Halves match
+  exchange (`Covers`). Any other verified refusal is REFUSED, reported on its
+  own and never omitted. An absence, a failed answer, an older anchor, or a
+  half with no digests is UNRESOLVED. Halves match
   records as a maximum one-to-one matching, so input order never changes how
   many are omitted. The verdict is `OMISSIONS_FOUND`, `NO_OMISSION_FOUND` or
   `UNRESOLVED`, never complete, and the provider's `seq`/`prev_seq` run over
