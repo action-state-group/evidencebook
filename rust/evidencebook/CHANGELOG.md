@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.11 (2026-10-31)
+
 ### Breaking: `evidence-request` 0.3, and the envelope names the profile asked for
 
 - `evidencebook` and `interop` require `evidence-request` `0.3`
