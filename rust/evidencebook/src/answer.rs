@@ -148,10 +148,6 @@ pub struct Options<'a> {
     /// recipient only, whatever the caller decided before:
     /// [`AnswerError::NotAuthorized`] for anyone else.
     pub requester: Option<&'a str>,
-    /// The interop profile identifier the envelope is signed under: the one
-    /// the request asked for (profile §3.3). `None` is `evidence-interop/0`,
-    /// the identifier a request with no `profile` asks for.
-    pub profile: Option<&'a str>,
 }
 
 /// What an answer is served under and carries: the position of the serving
@@ -458,10 +454,14 @@ pub fn build(
         ))),
         Coverage::ExpectedPin(_) => None,
     };
+    // The envelope names the profile the request asked for (profile §3.3);
+    // `sign_with_profile` refuses one evidence-request does not implement.
+    let profile = match crate::respond::requested_profile(request_bytes) {
+        Some(profile) => profile,
+        None => evidence_request::envelope::PROFILE.to_string(),
+    };
     Ok(sign_with_profile(
-        options
-            .profile
-            .unwrap_or(evidence_request::envelope::PROFILE),
+        &profile,
         request_bytes,
         EnvelopeParts {
             subject: request.subject.clone(),

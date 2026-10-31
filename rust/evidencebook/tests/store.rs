@@ -245,39 +245,44 @@ fn a_record_whose_octets_do_not_recompute_its_entry_is_never_served() {
     ));
 }
 
-/// `Options::profile` is the identifier the envelope is signed under: the
-/// one the request asked for (profile §3.3). The artifact does not depend on
-/// it (ER §5); only the signed `profile` member does.
+/// The envelope names the profile the request asked for (profile §3.3): a
+/// request with none is `evidence-interop/0`, one naming
+/// `evidence-interop/1` is signed under /1 with the same artifact (ER §5),
+/// and one naming a profile evidence-request does not implement is not
+/// signed.
 #[test]
-fn the_envelope_is_signed_under_the_profile_asked_for() {
+fn the_envelope_is_signed_under_the_profile_the_request_names() {
     let f = foreign();
     let at = pinned(&f, 1);
-    let v0 = go(&f, json!({"range": [1, 3]}), &at, Options::default()).unwrap();
+    let under = |profile: Option<&str>| {
+        let mut map =
+            json!({"subject": {"range": [1, 3]}, "coverage": {"expected_pin": at.digest()}});
+        if let Some(p) = profile {
+            map["profile"] = json!(p);
+        }
+        let bytes = serde_json::to_vec(&map).unwrap();
+        let req = parse_json(&bytes).unwrap();
+        let selection = select(&f, &f, &req, &at, 100).unwrap();
+        build(
+            &f,
+            &f,
+            &req,
+            &bytes,
+            &at,
+            &selection,
+            Options::default(),
+            &key("responder") as &dyn EnvelopeSigner,
+            ISSUED_AT,
+        )
+    };
+    let v0 = under(None).unwrap();
     assert_eq!(v0.profile, evidence_request::envelope::PROFILE);
-    let v1 = go(
-        &f,
-        json!({"range": [1, 3]}),
-        &at,
-        Options {
-            profile: Some(evidence_request::envelope::PROFILE_V1),
-            ..Options::default()
-        },
-    )
-    .unwrap();
+    let v1 = under(Some(evidence_request::envelope::PROFILE_V1)).unwrap();
     assert_eq!(v1.profile, evidence_request::envelope::PROFILE_V1);
     assert_eq!(v1.artifact, v0.artifact);
-    assert_ne!(v1.sig, v0.sig);
     assert!(v1.verify().is_ok());
     assert!(matches!(
-        go(
-            &f,
-            json!({"range": [1, 3]}),
-            &at,
-            Options {
-                profile: Some("evidence-interop/2"),
-                ..Options::default()
-            },
-        ),
+        under(Some("evidence-interop/9")),
         Err(AnswerError::Sign(_))
     ));
 }
@@ -293,7 +298,6 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
         derive: None,
         derivations: None,
         requester: None,
-        profile: None,
     };
     let env = go(&f, json!({"range": [1, 3]}), &at, beyond).unwrap();
     assert_eq!(
@@ -434,7 +438,6 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
         derive: Some(&derive),
         derivations: None,
         requester: None,
-        profile: None,
     })
     .unwrap();
     let art: Value = serde_json::from_slice(&env.artifact).unwrap();
@@ -491,7 +494,6 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derive,
                 derivations: Some(&derivations),
                 requester: None,
-                profile: None,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -545,7 +547,6 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derive: Some(&answers_all),
                 derivations: Some(&restricted),
                 requester,
-                profile: None,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -666,7 +667,6 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
             derive: Some(&derive),
             derivations: None,
             requester: None,
-            profile: None,
         },
         &key("responder") as &dyn EnvelopeSigner,
         ISSUED_AT,

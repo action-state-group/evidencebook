@@ -162,10 +162,17 @@ impl Refusal {
             .into_bytes()
     }
 
-    /// Whether `reason` is a registered token. Separate from [`Refusal::verify`],
-    /// which, like the Go and Python verifiers, checks only the signature.
+    /// Whether `reason` is a registered token under `evidence-interop/0`, the
+    /// only profile this crate answers and asks under: the eight tokens of
+    /// ER -01 (`envelope::refusal_reasons`), not the ten of ER -02, which
+    /// only `evidence-interop/1` registers. Separate from
+    /// [`Refusal::verify`], which, like the Go and Python verifiers, checks
+    /// only the signature.
     pub fn reason_is_registered(&self) -> bool {
-        Reason::from_token(&self.reason).is_some()
+        Reason::from_token(&self.reason).is_some_and(|r| {
+            evidence_request::envelope::refusal_reasons(evidence_request::envelope::PROFILE)
+                .contains(&r)
+        })
     }
 
     /// Check the signature, offline, against the refusal's own `key_id`
@@ -306,6 +313,12 @@ mod tests {
         unregistered.verify().unwrap();
         assert!(!unregistered.reason_is_registered());
         assert!(good.reason_is_registered());
+        // ER -02's tokens are registered under evidence-interop/1 only.
+        for token in [reasons::CAPACITY_EXCEEDED, reasons::REQUEST_UNAUTHENTICATED] {
+            let r = signed(token);
+            r.verify().unwrap();
+            assert!(!r.reason_is_registered(), "{token}");
+        }
 
         let mut t = good.clone();
         t.key_id = "zz".into();

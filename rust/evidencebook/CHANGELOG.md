@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### Breaking: `evidence-request` 0.3, and the envelope signed under the profile asked for
+### Breaking: `evidence-request` 0.3, and the envelope names the profile asked for
 
 - `evidencebook` and `interop` require `evidence-request` `0.3`
   (agent-action-capsule#485), which registers the Evidence Request -02 refusal
@@ -11,14 +11,17 @@
   (`AnswerError::Sign`, `Reason`), so a dependent moves with it. A dependent
   that keeps one `evidence-request` in its graph, as capsules-plugin does,
   needs this to take 0.3 (Mesh-LLM/capsules-plugin#114).
-- `request::reasons::ALL` has the ten registry tokens (`[&str; 10]`), so a
-  refusal with either -02 token is now `reason_is_registered`. Nothing here
-  emits them. Go and Python still read the eight tokens of the AAC versions
-  they pin until those pins move (evidencebook#227).
-- `answer::Options` gains `profile`, the interop profile identifier the
-  envelope is signed under, the one the request asked for (profile §3.3).
-  `None` is `evidence-interop/0`, as before. A struct literal of `Options`
-  names it or uses `..Options::default()`.
+- `request::reasons::ALL` lists the registry's ten tokens (`[&str; 10]`).
+  `Refusal::reason_is_registered` stays the check of `evidence-interop/0`, the
+  only profile this crate answers and asks under: its eight ER -01 tokens, as
+  Go and Python check, so a refusal carrying either -02 token is not
+  registered here.
+- `answer::build` signs the envelope under the profile the request's octets
+  name (`evidence-interop/0` when they name none or an empty one), so a
+  caller that answers an `evidence-interop/1` request gets a /1 envelope. A
+  request naming a profile `evidence-request` does not implement is
+  `AnswerError::Sign`. This crate's own `respond` still refuses anything but
+  /0 before it builds.
 
 ### Changes
 
