@@ -11,8 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/action-state-group/capsule-cli/cli"
 )
 
 const standardHistoryDir = "assets/standard-history"
@@ -75,12 +73,10 @@ func TestBookOffersTheHistoryCardInItsHandshake(t *testing.T) {
 	assert.JSONEq(t, string(disk), string(p.Manifest))
 }
 
-func TestHistoryCardPresentationsAreTheOnesTheCoreAccepts(t *testing.T) {
-	// The handshake answer round-trips through the core's own type.
-	raw, err := json.Marshal(BookMetadata)
+func TestTheHandshakeEntryIsCapsuleViewersPresentationJSONUnchanged(t *testing.T) {
+	// A field the core's type does not know would be dropped silently by the
+	// decode; the entry the plugin states must be the bundle's, in meaning.
+	raw, err := json.Marshal(BookMetadata.Presentations[0])
 	require.NoError(t, err)
-	var back cli.PluginMetadata
-	require.NoError(t, json.Unmarshal(raw, &back))
-	require.Len(t, back.Presentations, 1)
-	assert.Equal(t, BookMetadata.Presentations[0].Files, back.Presentations[0].Files)
+	assert.JSONEq(t, string(standardHistoryPresentationJSON), string(raw))
 }

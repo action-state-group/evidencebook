@@ -11,6 +11,8 @@ dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 
 tar -xzf "$ARCHIVE" -C "$dir"
+# Nothing but directories and regular files: a link would be a path out of the module.
+[ -z "$(find "$dir" ! -type d ! -type f)" ] || { echo "the archive holds something other than files"; exit 1; }
 meta=$("$BIN" cli-plugin-metadata)
 stated=$(jq -r '.presentations[].files[] | "\(.sha256)  \(.path)"' <<<"$meta" | LC_ALL=C sort -k2)
 [ -n "$stated" ] || { echo "the handshake states no presentation files: $meta"; exit 1; }

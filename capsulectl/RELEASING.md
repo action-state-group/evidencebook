@@ -51,7 +51,7 @@ bump (step 1 below).
    core can read the files the handshake names. The workflow checks the archive
    against the handshake before it publishes.
 4. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
-   `gh attestation verify` on each binary with
+   `gh attestation verify` on each binary and on `standard-history-vX.Y.Z.tar.gz` with
    `--bundle capsulectl-book-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook
    --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml`.
 
