@@ -147,20 +147,18 @@ func dealReportIsOneLocalVerifyingPage(t *testing.T, inLog bool) {
 // embeddedBundle recovers the bundle the emitter embedded in the page.
 func embeddedBundle(t *testing.T, html string) map[string]interface{} {
 	t.Helper()
-	const start = "window.__BUNDLE__ = "
-	i := strings.Index(html, start)
-	require.GreaterOrEqual(t, i, 0)
-	rest := html[i+len(start):]
-	j := strings.Index(rest, ";</script>")
-	require.GreaterOrEqual(t, j, 0)
-	v, err := jsonschema.UnmarshalJSON(bytes.NewReader([]byte(rest[:j])))
+	text, ok := pageBundleText(html)
+	require.True(t, ok, "the page carries its bundle in a JSON element")
+	v, err := jsonschema.UnmarshalJSON(bytes.NewReader([]byte(text)))
 	require.NoError(t, err)
 	b, ok := v.(map[string]interface{})
 	require.True(t, ok)
 	// Round-trip check: re-emitting the same bundle gives the same page.
 	again, err := emitter.EmitEvidenceGraphHTML(b, pageruntime.IIFE)
 	require.NoError(t, err)
-	assert.Contains(t, html, again[strings.Index(again, start):strings.Index(again, ";</script>")])
+	againText, ok := pageBundleText(again)
+	require.True(t, ok)
+	assert.Equal(t, againText, text)
 	return b
 }
 

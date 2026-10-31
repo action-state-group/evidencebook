@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -247,14 +246,12 @@ func passList(t *testing.T, bundle, audience, format string) (string, error) {
 	return r.Selected.ID, err
 }
 
-var passBundleScript = regexp.MustCompile(`(?m)^\s*<script>window\.__BUNDLE__ = (.*);</script>$`)
-
 // passEmbeddedBundle is the bundle a page carries, exactly as it carries it.
 func passEmbeddedBundle(t *testing.T, page string) string {
 	t.Helper()
-	m := passBundleScript.FindStringSubmatch(page)
-	require.NotNil(t, m, "the page carries its bundle")
-	return m[1]
+	text, ok := pageBundleText(page)
+	require.True(t, ok, "the page carries its bundle")
+	return text
 }
 
 // passSnapshots opens a page in every view and returns its snapshot, after

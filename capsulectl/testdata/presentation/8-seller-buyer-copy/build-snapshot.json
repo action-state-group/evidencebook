@@ -1,10 +1,10 @@
 {
   "verification": {
     "verify": [
-      "incomplete"
+      "verified"
     ],
     "verdict": [
-      "incomplete"
+      "valid"
     ],
     "sealed": [],
     "unchecked": []
@@ -40,13 +40,13 @@
     "d34894a759a36e20218fdb036ea663a619ec217c57c1fdc15cb31bccd9f07332"
   ],
   "text": [
-    "None of the bundle's checks failed, but some were not run: see \"Not checked on this page\" below",
-    "10 of 10 checks passed · 17 records · checkpoint signature not checked here",
+    "✓ Unchanged since it was sealed",
+    "10 of 10 checks passed · 17 records",
     "How this page was checked",
-    "This page did not check the checkpoint signature, which this page cannot check (checkpoint_verifier_unavailable). Interval coverage and per-record membership are checkpoint_unverified: relative to a producer-asserted checkpoint this page could not authenticate.",
+    "No witness this verifier trusts has vouched for this log: this file checks only against its holder's own signatures. Without such a receipt for its checkpoint, it could be a private copy of the log.",
     "This bundle carries no evaluation summary, so there is no aggregate view. The records and their verification are below.",
     "How this page was checked",
-    "· 10 of 10 checks passed · 17 records · checkpoint signature not checked here",
+    "· 10 of 10 checks passed · 17 records",
     "Verification",
     "bundle digest",
     "\"1e4fbf123edec01273fb26b63723805c516e50d7b2e14d72f3589edd1f235d30\"",
@@ -149,11 +149,9 @@
     "That every record the root cites, to the stated depth, is in this file or listed as missing.",
     "That no record is missing from the stretch of the log this file covers.",
     "That each record bound to a log position sits at that position.",
+    "The signature on the log's checkpoint, and the fields it signs.",
     "Each disclosed value against the digest its record committed to.",
     "The producer signature on every record.",
-    "Not checked on this page",
-    "The signature on the log's checkpoint, and the fields it signs. This page could not check it, so the range and membership checks rest on a checkpoint the producer asserted.",
-    "To run these checks, verify the bundle with a full verifier.",
     "None of these checks says who produced the records, or that this file is the most recent copy.",
     "verify independently at verify.agentactioncapsule.org or with a full verifier"
   ]

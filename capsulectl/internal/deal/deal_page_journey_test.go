@@ -25,10 +25,12 @@ const { webcrypto } = require("crypto");
 const [pagePath, edit] = process.argv.slice(2);
 const html = fs.readFileSync(pagePath, "utf8");
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-const bundleScript = scripts.find((s) => s.startsWith("window.__BUNDLE__ = "));
+const bundleJSON = scripts.find((s) => html.slice(0, html.indexOf(s)).endsWith('<script type="application/json">'));
+const bundleScript = "window.__BUNDLE__ = JSON.parse(" + JSON.stringify(bundleJSON) + ");";
+const bundleParser = scripts.find((s) => s.startsWith("window.__BUNDLE__ = JSON.parse("));
 const runtime = scripts.find((s) => s.includes("var EvidenceGraph = "));
 const bootstrap = scripts.find((s) => s.includes('document.getElementById("app")'));
-const modules = scripts.filter((s) => s !== bundleScript && s !== runtime && s !== bootstrap);
+const modules = scripts.filter((s) => s !== bundleJSON && s !== bundleParser && s !== runtime && s !== bootstrap);
 class Node {
   constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.className = ""; this._text = ""; }
   append(...nodes) { this.children.push(...nodes.map((n) => (typeof n === "string" ? Object.assign(new Node("#text"), { _text: n }) : n))); }

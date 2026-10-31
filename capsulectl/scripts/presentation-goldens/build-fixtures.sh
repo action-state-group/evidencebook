@@ -195,7 +195,7 @@ echo '{"action": "commit", "amount_minor": 190000}' >act-commit.json
 note --kind act --input act-commit.json
 capsulectl --profile deal deal report --deal "$id" --share counterparty --to "the buyer" --html page.html >/dev/null
 # A shared copy writes only its page; the bundle is the one the page carries.
-perl -ne 'print "$1\n" if /^\s*<script>window\.__BUNDLE__ = (.*);<\/script>$/' page.html | jq . >bundle.json
+perl -0777 -ne 'print "$1\n" if /<script type="application\/json">(.*?)<\/script>/s' page.html | jq . >bundle.json
 cp bundle.json page.html "$out/8-seller-buyer-copy/"
 meta 8-seller-buyer-copy "$(jq -n --arg v "$(verdict bundle.json)" '{kind: "seller-buyer-copy", emitted_by: "capsulectl deal report --deal ID --share counterparty --to \"the buyer\" --html page.html (bundle.json is the bundle the page carries)", rerender: "deal-report", page: "written", verify: $v}')"
 

@@ -1,10 +1,10 @@
 {
   "verification": {
     "verify": [
-      "incomplete"
+      "verified"
     ],
     "verdict": [
-      "incomplete"
+      "valid"
     ],
     "sealed": [
       "x-deal-v0"
@@ -29,10 +29,10 @@
     "f2cc1d43abfbd88f23f41dc4f2f8cc7b8accf665970873da4f52280585d1a729"
   ],
   "text": [
-    "None of the bundle's checks failed, but some were not run: see \"Not checked on this page\" below",
-    "10 of 10 checks passed · 6 records · checkpoint signature not checked here",
+    "✓ Unchanged since it was sealed",
+    "10 of 10 checks passed · 6 records",
     "How this page was checked",
-    "This page did not check the checkpoint signature, which this page cannot check (checkpoint_verifier_unavailable). Interval coverage and per-record membership are checkpoint_unverified: relative to a producer-asserted checkpoint this page could not authenticate.",
+    "No witness this verifier trusts has vouched for this log: this file checks only against its holder's own signatures. Without such a receipt for its checkpoint, it could be a private copy of the log.",
     "DEMO",
     "Deal report",
     "What you asked",
@@ -78,7 +78,7 @@
     "None found.",
     "This page checked each step's sealed record and its place in this deal's log; the verification below says what was and was not checked. The records carry fingerprints, not names or numbers; the words shown come from this device. The seal key is on the agent's machine, so this shows the record was not changed after it was made, not who made it. It covers this skill's own records only, never the agent host's own store.",
     "How this page was checked",
-    "· 10 of 10 checks passed · 6 records · checkpoint signature not checked here",
+    "· 10 of 10 checks passed · 6 records",
     "Verification",
     "bundle digest",
     "\"6b6c73a661216f373351f9a75cedebb37f886f10ffa61474ab6a1389e9671ecf\"",
@@ -153,11 +153,9 @@
     "That every record the root cites, to the stated depth, is in this file or listed as missing.",
     "That no record is missing from the stretch of the log this file covers.",
     "That each record bound to a log position sits at that position.",
+    "The signature on the log's checkpoint, and the fields it signs.",
     "Each disclosed value against the digest its record committed to.",
     "The producer signature on every record.",
-    "Not checked on this page",
-    "The signature on the log's checkpoint, and the fields it signs. This page could not check it, so the range and membership checks rest on a checkpoint the producer asserted.",
-    "To run these checks, verify the bundle with a full verifier.",
     "None of these checks says who produced the records, or that this file is the most recent copy.",
     "verify independently at verify.agentactioncapsule.org or with a full verifier"
   ]
