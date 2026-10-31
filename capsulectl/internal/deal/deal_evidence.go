@@ -16,6 +16,7 @@ import (
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/capsule-cli/cli"
 	emit "github.com/action-state-group/capsule-emit/go"
@@ -623,6 +624,18 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		answered["outcome"], answered["reason"] = evidencebook.OutcomeRefusal, reason
 		return s.writeAnswer(c, dealID, answered, dealResponse{Refusal: &refusal}, path)
 	}
+	// A request that names the History card is answered in evidence-interop's
+	// own reply, whatever else is wrong with it: a malformed one is the request
+	// reader's request_malformed there, never a deal-local refusal.
+	// The member is looked up exactly, as the request reader does: a case
+	// variant is an unknown member, not the derivation.
+	var members map[string]json.RawMessage
+	var derivation string
+	if json.Unmarshal(raw, &members) == nil && json.Unmarshal(members["derivation"], &derivation) == nil && derivation == evidencebook.DerivationStandardHistory {
+		check := evidencerequest.ParseRequest(evidencerequest.Message{Octets: raw, MediaType: evidencerequest.MediaTypeJSON})
+		check.Request.Derivation = derivation
+		return s.respondStandardHistory(c, check, raw, requester, path, signer)
+	}
 	req, e := parseDealRequest(raw)
 	if e != nil || !dealSubject(req.Subject) {
 		if e == nil && req.Subject.Kind != "" {
@@ -786,11 +799,17 @@ func (s *dealSession) reportAtHead(ctx context.Context, dealID string, entries [
 // writeAnswer records the answer and writes the signed response. The answer
 // is on record before the file: a failure writing it still reports both.
 func (s *dealSession) writeAnswer(c *cobra.Command, dealID string, answered map[string]interface{}, response dealResponse, path string) error {
-	id, err := s.recordExchange(c.Context(), dealID, dealExchangeAnswered, "", answered)
+	encoded, err := json.Marshal(response)
 	if err != nil {
 		return err
 	}
-	encoded, err := json.Marshal(response)
+	return s.writeAnswerBytes(c, dealID, answered, encoded, path)
+}
+
+// writeAnswerBytes records the answer and writes its octets: a deal answer's
+// JSON, or an evidence-interop reply's.
+func (s *dealSession) writeAnswerBytes(c *cobra.Command, dealID string, answered map[string]interface{}, encoded []byte, path string) error {
+	id, err := s.recordExchange(c.Context(), dealID, dealExchangeAnswered, "", answered)
 	if err != nil {
 		return err
 	}
