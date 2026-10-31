@@ -19,6 +19,14 @@
   `record_at_completion` is declared and reported by `doctor`, but this book's
   responder never reads it. The gaps are in #239.
 
+### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc26 and capsule-viewer 0.6.0
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc26` and
+  capsule-viewer `v0.6.0`, so `capsulectl/v0.1.0-rc26` pairs with that capsulectl commit. It
+  carries the History card module as a plugin presentation (evidencebook#235,
+  #236), the holder pages (#240), and the report pages' new outcome headline
+  and tile wording from the viewer's page runtime.
+
 ### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc25 and `report` v0.3.1
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc25`, capsule-viewer `v0.5.0`
