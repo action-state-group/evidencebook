@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Evidence requests and replies on the wire (draft-mih-agent-evidence-request-00,
-profile evidence-interop/0).
+profiles evidence-interop/0 and evidence-interop/1).
 
 The request map, the reply envelope and the signed refusal are
 agent-action-capsule's ``evidence_request`` types. This module adds what Go's
@@ -19,9 +19,9 @@ from agent_action_capsule.canonical import jcs
 from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
     PROFILE,
+    PROFILES,
     REASON_COVERAGE_UNSATISFIABLE,
     REASON_REQUEST_MALFORMED,
-    REFUSAL_REASONS,
     Coverage,
     Envelope,
     Refusal,
@@ -29,18 +29,21 @@ from agent_action_capsule.evidence_request import (
     Subject,
     VerificationError,
     is_digest,
+    _decode_cbor,
+    _decode_json,
     parse_reply as _parse_reply,
     parse_request,
     parse_utc,
 )
 from agent_action_capsule.interop_profile import _cbor
-from agent_action_capsule.interop_profile._common import is_profile_time
+from agent_action_capsule.interop_profile._common import REFUSAL_REASONS_BY_PROFILE, is_profile_time
 
 from ._limits import MAX_REPLY_DEPTH, json_depth_over
 from .errors import InvalidError
 
 __all__ = [
     "PROFILE",
+    "PROFILE_V1",
     "DERIVATION_HISTORY_CARD",
     "MEDIA_TYPE_JSON",
     "MEDIA_TYPE_CBOR",
@@ -59,7 +62,11 @@ __all__ = [
 MEDIA_TYPE_JSON = "application/json"
 MEDIA_TYPE_CBOR = "application/cbor"
 _BINDINGS = {MEDIA_TYPE_JSON: "json", MEDIA_TYPE_CBOR: "cbor"}
-_SUPPORTED_PROFILES = (PROFILE,)
+#: The revision that pins ER -02 and registers its two refusal reasons
+#: (``spec/interop-profile-v1.md``, P-65).
+PROFILE_V1 = "evidence-interop/1"
+#: The profiles the book answers, in code-point order (profile §3.3).
+_SUPPORTED_PROFILES = tuple(sorted(PROFILES))
 _DERIVATION_TOKEN = re.compile(r"[a-z0-9_]+/[0-9]+\Z")
 
 
@@ -323,7 +330,29 @@ def parse_reply(message: Message) -> Reply:
     return Reply(message, envelope=parsed)
 
 
-def refusal_conforming(refusal: Refusal) -> bool:
-    """A conforming refusal (profile §7.2 reason_registered, issued_at_form):
-    one registered reason, the profile's seconds time form, a digest."""
-    return refusal.reason in REFUSAL_REASONS and is_profile_time(refusal.issued_at) and is_digest(refusal.request_digest)
+def refusal_conforming(refusal: Refusal, profile: str = PROFILE) -> bool:
+    """A conforming refusal (profile §7.2 reason_registered, issued_at_form)
+    to a request that asked for ``profile``: one reason registered under it
+    (v1 §6.3; ER -02's two only under ``evidence-interop/1``), the profile's
+    seconds time form, a digest."""
+    reasons = REFUSAL_REASONS_BY_PROFILE.get(profile, REFUSAL_REASONS_BY_PROFILE[PROFILE])
+    return refusal.reason in reasons and is_profile_time(refusal.issued_at) and is_digest(refusal.request_digest)
+
+
+def request_profile(message: Message) -> str:
+    """The profile a request asks for, read before the cost checks so their
+    refusal conforms under it: its ``profile`` member when that is non-empty
+    text, :data:`PROFILE` when it is absent or the octets do not decode as
+    the request reader decodes them (profile §3.3 step 2). Nothing else is
+    checked."""
+    if message.media_type not in _BINDINGS:
+        return PROFILE
+    try:
+        if message.media_type == MEDIA_TYPE_JSON:
+            fields = _decode_json(message.octets)
+        else:
+            fields = _decode_cbor(message.octets, request=True)
+    except RequestError:
+        return PROFILE
+    profile = fields.get("profile") if isinstance(fields, dict) else None
+    return profile if isinstance(profile, str) and profile else PROFILE

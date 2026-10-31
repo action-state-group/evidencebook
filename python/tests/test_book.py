@@ -11,6 +11,8 @@ import pytest
 from agent_action_capsule.canonical import jcs
 
 import evidencebook as eb
+from agent_action_capsule.evidence_request import Refusal
+from evidencebook.request import refusal_conforming, request_profile
 from evidencebook.book import KIND_CLL_CHECKPOINT, KIND_CLL_INCLUSION_PROOF
 
 START = datetime(2026, 10, 1, tzinfo=timezone.utc)
@@ -295,8 +297,69 @@ def test_an_unknown_profile_is_refused_with_the_profiles_supported(clock, respon
                                                    eb.Coverage(min_freshness=1), profile="evidence-interop/9"))
     reply, record = r.respond(eb.Message(request), PEERS)
     assert reply.refusal.reason == "request_malformed" and record is None
-    assert json.loads(reply.message.octets)["detail"] == "profiles supported: evidence-interop/0"
-    assert eb.parse_reply(reply.message).detail == "profiles supported: evidence-interop/0"
+    assert json.loads(reply.message.octets)["detail"] == "profiles supported: evidence-interop/0, evidence-interop/1"
+    assert eb.parse_reply(reply.message).detail == "profiles supported: evidence-interop/0, evidence-interop/1"
+
+
+def test_evidence_interop_1_is_answered_as_0_is(clock, responder):
+    """evidencebook#248: a request naming evidence-interop/1 gets the artifact
+    it would under /0 (v1 §3.3 step 3), in an envelope naming /1; one naming
+    /0 or no profile is answered under /0."""
+    r, records = responder
+    artifacts = {}
+    for asked, named in (("", eb.PROFILE), (eb.PROFILE, eb.PROFILE), (eb.PROFILE_V1, eb.PROFILE_V1)):
+        request = eb.encode_request(eb.EvidenceRequest(eb.Subject("record", records[0].record_id),
+                                                       eb.Coverage(min_freshness=1), nonce="n" + asked, profile=asked))
+        reply, _ = r.respond(eb.Message(request), PEERS)
+        assert reply.envelope is not None and reply.envelope.profile == named, asked
+        artifacts[asked] = reply.envelope.artifact
+    assert artifacts[eb.PROFILE_V1] == artifacts[eb.PROFILE] == artifacts[""]
+
+
+@pytest.mark.parametrize("policy", [eb.REFUSAL_POLICY_SPECIFIC, eb.REFUSAL_POLICY_UNIFORM])
+@pytest.mark.parametrize("profile,want", [(eb.PROFILE, "policy_declined"), (eb.PROFILE_V1, "capacity_exceeded")])
+def test_a_limit_is_refused_for_the_requested_profile(clock, policy, profile, want):
+    """A limit of the book's own, the request size, the rate limiter or the
+    answer item cap, is capacity_exceeded under evidence-interop/1 whatever
+    the refusal policy (ER -02 §11), and policy_declined under /0, which
+    registers no such token."""
+    r = book(clock, "responder", responder=eb.ResponderPolicy(refusal_policy=policy, max_answer_items=1,
+                                                              max_request_bytes=400,
+                                                              limiter=eb.WindowLimiter(1, timedelta(hours=1))))
+    first = r.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+    for _ in range(2):
+        r.append(eb.Entry("observation", eb.OBSERVED_EVENT, links=(eb.Link(eb.CITES, first.record_id),)))
+    r.checkpoint()
+    for request in (eb.EvidenceRequest(eb.Subject("exchange", first.record_id), eb.Coverage(min_freshness=1), profile=profile),
+                    eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(min_freshness=1),
+                                       route="r" * 400, profile=profile),
+                    eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(min_freshness=1), profile=profile)):
+        reply = r.respond(eb.Message(eb.encode_request(request)), PEERS)[0]
+        assert reply.refusal.reason == want
+        assert refusal_conforming(reply.refusal, profile)
+
+
+def test_request_profile_reads_only_the_profile():
+    for octets, want in ((b'{"profile":"evidence-interop/1"}', eb.PROFILE_V1),
+                         (b'{"profile":"evidence-interop/9"}', "evidence-interop/9"),
+                         (b'{"profile":""}', eb.PROFILE), (b'{"profile":1}', eb.PROFILE), (b"{}", eb.PROFILE),
+                         (b'["evidence-interop/1"]', eb.PROFILE), (b'{"profile":', eb.PROFILE),
+                         (b'{"profile":"evidence-interop/1","profile":"evidence-interop/1"}', eb.PROFILE)):
+        assert request_profile(eb.Message(octets)) == want, octets
+    cbor = eb.encode_request(eb.EvidenceRequest(eb.Subject("checkpoints", None), eb.Coverage(min_freshness=1),
+                                                profile=eb.PROFILE_V1), eb.MEDIA_TYPE_CBOR)
+    assert request_profile(eb.Message(cbor, eb.MEDIA_TYPE_CBOR)) == eb.PROFILE_V1
+    assert request_profile(eb.Message(b'{"profile":"evidence-interop/1"}', "text/plain")) == eb.PROFILE
+
+
+def test_a_refusal_conforms_under_the_profile_its_request_asked_for():
+    """v1 §6.3: ER -02's two reasons conform only to an evidence-interop/1
+    request, so a /0 requester records capacity_exceeded as nonconforming."""
+    for reason, under_0 in (("capacity_exceeded", False), ("request_unauthenticated", False), ("policy_declined", True)):
+        refusal = Refusal(request_digest="ab" * 32, reason=reason, issued_at="2026-10-31T12:00:00Z", key_id="", sig="")
+        assert refusal_conforming(refusal) is under_0
+        assert refusal_conforming(refusal, eb.PROFILE) is under_0
+        assert refusal_conforming(refusal, eb.PROFILE_V1)
 
 
 def test_a_freshness_floor_issues_an_anchor_for_an_authenticated_requester(clock, responder):

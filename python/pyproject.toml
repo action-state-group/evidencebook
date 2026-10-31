@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "capsule-evidencebook"
 version = "0.1.0.dev0"
-description = "An evidence book over a Checkpointed Local Log, and the evidence request interaction (draft-mih-agent-evidence-request-00, profile evidence-interop/0) on both sides of it."
+description = "An evidence book over a Checkpointed Local Log, and the evidence request interaction (draft-mih-agent-evidence-request-00, profiles evidence-interop/0 and evidence-interop/1) on both sides of it."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -23,7 +23,7 @@ classifiers = [
 # are agent-action-capsule's; the MMR, its proofs and the checkpoint claims
 # map are checkpointed-local-log's. Nothing here reimplements them.
 dependencies = [
-    "agent-action-capsule>=0.12.0,<0.13",
+    "agent-action-capsule>=0.14.0,<0.15",
     "checkpointed-local-log>=0.7.0,<0.8",
     # The checkpoint reader decodes with cbor2's strict mode and keeps every
     # tag cbor2 6.1 decodes semantically raw (_cll.SEMANTIC_TAGS), so cbor2 is

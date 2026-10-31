@@ -163,7 +163,7 @@ impl Refusal {
     }
 
     /// Whether `reason` is a registered token under `evidence-interop/0`, the
-    /// only profile this crate answers and asks under: the eight tokens of
+    /// profile this crate asks under: the eight tokens of
     /// ER -01 (`envelope::refusal_reasons`), not the ten of ER -02, which
     /// only `evidence-interop/1` registers. Separate from
     /// [`Refusal::verify`], which, like the Go and Python verifiers, checks

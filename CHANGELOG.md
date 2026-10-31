@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added: the book answers `evidence-interop/1` requests (evidencebook#248)
+
+- `Respond`, and so the stream, HTTP, MCP and A2A carriages, answers a request
+  naming `evidence-interop/1` with the same artifact as under `/0`, in an
+  envelope naming `/1`. A request naming `/0` or no profile is answered as
+  before. An unknown profile is refused `request_malformed` with the detail
+  `profiles supported: evidence-interop/0, evidence-interop/1`.
+- The manifest lists both profiles, and `draft-mih-agent-evidence-request-01`
+  and `-02` beside `-00`: the book accepts all three request maps.
+- A `/1` request refused for a limit of the book's own, its size, the rate
+  limiter or the answer item cap, is refused `capacity_exceeded`, under either
+  refusal policy (ER -02 §11). A `/0` request keeps `policy_declined`. The
+  disclosure scan stays `policy_declined` under both. The book defines no
+  requester authentication, so it never sends `request_unauthenticated`.
+
 ### Added: `capsulectl book request --request FILE --sent` records a request another tool sent (evidencebook#245)
 
 - With `--sent`, `book request` records the file's request as another tool
@@ -34,9 +49,6 @@
   plugin's ledger holds it, whose `capsule_id` is that digest. The live-16
   replies to the plugin's requests (`testdata/live16-ask/`) verify as
   artifacts.
-- As a responder the book still answers `evidence-interop/0` only: a `/1`
-  request is refused `request_malformed` with `profiles supported:
-  evidence-interop/0`, as before.
 
 ### Changed: agent-action-capsule Go v0.18.0
 

@@ -40,12 +40,19 @@ use std::sync::Mutex;
 pub const DEFAULT_MAX_REQUEST_BYTES: usize = 64 << 10;
 pub const DEFAULT_MAX_ANSWER_ITEMS: usize = 10_000;
 
-/// The profile identifier this responder implements.
+/// The profile identifier a request without one asks for (profile §3.3
+/// step 2), and the one this crate asks under.
 pub const PROFILE_ID: &str = crate::ask::PROFILE_ID;
+
+/// The revision that pins ER -02 and registers its two refusal reasons
+/// (`spec/interop-profile-v1.md`, P-65). This responder answers it as it
+/// answers [`PROFILE_ID`].
+pub const PROFILE_V1: &str = evidence_request::envelope::PROFILE_V1;
 
 /// Decides whether a requester may be answered now. The requester is the
 /// authenticated identity, or `None` for every caller the transport did not
-/// authenticate. A request over the limit is refused `policy_declined`.
+/// authenticate. A request over the limit is refused for a limit:
+/// `capacity_exceeded` under `evidence-interop/1`, `policy_declined` under /0.
 pub trait RequestLimiter: Send + Sync {
     fn allow(&self, requester: Option<&str>, now: UtcTime) -> bool;
 }
@@ -107,7 +114,8 @@ pub struct ResponderPolicy {
     /// Caps a request's size; zero is [`DEFAULT_MAX_REQUEST_BYTES`].
     pub max_request_bytes: usize,
     /// Caps the records or checkpoints one artifact carries; a larger answer
-    /// is refused `policy_declined`. Zero is [`DEFAULT_MAX_ANSWER_ITEMS`].
+    /// is refused for a limit, as a request over the limiter is. Zero is
+    /// [`DEFAULT_MAX_ANSWER_ITEMS`].
     pub max_answer_items: usize,
 }
 
@@ -376,13 +384,14 @@ impl Run<'_, '_> {
         };
         let requester = self.opts.authenticated_requester;
         // Cost policy first: an oversized or over-limit request is declined
-        // before any parsing or resolution work (FR-37).
+        // before it is read or resolved (FR-37); only its profile is
+        // decoded, to pick the reason (limit_reason).
         if self.octets.len() > limit {
-            return self.refuse(Reason::PolicyDeclined, None);
+            return self.refuse(limit_reason(self.octets, self.binding), None);
         }
         if let Some(limiter) = &policy.limiter {
             if !limiter.allow(requester, self.now()) {
-                return self.refuse(Reason::PolicyDeclined, None);
+                return self.refuse(limit_reason(self.octets, self.binding), None);
             }
         }
         let req = match read_request(self.octets, self.binding) {
@@ -447,7 +456,7 @@ impl Run<'_, '_> {
             || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
                 && chain > max_items;
         if over {
-            return self.refuse(Reason::PolicyDeclined, None);
+            return self.refuse(limit_reason(self.octets, self.binding), None);
         }
         let resolved = if half_pin {
             ResolvedAnchor::ExchangeHalf(match &req.coverage {
@@ -559,6 +568,24 @@ fn subject_kind(subject: &Subject) -> SubjectKind {
         Subject::Range(..) => SubjectKind::Range,
         Subject::Correlation(_) => SubjectKind::Correlation,
         _ => SubjectKind::CitingRecords,
+    }
+}
+
+/// The reason a request is refused for a limit of the book's own: its size,
+/// the rate limiter or the answer's item cap. `evidence-interop/1` (ER -02
+/// §4.2, §11) refuses load shedding `capacity_exceeded` whatever the refusal
+/// policy, so `policy_declined` stays a statement about policy; /0
+/// registers no such token and keeps `policy_declined`, as does a profile
+/// the book does not implement. The profile is the request's `profile`
+/// member, read alone: a request that does not decode, or JSON that repeats
+/// a member as Go's decoder refuses it, asks for /0 (§3.3 step 2).
+fn limit_reason(octets: &[u8], binding: Binding) -> Reason {
+    if binding == Binding::Json && serde_json::from_slice::<NoDuplicates>(octets).is_err() {
+        return Reason::PolicyDeclined;
+    }
+    match named_profile(octets, binding) {
+        NamedProfile::Text(profile) if profile == PROFILE_V1 => Reason::CapacityExceeded,
+        _ => Reason::PolicyDeclined,
     }
 }
 
@@ -741,7 +768,9 @@ fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
         NamedProfile::Absent => {}
         NamedProfile::NotText => return Err((Reason::RequestMalformed, None)),
         NamedProfile::Text(profile) => {
-            if !profile.is_empty() && profile != PROFILE_ID {
+            if !profile.is_empty()
+                && !evidence_request::envelope::PROFILES.contains(&profile.as_str())
+            {
                 return Err((Reason::RequestMalformed, Some(const_concat_profiles())));
             }
         }
@@ -750,7 +779,7 @@ fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
 }
 
 fn const_concat_profiles() -> &'static str {
-    "profiles supported: evidence-interop/0"
+    "profiles supported: evidence-interop/0, evidence-interop/1"
 }
 
 /// Classify an authenticated requester by `counterparty_ref` on the book's

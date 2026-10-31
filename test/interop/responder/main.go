@@ -6,7 +6,14 @@
 // verifier (test/interop/python-profile/verify_responder.py runs the AAC
 // reference verifier over them).
 //
-//	go run ./test/interop/responder <dir> <out.json>
+//	go run ./test/interop/responder [-profile evidence-interop/1] <dir> <out.json>
+//
+// Every request names -profile, evidence-interop/0 by default; the
+// verifier checks the run against that profile's vectors. Under /1 the
+// cost-policy refusal is capacity_exceeded (the vectors' capacity-exceeded
+// case), and declined is a uniform-policy refusal. The requester's own
+// requests, behind the absence records, ask under /0 in either run: the book
+// asks under /0.
 //
 // The book signs with the vectors' test keys (each an Ed25519 seed that is
 // the SHA-256 of a public label), so the vectors' trust pins name it. The
@@ -27,6 +34,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,11 +50,13 @@ const (
 )
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: responder <dir> <out.json>")
+	profile := flag.String("profile", evidencebook.ProfileID, "the profile every request names")
+	flag.Parse()
+	if flag.NArg() != 2 {
+		fmt.Fprintln(os.Stderr, "usage: responder [-profile evidence-interop/1] <dir> <out.json>")
 		os.Exit(2)
 	}
-	if err := run(context.Background(), os.Args[1], os.Args[2]); err != nil {
+	if err := run(context.Background(), flag.Arg(0), flag.Arg(1), *profile); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -142,6 +152,8 @@ type a2aCarriage struct {
 }
 
 type output struct {
+	// Profile is the profile the run's requests name, absent for /0.
+	Profile      string              `json:"profile,omitempty"`
 	ResponderKey string              `json:"responder_key"`
 	LogKeys      []map[string]string `json:"log_keys"`
 	Exchanges    map[string]exchange `json:"exchanges"`
@@ -255,7 +267,7 @@ func mcpRequest(ctx context.Context, server *evidencebook.MCPServer, id int, m e
 	return c, evidencebook.Message{Octets: octets, MediaType: result.StructuredContent.MediaType}, err
 }
 
-func run(ctx context.Context, dir, out string) error {
+func run(ctx context.Context, dir, out, profile string) error {
 	clock := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
 	book, err := open(ctx, filepath.Join(dir, "responder"), evidencebook.ResponderPolicy{}, &clock)
 	if err != nil {
@@ -322,6 +334,9 @@ func run(ctx context.Context, dir, out string) error {
 		Exchanges:    map[string]exchange{}, Invariance: map[string]string{}, RecordSet: map[string]string{}, Requests: map[string]carried{},
 		Carriage: map[string]carriage{},
 	}
+	if profile != evidencebook.ProfileID {
+		o.Profile = profile
+	}
 	checkpoints, err := book.Checkpoints(ctx)
 	if err != nil {
 		return err
@@ -331,11 +346,11 @@ func run(ctx context.Context, dir, out string) error {
 	}
 
 	// Request C (JSON) by alice and request D (CBOR, another nonce) by bob.
-	reqC, err := request(subject, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeJSON)
+	reqC, err := request(subject, pin, "2026-10-12T00:00:10Z/c", profile, evidencebook.MediaTypeJSON)
 	if err != nil {
 		return err
 	}
-	reqD, err := request(subject, pin, "2026-10-12T00:00:20Z/d", evidencebook.ProfileID, evidencebook.MediaTypeCBOR)
+	reqD, err := request(subject, pin, "2026-10-12T00:00:20Z/d", profile, evidencebook.MediaTypeCBOR)
 	if err != nil {
 		return err
 	}
@@ -365,7 +380,7 @@ func run(ctx context.Context, dir, out string) error {
 	// the native stream, once over A2A and once over MCP, by the same
 	// authenticated requester. Only the carriage differs; the canonical
 	// Artifact must not.
-	r, err := request(subject, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeCBOR)
+	r, err := request(subject, pin, "2026-10-12T00:00:10Z/c", profile, evidencebook.MediaTypeCBOR)
 	if err != nil {
 		return err
 	}
@@ -414,7 +429,7 @@ func run(ctx context.Context, dir, out string) error {
 		{"exchange-alice-json-nonce-c", "2026-10-12T00:00:10Z/c", evidencebook.MediaTypeJSON, "alice"},
 		{"exchange-bob-cbor-nonce-d", "2026-10-12T00:00:20Z/d", evidencebook.MediaTypeCBOR, "bob"},
 	} {
-		m, err := request(evidencebook.Subject{Kind: evidencebook.SubjectExchange, Digest: records[2].RecordID}, pin, v.nonce, evidencebook.ProfileID, v.mediaType)
+		m, err := request(evidencebook.Subject{Kind: evidencebook.SubjectExchange, Digest: records[2].RecordID}, pin, v.nonce, profile, v.mediaType)
 		if err != nil {
 			return err
 		}
@@ -429,7 +444,7 @@ func run(ctx context.Context, dir, out string) error {
 	}
 
 	// A record this book does not hold: no_such_subject.
-	missing, err := request(evidencebook.Subject{Kind: evidencebook.SubjectRecord, Digest: hexDigest([]byte("never recorded"))}, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeJSON)
+	missing, err := request(evidencebook.Subject{Kind: evidencebook.SubjectRecord, Digest: hexDigest([]byte("never recorded"))}, pin, "2026-10-12T00:00:10Z/c", profile, evidencebook.MediaTypeJSON)
 	if err != nil {
 		return err
 	}
@@ -452,11 +467,11 @@ func run(ctx context.Context, dir, out string) error {
 
 	// The requests the envelope mutations are paired with: another record,
 	// and the same record pinned at the earlier checkpoint.
-	other, err := request(evidencebook.Subject{Kind: evidencebook.SubjectRecord, Digest: records[1].RecordID}, pin, "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeJSON)
+	other, err := request(evidencebook.Subject{Kind: evidencebook.SubjectRecord, Digest: records[1].RecordID}, pin, "2026-10-12T00:00:10Z/c", profile, evidencebook.MediaTypeJSON)
 	if err != nil {
 		return err
 	}
-	otherPin, err := request(subject, hexDigest(earlier.Statement), "2026-10-12T00:00:10Z/c", evidencebook.ProfileID, evidencebook.MediaTypeJSON)
+	otherPin, err := request(subject, hexDigest(earlier.Statement), "2026-10-12T00:00:10Z/c", profile, evidencebook.MediaTypeJSON)
 	if err != nil {
 		return err
 	}
@@ -472,7 +487,23 @@ func run(ctx context.Context, dir, out string) error {
 	if err != nil {
 		return err
 	}
-	o.Exchanges["declined"] = exchange{Requests: []carried{carry(reqC)}, Replies: []carried{carry(replyDeclined.Message)}}
+	declined := exchange{Requests: []carried{carry(reqC)}, Replies: []carried{carry(replyDeclined.Message)}}
+	if profile == evidencebook.ProfileIDv1 {
+		// Under /1 a limit is capacity_exceeded; policy_declined is policy:
+		// a uniform-policy book that holds no such record.
+		o.Exchanges["capacity-exceeded"] = declined
+		uniform, err := open(ctx, filepath.Join(dir, "uniform"), evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicyUniform}, &clock)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = uniform.Release() }()
+		replyUniform, _, err := uniform.Respond(ctx, reqC, evidencebook.RespondOptions{AuthenticatedRequester: "alice", Policy: peers})
+		if err != nil {
+			return err
+		}
+		declined = exchange{Requests: []carried{carry(reqC)}, Replies: []carried{carry(replyUniform.Message)}}
+	}
+	o.Exchanges["declined"] = declined
 
 	// A requester's own absence record: request C sent from another book,
 	// and no reply in a one-minute window.

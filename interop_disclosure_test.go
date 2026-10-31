@@ -16,8 +16,11 @@ func TestDisclosureScanRefusesLinkableArtifacts(t *testing.T) {
 	// that name makes every record linkable to it.
 	mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: book.operator})
 	pin := anchorPin(t, book)
-	for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectExchange, Digest: records[0].RecordID}} {
-		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonPolicyDeclined)
+	// The scan is policy, not a limit: policy_declined under either profile.
+	for _, profile := range []string{ProfileID, ProfileIDv1} {
+		for _, subject := range []Subject{{Kind: SubjectRecord, Digest: records[0].RecordID}, {Kind: SubjectExchange, Digest: records[0].RecordID}} {
+			mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: Coverage{ExpectedPin: pin}, Profile: profile}), "peer-1"), ReasonPolicyDeclined)
+		}
 	}
 	for name, artifact := range map[string]string{
 		"undeclared top member":   `{"anchor":"a","evidence_stream":"s","records":[],"subject":{"full_history":null},"producer":"x"}`,

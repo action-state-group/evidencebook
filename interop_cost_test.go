@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"context"
 	"errors"
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"strings"
 	"testing"
 	"time"
@@ -60,30 +61,42 @@ func (l *countingLimiter) Allow(string, time.Time) bool {
 }
 
 // FR-37: rate limits, request size and answer size are the responder's cost
-// policy, answered policy_declined before any work; a deadline the responder
-// cannot meet is answered deadline_unmet.
+// policy, refused before any work; a deadline the responder cannot meet is
+// answered deadline_unmet. A limit is refused for the profile the request
+// asks for (limitReason): capacity_exceeded under evidence-interop/1, under
+// either refusal policy (ER -02 §11), and policy_declined under /0, which
+// registers no such token.
 func TestResponderCostPolicy(t *testing.T) {
-	f := newFixture(t, "book-c", 4)
-	cfg := f.config(t)
-	limiter := &countingLimiter{allowed: 2}
-	cfg.Responder = ResponderPolicy{Limiter: limiter, MaxRequestBytes: 400, MaxAnswerItems: 2}
-	book, err := Open(context.Background(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = book.Release() })
-	half := digestBytes([]byte("a half many records cite"))
-	for range 3 {
-		mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: half}}})
-	}
-	pin := anchorPin(t, book)
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: half}, Coverage: Coverage{ExpectedPin: pin}}), "peer-1"), ReasonPolicyDeclined)
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: pin}, Route: strings.Repeat("r", 400)}), "peer-1"), ReasonPolicyDeclined)
-	limiter.allowed = 0
-	before := book.Size()
-	mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{ExpectedPin: pin}}), ""), ReasonPolicyDeclined)
-	if book.Size() != before {
-		t.Fatal("a declined anonymous request grew the log")
+	for i, c := range []struct {
+		policy, profile, want string
+	}{
+		{RefusalPolicySpecific, ProfileID, ReasonPolicyDeclined},
+		{RefusalPolicySpecific, ProfileIDv1, evidencerequest.ReasonCapacityExceeded},
+		{RefusalPolicyUniform, ProfileID, ReasonPolicyDeclined},
+		{RefusalPolicyUniform, ProfileIDv1, evidencerequest.ReasonCapacityExceeded},
+	} {
+		f := newFixture(t, "book-c", byte(4+i))
+		cfg := f.config(t)
+		limiter := &countingLimiter{allowed: 2}
+		cfg.Responder = ResponderPolicy{RefusalPolicy: c.policy, Limiter: limiter, MaxRequestBytes: 400, MaxAnswerItems: 2}
+		book, err := Open(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = book.Release() })
+		half := digestBytes([]byte("a half many records cite"))
+		for range 3 {
+			mustAppend(t, book, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: half}}})
+		}
+		pin := anchorPin(t, book)
+		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: half}, Coverage: Coverage{ExpectedPin: pin}, Profile: c.profile}), "peer-1"), c.want)
+		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: pin}, Route: strings.Repeat("r", 400), Profile: c.profile}), "peer-1"), c.want)
+		limiter.allowed = 0
+		before := book.Size()
+		mustRefusal(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{ExpectedPin: pin}, Profile: c.profile}), ""), c.want)
+		if book.Size() != before {
+			t.Fatal("a declined anonymous request grew the log")
+		}
 	}
 	window := NewWindowLimiter(2, time.Minute)
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

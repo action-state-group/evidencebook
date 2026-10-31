@@ -29,6 +29,7 @@ from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
     REASON_COVERAGE_UNSATISFIABLE,
     REASON_DEADLINE_UNMET,
+    REASON_CAPACITY_EXCEEDED,
     REASON_POLICY_DECLINED,
     SUBJECT_FORMS,
     Envelope,
@@ -86,6 +87,7 @@ from .record import (
 )
 from .request import (
     PROFILE,
+    PROFILE_V1,
     MEDIA_TYPE_CBOR,
     MEDIA_TYPE_JSON,
     EvidenceRequest,
@@ -97,6 +99,7 @@ from .request import (
     parse_reply,
     read_request,
     refusal_conforming,
+    request_profile,
     strict_hex,
     strict_json,
     _decoded,
@@ -794,6 +797,23 @@ _HISTORY_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history
                             ("checkpoint", "consistency_from_previous"), "history")
 
 
+class _OverLimit:
+    """An answer refused for the cost policy's item cap (see _Answer._build)."""
+
+
+_OVER_LIMIT = _OverLimit()
+
+
+def _limit_reason(profile: str) -> str:
+    """The reason a request asking for ``profile`` is refused for a limit of
+    the book's own: its size, the rate limiter or the answer's item cap.
+    ``evidence-interop/1`` (ER -02 §4.2, §11) refuses load shedding
+    ``capacity_exceeded`` whatever the refusal policy, so ``policy_declined``
+    stays a statement about policy; ``/0`` registers no such token and keeps
+    ``policy_declined``, as does a profile the book does not implement."""
+    return REASON_CAPACITY_EXCEEDED if profile == PROFILE_V1 else REASON_POLICY_DECLINED
+
+
 class _Answer:
     def __init__(self, book: Book, request: Message, options: RespondOptions):
         self.book = book
@@ -814,11 +834,14 @@ class _Answer:
         book, policy = self.book, self.book._responder
         requester = self.options.authenticated_requester
         # Cost policy first: an oversized or over-limit request is declined
-        # before any parsing or resolution work.
+        # before it is read or resolved; only its profile is decoded, to pick
+        # the reason (_limit_reason).
         if len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
-            return self.refuse(REASON_POLICY_DECLINED)
+            return self.refuse(_limit_reason(request_profile(self.request)))
         if policy.limiter is not None and not policy.limiter.allow(requester, self.now):
-            return self.refuse(REASON_POLICY_DECLINED)
+            return self.refuse(_limit_reason(request_profile(self.request)))
+        # The book answers evidence-interop/0 and /1, and an unknown
+        # profile's detail lists both (§3.3 step 4).
         check = read_request(self.request)
         if check.reason:
             return self.refuse(check.reason, check.detail)
@@ -838,6 +861,8 @@ class _Answer:
             return self.refuse(d.reason)
         anchor = view.checkpoints[d.anchor]
         built = self._build(view, req, anchor, d.leaves)
+        if built is _OVER_LIMIT:
+            return self.refuse(_limit_reason(req.profile))
         if built is None:
             return self.refuse(REASON_POLICY_DECLINED)
         artifact, material = built
@@ -850,7 +875,7 @@ class _Answer:
         envelope = sign_envelope(
             self.request.octets, req.subject, req.coverage.expected_pin if d.half_pin else anchor.anchor_digest,
             artifact, signer=EvidenceSigner(book._signer), issued_at=profile_time(self.now),
-            derivation=req.derivation, freshness=freshness, verification=material,
+            derivation=req.derivation, freshness=freshness, verification=material, profile=req.profile,
         )
         self.statement.update(outcome=OUTCOME_ARTIFACT, anchor=envelope.anchor_digest,
                               artifact_digest=_digest(envelope.artifact))
@@ -889,20 +914,21 @@ class _Answer:
     # -- the canonical Artifact ---------------------------------------------------------
 
     def _build(self, view: _View, req: EvidenceRequest, anchor: Checkpoint,
-               leaves: Sequence[int]) -> tuple[bytes, list[tuple[str, bytes]]] | None:
-        """The canonical Artifact and the material proving it, or ``None``
-        when the answer exceeds the cost policy or fails the disclosure scan."""
+               leaves: Sequence[int]) -> tuple[bytes, list[tuple[str, bytes]]] | _OverLimit | None:
+        """The canonical Artifact and the material proving it, ``_OVER_LIMIT``
+        when the answer has more items than the cost policy allows, or
+        ``None`` when it fails the disclosure scan."""
         book = self.book
         max_items = book._responder.max_answer_items or DEFAULT_MAX_ANSWER_ITEMS
         if len(leaves) > max_items:
-            return None
+            return _OVER_LIMIT
         head: dict[str, Any] = {"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
                                 "subject": req.subject.to_wire()}
         definition = book._derivations.get(req.derivation) if req.derivation is not None else None
         if req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
             chain = _checkpoints_through(view.checkpoints, anchor)
             if len(chain) > max_items:
-                return None
+                return _OVER_LIMIT
             if req.derivation == DERIVATION_HISTORY_CARD:
                 head["derivation"], head["history"], declared = DERIVATION_HISTORY_CARD, \
                     self._history_card(chain, anchor), _HISTORY_FIELDS
@@ -1056,7 +1082,7 @@ def _verify_reply(sent: _Sent, parsed: Reply, keys: ResponderKeys, carried: list
             raise InvalidError("refusal is not for this request under the pinned responder key")
         if not verify_refusal_offline(r):
             raise InvalidError("refusal signature does not verify")
-        statement["outcome"] = OUTCOME_REFUSAL if refusal_conforming(r) else OUTCOME_REFUSAL_NONCONFORMING
+        statement["outcome"] = OUTCOME_REFUSAL if refusal_conforming(r, sent.request.profile) else OUTCOME_REFUSAL_NONCONFORMING
         if r.reason:
             statement["reason"] = r.reason
         return statement

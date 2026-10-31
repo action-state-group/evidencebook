@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added: `respond` answers `evidence-interop/1` requests (evidencebook#248)
+
+- `respond` answers a request naming `evidence-interop/1` with the same
+  artifact as under `/0`, in an envelope naming `/1`; a request naming `/0` or
+  no profile is answered as before. An unknown profile is refused
+  `request_malformed` with the detail `profiles supported: evidence-interop/0,
+  evidence-interop/1`. `respond::PROFILE_V1` names the identifier.
+- A `/1` request refused for a limit of the book's own, its size, the rate
+  limiter or the answer item cap, is refused `capacity_exceeded`, under either
+  refusal policy (ER -02 §11). A `/0` request keeps `policy_declined`.
+- The crate still asks under `/0`, and `Refusal::reason_is_registered` stays
+  the `/0` check.
+
 ## 0.0.11 (2026-10-31)
 
 ### Breaking: `evidence-request` 0.3, and the envelope names the profile asked for

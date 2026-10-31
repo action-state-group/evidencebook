@@ -12,7 +12,7 @@ use evidencebook::ask::{Book, Entry, SealError, Sealed};
 use evidencebook::derivation::Derivations;
 use evidencebook::respond::{
     respond, RefusalPolicy, RequestLimiter, RespondOptions, Responder, ResponderPolicy,
-    SharePolicy, WindowLimiter,
+    SharePolicy, WindowLimiter, PROFILE_ID, PROFILE_V1,
 };
 use evidencebook::store::CheckpointedLog;
 use evidencebook::substrate::{CllSubstrate, Signer as CheckpointSigner};
@@ -282,13 +282,40 @@ fn run(
     let (octets, sealed) = respond(b, &responder, request, binding, &opts).unwrap();
     let reply = parse_reply(&octets, binding).expect("a reply reads back");
     if let Reply::Envelope(e) = &reply {
-        e.verify_for(&signer.verifying_key(), request).unwrap();
+        e.verify_for_profile(
+            asked_profile(request, binding),
+            &signer.verifying_key(),
+            request,
+        )
+        .unwrap();
     }
     (reply, sealed)
 }
 
+/// The profile a request asks for, /0 when it names none (profile §3.3
+/// step 2), so an envelope is verified as its requester would.
+fn asked_profile(request: &[u8], binding: Binding) -> &'static str {
+    let value: Option<Value> = match binding {
+        Binding::Json => serde_json::from_slice(request).ok(),
+        Binding::Cbor => ciborium::from_reader(request).ok(),
+    };
+    match value.as_ref().and_then(|v| v["profile"].as_str()) {
+        Some(p) if p == PROFILE_V1 => PROFILE_V1,
+        _ => PROFILE_ID,
+    }
+}
+
 fn req(subject: Value, coverage: Value) -> Vec<u8> {
     serde_json::to_vec(&json!({"subject": subject, "coverage": coverage, "profile": "evidence-interop/0", "nonce": "n"})).unwrap()
+}
+
+/// A request naming `profile`, or none when it is empty.
+fn req_under(subject: Value, coverage: Value, profile: &str, nonce: &str) -> Vec<u8> {
+    let mut map = json!({"subject": subject, "coverage": coverage, "nonce": nonce});
+    if !profile.is_empty() {
+        map["profile"] = json!(profile);
+    }
+    serde_json::to_vec(&map).unwrap()
 }
 
 fn reason(reply: &Reply) -> Reason {
@@ -630,7 +657,10 @@ fn a_malformed_request_is_refused_signed_and_leaves_no_record() {
     .unwrap();
     let object: Value = serde_json::from_slice(&octets).unwrap();
     assert_eq!(object["reason"], "request_malformed");
-    assert_eq!(object["detail"], "profiles supported: evidence-interop/0");
+    assert_eq!(
+        object["detail"],
+        "profiles supported: evidence-interop/0, evidence-interop/1"
+    );
     assert!(sealed.is_none());
     assert_eq!(b.records.len(), before);
 }
@@ -707,6 +737,125 @@ fn the_cost_policy_declines_before_any_work() {
         Reason::PolicyDeclined,
         "two checkpoints are more than one item"
     );
+}
+
+/// evidencebook#248: a request naming `evidence-interop/1` gets the artifact
+/// it would under /0 (v1 §3.3 step 3), in an envelope naming /1; one naming
+/// /0 or no profile is answered under /0.
+#[test]
+fn evidence_interop_1_is_answered_as_0_is() {
+    let (mut b, ids) = book();
+    let policy = ResponderPolicy::default();
+    let mut artifacts = Vec::new();
+    for (asked, named) in [
+        ("", PROFILE_ID),
+        (PROFILE_ID, PROFILE_ID),
+        (PROFILE_V1, PROFILE_V1),
+    ] {
+        let request = req_under(
+            json!({"record": ids[0]}),
+            json!({"expected_pin": b.pin(1)}),
+            asked,
+            &format!("n{asked}"),
+        );
+        let (reply, _) = run(
+            &mut b,
+            &policy,
+            &request,
+            Binding::Json,
+            &ask(Some("alice")),
+        );
+        let Reply::Envelope(e) = reply else {
+            panic!("asked {asked:?}: refused")
+        };
+        assert_eq!(e.profile, named, "asked {asked:?}");
+        artifacts.push(e.artifact);
+    }
+    assert!(
+        artifacts.windows(2).all(|w| w[0] == w[1]),
+        "the profile changed the artifact"
+    );
+}
+
+/// A limit of the book's own, the request size, the rate limiter or the
+/// answer item cap, is `capacity_exceeded` under `evidence-interop/1`
+/// whatever the refusal policy (ER -02 §11), and `policy_declined` under /0,
+/// which registers no such token.
+#[test]
+fn a_limit_is_refused_for_the_requested_profile() {
+    for refusal_policy in [RefusalPolicy::Specific, RefusalPolicy::Uniform] {
+        for (profile, want) in [
+            (PROFILE_ID, Reason::PolicyDeclined),
+            (PROFILE_V1, Reason::CapacityExceeded),
+            ("", Reason::PolicyDeclined),
+        ] {
+            let (mut b, ids) = book();
+            let request = req_under(
+                json!({"record": ids[0]}),
+                json!({"expected_pin": b.pin(1)}),
+                profile,
+                "n",
+            );
+            let small = ResponderPolicy {
+                refusal_policy,
+                max_request_bytes: 10,
+                ..Default::default()
+            };
+            let (reply, _) = run(&mut b, &small, &request, Binding::Json, &ask(Some("alice")));
+            assert_eq!(reason(&reply), want, "size, {profile:?}");
+            let limited = ResponderPolicy {
+                refusal_policy,
+                limiter: Some(Box::new(WindowLimiter::new(0, 60)) as Box<dyn RequestLimiter>),
+                ..Default::default()
+            };
+            let (reply, _) = run(
+                &mut b,
+                &limited,
+                &request,
+                Binding::Json,
+                &ask(Some("alice")),
+            );
+            assert_eq!(reason(&reply), want, "rate, {profile:?}");
+            let capped = ResponderPolicy {
+                refusal_policy,
+                max_answer_items: 1,
+                ..Default::default()
+            };
+            let peers = Ask {
+                requester: Some("alice"),
+                policy: SharePolicy {
+                    history_segments: "peers".into(),
+                    ..SharePolicy::default()
+                },
+            };
+            let checkpoints = req_under(
+                json!({"checkpoints": null}),
+                json!({"expected_pin": b.pin(1)}),
+                profile,
+                "n",
+            );
+            let (reply, _) = run(&mut b, &capped, &checkpoints, Binding::Json, &peers);
+            assert_eq!(reason(&reply), want, "items, {profile:?}");
+            // The same in CBOR: the profile is read from the CBOR map.
+            let cbor = {
+                let value: Value = serde_json::from_slice(&request).unwrap();
+                let mut out = Vec::new();
+                ciborium::into_writer(&value, &mut out).unwrap();
+                out
+            };
+            let (reply, _) = run(&mut b, &small, &cbor, Binding::Cbor, &ask(Some("alice")));
+            assert_eq!(reason(&reply), want, "size in CBOR, {profile:?}");
+        }
+    }
+    // JSON that repeats a member does not decode, as Go reads it: /0.
+    let (mut b, _) = book();
+    let small = ResponderPolicy {
+        max_request_bytes: 10,
+        ..Default::default()
+    };
+    let repeated = br#"{"profile":"evidence-interop/1","profile":"evidence-interop/1"}"#;
+    let (reply, _) = run(&mut b, &small, repeated, Binding::Json, &ask(Some("alice")));
+    assert_eq!(reason(&reply), Reason::PolicyDeclined);
 }
 
 #[test]

@@ -65,9 +65,12 @@ specification, the cross-implementation checks, and the known limits.
 ## Answering requests
 
 `Respond` implements the responder side of the Minimum Evidence
-Interoperability Profile, `evidence-interop/0` (agent-action-capsule
-`spec/interop-profile-v0.md`), over the request map of
-`draft-mih-agent-evidence-request-00`. It takes the request octets with their
+Interoperability Profile, `evidence-interop/0` and `evidence-interop/1`
+(agent-action-capsule `spec/interop-profile-v0.md` and
+`spec/interop-profile-v1.md`), over the request map of
+`draft-mih-agent-evidence-request-00`, which -01 and -02 accept unchanged. A
+request naming no profile is answered under `/0`; the envelope names the
+profile the request asked for. It takes the request octets with their
 media type (`application/json` or `application/cbor`) and answers in the same
 encoding with a signed envelope carrying the canonical Artifact, or a signed
 refusal with exactly one registered reason. The Artifact depends only on the

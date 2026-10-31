@@ -105,6 +105,14 @@ jobs:
           ref: 9d653f41419d2d2bac4714137b763315947ec754
           path: agent-action-capsule
           persist-credentials: false
+      # evidence-interop/1's vectors and the reference verifier that checks
+      # /1, at an AAC main commit that carries both (ci.yml pins the same).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: action-state-group/agent-action-capsule
+          ref: f409c43ac2d02b84622414a05881bdf2c8899d0a
+          path: agent-action-capsule-v1
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: stable
@@ -151,12 +159,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Under each profile the book answers, against that profile's vectors.
+          for profile in evidence-interop/0 evidence-interop/1; do
+          aac=agent-action-capsule
+          if [ "$profile" = evidence-interop/1 ]; then aac=agent-action-capsule-v1; fi
           work=$(mktemp -d)
-          trap 'rm -rf "$work"' EXIT
           mkdir "$work/rs" "$work/go"
-          evidencebook/rust/target/debug/responder "$work/rs" "$work/rs/responder.json"
-          python evidencebook/test/interop/python-profile/verify_responder.py agent-action-capsule "$work/rs/responder.json"
-          go -C evidencebook run ./test/interop/responder "$work/go" "$work/go/responder.json"
+          evidencebook/rust/target/debug/responder -profile "$profile" "$work/rs" "$work/rs/responder.json"
+          python evidencebook/test/interop/python-profile/verify_responder.py "$aac" "$work/rs/responder.json"
+          go -C evidencebook run ./test/interop/responder -profile "$profile" "$work/go" "$work/go/responder.json"
           python - "$work/rs/responder.json" "$work/go/responder.json" <<'PY'
           import json, sys
           rs, go = (json.load(open(path)) for path in sys.argv[1:])
@@ -173,3 +184,5 @@ jobs:
           PY
           cmp "$work/rs/artifact-alice-json-nonce-c.bin" "$work/rs/artifact-bob-cbor-nonce-d.bin"
           for f in artifact-alice-json-nonce-c.bin artifact-bob-cbor-nonce-d.bin; do cmp "$work/rs/$f" "$work/go/$f"; done
+          rm -rf "$work"
+          done

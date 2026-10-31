@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """evidencebook: an evidence book over a Checkpointed Local Log, and the
-evidence request interaction (draft-mih-agent-evidence-request-00, profile
-evidence-interop/0) on both sides of it.
+evidence request interaction (draft-mih-agent-evidence-request-00, profiles
+evidence-interop/0 and evidence-interop/1) on both sides of it.
 
 This is the Python implementation of the same semantics as the Go module
 ``github.com/action-state-group/evidencebook``: for the same calls it seals
@@ -62,6 +62,7 @@ from .request import (
     MEDIA_TYPE_CBOR,
     MEDIA_TYPE_JSON,
     PROFILE,
+    PROFILE_V1,
     Coverage,
     EvidenceRequest,
     Message,
@@ -79,7 +80,7 @@ __all__ = [
     "RespondOptions", "SharePolicy", "ResponderPolicy", "RequestLimiter", "WindowLimiter", "DerivationDefinition",
     "Signer", "Ed25519Signer", "Store", "MemoryStore", "FileStore", "StoredRecord",
     "encode_request", "parse_reply",
-    "PROFILE", "DERIVATION_HISTORY_CARD", "MEDIA_TYPE_JSON", "MEDIA_TYPE_CBOR", "DEFAULT_DEVELOPER",
+    "PROFILE", "PROFILE_V1", "DERIVATION_HISTORY_CARD", "MEDIA_TYPE_JSON", "MEDIA_TYPE_CBOR", "DEFAULT_DEVELOPER",
     "MINIMUM_ABSENCE_WINDOW", "MAX_REPLY_BYTES", "MAX_REPLY_DEPTH", "MAX_REPLY_ITEMS", "MAX_REPLY_RECEIPTS",
     "WITNESSED", "UNWITNESSED", "WITNESS_RECEIPTS_MEMBER", "WitnessRow", "OUTCOME_ARTIFACT", "OUTCOME_ARTIFACT_FAILED", "OUTCOME_REFUSAL",
     "OUTCOME_REFUSAL_NONCONFORMING", "REFUSAL_POLICY_SPECIFIC", "REFUSAL_POLICY_UNIFORM",

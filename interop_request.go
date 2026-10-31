@@ -10,12 +10,21 @@ import (
 
 // The request draft's identifiers, subject forms, refusal reasons and
 // request types are defined in go/evidencerequest
-// (draft-mih-agent-evidence-request-00, profile evidence-interop/0); these
+// (draft-mih-agent-evidence-request-00, profiles evidence-interop/0 and /1); these
 // names keep evidencebook's API.
 const (
 	ProfileID             = evidencerequest.ProfileID
+	ProfileIDv1           = evidencerequest.ProfileIDv1
 	RequestDraft          = evidencerequest.RequestDraft
 	DerivationHistoryCard = evidencerequest.DerivationHistoryCard
+)
+
+// The later request drafts whose request map the book also accepts, listed
+// in its manifest beside RequestDraft (profile v1 §11.4.2): -01 adds only
+// categories, which the book ignores (P-64), and -02 adds no member (P-65).
+const (
+	RequestDraft01 = "draft-mih-agent-evidence-request-01"
+	RequestDraft02 = "draft-mih-agent-evidence-request-02"
 )
 
 // SubjectKind names one of the six subject forms (ER §3.1).
