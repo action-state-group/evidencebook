@@ -245,6 +245,43 @@ fn a_record_whose_octets_do_not_recompute_its_entry_is_never_served() {
     ));
 }
 
+/// `Options::profile` is the identifier the envelope is signed under: the
+/// one the request asked for (profile §3.3). The artifact does not depend on
+/// it (ER §5); only the signed `profile` member does.
+#[test]
+fn the_envelope_is_signed_under_the_profile_asked_for() {
+    let f = foreign();
+    let at = pinned(&f, 1);
+    let v0 = go(&f, json!({"range": [1, 3]}), &at, Options::default()).unwrap();
+    assert_eq!(v0.profile, evidence_request::envelope::PROFILE);
+    let v1 = go(
+        &f,
+        json!({"range": [1, 3]}),
+        &at,
+        Options {
+            profile: Some(evidence_request::envelope::PROFILE_V1),
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(v1.profile, evidence_request::envelope::PROFILE_V1);
+    assert_eq!(v1.artifact, v0.artifact);
+    assert_ne!(v1.sig, v0.sig);
+    assert!(v1.verify().is_ok());
+    assert!(matches!(
+        go(
+            &f,
+            json!({"range": [1, 3]}),
+            &at,
+            Options {
+                profile: Some("evidence-interop/2"),
+                ..Options::default()
+            },
+        ),
+        Err(AnswerError::Sign(_))
+    ));
+}
+
 #[test]
 fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
     let f = foreign();
@@ -256,6 +293,7 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
         derive: None,
         derivations: None,
         requester: None,
+        profile: None,
     };
     let env = go(&f, json!({"range": [1, 3]}), &at, beyond).unwrap();
     assert_eq!(
@@ -396,6 +434,7 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
         derive: Some(&derive),
         derivations: None,
         requester: None,
+        profile: None,
     })
     .unwrap();
     let art: Value = serde_json::from_slice(&env.artifact).unwrap();
@@ -452,6 +491,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derive,
                 derivations: Some(&derivations),
                 requester: None,
+                profile: None,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -505,6 +545,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derive: Some(&answers_all),
                 derivations: Some(&restricted),
                 requester,
+                profile: None,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -625,6 +666,7 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
             derive: Some(&derive),
             derivations: None,
             requester: None,
+            profile: None,
         },
         &key("responder") as &dyn EnvelopeSigner,
         ISSUED_AT,

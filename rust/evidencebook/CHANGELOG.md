@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Breaking: `evidence-request` 0.3, and the envelope signed under the profile asked for
+
+- `evidencebook` and `interop` require `evidence-request` `0.3`
+  (agent-action-capsule#485), which registers the Evidence Request -02 refusal
+  reasons `capacity_exceeded` and `request_unauthenticated` and reads
+  `evidence-interop/1`. `evidence-request` types are in this crate's API
+  (`AnswerError::Sign`, `Reason`), so a dependent moves with it. A dependent
+  that keeps one `evidence-request` in its graph, as capsules-plugin does,
+  needs this to take 0.3 (Mesh-LLM/capsules-plugin#114).
+- `request::reasons::ALL` has the ten registry tokens (`[&str; 10]`), so a
+  refusal with either -02 token is now `reason_is_registered`. Nothing here
+  emits them. Go and Python still read the eight tokens of the AAC versions
+  they pin until those pins move (evidencebook#227).
+- `answer::Options` gains `profile`, the interop profile identifier the
+  envelope is signed under, the one the request asked for (profile §3.3).
+  `None` is `evidence-interop/0`, as before. A struct literal of `Options`
+  names it or uses `..Options::default()`.
+
 ### Changes
 
 - `respond` answers an underived (or shared-derivation) `correlation`

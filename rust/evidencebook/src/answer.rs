@@ -63,7 +63,9 @@ use evidence_request::cll_material::{
     encode_consistency_proof, encode_inclusion_proof, KIND_CHECKPOINT, KIND_CONSISTENCY,
     KIND_INCLUSION,
 };
-use evidence_request::envelope::{sign, Anchor, AnchorFreshness, Envelope, EnvelopeParts, Signer};
+use evidence_request::envelope::{
+    sign_with_profile, Anchor, AnchorFreshness, Envelope, EnvelopeParts, Signer,
+};
 use evidence_request::request::{Coverage, Derivation, Freshness, Request, Subject};
 use evidence_request::resolve::{self, ResolvedAnchor};
 use serde_json::{json, Map, Value};
@@ -146,6 +148,10 @@ pub struct Options<'a> {
     /// recipient only, whatever the caller decided before:
     /// [`AnswerError::NotAuthorized`] for anyone else.
     pub requester: Option<&'a str>,
+    /// The interop profile identifier the envelope is signed under: the one
+    /// the request asked for (profile §3.3). `None` is `evidence-interop/0`,
+    /// the identifier a request with no `profile` asks for.
+    pub profile: Option<&'a str>,
 }
 
 /// What an answer is served under and carries: the position of the serving
@@ -452,7 +458,10 @@ pub fn build(
         ))),
         Coverage::ExpectedPin(_) => None,
     };
-    Ok(sign(
+    Ok(sign_with_profile(
+        options
+            .profile
+            .unwrap_or(evidence_request::envelope::PROFILE),
         request_bytes,
         EnvelopeParts {
             subject: request.subject.clone(),
