@@ -2,17 +2,14 @@
   "bundle_kind": "evidence-bundle/v2",
   "bundle_version": "2",
   "checkpoint": {
-    "cose": "0oRYZqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDjIXabHIfxgOxK5uiDajXEUXW7fWmpkx-3MH6dMEatUA-iAWtleGFtcGxlLWxvZwJtZXhhbXBsZS1sb2cjMaBYjaZka2luZG5jbGwtY2hlY2twb2ludGhsb2dfc2l6ZQFpaXNzdWVkX2F0dzIwMjYtMTAtMDhUMjM6MzU6NTAuMDRaaXByZXZfc2l6ZQBqY29tbWl0bWVudFgjgVggTYdDl2i7NQeDXKbw7QtygwBUm9gQnglDueO421FqcEdvcHJldl9jb21taXRtZW50QFhA-MkIk_BRLUjoo19Gun-sTDvXygbu6YdVtcKlBkUK3n-fKkod0FA_rDdVLEnEwxXZLo7UC6QMPnQOp6788N_pBQ",
-    "key_id": "e321769b1c87f180ec4ae6e8836a35c45175bb7d69a9931fb7307e9d3046ad50",
-    "kind": "mmr_checkpoint",
+    "cose": "0oRYZqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCAUKErxc1cDMcFuPmAhbNZR2Md36y9Uqu5a04PvKLpO_Q-iAWtleGFtcGxlLWxvZwJtZXhhbXBsZS1sb2cjMaBYj6Zka2luZG5jbGwtY2hlY2twb2ludGhsb2dfc2l6ZQFpaXNzdWVkX2F0eBgyMDI2LTEwLTMxVDE3OjUxOjEzLjEzNFppcHJldl9zaXplAGpjb21taXRtZW50WCOBWCBNh0OXaLs1B4NcpvDtC3KDAFSb2BCeCUO547jbUWpwR29wcmV2X2NvbW1pdG1lbnRAWEBMEnh2pvEyHt_4uxwF8z7azxlvt0XG6YvmxU7ucX3jyuiRfeNXu4fDhLVD3pFIUPC5IyZS6Ad8PopAxZe4ao8L",
+    "key_id": "14284af173570331c16e3e60216cd651d8c777eb2f54aaee5ad383ef28ba4efd",
     "log_id": "example-log",
     "mmr_size": 1,
     "prev_root": "",
     "prev_size": 0,
     "root": "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
-    "statement": "0oRYZqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDjIXabHIfxgOxK5uiDajXEUXW7fWmpkx+3MH6dMEatUA+iAWtleGFtcGxlLWxvZwJtZXhhbXBsZS1sb2cjMaBYjaZka2luZG5jbGwtY2hlY2twb2ludGhsb2dfc2l6ZQFpaXNzdWVkX2F0dzIwMjYtMTAtMDhUMjM6MzU6NTAuMDRaaXByZXZfc2l6ZQBqY29tbWl0bWVudFgjgVggTYdDl2i7NQeDXKbw7QtygwBUm9gQnglDueO421FqcEdvcHJldl9jb21taXRtZW50QFhA+MkIk/BRLUjoo19Gun+sTDvXygbu6YdVtcKlBkUK3n+fKkod0FA/rDdVLEnEwxXZLo7UC6QMPnQOp6788N/pBQ==",
-    "timestamp": "2026-10-08T23:35:50.04Z",
-    "v": 1
+    "timestamp": "2026-10-31T17:51:13.134Z"
   },
   "completeness": {
     "closure_depth": 2,
@@ -65,7 +62,7 @@
   },
   "extensions": {
     "producer-key/v1": {
-      "public_key": "e321769b1c87f180ec4ae6e8836a35c45175bb7d69a9931fb7307e9d3046ad50"
+      "public_key": "14284af173570331c16e3e60216cd651d8c777eb2f54aaee5ad383ef28ba4efd"
     },
     "x-example-unknown/v1": {
       "anything": "a block no reader knows"
@@ -84,14 +81,14 @@
       "capsule_id": "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b",
       "developer": "example-developer",
       "format_version": "4",
-      "key_id": "e321769b1c87f180ec4ae6e8836a35c45175bb7d69a9931fb7307e9d3046ad50",
+      "key_id": "14284af173570331c16e3e60216cd651d8c777eb2f54aaee5ad383ef28ba4efd",
       "model_attestation": {
         "compute_attestation": {
           "agent_input_digest": "4d2041cebb0188f2e6dedd0dcd516927fee29ecf046fae838fddc6bdb809c6be"
         }
       },
       "operator": "example-operator",
-      "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820e321769b1c87f180ec4ae6e8836a35c45175bb7d69a9931fb7307e9d3046ad500127a05820767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b58400a165646db6cfa622263152bc819b9f0ea788473aa6653f3f59d8a064980c09176c5a8f274e7f420ffa179f1ccbdc7ef81bb4f389223837eebb7f54f9976ce09",
+      "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582014284af173570331c16e3e60216cd651d8c777eb2f54aaee5ad383ef28ba4efd0127a05820767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b58407bf10d9f8d65ceda0131767becbbb405a4d819ad232db2539379cc466c1437b2de333291d22de8e7d260ba3680c709add0a91dceed009b3b7a466105026ad700",
       "spec_version": "draft-mih-scitt-agent-action-capsule-05",
       "timestamp": "2026-10-07T00:00:00Z"
     }

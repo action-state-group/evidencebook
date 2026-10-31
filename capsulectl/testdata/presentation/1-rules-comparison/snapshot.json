@@ -21,8 +21,8 @@
     "219b6c60b20d63358dc53efebdc44db105c7601fb9fa0a79f07311a3472302d2",
     "53d63c12219f502b549ed479386faa0538e3528edc2a3763f517c4ce9ab197ea",
     "89bb2df03215135495b4c81d6414fb0a73a6df3bf782e25c64152e084f91b3b3",
-    "8a4bacd7586b0f3d0b9e06e11d723d204815f93170b1cf5564e684d01909c3e3",
     "c108774192f87e06dd178fac8aec60eeb9c2108cdcaed4fb0219204114acab3a",
+    "dd721d92aec715d2df890912ae476e9023cc0ee72ff805451916cccbe74c772e",
     "eecd39aef42e6f231ea49a3baf3be894afa1b7eb5add2c8805e27efffab15191"
   ],
   "text": [
@@ -56,7 +56,7 @@
     "· 10 of 10 checks passed · 4 records",
     "Verification",
     "bundle digest",
-    "\"8a4bacd7586b0f3d0b9e06e11d723d204815f93170b1cf5564e684d01909c3e3\"",
+    "\"dd721d92aec715d2df890912ae476e9023cc0ee72ff805451916cccbe74c772e\"",
     "checkpoint root",
     "\"eecd39aef42e6f231ea49a3baf3be894afa1b7eb5add2c8805e27efffab15191\"",
     "checkpoint size",

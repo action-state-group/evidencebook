@@ -308,6 +308,7 @@ meta 3-bilateral-composed "$(jq -n --arg v "$(verdict bundle.json)" '{kind: "bil
 # (private)". The composed bundle is a composition like fixture 3's and holds
 # none of the keep copy; keep.json is the input the page is rebuilt from.
 half="$out/10-composed-private-half"
+rm -rf "${half:?}" # deal report --bundle and compose --html write only new files
 mkdir -p "$half"
 side buyer
 capsulectl --profile deal deal report --deal "$id" --bundle "$half/keep.json" >/dev/null

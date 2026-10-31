@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.0-rc26
+
+Built against capsulectl v0.1.0-rc26 and capsule-viewer v0.6.0 (RELEASING.md).
+
 - The deal view draws the receipt as Steven's 9b frames do (evidencebook-deal#82,
   #80): a verdict banner, the receipt card in the user's own words, "Your side
   · in your book" with a time on every line, the other side marked as not in
@@ -11,6 +15,11 @@
   anomalies sit under "More on this deal". A shared copy speaks of the holder
   in the third person. The other side's half, and a Mesh node's copy
   (evidencebook-deal#78, #79), are not drawn yet.
+
+- The presentation fixtures are rebuilt with capsule-viewer 0.6.0's page runtime and
+  capsulectl-book rc26 (`BOOK_REF=v0.1.0-rc26`; the outcome report's new headline and tile wording); the
+  fixture builder no longer fails on a second run (it removes the `10-composed-private-half` directory it
+  writes `--bundle` into).
 
 ## v0.1.0-rc25
 
