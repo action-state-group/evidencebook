@@ -5,11 +5,10 @@
   "entries": {
     "pill.unavailable": "Not available yet",
     "pill.always": "Always",
-    "pill.off": "Off",
     "share.title": "What I share",
     "share.title.shared": "What the holder shares",
-    "share.intro": "These are the settings this node answers under, read from your policy. A row marked Not available yet has no setting in your book, so nothing is shown for it.",
-    "share.intro.shared": "These are the settings this node answers under, read from the holder's policy. A row marked Not available yet has no setting in the holder's book, so nothing is shown for it.",
+    "share.intro": "This is what your book can show about what you share. A row marked Not available yet has no setting in your book, so nothing is shown for it.",
+    "share.intro.shared": "This is what the holder's book can show about what the holder shares. A row marked Not available yet has no setting in the holder's book, so nothing is shown for it.",
     "share.anyone.title": "Anyone at all",
     "share.anyone.proof": "Proof my records exist",
     "share.anyone.proof.shared": "Proof the holder's records exist",

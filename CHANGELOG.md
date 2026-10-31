@@ -13,10 +13,11 @@
   refuse `--shared`.
 - A row the book has no producer for reads "Not available yet" and shows no
   value, so no default is drawn as if it were in force and the canvas's example
-  values are never data. The rows with a producer: the public checkpoint answer,
-  the receipt row (from `--policy`'s `record_at_completion`) and "Who asked about
-  you" (the book's sealed `evidence_request_answered` records, which name no
-  requester). The gaps are in #239.
+  values are never data. The rows with a producer: the public checkpoint answer
+  and "Who asked about you" (the book's sealed `evidence_request_answered`
+  records, which name no requester). The receipt row stays "Not available yet":
+  `record_at_completion` is declared and reported by `doctor`, but this book's
+  responder never reads it. The gaps are in #239.
 
 ### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc25 and `report` v0.3.1
 

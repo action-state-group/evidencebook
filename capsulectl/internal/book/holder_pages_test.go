@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -49,8 +50,9 @@ func TestHolderShareGoldensAndNoInventedValues(t *testing.T) {
 		for _, example := range canvasExamples {
 			assert.NotContains(t, page, example)
 		}
-		// Only the checkpoint answer and the receipt row are in force.
-		assert.Equal(t, 7, strings.Count(page, "Not available yet")-strings.Count(page, "A row marked Not available yet"), "every row without a producer says so")
+		// Only the checkpoint answer is in force: every other row says so.
+		assert.Equal(t, 8, strings.Count(page, `<span class="pill ">Not available yet</span>`), "every row without a producer says so")
+		assert.Equal(t, 1, strings.Count(page, `<span class="pill on">Always</span>`))
 		assert.Contains(t, page, "Never, no matter who asks")
 	}
 	// Voice: you to the holder, the holder when shared; the tell-your-agent
@@ -60,22 +62,7 @@ func TestHolderShareGoldensAndNoInventedValues(t *testing.T) {
 	assert.Contains(t, shared, "The holder&#39;s limit on anonymous askers")
 	assert.NotContains(t, shared, "Tell your agent")
 	assert.NotContains(t, shared, "Your ")
-}
-
-func TestHolderShareReadsTheReceiptSwitch(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	for name, tc := range map[string]struct{ policy, pill string }{
-		"counterparty": {`{"record_at_completion":"counterparty","history_segments":"counterparties","adjudications":"off"}`, `class="pill on">Always`},
-		"off":          {`{"record_at_completion":"off","history_segments":"off","adjudications":"off"}`, `class="pill off">Off`},
-	} {
-		t.Run(name, func(t *testing.T) {
-			page, _ := holderPageOut(t, "--view", "share", "--policy", writeJSON(t, tc.policy))
-			receipt := page[strings.Index(page, "The receipt for that deal"):]
-			assert.Contains(t, receipt[:200], tc.pill)
-		})
-	}
-	_, err := invoke(t, "", "holder-page", "--out", filepath.Join(t.TempDir(), "p.html"), "--policy", writeJSON(t, `{"record_at_completion":"sometimes","history_segments":"off","adjudications":"off"}`))
-	assert.ErrorIs(t, err, cli.ErrInput)
+	assert.NotContains(t, shared, " you ")
 }
 
 func TestHolderPromptGolden(t *testing.T) {
@@ -187,4 +174,57 @@ func TestHolderPageRefusesAnExistingOutAndAnUnknownView(t *testing.T) {
 	assert.ErrorIs(t, err, cli.ErrInput)
 	_, err = invoke(t, "", "holder-page")
 	assert.ErrorIs(t, err, cli.ErrInput)
+}
+
+// A record's reason and subject kind are the book's own text, and a page
+// built from them must not let them carry markup, nor reach another entry.
+func TestHolderAskedEscapesRecordFieldsAndReadsTheCounterparty(t *testing.T) {
+	entries, err := decodeHolderWording(holderWordingJSON, false)
+	require.NoError(t, err)
+	w := holderWording{entries: entries}
+	at := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	page, err := buildHolderPage("asked", w, []answeredEntry{
+		{At: at, Statement: evidencebook.AnsweredStatement{Outcome: evidencebook.OutcomeRefusal, Reason: "<b>x{kind}<script>", Relationship: evidencebook.RelationshipCounterparty}},
+		{At: at.Add(-time.Hour), Statement: evidencebook.AnsweredStatement{Outcome: evidencebook.OutcomeArtifact, SubjectKind: "<i>kind</i>", Relationship: evidencebook.RelationshipIdentified}},
+	})
+	require.NoError(t, err)
+	got := string(page)
+	assert.NotContains(t, got, "<script>x")
+	assert.NotContains(t, got, "<i>kind")
+	assert.Contains(t, got, "Reason: &lt;b&gt;x{kind}&lt;script&gt;")
+	assert.Contains(t, got, "They asked for: &lt;i&gt;kind&lt;/i&gt;")
+	assert.Equal(t, 1, strings.Count(got, "someone you dealt with"), "a counterparty is named as one")
+	assert.Equal(t, 1, strings.Count(got, "an agent that said who it is"))
+	assert.Less(t, strings.Index(got, "Oct 29 · someone"), strings.Index(got, "Oct 29 · an agent"), "newest first")
+}
+
+// A pack used with --shared must carry the shared strings, or the page given
+// to a third party would speak to "you".
+func TestHolderSharedNeedsTheSharedEntriesAndNoEmptyValues(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var pack struct {
+		Entries map[string]string `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal(holderWordingJSON, &pack))
+	for key := range pack.Entries {
+		if strings.HasSuffix(key, ".shared") {
+			delete(pack.Entries, key)
+		}
+	}
+	raw, err := json.Marshal(map[string]any{"wording_pack_version": "aac.wording-pack/v0", "id": "example.host/v0", "locale": "en", "entries": pack.Entries})
+	require.NoError(t, err)
+	path, digest := wordingFixture(t, string(raw))
+	out := filepath.Join(t.TempDir(), "p.html")
+	_, err = invoke(t, "", "holder-page", "--out", out, "--wording", path, "--wording-digest", digest)
+	require.NoError(t, err, "the holder's own page needs no shared entries")
+	_, err = invoke(t, "", "holder-page", "--shared", "--out", filepath.Join(t.TempDir(), "q.html"), "--wording", path, "--wording-digest", digest)
+	assert.ErrorIs(t, err, cli.ErrInput)
+	assert.ErrorContains(t, err, ".shared")
+
+	pack.Entries["share.title"] = ""
+	raw, err = json.Marshal(map[string]any{"wording_pack_version": "aac.wording-pack/v0", "id": "example.host/v0", "locale": "en", "entries": pack.Entries})
+	require.NoError(t, err)
+	path, digest = wordingFixture(t, string(raw))
+	_, err = invoke(t, "", "holder-page", "--out", filepath.Join(t.TempDir(), "r.html"), "--wording", path, "--wording-digest", digest)
+	assert.ErrorContains(t, err, "share.title")
 }

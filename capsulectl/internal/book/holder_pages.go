@@ -60,13 +60,12 @@ func (w holderWording) get(key string) string {
 // text escapes a pack string, except <b> and </b>, the only markup a pack may
 // carry.
 func (w holderWording) text(key string, args ...string) template.HTML {
-	s := w.get(key)
-	for i := 0; i+1 < len(args); i += 2 {
-		s = strings.ReplaceAll(s, "{"+args[i]+"}", args[i+1])
-	}
-	s = template.HTMLEscapeString(s)
+	s := template.HTMLEscapeString(w.get(key))
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "&lt;b&gt;", "<b>"), "&lt;/b&gt;", "</b>")
-	return template.HTML(s) //nolint:gosec // everything but <b> is escaped above
+	for i := 0; i+1 < len(args); i += 2 {
+		s = strings.ReplaceAll(s, "{"+args[i]+"}", template.HTMLEscapeString(args[i+1]))
+	}
+	return template.HTML(s) //nolint:gosec // the pack and every value are escaped; only the pack's <b> is markup
 }
 
 func (w holderWording) plain(key string, args ...string) string {
@@ -79,7 +78,7 @@ func (w holderWording) plain(key string, args ...string) string {
 
 // decodeHolderWording reads a pack and refuses one that lacks an entry the
 // pages draw, naming it, so a page never renders a blank.
-func decodeHolderWording(raw []byte) (map[string]string, error) {
+func decodeHolderWording(raw []byte, shared bool) (map[string]string, error) {
 	var pack struct {
 		Version string            `json:"wording_pack_version"`
 		ID      string            `json:"id"`
@@ -100,13 +99,16 @@ func decodeHolderWording(raw []byte) (map[string]string, error) {
 	}
 	var missing []string
 	for key := range base.Entries {
-		if _, ok := pack.Entries[key]; !ok && !strings.HasSuffix(key, ".shared") {
+		if strings.HasSuffix(key, ".shared") && !shared {
+			continue
+		}
+		if value, ok := pack.Entries[key]; !ok || value == "" {
 			missing = append(missing, key)
 		}
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return nil, fmt.Errorf("the wording pack has no entry for %s", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("the wording pack has no (or an empty) entry for %s", strings.Join(missing, ", "))
 	}
 	return pack.Entries, nil
 }
@@ -174,20 +176,17 @@ func (w holderWording) row(label string, pill template.HTML, class string) pageR
 	return pageRow{Label: w.text(label), Pill: pill, Class: template.HTML(class)}
 }
 
-// sharePage is frame 2. Two rows have a producer: the public checkpoint
-// answer (Always, whatever the policy: Authorize serves it to anyone) and the
-// receipt for a deal, which reads the policy's record_at_completion switch.
-func sharePage(w holderWording, policy evidencebook.SharePolicy) holderPage {
-	receipt := w.row("share.dealt.receipt", w.text("pill.always"), "on")
-	if policy.RecordAtCompletion != "counterparty" {
-		receipt = w.row("share.dealt.receipt", w.text("pill.off"), "off")
-	}
+// sharePage is frame 2. One row has a producer: the public checkpoint answer
+// (Always, whatever the policy: Authorize serves it to anyone). The receipt
+// row has none here: record_at_completion is validated and reported by
+// doctor, but this book's responder never reads it (#239).
+func sharePage(w holderWording) holderPage {
 	na := func(label string) pageRow { return w.row(label, w.na(), "") }
 	secs := []pageSection{
 		{Title: w.text("share.anyone.title"), Rows: []pageRow{w.row("share.anyone.proof", w.text("pill.always"), "on")}, Note: w.text("share.anyone.note")},
 		{Title: w.text("share.signed.title"), Rows: []pageRow{na("share.signed.card"), na("share.signed.window"), na("share.signed.attach")}, Note: w.text("share.signed.attach.note")},
 		{Title: w.text("share.more.title"), Rows: []pageRow{na("share.more.longer"), na("share.more.deals")}, Note: w.text("share.more.note")},
-		{Title: w.text("share.dealt.title"), Rows: []pageRow{receipt}, Note: w.text("share.dealt.note")},
+		{Title: w.text("share.dealt.title"), Rows: []pageRow{na("share.dealt.receipt")}, Note: w.text("share.dealt.note")},
 		{Title: w.text("share.anon.title"), Rows: []pageRow{na("share.anon.askers"), na("share.anon.contract")}, Note: w.text("share.anon.note")},
 	}
 	never := pageSection{Title: w.text("share.never.title"), Never: true, Note: w.text("share.never.note")}
@@ -342,11 +341,11 @@ const promptScript = `
 })();`
 
 // buildHolderPage renders one view to a self-contained page.
-func buildHolderPage(view string, w holderWording, policy evidencebook.SharePolicy, entries []answeredEntry) ([]byte, error) {
+func buildHolderPage(view string, w holderWording, entries []answeredEntry) ([]byte, error) {
 	var page holderPage
 	switch view {
 	case viewShare:
-		page = sharePage(w, policy)
+		page = sharePage(w)
 	case viewAsked:
 		page = askedPage(w, entries)
 	case viewPrompt:
@@ -401,9 +400,15 @@ type holderPageResult struct {
 
 // holderPageCommand is `capsulectl book holder-page`: the holder's own pages
 // of Steven's 9b canvas, written as one offline file. It seals nothing. The
-// asked view reads the book; the other views read only --policy.
+// asked view reads the book; the other views read nothing.
+func wordingPathOf(c *cobra.Command) string { p, _ := c.Flags().GetString("wording"); return p }
+func wordingDigestOf(c *cobra.Command) string {
+	d, _ := c.Flags().GetString("wording-digest")
+	return d
+}
+
 func holderPageCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "holder-page", Short: "Write one of the holder's own pages (what I share, who asked, settings to prompt) as an offline page, from the book and the share policy; seals nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "holder-page", Short: "Write one of the holder's own pages (what I share, who asked, settings to prompt) as an offline page, from the book; seals nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		view, _ := c.Flags().GetString("view")
 		out, _ := c.Flags().GetString("out")
 		shared, _ := c.Flags().GetBool("shared")
@@ -413,37 +418,19 @@ func holderPageCommand() *cobra.Command {
 		if shared && view != viewShare {
 			return cli.InputError("--shared applies to --view share only: the asks and the prompt are the holder's alone, and a shared asks page would tell a third party who asked about the holder")
 		}
-		policy := evidencebook.DefaultSharePolicy()
-		if path, _ := c.Flags().GetString("policy"); path != "" {
-			raw, err := cli.ReadInput(path)
-			if err != nil {
-				return err
-			}
-			if err = cli.DecodeJSONAs("--policy "+path, raw, &policy); err != nil {
-				return err
-			}
-			if err = policy.Validate(); err != nil {
-				return cli.InputError(err.Error())
-			}
+		pack := holderWordingJSON
+		custom, err := readWording(wordingPathOf(c), wordingDigestOf(c))
+		if err != nil {
+			return err
 		}
-		pack, id, sum := holderWordingJSON, "", ""
-		wordingPath, _ := c.Flags().GetString("wording")
-		wordingDigest, _ := c.Flags().GetString("wording-digest")
-		if wordingPath != "" || wordingDigest != "" {
-			if _, err := readWording(wordingPath, wordingDigest); err != nil {
-				return err
-			}
-			raw, err := cli.ReadInput(wordingPath)
-			if err != nil {
-				return err
-			}
-			digest := sha256.Sum256(raw)
-			if hex.EncodeToString(digest[:]) != wordingDigest {
+		if custom != nil {
+			digest := sha256.Sum256([]byte(custom.Pack))
+			if hex.EncodeToString(digest[:]) != custom.SHA256 {
 				return cli.InputError("--wording-digest is not the SHA-256 of the --wording file's bytes; no page is written")
 			}
-			pack = raw
+			pack = []byte(custom.Pack)
 		}
-		entries, err := decodeHolderWording(pack)
+		entries, err := decodeHolderWording(pack, shared)
 		if err != nil {
 			return cli.InputError(err.Error())
 		}
@@ -452,7 +439,7 @@ func holderPageCommand() *cobra.Command {
 		}
 		_ = json.Unmarshal(pack, &meta)
 		digest := sha256.Sum256(pack)
-		id, sum = meta.ID, hex.EncodeToString(digest[:])
+		id, sum := meta.ID, hex.EncodeToString(digest[:])
 
 		var answered []answeredEntry
 		if view == viewAsked {
@@ -467,7 +454,7 @@ func holderPageCommand() *cobra.Command {
 				return err
 			}
 		}
-		page, err := buildHolderPage(view, holderWording{entries: entries, shared: shared}, policy, answered)
+		page, err := buildHolderPage(view, holderWording{entries: entries, shared: shared}, answered)
 		if err != nil {
 			return err
 		}
@@ -480,7 +467,6 @@ func holderPageCommand() *cobra.Command {
 	}}
 	cmd.Flags().String("view", viewShare, "share (What I share), asked (They want more) or prompt (Settings to prompt)")
 	cmd.Flags().Bool("shared", false, "Write the page in the third person, for a copy the holder shares; --view share only")
-	cmd.Flags().String("policy", "", "The share policy this node answers under, as `book respond --policy` reads it (default: the documented defaults)")
 	cmd.Flags().String("wording", "", "An aac.wording-pack/v0 pack with every entry the pages draw, in place of the embedded pack; needs --wording-digest")
 	cmd.Flags().String("wording-digest", "", "Lowercase hex SHA-256 of the --wording file's bytes")
 	cmd.Flags().String("out", "", "Write the page here (new file)")
