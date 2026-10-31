@@ -21,6 +21,12 @@ import (
 type RequestStatement struct {
 	Request      json.RawMessage `json:"request"`
 	ResponderRef string          `json:"responder_ref,omitempty"`
+	// ComposedElsewhere marks a request RequestSent recorded: another tool
+	// composed it, and the book checked only that it is a well-formed
+	// request. Members it does not define, such as a deployment profile's
+	// audience or requester authentication, are kept as sent and never
+	// checked, so the record does not vouch for them.
+	ComposedElsewhere bool `json:"composed_elsewhere,omitempty"`
 }
 
 // SentRequest is a request as transmitted: its octets (JCS JSON), their
@@ -56,13 +62,48 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	if err != nil {
 		return SentRequest{}, err
 	}
+	return b.recordRequest(ctx, RequestStatement{Request: data, ResponderRef: responder}, req.Nonce)
+}
+
+// RequestSent records a request that another tool composed and sent to
+// responder, exactly as given: every member is kept, including those the
+// request draft does not define (a deployment profile's audience or
+// requester authentication, ER §3), and no nonce or profile is added. The
+// octets must be a well-formed request (profile §6.1 steps 1 to 5) in JCS,
+// the form a requester transmits JSON in (P-9), so the recorded digest is
+// the one the responder signs its reply over. A nonce this book already
+// used is refused. RecordResponse and RecordAbsence then work on the record
+// as they do on one Request made.
+func (b *Book) RequestSent(ctx context.Context, request Message, responder string) (SentRequest, error) {
+	if request.MediaType != MediaTypeJSON {
+		return SentRequest{}, fmt.Errorf("%w: a sent request is recorded in JSON, not %q", ErrInvalid, request.MediaType)
+	}
+	check := readRequest(request)
+	if check.reason != "" {
+		return SentRequest{}, fmt.Errorf("%w: not a well-formed request (%s): %s", ErrInvalid, check.reason, check.why)
+	}
+	// The record's statement embeds the octets as JSON, so octets in any
+	// other form than JCS would not survive as sent.
+	value, err := evidencerequest.DecodeJSON(request.Octets)
+	if err != nil {
+		return SentRequest{}, fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	if jcs, err := evidencerequest.EncodeJCS(value); err != nil || !bytes.Equal(jcs, request.Octets) {
+		return SentRequest{}, fmt.Errorf("%w: a sent request must be in JCS (RFC 8785), as it was transmitted", ErrInvalid)
+	}
+	return b.recordRequest(ctx, RequestStatement{Request: slices.Clone(request.Octets), ResponderRef: responder, ComposedElsewhere: true}, check.request.Nonce)
+}
+
+// recordRequest commits statement, whose request octets are as transmitted,
+// refusing a nonce this book already used.
+func (b *Book) recordRequest(ctx context.Context, statement RequestStatement, nonce string) (SentRequest, error) {
 	// The record holds the transmitted bytes exactly: encoding/json would
 	// rewrite <, > and & inside them as \u escapes, and the request read back
 	// from the record would no longer be the request that was sent.
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(RequestStatement{Request: data, ResponderRef: responder}); err != nil {
+	if err := encoder.Encode(statement); err != nil {
 		return SentRequest{}, err
 	}
 	body := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
@@ -70,11 +111,12 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	defer b.mu.Unlock()
 	// A unique nonce gives every request unique bytes and so a unique digest;
 	// a response to an earlier identical request can never be replayed onto it.
+	// A sent request without a nonce has nothing to compare.
 	for _, id := range b.order {
-		if b.records[id].Header.RecordType != RecordTypeRequest {
+		if nonce == "" || b.records[id].Header.RecordType != RecordTypeRequest {
 			continue
 		}
-		if prior, err := b.sentLocked(id); err == nil && prior.request.Nonce == req.Nonce {
+		if prior, err := b.sentLocked(id); err == nil && prior.request.Nonce == nonce {
 			return SentRequest{}, fmt.Errorf("%w: nonce already used by request %s", ErrInvalid, id)
 		}
 	}
@@ -82,7 +124,7 @@ func (b *Book) Request(ctx context.Context, req EvidenceRequest, responder strin
 	if err != nil {
 		return SentRequest{}, err
 	}
-	return SentRequest{Bytes: data, Digest: digestBytes(data), RecordID: record.RecordID}, nil
+	return SentRequest{Bytes: statement.Request, Digest: digestBytes(statement.Request), RecordID: record.RecordID}, nil
 }
 
 // sentRequest is a request re-read from its committed record.
@@ -228,7 +270,9 @@ func verifyReply(sent sentRequest, parsed Reply, keys ResponderKeys, carried []j
 			return ResponseStatement{}, err
 		}
 		statement.Outcome, statement.Reason = OutcomeRefusal, r.Reason
-		if !r.Conforming() {
+		// A refusal names no profile: its reason conforms under the one the
+		// request asked for (v1 §6.3), so /1's two ER -02 reasons only there.
+		if !r.ConformingUnder(sent.request.Profile) {
 			statement.Outcome = OutcomeRefusalNonconforming
 		}
 	case parsed.Envelope != nil:
@@ -311,6 +355,25 @@ func verifyEnvelopeContent(sent sentRequest, e Envelope, keys ResponderKeys) ([]
 	return verifyAnchorInclusion(req, e, keys.Checkpoint)
 }
 
+// recordBodyMatches reports whether a record-set entry's body is the record
+// its digest names. A book serves the capsule preimage, whose SHA-256 is the
+// record id; the capsules plugin serves the capsule as its ledger holds it,
+// carrying that id as capsule_id with the signature and key_id that are no
+// part of it. Either way the body hashes to the digest by the capsule_id
+// rule, and nothing else is accepted.
+func recordBodyMatches(body []byte, digest string) bool {
+	if digestBytes(body) == digest {
+		return true
+	}
+	capsule, err := evidencerequest.DecodeJSON(body)
+	fields, ok := capsule.(map[string]any)
+	if err != nil || !ok || fields["capsule_id"] != digest {
+		return false
+	}
+	preimage, err := capsulePreimage(body, digest)
+	return err == nil && digestBytes(preimage) == digest
+}
+
 // verifyAnchorInclusion checks the artifact against its anchor by the method
 // its form allows (profile §6.2 point 4, §6.2.1), and returns the anchor's
 // signed checkpoint statement when that method verified it.
@@ -342,7 +405,7 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 		if body, present := entry["body"]; present {
 			text, _ := body.(string)
 			raw, err := hex.DecodeString(text)
-			if err != nil || digestBytes(raw) != digest {
+			if err != nil || !recordBodyMatches(raw, digest) {
 				return nil, nil, fmt.Errorf("%w: anchor_inclusion: record %d does not hash to its digest", ErrInvalid, i)
 			}
 		}

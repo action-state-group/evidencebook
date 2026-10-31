@@ -389,6 +389,14 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(ReasonPolicyDeclined, "")
 	}
 	check := readRequest(a.request)
+	// The book answers evidence-interop/0 only, as the Rust crate and the
+	// Python package do. agent-action-capsule reads /1 requests too (a
+	// requester's book records them with RequestSent and verifies replies to
+	// them), so a /1 request is refused here, and an unknown profile's detail
+	// (set for nothing else) lists /0 alone (§3.3 step 4).
+	if (check.reason == "" && check.request.Profile != ProfileID) || check.detail != "" {
+		return a.refuse(ReasonRequestMalformed, "profiles supported: "+ProfileID)
+	}
 	if check.reason != "" {
 		return a.refuse(check.reason, check.detail)
 	}

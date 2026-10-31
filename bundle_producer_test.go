@@ -16,6 +16,7 @@ import (
 	"time"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
 	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/capsule-emit/go/artifact"
@@ -374,15 +375,29 @@ func TestBundleRequestChecks(t *testing.T) {
 		"composed extension":      {Root: root, Extensions: map[string]json.RawMessage{"composed/v1": json.RawMessage(`{}`)}},
 		"float extension":         {Root: root, Extensions: map[string]json.RawMessage{"x/float": json.RawMessage(`{"v":1.5}`)}},
 		"unsafe integer":          {Root: root, Extensions: map[string]json.RawMessage{"x/big": json.RawMessage(`{"v":9007199254740993}`)}},
-		"extension too deep":      {Root: root, Extensions: map[string]json.RawMessage{"x/deep": nested(9999)}},
 		"extension past decoding": {Root: root, Extensions: map[string]json.RawMessage{"x/deeper": nested(10001)}},
 	} {
 		if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: %v, want ErrInvalid", name, err)
 		}
 	}
+	// The two depth cases fail at different checks: past the limit on its own
+	// the value has no canonical form; within it, it is too deep only where
+	// the bundle puts it.
+	for name, tc := range map[string]struct {
+		levels int
+		want   string
+	}{
+		"too deep in the bundle": {canonical.MaxNestingDepth - 1, "nested more than"},
+		"not canonical":          {canonical.MaxNestingDepth + 1, "no canonical form"},
+	} {
+		_, err := book.Bundle(ctx, BundleRequest{Root: root, Extensions: map[string]json.RawMessage{"x/deep": nested(tc.levels)}})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: %v, want %q", name, err, tc.want)
+		}
+	}
 	key := seededKey(5).Public().(ed25519.PublicKey)
-	bundle, err := book.Bundle(ctx, BundleRequest{Root: root, Suppress: []string{"agent_output", "agent_input", "agent_output"}, ProducerKey: key, Extensions: map[string]json.RawMessage{"x/deep": nested(9998)}})
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: root, Suppress: []string{"agent_output", "agent_input", "agent_output"}, ProducerKey: key, Extensions: map[string]json.RawMessage{"x/deep": nested(canonical.MaxNestingDepth - 2)}})
 	if err != nil {
 		t.Fatal(err)
 	}
