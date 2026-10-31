@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
@@ -244,4 +245,78 @@ func TestBookRequestInput(t *testing.T) {
 	path := writeJSON(t, `{"subject":{"record":"not a digest"},"coverage":{"min_freshness":1}}`)
 	_, err := invoke(t, "", "request", "--profile", "a", "--request", path, "--responder", "b", "--output", filepath.Join(x.dir, "bad.sent"))
 	assert.ErrorIs(t, err, evidencebook.ErrInvalid)
+}
+
+// TestBookRequestSent is evidencebook#245: the capsules plugin's sealed
+// requests from live-16 07-ask carry members `--request` does not define
+// (audience, requester_id, requester_auth), so they are refused without
+// --sent. With it each is recorded as sent, under the digest stevenmih-1
+// answered, and the reply it got verifies as an artifact.
+func TestBookRequestSent(t *testing.T) {
+	x := newEvidenceExchange(t)
+	const key = "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9"
+	for _, name := range []string{"checkpoints", "history_card", "exchange"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "live16-ask", name+".json"))
+		require.NoError(t, err)
+		var fixture struct {
+			Request json.RawMessage `json:"request"`
+			Reply   json.RawMessage `json:"reply"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &fixture))
+		var reply struct {
+			RequestDigest string `json:"request_digest"`
+		}
+		require.NoError(t, json.Unmarshal(fixture.Reply, &reply))
+		request, output := writeJSON(t, string(fixture.Request)), filepath.Join(x.dir, name+".sent")
+		_, err = invoke(t, "", "request", "--profile", "a", "--request", request, "--responder", "stevenmih-1", "--output", output)
+		assert.ErrorIs(t, err, cli.ErrInput, name)
+
+		out, err := invoke(t, "", "request", "--profile", "a", "--request", request, "--sent", "--responder", "stevenmih-1", "--output", output)
+		require.NoError(t, err, out)
+		var asked cli.EvidenceRequestResult
+		require.NoError(t, json.Unmarshal([]byte(out), &asked))
+		assert.Equal(t, reply.RequestDigest, asked.RequestDigest, name)
+		// The fixture's request is indented; what is recorded and written to
+		// transmit is its JCS.
+		written, err := os.ReadFile(output)
+		require.NoError(t, err)
+		value, err := evidencerequest.DecodeJSON(fixture.Request)
+		require.NoError(t, err)
+		jcs, err := evidencerequest.EncodeJCS(value)
+		require.NoError(t, err)
+		assert.NotEqual(t, string(fixture.Request), string(jcs), name)
+		assert.Equal(t, string(jcs), string(written), name)
+		assert.Contains(t, string(written), `"audience":`, name)
+
+		answer := writeJSON(t, string(fixture.Reply))
+		out, err = invoke(t, "", "request", "--profile", "a", "--for", asked.RecordID, "--response", answer, "--responder-key", key, "--responder-checkpoint-key", key)
+		require.NoError(t, err, out)
+		var answered bookResponseResult
+		require.NoError(t, json.Unmarshal([]byte(out), &answered))
+		assert.Equal(t, evidencebook.OutcomeArtifact, answered.Outcome, name)
+	}
+
+	// --sent records a request on this book's own log, never on a remote
+	// profile, where the deprecated alias would ask another party's book.
+	remote := cli.Profile{Name: "remote", Type: cli.RemoteProfileType, LogID: "remote"}
+	remote.Connection.URL = "http://127.0.0.1:1"
+	require.NoError(t, cli.SaveProfile(remote, false))
+	_, err := invoke(t, "", "request", "--profile", "remote", "--request", writeJSON(t, `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`), "--sent", "--responder", "b", "--output", filepath.Join(x.dir, "remote.sent"))
+	require.ErrorIs(t, err, cli.ErrInput, "--sent on a remote profile")
+	assert.Contains(t, err.Error(), "--sent", "--sent on a remote profile is refused for --sent, not for another reason")
+
+	// --sent records nothing but a request, and only a well-formed one.
+	_, err = invoke(t, "", "request", "--profile", "a", "--sent", "--for", "x", "--response", writeJSON(t, `{}`), "--responder-key", key, "--responder-checkpoint-key", key)
+	assert.ErrorIs(t, err, cli.ErrInput, "--sent without --request")
+	for name, tc := range map[string]struct {
+		body string
+		want error
+	}{
+		"not JSON":        {`{"subject":`, cli.ErrInput},
+		"no subject":      {`{"coverage":{"min_freshness":1},"audience":"a"}`, evidencebook.ErrInvalid},
+		"unknown profile": {`{"subject":{"checkpoints":null},"coverage":{"min_freshness":1},"profile":"evidence-interop/9"}`, evidencebook.ErrInvalid},
+	} {
+		_, err := invoke(t, "", "request", "--profile", "a", "--request", writeJSON(t, tc.body), "--sent", "--responder", "b", "--output", filepath.Join(x.dir, "bad.sent"))
+		assert.ErrorIs(t, err, tc.want, name)
+	}
 }

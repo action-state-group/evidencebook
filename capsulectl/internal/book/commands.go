@@ -78,6 +78,11 @@ func bookRequestCommand(remote *cobra.Command) *cobra.Command {
 		}
 		switch p.Type {
 		case cli.RemoteProfileType:
+			// --sent records a request on this book's own log; the remote
+			// alias would instead ask another party's book.
+			if sent, _ := c.Flags().GetBool("sent"); sent {
+				return cli.InputError("--sent records a request another tool sent on a jsonl book profile; it does not apply to asking a remote book")
+			}
 			fmt.Fprintf(c.ErrOrStderr(), "capsulectl: `capsulectl book request` on a remote profile is deprecated; use `capsulectl book remote request` (the alias is removed in %s)\n", aliasRemovedIn)
 			return ask(c, args)
 		case "sqlite":

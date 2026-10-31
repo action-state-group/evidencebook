@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-emit/go/artifact"
 	artifactjsonl "github.com/action-state-group/capsule-emit/go/artifact/jsonl"
@@ -1089,13 +1090,24 @@ func requestCommand() *cobra.Command {
 				return cli.InputError("--request needs --responder and --output")
 			}
 			ask, _ := c.Flags().GetString("request")
-			req, e := parseBookRequest("--request "+ask, in.Request)
-			if e != nil {
-				return e
-			}
-			sent, e := book.Request(c.Context(), req, in.Responder)
-			if e != nil {
-				return bookError(e)
+			var sent evidencebook.SentRequest
+			if asSent, _ := c.Flags().GetBool("sent"); asSent {
+				octets, e := sentRequestOctets("--request "+ask, in.Request)
+				if e != nil {
+					return e
+				}
+				sent, e = book.RequestSent(c.Context(), evidencebook.Message{Octets: octets, MediaType: evidencebook.MediaTypeJSON}, in.Responder)
+				if e != nil {
+					return bookError(e)
+				}
+			} else {
+				req, e := parseBookRequest("--request "+ask, in.Request)
+				if e != nil {
+					return e
+				}
+				if sent, e = book.Request(c.Context(), req, in.Responder); e != nil {
+					return bookError(e)
+				}
 			}
 			result := cli.EvidenceRequestResult{RecordID: sent.RecordID, RequestDigest: sent.Digest, Output: in.Output}
 			if e = cli.AtomicFile(in.Output, sent.Bytes, false); e != nil {
@@ -1136,6 +1148,13 @@ func requestCommand() *cobra.Command {
 	// The core's help describes a deal copy, where a bad receipt fails the
 	// answer. On a book a carried receipt is unsigned, so it can only add
 	// standing (evidencebook#216).
+	cmd.Flags().Bool("sent", false, "With --request: the request was already composed and sent by another tool, such as the capsules plugin. Record it as sent, member for member in JCS: every member is kept, including ones this command does not define, and no nonce or request profile is added. The answer then verifies against the request the responder answered")
+	cmd.PreRunE = func(c *cobra.Command, _ []string) error {
+		if asSent, _ := c.Flags().GetBool("sent"); asSent && !c.Flags().Changed("request") {
+			return cli.InputError("--sent needs --request")
+		}
+		return nil
+	}
 	cmd.Flags().Lookup("witness-directory").Usage = "With --response: a witness directory (witnesses.json format). The answer reads witness \"witnessed\" only when a receipt from a witness in it covers the answer's anchor checkpoint; without it, or with no such receipt, \"unwitnessed\". A receipt that does not verify counts for nothing"
 	return cmd
 }
@@ -1221,6 +1240,21 @@ type bookRequestInput struct {
 	Nonce      string `json:"nonce,omitempty"`
 	Route      string `json:"route,omitempty"`
 	Profile    string `json:"profile,omitempty"`
+}
+
+// sentRequestOctets is a request another tool sent, read from JSON as
+// `request --request --sent` takes it, in the JCS it was transmitted in.
+// Book.RequestSent checks it is a well-formed request.
+func sentRequestOctets(label string, raw []byte) ([]byte, error) {
+	value, err := evidencerequest.DecodeJSON(bytes.TrimSpace(raw))
+	if err != nil {
+		return nil, cli.InputError(fmt.Sprintf("%s: not one JSON value: %v", label, err))
+	}
+	octets, err := evidencerequest.EncodeJCS(value)
+	if err != nil {
+		return nil, cli.InputError(fmt.Sprintf("%s: has no JCS form: %v", label, err))
+	}
+	return octets, nil
 }
 
 func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, error) {

@@ -14,6 +14,8 @@
 # EVIDENCEBOOK_SRC is a checkout of evidencebook at the version this module
 # resolves (for its Python verifier scripts). Needs Python with checkpointed-local-log,
 # agent-action-capsule and capsule-emit installed, as evidencebook's CI installs them.
+# REFUSAL_PYTHON is the interpreter verify_refusal.py runs with, one with
+# scripts/interop-refusal-requirements.txt installed (default: python).
 set -euo pipefail
 
 src=${1:?usage: scripts/interop-resolved.sh EVIDENCEBOOK_SRC}
@@ -63,7 +65,7 @@ echo "== Go -> Python: a bundle built by evidencebook as resolved here, verified
 go run "$eb/test/interop/bundle" "$work/book" "$work/bundle.json" "$work/refusal.json"
 python "$py/python-aac/verify_bundle.py" "$work/bundle.json"
 python "$py/python-cll/verify_bundle.py" "$work/bundle.json"
-python "$py/python-cll/verify_refusal.py" "$work/refusal.json"
+"${REFUSAL_PYTHON:-python}" "$py/python-cll/verify_refusal.py" "$work/refusal.json"
 tamper "$work/bundle.json"
 expect_reject "Python AAC, a changed record" "record_identity_invalid" \
   python "$py/python-aac/verify_bundle.py" "$work/bundle.record-changed.json"
