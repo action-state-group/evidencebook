@@ -364,8 +364,6 @@ func TestBundleRequestChecks(t *testing.T) {
 	ctx := context.Background()
 	book, records := linkedBook(t)
 	root := records[1].RecordID
-	// The bundle puts an extension two levels down ({"extensions": {kind:
-	// value}}), so a value canonical on its own can be too deep where it lands.
 	for name, req := range map[string]BundleRequest{
 		"ineligible suppress":     {Root: root, Suppress: []string{"agent_input", "header"}},
 		"negative closure depth":  {Root: root, ClosureDepth: -1},
@@ -377,12 +375,25 @@ func TestBundleRequestChecks(t *testing.T) {
 		"composed extension":      {Root: root, Extensions: map[string]json.RawMessage{"composed/v1": json.RawMessage(`{}`)}},
 		"float extension":         {Root: root, Extensions: map[string]json.RawMessage{"x/float": json.RawMessage(`{"v":1.5}`)}},
 		"unsafe integer":          {Root: root, Extensions: map[string]json.RawMessage{"x/big": json.RawMessage(`{"v":9007199254740993}`)}},
-		"extension too deep":      {Root: root, Extensions: map[string]json.RawMessage{"x/deep": nested(canonical.MaxNestingDepth - 1)}},
-		"extension not canonical": {Root: root, Extensions: map[string]json.RawMessage{"x/deep": nested(canonical.MaxNestingDepth + 1)}},
 		"extension past decoding": {Root: root, Extensions: map[string]json.RawMessage{"x/deeper": nested(10001)}},
 	} {
 		if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: %v, want ErrInvalid", name, err)
+		}
+	}
+	// The two depth cases fail at different checks: past the limit on its own
+	// the value has no canonical form; within it, it is too deep only where
+	// the bundle puts it.
+	for name, tc := range map[string]struct {
+		levels int
+		want   string
+	}{
+		"too deep in the bundle": {canonical.MaxNestingDepth - 1, "nested more than"},
+		"not canonical":          {canonical.MaxNestingDepth + 1, "no canonical form"},
+	} {
+		_, err := book.Bundle(ctx, BundleRequest{Root: root, Extensions: map[string]json.RawMessage{"x/deep": nested(tc.levels)}})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: %v, want %q", name, err, tc.want)
 		}
 	}
 	key := seededKey(5).Public().(ed25519.PublicKey)
