@@ -16,6 +16,13 @@
   whose agreeing step rests on a check with no amount is `ErrUnpriced`, and
   the card is refused. `dealprofile.MinorUnits` is ISO 4217's minor units.
 
+### Changed: capsulectl-book and `report` build against capsule-viewer 0.7.0
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-viewer `v0.7.0` (the
+  frames merged since 0.6.0: capsule-viewer#186, #187, #188, #189, #190, #192,
+  #193). The `report` fixtures' pages (`4-monthly-outcome`,
+  `5-monthly-compliance`) are rewritten with the viewer's page runtime.
+
 ### Added: `capsulectl book holder-page` draws the holder's own pages from Steven's 9b canvas (evidencebook#156, #158, #239)
 
 - `book holder-page --view share|asked|prompt --out PAGE.html` writes frame 2
