@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/capsule-cli/cli"
@@ -268,13 +269,31 @@ func CheckPage(ctx context.Context, book *evidencebook.Book, page []byte) (Check
 	return out, nil
 }
 
-// embeddedBundle is the Evidence Bundle a report page embeds: the emitter
-// writes `window.__BUNDLE__ = <json>;` with every "<" escaped, so the first
-// ";</script>" after it ends the JSON.
+// bundleElement is the start tag of the JSON data element that carries the
+// bundle in a page built by capsule-viewer 0.4.0 or later (capsule-viewer#109).
+var bundleElement = regexp.MustCompile(`(?is)<script\b[^>]*\btype\s*=\s*["']?application/json["']?[^>]*>`)
+
+// embeddedBundle is the Evidence Bundle a report page embeds. A page built by
+// capsule-viewer 0.4.0 or later carries it as the text of its first
+// `<script type="application/json">` element, with every "<" escaped, so the
+// first "</script>" after the start tag ends the JSON. A page sealed before
+// that wrote `window.__BUNDLE__ = <json>;` and is still read, so its seal
+// still checks.
 func embeddedBundle(page []byte) (map[string]interface{}, error) {
+	if !bytes.HasPrefix(bytes.TrimSpace(page), []byte("<!")) {
+		return nil, refusal("not a report page: it embeds no Evidence Bundle")
+	}
+	if m := bundleElement.FindIndex(page); m != nil {
+		rest := page[m[1]:]
+		j := bytes.Index(rest, []byte("</script>"))
+		if j < 0 {
+			return nil, refusal("not a report page: its embedded Evidence Bundle is not terminated")
+		}
+		return decodeEmbedded(rest[:j])
+	}
 	const start, end = "window.__BUNDLE__ = ", ";</script>"
 	i := bytes.Index(page, []byte(start))
-	if i < 0 || !bytes.HasPrefix(bytes.TrimSpace(page), []byte("<!")) {
+	if i < 0 {
 		return nil, refusal("not a report page: it embeds no Evidence Bundle")
 	}
 	rest := page[i+len(start):]
@@ -282,7 +301,11 @@ func embeddedBundle(page []byte) (map[string]interface{}, error) {
 	if j < 0 {
 		return nil, refusal("not a report page: its embedded Evidence Bundle is not terminated")
 	}
-	value, err := cli.DecodeBundleJSON(rest[:j])
+	return decodeEmbedded(rest[:j])
+}
+
+func decodeEmbedded(raw []byte) (map[string]interface{}, error) {
+	value, err := cli.DecodeBundleJSON(bytes.TrimSpace(raw))
 	if err != nil {
 		return nil, refusal("the page's embedded Evidence Bundle does not decode: " + cli.SafeError(err))
 	}

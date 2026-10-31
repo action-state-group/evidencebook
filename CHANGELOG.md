@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed: the report module reads a page's bundle from its JSON element (evidencebook#164, capsule-viewer#109)
+
+- `report` requires capsule-cli `v0.1.0-rc25` and capsule-viewer `v0.5.0`.
+  `InspectPage`, `CheckPage` and `SealPage` read the bundle from the page's
+  `<script type="application/json">` element (capsule-viewer 0.4.0 and
+  later), so a `"__proto__"` member stays data. A page sealed before that,
+  which carries the bundle after `window.__BUNDLE__ = `, is still read and
+  its seal still checks. The committed `4-monthly-outcome` and
+  `5-monthly-compliance` pages are rebuilt on the new runtime, and the
+  network test looks for what a page loads (a `src`, `href`, `url()` or
+  `@import` naming a URL) instead of the text `https://`, which the vendored
+  curves' comments now contain.
+
 ### Added: `ReconcileAsked` names the exchanges a provider left out before sealing (evidencebook#206 row 9)
 
 - `ReconcileAsked` checks what a provider answered about a pair against the

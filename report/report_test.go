@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -80,8 +81,7 @@ func TestBuildRendersABookFormResultRoot(t *testing.T) {
 	html := string(page.HTML)
 	assert.Contains(t, html, `renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"))`)
 	assert.Contains(t, html, "globalThis.renderEvidenceGraph", "the runtime is inline")
-	assert.NotContains(t, html, "http://")
-	assert.NotContains(t, html, "https://", "the page loads nothing from the network")
+	assertLoadsNothing(t, html)
 	embedded, err := embeddedBundle(page.HTML)
 	require.NoError(t, err)
 	digest, err := aacbundle.BundleDigest(embedded)
@@ -477,4 +477,15 @@ func TestBuildRefusesABadWordingPackOrAnotherContractReportBlock(t *testing.T) {
 func hostWordingDigest(pack string) string {
 	sum := sha256.Sum256([]byte(pack))
 	return hex.EncodeToString(sum[:])
+}
+
+// remoteLoad is a way a page loads from the network: a src, href or action
+// that names an http(s) URL, a stylesheet url() or @import. The runtime's own
+// source may mention a URL in a comment or as a namespace string (the
+// vendored curves name the paper they follow); that loads nothing.
+var remoteLoad = regexp.MustCompile(`(?i)\b(src|href|action)\s*=\s*["']?https?://|url\(\s*["']?https?://|@import`)
+
+func assertLoadsNothing(t *testing.T, html string) {
+	t.Helper()
+	assert.False(t, remoteLoad.MatchString(html), "the page loads nothing from the network")
 }

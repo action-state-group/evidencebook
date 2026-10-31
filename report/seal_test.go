@@ -238,10 +238,45 @@ func TestCheckPageRefusesAFileThatIsNotAReportPage(t *testing.T) {
 	for name, file := range map[string]string{
 		"a bundle":               string(mustRead(t, bookFormBundle)),
 		"html with no bundle":    "<!doctype html><p>hello</p>",
-		"an unterminated bundle": html[:strings.Index(html, "window.__BUNDLE__ = ")+len("window.__BUNDLE__ = {")],
-		"an undecodable bundle":  strings.Replace(html, "window.__BUNDLE__ = {", "window.__BUNDLE__ = {{", 1),
+		"an unterminated bundle": html[:jsonElementStart(t, html)+1],
+		"an undecodable bundle":  html[:jsonElementStart(t, html)] + "{" + html[jsonElementStart(t, html):],
 	} {
 		_, err := CheckPage(t.Context(), book, []byte(file))
 		require.ErrorIs(t, err, ErrRefused, name)
 	}
+}
+
+// jsonElementStart is the index of the "{" that opens the bundle in a page's
+// JSON data element.
+func jsonElementStart(t *testing.T, html string) int {
+	t.Helper()
+	m := bundleElement.FindStringIndex(html)
+	require.NotNil(t, m, "the page carries its bundle in a JSON element")
+	return m[1] + strings.Index(html[m[1]:], "{")
+}
+
+// A page sealed before the bundle moved into a JSON element carried it after
+// `window.__BUNDLE__ = `; its seal must still check.
+func TestInspectPageReadsAPageSealedBeforeTheJSONElement(t *testing.T) {
+	html := string(builtPage(t).HTML)
+	m := bundleElement.FindStringIndex(html)
+	require.NotNil(t, m)
+	end := m[1] + strings.Index(html[m[1]:], "</script>")
+	old := html[:m[0]] + "<script>window.__BUNDLE__ = " + strings.TrimSpace(html[m[1]:end]) + ";</script>" + html[end+len("</script>"):]
+	require.NotContains(t, old, "application/json")
+	want, err := InspectPage([]byte(html))
+	require.NoError(t, err)
+	got, err := InspectPage([]byte(old))
+	require.NoError(t, err)
+	assert.Equal(t, want.BundleDigest, got.BundleDigest)
+}
+
+// The bundle is data in a JSON element, never code: a member named
+// "__proto__" stays a member of the decoded bundle.
+func TestEmbeddedBundleKeepsAProtoMember(t *testing.T) {
+	page := []byte(`<!doctype html><script type="application/json">{"__proto__":{"x":1},"root":"r"}</script>`)
+	value, err := embeddedBundle(page)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"x": json.Number("1")}, value["__proto__"])
+	assert.Equal(t, "r", value["root"])
 }
