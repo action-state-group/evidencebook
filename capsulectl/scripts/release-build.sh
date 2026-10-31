@@ -41,7 +41,8 @@ module=$(mktemp -d)
 trap 'rm -rf "$module"' EXIT
 mkdir "$module/standard-history-module"
 # The files are the ones the module's own handshake entry names.
-mapfile -t files < <(jq -r '.files[].path | sub("^standard-history-module/"; "")' internal/book/assets/standard-history/presentation.json)
+files=()
+while IFS= read -r f; do files+=("$f"); done < <(jq -r '.files[].path | sub("^standard-history-module/"; "")' internal/book/assets/standard-history/presentation.json)
 for f in "${files[@]}"; do cp "internal/book/assets/standard-history/$f" "$module/standard-history-module/"; done
 (cd "$module" && { printf '%s\0' standard-history-module; for f in $(printf '%s\n' "${files[@]}" | LC_ALL=C sort); do printf '%s\0' "standard-history-module/$f"; done; } |
   "${TAR:-tar}" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
