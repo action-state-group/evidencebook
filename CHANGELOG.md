@@ -71,6 +71,18 @@
   bundle extension or derivation definition deeper than that is refused; the
   derivation vectors' `too-deep` definition is now 129 levels.
 
+### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
+
+- `report.View.Contract` is a compiled Evidence Contract v0 (for example
+  evidencebook-skills `contracts/<id>/<version>.json`) with the lowercase hex
+  SHA-256 of its bytes, checked as `View.Wording` is. `Build` refuses a
+  contract the Result does not cite, one that lacks a requirement the Result's
+  claims cite, and a `tier` other than `must_have` or `informational`.
+- `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
+  requirement's tier by `requirement_ref`; `""` when the contract names none)
+  record what the page read. With no contract every tier is undecided, never
+  must-have. A page built with a contract gets no permalink.
+
 ## v0.11.0 (2026-10-31)
 
 ### Added: the History card over a deal profile's shelf (evidencebook#237, evidencebook-deal#85)
