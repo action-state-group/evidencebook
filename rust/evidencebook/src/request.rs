@@ -169,10 +169,18 @@ impl Refusal {
     /// [`Refusal::verify`], which, like the Go and Python verifiers, checks
     /// only the signature.
     pub fn reason_is_registered(&self) -> bool {
-        Reason::from_token(&self.reason).is_some_and(|r| {
-            evidence_request::envelope::refusal_reasons(evidence_request::envelope::PROFILE)
-                .contains(&r)
-        })
+        self.reason_is_registered_under(evidence_request::envelope::PROFILE)
+    }
+
+    /// Whether `reason` is a registered token under `profile`, the profile
+    /// the refused request asked for (v1 §6.3): the eight of
+    /// `evidence-interop/0`, the ten of `evidence-interop/1`, and for a
+    /// profile `evidence-request` does not implement, the ten
+    /// (`envelope::refusal_reasons`). The book's responder refuses a /1
+    /// request `capacity_exceeded`, which only this reads as registered.
+    pub fn reason_is_registered_under(&self, profile: &str) -> bool {
+        Reason::from_token(&self.reason)
+            .is_some_and(|r| evidence_request::envelope::refusal_reasons(profile).contains(&r))
     }
 
     /// Check the signature, offline, against the refusal's own `key_id`
@@ -318,6 +326,18 @@ mod tests {
             let r = signed(token);
             r.verify().unwrap();
             assert!(!r.reason_is_registered(), "{token}");
+            assert!(
+                !r.reason_is_registered_under("evidence-interop/0"),
+                "{token}"
+            );
+            assert!(
+                r.reason_is_registered_under("evidence-interop/1"),
+                "{token}"
+            );
+            assert!(
+                r.reason_is_registered_under("evidence-interop/9"),
+                "{token}"
+            );
         }
 
         let mut t = good.clone();

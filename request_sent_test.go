@@ -218,18 +218,23 @@ func TestRespondAnswersEvidenceInterop1(t *testing.T) {
 	}
 }
 
-// TestRequestProfile: the cost checks read only the profile a request asks
-// for, /0 when it names none or does not decode.
+// TestRequestProfile: a request refused for a limit asks for the profile of
+// a well-formed request, /0 for any other, so the reason follows the
+// request reader's one definition of well formed.
 func TestRequestProfile(t *testing.T) {
+	const asks = `{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}`
 	for octets, want := range map[string]string{
-		`{"profile":"evidence-interop/1"}`: ProfileIDv1,
-		`{"profile":"evidence-interop/9"}`: "evidence-interop/9",
-		`{"profile":""}`:                   ProfileID,
-		`{"profile":1}`:                    ProfileID,
-		`{}`:                               ProfileID,
-		`["evidence-interop/1"]`:           ProfileID,
-		`{"profile":`:                      ProfileID,
-		`{"profile":"evidence-interop/1","profile":"evidence-interop/1"}`: ProfileID,
+		asks + `,"profile":"evidence-interop/1"}`: ProfileIDv1,
+		asks + `,"profile":"evidence-interop/0"}`: ProfileID,
+		asks + `}`:              ProfileID,
+		asks + `,"profile":""}`: ProfileID,
+		asks + `,"profile":"evidence-interop/9"}`: ProfileID,
+		asks + `,"profile":1}`:                    ProfileID,
+		`{"profile":"evidence-interop/1"}`:        ProfileID,
+		`{"coverage":{},"profile":"evidence-interop/1","subject":{"checkpoints":null}}`: ProfileID,
+		`["evidence-interop/1"]`: ProfileID,
+		`{"profile":`:            ProfileID,
+		asks + `,"profile":"evidence-interop/1","profile":"evidence-interop/1"}`: ProfileID,
 	} {
 		if got := requestProfile(Message{Octets: []byte(octets), MediaType: MediaTypeJSON}); got != want {
 			t.Fatalf("%s: %q, want %q", octets, got, want)

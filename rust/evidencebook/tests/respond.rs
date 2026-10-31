@@ -836,26 +836,45 @@ fn a_limit_is_refused_for_the_requested_profile() {
             );
             let (reply, _) = run(&mut b, &capped, &checkpoints, Binding::Json, &peers);
             assert_eq!(reason(&reply), want, "items, {profile:?}");
-            // The same in CBOR: the profile is read from the CBOR map.
+            // The same in CBOR, in core deterministic encoding (keys
+            // length-first): the profile is read from the CBOR map.
             let cbor = {
-                let value: Value = serde_json::from_slice(&request).unwrap();
+                use ciborium::Value as C;
+                let text = |s: &str| C::Text(s.into());
+                let mut map = vec![(text("nonce"), text("n"))];
+                if !profile.is_empty() {
+                    map.push((text("profile"), text(profile)));
+                }
+                map.push((
+                    text("subject"),
+                    C::Map(vec![(text("checkpoints"), C::Null)]),
+                ));
+                map.push((
+                    text("coverage"),
+                    C::Map(vec![(text("min_freshness"), C::Integer(1.into()))]),
+                ));
                 let mut out = Vec::new();
-                ciborium::into_writer(&value, &mut out).unwrap();
+                ciborium::into_writer(&C::Map(map), &mut out).unwrap();
                 out
             };
             let (reply, _) = run(&mut b, &small, &cbor, Binding::Cbor, &ask(Some("alice")));
             assert_eq!(reason(&reply), want, "size in CBOR, {profile:?}");
         }
     }
-    // JSON that repeats a member does not decode, as Go reads it: /0.
+    // A request the reader does not read as well formed asks for /0, as Go
+    // reads it: one that repeats a member, or names /1 and nothing else.
     let (mut b, _) = book();
     let small = ResponderPolicy {
         max_request_bytes: 10,
         ..Default::default()
     };
-    let repeated = br#"{"profile":"evidence-interop/1","profile":"evidence-interop/1"}"#;
-    let (reply, _) = run(&mut b, &small, repeated, Binding::Json, &ask(Some("alice")));
-    assert_eq!(reason(&reply), Reason::PolicyDeclined);
+    for malformed in [
+        &br#"{"coverage":{"min_freshness":1},"profile":"evidence-interop/1","profile":"evidence-interop/1","subject":{"checkpoints":null}}"#[..],
+        br#"{"profile":"evidence-interop/1"}"#,
+    ] {
+        let (reply, _) = run(&mut b, &small, malformed, Binding::Json, &ask(Some("alice")));
+        assert_eq!(reason(&reply), Reason::PolicyDeclined);
+    }
 }
 
 #[test]

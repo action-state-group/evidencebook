@@ -13,7 +13,9 @@
   limiter or the answer item cap, is refused `capacity_exceeded`, under either
   refusal policy (ER -02 §11). A `/0` request keeps `policy_declined`.
 - The crate still asks under `/0`, and `Refusal::reason_is_registered` stays
-  the `/0` check.
+  the `/0` check. `Refusal::reason_is_registered_under(profile)` checks a
+  refusal under the profile its request asked for (v1 §6.3), so a `/1`
+  `capacity_exceeded` is registered.
 
 ## 0.0.11 (2026-10-31)
 

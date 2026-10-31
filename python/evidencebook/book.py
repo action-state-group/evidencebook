@@ -834,8 +834,8 @@ class _Answer:
         book, policy = self.book, self.book._responder
         requester = self.options.authenticated_requester
         # Cost policy first: an oversized or over-limit request is declined
-        # before it is read or resolved; only its profile is decoded, to pick
-        # the reason (_limit_reason).
+        # before it is resolved; it is read only to pick the reason
+        # (request_profile).
         if len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
             return self.refuse(_limit_reason(request_profile(self.request)))
         if policy.limiter is not None and not policy.limiter.allow(requester, self.now):

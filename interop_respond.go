@@ -279,19 +279,16 @@ func limitReason(profile string) string {
 	return ReasonPolicyDeclined
 }
 
-// requestProfile is the profile a request asks for, read before the cost
-// checks so their refusal conforms under it: its profile member when that is
-// text, ProfileID when it is absent or the request does not decode (§3.3
-// step 2). It decodes the octets and checks nothing else; the carriages
-// bound a message before it reaches the book.
+// requestProfile is the profile a request refused for a limit asks for, so
+// the refusal conforms under it: the profile of a request the book reads as
+// well formed, ProfileID for any other (§3.3 step 2). It runs only once the
+// cost checks have declined the request, and reads it as an answer would, so
+// a request is read under one definition of well formed (readRequest) and
+// no resolution work runs; the carriages bound a message before it reaches
+// the book.
 func requestProfile(m Message) string {
-	root, err := evidencerequest.Decode(m)
-	fields, ok := root.(map[string]any)
-	if err != nil || !ok {
-		return ProfileID
-	}
-	if profile, ok := fields["profile"].(string); ok && profile != "" {
-		return profile
+	if check := readRequest(m); check.reason == "" {
+		return check.request.Profile
 	}
 	return ProfileID
 }
@@ -411,8 +408,8 @@ func (a *answer) run() (Reply, error) {
 	b.mu.Lock()
 	a.now = b.now()
 	// Cost policy first: an oversized or over-limit request is declined
-	// before it is read or resolved (FR-37); only its profile is decoded,
-	// to pick the reason (limitReason).
+	// before it is resolved (FR-37); it is read only to pick the reason
+	// (requestProfile).
 	oversized := len(a.request.Octets) > limit
 	limited := !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)

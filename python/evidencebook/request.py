@@ -29,14 +29,12 @@ from agent_action_capsule.evidence_request import (
     Subject,
     VerificationError,
     is_digest,
-    _decode_cbor,
-    _decode_json,
     parse_reply as _parse_reply,
     parse_request,
     parse_utc,
 )
 from agent_action_capsule.interop_profile import _cbor
-from agent_action_capsule.interop_profile._common import REFUSAL_REASONS_BY_PROFILE, is_profile_time
+from agent_action_capsule.interop_profile._common import is_profile_time, refusal_reasons_for
 
 from ._limits import MAX_REPLY_DEPTH, json_depth_over
 from .errors import InvalidError
@@ -333,26 +331,18 @@ def parse_reply(message: Message) -> Reply:
 def refusal_conforming(refusal: Refusal, profile: str = PROFILE) -> bool:
     """A conforming refusal (profile §7.2 reason_registered, issued_at_form)
     to a request that asked for ``profile``: one reason registered under it
-    (v1 §6.3; ER -02's two only under ``evidence-interop/1``), the profile's
+    (v1 §6.3; ER -02's two only under ``evidence-interop/1``), or, for a
+    profile the package does not implement, under any it does, the profile's
     seconds time form, a digest."""
-    reasons = REFUSAL_REASONS_BY_PROFILE.get(profile, REFUSAL_REASONS_BY_PROFILE[PROFILE])
+    reasons = refusal_reasons_for(profile, PROFILES)
     return refusal.reason in reasons and is_profile_time(refusal.issued_at) and is_digest(refusal.request_digest)
 
 
 def request_profile(message: Message) -> str:
-    """The profile a request asks for, read before the cost checks so their
-    refusal conforms under it: its ``profile`` member when that is non-empty
-    text, :data:`PROFILE` when it is absent or the octets do not decode as
-    the request reader decodes them (profile §3.3 step 2). Nothing else is
-    checked."""
-    if message.media_type not in _BINDINGS:
-        return PROFILE
-    try:
-        if message.media_type == MEDIA_TYPE_JSON:
-            fields = _decode_json(message.octets)
-        else:
-            fields = _decode_cbor(message.octets, request=True)
-    except RequestError:
-        return PROFILE
-    profile = fields.get("profile") if isinstance(fields, dict) else None
-    return profile if isinstance(profile, str) and profile else PROFILE
+    """The profile a request refused for a limit asks for, so the refusal
+    conforms under it: the profile of a request :func:`read_request` reads
+    as well formed, :data:`PROFILE` for any other (profile §3.3 step 2), as
+    Go's ``requestProfile`` does. Requests are read under one definition of
+    well formed."""
+    check = read_request(message)
+    return check.request.profile if not check.reason and check.request is not None else PROFILE

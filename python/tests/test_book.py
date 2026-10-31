@@ -339,17 +339,22 @@ def test_a_limit_is_refused_for_the_requested_profile(clock, policy, profile, wa
         assert refusal_conforming(reply.refusal, profile)
 
 
-def test_request_profile_reads_only_the_profile():
-    for octets, want in ((b'{"profile":"evidence-interop/1"}', eb.PROFILE_V1),
-                         (b'{"profile":"evidence-interop/9"}', "evidence-interop/9"),
-                         (b'{"profile":""}', eb.PROFILE), (b'{"profile":1}', eb.PROFILE), (b"{}", eb.PROFILE),
+def test_request_profile_is_that_of_a_well_formed_request():
+    """A request refused for a limit asks for the profile of a well-formed
+    request, /0 for any other, as Go's requestProfile reads it."""
+    asks = b'{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}'
+    for octets, want in ((asks + b',"profile":"evidence-interop/1"}', eb.PROFILE_V1),
+                         (asks + b',"profile":"evidence-interop/0"}', eb.PROFILE), (asks + b"}", eb.PROFILE),
+                         (asks + b',"profile":""}', eb.PROFILE), (asks + b',"profile":"evidence-interop/9"}', eb.PROFILE),
+                         (asks + b',"profile":1}', eb.PROFILE), (b'{"profile":"evidence-interop/1"}', eb.PROFILE),
+                         (b'{"coverage":{},"profile":"evidence-interop/1","subject":{"checkpoints":null}}', eb.PROFILE),
                          (b'["evidence-interop/1"]', eb.PROFILE), (b'{"profile":', eb.PROFILE),
-                         (b'{"profile":"evidence-interop/1","profile":"evidence-interop/1"}', eb.PROFILE)):
+                         (asks + b',"profile":"evidence-interop/1","profile":"evidence-interop/1"}', eb.PROFILE)):
         assert request_profile(eb.Message(octets)) == want, octets
     cbor = eb.encode_request(eb.EvidenceRequest(eb.Subject("checkpoints", None), eb.Coverage(min_freshness=1),
                                                 profile=eb.PROFILE_V1), eb.MEDIA_TYPE_CBOR)
     assert request_profile(eb.Message(cbor, eb.MEDIA_TYPE_CBOR)) == eb.PROFILE_V1
-    assert request_profile(eb.Message(b'{"profile":"evidence-interop/1"}', "text/plain")) == eb.PROFILE
+    assert request_profile(eb.Message(asks + b',"profile":"evidence-interop/1"}', "text/plain")) == eb.PROFILE
 
 
 def test_a_refusal_conforms_under_the_profile_its_request_asked_for():
@@ -360,6 +365,8 @@ def test_a_refusal_conforms_under_the_profile_its_request_asked_for():
         assert refusal_conforming(refusal) is under_0
         assert refusal_conforming(refusal, eb.PROFILE) is under_0
         assert refusal_conforming(refusal, eb.PROFILE_V1)
+        # A profile the package does not implement: any implemented one's tokens.
+        assert refusal_conforming(refusal, "evidence-interop/9")
 
 
 def test_a_freshness_floor_issues_an_anchor_for_an_authenticated_requester(clock, responder):

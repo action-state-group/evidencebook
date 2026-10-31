@@ -384,8 +384,8 @@ impl Run<'_, '_> {
         };
         let requester = self.opts.authenticated_requester;
         // Cost policy first: an oversized or over-limit request is declined
-        // before it is read or resolved (FR-37); only its profile is
-        // decoded, to pick the reason (limit_reason).
+        // before it is resolved (FR-37); it is read only to pick the reason
+        // (limit_reason).
         if self.octets.len() > limit {
             return self.refuse(limit_reason(self.octets, self.binding), None);
         }
@@ -491,7 +491,7 @@ impl Run<'_, '_> {
         ) {
             Ok(envelope) => envelope,
             Err(answer::AnswerError::OverLimit) => {
-                return self.refuse(Reason::PolicyDeclined, None)
+                return self.refuse(limit_reason(self.octets, self.binding), None)
             }
             Err(answer::AnswerError::NotAuthorized) => {
                 return self.refuse(gate.disclose(Reason::NotAuthorized), None)
@@ -576,11 +576,12 @@ fn subject_kind(subject: &Subject) -> SubjectKind {
 /// §4.2, §11) refuses load shedding `capacity_exceeded` whatever the refusal
 /// policy, so `policy_declined` stays a statement about policy; /0
 /// registers no such token and keeps `policy_declined`, as does a profile
-/// the book does not implement. The profile is the request's `profile`
-/// member, read alone: a request that does not decode, or JSON that repeats
-/// a member as Go's decoder refuses it, asks for /0 (§3.3 step 2).
+/// the book does not implement. The profile is that of a request
+/// [`read_request`] reads as well formed, /0 for any other (§3.3 step 2), as
+/// Go's `requestProfile` reads it: requests are read under one definition of
+/// well formed.
 fn limit_reason(octets: &[u8], binding: Binding) -> Reason {
-    if binding == Binding::Json && serde_json::from_slice::<NoDuplicates>(octets).is_err() {
+    if read_request(octets, binding).is_err() {
         return Reason::PolicyDeclined;
     }
     match named_profile(octets, binding) {
