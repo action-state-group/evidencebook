@@ -339,7 +339,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err := cli.PageGate(value); err != nil {
 		return page, err
 	}
-	// With no wording, BuildOfflineHTML's default settings write exactly
+	// With no wording and no contract, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
 	options := emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256}
 	if view.Contract != nil {
