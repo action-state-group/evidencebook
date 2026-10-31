@@ -86,7 +86,7 @@ What happens over a limit depends on what it falls on:
 - What the responder signed (the counts, and the artifact's own JSON nesting; a bare `record` artifact is hashed and never decoded, so it has no depth check): checked once the artifact hashes to the signed digest, and before any checkpoint signature or proof check. Over a limit, the reply is received and failed, as `artifact_verification_failed` with the limit named.
 - Bundles: `VerifyBundle` refuses a bundle over any limit before the AAC verifier runs.
 
-Vectors are in `testdata/asker-limits/limits.json`, and Go (`TestLimitVectors`) and Python (`test_limits.py`) agree on them. `TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen` shows each octet refusal and the genuine answer recording after it; `TestASignedEnvelopeOverACountLimitIsReceivedAndFailed` and `TestBundleLimits` cover the other two cases.
+Vectors are in `testdata/asker-limits/limits.json`, and Go (`TestLimitVectors`) and Python (`test_limits.py`) agree on them. `TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen` shows each octet refusal and the genuine answer recording after it; `TestASignedEnvelopeOverACountLimitIsReceivedAndFailed` and `TestBundleLimits` cover the other two cases. Each refusal has a stated time bound, and the tests fail past it: every limit vector is refused within 1 s, and a hostile reply through `RecordResponse` or a bundle over a limit within 2 s.
 
 Status: answered (#209).
 
