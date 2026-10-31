@@ -230,6 +230,7 @@ const dealViewModel = async (context) => {
   const standalone = (bundle.extensions || {})["x-deal-report/v0"];
   // A copy of a deal on a book whose log holds no report record names a
   // standalone one: inline text there is a stripped copy, refused.
+  const logId = ((bundle.completeness_certificate || {}).log_id) || "";
   const bookSteps = context.records.some((r) => r && r.evidence_record_header && dealStepTypes.includes(r.evidence_record_header.record_type));
   if (standalone !== undefined) {
     if (sealedId === undefined || Object.keys(dealExt).length !== 1) {
@@ -292,14 +293,16 @@ const dealViewModel = async (context) => {
     releaseNotes,
     buildNote,
     claimClasses,
+    dealId: logId.startsWith("deal/") ? logId.slice(5) : "",
+    witnessed: (bundle.extensions || {})["x-cadence-witness/v0"] !== undefined,
   };
 };
 
 // Inserted once, at the head: its bytes hash to the manifest's style_sha256,
 // which the page's Content-Security-Policy lists.
-const DEAL_VIEW_CSS = `#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; line-height: 1.45; overflow-wrap: anywhere; }
-@media (prefers-color-scheme: dark) { #deal { --deal-warn: #ffb07a; --deal-ok: #7fd49a; } }
-#deal h1 { font-size: 1.5rem; margin: 0.2rem 0; }
+const DEAL_VIEW_CSS = `#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; --deal-ours: #e4edf5; --deal-ours-line: #2b5a85; --deal-theirs: #fbefd9; --deal-theirs-line: #8a6a2f; --deal-none: #eceae5; --deal-none-line: #a9afb8; --deal-good: #e3f1ea; --deal-good-line: #2e7d5b; --deal-pill: #f4f1ea; --deal-ink: #232f42; line-height: 1.45; overflow-wrap: anywhere; max-width: 34rem; margin: 0 auto; }
+@media (prefers-color-scheme: dark) { #deal { --deal-warn: #ffb07a; --deal-ok: #7fd49a; --deal-ours: #1d2c3d; --deal-ours-line: #6fa3d4; --deal-theirs: #3a2f1a; --deal-theirs-line: #d1a85c; --deal-none: #2a2c30; --deal-none-line: #6b717b; --deal-good: #173326; --deal-good-line: #4fae83; --deal-pill: #2b2a27; --deal-ink: #e8edf5; } }
+#deal h1 { font-size: 1.2rem; margin: 0; }
 #deal h2 { font-size: 1.15rem; margin-top: 1.6rem; }
 #deal h3 { font-size: 0.95rem; color: var(--aac-muted); margin: 1rem 0 0.3rem; }
 #deal .deal-flag summary { color: var(--deal-warn); }
@@ -320,7 +323,37 @@ const DEAL_VIEW_CSS = `#deal { --deal-warn: #9a3b00; --deal-ok: #1d6b35; line-he
 #deal .deal-rung { font-weight: 600; margin: 0.2rem 0; }
 #deal .deal-scope { font-weight: 600; margin: 0.2rem 0 0.6rem; }
 #deal .deal-claims { border: none; padding: 0; }
+#deal .deal-bar { display: flex; align-items: baseline; gap: 10px; padding: 4px 0 10px; border-bottom: 1px solid var(--aac-line); }
+#deal .deal-bar span { margin-left: auto; color: var(--aac-muted); font-size: 0.85rem; }
+#deal .deal-col { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+#deal .deal-box { border: 1px solid var(--aac-line); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner { border: 1px solid var(--deal-theirs-line); background: var(--deal-theirs); border-radius: 12px; padding: 12px 14px; }
+#deal .deal-banner b { display: block; }
+#deal .deal-small { font-size: 0.8rem; color: var(--aac-muted); }
+#deal .deal-caps { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--aac-muted); }
+#deal .deal-card { border: 2px solid var(--deal-ink); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-quote { font-size: 1.05rem; font-weight: 600; }
+#deal .deal-half { border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-ours { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); }
+#deal .deal-theirs { background: var(--deal-theirs); border: 1px solid var(--deal-theirs-line); }
+#deal .deal-none { background: var(--deal-none); border: 1px dashed var(--deal-none-line); }
+#deal .deal-stamps { border-radius: 12px; }
+#deal .deal-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--deal-pill); font-weight: 600; margin-left: 8px; }
+#deal .deal-stamp { display: flex; gap: 8px; padding: 7px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-stamp b.deal-mark { flex: none; }
+#deal .deal-list { list-style: none; margin: 6px 0 0; padding: 0; }
+#deal .deal-list li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--aac-line); }
+#deal .deal-list li:first-child { border-top: none; }
+#deal .deal-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--deal-none-line); }
+#deal .deal-dot.deal-yes { background: var(--deal-good-line); }
+#deal .deal-say { background: var(--deal-ours); border: 1px solid var(--deal-ours-line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+#deal .deal-say b { color: var(--deal-ours-line); }
 `;
+
+// The stamps ladder's five consumer words (9b, "The stamps"). A stamp the
+// page did not check says "not checked", never "passed"; one side missing is
+// "missing", never "failed"; "failed" is only a check that ran and did not hold.
+const dealStampWords = ["passed", "failed", "missing", "not checked", "unclear"];
 
 const dealViewRender = (model, regions) => {
   if (!document.getElementById("capsulectl-deal-view-style")) {
@@ -346,67 +379,6 @@ const dealViewRender = (model, regions) => {
   const matched = new Set(model.matched);
   const recorded = new Set(model.recorded);
   const byId = new Map((report.steps || []).map((s) => [s.capsule_id, s]));
-
-  // The header, on the face of every copy: the scope, the countersign line,
-  // what the "did" part rests on and what the receipt does not claim. What
-  // was verified is the core's to say, in its section below (capsule-cli#341).
-  const header = el("section", undefined, "deal-assurance");
-  // What the deal's text rests on, said first, on every copy: sealed with
-  // the page and checked unchanged, or (a bundle written before reports were
-  // sealed) read from the x-deal-v0 extension, which no record seals, so an
-  // edited line would still show here.
-  if (sealed) {
-    const checked = el(
-      "p",
-      "The text on this page was written by capsulectl when the page was made and sealed as a record in this file: " +
-        "this page checked that it has not changed since. It is capsulectl's summary of the steps, not the steps themselves.",
-      "deal-note",
-    );
-    checked.dataset.sealed = "x-deal-v0";
-    header.append(checked);
-  } else {
-    const unchecked = el(
-      "p",
-      "The text on this page was written by capsulectl when the page was made, and this page does not check it: " +
-        "the summary lines, each step's line, the amounts and what was told. " +
-        "This page checks the sealed records in this file, not those words." +
-        (shared ? "" : " Only the words you asked, marked ✓, are checked against their sealed record."),
-      "deal-note",
-    );
-    unchecked.dataset.unchecked = "x-deal-v0";
-    header.append(unchecked);
-  }
-  header.append(el("p", report.scope || "This receipt covers this one deal. It is not a record of everything the agent did.", "deal-scope"));
-  // The countersign rung, as capsulectl checked it when it wrote this page
-  // (a page cannot resolve a signer against a directory): "Not
-  // countersigned" unless the bundle carried a countersignature that
-  // verified, and a self-countersignature is NOT INDEPENDENT. A file that
-  // carries a countersignature capsulectl did not check says only that.
-  // The page renders the line capsulectl wrote; it names no rung itself.
-  let countersign = { text: "The countersign line could not be read from this file." };
-  if (page && page.countersign && typeof page.countersign.text === "string") countersign = page.countersign;
-  header.append(el("p", countersign.text, countersign.flag === true ? "deal-rung deal-bad" : "deal-rung"));
-  if (typeof countersign.note === "string" && countersign.note) header.append(el("p", countersign.note, "deal-note"));
-  // Written by capsulectl from what the deal recorded (dealDidLine): the
-  // conversation is rightly the agent's own record; what the agent did needs
-  // an independent source.
-  if (typeof report.did_line === "string") header.append(el("p", report.did_line, "deal-note"));
-  const notClaimed = el("details", undefined, "deal-claims");
-  notClaimed.open = true;
-  notClaimed.append(el("summary", "What this does not claim"));
-  const claims = el("ul");
-  [
-    "It is tamper-evident, not non-repudiation: it shows these records were not changed after they were sealed, not who made them.",
-    "It records what the agent reported. It does not show that what was reported was true.",
-    "It does not prove the merchant shipped, delivered or refunded anything.",
-  ].forEach((t) => claims.append(el("li", t)));
-  notClaimed.append(claims);
-  header.append(notClaimed);
-  if (shared) {
-    const who = report.audience === "counterparty" ? "the other party" : "an adjudicator";
-    header.append(el("p", `A shared copy for ${who}. Left out of this copy: ${(report.withheld || []).join(", ")}.`, "deal-note"));
-  }
-
   const recordOk = (id) => recorded.has(id);
   // Today as the reader's own calendar has it (YYYY-MM-DD, to compare with
   // the report's dates).
@@ -424,6 +396,15 @@ const dealViewRender = (model, regions) => {
   const local = (at) => {
     const t = Date.parse(at);
     return Number.isNaN(t) ? at : new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  };
+  // The receipt's own short time: "Oct 7, 08:12", no year, on a 24-hour clock.
+  const short = (at) => {
+    const t = Date.parse(at);
+    return Number.isNaN(t) ? at : new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  };
+  const shortDay = (at) => {
+    const t = Date.parse(at);
+    return Number.isNaN(t) ? at : new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
   // In "What the agent did", each step is listed once, under the first item
   // read from it: an approval is the check's, not again the act's
@@ -466,16 +447,271 @@ const dealViewRender = (model, regions) => {
     d.append(el("summary", text), steps(ids));
     return d;
   };
-
-  if (model.demo) host.append(el("span", "DEMO", "deal-demo"));
   // The page's words come from the wording pack chat speaks with, when the
   // page carries one (capsulectlDealPage.words).
   const words = (page && page.words) || {};
-  host.append(el("h1", typeof words["report.title"] === "string" ? words["report.title"] : "Deal report"));
+  // A part of the receipt's face: a titled box.
+  const box = (title, open) => {
+    const d = el("details", undefined, "deal-box");
+    d.open = open;
+    d.append(el("summary", title));
+    return d;
+  };
+  const bullets = (lines, yes) => {
+    const ul = el("ul", undefined, "deal-list");
+    lines.forEach((t) => {
+      const li = el("li");
+      li.append(el("span", undefined, yes ? "deal-dot deal-yes" : "deal-dot"), el("span", t));
+      ul.append(li);
+    });
+    return ul;
+  };
 
-  // Which build sealed the steps, read from the records this page verified
-  // (not from the summary), compared with the build that made this page.
-  // Both are already in this file: nothing is fetched to do it.
+  // What the deal's records can be read as, on this page: the other side's
+  // half is not in a deal's own file, so the page never says "stamped by
+  // both" or "your receipt only"; it says what this file holds.
+  const opening = report.asked_opening || {};
+  const askedChecked = !!(page && page.openings && page.openings.asked === true) && typeof opening.text === "string";
+  const askedStep = byId.get(report.asked_step);
+  const col = el("div", undefined, "deal-col");
+
+  if (model.demo) host.append(el("span", "DEMO", "deal-demo"));
+  const bar = el("div", undefined, "deal-bar");
+  bar.append(el("h1", "Receipt"), el("span", shared ? "A shared copy" : "Your copy"));
+  host.append(bar, col);
+
+  // The verdict: said once, in the receipt's own words.
+  const banner = el("div", undefined, "deal-banner");
+  const stepsAll = report.steps || [];
+  const allMatched = stepsAll.length > 0 && stepsAll.every((st) => matched.has(st.capsule_id) || (shared && st.withheld && recordOk(st.capsule_id)));
+  const holds = allMatched && (askedChecked || shared);
+  banner.dataset.checked = holds ? "yes" : "no";
+  if (shared) {
+    const who = report.audience === "counterparty" ? "the other party" : "an adjudicator";
+    banner.append(el("b", holds ? "A shared copy · checked" : "A shared copy · not fully checked"), el("div", `Made for ${who}. Left out of this copy: ${(report.withheld || []).join(", ")}.`, "deal-small"));
+  } else {
+    banner.append(
+      el("b", holds ? "Your copy only · checked" : "Your copy only · not fully checked"),
+      el("div", "This file holds your side of the deal. The other side's record is not in it, so this page cannot say whether they agree.", "deal-small"),
+    );
+  }
+  col.append(banner);
+  // What the deal's text rests on, said on the face of every copy: sealed with
+  // the page and checked unchanged, or (a bundle written before reports were
+  // sealed) read from the x-deal-v0 extension, which no record seals.
+  const rests = el(
+    "p",
+    sealed
+      ? "The words below were written by capsulectl when this page was made and sealed in this file; this page checked they have not changed since. They are capsulectl's summary of the steps, not the steps themselves."
+      : "The words below were written by capsulectl when this page was made, and this page does not check them. It checks the sealed records in this file, not those words." + (shared || !askedChecked ? "" : " Only the words you asked, marked ✓ under More on this deal, are checked against their sealed record."),
+    "deal-note",
+  );
+  if (sealed) rests.dataset.sealed = "x-deal-v0";
+  else rests.dataset.unchecked = "x-deal-v0";
+  col.append(rests);
+
+  // The receipt: what was asked, in the person's words, then what was done.
+  const card = el("div", undefined, "deal-card");
+  card.append(el("div", model.dealId ? `Receipt · deal ${model.dealId}` : "Receipt", "deal-caps"));
+  if (shared) {
+    card.append(el("div", "What was asked is withheld from this copy.", "deal-small"));
+  } else if (askedChecked) {
+    card.append(el("div", askedStep && typeof askedStep.at === "string" ? `You asked, ${shortDay(askedStep.at)}` : "You asked", "deal-small"));
+    const quote = el("div", `“${opening.text}”`, "deal-quote");
+    quote.dataset.asked = report.asked_step;
+    card.append(quote);
+  } else {
+    card.append(el("div", "⚠️ The words you asked could not be checked against the sealed record.", "deal-bad"));
+  }
+  const did = report.did || [];
+  if (did.length > 0) {
+    const last = did[did.length - 1];
+    const lifeNow = report.lifecycle;
+    card.append(el("div", `${lifeNow && lifeNow.state === "open" ? "So far" : "Done"}: ${String(last && last.text).replace(/^Did: /, "")}`));
+  } else {
+    card.append(el("div", "Nothing done yet.", "deal-small"));
+  }
+  if (report.money && typeof report.money.text === "string") card.append(el("div", report.money.text));
+  card.append(el("div", shared ? (report.audience === "counterparty" ? "This is a shared copy. It shows only what the other party may see." : "This is a shared copy. It shows only what an adjudicator may see.") : "This is your copy. It shows everything in your book.", "deal-small"));
+  col.append(card);
+
+  // Your side, in your book: the errand's moves in order, a time on every row
+  // as the frames show. Each row says whether its sealed step verified.
+  const ours = el("div", undefined, "deal-half deal-ours");
+  ours.append(el("div", shared ? "The holder's side · in their book" : "Your side · in your book", "deal-caps"));
+  const journey = Array.isArray(report.journey) ? report.journey.filter((m) => m && typeof m === "object") : [];
+  const row = (when, text, tail) => {
+    const line = el("div");
+    line.append(el("b", when ? `${when} · ` : ""), el("span", text));
+    if (tail) line.append(el("span", ` · ${tail}`, "deal-small"));
+    return line;
+  };
+  const verified = (id) => matched.has(id) || (shared && byId.get(id) && byId.get(id).withheld && recordOk(id));
+  // A withheld step on a shared copy is verified present; what it says is not in the copy.
+  const rowTail = (id) => (matched.has(id) ? "" : verified(id) ? "contents withheld" : "step not verified in this report");
+  if (!shared && journey.length === 0 && askedChecked && askedStep) ours.append(row(short(askedStep.at), "you asked for it", "your words, sealed"));
+  const movers = { user: "You", agent: "Your agent", other: "The other side" };
+  if (!shared && journey.length > 0) {
+    journey.forEach((m) => {
+      const step = byId.get(m.step);
+      const label = dealJourneyLabel(words, m);
+      const who = Object.hasOwn(movers, m.by) ? movers[m.by] : "Someone";
+      const r = row(step && matched.has(m.step) && typeof step.at === "string" ? short(step.at) : "", `${who}${label ? ` · ${label}` : ""}`, rowTail(m.step));
+      r.dataset.journey = label;
+      ours.append(r);
+    });
+  } else {
+    did.forEach((i) => {
+      const hasSelf = typeof i.self === "string" && i.self !== "";
+      const ok = !hasSelf || verified(i.self);
+      ours.append(row(ok && typeof i.at === "string" && i.at ? short(i.at) : "", i.text, hasSelf ? rowTail(i.self) : ""));
+    });
+  }
+  const life = report.lifecycle;
+  if (life && typeof life.text === "string") ours.append(row("", lifecycleText(life), ""));
+  col.append(ours);
+
+  // Their side: only ever "not in this file" on a deal's own file.
+  const theirs = el("div", undefined, "deal-half deal-none");
+  theirs.append(el("div", shared ? "The other side" : "Their side", "deal-caps"));
+  theirs.append(el("div", "Not in this file. The other side's own record, if it keeps one, is held in its book; this page does not show it and does not say whether it exists."));
+  col.append(theirs);
+
+  // The stamps: the proofs ladder in the five consumer words, closed until
+  // opened. Only what this page checked, or says it did not.
+  const countersign = page && page.countersign && typeof page.countersign.text === "string" ? page.countersign : undefined;
+  // [word, line, detail]: a word is "passed" only for a check this page ran.
+  const stamps = [
+    shared
+      ? ["not checked", "The words asked are withheld from this copy", ""]
+      : askedChecked
+        ? ["passed", "Your words are sealed exactly as you said them", "checked when this page was built"]
+        : ["not checked", "Your words could not be checked against their sealed record", ""],
+    stepsAll.length === 0
+      ? ["not checked", "No step is listed in this copy", ""]
+      : allMatched
+        ? ["passed", shared ? "Each step's record is in the holder's book, and a change after would show" : "Each step's record is in your book, and a change after would show", ""]
+        : ["failed", "A step's record could not be found in this deal's log", "see More on this deal"],
+    [model.witnessed ? "not checked" : "missing", shared ? "An outside witness saw the holder's book" : "An outside witness saw your book", model.witnessed ? "this page can't check the witness's signature" : ""],
+    ["missing", "Nothing points back from the other side's book", "it is not in this file"],
+    ["not checked", "\"It happened\" rests on what the agent reported", "no one else has checked it"],
+  ];
+  const passed = stamps.filter((s) => s[0] === "passed").length;
+  const stampBox = el("details", undefined, "deal-box deal-stamps");
+  const sum = el("summary", "The stamps");
+  const failed = stamps.filter((st) => st[0] === "failed").length;
+  const rest = stamps.length - passed - failed;
+  const pill = el("span", [`${passed} passed`, failed > 0 ? `${failed} failed` : "", rest > 0 ? `${rest} not checkable here` : ""].filter((t) => t !== "").join(" · "), failed > 0 ? "deal-pill deal-bad" : "deal-pill");
+  sum.append(pill);
+  stampBox.append(sum, el("div", "What is under it:", "deal-small"));
+  stamps.forEach(([word, text, detail]) => {
+    const line = el("div", undefined, "deal-stamp");
+    line.dataset.stamp = word;
+    line.append(el("b", word === "passed" ? "✓" : "—", "deal-mark " + (word === "passed" ? "deal-ok" : "deal-bad")), el("span", `${text} · ${word}${detail ? ` · ${detail}` : ""}`));
+    stampBox.append(line);
+  });
+  if (countersign) stampBox.append(el("div", countersign.text, countersign.flag === true ? "deal-small deal-bad" : "deal-small"));
+  stampBox.append(el("div", `Five words for any stamp: ${dealStampWords.join(" · ")}.`, "deal-small"));
+  col.append(stampBox);
+
+  // What this receipt proves, and what it does not: only what this page checked.
+  const proves = box("What this receipt proves", true);
+  const provesLines = [];
+  if (askedChecked && !shared) provesLines.push("The words you asked are sealed, exactly as said, and this page checked them against the record.");
+  if (allMatched) provesLines.push("Every step listed here is in this deal's log and unchanged since it was sealed.");
+  const authority = report.authority || [];
+  if (sealed && authority.length > 0 && authority.every((b) => b.covered)) provesLines.push("Each action recorded here has an approval or a rule recorded for it.");
+  if (provesLines.length === 0) provesLines.push("Nothing on this page is vouched for beyond the stamps above.");
+  proves.append(bullets(provesLines, true));
+  col.append(proves);
+  const doesnt = box("What it doesn't", true);
+  const doesntLines = [
+    "That what the agent reported is true. It records what the agent reported.",
+    "Who made the records. It shows a change after they were sealed would show.",
+    "That the merchant shipped, delivered or refunded anything.",
+  ];
+  if (typeof report.scope === "string" && report.scope) doesntLines.push(report.scope);
+  if (shared) doesntLines.push("Anything left out of this copy: the steps marked contents withheld are proven present, not shown.");
+  doesnt.append(bullets(doesntLines, false));
+  col.append(doesnt);
+
+  // Tell your agent: only what the deal skill does today.
+  if (!shared) {
+    const say = el("div", undefined, "deal-say");
+    say.append(el("div", "Tell your agent", "deal-caps"), el("b", "“Send me this receipt”"), el("b", "“Make a copy for the other side”"));
+    col.append(say);
+  }
+
+  // Everything else the receipt knows, behind one fold-out: its steps, authority, what was told, dates, anomalies.
+  const more = el("details", undefined, "deal-more");
+  more.append(el("summary", "More on this deal: steps, authority, what was told, anomalies"));
+  col.append(more);
+
+  if (typeof report.did_line === "string") more.append(el("p", report.did_line, "deal-note"));
+  more.append(el("h2", "What the agent did"));
+  more.append(
+    el(
+      "p",
+      sealed
+        ? "The summary lines below, and each step's line, were written by capsulectl on this device and sealed with this page: " +
+            "this page checked they were not changed since, not that they are right. Open an item to see the steps it was read from; each step's sealed record is checked."
+        : "The summary lines below, and each step's line, are written by capsulectl on this device and are not checked by this page. " +
+            "Open an item to see the steps it was read from; each step's sealed record is checked, not its line.",
+      "deal-note",
+    ),
+  );
+  if (did.length === 0) more.append(el("p", "Nothing yet.", "deal-note"));
+  listed = new Set();
+  did.forEach((i) => more.append(item(typeof i.at === "string" && i.at ? `${local(i.at)} · ${i.text}` : i.text, i.steps, undefined, i.self)));
+  listed = undefined;
+  more.append(el("h2", "What you asked"));
+  if (shared) more.append(el("p", "Withheld from this copy.", "deal-note"));
+  else if (askedChecked) more.append(item(`“${opening.text}”`, [report.asked_step]));
+  if (askedChecked && !shared) more.append(el("p", "✓ These are the exact words sealed when the deal opened, checked when this page was built.", "deal-note"));
+
+  const authorityBlocks = report.authority || [];
+  if (authorityBlocks.length > 0) {
+    more.append(el("h2", "Authority"));
+    if (typeof report.authority_order === "string") more.append(el("p", report.authority_order, "deal-note"));
+    authorityBlocks.forEach((b) => {
+      more.append(el("h3", `${b.covered ? "" : "⚠️ "}${b.action}`));
+      (b.layers || []).forEach((l) => {
+        const line = item(`${local(l.at)} · ${l.text}`, [l.step], b.covered || l.layer !== "action" ? undefined : "deal-flag");
+        if (typeof l.note === "string" && l.note) line.append(el("p", l.note, "deal-note"));
+        more.append(line);
+      });
+    });
+  }
+
+  if (life && typeof life.text === "string") {
+    more.append(el("h2", "Where this deal stands"), el("p", lifecycleText(life)));
+    (life.later || []).forEach((l) => more.append(item(`${local(l.at)} · confirms the close: ${l.text}`, [l.capsule_id])));
+    more.append(el("p", `${life.may_change} (as of ${local(life.as_of)})`, "deal-note"));
+    // A report off the deal's log (capsule-cli#294) states the deal as of
+    // its checkpoint, the deal's last step. Where it stands today, the page
+    // works out from the viewer's clock, apart, and says so: it is not part
+    // of the report.
+    if (model.standalone) {
+      const today = localDay();
+      const due = life.open && typeof life.open.expect_close_by === "string" ? life.open.expect_close_by : "";
+      const passedDue = life.state === "open" && due !== "" && due < today ? ` The expected close, ${readDay(due)}, has passed as of today.` : "";
+      more.append(el("p", `This report states the deal as of its checkpoint at ${local(life.as_of)} (the producer's time).`, "deal-note"));
+      more.append(el("p", `Not part of the report, worked out by this page when you opened it: today is ${readDay(today)}.${passedDue}`, "deal-note"));
+    }
+  }
+
+  // What this receipt can prove and how to check it.
+  const header = el("section", undefined, "deal-assurance");
+  header.append(el("p", report.scope || "This receipt covers this one deal. It is not a record of everything the agent did.", "deal-scope"));
+  // The countersign rung, as capsulectl checked it when it wrote this page
+  // (a page cannot resolve a signer against a directory): "Not
+  // countersigned" unless the bundle carried a countersignature that
+  // verified, and a self-countersignature is NOT INDEPENDENT. The page
+  // renders the line capsulectl wrote; it names no rung itself.
+  let rung = { text: "The countersign line could not be read from this file." };
+  if (countersign) rung = countersign;
+  header.append(el("p", rung.text, rung.flag === true ? "deal-rung deal-bad" : "deal-rung"));
+  if (typeof rung.note === "string" && rung.note) header.append(el("p", rung.note, "deal-note"));
   const provenance = el("section", undefined, "deal-provenance");
   const builds = model.builds;
   if (builds.length > 0) provenance.append(el("p", `Produced by ${builds.map((b) => b.name).join(", then ")}.`, "deal-note"));
@@ -490,130 +726,35 @@ const dealViewRender = (model, regions) => {
     what.append(link);
     provenance.append(what);
   }
-
-  // The user's words were checked against the baseline's sealed commitment
-  // when this page was built (capsulectl refuses to write a page whose words
-  // do not match); this page does not recompute it.
-  const opening = report.asked_opening || {};
-  const askedChecked = !!(page && page.openings && page.openings.asked === true) && typeof opening.text === "string";
-  host.append(el("h2", "What you asked"));
+  const notClaimed = el("details", undefined, "deal-claims");
+  notClaimed.open = true;
+  notClaimed.append(el("summary", "What this does not claim"));
+  const claims = el("ul");
+  [
+    "It is tamper-evident, not non-repudiation: it shows these records were not changed after they were sealed, not who made them.",
+    "It records what the agent reported. It does not show that what was reported was true.",
+    "It does not prove the merchant shipped, delivered or refunded anything.",
+  ].forEach((t) => claims.append(el("li", t)));
+  notClaimed.append(claims);
+  header.append(notClaimed);
   if (shared) {
-    host.append(el("p", "Withheld from this copy.", "deal-note"));
-  } else if (askedChecked) {
-    host.append(item(`“${opening.text}”`, [report.asked_step]));
-    host.append(el("p", "✓ These are the exact words sealed when the deal opened, checked when this page was built.", "deal-note"));
-  } else {
-    host.append(el("p", "⚠️ The words you asked could not be checked against the sealed record.", "deal-bad"));
+    const who = report.audience === "counterparty" ? "the other party" : "an adjudicator";
+    header.append(el("p", `A shared copy for ${who}. Left out of this copy: ${(report.withheld || []).join(", ")}.`, "deal-note"));
   }
-
-  // How it went (capsule-cli#370): the errand's moves in order, read from
-  // the sealed report and worded from the pack this page carries, as
-  // `deal report` words its journey. Each row says who moved, and whether
-  // its sealed step verified. A shared copy, or a report sealed before
-  // journeys, has none.
-  const journey = Array.isArray(report.journey) ? report.journey.filter((m) => m && typeof m === "object") : [];
-  if (!shared && journey.length > 0) {
-    host.append(el("h2", "How it went"));
-    const movers = { user: "You", agent: "Your agent", other: "The other side" };
-    // A time is said when it changes: moves a minute apart read as one run.
-    let said;
-    journey.forEach((m) => {
-      const step = byId.get(m.step);
-      // A step that did not verify gives no time either: only its row says so.
-      const when = step && typeof step.at === "string" && matched.has(m.step) ? local(step.at) : "";
-      const at = when && when !== said ? `${when} · ` : "";
-      said = when || said;
-      const label = dealJourneyLabel(words, m);
-      // The row is its step: it says whether that step verified, and lists
-      // no step line, which "What the agent did" already shows.
-      const row = item(`${at}${(Object.hasOwn(movers, m.by) ? movers[m.by] : "Someone")}${label ? ` · ${label}` : ""}`, [], undefined, m.step);
-      row.dataset.journey = label;
-      host.append(row);
-    });
-    host.append(
-      el(
-        "p",
-        "Who moved and the names, items and amounts in each row are sealed in this file and checked. The other words come from the wording this page was made with, which is not sealed.",
-        "deal-note",
-      ),
-    );
-  }
-
-  host.append(el("h2", "What the agent did"));
-  host.append(
-    el(
-      "p",
-      sealed
-        ? "The summary lines below, and each step's line, were written by capsulectl on this device and sealed with this page: " +
-            "this page checked they were not changed since, not that they are right. Open an item to see the steps it was read from; each step's sealed record is checked."
-        : "The summary lines below, and each step's line, are written by capsulectl on this device and are not checked by this page. " +
-            "Open an item to see the steps it was read from; each step's sealed record is checked, not its line.",
-      "deal-note",
-    ),
-  );
-  const did = report.did || [];
-  if (did.length === 0) host.append(el("p", "Nothing yet.", "deal-note"));
-  listed = new Set();
-  did.forEach((i) => host.append(item(typeof i.at === "string" && i.at ? `${local(i.at)} · ${i.text}` : i.text, i.steps, undefined, i.self)));
-  listed = undefined;
-  // What the sealed acts moved, by direction: a pay and its reversal net to zero.
-  if (report.money && typeof report.money.text === "string") host.append(el("p", report.money.text));
-
-  // Authority: for each action, every layer it relied on, in order, each with
-  // its time; never collapsed into "you approved". Written by capsulectl on
-  // this device; each line expands to the step it was read from.
-  const authority = report.authority || [];
-  if (authority.length > 0) {
-    host.append(el("h2", "Authority"));
-    if (typeof report.authority_order === "string") host.append(el("p", report.authority_order, "deal-note"));
-    authority.forEach((b) => {
-      host.append(el("h3", `${b.covered ? "" : "⚠️ "}${b.action}`));
-      (b.layers || []).forEach((l) => {
-        const line = item(`${local(l.at)} · ${l.text}`, [l.step], b.covered || l.layer !== "action" ? undefined : "deal-flag");
-        if (typeof l.note === "string" && l.note) line.append(el("p", l.note, "deal-note"));
-        host.append(line);
-      });
-    });
-  }
-
-  // Where the deal stands (open, cancelled or closed), the records linked to
-  // the close after it, and that more may be linked after this page was
-  // made: a fact, before what the page can and cannot prove about it.
-  // Written by capsulectl when the page was made ("as of"); each linked
-  // record expands to its sealed step.
-  const life = report.lifecycle;
-  if (life && typeof life.text === "string") {
-    host.append(el("h2", "Where this deal stands"), el("p", lifecycleText(life)));
-    (life.later || []).forEach((l) => host.append(item(`${local(l.at)} · confirms the close: ${l.text}`, [l.capsule_id])));
-    host.append(el("p", `${life.may_change} (as of ${local(life.as_of)})`, "deal-note"));
-    // A report off the deal's log (capsule-cli#294) states the deal as of
-    // its checkpoint, the deal's last step. Where it stands today, the page
-    // works out from the viewer's clock, apart, and says so: it is not part
-    // of the report.
-    if (model.standalone) {
-      const today = localDay();
-      const due = life.open && typeof life.open.expect_close_by === "string" ? life.open.expect_close_by : "";
-      const passed = life.state === "open" && due !== "" && due < today ? ` The expected close, ${readDay(due)}, has passed as of today.` : "";
-      host.append(el("p", `This report states the deal as of its checkpoint at ${local(life.as_of)} (the producer's time).`, "deal-note"));
-      host.append(el("p", `Not part of the report, worked out by this page when you opened it: today is ${readDay(today)}.${passed}`, "deal-note"));
-    }
-  }
-
-  // What this receipt can prove and how to check it, after the facts it is about.
-  host.append(header, provenance);
+  more.append(header, provenance);
 
   // What the agent told whom about the user: each telling, its time and the
   // approval that covered it, or that none did. Your own copy shows what was
   // given; a shared copy names only the kind of thing.
-  host.append(el("h2", "What your agent told whom"));
+  more.append(el("h2", "What your agent told whom"));
   const told = report.told || [];
-  if (told.length === 0) host.append(el("p", "Nothing about you was recorded as shared.", "deal-note"));
+  if (told.length === 0) more.append(el("p", "Nothing about you was recorded as shared.", "deal-note"));
   told.forEach((t) => {
     const flagged = t.authority === "none";
     const fields = (t.fields || []).map((f) => (typeof f.value === "string" ? `${f.label}: ${f.value}` : f.label)).join("; ");
-    host.append(item(`${flagged ? "⚠️ " : ""}${t.text} · ${local(t.at)} · ${t.authority_text}${shared ? "" : ` (${fields})`}`, t.steps, flagged ? "deal-flag" : undefined));
+    more.append(item(`${flagged ? "⚠️ " : ""}${t.text} · ${local(t.at)} · ${t.authority_text}${shared ? "" : ` (${fields})`}`, t.steps, flagged ? "deal-flag" : undefined));
   });
-  host.append(el("p", "Only what the agent sealed as shared is listed here; something it told without sealing it is not.", "deal-note"));
+  more.append(el("p", "Only what the agent sealed as shared is listed here; something it told without sealing it is not.", "deal-note"));
 
   // Where the user sells: what their agent told the buyer, each claim's words
   // checked here against the commitment its sealed step carries, labelled by
@@ -629,7 +770,7 @@ const dealViewRender = (model, regions) => {
       delivery_promise: "Delivery promise", // a claim sealed before delivery_date
     };
     const heading = !shared ? "What your agent told the buyer" : report.audience === "counterparty" ? "What the seller's agent told you" : "What the seller's agent told the buyer";
-    host.append(el("h2", heading));
+    more.append(el("h2", heading));
     const checked = (page && page.openings && page.openings.representations) || [];
     for (const [i, r] of said.entries()) {
       // Checked against its sealed commitment when this page was built.
@@ -637,19 +778,19 @@ const dealViewRender = (model, regions) => {
       const ok = checked[i] === true && claimClass !== undefined && typeof r.text === "string";
       if (ok) {
         const label = labels[claimClass];
-        host.append(item(`${label ? `${label}: ` : ""}“${r.text}” ✓`, [r.step]));
+        more.append(item(`${label ? `${label}: ` : ""}“${r.text}” ✓`, [r.step]));
       } else {
-        host.append(item("⚠️ A statement here could not be checked against its sealed step.", [r.step], "deal-flag"));
+        more.append(item("⚠️ A statement here could not be checked against its sealed step.", [r.step], "deal-flag"));
       }
     }
-    host.append(el("p", "✓ These are the exact words sealed when the agent said them, checked when this page was built; this page does not check that they are true.", "deal-note"));
+    more.append(el("p", "✓ These are the exact words sealed when the agent said them, checked when this page was built; this page does not check that they are true.", "deal-note"));
   }
 
   // Cancel-by dates (the point of no return is a date passing) and due
   // dates (what the user owes by a date). Recorded, never enforced.
   const deadlines = report.deadlines || [];
   if (deadlines.length > 0) {
-    host.append(el("h2", deadlines.some((d) => d.due_by) ? "Cancel-by and due dates" : "Cancel-by dates"));
+    more.append(el("h2", deadlines.some((d) => d.due_by) ? "Cancel-by and due dates" : "Cancel-by dates"));
     const list = el("ul", undefined, "deal-steps");
     deadlines.forEach((d) => {
       const live = d.status === "open" || d.status === "carried_at_close";
@@ -664,11 +805,11 @@ const dealViewRender = (model, regions) => {
       }
       list.append(li);
     });
-    host.append(list, el("p", deadlines[0].note, "deal-note"));
+    more.append(list, el("p", deadlines[0].note, "deal-note"));
   }
   // A cancellation: exactly what is shown, and what is not.
   (report.cancellations || []).forEach((c) => {
-    host.append(el("h2", "Your cancellation"));
+    more.append(el("h2", "Your cancellation"));
     const shows = el("details", undefined, c.merchant === "confirmed" ? undefined : "deal-flag");
     shows.open = true;
     shows.append(el("summary", "What this shows"));
@@ -677,15 +818,15 @@ const dealViewRender = (model, regions) => {
     const notProven = el("ul", undefined, "deal-note");
     (c.not_proven || []).forEach((p) => notProven.append(el("li", p)));
     shows.append(proven, el("h3", "What this does not show"), notProven, steps(c.steps || []));
-    host.append(shows);
+    more.append(shows);
   });
 
   // The merchant's own emails. Two statements, never one: the merchant's
   // DKIM signature (independent of the agent) and our seal (our own record).
   const merchant = report.merchant || [];
   if (merchant.length > 0) {
-    host.append(el("h2", "The merchant's own email"));
-    host.append(
+    more.append(el("h2", "The merchant's own email"));
+    more.append(
       el(
         "p",
         "Two different things stand behind each email. The signing domain's DKIM signature is checked against its published key, " +
@@ -695,7 +836,7 @@ const dealViewRender = (model, regions) => {
         "deal-note",
       ),
     );
-    if (typeof report.email_scope === "string") host.append(el("p", report.email_scope, "deal-scope"));
+    if (typeof report.email_scope === "string") more.append(el("p", report.email_scope, "deal-scope"));
     merchant.forEach((m) => {
       const d = el("details", undefined, m.verified ? undefined : "deal-flag");
       d.open = true;
@@ -721,23 +862,23 @@ const dealViewRender = (model, regions) => {
       row("Signing domain", m.domains);
       row("Signing domain's key", m.key_size ? `${m.key_size}, sealed when the email was sealed` : "");
       d.append(table, steps(m.steps || []));
-      host.append(d);
+      more.append(d);
     });
   }
 
-  host.append(el("h2", "Anomalies"));
+  more.append(el("h2", "Anomalies"));
   const anomalies = report.anomalies || [];
   [
     ["agent", "Agent side"],
     ["counterparty", "Counterparty side"],
   ].forEach(([side, label]) => {
     const mine = anomalies.filter((a) => a.side === side);
-    host.append(el("h3", label));
-    if (mine.length === 0) host.append(el("p", "None found.", "deal-note"));
-    mine.forEach((a) => host.append(item(`⚠️ ${a.text}`, a.steps, "deal-flag")));
+    more.append(el("h3", label));
+    if (mine.length === 0) more.append(el("p", "None found.", "deal-note"));
+    mine.forEach((a) => more.append(item(`⚠️ ${a.text}`, a.steps, "deal-flag")));
   });
 
-  host.append(
+  more.append(
     el(
       "p",
       "This page checked each step's sealed record and its place in this deal's log; the verification below says what was and was not checked. " +
@@ -751,7 +892,7 @@ const dealViewRender = (model, regions) => {
 };
 
 EvidenceGraph.registerPresentation({
-  manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-deal-v0"]}}, "forbids": {"extensions": ["x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["a3c7fcada4ac7c37b2c4816960602cd45af2c0afa18e9a50f036fa636d8ddb98"]}},
+  manifest: {"spec_version": "aac.presentation-manifest/v0", "id": "capsulectl.deal-view/v0", "presentation_api": "aac.presentation-api/v0", "runtime_min": "0.1.0", "trust_class": "trusted-executable", "requires": {"bundle_kind": "evidence-bundle/v2", "extensions": {"required": ["x-deal-v0"]}}, "forbids": {"extensions": ["x-history-selection/v0"], "profiles": ["spec_version:report/v1", "result_version:evidence-result-v0", "spec_version:evaluation-summary/v1"]}, "audiences": ["*"], "formats": ["html"], "fallback": false, "priority": 1, "executable": {"carrier": "module-slot", "script_sha256": "0000000000000000000000000000000000000000000000000000000000000000", "style_sha256": ["04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"]}},
   canRender: dealViewVerified,
   buildModel: dealViewModel,
   render: dealViewRender,

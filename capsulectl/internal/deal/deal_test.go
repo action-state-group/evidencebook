@@ -651,7 +651,9 @@ func TestDealPickedItemIsNotAFalsePause(t *testing.T) {
 		// go only to an adjudicator.
 		shared := filepath.Join(t.TempDir(), "shared.html")
 		shareRun(t, dealID, cli.DealAudienceCounterparty, shared)
-		copyPage := string(mustRead(t, shared))
+		// The module's own source holds words like "you asked for it": only
+		// what the page shows is checked.
+		copyPage := strings.ReplaceAll(string(mustRead(t, shared)), DealViewJS, "")
 		assert.Contains(t, copyPage, "Checked before paying: flagged")
 		for _, words := range []string{"you asked for", "the agent picked", "size small"} {
 			assert.NotContains(t, strings.ToLower(copyPage), words)

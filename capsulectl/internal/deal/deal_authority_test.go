@@ -102,7 +102,7 @@ func TestAuthorityBlockListsEveryLayerWithItsTime(t *testing.T) {
 	assert.Equal(t, "pass", v.PerRecordMembership.Status, v.PerRecordMembership.Findings)
 	ext := dealReportOf(b)
 	assert.Equal(t, toPlain(t, report["authority"]), toPlain(t, ext["authority"]))
-	assert.Contains(t, string(raw), `host.append(el("h2", "Authority"))`)
+	assert.Contains(t, string(raw), `more.append(el("h2", "Authority"))`)
 }
 
 // When the user's rules needed no approval, the block says DO, within your

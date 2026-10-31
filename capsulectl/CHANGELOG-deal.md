@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- The deal view draws the receipt as Steven's 9b frames do (evidencebook-deal#82,
+  #80): a verdict banner, the receipt card in the user's own words, "Your side
+  · in your book" with a time on every line, the other side marked as not in
+  this file, a closed "The stamps" list in the five words (passed, failed,
+  missing, not checked, unclear), "What this receipt proves" and "What it
+  doesn't", and "Tell your agent". The steps, authority, what was told and the
+  anomalies sit under "More on this deal". A shared copy speaks of the holder
+  in the third person. The other side's half, and a Mesh node's copy
+  (evidencebook-deal#78, #79), are not drawn yet.
+
 ## v0.1.0-rc25
 
 Built against capsulectl v0.1.0-rc25 and capsule-viewer v0.5.0 (RELEASING.md).

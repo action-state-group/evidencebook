@@ -103,13 +103,13 @@ func TestADigitInADateDoesNotSettleAMaterialPick(t *testing.T) {
 	assert.Contains(t, check["card"], "I picked quantity 2")
 }
 
-// Facts before epistemics: on the page, what was asked, what was done and
-// where the deal stands come before what the receipt can prove and how to
-// check it; in the email, what the agent did comes before the assurance.
+// Facts before epistemics: on the page, what was done and your side's moves
+// come on the receipt's face before what it proves, and the detail that
+// follows (steps, where the deal stands) comes before how to check it; in the email, what the agent did comes before the assurance.
 func TestReceiptPutsFactsFirst(t *testing.T) {
 	page, err := os.ReadFile("assets/deal-view.js")
 	require.NoError(t, err)
-	order := []string{`el("h2", "What you asked")`, `el("h2", "What the agent did")`, `el("h2", "Where this deal stands")`, `host.append(header, provenance)`, `el("h2", "What your agent told whom")`}
+	order := []string{"\"Done\"}: ${String(last && last.text)", `"Your side · in your book"`, `"What this receipt proves"`, `el("h2", "What the agent did")`, `el("h2", "Where this deal stands")`, `more.append(header, provenance)`, `el("h2", "What your agent told whom")`}
 	last := -1
 	for _, marker := range order {
 		at := strings.Index(string(page), marker)
