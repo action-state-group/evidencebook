@@ -47,7 +47,17 @@ Status: answered (#208).
 
 **R4. Locating a withheld record, and cadence leakage.** #206 items 4 and 5. `range` is refused to every asker, so bisection is not open. But a counterparty asking `correlation`, `exchange` or `exchange_corroboration/1` over a key gets a refusal of the whole answer when a matched record is `never_leaves`, which locates a withheld record. Log size and cadence are public in the checkpoint list; what a counterparty gains beyond that is only which refusal it gets. Owner: **#206**; item 5 may be accepted in writing.
 
+**Decision, item 4.** Fix (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9). A `never_leaves` record leaves no one's answer, so it drops out of the matched set for every remote asker before counting and gating, and the answer is the same whether or not one exists. Every remote answer stays INCOMPLETE, so dropping a record never yields a false COMPLETE. It lands after the vectors of #206 row 7. Implementation: Mesh-LLM/capsules-plugin#161. The book's Go responder has no `never_leaves` equivalent.
+
+Status: decided; not built.
+
 **R5. Requester key rotation and compromise.** #206 item 6. Owner: **#206**.
+
+**R6. The unheld-key oracle under `specific`.** #206 row 8, from #207. Under `RefusalPolicySpecific`, the reason a counterparty gets for a key it doesn't hold (`not_authorized` against `no_such_subject` or `retention_expired`) tells it whether the holder has the record. `RefusalPolicyUniform` folds them into one answer (`TestRefusalsDoNotEnumerateRecords`, uniform case). Owner: **#206**.
+
+**Decision.** `uniform` becomes the default refusal policy, with `specific` an operator opt-in (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9), reversing his Q3 on #114. Implementation: #225, in Go, Rust and Python; a breaking change to the default.
+
+Status: decided; not built.
 
 ### Rule side
 
@@ -101,7 +111,7 @@ Stop answering strangers over the request path. The commitment already carries t
 | Item | Issue | Repo | Kind | Status |
 |---|---|---|---|---|
 | R1 responder lock | #208 | evidencebook | code, load test | answered: #215 |
-| R2–R5 flooding, replay, range, keys | #206 | evidencebook | answer doc, tests, decisions | open: #206's rows |
+| R2–R6 flooding, replay, range, keys, refusal oracle | #206 | evidencebook | answer doc, tests, decisions | R4 item 4 and R6 decided: Mesh-LLM/capsules-plugin#161, #225; the rest open: #206's rows |
 | P1 absence under attack | #473 | agent-action-capsule | ruling, spec text | decided: ER -02 §4.7, merged in agent-action-capsule#476; implementation open: #223, capsule-viewer#164, agent-action-capsule#477 |
 | A1, A2 asker-side limits and forks | #209 | evidencebook | code, vectors | answered: #216, #221, capsule-viewer#163 and #165, Mesh-LLM/capsules-plugin#156 |
 | N1 Sybil staples | #170 | evidence-network/loop | report rule, wording | open |
