@@ -1203,6 +1203,8 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			switch {
 			case item.Shared != "" && audience == cli.DealAudienceCounterparty:
 				text = item.Shared
+			case item.Causes != "" && audience == cli.DealAudienceAdjudicator:
+				text = strings.Replace(item.Text, item.Causes, "", 1)
 			case item.Kind == "act":
 				if a := lastAct(item.Steps); a != nil {
 					text = "Did: " + dealShareAct(*a, currency)

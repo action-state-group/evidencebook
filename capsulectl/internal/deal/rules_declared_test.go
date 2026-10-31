@@ -15,7 +15,7 @@ const declaredFindings = `{"id":"r14-commits-the-user","verdict":"not_evaluable"
 	`{"id":"r24-outside-instructions","verdict":"not_evaluable","reason":"declared, not measured"},` +
 	`{"id":"r25-no-bypassing","verdict":"not_evaluable","reason":"declared, not measured"}`
 
-const declaredLine = "3 rules are declared by the ruleset but not measured by this checker (r14, r24, r25)."
+const declaredLine = "r14, r24, r25 (in the ruleset, not measured by this checker)"
 
 func checkWithRules(t *testing.T, verdict, findings string) (string, map[string]any) {
 	t.Helper()
@@ -96,7 +96,47 @@ func TestTheReceiptSaysDeclaredRulesQuietly(t *testing.T) {
 	report := dealRun(t, "report", "--deal", id)
 	raw, err := json.Marshal(report["did"])
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "Checked before paying: no differences; 3 rules are declared by the ruleset but not measured by this checker (r14, r24, r25)")
+	assert.Contains(t, string(raw), "Checked before paying: no differences (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
 	_, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
-	assert.NotContains(t, shared, "declared by the ruleset")
+	assert.NotContains(t, shared, "in the ruleset")
+}
+
+// A flagged check's receipt line gives the rules that caused the flag first,
+// in the checker's words; the rules declared but not measured follow as not
+// yet checked and do not read as a reason (evidencebook-deal#55).
+func TestTheReceiptNamesWhatFlaggedTheCheckBeforeWhatIsNotYetChecked(t *testing.T) {
+	findings := `{"id":"r02-first-payment","verdict":"fail","disposition":"ask","reason":"first payment to this merchant"},` +
+		`{"id":"r05-per-purchase","verdict":"fail","disposition":"ask","reason":"over your per-purchase limit","limit":2500,"value":55880},` +
+		declaredFindings
+	id, check := checkWithRules(t, "escalate", findings)
+	require.Equal(t, "pause", check["verdict"])
+	report := dealRun(t, "report", "--deal", id)
+	raw, err := json.Marshal(report["did"])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "Checked before paying: flagged (first payment to this merchant; over your per-purchase limit) (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
+	_, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
+	assert.NotContains(t, shared, "per-purchase limit", "a shared copy does not name the user's rules")
+	assert.NotContains(t, shared, "not yet checked")
+	_, adjudicator := sharedCopy(t, id, cli.DealAudienceAdjudicator, "the shop's support desk")
+	assert.Contains(t, adjudicator, "not yet checked: r14, r24, r25", "an adjudicator keeps the not-yet-checked note")
+	assert.Contains(t, adjudicator, "you asked for: item otter sticker", "and who chose what")
+	assert.NotContains(t, adjudicator, "per-purchase limit", "and not the user's rules' reasons")
+
+	// Nothing caused a flag: the not-yet-checked note stands on its own.
+	id, _ = checkWithRules(t, "allow", passFinding+","+declaredFindings)
+	raw, err = json.Marshal(dealRun(t, "report", "--deal", id)["did"])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "Checked before paying: no differences (you asked for: item otter sticker); not yet checked: r14, r24, r25")
+}
+
+// A flag caused only by a rule the checker could not evaluate says so, so the
+// declared rules after it do not read as the reason; and an adjudicator's copy
+// keeps its not-yet-checked note.
+func TestAFlagFromARuleThatCouldNotBeEvaluatedSaysSo(t *testing.T) {
+	findings := `{"id":"r09-terms","verdict":"not_evaluable","disposition":"ask","reason":"the record states no terms"},` + declaredFindings
+	id, check := checkWithRules(t, "escalate", findings)
+	require.Equal(t, "pause", check["verdict"])
+	raw, err := json.Marshal(dealRun(t, "report", "--deal", id)["did"])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "Checked before paying: flagged (the record states no terms (could not be checked)) (you asked for: item otter sticker); not yet checked: r14, r24, r25")
 }
