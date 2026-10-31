@@ -8,9 +8,9 @@
   (agent-action-capsule#485), which registers the Evidence Request -02 refusal
   reasons `capacity_exceeded` and `request_unauthenticated` and reads
   `evidence-interop/1`. `evidence-request` types are in this crate's API
-  (`AnswerError::Sign`, `Reason`), so a dependent moves with it. A dependent
-  that keeps one `evidence-request` in its graph, as capsules-plugin does,
-  needs this to take 0.3 (Mesh-LLM/capsules-plugin#114).
+  (`AnswerError::Sign`, `Reason`), so a dependent moves with it, and a
+  dependent that keeps one `evidence-request` in its graph needs this to take
+  0.3.
 - `request::reasons::ALL` lists the registry's ten tokens (`[&str; 10]`).
   `Refusal::reason_is_registered` stays the check of `evidence-interop/0`, the
   only profile this crate answers and asks under: its eight ER -01 tokens, as
