@@ -90,7 +90,7 @@ func TestHolderAskedListsTheAnsweredRecordsAndNamesNobody(t *testing.T) {
 	require.NoError(t, err)
 	holderGolden(t, "asked-empty", string(mustRead(t, empty)))
 	assert.Contains(t, string(mustRead(t, empty)), "Nobody has asked about you")
-	assert.Contains(t, string(mustRead(t, empty)), "Nothing is waiting for your answer")
+	assert.Contains(t, string(mustRead(t, empty)), "Nothing is waiting. This book cannot yet record")
 
 	x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
 	x.respond("history")
@@ -118,13 +118,18 @@ func TestHolderAskedListsTheAnsweredRecordsAndNamesNobody(t *testing.T) {
 	holderGolden(t, "asked", page)
 	assert.Contains(t, page, `<span class="pill">2</span>`)
 	assert.Contains(t, page, "<b>proof only</b>")
-	assert.Contains(t, page, "Snapshots and receipts. No counts.")
+	assert.Contains(t, page, "Reason: your settings do not allow it")
+	// Sentences that promised what nothing produces are not on the page.
+	for _, promised := range []string{"small deals only", "shows you here", "witness"} {
+		assert.NotContains(t, page, promised)
+	}
+	assert.Contains(t, page, "Snapshots. No counts.")
 	for _, example := range canvasExamples {
 		assert.NotContains(t, page, example)
 	}
 	// The book keeps no requester name and no ask waiting for an answer, so
 	// the page draws none.
-	assert.Contains(t, page, "Nothing is waiting for your answer")
+	assert.Contains(t, page, "Nothing is waiting. This book cannot yet record")
 }
 
 func TestHolderAskedAndPromptAreNeverShared(t *testing.T) {

@@ -147,7 +147,7 @@ type holderPage struct {
 	ChoosingTitle, ChoosingNote    template.HTML
 	NoTitle                        template.HTML
 	NoItems                        []template.HTML
-	TheirNoTitle, TheirNoNote      template.HTML
+	TheirNoTitle                   template.HTML
 	ListTitle, ListNote, ListEmpty template.HTML
 	Count                          int
 	Items                          []askedItem
@@ -168,6 +168,15 @@ type promptThen struct {
 	ID       string
 	Label    template.HTML
 	Disabled bool
+}
+
+// reason is the holder's words for a refusal code the pack knows, else the
+// code as the book sealed it.
+func (w holderWording) reason(code string) string {
+	if v, ok := w.entries["asked.reason."+code]; ok {
+		return v
+	}
+	return code
 }
 
 func (w holderWording) na() template.HTML { return w.text("pill.unavailable") }
@@ -216,9 +225,9 @@ func askedPage(w holderWording, entries []answeredEntry) holderPage {
 		Waiting: w.text("asked.waiting.title"), WaitingEmpty: w.text("asked.waiting.empty"),
 		ChoosingTitle: w.text("asked.choosing.title"), ChoosingNote: w.text("asked.choosing.note"),
 		NoTitle:      w.text("asked.no.title"),
-		NoItems:      []template.HTML{w.text("asked.no.1"), w.text("asked.no.2"), w.text("asked.no.3")},
-		TheirNoTitle: w.text("asked.theirno.title"), TheirNoNote: w.text("asked.theirno.note"),
-		ListTitle: w.text("asked.list.title"), ListNote: w.text("asked.list.note"), ListEmpty: w.text("asked.list.empty"),
+		NoItems:      []template.HTML{w.text("asked.no.1"), w.text("asked.no.2")},
+		TheirNoTitle: w.text("asked.theirno.title"),
+		ListTitle:    w.text("asked.list.title"), ListNote: w.text("asked.list.note"), ListEmpty: w.text("asked.list.empty"),
 		Count: len(entries),
 	}
 	sort.SliceStable(entries, func(i, j int) bool { return entries[i].At.After(entries[j].At) })
@@ -236,7 +245,7 @@ func askedPage(w holderWording, entries []answeredEntry) holderPage {
 		switch {
 		case st.Outcome == evidencebook.OutcomeRefusal:
 			item = askedItem{Class: "u", Line: template.HTML(date + " · " + template.HTMLEscapeString(who) + " · <b>" + template.HTMLEscapeString(w.plain("asked.what.refused")) + "</b>"),
-				Note: w.text("asked.what.refused.note", "reason", st.Reason)}
+				Note: w.text("asked.what.refused.note", "reason", w.reason(st.Reason))}
 		case st.SubjectKind == evidencebook.SubjectCheckpoints:
 			item = askedItem{Class: "u", Line: template.HTML(date + " · " + template.HTMLEscapeString(who) + " · " + template.HTMLEscapeString(w.plain("asked.got")) + " <b>" + template.HTMLEscapeString(w.plain("asked.what.checkpoints")) + "</b>"),
 				Note: w.text("asked.what.checkpoints.note")}
@@ -294,7 +303,7 @@ var holderTemplate = template.Must(template.New("holder").Parse(`<!DOCTYPE html>
 <div class="sec"><div class="h"><span>{{.Waiting}}</span></div><div class="sm">{{.WaitingEmpty}}</div></div>
 <div class="sec"><div class="h"><span>{{.ChoosingTitle}}</span><span class="tg o">▾</span></div><div class="sm">{{.ChoosingNote}}</div></div>
 <div class="sec"><div class="h"><span>{{.NoTitle}}</span><span class="tg o">▾</span></div>{{range .NoItems}}<div class="it"><span class="dot y"></span><div>{{.}}</div></div>{{end}}</div>
-<div class="sec"><div class="h"><span>{{.TheirNoTitle}}</span><span class="tg">▸</span></div><div class="sm">{{.TheirNoNote}}</div></div>
+<div class="sec"><div class="h"><span>{{.TheirNoTitle}}</span><span class="pill">{{.NA}}</span><span class="tg">▸</span></div></div>
 <div class="sec"><div class="h"><span>{{.ListTitle}}</span><span class="pill">{{.Count}}</span><span class="tg o">▾</span></div>
 {{- range .Items}}<div class="it"><span class="dot {{.Class}}"></span><div>{{.Line}}<div class="sm">{{.Note}}</div></div></div>{{end}}
 {{- if not .Items}}<div class="sm">{{.ListEmpty}}</div>{{end}}
