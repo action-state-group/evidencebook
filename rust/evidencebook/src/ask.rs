@@ -160,8 +160,54 @@ pub fn request(
     // The same reader the responder uses: a request that would not be read
     // as well formed is never sent.
     parse_request(&bytes).map_err(|why| AskError::Invalid(format!("request: {why}")))?;
+    record_request(book, value, bytes, Some(nonce), responder)
+}
 
+/// Record a request that another tool composed and sent to `responder`,
+/// exactly as given (Go `Book.RequestSent`): every member is kept, including
+/// those the request draft does not define (a deployment profile's
+/// `audience` or requester authentication, ER §3), and no nonce or profile
+/// is added. The octets must be a well-formed request (profile §6.1 steps 1
+/// to 5) in JCS, the form a requester transmits JSON in (P-9), so the
+/// recorded digest is the one the responder signs its reply over. A nonce
+/// this book already used is refused; a request without one has nothing to
+/// compare.
+pub fn request_sent(
+    book: &mut dyn Book,
+    octets: &[u8],
+    responder: &str,
+) -> Result<SentRequest, AskError> {
+    let req = crate::respond::read_sent_request(octets).map_err(|reason| {
+        AskError::Invalid(format!("not a well-formed request ({})", reason.token()))
+    })?;
+    // The record's statement embeds the octets as JSON, so octets in any
+    // other form than JCS would not survive as sent.
+    let value: Value =
+        serde_json::from_slice(octets).map_err(|e| AskError::Invalid(format!("request: {e}")))?;
+    let jcs = evidence_request::jcs::to_string(&value)
+        .map_err(|e| AskError::Invalid(format!("request: {e}")))?;
+    if jcs.as_bytes() != octets {
+        return Err(AskError::Invalid(
+            "a sent request must be in JCS (RFC 8785), as it was transmitted".into(),
+        ));
+    }
+    let nonce = req.nonce.filter(|n| !n.is_empty());
+    record_request(book, value, octets.to_vec(), nonce, responder)
+}
+
+/// Commit the request `value` (whose JCS is `bytes`), as transmitted to
+/// `responder`, refusing a nonce this book already used.
+fn record_request(
+    book: &mut dyn Book,
+    value: Value,
+    bytes: Vec<u8>,
+    nonce: Option<String>,
+    responder: &str,
+) -> Result<SentRequest, AskError> {
     for leaf in 0..book.len() {
+        let Some(nonce) = nonce.as_deref() else {
+            break;
+        };
         let Some(record) = book.record_at(leaf) else {
             continue;
         };
@@ -174,7 +220,7 @@ pub fn request(
             continue;
         }
         if let Ok(prior) = sent_request(book, &record.digest) {
-            if prior.nonce.as_deref() == Some(nonce.as_str()) {
+            if prior.nonce.as_deref() == Some(nonce) {
                 return Err(AskError::Invalid(format!(
                     "nonce already used by request {}",
                     record.digest

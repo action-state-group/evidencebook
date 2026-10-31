@@ -779,6 +779,12 @@ fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
     Ok(req)
 }
 
+/// Read a request this book sent, not one it is answering: the same reading
+/// (profile §6.1 steps 1 to 5), returning the reason it refused with.
+pub(crate) fn read_sent_request(octets: &[u8]) -> Result<Request, Reason> {
+    read_request(octets, Binding::Json).map_err(|(reason, _)| reason)
+}
+
 fn const_concat_profiles() -> &'static str {
     "profiles supported: evidence-interop/0, evidence-interop/1"
 }

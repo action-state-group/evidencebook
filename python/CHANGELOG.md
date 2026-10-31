@@ -14,6 +14,17 @@
     the two reasons ER -02 adds conform only under `/1`. The book still asks under `/0`.
   - The package requires `agent-action-capsule` 0.14, which reads `/1`.
 
+- `Book.request_sent` records a request that another tool composed and sent, exactly as given,
+  as Go's `Book.RequestSent` does (evidencebook#247).
+  - Every member is kept, including those the request draft does not define (the capsules
+    plugin's `audience`, `requester_id` and `requester_auth`), and no nonce or profile is
+    added. The octets must be a well-formed request in JCS, so the recorded digest is the one
+    the responder signed its reply over. A nonce the book already used is refused; a request
+    without one is recorded every time.
+  - A record-set entry's body may be the capsule as the capsules plugin's ledger holds it,
+    bound by its `capsule_id`. The live-16 replies (`testdata/live16-ask/`) verify as
+    artifacts.
+
 - `Book.record_response` applies the requester's limits as Go's `RecordResponse` does
   (evidencebook#209).
   - The constants are `MAX_REPLY_BYTES` (8 MiB), `MAX_REPLY_DEPTH` (32),

@@ -17,6 +17,19 @@
   refusal under the profile its request asked for (v1 §6.3), so a `/1`
   `capacity_exceeded` is registered.
 
+### Added: `ask::request_sent` records a request another tool sent (evidencebook#247)
+
+- `ask::request_sent` records a request that another tool composed and sent,
+  exactly as given, as Go's `Book.RequestSent` does (evidencebook#245): every
+  member is kept, including those the request draft does not define (the
+  capsules plugin's `audience`, `requester_id` and `requester_auth`), and no
+  nonce or profile is added. The octets must be a well-formed request in
+  JCS, so the recorded digest is the one the responder signed its reply over;
+  `evidence-interop/0` and `/1` requests are read. A nonce the book already
+  used is refused; a request without one is recorded every time. The live-16
+  requests (`testdata/live16-ask/`) are recorded with the digest their
+  replies answer.
+
 ## 0.0.11 (2026-10-31)
 
 ### Breaking: `evidence-request` 0.3, and the envelope names the profile asked for

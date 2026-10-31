@@ -511,18 +511,49 @@ class Book:
         whatever comes back."""
         request = replace(request, profile=PROFILE, nonce=request.nonce or os.urandom(16).hex())
         octets = encode_request(request, MEDIA_TYPE_JSON)
-        statement: dict[str, Any] = {"request": json.loads(octets)}
+        return self._record_request(octets, json.loads(octets), request.nonce, responder)
+
+    def request_sent(self, request: Message, responder: str = "") -> SentRequest:
+        """Record a request that another tool composed and sent to
+        ``responder``, exactly as given: every member is kept, including
+        those the request draft does not define (a deployment profile's
+        ``audience`` or requester authentication, ER §3), and no nonce or
+        profile is added. The octets must be a well-formed request (profile
+        §6.1 steps 1 to 5) in JCS, the form a requester transmits JSON in
+        (P-9), so the recorded digest is the one the responder signs its
+        reply over. A nonce this book already used is refused; a request
+        without one has nothing to compare. :meth:`record_response` and
+        :meth:`record_absence` then work on the record as on one
+        :meth:`request` made."""
+        if request.media_type != MEDIA_TYPE_JSON:
+            raise InvalidError(f"a sent request is recorded in JSON, not {request.media_type!r}")
+        check = read_request(request)
+        if check.reason:
+            raise InvalidError(f"not a well-formed request ({check.reason}): {check.why}")
+        # The record's statement embeds the octets as JSON, so octets in any
+        # other form than JCS would not survive as sent.
+        try:
+            value = strict_json(request.octets)
+        except ValueError as err:
+            raise InvalidError(str(err)) from None
+        if jcs(value) != request.octets:
+            raise InvalidError("a sent request must be in JCS (RFC 8785), as it was transmitted")
+        octets = bytes(request.octets)
+        return self._record_request(octets, value, check.request.nonce, responder)
+
+    def _record_request(self, octets: bytes, value: dict, nonce: str | None, responder: str) -> SentRequest:
+        statement: dict[str, Any] = {"request": value}
         if responder:
             statement["responder_ref"] = responder
         with self._lock:
             for record_id in self._order:
-                if self._records[record_id].header.record_type != RECORD_TYPE_REQUEST:
+                if not nonce or self._records[record_id].header.record_type != RECORD_TYPE_REQUEST:
                     continue
                 try:
                     prior = self._sent(record_id)
                 except CorruptError:
                     continue
-                if prior.request.nonce == request.nonce:
+                if prior.request.nonce == nonce:
                     raise InvalidError(f"nonce already used by request {record_id}")
             record = self._append(Entry(RECORD_TYPE_REQUEST, OBSERVED_EVENT, statement=statement))
         return SentRequest(octets, _digest(octets), record.record_id)
@@ -1163,9 +1194,30 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     for i, entry in enumerate(records if isinstance(records, list) else ()):
         if isinstance(entry, dict) and "body" in entry:
             raw = strict_hex(entry["body"])
-            if raw is None or _digest(raw) != entry.get("digest"):
+            if raw is None or not _record_body_matches(raw, entry.get("digest")):
                 raise InvalidError(f"anchor_inclusion: record {i} does not hash to its digest")
     return ["anchor_inclusion"], None
+
+
+def _record_body_matches(body: bytes, digest: Any) -> bool:
+    """Whether a record-set entry's body is the record its digest names. A
+    book serves the capsule preimage, whose SHA-256 is the record id; the
+    capsules plugin serves the capsule as its ledger holds it, carrying that
+    id as ``capsule_id`` with the signature and key_id that are no part of
+    it. Either way the body hashes to the digest by the capsule_id rule, and
+    nothing else is accepted."""
+    if _digest(body) == digest:
+        return True
+    try:
+        capsule = strict_json(body)
+    except ValueError:
+        return False
+    if not isinstance(capsule, dict) or capsule.get("capsule_id") != digest:
+        return False
+    try:
+        return _digest(capsule_preimage(capsule, digest)) == digest
+    except CorruptError:
+        return False
 
 
 def _json_object(octets: bytes) -> dict:
