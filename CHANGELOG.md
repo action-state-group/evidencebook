@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added: `capsulectl book holder-page` draws the holder's own pages from Steven's 9b canvas (evidencebook#156, #158, #239)
+
+- `book holder-page --view share|asked|prompt --out PAGE.html` writes frame 2
+  (What I share), frame 3 (They want more) or frame 9 (Settings to prompt) as one
+  offline page, with the canvas's wording as an embedded `aac.wording-pack/v0`
+  pack (`--wording` with `--wording-digest` replaces it; a pack missing an entry
+  the pages draw is refused). The page is in the second person; `--shared`
+  writes frame 2 in the third person. Frames 3 and 9 are the holder's alone and
+  refuse `--shared`.
+- A row the book has no producer for reads "Not available yet" and shows no
+  value, so no default is drawn as if it were in force and the canvas's example
+  values are never data. The rows with a producer: the public checkpoint answer,
+  the receipt row (from `--policy`'s `record_at_completion`) and "Who asked about
+  you" (the book's sealed `evidence_request_answered` records, which name no
+  requester). The gaps are in #239.
+
 ### Changed: capsulectl-book builds against capsule-cli v0.1.0-rc25 and `report` v0.3.1
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc25`, capsule-viewer `v0.5.0`
