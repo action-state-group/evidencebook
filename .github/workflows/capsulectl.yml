@@ -130,5 +130,10 @@ jobs:
           python -m pip install --no-deps ../.interop/checkpointed-local-log
           python -m pip install --require-hashes -r scripts/interop-requirements.txt
           python -m pip check
+      - name: Install the -00 refusal verifier in its own environment (locked, with hashes)
+        run: |
+          python -m venv "$RUNNER_TEMP/aac-00"
+          "$RUNNER_TEMP/aac-00/bin/python" -m pip install --require-hashes -r scripts/interop-refusal-requirements.txt
+          "$RUNNER_TEMP/aac-00/bin/python" -m pip check
       - name: The round trip, both ways, with the tampered copies refused
-        run: bash scripts/interop-resolved.sh ../.interop/evidencebook
+        run: REFUSAL_PYTHON="$RUNNER_TEMP/aac-00/bin/python" bash scripts/interop-resolved.sh ../.interop/evidencebook

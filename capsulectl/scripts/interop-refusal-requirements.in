@@ -1,0 +1,9 @@
+# The Python stack verify_refusal.py runs in, apart from interop-requirements.in: the -00
+# refusal verifier (agent_action_capsule.evidence_request) is agent-action-capsule 0.8.0 and
+# later, and build_bundle.py still needs 0.6.0's emit(), so evidencebook's ci.yml runs the
+# refusal check in its own environment, and so does scripts/interop-resolved.sh.
+# Locked with hashes, transitively, in interop-refusal-requirements.txt:
+#   uv pip compile scripts/interop-refusal-requirements.in --generate-hashes \
+#     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-refusal-requirements.txt
+agent-action-capsule==0.13.0
+cryptography
