@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `deal terms-leg` writes the buyer's signed terms leg, the file
+  `deal note --kind payment_received|delivered --terms` answers, so scripts
+  and outside developers share one public command. It signs with the profile's key, or
+  with `--ephemeral` a key made for the run, and touches no deal store (#70).
+
 - The spending-limit gate masks a random id by the copy's JSON structure: only
   the value of a `cose` member found by walking the copy's real JSON regions,
   not any quoted id-shaped string found by a pattern. Prose that imitates

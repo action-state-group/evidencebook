@@ -453,6 +453,11 @@ money.
 
 1. **Payment received** (x402). Pass the facilitator's settlement response
    exactly as it came back, and your own payment requirements for the request.
+   The terms leg is the buyer's file; a buyer, or a script standing in for one,
+   writes it with `capsulectl --profile BUYER_PROFILE deal terms-leg --amount ATOMIC
+   --content-digest SHA256 --out terms.json`, signed with that profile's key
+   (or `capsulectl deal terms-leg --ephemeral ...` with no `--profile`, signed
+   with a throwaway key: for tests, not real sales).
    Every value is read from those files, never typed. The account you were paid
    to is sealed only as its per-deal fingerprint, and a later payment to another
    account is refused:
