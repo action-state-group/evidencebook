@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: `capsulectl book request --request FILE --sent` records a request another tool sent (evidencebook#245)
+
+- With `--sent`, `book request` records the file's request as another tool
+  already sent it, such as the capsules plugin's sealed request, through
+  `Book.RequestSent`. Every member is kept, including ones `--request` does
+  not define (`audience`, `requester_id`, `requester_auth`), and no nonce or
+  profile is added. The answer then verifies with `book request --for
+  --response`. Without `--sent`, `--request` still refuses a member it does not
+  define. capsulectl requires evidencebook at the commit that adds
+  `RequestSent`, and agent-action-capsule/go v0.18.0.
+
 ### Added: `Book.RequestSent` records a request another tool sent, so its replies verify (evidencebook#245)
 
 - `Book.RequestSent` records a request that another tool composed and sent,
