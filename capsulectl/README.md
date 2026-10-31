@@ -28,6 +28,7 @@ is re-vendored by copying its `standard-history-module` bundle there.
 [skills/capsulectl-book](skills/capsulectl-book/SKILL.md) is the agent skill for
 the verbs that ask for, answer, close, reconcile and report on evidence
 (`request`, `respond`, `close`, `reconcile`, `result build`, `report build`).
+`holder-page` writes the holder's own sharing pages and is not in the skill yet.
 It extends capsule-cli's `capsulectl` skill, which keeps the core verbs. Its
 `AGENTS.md` is the same text for Codex. It is written by hand: capsule-cli's
 `skillgen` has `capsulectl`'s own sections built in, so `scripts/check-skill.sh`

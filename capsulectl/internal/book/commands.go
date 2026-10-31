@@ -24,7 +24,7 @@ func isBook(p cli.Profile) bool { return p.Type == "jsonl" && p.LogOwner() == Na
 const aliasRemovedIn = "v0.2.0"
 
 // BookMetadata is capsulectl-book's cli-plugin-metadata answer.
-var BookMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "backfill", "migrate", "doctor"}, Presentations: []cli.PluginPresentation{standardHistoryPresentation()}}
+var BookMetadata = cli.PluginMetadata{Name: Name, Vendor: Vendor, Subcommands: []string{"close", "reconcile", "request", "respond", "remote", "result", "report", "holder-page", "backfill", "migrate", "doctor"}, Presentations: []cli.PluginPresentation{standardHistoryPresentation()}}
 
 // BookCommands are capsulectl-book's own commands: `capsulectl book ...`.
 // The binary also holds the core tree, which reaches book profiles through
@@ -38,7 +38,7 @@ func BookCommands() []*cobra.Command {
 		}
 		return nil
 	})
-	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), backfillCommands(), migrateCommand(), doctorCommand()}
+	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), holderPageCommand(), backfillCommands(), migrateCommand(), doctorCommand()}
 }
 
 // BookAliases are `capsulectl book list|get|head`, which read another
