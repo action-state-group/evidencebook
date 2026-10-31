@@ -57,6 +57,7 @@ jobs:
           core=$(go list -m -f '{{.Version}}' github.com/action-state-group/capsule-cli)
           test "$(jq -r .version <<<"$meta")" = v0.0.0-ci || { echo "unexpected version: $meta"; exit 1; }
           test "$(jq -r .core_version <<<"$meta")" = "$core" || { echo "unexpected core_version: $meta"; exit 1; }
+          scripts/check-standard-history-archive.sh "$RUNNER_TEMP/dist/capsulectl-book-v0.0.0-ci-linux-amd64" "$RUNNER_TEMP/dist/standard-history-v0.0.0-ci.tar.gz"
 
   test:
     name: capsulectl tests

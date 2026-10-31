@@ -45,8 +45,13 @@ bump (step 1 below).
    git push origin capsulectl/vX.Y.Z`.
 3. A release reviewer approves the run, after checking that the tag is that
    version (the workflow refuses it otherwise, before anything is built).
+   The release also carries `standard-history-vX.Y.Z.tar.gz`, the History card
+   module's files (capsule-viewer's release bundle, vendored in
+   `internal/book/assets/standard-history`), unpacked beside the launcher so the
+   core can read the files the handshake names. The workflow checks the archive
+   against the handshake before it publishes.
 4. Verify from the downloaded assets: `sha256sum -c SHA256SUMS`, and
-   `gh attestation verify` on each binary with
+   `gh attestation verify` on each binary and on `standard-history-vX.Y.Z.tar.gz` with
    `--bundle capsulectl-book-vX.Y.Z.sigstore.json --repo action-state-group/evidencebook
    --signer-workflow action-state-group/evidencebook/.github/workflows/release.yml`.
 

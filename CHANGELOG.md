@@ -11,6 +11,10 @@
   tests find the bundle in that element, and the network test looks for what a
   page or the runtime loads instead of the text `https://`.
 
+### Added: capsulectl-book offers the History card as a plugin presentation (evidencebook#235, capsule-viewer#171)
+
+- The handshake's `presentations` carries `capsuleviewer.standard-history/v0`, capsule-viewer's page for a `standard_history/1` card (`requires` `x-standard-history/v0`), so `capsulectl presentation list|build` resolves a standard-history bundle to it, the way capsulectl-deal's deal view reaches pages. The entry is capsule-viewer's own `presentation.json` from its release bundle, copied unchanged with the four files it names (`capsulectl/internal/book/assets/standard-history/`, `SOURCE.txt` names the release). The release ships the files as `standard-history-VERSION.tar.gz`, to unpack beside the launcher (`standard-history-module/`); `scripts/check-standard-history-archive.sh` checks it against the handshake in CI and in the release. Without the files, the core refuses the module and every command is unaffected.
+
 ### Changed: the report module reads a page's bundle from its JSON element (evidencebook#164, capsule-viewer#109)
 
 - `report` requires capsule-cli `v0.1.0-rc25` and capsule-viewer `v0.5.0`.

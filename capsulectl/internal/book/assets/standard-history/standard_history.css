@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * The History card (capsuleviewer.standard-history/v0), on top of kit.css.
+ * Colours are kit tokens only (var(--cv-*)). One column on a phone; from
+ * two 22rem columns' width up, the same sections wrap into two columns
+ * (SharedHistoryLaptop9b): nothing is added for the bigger screen. */
+.cv-sh { display: flex; flex-direction: column; gap: var(--cv-space-3); }
+.cv-sh__cols { columns: 22rem 2; column-gap: var(--cv-space-5); }
+.cv-sh__cols > * { break-inside: avoid; margin: 0 0 var(--cv-space-3); }
+.cv-sh__lead { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }
+.cv-sh__card { border: 2px solid var(--cv-color-text); border-radius: var(--cv-radius); padding: var(--cv-space-3) var(--cv-space-4); display: flex; flex-direction: column; gap: var(--cv-space-2); }
+.cv-sh__kicker { font-size: var(--cv-font-size-sm); letter-spacing: 0.06em; text-transform: uppercase; color: var(--cv-color-text-muted); }
+.cv-sh__total { font-size: 1.875rem; font-weight: 700; line-height: 1.1; }
+.cv-sh__buckets { display: flex; flex-wrap: wrap; column-gap: var(--cv-space-3); row-gap: var(--cv-space-1); }
+.cv-sh__bucket { display: inline-flex; align-items: baseline; gap: var(--cv-space-1); }
+.cv-sh__dot { display: inline-block; flex: none; width: 0.625rem; height: 0.625rem; border-radius: var(--cv-radius-pill); }
+.cv-sh__dot--held { background: var(--cv-color-positive-fg); }
+.cv-sh__dot--did_not_hold { background: var(--cv-color-negative-fg); }
+/* Undecided is never the agreed tone: grey, outlined, dashed. */
+.cv-sh__dot--undecided { background: var(--cv-color-neutral-bg); border: 1px dashed var(--cv-color-neutral-fg); }
+.cv-sh__rows { display: flex; flex-direction: column; }
+.cv-sh__row { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--cv-space-3); padding: var(--cv-space-2) 0; border-top: 1px solid var(--cv-color-border); }
+.cv-sh__row:first-child { border-top: none; }
+.cv-sh__currency { font-weight: 600; margin-top: var(--cv-space-2); }
+.cv-sh__list { display: flex; flex-direction: column; gap: var(--cv-space-1); }
+.cv-sh__list > li { padding-left: var(--cv-space-3); border-left: 3px solid var(--cv-color-border); }
+.cv-sh__say { border: 1px solid var(--cv-color-info-fg); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-info-bg); display: flex; flex-direction: column; gap: var(--cv-space-1); }
+.cv-sh__say-line { font-weight: 600; color: var(--cv-color-info-fg); }
+.cv-sh__titlerow { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: var(--cv-space-3); margin: 0; }
+.cv-sh__meta { font-size: var(--cv-font-size-sm); font-weight: 400; color: var(--cv-color-text-muted); }
+.cv-sh__lead--own { border-color: var(--cv-color-positive-fg); background: var(--cv-color-positive-bg); }
+.cv-sh__lead > p { margin: 0 0 var(--cv-space-1); }
+.cv-sh__lead > p:last-child { margin-bottom: 0; }
+.cv-sh__count:not(.cv-sh__count--text) { border-radius: var(--cv-radius-pill); background: var(--cv-color-neutral-bg); padding: 0 var(--cv-space-2); }
+.cv-sh__bar { display: block; align-self: stretch; height: 0.5rem; border-radius: var(--cv-radius-pill); overflow: hidden; background: var(--cv-color-neutral-bg); }
+.cv-sh__seg--held { fill: var(--cv-color-positive-fg); }
+.cv-sh__seg--did_not_hold { fill: var(--cv-color-negative-fg); }
+/* Undecided is never the agreed tone: grey. */
+.cv-sh__seg--undecided { fill: var(--cv-color-neutral-fg); opacity: 0.45; }

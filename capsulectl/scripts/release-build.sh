@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # release-build.sh VERSION COMMIT OUTDIR -- the one build command for
 # capsulectl-book's release assets, used by release.yml and for
-# local rebuilds. VERSION is the module version (v1.2.3), the tag without its
+# local rebuilds. It also writes standard-history-VERSION.tar.gz, the History
+# card module's files, to unpack beside the launcher. VERSION is the module version (v1.2.3), the tag without its
 # capsulectl/ prefix.
 #
 # Reproducible, as capsule-cli's: CGO off, -trimpath, no VCS stamping, empty
@@ -32,10 +33,26 @@ for target in "${TARGETS[@]}"; do
     -ldflags "$ldflags" -o "$OUT/capsulectl-book-$VERSION-$os-$arch" ./cmd/capsulectl-book
 done
 
+# The History card module (capsuleviewer.standard-history/v0), unpacked into the
+# plugin root beside capsulectl-book: standard-history-module/ holds the four
+# files the handshake names, the bytes capsule-viewer's release bundle carries
+# (internal/book/assets/standard-history, which SOURCE.txt names).
+module=$(mktemp -d)
+trap 'rm -rf "$module"' EXIT
+mkdir "$module/standard-history-module"
+# The files are the ones the module's own handshake entry names.
+files=()
+while IFS= read -r f; do files+=("$f"); done < <(jq -r '.files[].path | sub("^standard-history-module/"; "")' internal/book/assets/standard-history/presentation.json)
+for f in "${files[@]}"; do cp "internal/book/assets/standard-history/$f" "$module/standard-history-module/"; done
+(cd "$module" && { printf '%s\0' standard-history-module; for f in $(printf '%s\n' "${files[@]}" | LC_ALL=C sort); do printf '%s\0' "standard-history-module/$f"; done; } |
+  "${TAR:-tar}" --null --no-recursion -T - --format=gnu --owner=0 --group=0 --numeric-owner \
+    --mode='u+rw,go=rX' --mtime='1970-01-01 00:00:00Z' -cf -) |
+  gzip -n -9 >"$OUT/standard-history-$VERSION.tar.gz"
+
 cd "$OUT"
 if command -v sha256sum >/dev/null; then
-  sha256sum capsulectl-book-"$VERSION"-* > SHA256SUMS
+  sha256sum capsulectl-book-"$VERSION"-* standard-history-"$VERSION".tar.gz > SHA256SUMS
 else
-  shasum -a 256 capsulectl-book-"$VERSION"-* > SHA256SUMS
+  shasum -a 256 capsulectl-book-"$VERSION"-* standard-history-"$VERSION".tar.gz > SHA256SUMS
 fi
 cat SHA256SUMS
