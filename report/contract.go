@@ -3,20 +3,17 @@
 package report
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"io"
-	"regexp"
 	"slices"
+
+	"github.com/action-state-group/capsule-viewer/go/emitter"
 )
 
 // Contract is a compiled Evidence Contract v0 as distributed (for example
 // evidencebook-skills contracts/<id>/<version>.json): its exact text and
 // the lowercase hex SHA-256 of its UTF-8 bytes. Build checks the one against
-// the other, the few members the page reads, and that the contract is one
-// the Result cites; the contract's own schema is its compiler's to check.
+// the other and the few members the page reads (emitter.CheckContract), and
+// that the contract is one the Result cites; the contract's own schema is
+// its compiler's to check.
 type Contract struct {
 	Text   string
 	SHA256 string
@@ -31,62 +28,23 @@ const (
 	TierInformational = "informational"
 )
 
-var hexSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
-
-// checkedContract is what checkContract establishes: the contract's
-// contract_ref (`<id>@<version>`, as a Result cites it) and each
-// requirement's tier by requirement id, "" when it names none.
+// checkedContract is what the viewer's emitter.CheckContract establishes:
+// the contract's contract_ref (`<id>@<version>`, as a Result cites it) and
+// each requirement's tier by requirement id, "" when it names none.
 type checkedContract struct {
 	ref   string
 	tiers map[string]string
 }
 
-// checkContract checks c's digest and the members the page reads: id,
-// version, and requirements, each with a unique id and at most one of the
-// two tiers. Other members are left to the contract's schema.
+// checkContract checks c as the page's runtime does (its digest, and the
+// members the page reads), so Build refuses exactly the contracts the
+// emitter would.
 func checkContract(c Contract) (checkedContract, error) {
-	if !hexSHA256.MatchString(c.SHA256) {
-		return checkedContract{}, refusal("contract sha256 is not a lowercase hex SHA-256")
+	checked, err := emitter.CheckContract(emitter.Contract{Text: c.Text, SHA256: c.SHA256})
+	if err != nil {
+		return checkedContract{}, refusal(err.Error())
 	}
-	if sum := sha256.Sum256([]byte(c.Text)); hex.EncodeToString(sum[:]) != c.SHA256 {
-		return checkedContract{}, refusal("contract bytes do not hash to its sha256")
-	}
-	var doc struct {
-		ID           string `json:"id"`
-		Version      string `json:"version"`
-		Requirements []struct {
-			ID   string          `json:"id"`
-			Tier json.RawMessage `json:"tier"`
-		} `json:"requirements"`
-	}
-	decoder := json.NewDecoder(bytes.NewReader([]byte(c.Text)))
-	if err := decoder.Decode(&doc); err != nil {
-		return checkedContract{}, refusal("contract is not an Evidence Contract v0 object with a string id, a string version and a requirements array")
-	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
-		return checkedContract{}, refusal("contract input must contain one JSON value")
-	}
-	if doc.ID == "" || doc.Version == "" || len(doc.Requirements) == 0 {
-		return checkedContract{}, refusal("contract names no id, no version or no requirements")
-	}
-	out := checkedContract{ref: doc.ID + "@" + doc.Version, tiers: make(map[string]string, len(doc.Requirements))}
-	for i, requirement := range doc.Requirements {
-		if requirement.ID == "" {
-			return checkedContract{}, refusef("contract requirements[%d] has no id", i)
-		}
-		if _, seen := out.tiers[requirement.ID]; seen {
-			return checkedContract{}, refusef("contract names requirement %q twice", requirement.ID)
-		}
-		tier := ""
-		if requirement.Tier != nil {
-			if json.Unmarshal(requirement.Tier, &tier) != nil || (tier != TierMustHave && tier != TierInformational) {
-				return checkedContract{}, refusef("contract requirement %q has tier %s; a tier is %q or %q", requirement.ID, requirement.Tier, TierMustHave, TierInformational)
-			}
-		}
-		out.tiers[requirement.ID] = tier
-	}
-	return out, nil
+	return checkedContract{ref: checked.ID + "@" + checked.Version, tiers: checked.Tiers}, nil
 }
 
 // against checks that the Result is one this contract describes: it cites

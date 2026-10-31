@@ -80,8 +80,14 @@
   claims cite, and a `tier` other than `must_have` or `informational`.
 - `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
   requirement's tier by `requirement_ref`; `""` when the contract names none)
-  record what the page read. With no contract every tier is undecided, never
-  must-have. A page built with a contract gets no permalink.
+  record what the page read. The contract reaches the page as the viewer's
+  contract setting (capsule-viewer#201), from which the contract-report
+  module reads each row's tier and which records the contract's digest. With
+  no contract every tier is undecided, never must-have. A page built with a
+  contract gets no permalink.
+- `report/go.mod` and `capsulectl/go.mod` require capsule-viewer `v0.8.0`;
+  the `report` fixtures' pages (`4-monthly-outcome`, `5-monthly-compliance`)
+  are rewritten with its page runtime.
 
 ## v0.11.0 (2026-10-31)
 

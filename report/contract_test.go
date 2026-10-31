@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,11 +44,18 @@ func TestBuildReadsTiersFromThePinnedContract(t *testing.T) {
 		"communication.no_invented_terms": TierInformational,
 	}, page.Tiers, "only the requirements the Result cites, each with its tier")
 
+	// The contract reaches the page's runtime as its contract setting, bound
+	// to its digest.
+	options, err := canonical.JCS(map[string]interface{}{"audience": "*", "format": "html", "contract": map[string]interface{}{"text": contract.Text, "sha256": contract.SHA256}})
+	require.NoError(t, err)
+	assert.Contains(t, string(page.HTML), `renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, `+strings.NewReplacer("<", `\u003c`, ">", `\u003e`, "&", `\u0026`).Replace(string(options))+`);`)
+
 	plain, err := Build(raw, View{Card: "outcome", ContractReport: true})
 	require.NoError(t, err)
 	assert.Equal(t, plain.BundleDigest, page.BundleDigest, "the contract is a page input, not part of the bundle")
 	assert.Empty(t, plain.ContractRef)
 	assert.Nil(t, plain.Tiers, "with no contract every tier is undecided")
+	assert.NotContains(t, string(plain.HTML), contract.SHA256)
 	_, err = plain.Permalink("")
 	require.NoError(t, err)
 	_, err = page.Permalink("")
@@ -74,17 +82,17 @@ func TestBuildRefusesABadOrForeignContract(t *testing.T) {
 		contract *Contract
 		message  string
 	}{
-		"a digest of other bytes":      {&Contract{Text: good.Text, SHA256: strings.Repeat("0", 64)}, "contract bytes do not hash to its sha256"},
-		"not a digest":                 {&Contract{Text: good.Text, SHA256: "sha256:" + good.SHA256}, "not a lowercase hex SHA-256"},
-		"not JSON":                     {pinned(`{"id":`), "not an Evidence Contract v0 object"},
-		"two values":                   {pinned(outcomeContract + " {}"), "one JSON value"},
-		"no requirements":              {pinned(`{"id":"example-support-outcomes/v1","version":"1","requirements":[]}`), "no requirements"},
-		"a requirement with no id":     {replaced(`"id":"communication.plain_words",`, ""), "requirements[4] has no id"},
-		"a requirement twice":          {replaced(`"communication.plain_words"`, `"resolution.done_in_full"`), `names requirement "resolution.done_in_full" twice`},
-		"an unknown tier":              {replaced(`"tier":"informational"`, `"tier":"optional"`), `has tier "optional"`},
-		"a tier that is not a string":  {replaced(`"tier":"informational"`, `"tier":1`), "has tier 1"},
-		"another contract":             {replaced(`"version":"1"`, `"version":"2"`), "contract example-support-outcomes/v1@2 is not one the Result cites"},
-		"a cited requirement it lacks": {replaced(`"id":"resolution.right_change"`, `"id":"resolution.other_change"`), `has no requirement "resolution.right_change"`},
+		"a digest of other bytes": {&Contract{Text: good.Text, SHA256: strings.Repeat("0", 64)}, "contract bytes do not hash to its contract_sha256"},
+		"not a digest":            {&Contract{Text: good.Text, SHA256: "sha256:" + good.SHA256}, "not a lowercase hex SHA-256"},
+		"not JSON":                {pinned(`{"id":`), "contract is not JSON"},
+		"two values":              {pinned(outcomeContract + " {}"), "contract is not JSON"},
+		`has no requirement "resolution.done_in_full"`: {pinned(`{"id":"example-support-outcomes/v1","version":"1","requirements":[]}`), `has no requirement "resolution.done_in_full"`},
+		"a requirement with no id":                     {replaced(`"id":"communication.plain_words",`, ""), "requirement 5 id is not a non-empty string"},
+		"a requirement twice":                          {replaced(`"communication.plain_words"`, `"resolution.done_in_full"`), `requirement id "resolution.done_in_full" is listed twice`},
+		"an unknown tier":                              {replaced(`"tier":"informational"`, `"tier":"optional"`), `requirement "communication.no_invented_terms" tier is not must_have or informational`},
+		"a tier that is not a string":                  {replaced(`"tier":"informational"`, `"tier":1`), `requirement "communication.no_invented_terms" tier is not must_have or informational`},
+		"another contract":                             {replaced(`"version":"1"`, `"version":"2"`), "contract example-support-outcomes/v1@2 is not one the Result cites"},
+		"a cited requirement it lacks":                 {replaced(`"id":"resolution.right_change"`, `"id":"resolution.other_change"`), `has no requirement "resolution.right_change"`},
 	} {
 		page, err := Build(raw, View{Card: "outcome", Contract: c.contract})
 		require.ErrorIs(t, err, ErrRefused, name)

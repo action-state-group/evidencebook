@@ -148,10 +148,12 @@ type View struct {
 	// contract report looks the same; the block records the selection.
 	ContractReport bool
 	// Contract is the compiled Evidence Contract the Result cites, pinned
-	// to its digest the way Wording is, from which the page reads each
-	// requirement's tier by (contract_ref, requirement_ref). Like Wording,
-	// it lives in the page, not in the bundle, so a page built with one gets
-	// no permalink. Without one, every row's tier is undecided.
+	// to its digest the way Wording is. It reaches the page as the
+	// contract-report module's contract setting, from which the module reads
+	// each row's tier by (contract_ref, requirement_ref), and the page
+	// records its digest. Like Wording, it lives in the page, not in the
+	// bundle, so a page built with one gets no permalink. Without one, every
+	// row's tier is undecided.
 	Contract *Contract
 }
 
@@ -339,7 +341,11 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	// With no wording, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
-	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256})
+	options := emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256}
+	if view.Contract != nil {
+		options.Contract = &emitter.Contract{Text: view.Contract.Text, SHA256: view.Contract.SHA256}
+	}
+	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, options)
 	if err != nil {
 		return nil, err
 	}
