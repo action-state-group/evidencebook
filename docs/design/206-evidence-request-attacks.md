@@ -59,6 +59,23 @@ Status: decided; not built.
 
 Status: decided; not built.
 
+**R7. Left out before sealing, and the answer still looks complete.** #206 row 9 (Steven, 2026-10-31). A provider serves an exchange and never seals it. When the counterparty later asks for the pair's records (`correlation`, `exchange` or `exchange_corroboration/1`), every answer verifies, and the records it does hold number without a gap in their per-pair `seq`/`prev_seq`, because the provider numbers only what it seals. Sequence numbers catch deleting a sealed record; a record never sealed leaves no gap and shows only in the counterparty's half (Mesh-LLM/mesh-llm#1965 §3, as corrected on 2026-10-31). Row 7 does not cover it: row 7 is a responder choosing among records it sealed. Owner: **#206**.
+
+**Answer.** The requester reconciles. `ReconcileAsked` (`reconcile_asked.go`) takes the requester's own sealed halves of one pair and, for each, what came back when it asked the provider for that exchange by the exchange's two digests. It names every half the provider confirmed it holds no record of: a verified answer that carries no record of the exchange, or a signed `no_such_subject`. A `policy_declined` or `not_authorized` refusal, an absence or an answer that failed verification is UNRESOLVED, never omitted, since a uniform refusal reads the same whether the record exists or not. The verdict is OMISSIONS_FOUND, NO_OMISSION_FOUND or UNRESOLVED, never COMPLETE (row 7). It also reports the provider's numbering across the records that matched, as a separate fact. Halves match records by request and response digest, one record to at most one half; an `exchange_id` is not a join key here, because each side's host assigns its own.
+
+The reconcile trusts the caller's verification and does not repeat it: the caller checks each answer's signature, anchor and inclusion proofs under the provider's key. In S08 that caller is the asker's capsules plugin (`mesh_evidence_request`, which verifies under the provider's announced key), and the reconcile runs on what it verified. A book-side re-verification of the plugin's reply is not built.
+
+Tests: `TestReconcileAskedNamesExactlyTheUnsealed` (a provider seals 4 of 10 exchanges; the reconcile names exactly the other 6, whether the provider refuses `no_such_subject` or answers without the record) and `TestReconcileAskedVectors` over `testdata/reconcile-asked-v0/vectors.json`, whose first case is the S08 dry run's capture (6 exchanges, 3 sealed, numbered 1 to 3 with no gap, the other 3 named). Shown live in S08 (company-internal-all `devcon8/s08-liar/`, step 08).
+
+**Residual.**
+
+- Bilateral traffic only: an exchange the requester never sealed cannot be asked about, so one both sides left out stays invisible (Mesh-LLM/mesh-llm#1965 §6).
+- A provider that refuses uniformly (`policy_declined`) leaves the omitted halves UNRESOLVED: the requester's own half still shows the exchange happened, but the provider's answer does not confirm it holds none.
+- Failed exchanges, which need a half on each side to count, are #205.
+- Go only; Rust and Python parity is not built.
+
+Status: answered (row 9).
+
 ### Rule side
 
 **P1. Recorded absence as a weapon.** The discipline that makes operators answer, "not answering is worse than answering", is also an attack surface: flood a holder during a dispute window and every legitimate asker records an absence against it. Two limits already exist: an absence is never a refusal, and it is chargeable only against a retention commitment. Nothing says what a reader does with an absence recorded while the holder was under attack. Owner: **agent-action-capsule#473**, which proposes a holder-sealed, witnessed "unavailable window" record that a reader shows beside the absence as the holder's statement, never as proof. Steven approved it on 2026-10-30, amended so the window's witness time is shown relative to the absence and the reason class is a closed list (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=c2a3350f17c9dc910f8bc618b2c606cd0e899042ee35a4b2729fdfd358497b7f). This is a ruling and spec text, not a code change.
@@ -111,6 +128,7 @@ Stop answering strangers over the request path. The commitment already carries t
 | Item | Issue | Repo | Kind | Status |
 |---|---|---|---|---|
 | R1 responder lock | #208 | evidencebook | code, load test | answered: #215 |
+| R7 left out before sealing | #206 row 9 | evidencebook | code, vectors, answer doc | answered: `ReconcileAsked` |
 | R2–R6 flooding, replay, range, keys, refusal oracle | #206 | evidencebook | answer doc, tests, decisions | R4 item 4 and R6 decided: Mesh-LLM/capsules-plugin#161, #225; the rest open: #206's rows |
 | P1 absence under attack | #473 | agent-action-capsule | ruling, spec text | decided: ER -02 §4.7, merged in agent-action-capsule#476; implementation open: #223, capsule-viewer#164, agent-action-capsule#477 |
 | A1, A2 asker-side limits and forks | #209 | evidencebook | code, vectors | answered: #216, #221, capsule-viewer#163 and #165, Mesh-LLM/capsules-plugin#156 |
