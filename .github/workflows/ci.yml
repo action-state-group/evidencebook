@@ -146,7 +146,7 @@ jobs:
           done
 
   python-cll-interop:
-    name: Python interoperability (bundles both ways, CLL checkpoint and proofs, capsule-emit refusal)
+    name: Python interoperability (bundles both ways, CLL checkpoint and proofs, -00 refusal)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -179,7 +179,11 @@ jobs:
           go -C evidencebook run ./test/interop/bundle "$interop_dir/book" "$interop_dir/bundle.json" "$interop_dir/refusal.json"
           python evidencebook/test/interop/python-aac/verify_bundle.py "$interop_dir/bundle.json"
           python evidencebook/test/interop/python-cll/verify_bundle.py "$interop_dir/bundle.json"
-          python evidencebook/test/interop/python-cll/verify_refusal.py "$interop_dir/refusal.json"
+          # The -00 refusal verifier is agent-action-capsule 0.8.0 and later; build_bundle.py still needs
+          # 0.6.0's emit(), so the refusal check runs in its own environment.
+          python -m venv "$RUNNER_TEMP/aac-00"
+          "$RUNNER_TEMP/aac-00/bin/python" -m pip install "agent-action-capsule==0.13.0" cryptography
+          "$RUNNER_TEMP/aac-00/bin/python" evidencebook/test/interop/python-cll/verify_refusal.py "$interop_dir/refusal.json"
       - name: Verify a Python-produced bundle with this module (and refuse a tampered one)
         shell: bash
         run: |
