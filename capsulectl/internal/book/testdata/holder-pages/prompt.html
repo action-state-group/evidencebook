@@ -52,7 +52,7 @@ textarea{font:12.5px/1.45 ui-monospace,Menlo,monospace;width:100%;box-sizing:bor
 <div class="sec"><div class="h">Then</div><label class="chk na"><input type="checkbox" id="rebuild" disabled> Rebuild my History card and my receipts, and show me what they see <span class="pill">Not available yet</span></label><label class="chk"><input type="checkbox" id="report"> Make an EvidenceBook report for last month</label></div>
 <div><button id="get" type="button">Get prompt</button> <button id="reset" type="button" class="q">Reset to default</button></div>
 <div class="sec" id="out" hidden style="border-color:#2B5A85"><div style="display:flex;align-items:center;gap:8px"><span class="h">Your prompt</span><span class="pill" id="count"></span><span class="pill ok" id="copied" hidden>Copied</span></div>
-<textarea id="prompt" rows="6" readonly aria-label="The prompt to paste to your agent" data-report="Make an EvidenceBook report for last month." data-nothing="Keep my sharing settings as they are." data-one="&#34;1 change&#34;" data-none="no changes"></textarea>
+<textarea id="prompt" rows="6" readonly aria-label="The prompt to paste to your agent" data-report="Make an EvidenceBook report for last month." data-nothing="Keep my sharing settings as they are." data-single="1 change" data-none="no changes"></textarea>
 <button id="copy" type="button">Copy</button><div class="sm">Only the controls that have a setting in your book are in the prompt.</div></div>
 <script>
 (function(){
@@ -64,7 +64,7 @@ textarea{font:12.5px/1.45 ui-monospace,Menlo,monospace;width:100%;box-sizing:bor
   $("get").addEventListener("click",function(){
     var l=lines();
     box.value=l.length?l.join("\n"):box.dataset.nothing;
-    $("count").textContent=l.length?box.dataset.one:box.dataset.none;
+    $("count").textContent=l.length?box.dataset.single:box.dataset.none;
     copied.hidden=true; out.hidden=false;
   });
   $("reset").addEventListener("click",function(){ report.checked=false; hide(); });

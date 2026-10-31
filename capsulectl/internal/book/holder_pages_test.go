@@ -91,6 +91,9 @@ func TestHolderPromptGolden(t *testing.T) {
 	assert.Contains(t, page, `<input type="checkbox" id="rebuild" disabled>`)
 	assert.Contains(t, page, `<input type="checkbox" id="report">`)
 	assert.NotContains(t, page, "policy-change")
+	// html/template reads a data-on* attribute as a script, so the script's
+	// strings sit in attributes it leaves as text.
+	assert.Contains(t, page, `data-single="1 change"`)
 }
 
 func TestHolderAskedListsTheAnsweredRecordsAndNamesNobody(t *testing.T) {

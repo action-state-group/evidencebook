@@ -311,7 +311,7 @@ var holderTemplate = template.Must(template.New("holder").Parse(`<!DOCTYPE html>
 {{- range .Prompt.Then}}<label class="chk{{if .Disabled}} na{{end}}"><input type="checkbox" id="{{.ID}}"{{if .Disabled}} disabled{{end}}> {{.Label}}{{if .Disabled}} <span class="pill">{{$.NA}}</span>{{end}}</label>{{end}}</div>
 <div><button id="get" type="button">{{.Prompt.Get}}</button> <button id="reset" type="button" class="q">{{.Prompt.Reset}}</button></div>
 <div class="sec" id="out" hidden style="border-color:#2B5A85"><div style="display:flex;align-items:center;gap:8px"><span class="h">{{.Prompt.OutTitle}}</span><span class="pill" id="count"></span><span class="pill ok" id="copied" hidden>{{.Prompt.Copied}}</span></div>
-<textarea id="prompt" rows="6" readonly aria-label="{{.Prompt.Aria}}" data-report="{{.Prompt.ReportLine}}" data-nothing="{{.Prompt.NothingLine}}" data-one="{{.Prompt.OneChange}}" data-none="{{.Prompt.NoChanges}}"></textarea>
+<textarea id="prompt" rows="6" readonly aria-label="{{.Prompt.Aria}}" data-report="{{.Prompt.ReportLine}}" data-nothing="{{.Prompt.NothingLine}}" data-single="{{.Prompt.OneChange}}" data-none="{{.Prompt.NoChanges}}"></textarea>
 <button id="copy" type="button">{{.Prompt.Copy}}</button><div class="sm">{{.Prompt.OutNote}}</div></div>
 <script>{{.Script}}</script>
 {{- end}}
@@ -330,7 +330,7 @@ const promptScript = `
   $("get").addEventListener("click",function(){
     var l=lines();
     box.value=l.length?l.join("\n"):box.dataset.nothing;
-    $("count").textContent=l.length?box.dataset.one:box.dataset.none;
+    $("count").textContent=l.length?box.dataset.single:box.dataset.none;
     copied.hidden=true; out.hidden=false;
   });
   $("reset").addEventListener("click",function(){ report.checked=false; hide(); });
