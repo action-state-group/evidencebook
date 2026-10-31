@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
@@ -275,8 +276,16 @@ func TestBookRequestSent(t *testing.T) {
 		var asked cli.EvidenceRequestResult
 		require.NoError(t, json.Unmarshal([]byte(out), &asked))
 		assert.Equal(t, reply.RequestDigest, asked.RequestDigest, name)
+		// The fixture's request is indented; what is recorded and written to
+		// transmit is its JCS.
 		written, err := os.ReadFile(output)
 		require.NoError(t, err)
+		value, err := evidencerequest.DecodeJSON(fixture.Request)
+		require.NoError(t, err)
+		jcs, err := evidencerequest.EncodeJCS(value)
+		require.NoError(t, err)
+		assert.NotEqual(t, string(fixture.Request), string(jcs), name)
+		assert.Equal(t, string(jcs), string(written), name)
 		assert.Contains(t, string(written), `"audience":`, name)
 
 		answer := writeJSON(t, string(fixture.Reply))
@@ -287,8 +296,17 @@ func TestBookRequestSent(t *testing.T) {
 		assert.Equal(t, evidencebook.OutcomeArtifact, answered.Outcome, name)
 	}
 
+	// --sent records a request on this book's own log, never on a remote
+	// profile, where the deprecated alias would ask another party's book.
+	remote := cli.Profile{Name: "remote", Type: cli.RemoteProfileType, LogID: "remote"}
+	remote.Connection.URL = "http://127.0.0.1:1"
+	require.NoError(t, cli.SaveProfile(remote, false))
+	_, err := invoke(t, "", "request", "--profile", "remote", "--request", writeJSON(t, `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`), "--sent", "--responder", "b", "--output", filepath.Join(x.dir, "remote.sent"))
+	require.ErrorIs(t, err, cli.ErrInput, "--sent on a remote profile")
+	assert.Contains(t, err.Error(), "--sent", "--sent on a remote profile is refused for --sent, not for another reason")
+
 	// --sent records nothing but a request, and only a well-formed one.
-	_, err := invoke(t, "", "request", "--profile", "a", "--sent", "--for", "x", "--response", writeJSON(t, `{}`), "--responder-key", key, "--responder-checkpoint-key", key)
+	_, err = invoke(t, "", "request", "--profile", "a", "--sent", "--for", "x", "--response", writeJSON(t, `{}`), "--responder-key", key, "--responder-checkpoint-key", key)
 	assert.ErrorIs(t, err, cli.ErrInput, "--sent without --request")
 	for name, tc := range map[string]struct {
 		body string

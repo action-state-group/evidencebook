@@ -1148,7 +1148,7 @@ func requestCommand() *cobra.Command {
 	// The core's help describes a deal copy, where a bad receipt fails the
 	// answer. On a book a carried receipt is unsigned, so it can only add
 	// standing (evidencebook#216).
-	cmd.Flags().Bool("sent", false, "With --request: the request was already composed and sent by another tool, such as the capsules plugin. Record it as sent: every member is kept, including ones this command does not define, and no nonce or profile is added. The answer then verifies against the request the responder answered")
+	cmd.Flags().Bool("sent", false, "With --request: the request was already composed and sent by another tool, such as the capsules plugin. Record it as sent, member for member in JCS: every member is kept, including ones this command does not define, and no nonce or request profile is added. The answer then verifies against the request the responder answered")
 	cmd.PreRunE = func(c *cobra.Command, _ []string) error {
 		if asSent, _ := c.Flags().GetBool("sent"); asSent && !c.Flags().Changed("request") {
 			return cli.InputError("--sent needs --request")
