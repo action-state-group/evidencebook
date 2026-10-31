@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"testing"
@@ -40,15 +41,15 @@ func TestReconcileAskedNamesExactlyTheUnsealed(t *testing.T) {
 						prev = &p
 					}
 					seq++
-					a.Outcome = AskAnswered
+					a.Outcome, a.Covers = AskAnswered, true
 					a.Records = []AskedRecord{{RecordID: fmt.Sprintf("prov-%d", i), RequestDigest: own.RequestDigest,
 						ResponseDigest: own.ResponseDigest, Seq: seq, PrevSeq: prev}}
 				case mode == "signed no_such_subject":
 					want = append(want, own.RecordID)
-					a.Outcome, a.Reason = AskRefused, string(ReasonNoSuchSubject)
+					a.Outcome, a.Reason, a.Covers = AskRefused, string(ReasonNoSuchSubject), true
 				default:
 					want = append(want, own.RecordID)
-					a.Outcome = AskAnswered
+					a.Outcome, a.Covers = AskAnswered, true
 				}
 				asked = append(asked, a)
 			}
@@ -137,5 +138,51 @@ func TestReconcileAskedIsNeverComplete(t *testing.T) {
 	}
 	if got := ReconcileAsked(inputs[2]); got.Results[0].State != AskedUnresolved {
 		t.Errorf("a half with no digests is %s, want UNRESOLVED", got.Results[0].State)
+	}
+}
+
+// TestReconcileAskedMatchingIgnoresOrder: a record taken by one half is
+// reassigned when another half can only match that record, so the input's
+// order never decides how many halves are OMITTED (round-1 review of #229).
+func TestReconcileAskedMatchingIgnoresOrder(t *testing.T) {
+	rec := func(id string) AskedRecord {
+		return AskedRecord{RecordID: id, RequestDigest: "r", ResponseDigest: "s", Seq: map[string]uint64{"p": 1, "q": 2}[id]}
+	}
+	a := AskedExchange{Own: AskedHalf{RecordID: "a", RequestDigest: "r", ResponseDigest: "s"}, Outcome: AskAnswered, Covers: true,
+		Records: []AskedRecord{rec("p"), rec("q")}}
+	b := AskedExchange{Own: AskedHalf{RecordID: "b", RequestDigest: "r", ResponseDigest: "s"}, Outcome: AskAnswered, Covers: true,
+		Records: []AskedRecord{rec("p")}}
+	for _, in := range [][]AskedExchange{{a, b}, {b, a}} {
+		got := ReconcileAsked(in)
+		if got.Verdict != NoOmissionFound || len(got.Omitted) != 0 {
+			t.Errorf("order %s,%s: verdict %s, omitted %v; want both matched", in[0].Own.RecordID, in[1].Own.RecordID, got.Verdict, got.Omitted)
+		}
+	}
+
+	// Shuffle a case with more equal halves than records, and the records
+	// inside each answer: the number omitted stays the same.
+	base := []AskedExchange{}
+	for i := range 5 {
+		x := AskedExchange{Own: AskedHalf{RecordID: fmt.Sprint("h", i), RequestDigest: "r", ResponseDigest: "s"}, Outcome: AskAnswered, Covers: true}
+		for j := range i % 3 {
+			x.Records = append(x.Records, AskedRecord{RecordID: fmt.Sprint("p", j), RequestDigest: "r", ResponseDigest: "s", Seq: uint64(j + 1)})
+		}
+		base = append(base, x)
+	}
+	want := len(ReconcileAsked(base).Omitted)
+	if want != 3 {
+		t.Fatalf("base case omits %d, want 3 (two records p0, p1 for five equal halves)", want)
+	}
+	rng := rand.New(rand.NewPCG(1, 2))
+	for range 200 {
+		in := slices.Clone(base)
+		rng.Shuffle(len(in), func(i, j int) { in[i], in[j] = in[j], in[i] })
+		for k := range in {
+			in[k].Records = slices.Clone(in[k].Records)
+			rng.Shuffle(len(in[k].Records), func(i, j int) { in[k].Records[i], in[k].Records[j] = in[k].Records[j], in[k].Records[i] })
+		}
+		if got := len(ReconcileAsked(in).Omitted); got != want {
+			t.Fatalf("a shuffled input omits %d, want %d", got, want)
+		}
 	}
 }

@@ -81,6 +81,13 @@ type AskedRecord struct {
 type AskedExchange struct {
 	Own     AskedHalf  `json:"own"`
 	Outcome AskOutcome `json:"outcome"`
+	// Covers is the caller's statement that the answer or refusal is made
+	// at an anchor that would hold the provider's record of this exchange if
+	// the provider had sealed it: the anchor postdates the exchange and every
+	// record the provider sealed for it. Without it, an answer missing the
+	// record, or a no_such_subject, may only mean the anchor is too old, so
+	// the half is UNRESOLVED.
+	Covers bool `json:"covers"`
 	// Records holds what an AskAnswered answer carried.
 	Records []AskedRecord `json:"records,omitempty"`
 	// Reason holds an AskRefused refusal's reason, as signed.
@@ -130,12 +137,17 @@ type AskedReport struct {
 //
 // It trusts the caller's verification and does not repeat it: Outcome must
 // be AskAnswered or AskRefused only for an answer whose signature, anchor and
-// inclusion proofs the caller checked under the provider's key, and Records
-// must hold only records that answer proved. A record matches a half when
+// inclusion proofs the caller checked under the provider's key, Records must
+// hold only records that answer proved, and Covers must be set only when the
+// answer's anchor would hold the record had it been sealed. A half is OMITTED
+// only on such a covering answer: a verified answer without the record, or a
+// signed no_such_subject. A record matches a half when
 // both its request and response digests are the half's; only the records of
 // that half's own answer are candidates, and each record matches at most one
 // half, so two exchanges with the same request and answer never both match
-// one record.
+// one record. The matching is a maximum one, so how many halves are OMITTED
+// never depends on the order of the input; which of several equal halves is,
+// when there are fewer records than halves, does.
 //
 // It works only on bilateral traffic: a half the requester never sealed
 // cannot be asked about, so an exchange both sides left out stays invisible
@@ -143,30 +155,38 @@ type AskedReport struct {
 // written into a sealed record or onto the wire.
 func ReconcileAsked(asked []AskedExchange) AskedReport {
 	report := AskedReport{Results: make([]AskedResult, 0, len(asked)), Omitted: []string{}}
-	used := map[string]bool{}
+	match := matchAsked(asked)
 	var matched []AskedRecord
 	unresolved := false
-	for _, a := range asked {
+	for i, a := range asked {
 		r := AskedResult{Own: a.Own.RecordID}
-		switch a.Outcome {
-		case AskAnswered:
-			if a.Own.RequestDigest == "" || a.Own.ResponseDigest == "" {
-				r.State, r.Why = AskedUnresolved, "the requester's half names no request or response digest to match on"
-			} else if i := matchAsked(a.Own, a.Records, used); i >= 0 {
-				rec := a.Records[i]
-				used[rec.RecordID] = true
+		switch {
+		case a.Own.RequestDigest == "" || a.Own.ResponseDigest == "":
+			// The ask names the exchange by these two digests, so with either
+			// missing no answer can be about this exchange.
+			r.State, r.Why = AskedUnresolved, "the requester's half names no request or response digest to ask by"
+		case a.Outcome == AskAnswered:
+			switch j := match[i]; {
+			case j >= 0:
+				rec := a.Records[j]
 				matched = append(matched, rec)
 				r.State, r.Record = AskedLogged, rec.RecordID
-			} else {
+			case unnamedMatch(a):
+				r.State, r.Why = AskedUnresolved, "a record in the answer matches but carries no record id"
+			case !a.Covers:
+				r.State, r.Why = AskedUnresolved, "the answer's anchor is not stated to cover this exchange"
+			default:
 				r.State, r.Why = AskedOmitted, "the verified answer carries no record of this exchange"
 			}
-		case AskRefused:
-			if a.Reason == string(ReasonNoSuchSubject) {
+		case a.Outcome == AskRefused && a.Reason == string(ReasonNoSuchSubject):
+			if a.Covers {
 				r.State, r.Why = AskedOmitted, "the provider signed no_such_subject for this exchange"
 			} else {
-				r.State, r.Why = AskedUnresolved, "refused, reason "+a.Reason+": it reads the same whether the record exists or not"
+				r.State, r.Why = AskedUnresolved, "no_such_subject at an anchor not stated to cover this exchange"
 			}
-		case AskAbsent:
+		case a.Outcome == AskRefused:
+			r.State, r.Why = AskedUnresolved, "refused, reason "+a.Reason+": it reads the same whether the record exists or not"
+		case a.Outcome == AskAbsent:
 			r.State, r.Why = AskedUnresolved, "no answer came back"
 		default:
 			r.State, r.Why = AskedUnresolved, "the answer did not verify"
@@ -191,15 +211,60 @@ func ReconcileAsked(asked []AskedExchange) AskedReport {
 	return report
 }
 
-// matchAsked returns the index of the first record not yet used whose
-// request and response digests are own's, or -1.
-func matchAsked(own AskedHalf, records []AskedRecord, used map[string]bool) int {
-	for i, rec := range records {
-		if !used[rec.RecordID] && rec.RequestDigest == own.RequestDigest && rec.ResponseDigest == own.ResponseDigest {
-			return i
+// matchAsked pairs answered halves with records, one record (by RecordID) to
+// at most one half and only from the half's own answer, and returns, per
+// half, the index in its Records of the record it got, or -1. It finds a
+// maximum matching (augmenting paths), so no half is left unmatched while a
+// reassignment could match it: how many halves match never depends on the
+// order of the input. Halves are matched in input order, so when equal
+// exchanges outnumber the records, the earlier halves get them.
+func matchAsked(asked []AskedExchange) []int {
+	cands := make([][]int, len(asked))
+	for i, a := range asked {
+		if a.Outcome != AskAnswered || a.Own.RequestDigest == "" || a.Own.ResponseDigest == "" {
+			continue
+		}
+		for j, rec := range a.Records {
+			if rec.RecordID != "" && rec.RequestDigest == a.Own.RequestDigest && rec.ResponseDigest == a.Own.ResponseDigest {
+				cands[i] = append(cands[i], j)
+			}
 		}
 	}
-	return -1
+	match := make([]int, len(asked))
+	for i := range match {
+		match[i] = -1
+	}
+	owner := map[string]int{} // RecordID -> half
+	var augment func(i int, seen map[string]bool) bool
+	augment = func(i int, seen map[string]bool) bool {
+		for _, j := range cands[i] {
+			id := asked[i].Records[j].RecordID
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if k, taken := owner[id]; !taken || augment(k, seen) {
+				owner[id], match[i] = i, j
+				return true
+			}
+		}
+		return false
+	}
+	for i := range asked {
+		augment(i, map[string]bool{})
+	}
+	return match
+}
+
+// unnamedMatch reports whether a's answer carries a record with a's two
+// digests and no RecordID, which no matching can use.
+func unnamedMatch(a AskedExchange) bool {
+	for _, rec := range a.Records {
+		if rec.RecordID == "" && rec.RequestDigest == a.Own.RequestDigest && rec.ResponseDigest == a.Own.ResponseDigest {
+			return true
+		}
+	}
+	return false
 }
 
 func seqRun(records []AskedRecord) SeqRun {

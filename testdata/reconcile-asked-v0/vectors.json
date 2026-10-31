@@ -20,7 +20,8 @@
               "seq": 1,
               "prev_seq": null
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -29,7 +30,8 @@
             "response_digest": "36aeb71aa2aac3ab8133c4598a43dc5188d9b4e196492b5fb0a863888b868dc7"
           },
           "outcome": "refused",
-          "reason": "no_such_subject"
+          "reason": "no_such_subject",
+          "covers": true
         },
         {
           "own": {
@@ -46,7 +48,8 @@
               "seq": 2,
               "prev_seq": 1
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -55,7 +58,8 @@
             "response_digest": "8ac001fe861664a144ef30b944db366d8ffd46a0e420fcbc912fef4cf8be1c0e"
           },
           "outcome": "refused",
-          "reason": "no_such_subject"
+          "reason": "no_such_subject",
+          "covers": true
         },
         {
           "own": {
@@ -72,7 +76,8 @@
               "seq": 3,
               "prev_seq": 2
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -81,7 +86,8 @@
             "response_digest": "57e4c25bd7680136d553f2f51bbba21a484ab92610a7f0d2872de50ec73c81c2"
           },
           "outcome": "refused",
-          "reason": "no_such_subject"
+          "reason": "no_such_subject",
+          "covers": true
         }
       ],
       "want": {
@@ -128,7 +134,8 @@
               "seq": 4,
               "prev_seq": 3
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -137,7 +144,8 @@
             "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
           },
           "outcome": "refused",
-          "reason": "policy_declined"
+          "reason": "policy_declined",
+          "covers": true
         },
         {
           "own": {
@@ -146,7 +154,8 @@
             "response_digest": "6767676767676767676767676767676767676767676767676767676767676767"
           },
           "outcome": "refused",
-          "reason": "not_authorized"
+          "reason": "not_authorized",
+          "covers": true
         }
       ],
       "want": {
@@ -184,7 +193,8 @@
               "seq": 7,
               "prev_seq": 6
             }
-          ]
+          ],
+          "covers": true
         }
       ],
       "want": {
@@ -220,7 +230,8 @@
               "seq": 2,
               "prev_seq": 1
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -237,7 +248,8 @@
               "seq": 2,
               "prev_seq": 1
             }
-          ]
+          ],
+          "covers": true
         }
       ],
       "want": {
@@ -276,7 +288,8 @@
               "seq": 1,
               "prev_seq": null
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -293,7 +306,8 @@
               "seq": 3,
               "prev_seq": 2
             }
-          ]
+          ],
+          "covers": true
         }
       ],
       "want": {
@@ -355,7 +369,8 @@
             "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
           },
           "outcome": "refused",
-          "reason": "no_such_subject"
+          "reason": "no_such_subject",
+          "covers": true
         },
         {
           "own": {
@@ -399,7 +414,8 @@
               "seq": 5,
               "prev_seq": 4
             }
-          ]
+          ],
+          "covers": true
         },
         {
           "own": {
@@ -416,7 +432,8 @@
               "seq": 6,
               "prev_seq": 5
             }
-          ]
+          ],
+          "covers": true
         }
       ],
       "want": {
@@ -442,6 +459,106 @@
         "verdict": "UNRESOLVED",
         "omitted": [],
         "states": [],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "no-digests-refused-no-such-subject-is-unresolved",
+      "note": "With no digests the ask could not have named this exchange.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-x",
+            "request_digest": "",
+            "response_digest": ""
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "an-anchor-not-covering-the-exchange-is-unresolved",
+      "note": "An answer or a no_such_subject at an anchor that predates the provider's record says nothing about it.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [],
+          "covers": false
+        },
+        {
+          "own": {
+            "record_id": "own-2",
+            "request_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+            "response_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "outcome": "refused",
+          "reason": "no_such_subject",
+          "covers": false
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED",
+          "UNRESOLVED"
+        ],
+        "run": {
+          "seqs": [],
+          "gapless": true
+        }
+      }
+    },
+    {
+      "name": "a-record-without-an-id-is-unresolved",
+      "note": "A matching record with no record id cannot be matched, and does not make the half omitted.",
+      "asked": [
+        {
+          "own": {
+            "record_id": "own-1",
+            "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+            "response_digest": "6565656565656565656565656565656565656565656565656565656565656565"
+          },
+          "outcome": "answered",
+          "records": [
+            {
+              "record_id": "",
+              "request_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+              "response_digest": "6565656565656565656565656565656565656565656565656565656565656565",
+              "seq": 1,
+              "prev_seq": null
+            }
+          ],
+          "covers": true
+        }
+      ],
+      "want": {
+        "verdict": "UNRESOLVED",
+        "omitted": [],
+        "states": [
+          "UNRESOLVED"
+        ],
         "run": {
           "seqs": [],
           "gapless": true
