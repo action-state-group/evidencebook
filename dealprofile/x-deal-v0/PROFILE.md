@@ -1220,3 +1220,34 @@ files: `deal terms-result --check RESULT --copy FILE --copy FILE --party-key SIG
   checked alone.
 - **A Result made without the other party's openings** names one half where the files give two,
   and "differs" on its evidence. That is never a finding that a claim is false.
+
+## 11. The History card's deal entries (`standard_history/1`)
+
+agent-action-capsule `spec/standard-history-v0.md` (cited here as SH) counts one deal entry per
+deal the holder's stream holds at the card's anchor, and leaves it to the host to fill each entry
+from its records (SH §5.2, SH-2). This section is that mapping for x-deal-v0, so every producer
+that counts these deals counts them the same way (`dealprofile.StandardHistoryDeal`). A member
+with no sealed record behind it is never guessed.
+
+**The anchor.** A profile's card is as of a cadence tick: its anchor is the profile's cadence
+checkpoint, which commits every deal log's checkpoint, never one deal log's checkpoint. A deal's
+records under the anchor are those of the largest checkpoint of its log that any tick up to the
+anchor carries. A deal's Results live in a separate book, `deal/<deal_id>/results` (section 10),
+so they are bounded the same way: the host passes only the Results within the largest checkpoint
+of that book that any tick up to the anchor carries, never one sealed after the anchor.
+
+| Member | From |
+|---|---|
+| deal | a deal's own log that holds an `action` (or `action-record/v0`) whose `action` is `commit` or `pay`. A sale's own log is not a deal, and neither is a deal that never reached such a step. `deal` is the deal id. |
+| `agreed_at` | the `committed_at` of the first such step, to the minute: a tick's anchor time is a minute floor, and a step sealed later in the same minute would sort after it and fall out of every count |
+| `role` | the baseline intent's `party_role`: `seller` is `provided`; `buyer` or absent is `bought` |
+| `amount` | the `amount_minor` and `currency` of the check the step rests on (`authorized_by` → `approval` → `approves` → `verdict` → `checks` → `check`; for a typed step, `evaluation_ref` → `action-evaluation/v0` → `proposed_action_digest` → `proposed-action/v0`), with `assetScale` the currency's ISO 4217 minor units |
+| `counterparty_class` | absent: this profile records no SH §7 class |
+| `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; any claim `not_met` is `did_not_hold`; anything else, no verified Result included, is `undecided` |
+| `happened` | (every input bounded by the anchor, as above) `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
+| `disputes` | empty: this profile seals no IP §11.2 `disputes` statement |
+
+**No amount.** A check may omit `amount_minor` and `currency` (section 3), and SH gives an amount
+no unknown value. A deal whose step rests on a check without them, or on a currency with no ISO
+4217 minor units, is never left off the card, which would undercount without saying so: the card
+is refused (agent-action-capsule#516 asks for an "unpriced" count).
