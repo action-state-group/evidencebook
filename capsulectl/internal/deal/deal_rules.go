@@ -2187,6 +2187,11 @@ type dealReportItem struct {
 	// check's line without the user's and the agent's choices (the items go
 	// only to an adjudicator).
 	Shared string `json:"-"`
+	// Causes is the part of Text that says what the user's rules flagged on a
+	// check: the user's policy, so an adjudicator's copy takes it out of Text
+	// and keeps the rest (the choices, the approval, the not-yet-checked
+	// note), and gets the neutral difference texts instead.
+	Causes string `json:"-"`
 	// Self is the step that is the item itself (an act, a close): the page
 	// checks it and does not list its line again under the item
 	// (capsule-cli#341).
@@ -2394,10 +2399,19 @@ func buildDealReport(events []sealedEvent) dealReport {
 			checkItem[se.CapsuleID] = len(r.Did)
 			text := fmt.Sprintf("Checked before %s: %s", actionNames[e.Check.Action], verdict)
 			shared := text
-			// The rules the ruleset declares and the checker does not measure,
-			// quietly, in the user's own copy only (they are the user's policy).
+			// The user's own copy names what caused a flag first, in the
+			// rules' own words, then the rules the ruleset declares and the
+			// checker does not measure, as not yet checked: they took no part
+			// in the verdict, and a shared copy names none of the user's
+			// rules (they are the user's policy).
+			causeText := ""
+			if causes := ruleCauses(e.Check.Rules); len(causes) > 0 && e.Check.Verdict != "pass" {
+				causeText = " (" + strings.Join(causes, "; ") + ")"
+				text += causeText
+			}
+			notYetChecked := ""
 			if declared := declaredRules(e.Check.Rules); len(declared) > 0 {
-				text += "; " + strings.TrimSuffix(declaredRulesLine(declared), ".")
+				notYetChecked = "; not yet checked: " + declaredRulesLine(declared)
 			}
 			// What the user chose and what the agent chose for them, told
 			// apart as the approval text tells them, so a choice the agent
@@ -2425,7 +2439,9 @@ func buildDealReport(events []sealedEvent) dealReport {
 			if len(who) > 0 {
 				text += " (" + strings.Join(who, "; ") + ")"
 			}
-			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, At: e.At})
+			// Last, so the choices above do not read as part of the note.
+			text += notYetChecked
+			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, Causes: causeText, At: e.At})
 			var asked []string
 			for _, d := range e.Check.Differences {
 				// The user's own yes answered it: a "you didn't ask for this" on

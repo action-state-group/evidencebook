@@ -656,6 +656,11 @@ func TestDealPickedItemIsNotAFalsePause(t *testing.T) {
 		for _, words := range []string{"you asked for", "the agent picked", "size small"} {
 			assert.NotContains(t, strings.ToLower(copyPage), words)
 		}
+		// An adjudicator's copy keeps who chose what: it is what a dispute
+		// over the pick turns on.
+		adjudicator := filepath.Join(t.TempDir(), "adjudicator.html")
+		shareRun(t, dealID, cli.DealAudienceAdjudicator, adjudicator)
+		assert.Contains(t, string(mustRead(t, adjudicator)), "the agent picked, not you: size small 3.8in x 2.4in")
 	})
 	t.Run("when the user picked the size too it passes", func(t *testing.T) {
 		check := run(t, "intent-picked-with-size.json", "check-pay.json")

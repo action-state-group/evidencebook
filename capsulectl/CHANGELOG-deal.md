@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The user's own receipt line for a flagged check gives what caused the flag
+  first, in the rules' own words (a rule the checker could not evaluate is
+  said so), and then, after what the user and the agent chose, the rules the
+  ruleset declares but the checker does not measure, as "not yet checked", so
+  the unmeasured rules no longer read as the reason for the flag. With no flag
+  the not-yet-checked note stands on its own. A shared copy names none of the
+  user's rules, and an adjudicator's copy keeps the not-yet-checked note and
+  who chose what, without the reasons (#55).
+
 - The rules checker is held to the acting role's pin: `deal check` checks the
   checker's answer against that role's definition digests
   (`rules_checker.roles`, capsule-cli#492), so swapping one role's pin by
