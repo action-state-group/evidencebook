@@ -144,7 +144,9 @@ func TestASellersIDShapedClaimDoesNotHideTheFloor(t *testing.T) {
 
 // Real copies, with checkpoint.cose replaced by a random 400-character
 // base64url value starting with the limit's digit (half "8kr"): none is
-// refused. A fixed seed, so a failure names its token.
+// refused. A fixed seed, so a failure names its token. Under the race
+// detector it runs a tenth of the rounds (raceRounds): at 2200 gate runs it
+// took 253s of a 600s shard there; the plain pass runs them all.
 func TestARandomCoseInARealCopyIsNeverTheLimit(t *testing.T) {
 	dealFixture(t)
 	stubDNS(t, map[string]string{merchantSelector + "._domainkey.shop.example": merchantKeyTXT(t), dmarcName: merchantDMARC(t)})
@@ -162,7 +164,7 @@ func TestARandomCoseInARealCopyIsNeverTheLimit(t *testing.T) {
 	for name, c := range map[string]struct {
 		raw    string
 		rounds int
-	}{"bundle": {bundle, 2000}, "page": {pageCopy, 200}} {
+	}{"bundle": {bundle, raceRounds(2000)}, "page": {pageCopy, raceRounds(200)}} {
 		r := rand.New(rand.NewSource(62))
 		for range c.rounds {
 			tok := make([]byte, 400)
