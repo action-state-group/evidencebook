@@ -170,7 +170,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Python CLL, the AAC bundle verifier and capsule-emit
-        run: python -m pip install ./checkpointed-local-log "agent-action-capsule==0.13.0" "capsule-emit==0.13.0"
+        run: python -m pip install ./checkpointed-local-log "agent-action-capsule==0.13.0" "capsule-emit==0.8.6"
       - name: Verify a Go-produced bundle with the Python reference
         shell: bash
         run: |
