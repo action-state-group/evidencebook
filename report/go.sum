@@ -8,12 +8,12 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956 h1:IhYtJhzXnCPWgiVKyuc0qRv61VV3/lC/WY3hq9vj02w=
 github.com/action-state-group/agent-action-capsule/go v0.14.1-0.20261027225214-1d1752bf3956/go.mod h1:Q1yzmSvtxEQiE/rMZZaN7qrSEN8JYQnfwF4VNtqsmTM=
-github.com/action-state-group/capsule-cli v0.1.0-rc25 h1:v1RyIegzHU/FZd4n6ecFut1npOOeu0VKoGRUqSHW9i8=
-github.com/action-state-group/capsule-cli v0.1.0-rc25/go.mod h1:N97fjyDk6EGCD6z7REmsifRI8UllcQjXSFR+k6cYuPo=
+github.com/action-state-group/capsule-cli v0.1.0-rc26 h1:OsRZjV6zs2ZxLQW4xTKqjCL6vsKAR9f/JGNBmxOCT8U=
+github.com/action-state-group/capsule-cli v0.1.0-rc26/go.mod h1:BDMJivdm6jU2V4bJVpu/FntPW5Y5W4fMUp7sIaIbYa4=
 github.com/action-state-group/capsule-emit/go v0.3.0 h1:DEFDSHktFQoUxWScjeIbMKfET/4Kjgm/ZQsWJp4AI+Y=
 github.com/action-state-group/capsule-emit/go v0.3.0/go.mod h1:TKXiVniDy7RlksGjEAF6k9rj5NcwvwdQ6EGajzhghuo=
-github.com/action-state-group/capsule-viewer/go v0.5.0 h1:NYA1qoKBoyo4Itafwbd7PlZGXovHjLsAhc6xozx5HaQ=
-github.com/action-state-group/capsule-viewer/go v0.5.0/go.mod h1:ZbHGy5rg7ofNMPBU9qB8S6glMz8eLdMQU7ey0Uvu+iI=
+github.com/action-state-group/capsule-viewer/go v0.6.0 h1:HFlV1b9k8p73M4AIi4MPzUKJM7xF5FSD7NmaEnEKdOg=
+github.com/action-state-group/capsule-viewer/go v0.6.0/go.mod h1:ZbHGy5rg7ofNMPBU9qB8S6glMz8eLdMQU7ey0Uvu+iI=
 github.com/action-state-group/checkpointed-local-log/go v0.1.0 h1:bDJSW+fy3eZnwneJBOGuvqYXe0VlvDfPKEJ6ecHnTek=
 github.com/action-state-group/checkpointed-local-log/go v0.1.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
 github.com/action-state-group/evidencebook v0.8.0 h1:remVdZQ2BqEJVdXCNdEXiyn4qVYpRVEali19jwZvI84=
