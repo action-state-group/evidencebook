@@ -101,8 +101,13 @@ pub mod reasons {
     pub const DEADLINE_UNMET: &str = "deadline_unmet";
     pub const REQUEST_MALFORMED: &str = "request_malformed";
     pub const RETENTION_EXPIRED: &str = "retention_expired";
+    /// -02: a limit of the responder's own (load, size, a transient fault).
+    pub const CAPACITY_EXCEEDED: &str = "capacity_exceeded";
+    /// -02: a requester authentication a deployment profile defines does not verify.
+    pub const REQUEST_UNAUTHENTICATED: &str = "request_unauthenticated";
 
-    pub const ALL: [&str; 8] = [
+    /// The registry's tokens: the eight of -00 and the two -02 adds.
+    pub const ALL: [&str; 10] = [
         NOT_AUTHORIZED,
         NO_SUCH_SUBJECT,
         COVERAGE_UNSATISFIABLE,
@@ -111,6 +116,8 @@ pub mod reasons {
         DEADLINE_UNMET,
         REQUEST_MALFORMED,
         RETENTION_EXPIRED,
+        CAPACITY_EXCEEDED,
+        REQUEST_UNAUTHENTICATED,
     ];
 }
 

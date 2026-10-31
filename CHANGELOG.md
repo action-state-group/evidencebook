@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed: the Rust crates depend on `evidence-request` 0.3
+
+- `evidencebook` and `interop` require `evidence-request` `0.3`
+  (agent-action-capsule#485), which registers the Evidence Request -02 refusal
+  reasons `capacity_exceeded` and `request_unauthenticated` and reads
+  `evidence-interop/1`. `request::reasons` gains both tokens, so it stays the
+  registry's list, and a refusal with either is now `reason_is_registered`.
+  Nothing here emits them. A dependent that keeps one `evidence-request` in its
+  graph, as capsules-plugin does, needs this to take 0.3
+  (Mesh-LLM/capsules-plugin#114).
+
 ### Changed: `capsulectl book request --response` prints the answer's witness standing (evidencebook#209)
 
 - The result now carries `witness`, as the response record holds it (#216):
