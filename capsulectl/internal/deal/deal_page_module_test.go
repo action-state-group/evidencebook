@@ -197,14 +197,30 @@ func TestTheDealViewIsAPresentationModule(t *testing.T) {
 	require.NotNil(t, m, "the script carries its stylesheet")
 	assert.Equal(t, string(css), m[1], "assets/deal-view.css and the script's stylesheet are the same bytes")
 
-	code := regexp.MustCompile(`EvidenceGraph\.registerPresentation\(\{\n  manifest: (\{.*\}),\n`).FindStringSubmatch(DealViewJS)
-	require.NotNil(t, code, "the script registers its module at load")
-	assert.Equal(t, strings.Repeat("0", 64), regexp.MustCompile(`"script_sha256": "([0-9a-f]{64})"`).FindStringSubmatch(code[1])[1])
-	var inCode map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(code[1]), &inCode))
-	inCode["executable"].(map[string]interface{})["script_sha256"] = executable["script_sha256"]
-	assert.Equal(t, manifest, inCode)
-	assert.Equal(t, 1, strings.Count(DealViewJS, "registerPresentation("), "one module")
+	// Each manifest is registered by the script with the same manifest but
+	// for the script's own digest: the single-book module, then the composed
+	// one, which forbid each other's bundles (composed/v1).
+	codes := regexp.MustCompile(`EvidenceGraph\.registerPresentation\(\{\n  manifest: (\{.*\}),\n`).FindAllStringSubmatch(DealViewJS, -1)
+	require.Len(t, codes, 2, "the script registers its two modules at load")
+	assert.Equal(t, 2, strings.Count(DealViewJS, "registerPresentation("), "two modules")
+	for i, raw := range [][]byte{DealViewManifestJSON, DealViewComposedManifestJSON} {
+		doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+		require.NoError(t, err)
+		require.NoError(t, schema.Validate(doc))
+		var want map[string]interface{}
+		require.NoError(t, json.Unmarshal(raw, &want))
+		assert.Equal(t, strings.TrimSpace(DealViewJSSHA256), cli.ManifestMap(want, "executable")["script_sha256"])
+		assert.Equal(t, strings.Repeat("0", 64), regexp.MustCompile(`"script_sha256": "([0-9a-f]{64})"`).FindStringSubmatch(codes[i][1])[1])
+		var inCode map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(codes[i][1]), &inCode))
+		inCode["executable"].(map[string]interface{})["script_sha256"] = strings.TrimSpace(DealViewJSSHA256)
+		assert.Equal(t, want, inCode)
+	}
+	var composed map[string]interface{}
+	require.NoError(t, json.Unmarshal(DealViewComposedManifestJSON, &composed))
+	assert.Equal(t, "capsulectl.deal-view-composed/v0", composed["id"])
+	assert.Contains(t, cli.AsList(cli.ManifestMap(manifest, "forbids")["extensions"]), "composed/v1", "the single-book module never reads a composition")
+	assert.Equal(t, []interface{}{"composed/v1"}, cli.AsList(cli.ManifestMap(cli.ManifestMap(composed, "requires"), "extensions")["required"]))
 	assert.NotContains(t, DealViewJS, "capsulectlDealView =", "no entry point beside the module")
 
 	module, err := dealViewModule()

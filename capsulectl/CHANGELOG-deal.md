@@ -6,6 +6,25 @@
   capsule-viewer#186, #187, #188, #189, #190, #192, #193). The presentation
   goldens are rebuilt with `build-fixtures.sh` against it (capsulectl-book from
   evidencebook#244), their snapshots regenerated with Chrome.
+- The receipt with the other party's half (the 9b frames 6 and 7;
+  evidencebook-deal#78, #79, #81; design note `docs/design/two-sided-receipt.md`).
+  The deal view gains a second module, `capsulectl.deal-view-composed/v0`, for a
+  deal composition: it checks the composition and each of the other party's
+  answers itself, and says "Stamped by both sides", "Your receipt only" or "No
+  record". The other party's side shows only their key's first digits, never a
+  name. A record that is in the file but did not check gets its own box,
+  never one that reads as missing. The single-book deal page no longer reads a
+  composition.
+- `deal compose --html --keep` builds that page and carries your keep copy in it
+  whole, so the page checks your side too. The page says on its face that it is
+  your private copy and that the composed bundle is the file to share. The
+  composed bundle is unchanged.
+- `deal compose` takes a single answer with `--keep`, and refuses an answer
+  recorded as not holding up.
+- A Mesh payer's receipt is read the same way: both halves must name the same
+  exchange by the client's nonce and request. Tested on a synthetic composition
+  until the plugin builds the real one (Mesh-LLM/capsules-plugin#196).
+- A bundle with two rounds reads its latest round (#81).
 
 ## v0.1.0-rc26
 

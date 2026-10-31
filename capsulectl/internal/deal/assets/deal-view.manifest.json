@@ -14,6 +14,7 @@
   },
   "forbids": {
     "extensions": [
+      "composed/v1",
       "x-history-selection/v0"
     ],
     "profiles": [
@@ -32,7 +33,7 @@
   "priority": 1,
   "executable": {
     "carrier": "module-slot",
-    "script_sha256": "7b8ebb7c936e825f65c768c040c30362bb8225270c9b03d3fe4adc1f1b39539b",
+    "script_sha256": "12947521807ce7239c0924eb1dd534e82281bf35e4747b0fc0154d0c129dd65e",
     "style_sha256": [
       "04759c13ec65dd02645149cb7d009153712b8f8c31027fd73923df35e95f8279"
     ]

@@ -67,9 +67,12 @@ func TestTheHandshakeOffersTheDealView(t *testing.T) {
 
 	b, page, err := passBuild(t, bundle)
 	require.NoError(t, err)
-	require.Len(t, b.Modules, 1, "the page carries the deal view")
+	// Both of the script's modules are on the page, and the script that
+	// registers them is inlined once (capsule-cli#501).
+	require.Len(t, b.Modules, 2, "the page carries the deal view's two modules")
 	assert.Equal(t, "capsulectl.deal-view/v0", b.Modules[0]["id"])
-	assert.Contains(t, page, DealViewJS)
+	assert.Equal(t, "capsulectl.deal-view-composed/v0", b.Modules[1]["id"])
+	assert.Equal(t, 1, strings.Count(page, DealViewJS), "one script, inlined once")
 }
 
 // A launcher without the deal view's files beside it keeps its commands; the

@@ -815,7 +815,10 @@ type composeMember struct {
 	recordID, responsePath string
 }
 
-func parseComposeMembers(values []string) ([]composeMember, error) {
+// parseComposeMembers reads the --member values. A composition needs two
+// members, or one with a keep copy: the receipt with the other party's half,
+// whose own half is the keep copy joined at the page.
+func parseComposeMembers(values []string, keep bool) ([]composeMember, error) {
 	members := make([]composeMember, 0, len(values))
 	seen := map[string]bool{}
 	for _, v := range values {
@@ -829,8 +832,8 @@ func parseComposeMembers(values []string) ([]composeMember, error) {
 		seen[id] = true
 		members = append(members, composeMember{recordID: id, responsePath: path})
 	}
-	if len(members) < 2 {
-		return nil, cli.InputError("compose needs at least two --member answers")
+	if len(members) < 2 && !(keep && len(members) == 1) {
+		return nil, cli.InputError("compose needs at least two --member answers, or one with --keep")
 	}
 	return members, nil
 }
@@ -838,7 +841,8 @@ func parseComposeMembers(values []string) ([]composeMember, error) {
 func composeCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "compose", Short: "Compose a deal's recorded evidence-request answers into one composed/v1 bundle (each member's request is on record)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		values, _ := c.Flags().GetStringArray("member")
-		members, err := parseComposeMembers(values)
+		keepPath, _ := c.Flags().GetString("keep")
+		members, err := parseComposeMembers(values, keepPath != "")
 		if err != nil {
 			return err
 		}
@@ -847,7 +851,6 @@ func composeCommand() *cobra.Command {
 			return cli.InputError("--output is required: the file to write the composed bundle to")
 		}
 		htmlPath, _ := c.Flags().GetString("html")
-		keepPath, _ := c.Flags().GetString("keep")
 		if keepPath != "" && htmlPath == "" {
 			return cli.InputError("--keep joins your keep copy to the page: it needs --html FILE")
 		}
@@ -856,7 +859,7 @@ func composeCommand() *cobra.Command {
 		})
 	}}
 	cmd.Flags().String("deal", "", "Deal ID the answers are about")
-	cmd.Flags().StringArray("member", nil, "REQUEST_RECORD_ID: a request this profile recorded, whose recorded answer (kept in the artifact store) or absence is the member; REQUEST_RECORD_ID=RESPONSE_FILE for an answer recorded before replies were kept. Give two or more")
+	cmd.Flags().StringArray("member", nil, "REQUEST_RECORD_ID: a request this profile recorded, whose recorded answer (kept in the artifact store) or absence is the member; REQUEST_RECORD_ID=RESPONSE_FILE for an answer recorded before replies were kept. Give two or more, or one with --keep")
 	cmd.Flags().String("output", "", "Write the composed bundle here")
 	cmd.Flags().String("html", "", "Also write the composed bundle's page (your own page) to this new file")
 	cmd.Flags().String("keep", "", "With --html: your keep copy of this deal (`deal report --bundle`), shown on the page as \"your half (private)\"; it must be your own copy of the same deal. It is never put in the composed bundle")
@@ -948,13 +951,13 @@ func (s *dealSession) compose(c *cobra.Command, dealID string, members []compose
 		if _, statErr := os.Stat(htmlPath); statErr == nil || htmlPath == path {
 			return cli.InputError("--html " + htmlPath + " already exists or is the --output file; nothing was written")
 		}
-		var half *dealPrivateHalf
+		var keep map[string]interface{}
 		if keepPath != "" {
-			if half, err = privateHalfOf(keepPath, dealID, container, cli.BuiltinWording()); err != nil {
+			if keep, err = keepCopyOf(keepPath, dealID, container); err != nil {
 				return err
 			}
 		}
-		if page, err = composedPageHTML(container, half, dealVerifyCommand(htmlPath), cli.BuiltinWording()); err != nil {
+		if page, err = composedPageHTML(container, keep, dealVerifyCommand(htmlPath), cli.BuiltinWording()); err != nil {
 			return err
 		}
 	}
@@ -1047,9 +1050,13 @@ func (s *dealSession) composeMember(ctx context.Context, dealID string, m compos
 			return nil, err
 		}
 		member["outcome"], member["refusal"] = "refusal", refusal
+	case dealOutcomeArtifactFailed:
+		// The composed block cannot carry why the copy failed on record (a
+		// wrong anchor, too little coverage), and the copy
+		// may still verify on its own, so a page would draw it as checked.
+		failure, _ := outcome.record["failure"].(string)
+		return nil, cli.InputError("member " + m.recordID + " was recorded as a copy that does not hold up (" + failure + "); it is not composed")
 	default:
-		// A recorded artifact, or one recorded as failed: a failed artifact
-		// is still an artifact member, and the verifier reports its failure.
 		var a dealArtifactResponse
 		if err = json.Unmarshal(*resp.Artifact, &a); err != nil {
 			return nil, err

@@ -251,11 +251,11 @@ func rerenderPresentationPage(t *testing.T, dir string, meta presentationMeta, b
 			}
 		}
 		require.NotEmpty(t, dealID)
-		half, err := privateHalfOf(filepath.Join(dir, "keep.json"), dealID, bundle, cli.BuiltinWording())
+		keep, err := keepCopyOf(filepath.Join(dir, "keep.json"), dealID, bundle)
 		if err != nil {
 			return "", err
 		}
-		return composedPageHTML(bundle, half, dealVerifyCommand("page.html"), cli.BuiltinWording())
+		return composedPageHTML(bundle, keep, dealVerifyCommand("page.html"), cli.BuiltinWording())
 	case "report-build":
 		// `book report build` is capsulectl-book's: its tests re-emit this
 		// page and hold it to the committed one (TestReportBuildGoldens).

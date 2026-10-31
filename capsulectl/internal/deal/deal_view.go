@@ -31,19 +31,23 @@ var (
 	DealViewJSSHA256 string
 	//go:embed assets/deal-view.manifest.json
 	DealViewManifestJSON []byte
+	// The same script's second module, capsulectl.deal-view-composed/v0: the
+	// receipt with the other party's half, read from a deal composition
+	// (docs/design/two-sided-receipt.md).
+	//go:embed assets/deal-view-composed.manifest.json
+	DealViewComposedManifestJSON []byte
 )
 
 // dealViewDir is where the module's files sit, relative to the launcher.
 const dealViewDir = "capsulectl-deal.d"
 
-// dealViewPresentation is the deal view as the handshake states it.
-func dealViewPresentation() cli.PluginPresentation {
+// dealViewPresentations are the deal view's two modules as the handshake
+// states them: one script and stylesheet, registered under each manifest.
+func dealViewPresentations() []cli.PluginPresentation {
 	style := sha256.Sum256([]byte(DealViewCSS))
-	return cli.PluginPresentation{
-		Manifest: DealViewManifestJSON,
-		Files: []cli.PluginPresentationFile{
-			{Role: "script", Path: dealViewDir + "/deal-view.js", SHA256: strings.TrimSpace(DealViewJSSHA256)},
-			{Role: "style", Path: dealViewDir + "/deal-view.css", SHA256: hex.EncodeToString(style[:])},
-		},
+	files := []cli.PluginPresentationFile{
+		{Role: "script", Path: dealViewDir + "/deal-view.js", SHA256: strings.TrimSpace(DealViewJSSHA256)},
+		{Role: "style", Path: dealViewDir + "/deal-view.css", SHA256: hex.EncodeToString(style[:])},
 	}
+	return []cli.PluginPresentation{{Manifest: DealViewManifestJSON, Files: files}, {Manifest: DealViewComposedManifestJSON, Files: files}}
 }
