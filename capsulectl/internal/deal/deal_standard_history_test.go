@@ -698,3 +698,85 @@ func anchorPolicy(t *testing.T, name string, public ed25519.PublicKey) witness.A
 	require.NoError(t, err)
 	return witness.AnchorWitnessPolicy{Witnesses: []witness.AnchorWitness{{Name: name, Keys: []string{hex.EncodeToString(der)}}}}
 }
+
+// pricedPair is closedPair with the buyer's deal rests on a pay action, so
+// it is a deal on the buyer's card; the seller's copy is recorded as in
+// closedPair. It returns with the buyer selected.
+func pricedPair(t *testing.T) reconcilePair {
+	t.Helper()
+	dealFixture(t)
+	id := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
+	dealRun(t, "check", "--deal", id, "--input", writeJSON(t, `{"action":"pay","amount_minor":190000,"authorized_max_minor":190000,
+ "who":{"name":"Example Seller","domain":"seller.example"},
+ "terms":{"item":"example bicycle","price_minor":190000,"currency":"USD"},
+ "recourse":{"rail":"card","refundable":false}}`))
+	dealRun(t, "note", "--deal", id, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":190000,"currency":"USD","payee":"Example Seller","rail":"card","reference":"ORDER-1"}`))
+	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, received))
+	buyer := thisDealParty(t)
+	dealFixture(t)
+	dealRun(t, "open", "--records", "typed", "--deal-id", id, "--input", writeJSON(t, sellerTyped))
+	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, received))
+	seller := thisDealParty(t)
+	pair := reconcilePair{id: id, buyer: buyer, seller: seller}
+	pair.response = recordedCopy(t, buyer, seller, id)
+	party(t, seller.config)
+	pair.sellerFile = discloseTo(t, id, "the buyer")
+	party(t, buyer.config)
+	return pair
+}
+
+// happenedOnTheCard declares a node, ticks and returns the one deal entry
+// of the holder's own card.
+func happenedOnTheCard(t *testing.T, now *time.Time) map[string]any {
+	t.Helper()
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+	*now = now.Add(2 * time.Minute)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	own := filepath.Join(t.TempDir(), "own.json")
+	dealRun(t, "standard-history", "card", "--out", own)
+	deals, ok := shBlock(t, readBundle(t, own))["deals"].([]any)
+	require.True(t, ok)
+	require.Len(t, deals, 1)
+	return deals[0].(map[string]any)
+}
+
+// The counterparty's half read into a Result under the anchor makes the
+// deal "stamped_by_both" (F4.2, evidencebook-deal#85); without it the
+// deal stays "receipt_only".
+func TestTheCardStampsADealBothSidesHalvesReconciled(t *testing.T) {
+	inLogReports(t)
+	pair := pricedPair(t)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	_, _, _, err := runTermsResult(t, pair.id, pair.response, "--openings", pair.sellerFile)
+	require.NoError(t, err)
+	entry := happenedOnTheCard(t, now)
+	assert.Equal(t, "stamped_by_both", entry["happened"])
+}
+
+func TestTheCardWithoutTheCounterpartysHalfIsReceiptOnly(t *testing.T) {
+	inLogReports(t)
+	pair := pricedPair(t)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	// The seller's copy is recorded, but no openings name its half: only
+	// the holder's own half is admitted, so the Result cites one digest.
+	_, _, _, err := runTermsResult(t, pair.id, pair.response)
+	require.NoError(t, err)
+	entry := happenedOnTheCard(t, now)
+	assert.Equal(t, "receipt_only", entry["happened"])
+}
+
+func TestCitesTwoHalves(t *testing.T) {
+	claims := func(digests ...string) []byte {
+		evidence := []map[string]string{}
+		for _, d := range digests {
+			evidence = append(evidence, map[string]string{"digest": d, "digest_alg": "sha-256"})
+		}
+		raw, err := json.Marshal(map[string]any{"claims": []any{map[string]any{"evidence": evidence}, map[string]any{"evidence": evidence}}})
+		require.NoError(t, err)
+		return raw
+	}
+	assert.True(t, citesTwoHalves(claims("a", "b")))
+	assert.False(t, citesTwoHalves(claims("a")))
+	assert.False(t, citesTwoHalves(claims()))
+	assert.False(t, citesTwoHalves([]byte("not json")))
+}

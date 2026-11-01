@@ -14,6 +14,13 @@
   gets its cadence ticks witnessed: the cadence checks the Receipt under that
   binding, not always under `cll`. The default witness is unchanged.
 
+- The History card's `happened` reads `stamped_by_both` (evidencebook-deal#85): a deal
+  whose sealed `deal terms-result` Result, under the card's anchor, names the
+  counterparty's admitted half beside your own in the Result's period (the half `terms-result` checked: signed
+  under the key the response pinned, a step of this deal, under the copy's verified
+  checkpoint, its final close). A deal without one stays `receipt_only` or `no_record`.
+  Run `deal terms-result` and then `deal tick` before the card.
+
 - `counterparty_class` on a pay check (F4.5, evidencebook-deal#93, evidencebook#273): a
   `deal check` input for a `pay` may state `"counterparty_class"` (`person_agent`,
   `business_agent` or `shop_preauth`, SH §7), which is sealed as the pay check's

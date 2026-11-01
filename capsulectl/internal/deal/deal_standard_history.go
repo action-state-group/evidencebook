@@ -489,6 +489,9 @@ func (x shelfDealIndex) historyInput(ctx context.Context, keys []ed25519.PublicK
 			return in, err
 		}
 		in.Results = append(in.Results, dealprofile.HistoryResult{Result: raw, Verified: verified})
+		if verified && citesTwoHalves(raw) {
+			in.CounterpartyHalfVerified = true
+		}
 	}
 	return in, nil
 }
@@ -629,4 +632,31 @@ func readSetting(path string) ([]byte, error) {
 		return nil, err
 	}
 	return os.ReadFile(path)
+}
+
+// citesTwoHalves is whether a Result names two distinct halves as evidence.
+// `deal terms-result` seals a Result only over the halves it admitted: the
+// holder's own final close and, once admitPeerHalf has checked it (signed
+// under the key the response pinned, a step of this deal, under the copy's
+// verified checkpoint, its final close), the counterparty's. Each claim's
+// evidence is the digest of every admitted half in the Result's period (DR
+// section 7.3; a period narrowed to one half cites one digest, and the card
+// then reads receipt_only, the safe side), so two distinct digests mean the counterparty's half was received and verified,
+// and the sealed Result on the results book is under the anchor.
+func citesTwoHalves(result []byte) bool {
+	var doc struct {
+		Claims []struct {
+			Evidence []evidencebook.EvidenceRef `json:"evidence"`
+		} `json:"claims"`
+	}
+	if json.Unmarshal(result, &doc) != nil {
+		return false
+	}
+	digests := map[string]bool{}
+	for _, c := range doc.Claims {
+		for _, e := range c.Evidence {
+			digests[e.Digest] = true
+		}
+	}
+	return len(digests) >= 2
 }
