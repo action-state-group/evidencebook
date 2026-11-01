@@ -261,7 +261,8 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
     # that release pins (test/interop/goose-mesh-check).
     if os.environ.get("GOOSE_MESH_CHECK"):
         halves = [str(tmp_path / f"{node}-final-half.json") for node in ("buyer", "seller")]
-        mesh = subprocess.run([os.environ["GOOSE_MESH_CHECK"], *halves], capture_output=True, text=True, timeout=120)
+        mesh = subprocess.run([os.environ["GOOSE_MESH_CHECK"], *halves], cwd=HERE.parents[2], capture_output=True,
+                              text=True, timeout=120)
         assert mesh.returncode == 0, mesh.stdout + mesh.stderr
     if os.environ.get("GOOSE_GO_CHECK"):
         for node in ("buyer", "seller"):
