@@ -770,7 +770,11 @@ class Shelf:
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
         with self._db_lock:
-            self._db.execute("BEGIN")
+            # IMMEDIATE: a shelf transaction reads, then writes, and under
+            # WAL a deferred one fails (SQLITE_BUSY_SNAPSHOT, which the busy
+            # timeout does not cover) when a book's log or another process
+            # commits between the two. Go's shelf takes the same lock.
+            self._db.execute("BEGIN IMMEDIATE")
             try:
                 yield self._db
             except BaseException:
@@ -996,7 +1000,7 @@ class Shelf:
 def _init(db: sqlite3.Connection) -> None:
     """Create the shelf's tables when absent, in one transaction, and apply
     §2.2's fill rules; refuse an unknown version before writing anything."""
-    db.execute("BEGIN")
+    db.execute("BEGIN IMMEDIATE")
     try:
         def has(table: str) -> bool:
             return bool(db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",

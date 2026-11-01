@@ -692,3 +692,54 @@ def test_lifecycle_statements_list_as_go_reads_them(fx):
             other.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, cited.record_id),), **bad))
             with pytest.raises(CorruptError):
                 shelf.records(other.book_id)
+
+
+def test_a_shelf_transaction_holds_the_write_lock_from_its_start(fx):
+    """A shelf transaction reads, then writes: under WAL a deferred one fails
+    (SQLITE_BUSY_SNAPSHOT) when another connection commits between the two,
+    which the busy timeout does not cover. It starts IMMEDIATE, so the other
+    writer waits instead."""
+    with fx.open() as shelf:
+        other = sqlite3.connect(fx.path, timeout=5.0, isolation_level=None, check_same_thread=False)
+        errors, started = [], threading.Event()
+
+        def write():
+            started.set()
+            try:
+                other.execute("INSERT INTO cadence_logs (log_id) VALUES ('other/log')")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        with shelf._tx() as db:
+            db.execute("SELECT COUNT(*) FROM cadence_logs").fetchone()
+            writer = threading.Thread(target=write)
+            writer.start()
+            started.wait()
+            writer.join(0.3)
+            db.execute("INSERT INTO cadence_logs (log_id) VALUES ('mine/log')")
+        writer.join()
+        other.close()
+        assert not errors
+        with shelf._read() as db:
+            assert {r[0] for r in db.execute("SELECT log_id FROM cadence_logs")} == {"other/log", "mine/log"}
+
+
+def test_a_book_checkpoints_while_another_appends(fx):
+    with fx.open() as shelf:
+        a, b = shelf.open("deal/a"), shelf.open("deal/b")
+        errors = []
+
+        def run(f):
+            try:
+                for n in range(25):
+                    f(n)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=run, args=(lambda n: (a.append(obs(str(n))), a.checkpoint()),)),
+                   threading.Thread(target=run, args=(lambda n: b.append(obs(str(n))),))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert not errors
