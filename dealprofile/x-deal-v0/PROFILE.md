@@ -927,7 +927,7 @@ and `doctor` print every one. To pin rules per role, `FILE` may also give `"role
 package, such as `asg/seller`), a `definition_digest` or `definition_digests`, or both. A check
 then runs under the acting role's pin: that role's entry, with the flat digests above when the
 entry names a `pack` alone, or the flat pin when the role has no entry. The checker is sent that
-pin as `rules_pin` and must report one of its digests; the other role's pin is never used. The executable must sit under a trusted plugin root, and the
+pin as `rules_pin` and, when that pin has digests, must report one of them; the other role's pin is never used. The executable must sit under a trusted plugin root, and the
 profile pins its SHA-256.
 
 At every check, after the `check` record is sealed:
@@ -1027,7 +1027,7 @@ At every check, after the `check` record is sealed:
     "Not allowed". Under an `escalate` nothing reads "Not allowed".
   - A checker that is configured but changed since it was pinned, refused the input, timed
     out, printed anything else, or reported a `definition_digest` that is not pinned
-    (under `roles`, not one of the acting role's digests) adds a `rules_not_checked` difference naming why, and the check pauses.
+    (under `roles`, not one of the acting role's digests, when it has any) adds a `rules_not_checked` difference naming why, and the check pauses.
 
 The verdict's `rules` seals the outcome as data:
 - `status: evaluated`, with `ruleset_id`, `definition_digest`, `checker_sha256`, `verdict`,
