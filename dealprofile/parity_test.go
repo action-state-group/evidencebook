@@ -304,10 +304,8 @@ func parityHistories(t *testing.T) []parityHistory {
 	add("a record with a float", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"deal_id":"deal-0123456789abcdef","record_type":"baseline"},"body":{"n":1.5}}`), CommittedAt: historyStart}}, nil, false)
 	add("a report passed over", []HistoryRecord{{Payload: []byte(`{"type":"deal_report","profile":"x-deal-v0"}`), CommittedAt: historyStart}}, nil, false)
 
-	// Not pinned: an amount_minor of the wrong type (a string, a boolean). Go
-	// reads it as a present amount of 0 (json.Unmarshal into a *int64 allocates
-	// the pointer before it fails), where the profile's schema refuses it; the
-	// Python reader refuses it as unpriced.
+	// An amount_minor of the wrong type (a string, a boolean, a fraction) is
+	// unpriced, as the profile's schema would refuse it (checkCases below).
 	commit := map[string]any{"action": "commit", "amount_minor": 100, "currency": "USD"}
 	for _, role := range []string{"", "seller", "buyer", "other"} {
 		add("classic role "+role, classicDeal(t, role, commit).records, nil, false)
@@ -320,6 +318,9 @@ func parityHistories(t *testing.T) []parityHistory {
 		"a negative amount": {"action": "commit", "amount_minor": -1, "currency": "USD"}, "a zero amount": {"action": "commit", "amount_minor": 0, "currency": "USD"},
 		"a null amount":      {"action": "commit", "amount_minor": nil, "currency": "USD"},
 		"a huge amount":      {"action": "commit", "amount_minor": int64(9007199254740991), "currency": "USD"},
+		"a string amount":    {"action": "commit", "amount_minor": "100", "currency": "USD"},
+		"a boolean amount":   {"action": "commit", "amount_minor": true, "currency": "USD"},
+		"an array amount":    {"action": "commit", "amount_minor": []int{1}, "currency": "USD"},
 		"a numeric currency": {"action": "commit", "amount_minor": 100, "currency": 5},
 	}
 	for _, name := range slices.Sorted(maps.Keys(checkCases)) {
