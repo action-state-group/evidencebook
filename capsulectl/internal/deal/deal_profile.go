@@ -1307,6 +1307,15 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 	}
 	block["record_type"] = rtype
 	record := map[string]interface{}{"x-deal-v0": block, "body": body}
+	// The pay check's own statement of what kind of party the user pays
+	// (SH §7); the profile carries it on that record only, so a deal sealed
+	// in the typed action records, whose steps are other records, refuses it.
+	if ev.Kind == "snapshot" && ev.Snapshot.CounterpartyClass != "" {
+		if dealRecordSet(ev, events) == recordsTyped {
+			return nil, cli.InputError(`"counterparty_class" cannot be sealed on a deal in the typed action records: the profile carries it on an x-deal-v0 pay check`)
+		}
+		record["counterparty_class"] = ev.Snapshot.CounterpartyClass
+	}
 	// A deal sealed in the typed action records carries the typed record of
 	// each step of a consequential action; its evidence steps stay x-deal-v0.
 	if dealRecordSet(ev, events) == recordsTyped {

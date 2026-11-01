@@ -457,3 +457,146 @@ func TestTheSamePolicyAgainMakesNoAnchorStale(t *testing.T) {
 	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "again.json"))
 	require.Error(t, err, "a different policy does")
 }
+
+// retailDealWithClass is retailDeal whose pay check states a counterparty
+// class ("" states none).
+func retailDealWithClass(t *testing.T, class string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(retailDemo, "check-pay.json"))
+	require.NoError(t, err)
+	var check map[string]any
+	require.NoError(t, json.Unmarshal(raw, &check))
+	if class != "" {
+		check["counterparty_class"] = class
+	}
+	withClass, err := json.Marshal(check)
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "check-pay.json")
+	require.NoError(t, os.WriteFile(path, withClass, 0o600))
+	dealID := dealRun(t, "open", "--input", filepath.Join(retailDemo, "open.json"))["deal_id"].(string)
+	dealRun(t, "check", "--deal", dealID, "--input", path)
+	dealRun(t, "note", "--deal", dealID, "--kind", "act", "--input", filepath.Join(retailDemo, "act-pay.json"))
+	return dealID
+}
+
+// A pay check that states its counterparty class carries it into the deal's
+// entry, and a shop_preauth deal is out of every count but in_window; a deal
+// that states none is counted and in class_missing (SH §5.3, F4.5).
+func TestTheStatedCounterpartyClassReachesTheCard(t *testing.T) {
+	for class, want := range map[string]string{"shop_preauth": "shop_preauth", "business_agent": "business_agent", "": ""} {
+		t.Run("class "+class, func(t *testing.T) { statedClassReachesTheCard(t, class, want) })
+	}
+}
+
+func statedClassReachesTheCard(t *testing.T, class, want string) {
+	{
+		dealFixture(t)
+		now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+		retailDealWithClass(t, class)
+		dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+		*now = now.Add(2 * time.Minute)
+		require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+		own := filepath.Join(t.TempDir(), "own.json")
+		dealRun(t, "standard-history", "card", "--out", own)
+		entry := shBlock(t, readBundle(t, own))["deals"].([]any)[0].(map[string]any)
+		if want == "" {
+			assert.NotContains(t, entry, "counterparty_class", class)
+		} else {
+			assert.Equal(t, want, entry["counterparty_class"], class)
+		}
+		reply := respondCard(t, cardRequest(t, fullHistory))
+		require.NotNil(t, reply.Envelope, class)
+		var card map[string]any
+		require.NoError(t, json.Unmarshal(reply.Envelope.Artifact, &card))
+		inWindow := card["in_window"].(map[string]any)
+		missing := card["class_missing"].(map[string]any)
+		if class == "shop_preauth" {
+			assert.Equal(t, map[string]any{"counted": float64(0), "not_counted": float64(1), "of": float64(1)}, inWindow)
+			assert.Equal(t, map[string]any{"count": float64(0), "of": float64(0)}, missing)
+		} else {
+			assert.Equal(t, map[string]any{"counted": float64(1), "not_counted": float64(0), "of": float64(1)}, inWindow, class)
+			wantMissing := float64(0)
+			if class == "" {
+				wantMissing = 1
+			}
+			assert.Equal(t, map[string]any{"count": wantMissing, "of": float64(1)}, missing, class)
+		}
+	}
+}
+
+// The class is the caller's statement on a pay check, one of SH's three
+// values: anything else is refused before it is sealed.
+func TestACounterpartyClassIsRefusedWhereTheProfileCannotCarryIt(t *testing.T) {
+	dealFixture(t)
+	dealID := dealRun(t, "open", "--input", filepath.Join(retailDemo, "open.json"))["deal_id"].(string)
+	raw, err := os.ReadFile(filepath.Join(retailDemo, "check-pay.json"))
+	require.NoError(t, err)
+	for name, tc := range map[string]struct {
+		edit func(map[string]any)
+		want string
+	}{
+		"another value": {func(c map[string]any) { c["counterparty_class"] = "shop" }, "must be one of"},
+		"not a pay": {func(c map[string]any) {
+			c["counterparty_class"] = "shop_preauth"
+			c["action"] = "commit"
+			delete(c, "authorized_max_minor")
+		}, "pay check only"},
+	} {
+		var check map[string]any
+		require.NoError(t, json.Unmarshal(raw, &check))
+		tc.edit(check)
+		text, err := json.Marshal(check)
+		require.NoError(t, err)
+		path := filepath.Join(t.TempDir(), "check.json")
+		require.NoError(t, os.WriteFile(path, text, 0o600))
+		out, err := invoke(t, "", "--profile", "deal", "deal", "check", "--deal", dealID, "--input", path)
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error()+out, tc.want, name)
+	}
+}
+
+// A deal in the typed action records has no x-deal-v0 pay check to carry the
+// class (the profile carries it on that record only), so it refuses a stated
+// one rather than drop it.
+func TestATypedDealRefusesACounterpartyClass(t *testing.T) {
+	dealFixture(t)
+	id := openTypedSticker(t)
+	out, err := invoke(t, "", "--profile", "deal", "deal", "check", "--deal", id, "--input", writeJSON(t,
+		`{"action":"pay","amount_minor":600,"authorized_max_minor":600,"counterparty_class":"shop_preauth","terms":{"item":"otter sticker","price_minor":600}}`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error()+out, "typed action records")
+}
+
+// Only one check of a deal states the class (two carriers read as none, SH
+// §7): a re-check that states it again is refused, one that leaves it out is
+// not, and the card still leaves the shop_preauth deal out of its counts.
+func TestACounterpartyClassIsStatedOnceAcrossReChecks(t *testing.T) {
+	dealFixture(t)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	raw, err := os.ReadFile(filepath.Join(retailDemo, "check-pay.json"))
+	require.NoError(t, err)
+	var check map[string]any
+	require.NoError(t, json.Unmarshal(raw, &check))
+	check["counterparty_class"] = "shop_preauth"
+	withClass, err := json.Marshal(check)
+	require.NoError(t, err)
+	stated := filepath.Join(t.TempDir(), "stated.json")
+	require.NoError(t, os.WriteFile(stated, withClass, 0o600))
+
+	dealID := dealRun(t, "open", "--input", filepath.Join(retailDemo, "open.json"))["deal_id"].(string)
+	dealRun(t, "check", "--deal", dealID, "--input", stated)
+	out, err := invoke(t, "", "--profile", "deal", "deal", "check", "--deal", dealID, "--input", stated)
+	require.Error(t, err)
+	assert.Contains(t, err.Error()+out, "state it once")
+	dealRun(t, "check", "--deal", dealID, "--input", filepath.Join(retailDemo, "check-pay.json"))
+	dealRun(t, "note", "--deal", dealID, "--kind", "act", "--input", filepath.Join(retailDemo, "act-pay.json"))
+
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+	*now = now.Add(2 * time.Minute)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	reply := respondCard(t, cardRequest(t, fullHistory))
+	require.NotNil(t, reply.Envelope)
+	var card map[string]any
+	require.NoError(t, json.Unmarshal(reply.Envelope.Artifact, &card))
+	assert.Equal(t, map[string]any{"counted": float64(0), "not_counted": float64(1), "of": float64(1)}, card["in_window"])
+}

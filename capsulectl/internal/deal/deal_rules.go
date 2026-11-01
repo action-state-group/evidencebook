@@ -310,6 +310,11 @@ type dealSnapshot struct {
 	// with a buffer for tax settled later): what a limit binds. AmountMinor
 	// stays the expected charge.
 	AuthorizedMaxMinor *int64 `json:"authorized_max_minor,omitempty"`
+	// CounterpartyClass is, on a pay, what kind of party the user is paying
+	// (SH §7: person_agent, business_agent or shop_preauth), as the caller
+	// states it. It is the user's own statement, sealed as the pay check's
+	// top-level counterparty_class; never inferred from the rail or payee.
+	CounterpartyClass string `json:"counterparty_class,omitempty"`
 	// Representing is, on a represent check, what the seller's agent is
 	// about to tell the buyer: its class and its exact words (sealed as
 	// commitments), so the approval covers those words only.

@@ -419,7 +419,7 @@ func (s *dealSession) checkPost(ctx context.Context, c *cobra.Command, saleID st
 	}
 	if snap.AmountMinor != nil || snap.Terms != nil || snap.Recourse != nil || snap.Who != nil || len(snap.Disclosing) > 0 ||
 		snap.DisclosingTo != "" || snap.Recipient != nil || snap.Representing != nil || snap.Description != "" ||
-		snap.SeenItem != nil || snap.FeeMinor != nil || snap.AuthorizedMaxMinor != nil || snap.ListingClasses != nil {
+		snap.SeenItem != nil || snap.FeeMinor != nil || snap.AuthorizedMaxMinor != nil || snap.ListingClasses != nil || snap.CounterpartyClass != "" {
 		return cli.InputError("a post check is about the listing only: posting {text, classes, platform}; leave everything else out")
 	}
 	snap.ItemRef = ""
