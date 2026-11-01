@@ -299,6 +299,38 @@ def test_report_payload_refusals():
         deal.Report(r.deal_id, r.audience, r.nonce, r.body, cp))
 
 
+def test_report_payload_referee():
+    r = deal.Report("deal-0123456789abcdef", deal.AUDIENCE_ADJUDICATOR, "a" * 64, {"n": 1}, referee="  Cafe\u0301 Disputes\n")
+    payload = deal.report_payload(r)
+    assert json.loads(payload)["referee"] == "Caf\u00e9 Disputes"
+    assert deal.report_referee(payload) == "Caf\u00e9 Disputes"
+    for referee in ("", " \t\n"):
+        with pytest.raises(ValueError, match="names the referee"):
+            deal.report_payload(deal.Report(r.deal_id, r.audience, r.nonce, r.body, referee=referee))
+    for audience in (deal.AUDIENCE_KEEP, deal.AUDIENCE_COUNTERPARTY):
+        with pytest.raises(ValueError, match="only an adjudicator's report names a referee"):
+            deal.report_payload(deal.Report(r.deal_id, audience, r.nonce, r.body, referee="the platform"))
+        payload = deal.report_payload(deal.Report(r.deal_id, audience, r.nonce, r.body))
+        assert b"referee" not in payload
+        assert deal.report_referee(payload) == ""
+
+
+def test_shared_referee_errors():
+    payload = deal.report_payload(deal.Report("deal-0123456789abcdef", deal.AUDIENCE_ADJUDICATOR, "a" * 64, {},
+                                              referee="the platform"))
+    buyer, seller = deal.ReportCopy(payload, "b"), deal.ReportCopy(payload, "s")
+    assert deal.shared_referee(buyer, seller) == "the platform"
+    with pytest.raises(deal.RefereeError, match="no referee both sides chose") as e:
+        deal.shared_referee(buyer)
+    assert e.value.reason == deal.REFEREE_ONE_COPY
+    with pytest.raises(deal.RefereeError) as e:
+        deal.shared_referee(buyer, deal.ReportCopy(payload.replace(b"platform", b"platform\xff"), "s"))
+    assert e.value.reason == deal.REFEREE_MALFORMED, "a payload that is not UTF-8"
+    with pytest.raises(deal.RefereeError) as e:
+        deal.report_referee(b"[]")
+    assert e.value.reason == deal.REFEREE_MALFORMED
+
+
 def test_report_capsule_is_to_the_second():
     at = datetime(2026, 10, 30, 1, 2, 3, 999, tzinfo=timezone(timedelta(hours=1)))
     c = deal.report_capsule("deal", "capsulectl-deal", at)
@@ -492,6 +524,31 @@ def test_parity_standard_history(h):
             # The same bytes as Go writes the entry, member for member.
             assert jcs(got) == jcs(h["entry"])
             assert list(got) == list(h["entry"]), "members in Go's struct order"
+
+
+# Go's parityReferees seals these reports under this nonce and body.
+REFEREE_NONCE = "5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706"
+
+
+@pytest.mark.parametrize("x", PARITY["referee_payloads"], ids=[f"{x['audience']}:{x['referee']!r}" for x in PARITY["referee_payloads"]])
+def test_parity_referee_payload(x):
+    r = deal.Report(PARITY["deal_id"], x["audience"], REFEREE_NONCE, {"lines": ["one"]}, referee=x["referee"])
+    if x.get("error"):
+        with pytest.raises(ValueError):
+            deal.report_payload(r)
+        return
+    assert deal.report_payload(r).decode() == x["payload"]
+
+
+@pytest.mark.parametrize("x", PARITY["shared_referees"], ids=[x["name"] for x in PARITY["shared_referees"]])
+def test_parity_shared_referee(x):
+    copies = [deal.ReportCopy(c["payload"].encode(), c["party"]) for c in x["copies"]]
+    if x.get("reason"):
+        with pytest.raises(deal.RefereeError) as e:
+            deal.shared_referee(*copies)
+        assert e.value.reason == x["reason"]
+        return
+    assert deal.shared_referee(*copies) == x["referee"]
 
 
 def test_parity_minor_units():

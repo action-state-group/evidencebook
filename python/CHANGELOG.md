@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A receipt's referee is one both sides chose (x-deal-v0, evidencebook#277): `Report.referee`, required on
+  an adjudicator's report and refused on the others; `normalize_referee`, `report_referee` and `shared_referee`
+  (with `RefereeError` and its reasons), byte for byte with Go's `dealprofile` over the parity vectors.
+
 - The Goose reference seals a model call (evidencebook#300): `loop_seal` / `Node.seal_model_call` commit one
   effect-boundary Capsule to the node book (`effect_attestation` `runtime_claimed`, `model_attestation` naming
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is

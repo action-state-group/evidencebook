@@ -98,6 +98,119 @@ type parityFile struct {
 	History        []parityHistory   `json:"history"`
 	Cards          []parityCard      `json:"cards"`
 	MinorUnits     map[string]*int   `json:"minor_units"`
+	// Referees are an adjudicator's report payload for referee names, and
+	// SharedReferee's answer over pairs of copies (PROFILE.md §10).
+	Referees      []parityRefereePayload `json:"referee_payloads"`
+	SharedReferee []paritySharedReferee  `json:"shared_referees"`
+}
+
+// parityRefereePayload is ReportPayload over a report naming Referee: the
+// payload, or Error "refused".
+type parityRefereePayload struct {
+	Audience string `json:"audience"`
+	Referee  string `json:"referee"`
+	Payload  string `json:"payload,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+type parityCopy struct {
+	Payload string `json:"payload"`
+	Party   string `json:"party"`
+}
+
+// paritySharedReferee is SharedReferee's answer: the referee, or the
+// RefereeError's Reason.
+type paritySharedReferee struct {
+	Name    string       `json:"name"`
+	Copies  []parityCopy `json:"copies"`
+	Referee string       `json:"referee,omitempty"`
+	Reason  string       `json:"reason,omitempty"`
+}
+
+// The referee names the parity file seals: white space Go's TrimSpace and
+// Python's _trim must agree on, and NFC edges (a combining accent, a
+// singleton, a CJK compatibility ideograph, Hangul jamo).
+var refereeNames = []string{
+	"the platform", "  the platform\n", "\u00a0the platform\u3000", "\u0085the platform\u2029", "\u200bthe platform",
+	"Cafe\u0301 Disputes", "Caf\u00e9 Disputes", "\u212b Arbitration", "\uf900 Court", "\u1100\u1161\u11a8", "", " \t", "THE PLATFORM",
+}
+
+func parityReferees(t *testing.T, dealID string) ([]parityRefereePayload, []paritySharedReferee) {
+	const nonce = "5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706"
+	var payloads []parityRefereePayload
+	sealed := map[string]string{}
+	for _, audience := range []string{AudienceAdjudicator, AudienceCounterparty} {
+		for _, name := range refereeNames {
+			v := parityRefereePayload{Audience: audience, Referee: name}
+			p, err := ReportPayload(Report{DealID: dealID, Audience: audience, Nonce: nonce, Body: map[string]any{"lines": []any{"one"}}, Referee: name})
+			if err != nil {
+				v.Error = "refused"
+			} else {
+				v.Payload = string(p)
+				if audience == AudienceAdjudicator {
+					sealed[name] = v.Payload
+				}
+			}
+			payloads = append(payloads, v)
+		}
+	}
+	keep, err := ReportPayload(Report{DealID: dealID, Audience: AudienceKeep, Nonce: nonce, Body: map[string]any{}})
+	require.NoError(t, err)
+	other, err := ReportPayload(Report{DealID: "deal-0000000000000001", Audience: AudienceAdjudicator, Nonce: nonce, Body: map[string]any{}, Referee: "the platform"})
+	require.NoError(t, err)
+	before := `{"audience":"adjudicator","deal_id":"` + dealID + `","nonce":"` + nonce + `","profile":"x-deal-v0","report":{},"type":"deal_report"}`
+	with := func(member string) string { return strings.Replace(before, `"profile"`, member+`,"profile"`, 1) }
+	b, s := "buyer-signing-key", "seller-signing-key"
+	pairs := []struct {
+		name   string
+		copies []parityCopy
+	}{
+		{"the same referee", []parityCopy{{sealed["the platform"], b}, {sealed["  the platform\n"], s}}},
+		{"the same referee, other white space", []parityCopy{{sealed["\u00a0the platform\u3000"], b}, {sealed["\u0085the platform\u2029"], s}}},
+		{"a zero-width space is not white space", []parityCopy{{sealed["the platform"], b}, {sealed["\u200bthe platform"], s}}},
+		{"composed and decomposed", []parityCopy{{sealed["Cafe\u0301 Disputes"], b}, {sealed["Caf\u00e9 Disputes"], s}}},
+		{"case differs", []parityCopy{{sealed["the platform"], b}, {sealed["THE PLATFORM"], s}}},
+		{"one copy", []parityCopy{{sealed["the platform"], b}}},
+		{"three copies", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"], s}, {sealed["the platform"], "c"}}},
+		{"one party twice", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"], b}}},
+		{"a copy with no party", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"], ""}}},
+		{"two deals", []parityCopy{{sealed["the platform"], b}, {string(other), s}}},
+		{"a copy for the user", []parityCopy{{sealed["the platform"], b}, {string(keep), s}}},
+		{"a copy sealed before", []parityCopy{{before, b}, {sealed["the platform"], s}}},
+		{"a null referee", []parityCopy{{sealed["the platform"], b}, {with(`"referee":null`), s}}},
+		{"an empty referee", []parityCopy{{sealed["the platform"], b}, {with(`"referee":""`), s}}},
+		{"a referee not a string", []parityCopy{{sealed["the platform"], b}, {with(`"referee":["the platform"]`), s}}},
+		{"a member in another case", []parityCopy{{sealed["the platform"], b}, {with(`"Referee":"the platform"`), s}}},
+		{"a duplicate member, the last read", []parityCopy{{sealed["the platform"], b}, {with(`"referee":"another","referee":"the platform"`), s}}},
+		{"not JSON", []parityCopy{{sealed["the platform"], b}, {"{", s}}},
+		{"a JSON array", []parityCopy{{sealed["the platform"], b}, {"[]", s}}},
+		{"JSON null", []parityCopy{{sealed["the platform"], b}, {"null", s}}},
+		{"trailing bytes", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"] + " {}", s}}},
+		{"a NaN in the report", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"report":{`, `"report":{"x":NaN,`, 1), s}}},
+		{"two lone surrogates", []parityCopy{{with(`"referee":"\ud800"`), b}, {with(`"referee":"\udbff"`), s}}},
+		{"not a deal report", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"deal_report"`, `"deal_terms_result"`, 1), s}}},
+		{"an audience not a string", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"audience":"adjudicator"`, `"audience":1`, 1), s}}},
+	}
+	var shared []paritySharedReferee
+	for _, p := range pairs {
+		v := paritySharedReferee{Name: p.name, Copies: p.copies}
+		copies := make([]ReportCopy, len(p.copies))
+		for i, c := range p.copies {
+			copies[i] = ReportCopy{Payload: []byte(c.Payload), Party: c.Party}
+		}
+		got, err := SharedReferee(copies...)
+		var re *RefereeError
+		switch {
+		case err == nil:
+			v.Referee = got
+		case errors.As(err, &re):
+			v.Reason = re.Reason
+		default:
+			t.Fatalf("%s: %v", p.name, err)
+		}
+		shared = append(shared, v)
+	}
+	return payloads, shared
 }
 
 var normalizeCases = []struct{ kind, raw string }{
@@ -476,6 +589,7 @@ func buildParityFile(t *testing.T) parityFile {
 	f.Check = parityChecks(t)
 	f.History = parityHistories(t)
 	f.Cards = parityCards(t, f.History)
+	f.Referees, f.SharedReferee = parityReferees(t, dealID)
 	for _, code := range []string{"USD", "EUR", "JPY", "KRW", "BHD", "CLF", "XCG", "ANG", "XAU", "BTC", "", "usd", "US", "USDX", "AED AFN", "UYW", "ZWG"} {
 		if s, ok := MinorUnits(code); ok {
 			f.MinorUnits[code] = &s

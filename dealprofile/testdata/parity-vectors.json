@@ -4672,5 +4672,489 @@
     "XCG": 2,
     "ZWG": 2,
     "usd": null
-  }
+  },
+  "referee_payloads": [
+    {
+      "audience": "adjudicator",
+      "referee": "the platform",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "  the platform\n",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": " the platform　",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "the platform\u2029",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "​the platform",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"​the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "Café Disputes",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"Café Disputes\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "Café Disputes",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"Café Disputes\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "Å Arbitration",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"Å Arbitration\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "豈 Court",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"豈 Court\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "각",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"각\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "",
+      "error": "refused"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": " \t",
+      "error": "refused"
+    },
+    {
+      "audience": "adjudicator",
+      "referee": "THE PLATFORM",
+      "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"THE PLATFORM\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "the platform",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "  the platform\n",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": " the platform　",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "the platform\u2029",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "​the platform",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "Café Disputes",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "Café Disputes",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "Å Arbitration",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "豈 Court",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "각",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "",
+      "payload": "{\"audience\":\"counterparty\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}"
+    },
+    {
+      "audience": "counterparty",
+      "referee": " \t",
+      "error": "refused"
+    },
+    {
+      "audience": "counterparty",
+      "referee": "THE PLATFORM",
+      "error": "refused"
+    }
+  ],
+  "shared_referees": [
+    {
+      "name": "the same referee",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "referee": "the platform"
+    },
+    {
+      "name": "the same referee, other white space",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "referee": "the platform"
+    },
+    {
+      "name": "a zero-width space is not white space",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"​the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "different"
+    },
+    {
+      "name": "composed and decomposed",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"Café Disputes\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"Café Disputes\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "referee": "Café Disputes"
+    },
+    {
+      "name": "case differs",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"THE PLATFORM\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "different"
+    },
+    {
+      "name": "one copy",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        }
+      ],
+      "reason": "one_copy"
+    },
+    {
+      "name": "three copies",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "c"
+        }
+      ],
+      "reason": "one_copy"
+    },
+    {
+      "name": "one party twice",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        }
+      ],
+      "reason": "one_party"
+    },
+    {
+      "name": "a copy with no party",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": ""
+        }
+      ],
+      "reason": "one_party"
+    },
+    {
+      "name": "two deals",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-0000000000000001\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "two_deals"
+    },
+    {
+      "name": "a copy for the user",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"keep\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "not_adjudicator"
+    },
+    {
+      "name": "a copy sealed before",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "not_named"
+    },
+    {
+      "name": "a null referee",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":null,\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "not_named"
+    },
+    {
+      "name": "an empty referee",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":\"\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "not_named"
+    },
+    {
+      "name": "a referee not a string",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":[\"the platform\"],\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "a member in another case",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"Referee\":\"the platform\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "not_named"
+    },
+    {
+      "name": "a duplicate member, the last read",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":\"another\",\"referee\":\"the platform\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "referee": "the platform"
+    },
+    {
+      "name": "not JSON",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "a JSON array",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "[]",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "JSON null",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "null",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "trailing bytes",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"} {}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "a NaN in the report",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"x\":NaN,\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "two lone surrogates",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":\"\\ud800\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"referee\":\"\\udbff\",\"profile\":\"x-deal-v0\",\"report\":{},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "referee": "�"
+    },
+    {
+      "name": "not a deal report",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_terms_result\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    },
+    {
+      "name": "an audience not a string",
+      "copies": [
+        {
+          "payload": "{\"audience\":\"adjudicator\",\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "buyer-signing-key"
+        },
+        {
+          "payload": "{\"audience\":1,\"deal_id\":\"deal-3f9c2a7be4d15068\",\"nonce\":\"5a0f6c1e9b2d4387a6c5e1f0b9d8c7a6e5f4d3c2b1a09f8e7d6c5b4a39281706\",\"profile\":\"x-deal-v0\",\"referee\":\"the platform\",\"report\":{\"lines\":[\"one\"]},\"type\":\"deal_report\"}",
+          "party": "seller-signing-key"
+        }
+      ],
+      "reason": "malformed"
+    }
+  ]
 }
