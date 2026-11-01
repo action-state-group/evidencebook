@@ -445,7 +445,7 @@ class Node:
     def _book_receipt(self, book_id: str, checkpoint) -> dict:
         """The directory's witness's receipt for ``checkpoint``, in a bundle's
         ``checkpoint.witnesses`` form; asked of the witness once per
-        checkpoint and kept."""
+        checkpoint (kept by :meth:`book_bundle` once it verifies)."""
         rows = self._witnesses.get("witnesses") if isinstance(self._witnesses, dict) else self._witnesses
         if not isinstance(rows, list) or len(rows) != 1 or not rows[0].get("endpoint"):
             raise Refused("a book receipt needs a witness directory with exactly one witness and its endpoint")
@@ -457,17 +457,16 @@ class Node:
             if held:
                 return json.loads(held[0])
             from cll.checkpoint.witness import HttpWitnessClient
-            from cll.log import ContentionError, RejectedError
+            from cll.log import CllError, ContentionError, RejectedError
 
-            client = (self._witness_client or HttpWitnessClient)(endpoint)
             try:
+                client = (self._witness_client or HttpWitnessClient)(endpoint)
                 got = client.submit(checkpoint.statement)
-            except (ContentionError, RejectedError) as exc:
+            except (CllError, ContentionError, RejectedError) as exc:
                 raise Refused(f"the witness at {endpoint} gave no receipt for {book_id}: {exc}") from None
             receipt = {"ts_url": endpoint, "entry_hash": got.entry_hash,
                        "receipt_b64": base64.b64encode(bytes(got.bytes)).decode(), "leaf_index": got.leaf_index,
                        "tree_size": got.tree_size}
-            self._db.execute("INSERT INTO goose_book_receipts VALUES (?, ?, ?)", (book_id, digest, json.dumps(receipt)))
             return receipt
 
     def book_bundle(self, book_id: str, record_id: str) -> dict:
@@ -503,8 +502,12 @@ class Node:
             if self._witnesses is not None:
                 built["checkpoint"]["witnesses"] = [self._book_receipt(book_id, checkpoint)]
             result = aac.verify_bundle(built, strict=True, witness_directory=self._witnesses)
-            if self._witnesses is not None and [r.status for r in result.witness_receipts] != ["pass"]:
-                raise Refused(f"the witness receipt does not verify under the directory: {result.witness_receipts}")
+            if self._witnesses is not None:
+                if [r.status for r in result.witness_receipts] != ["pass"]:
+                    raise Refused(f"the witness receipt does not verify under the directory: {result.witness_receipts}")
+                self._db.execute("INSERT OR REPLACE INTO goose_book_receipts VALUES (?, ?, ?)",
+                                 (book_id, hashlib.sha256(checkpoint.statement).hexdigest(),
+                                  json.dumps(built["checkpoint"]["witnesses"][0])))
             if result.verdict != "VALID":
                 raise Refused(f"the bundle does not verify: {result.verdict}")
             return built

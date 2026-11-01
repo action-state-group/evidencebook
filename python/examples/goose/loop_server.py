@@ -224,7 +224,8 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     built = n.book_bundle(book_id, record_id)
     stem = str(Path(out_path).expanduser().with_suffix(""))
     _write(out_path, json.dumps(built, sort_keys=True).encode())
-    files = {"checkpoint.cose": n.book_checkpoint(book_id)}
+    cose = built["checkpoint"]["cose"]  # the bundle's own, not a newer cut
+    files = {"checkpoint.cose": base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))}
     receipts = built["checkpoint"].get("witnesses") or []
     if receipts:
         files["witness-receipt.json"] = json.dumps(receipts[0], sort_keys=True).encode()

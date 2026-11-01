@@ -574,6 +574,34 @@ def test_a_bundle_carries_the_witnesss_receipt_for_the_books_own_checkpoint(tmp_
         assert again["extensions"][gn.CADENCE_EXTENSION]["state"] == "witnessed"
 
 
+def test_a_bad_receipt_is_not_kept_and_a_bad_endpoint_is_refused(tmp_path, clock):
+    script = _witness_script()
+    good = _Witness(script, script.DIRECTORY["witnesses"][0]["endpoint"])
+    answers = []
+
+    class Flaky:
+        def submit(self, statement):
+            answers.append(1)
+            if len(answers) == 1:
+                bad = good.submit(statement)
+                bad.entry_hash = "00" * 32  # a receipt that does not bind this checkpoint
+                return bad
+            return good.submit(statement)
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda _: Flaky()) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="does not verify"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert node.book_bundle(gn.NODE_BOOK, sealed.record_id)["checkpoint"]["witnesses"]
+        assert len(answers) == 2
+    directory = {"witnesses": [{**script.DIRECTORY["witnesses"][0], "endpoint": "witness.example"}]}
+    with gn.Node.open(tmp_path / "x", operator="goose-x", now=clock, witnesses=directory) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="gave no receipt"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+
+
 def test_a_witness_that_fails_leaves_no_bundle(tmp_path, clock):
     from cll.log import ContentionError
 
