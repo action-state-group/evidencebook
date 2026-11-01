@@ -56,8 +56,9 @@ class StepInput:
     #: The Capsule the step chains to (the step before it, or the close it
     #: confirms); None for the first step.
     parent: Chain | None = None
-    #: A settlement leg the step carries, as built and stored with the step;
-    #: it rides as the Capsule's top-level settlement member.
+    #: A settlement leg the step carries, as built and stored with the step,
+    #: as the parsed JSON value (``None`` for none); it rides as the Capsule's
+    #: top-level settlement member.
     settlement: Any = None
     #: Set for a decide step, None for fyi.
     decide: Decide | None = None
@@ -98,7 +99,7 @@ def step_capsule(inp: StepInput) -> tuple[Capsule, StepHeader]:
     at = rfc3339_seconds(inp.at)
     action_id = f"{inp.deal_id}/{inp.seq}"
     extensions: list[Extension] = []
-    if inp.settlement is not None and inp.settlement != b"":
+    if inp.settlement is not None:
         extensions.append(Extension("settlement", inp.settlement))
     extensions.append(Extension(DEAL_ID_MEMBER, inp.deal_id))
     action_type, disposition, effect = ACTION_TYPE_FYI, None, None

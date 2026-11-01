@@ -26,7 +26,7 @@ PACKAGE = Path(deal.__file__).resolve().parent
 
 # The Unicode tables are Python's, not Go 1.27's (Unicode 17): the parity
 # vectors hold only characters Unicode 13 (Python 3.10) assigns.
-assert unicodedata.unidata_version >= "13.0.0"
+assert tuple(int(x) for x in unicodedata.unidata_version.split(".")) >= (13, 0, 0)
 
 
 def load(path: Path):
@@ -437,7 +437,7 @@ PARITY = load(TESTDATA / "parity-vectors.json")
 
 
 def test_parity_corpus_sizes():
-    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (119, 93, 58)
+    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (124, 91, 61)
 
 
 @pytest.mark.parametrize("x", PARITY["normalize"], ids=[f"{x['kind']}:{x['raw']!r}" for x in PARITY["normalize"]])
@@ -482,8 +482,9 @@ def test_parity_standard_history(h):
         with pytest.raises(deal.Unpriced, match="deal deal-[0-9a-f]+: dealprofile: a deal has no recorded amount"):
             deal.standard_history_deal(inp)
     elif h.get("error"):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as e:
             deal.standard_history_deal(inp)
+        assert not isinstance(e.value, deal.Unpriced)
     else:
         got = deal.standard_history_deal(inp)
         assert got == h["entry"]
@@ -524,4 +525,25 @@ def test_the_counterparty_class_seam():
     # The profile records no SH §7 class yet: the entry has no member for it.
     entry = deal.standard_history_deal(history_input(PARITY["history"][0]))
     assert "counterparty_class" not in entry
-    assert fold("Ꭰ") == "ꭰ", "Go folds Cherokee capitals to the small forms"
+
+
+def test_fold_is_x_texts_for_cherokee():
+    # Go's current fold swaps Cherokee case (capitals to small forms, small forms to capitals) where
+    # CaseFolding.txt folds both to the capitals; the vectors do not pin it.
+    assert fold("Ꭰ") == "ꭰ" and fold("ꭰ") == "Ꭰ"
+
+
+def test_parity_vectors_hold_only_characters_the_running_unicode_assigns():
+    """Python 3.10 reads Unicode 13: a vector with a newer character would pass only on newer Pythons."""
+    def texts(v):
+        if isinstance(v, str):
+            yield v
+        elif isinstance(v, dict):
+            for k, x in v.items():
+                if k not in ("versions", "note"):
+                    yield from texts(x)
+        elif isinstance(v, list):
+            for x in v:
+                yield from texts(x)
+    for t in texts(PARITY):
+        assert all(unicodedata.category(c) != "Cn" for c in t), t

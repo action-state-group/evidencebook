@@ -425,6 +425,17 @@ different fingerprints.
 | `relay_address` | Trim, NFC, lowercase. |
 | `profile_id` | Trim, NFC. Case is preserved (exact match). |
 
+**Reference behavior.** The table's "lowercase", "casefold" and "IDNA" are what the Go package
+`dealprofile` does, and the Python package (`evidencebook.deal`) matches it: lowercase is the
+simple one-to-one mapping per character (U+0130 → `i`, not `i` + U+0307); trim and token splitting
+use the White_Space property; casefold is `golang.org/x/text/cases.Fold`; the domain is mapped and
+validated as UTS 46 (non-transitional, STD3 rules, the hyphen and joiner checks, and the Bidi Rule
+over every label of a domain that has a right-to-left one; not the IDNA 2008 character classes, and
+no length limits), then reduced with the Public Suffix List snapshot of `golang.org/x/net` v0.59.0.
+`dealprofile/testdata/parity-vectors.json` holds Go's answers for inputs beyond the fixtures, with
+the versions of the tables they come from; an implementation on other Unicode tables can differ
+for characters newer than its tables.
+
 If a value cannot be normalized, it is not fingerprinted and not recorded. It stays local. The
 baseline MUST carry `payee` explicitly: when first contact names no separate payee, the
 producer fingerprints the first-contact name under kind `payee`.

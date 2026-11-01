@@ -23,6 +23,10 @@
     `dealprofile/testdata/parity-vectors.json` (Go's answers for Unicode, number and member-type
     edges, the deal entries and the cards derived from them); the chains it builds are Go's
     byte for byte and pass `check_profile.py` (CI job `python`).
+  - Domains were checked against Go's `idna.Lookup` with a differential fuzz of about 180,000
+    mixed-script, multi-label domains, and every code point alone: the differences left are
+    characters newer than the running Python's tables, and a ZERO WIDTH NON-JOINER between an
+    Arabic letter and a digit, which Go accepts.
   - The package requires `jsonschema` 4.23 and `idna` 3.20.
   - `counterparty_class` is absent from the deal entry, as in Go; evidencebook#273 names the
     record that will carry it.

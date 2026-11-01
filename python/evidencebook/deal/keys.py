@@ -12,6 +12,12 @@ simple (one-to-one) lowercase mapping, ``cases.Fold`` full case folding,
 ``unicode.IsPunct`` the Unicode punctuation categories, ``strings.TrimSpace``
 and ``strings.Fields`` the White_Space property (not Python's ``str.strip``,
 which also strips U+001C to U+001F), and RE2's ``\\d`` and ``\\s`` are ASCII.
+
+Domains are checked against Go's ``idna.Lookup`` in a differential fuzz (about
+180,000 mixed-script, multi-label domains, and every code point alone in a
+label): the differences left are characters newer than the running Python's
+tables, and a ZERO WIDTH NON-JOINER between an Arabic letter and a digit, which
+x/net accepts and this refuses (RFC 5892 A.1).
 """
 from __future__ import annotations
 
@@ -155,13 +161,71 @@ def _validate_label(label: str) -> None:
     for pos, c in enumerate(label):
         if c in "\u200c\u200d" and not idna.core.valid_contextj(label, pos):
             raise idna.IDNAError("C")
-    idna.core.check_bidi(label)
+
+
+def _punycode_decode(encoded: str) -> str:
+    """x/net ``idna``'s punycode ``decode``: RFC 3492, except that the part
+    before the last hyphen is copied rune for rune, whatever the runes are."""
+    if not encoded:
+        return ""
+    pos = 1 + encoded.rfind("-")
+    if pos == 1:
+        raise idna.IDNAError("punycode")
+    if pos == len(encoded):
+        return encoded[:-1]
+    out = list(encoded[:pos - 1]) if pos else []
+    i, n, bias = 0, 128, 72
+    limit = 2 ** 31 - 1
+    while pos < len(encoded):
+        old_i, w = i, 1
+        k = 36
+        while True:
+            if pos == len(encoded):
+                raise idna.IDNAError("punycode")
+            c = encoded[pos]
+            if "a" <= c <= "z":
+                digit = ord(c) - 97
+            elif "A" <= c <= "Z":
+                digit = ord(c) - 65
+            elif "0" <= c <= "9":
+                digit = ord(c) - 22
+            else:
+                raise idna.IDNAError("punycode")
+            pos += 1
+            i += digit * w
+            if i > limit:
+                raise idna.IDNAError("punycode")
+            t = 1 if k <= bias else 26 if k >= bias + 26 else k - bias
+            if digit < t:
+                break
+            w *= 36 - t
+            if w > limit:
+                raise idna.IDNAError("punycode")
+            k += 36
+        if len(out) >= 1024:
+            raise idna.IDNAError("punycode")
+        x = len(out) + 1
+        delta = i - old_i
+        delta = delta // 700 if old_i == 0 else delta // 2
+        delta += delta // x
+        kk = 0
+        while delta > (35 * 26) // 2:
+            delta //= 35
+            kk += 36
+        bias = kk + 36 * delta // (delta + 38)
+        n += i // x
+        i %= x
+        if n > 0x10FFFF or 0xD800 <= n <= 0xDFFF:
+            raise idna.IDNAError("punycode")
+        out.insert(i, chr(n))
+        i += 1
+    return "".join(out)
 
 
 def _from_punycode(label: str) -> str:
     """A label starting ``xn--``, decoded and validated (``validateFromPunycode``
     then ``validateLabel``)."""
-    u = label[4:].encode("ascii").decode("punycode")
+    u = _punycode_decode(label[4:])
     if not u or u.isascii():
         raise idna.IDNAError("V6")
     if not unicodedata.is_normalized("NFC", u):
@@ -182,19 +246,36 @@ def _uts46_status(c: str) -> str:
 def _alabel(label: str) -> str:
     """One label's ASCII form, validated, with no length limit (Go's
     ``idna.Lookup`` does not verify DNS length)."""
+    if label.startswith("xn--"):
+        _from_punycode(label)
+        return label
     if label.isascii():
-        if label.startswith("xn--"):
-            _from_punycode(label)
-        else:
-            _validate_label(label)
+        _validate_label(label)
         return label
     _validate_label(label)
     return "xn--" + label.encode("punycode").decode("ascii")
 
 
+_BIDI_TRIGGERS = frozenset({"R", "AL", "AN"})
+
+
+def _check_bidi(labels: list[str]) -> None:
+    """x/net's ``process``: when any label of the domain (decoded, if it is
+    ``xn--``) holds a right-to-left character, RFC 5893's Bidi Rule applies to
+    *every* label, a left-to-right one included. ``idna.core.check_bidi``
+    alone applies it per label."""
+    if any(unicodedata.bidirectional(c) in _BIDI_TRIGGERS for label in labels for c in label):
+        for label in labels:
+            if label:
+                idna.core.check_bidi(label, check_ltr=True)
+
+
 def _to_ascii(v: str) -> str:
     mapped = idna.core.uts46_remap(v, std3_rules=True, transitional=False)
-    return ".".join(_alabel(label) if label else "" for label in mapped.split("."))
+    labels = mapped.split(".")
+    out = [_alabel(label) if label else "" for label in labels]
+    _check_bidi([_from_punycode(label) if label.startswith("xn--") else label for label in out])
+    return ".".join(out)
 
 
 def _to_unicode(v: str) -> str:
@@ -205,6 +286,7 @@ def _to_unicode(v: str) -> str:
         else:
             _validate_label(label)
             out.append(label)
+    _check_bidi(out)
     return ".".join(out)
 
 

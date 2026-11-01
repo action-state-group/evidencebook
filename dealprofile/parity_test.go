@@ -10,10 +10,12 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
@@ -85,7 +87,10 @@ type parityCard struct {
 }
 
 type parityFile struct {
-	Note           string            `json:"note"`
+	Note string `json:"note"`
+	// Versions are the tables the answers come from, so that a bump of one
+	// that rewrites the vectors shows in their diff.
+	Versions       map[string]string `json:"versions"`
 	StoreSecretHex string            `json:"store_secret_hex"`
 	DealID         string            `json:"deal_id"`
 	Normalize      []parityNormalize `json:"normalize"`
@@ -100,7 +105,7 @@ var normalizeCases = []struct{ kind, raw string }{
 	{"name", "Coastal Jet Rentals LLC"}, {"name", "The Example Company, Inc."}, {"name", "   Straße GmbH "},
 	{"name", "ÉCOLE d'été"}, {"name", "école"}, {"name", "ΣΊΣΥΦΟΣ ΟΔΟΣ"}, {"name", "İstanbul Co"},
 	{"name", "ǅungla"}, {"name", "ﬁnance corp"}, {"name", "A\x1cB"}, {"name", "A\u0085B C"}, {"name", "A\x0bB"},
-	{"name", "Ꭰ Ꮀ ꭰ ᏸ"}, {"name", "---"}, {"name", "the"}, {"name", "llc inc"}, {"name", "The The Co"},
+	{"name", "---"}, {"name", "the"}, {"name", "llc inc"}, {"name", "The The Co"},
 	{"name", "O'Brien & Sons, Ltd."}, {"name", "日本語 株式会社"}, {"name", "Ａｂｃ"}, {"name", "a­b"}, {"name", "x_y¿z¡"},
 	// phones
 	{"phone", "(415) 555-0199"}, {"phone", "+1 415 555 0199 ext. 12"}, {"phone", "415-555-0199 x7"}, {"phone", "415-555-0199 #7"},
@@ -130,7 +135,8 @@ var normalizeCases = []struct{ kind, raw string }{
 	{"domain", "אבג.example"}, {"domain", "אבג1.example"}, {"domain", "a.אבג.example"}, {"domain", "ß.com"}, {"domain", "ς.com"},
 	{"domain", "ﬁ.com"}, {"domain", "a b.com"}, {"domain", "x@y@z.com"}, {"domain", "http://"}, {"domain", ""},
 	{"domain", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com"},
-	{"domain", "[::1]"}, {"domain", "a.b/c@d.example"},
+	{"domain", "1a.שלום.co.il"}, {"domain", "www.1a.שלום.com"}, {"domain", "שלום.1a.com"}, {"domain", "a.שלום.com"}, {"domain", "xn--ls8héa-.example"},
+	{"domain", "xn--zcaé-.com"}, {"domain", "[::1]"}, {"domain", "a.b/c@d.example"},
 	// a kind outside the closed set
 	{"nickname", "x"},
 }
@@ -147,7 +153,7 @@ var checkTexts = []string{
 	"the city of Boston", "Ünïcödé text ok",
 }
 
-var checkLocalValues = [][]string{nil, {"Alice Example"}, {"alice example", ""}, {"STRASSE"}, {"straße"}, {"İ"}, {"ǆ"}, {"Ꭰ"}, {"ꭰ"}}
+var checkLocalValues = [][]string{nil, {"Alice Example"}, {"alice example", ""}, {"STRASSE"}, {"straße"}, {"İ"}, {"ǆ"}}
 
 func parityRecordText(s string) string {
 	raw, _ := json.Marshal(s)
@@ -217,7 +223,7 @@ func parityChecks(t *testing.T) []parityCheck {
 		add("text "+fmt.Sprintf("%q", s), parityRecordText(s), nil)
 	}
 	for _, local := range checkLocalValues {
-		add(fmt.Sprintf("local values %q", local), parityRecordText("Alice Example is in the STRASSE, ǅ İx Ꭰ"), local)
+		add(fmt.Sprintf("local values %q", local), parityRecordText("Alice Example is in the STRASSE, ǅ İx"), local)
 	}
 	return out
 }
@@ -273,6 +279,9 @@ func parityHistories(t *testing.T) []parityHistory {
 	add("a record that is an array", []HistoryRecord{{Payload: []byte("[]"), CommittedAt: historyStart}}, nil, false)
 	add("a block of the wrong type", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":5}`), CommittedAt: historyStart}}, nil, false)
 	add("a deal id of the wrong type", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"deal_id":5,"record_type":"baseline"},"body":{}}`), CommittedAt: historyStart}}, nil, false)
+	add("a ref member of the wrong type", []HistoryRecord{{Payload: []byte(`{"type":"x","refs":[{"rel":"a","digest":"d","type":5}]}`), CommittedAt: historyStart}}, nil, false)
+	add("a block ref member of the wrong type", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"record_type":"note","deal_id":"d","refs":[{"rel":"a","digest_alg":7}]}}`), CommittedAt: historyStart}}, nil, false)
+	add("a byte order mark", []HistoryRecord{{Payload: []byte("\ufeff{\"type\":\"x\"}"), CommittedAt: historyStart}}, nil, false)
 	add("a record with a float", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"deal_id":"deal-0123456789abcdef","record_type":"baseline"},"body":{"n":1.5}}`), CommittedAt: historyStart}}, nil, false)
 	add("a report passed over", []HistoryRecord{{Payload: []byte(`{"type":"deal_report","profile":"x-deal-v0"}`), CommittedAt: historyStart}}, nil, false)
 
@@ -381,11 +390,27 @@ func parityCards(t *testing.T, histories []parityHistory) []parityCard {
 	return out
 }
 
+func parityVersions() map[string]string {
+	v := map[string]string{"go_unicode": unicode.Version}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, d := range info.Deps {
+			switch d.Path {
+			case "golang.org/x/net":
+				v["x_net"] = d.Version
+			case "golang.org/x/text":
+				v["x_text"] = d.Version
+			}
+		}
+	}
+	return v
+}
+
 func buildParityFile(t *testing.T) parityFile {
 	secret, err := hex.DecodeString("fe97e8dba94984ff1fbdc35647d9cad779866e3abb4ff1cb690352c9cdc6b4fd")
 	require.NoError(t, err)
 	const dealID = "deal-3f9c2a7be4d15068"
 	f := parityFile{
+		Versions:       parityVersions(),
 		Note:           "Generated by TestParityVectors (EB_WRITE_DEAL_PARITY_VECTORS=1) from Go's dealprofile; the Python package passes the same file.",
 		StoreSecretHex: hex.EncodeToString(secret), DealID: dealID, MinorUnits: map[string]*int{},
 	}

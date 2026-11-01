@@ -118,6 +118,10 @@ class _Rec:
 
 
 def _loads(data: bytes | str) -> Any:
+    # encoding/json reads bytes as UTF-8 (invalid sequences become U+FFFD) and
+    # refuses a byte order mark; json.loads on bytes would sniff the encoding.
+    if isinstance(data, (bytes, bytearray)):
+        data = bytes(data).decode("utf-8", errors="replace")
     return json.loads(data, parse_float=_float, parse_constant=_refuse_constant)
 
 
@@ -143,6 +147,8 @@ def _refs(obj: dict) -> list[tuple[str, str]]:
             continue
         if not isinstance(r, dict):
             raise ValueError("a ref is not an object")
+        # Go reads each into RelRef, whose members are all strings.
+        _string_member(r, "type"), _string_member(r, "digest_alg")
         out.append((_string_member(r, "rel"), _string_member(r, "digest")))
     return out
 
