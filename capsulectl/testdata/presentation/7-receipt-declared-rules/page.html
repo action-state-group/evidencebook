@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-KVh0IvuyVGX9TwuJepp6sJOJoC2gQQoxoChmTDAZgSA=' 'sha256-EpR1IYB85yOcCSTrHdU06CKBvzXkdHsPwBVNDBKd1l4=' 'sha256-aG9uEoj6KwYx+on5f+t2FJ/fAGPF+gRUuV0k/qvy/s8='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-rxP+aseaQoTuv//OR+EKiXRtwwnsMs6sumByXc3FJnA=' 'sha256-86pwsGaZSk/Ajs8C3XMxHXLoAvIU5Z78tj2DanIYq2Y=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-fj4bjTRa3ql3b8+HSvh7EqwtYcLrrMc3EQH0QeECpJM=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-BHWcE+xl3QJkUUnLfQCRU3Erj4wxAn/XOSPfNelfgnk='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-KVh0IvuyVGX9TwuJepp6sJOJoC2gQQoxoChmTDAZgSA=' 'sha256-o74IXNAbARAasU/FhGmkA9zhJ7rJIEuG9jstmGDirVs=' 'sha256-J/lKCaS0QI8bJxbxCp7ZS8vXgSnOWl5FxDtncBQ0KIE='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-rxP+aseaQoTuv//OR+EKiXRtwwnsMs6sumByXc3FJnA=' 'sha256-86pwsGaZSk/Ajs8C3XMxHXLoAvIU5Z78tj2DanIYq2Y=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-fj4bjTRa3ql3b8+HSvh7EqwtYcLrrMc3EQH0QeECpJM=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-BHWcE+xl3QJkUUnLfQCRU3Erj4wxAn/XOSPfNelfgnk='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Deal report: “Order the cat sticker in my cart at Example Stickers”</title>
     <style>
@@ -26374,6 +26374,181 @@ const dealBuildsCompared = (builds, report) => {
   return { pageBuild, olderBuilds, earlierBuilds, releaseNotes, buildNote: said.join(" ") };
 };
 
+// The receipt's lines as Steven's 9b frame 8 states them (F8.1, F8.7;
+// evidencebook-deal#94), each read from its record in this verified
+// context. A step's deal record is its disclosed agent_input; its place
+// is its book header's seq, and its record digest the header's one payload
+// commitment, which a rel ref names (x-deal-v0 section 2). Nothing here
+// hashes or verifies: order and band are figures derived from verified
+// content (presentation-contract-v0 section 3).
+const dealLogSteps = (context) => {
+  const steps = [];
+  for (const r of context.records) {
+    const h = r && r.evidence_record_header;
+    if (!h || !dealStepTypes.includes(h.record_type) || !Number.isInteger(h.seq)) continue;
+    const input = EvidenceGraph.verifiedPayload(context, r.capsule_id, "agent_input");
+    // A typed record (task-authority/v0 and the rest) names its type and
+    // refs at its top level; an x-deal-v0 record, in its block.
+    const deal = input && (input["x-deal-v0"] || (typeof input.type === "string" ? { record_type: input.type, refs: input.refs } : undefined));
+    steps.push({
+      id: r.capsule_id,
+      seq: h.seq,
+      digest: Array.isArray(h.payload_commitments) ? h.payload_commitments[0] : undefined,
+      deal: deal && typeof deal === "object" ? deal : undefined,
+      body: input && input.body && typeof input.body === "object" ? input.body : {},
+      settlement: r.settlement && typeof r.settlement === "object" ? r.settlement : undefined,
+    });
+  }
+  return steps;
+};
+const dealRefTo = (deal, rel) => ((deal && Array.isArray(deal.refs) ? deal.refs : []).find((r) => r && r.rel === rel) || {}).digest;
+
+// "After your yes" (F8.1), recomputed: each act (a step that cites what
+// authorized it) is preceded in this log by that authority, each at an
+// earlier position: an approval that proceeds, answering a verdict that
+// answers a check; or, on typed records, an evaluation that let it go ahead
+// under the task's authority (DO), answering the proposed action. An act
+// sealed without an approval (an unchecked_action outcome, x-deal or
+// typed; a disclosure with no authority; a claim sealed unchecked) fails,
+// named; an authority withheld from this copy is missing, and a copy with
+// any step withheld is not checked, since that step may be an act.
+const dealApprovalTypes = ["approval", "action-approval/v0"];
+const dealEvaluationTypes = ["verdict", "action-evaluation/v0"];
+const dealCheckTypes = ["check", "proposed-action/v0"];
+const dealAfterYes = (steps) => {
+  const byDigest = new Map(steps.filter((s) => typeof s.digest === "string").map((s) => [s.digest, s]));
+  const earlier = (digest, than, types) => {
+    const s = byDigest.get(digest);
+    if (!s) return "absent";
+    if (!s.deal) return "withheld";
+    return s.seq < than.seq && types.includes(s.deal.record_type) ? s : "bad";
+  };
+  const acts = [];
+  for (const s of steps) {
+    if (!s.deal) continue;
+    const t = s.deal.record_type;
+    if ((t === "outcome" || t === "action-outcome/v0") && s.body.status === "unchecked_action") return { state: "failed", act: s, why: "unapproved" };
+    if (t === "disclosure" && s.body.authority === "none") return { state: "failed", act: s, why: "unapproved" };
+    if (t === "claim" && s.body.unchecked === true) return { state: "failed", act: s, why: "unapproved" };
+    if (dealRefTo(s.deal, "authorized_by") !== undefined || t === "action" || (t === "disclosure" && s.body.authority === "approval")) acts.push(s);
+  }
+  const withheld = steps.some((s) => !s.deal);
+  if (acts.length === 0) return { state: withheld ? "not checked" : "none", approvers: [] };
+  const approvers = [];
+  let missing;
+  for (const act of acts) {
+    const by = earlier(dealRefTo(act.deal, "authorized_by"), act, [...dealApprovalTypes, ...dealEvaluationTypes]);
+    let evaluation = by;
+    let approver;
+    if (typeof by === "object" && dealApprovalTypes.includes(by.deal.record_type)) {
+      if (by.body.proceed !== true) return { state: "failed", act, why: "order" };
+      const answered = dealRefTo(by.deal, "approves");
+      evaluation = earlier(answered, by, dealEvaluationTypes);
+      // x-deal-v0 section 6 rule 5: only the verdict's first answer
+      // authorizes; a later one ("Hold", then "Pay anyway") never does.
+      if (steps.some((s) => s.deal && dealApprovalTypes.includes(s.deal.record_type) && s.seq < by.seq && dealRefTo(s.deal, "approves") === answered)) return { state: "failed", act, why: "order" };
+      if (by.deal.record_type === "approval") {
+        approver = by.body.approver;
+        // Standing intent approves only a passing verdict (rule 6).
+        if (approver === "standing_intent" && typeof evaluation === "object" && evaluation.body.result !== "pass") return { state: "failed", act, why: "order" };
+      } else {
+        // A typed ASK is answered only by the user's own approval.
+        if (by.body.authority !== "user_approval") return { state: "failed", act, why: "order" };
+        approver = "user";
+      }
+    } else if (typeof by === "object") {
+      if (by.body.disposition !== "DO") return { state: "failed", act, why: "order" };
+      approver = "task_authority";
+    }
+    const check = typeof evaluation === "object" ? earlier(dealRefTo(evaluation.deal, "checks"), evaluation, dealCheckTypes) : evaluation;
+    if (check === "withheld") {
+      missing = missing || act;
+      continue;
+    }
+    if (typeof check === "string") return { state: "failed", act, why: "order" };
+    // The check asked about this very act (rule 5).
+    if (typeof act.body.action === "string" && check.body.action !== act.body.action) return { state: "failed", act, why: "order" };
+    if (approver !== undefined && !approvers.includes(approver)) approvers.push(approver);
+  }
+  if (missing) return { state: "missing", act: missing, approvers };
+  return { state: withheld ? "not checked" : "passed", approvers };
+};
+
+// The payment's settlement (F8.1), per rail as its adapter states it
+// (agent-action-capsule spec/adapters; Mesh-LLM/capsules-plugin
+// adapters/lightning-v0.md): the settled payee-observed legs in this log.
+// The page holds no check of a rail's proof (a preimage is a digest, which
+// only the runtime may compute), so nothing here says passed. The band is
+// lightning-v0's "Band": the side's settled amounts summed, as
+// (currency, decade), decade = digits - assetScale - 1, never converted.
+const dealSettlement = (steps) => {
+  const legs = steps.filter((s) => s.settlement && s.settlement.leg === "payee_observed" && s.settlement.status === "settled");
+  if (legs.length === 0) {
+    // No leg: the rail a paying act names, so the line can say whose report is not here.
+    const paying = steps.find((s) => s.deal && s.deal.record_type === "action" && typeof s.body.rail === "string" && s.body.rail !== "");
+    return paying ? { rail: paying.body.rail, legs: false } : undefined;
+  }
+  const ref = (s) => ((s.settlement.payment_ref || {}).type || "");
+  const rail = legs.every((s) => ref(s) === "ln.payment_hash") ? "lightning" : legs.every((s) => ref(s).startsWith("x402.")) ? "x402" : "other";
+  // A leg's record withheld from this copy hides whether it holds a preimage.
+  const preimage = legs.some((s) => !s.deal) ? "withheld" : legs.every((s) => typeof s.body.preimage === "string" && s.body.preimage !== "");
+  let band;
+  const amounts = legs.flatMap((s) => [s.settlement.received, s.settlement.receive_fee]).filter((a) => a && typeof a === "object");
+  const currency = amounts.length > 0 ? amounts[0].assetCode : undefined;
+  const scale = amounts.length > 0 ? Number(amounts[0].assetScale) : NaN;
+  if (typeof currency === "string" && Number.isInteger(scale) && amounts.every((a) => a.assetCode === currency && Number(a.assetScale) === scale && /^(0|[1-9][0-9]*)$/.test(String(a.value)))) {
+    const sum = amounts.reduce((acc, a) => acc + BigInt(String(a.value)), 0n);
+    band = { currency, decade: sum === 0n ? null : String(sum).length - scale - 1 };
+  }
+  return { rail, legs: true, preimage, band };
+};
+
+// The band's words, as the History card names a size (capsule-viewer
+// static/standard_history_card.js bandLabel, from the same strings,
+// size.*): a currency with a symbol as "$10 – $99", every band below its
+// first ten units as "under $10"; another currency in its own units.
+const dealBandSymbols = { USD: "$", EUR: "€", GBP: "£" };
+const dealPower = (d) => (d > 18 || d < -18 ? "1e" + d : d >= 0 ? "1" + "0".repeat(d) : "0." + "0".repeat(-d - 1) + "1");
+const dealGrouped = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+// A leg names Bitcoin by its CAIP-19 asset id (deal_settlement_lightning.go,
+// lightningBTC); the band names it by its code, as lightning-v0 writes it.
+const dealAssetCodes = { "bip122:000000000019d6689c085ae165831e93/slip44:0": "BTC" };
+const dealBandLabel = (shown, words) => {
+  const band = { ...shown, currency: Object.prototype.hasOwnProperty.call(dealAssetCodes, shown.currency) ? dealAssetCodes[shown.currency] : shown.currency };
+  const fill = (key, fallback, vars) => (typeof words[key] === "string" ? words[key] : fallback).replace(/\{(\w+)\}/g, (_, k) => vars[k]);
+  const sym = Object.prototype.hasOwnProperty.call(dealBandSymbols, band.currency) ? dealBandSymbols[band.currency] : undefined;
+  if (sym && (band.decade === null || band.decade <= 17)) {
+    if (band.decade === null || band.decade <= 0) return fill("size.under", "under {amount}", { amount: sym + "10" });
+    return fill("size.between", "{low} – {high}", { low: sym + dealGrouped(dealPower(band.decade)), high: sym + dealGrouped(dealPower(band.decade + 1).slice(1).replace(/0/g, "9")) });
+  }
+  if (band.decade === null) return fill("size.zero", "zero amount, {currency}", { currency: band.currency });
+  return fill("size.range", "{low} to under {high} {currency}", { low: dealPower(band.decade), high: dealPower(band.decade + 1), currency: band.currency });
+};
+
+// The deal's close, as the other side's records answer it (F8.1, F8.7):
+// evidencebook's StatusOfClose over their verified half, which the caller
+// has held to their key. A record of their book that rebuts your close
+// makes it contested; one that acknowledges it, agreed; neither leaves it
+// unilateral. Only their record pointing at yours makes it agreed.
+const dealCloseOf = (steps) => {
+  const closes = steps.filter((s) => s.deal && s.deal.record_type === "close");
+  const last = closes[closes.length - 1];
+  // With a step withheld from this copy, no close here does not mean none.
+  if (!last) return steps.some((s) => !s.deal) ? { withheld: true } : undefined;
+  return { id: last.id };
+};
+const dealCloseStatus = (closeId, theirRecords, theirBook) => {
+  let status = "unilateral";
+  for (const r of theirRecords || []) {
+    const h = r && r.evidence_record_header;
+    if (!h || h.book_id !== theirBook || !Array.isArray(h.links)) continue;
+    const to = (type) => h.links.some((l) => l && l.type === type && l.target === closeId);
+    if (to("rebuts")) return "contested";
+    if (to("acknowledges")) status = "agreed";
+  }
+  return status;
+};
+
 const dealViewModel = async (context) => {
   const page = globalThis.capsulectlDealPage || {};
   // The context's own frozen copy of the bundle, read only for what no
@@ -26435,6 +26610,8 @@ const dealViewModel = async (context) => {
     return { refusal: "⚠️ The deal's opening step is not in this report." };
   }
 
+  const logSteps = dealLogSteps(context);
+
   // Which build sealed the steps, read from the records this page verified
   // (not from the summary), compared with the build that made this page.
   // Both are already in this file: nothing is fetched to do it.
@@ -26476,6 +26653,9 @@ const dealViewModel = async (context) => {
     claimClasses,
     dealId: logId.startsWith("deal/") ? logId.slice(5) : reportDealId,
     witnessed: (bundle.extensions || {})["x-cadence-witness/v0"] !== undefined,
+    // Steps sealed before the deal store was a book (capsule-cli#242) have
+    // no place in one: their lines are not read.
+    lines: logSteps.length > 0 ? { afterYes: dealAfterYes(logSteps), settlement: dealSettlement(logSteps), close: dealCloseOf(logSteps) } : undefined,
   };
 };
 
@@ -26566,7 +26746,7 @@ const dealTheirArtifact = async (member, dealID, mine, meshOwn, payerRecords) =>
   const theirs = await dealViewModel(ctx);
   if (theirs.refusal !== undefined) return failed("V1");
   if (theirs.dealId !== dealID || (mine && mine.dealId !== dealID)) return failed("V4");
-  return { state: "verified", mesh: false, report: theirs.report, stamped: at, key: member.observer, witnessed };
+  return { state: "verified", mesh: false, report: theirs.report, stamped: at, key: member.observer, witnessed, lines: theirs.lines, records: ctx.records, book: ((ctx.bundle.completeness_certificate || {}).log_id) || "" };
 };
 
 const dealComposedModel = async (context) => {
@@ -27047,6 +27227,86 @@ const dealViewRender = (model, regions) => {
   const theirArtifact = composed && composed.shown && (composed.shown.state === "verified" || composed.shown.state === "failed") ? composed.shown : undefined;
   const sameWhat = theirArtifact && theirArtifact.mesh ? "the same exchange" : "the same deal";
   const anyWitness = model.witnessed || (composed && [composed.shown, ...composed.also].some((t) => t && t.witnessed));
+  // Frame 8's record lines (evidencebook-deal#94): your approval, its order,
+  // the settlement and the close, each from its record; your side's copy
+  // is the one they are read from.
+  const mineLines = composed && !composed.mine ? undefined : model.lines;
+  const theirLines = theirArtifact && theirArtifact.state === "verified" && !theirArtifact.mesh ? theirArtifact.lines : undefined;
+  const actName = (act) => {
+    const step = act && byId.get(act.id);
+    if (step && matched.has(act.id) && typeof step.line === "string") return `“${step.line}”`;
+    return act && typeof act.body.action === "string" ? `the ${act.body.action} step` : "a step";
+  };
+  // A shared copy is read by the other side: its lines name the holder.
+  const who = shared ? "the holder's" : "your";
+  const Who = shared ? "The holder's" : "Your";
+  const their = shared ? "their" : "your";
+  const approverWords = {
+    user: `${who} yes is in ${their} words, recorded by ${their} agent`,
+    standing_intent: `approved under ${who} standing limits, recorded by ${their} agent`,
+    agent_card: `answered on a card ${who} agent showed, recorded by ${their} agent`,
+    task_authority: `allowed by the task ${shared ? "the holder" : "you"} gave ${their} agent, recorded by ${their} agent`,
+  };
+
+  const recordLines = [];
+  if (!mineLines && !(composed && !composed.mine)) {
+    // A copy whose steps have no place in a book: none of these lines is read.
+    const why = "this copy's steps were sealed before they had a place in a book";
+    recordLines.push(["not checked", `Each act came after ${who} yes`, why], ["not checked", "The payment is settled on its rail", why], ["not checked", "Their agreement with how the deal closed", why]);
+  } else if (!mineLines) {
+    recordLines.push(["missing", `Each act came after ${who} yes`, "your record is not in this file"]);
+  } else if (mineLines.afterYes.state !== "none") {
+    const yes = mineLines.afterYes;
+    const said = (yes.approvers || []).map((a) => approverWords[a]).filter((t) => t);
+    recordLines.push(["missing", `${Who} own key's signature on ${their} yes`, said.length > 0 ? said.join("; ") : `no record here is signed with ${their} key`]);
+    recordLines.push(
+      yes.state === "passed"
+        ? ["passed", `Each act came after ${who} yes`, "recomputed from the order of this log"]
+        : yes.state === "failed"
+          ? ["failed", `Each act came after ${who} yes`, yes.why === "unapproved" ? `${actName(yes.act)} was taken without ${who} yes` : `${actName(yes.act)} does not follow its approval in this log`]
+          : yes.state === "missing"
+            ? ["missing", `Each act came after ${who} yes`, `the approval for ${actName(yes.act)} is not in this copy`]
+            : ["not checked", `Each act came after ${who} yes`, "steps are withheld from this copy"],
+    );
+  }
+  const legOf = (lines) => lines && lines.settlement && lines.settlement.legs ? lines.settlement : undefined;
+  const settled = legOf(mineLines) || legOf(theirLines);
+  const settledWhose = legOf(mineLines) ? "" : "in their record; ";
+  const unsettled = (mineLines && mineLines.settlement) || (theirLines && theirLines.settlement);
+  const railText = !settled
+    ? ""
+    : settled.rail === "lightning"
+      ? settled.preimage === "withheld"
+        ? "Lightning; this copy does not show its proof"
+        : settled.preimage
+        ? "Lightning; its proof is sealed here, and this page can't check it yet"
+        : `Lightning; ${legOf(mineLines) ? who : "their"} wallet reported it final`
+      : settled.rail === "x402"
+        ? "x402; the chain lookup is not checked on this page"
+        : "this page checks no settlement";
+  if (mineLines || (composed && !composed.mine)) recordLines.push(
+    settled
+      ? ["not checked", "The payment is settled on its rail", settledWhose + railText + (settled.band ? ` · size ${dealBandLabel(settled.band, words)}` : "")]
+      : ["missing", "The payment is settled on its rail", !unsettled ? "no settlement record is in this file" : unsettled.rail === "card" ? "a card payment; the card processor's report is not in this file" : `a ${String(unsettled.rail).replace(/_/g, " ")} payment; no settlement record is in this file`],
+  );
+  const closed = mineLines && mineLines.close;
+  let closeState = "none";
+  let closeLine;
+  if (!closed) closeLine = ["not checked", "Their agreement with how the deal closed", mineLines ? "the deal is not closed in this copy" : "your record is not in this file"];
+  else if (closed.withheld) closeLine = ["not checked", "Their agreement with how the deal closed", "steps are withheld from this copy"];
+  else if (theirArtifact && theirArtifact.mesh) closeLine = ["not checked", "Their agreement with how the deal closed", `their record is of the exchange, not of ${who} close`];
+  else if (theirArtifact && theirArtifact.state !== "verified") closeLine = ["not checked", "Their agreement with how the deal closed", "their record did not check"];
+  else if (!theirArtifact) closeLine = ["missing", "Their agreement with how the deal closed", shared ? "no record from the other side" : "no record from their side"];
+  else {
+    closeState = dealCloseStatus(closed.id, theirArtifact.records, theirArtifact.book);
+    closeLine =
+      closeState === "agreed"
+        ? ["passed", "Their agreement with how the deal closed", `agreed: their record points at ${who} close`]
+        : closeState === "contested"
+          ? ["failed", "Their agreement with how the deal closed", `contested: their record disputes ${who} close`]
+          : ["missing", "Their agreement with how the deal closed", `closed by ${who} side only: their record is here, and it does not point at ${who} close`];
+  }
+  if (mineLines || (composed && !composed.mine)) recordLines.push(closeLine);
   const stamps = composed ? [
     askedChecked
       ? ["passed", "Your words are sealed exactly as you said them", "checked when this page was built"]
@@ -27065,7 +27325,7 @@ const dealViewRender = (model, regions) => {
       : theirArtifact.state === "verified"
         ? ["passed", `Their record and yours are about ${sameWhat}`, theirArtifact.mesh ? "both records name the same request; neither points at the other" : "both records name the same deal; neither points at the other"]
         : ["failed", `Their record and yours are about ${sameWhat}`, "their record did not check"],
-    ["not checked", "The payment is confirmed by its payment network, not by either agent", "this page checks no settlement"],
+    ...recordLines,
     [anyWitness ? "not checked" : "missing", "An outside witness recorded both books' snapshots", anyWitness ? "this page can't check the witness's signature" : ""],
   ] : [
     shared
@@ -27078,6 +27338,7 @@ const dealViewRender = (model, regions) => {
       : allMatched
         ? ["passed", shared ? "Each step's record is in the holder's book, and a change after would show" : "Each step's record is in your book, and a change after would show", ""]
         : ["failed", "A step's record could not be found in this deal's log", "see More on this deal"],
+    ...recordLines,
     [model.witnessed ? "not checked" : "missing", shared ? "An outside witness saw the holder's book" : "An outside witness saw your book", model.witnessed ? "this page can't check the witness's signature" : ""],
     ["missing", "Nothing points back from the other side's book", "it is not in this file"],
     ["not checked", "\"It happened\" rests on what the agent reported", "no one else has checked it"],
@@ -27089,6 +27350,7 @@ const dealViewRender = (model, regions) => {
   const rest = stamps.length - passed - failed;
   const pill = el("span", [`${passed} passed`, failed > 0 ? `${failed} failed` : "", rest > 0 ? `${rest} not checkable here` : ""].filter((t) => t !== "").join(" · "), failed > 0 ? "deal-pill deal-bad" : "deal-pill");
   sum.append(pill);
+  stampBox.dataset.close = closeState;
   stampBox.append(sum, el("div", "What is under it:", "deal-small"));
   stamps.forEach(([word, text, detail]) => {
     const line = el("div", undefined, "deal-stamp");
@@ -27394,7 +27656,7 @@ EvidenceGraph.registerPresentation({
 });
 </script>
     <!-- prettier-ignore -->
-    <script>globalThis.capsulectlDealPage = Object.freeze({"countersign":{"finding":"not_countersigned","text":"Not countersigned: no other party has signed this record. It stands on the agent's own seal and any witness receipt this file carries."},"openings":{"asked":true,"representations":[]},"verify_command":"capsulectl verify --bundle receipt.html","words":{"class.address":"address","class.credential":"login","class.email":"email","class.home_address":"home address","class.id_document":"ID document","class.name":"name","class.other_contact":"contact details","class.payment_card":"payment card","class.phone":"phone","class.pickup_area":"pickup area","class.pickup_location":"pickup location","class.verification_code":"verification code","journey.agent.act.cancel":"Cancelled","journey.agent.act.commit":"Booked","journey.agent.act.offer":"Made an offer","journey.agent.act.other":"Done","journey.agent.act.pay":"Paid {amount}","journey.agent.act.pay.no_amount":"Paid","journey.agent.act.pay.within":"Paid {amount} within your {limit} limit","journey.agent.act.sign":"Signed","journey.agent.asked_seller":"Asked the seller","journey.agent.checked":"Checked","journey.agent.chose":"Chose for you","journey.agent.chose.item":"Chose {item} for you","journey.agent.couldnt":"Couldn't ({reason})","journey.agent.couldnt.who":"Couldn't ({who} {reason})","journey.agent.options":"Showed you {count} options","journey.agent.paused":"Waited for your OK","journey.agent.recommended":"Recommended","journey.agent.searched":"Searched","journey.agent.told":"Told {who} your {classes}","journey.other.changed":"Seller changed","journey.other.said":"Seller said","journey.reason.blocked":"blocked","journey.reason.cannot_ship_here":"can't ship here","journey.reason.out_of_stock":"out of stock","journey.reason.payment_declined":"payment declined","journey.reason.sign_in_required":"sign-in","journey.reason.site_error":"site error","journey.user.approved.commit":"OK'd agreeing to {amount}","journey.user.approved.offer":"OK'd offering {amount}","journey.user.approved.other":"OK'd it","journey.user.approved.pay":"OK'd paying {amount}","journey.user.approved.share_contact":"OK'd sharing your {classes}","journey.user.asked":"Asked","journey.user.called_off":"Called off","journey.user.changed":"Changed what you asked","journey.user.declined.commit":"Said no to agreeing to {amount}","journey.user.declined.offer":"Said no to offering {amount}","journey.user.declined.other":"Said no","journey.user.declined.pay":"Said no to paying {amount}","journey.user.declined.share_contact":"Said no to sharing your {classes}","journey.user.narrowed":"Narrowed","journey.user.picked":"Picked","journey.user.raised":"Raised","journey.user.switched":"Switched to {who}","journey.user.switched.item":"Switched to {item}","report.title":"Deal report"}});
+    <script>globalThis.capsulectlDealPage = Object.freeze({"countersign":{"finding":"not_countersigned","text":"Not countersigned: no other party has signed this record. It stands on the agent's own seal and any witness receipt this file carries."},"openings":{"asked":true,"representations":[]},"verify_command":"capsulectl verify --bundle receipt.html","words":{"class.address":"address","class.credential":"login","class.email":"email","class.home_address":"home address","class.id_document":"ID document","class.name":"name","class.other_contact":"contact details","class.payment_card":"payment card","class.phone":"phone","class.pickup_area":"pickup area","class.pickup_location":"pickup location","class.verification_code":"verification code","journey.agent.act.cancel":"Cancelled","journey.agent.act.commit":"Booked","journey.agent.act.offer":"Made an offer","journey.agent.act.other":"Done","journey.agent.act.pay":"Paid {amount}","journey.agent.act.pay.no_amount":"Paid","journey.agent.act.pay.within":"Paid {amount} within your {limit} limit","journey.agent.act.sign":"Signed","journey.agent.asked_seller":"Asked the seller","journey.agent.checked":"Checked","journey.agent.chose":"Chose for you","journey.agent.chose.item":"Chose {item} for you","journey.agent.couldnt":"Couldn't ({reason})","journey.agent.couldnt.who":"Couldn't ({who} {reason})","journey.agent.options":"Showed you {count} options","journey.agent.paused":"Waited for your OK","journey.agent.recommended":"Recommended","journey.agent.searched":"Searched","journey.agent.told":"Told {who} your {classes}","journey.other.changed":"Seller changed","journey.other.said":"Seller said","journey.reason.blocked":"blocked","journey.reason.cannot_ship_here":"can't ship here","journey.reason.out_of_stock":"out of stock","journey.reason.payment_declined":"payment declined","journey.reason.sign_in_required":"sign-in","journey.reason.site_error":"site error","journey.user.approved.commit":"OK'd agreeing to {amount}","journey.user.approved.offer":"OK'd offering {amount}","journey.user.approved.other":"OK'd it","journey.user.approved.pay":"OK'd paying {amount}","journey.user.approved.share_contact":"OK'd sharing your {classes}","journey.user.asked":"Asked","journey.user.called_off":"Called off","journey.user.changed":"Changed what you asked","journey.user.declined.commit":"Said no to agreeing to {amount}","journey.user.declined.offer":"Said no to offering {amount}","journey.user.declined.other":"Said no","journey.user.declined.pay":"Said no to paying {amount}","journey.user.declined.share_contact":"Said no to sharing your {classes}","journey.user.narrowed":"Narrowed","journey.user.picked":"Picked","journey.user.raised":"Raised","journey.user.switched":"Switched to {who}","journey.user.switched.item":"Switched to {item}","report.title":"Deal report","size.between":"{low} – {high}","size.range":"{low} to under {high} {currency}","size.under":"under {amount}","size.zero":"zero amount, {currency}"}});
 renderEvidenceGraph(window.__BUNDLE__, document.getElementById("app"), undefined, { verifyCommand: capsulectlDealPage.verify_command });</script>
   </body>
 </html>

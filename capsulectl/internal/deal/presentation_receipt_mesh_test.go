@@ -375,8 +375,9 @@ func TestPresentationMeshReceiptWithTheirHalf(t *testing.T) {
 		// asked are not checked here and its half reads "not fully checked".
 		assert.Contains(t, banner, "Stamped by both sides · not fully checked")
 		assert.Equal(t, "verified", their)
-		require.Len(t, stamps, 5)
+		require.Len(t, stamps, 8)
 		assert.Contains(t, stamps[2], "passed | ✓Their record and yours are about the same exchange")
+		assert.Contains(t, stamps[6], "not checked | —Their agreement with how the deal closed · not checked · their record is of the exchange, not of your close")
 		assert.Contains(t, stamps[2], "both records name the same request; neither points at the other")
 	})
 	same := meshHalf{nonce: "client-nonce-1", source: "client_supplied", requestDigest: request}
