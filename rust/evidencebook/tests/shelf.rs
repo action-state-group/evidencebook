@@ -62,7 +62,12 @@ impl Default for Opts {
     fn default() -> Self {
         Opts {
             lock_path: None,
-            held_lock: None,
+            // Off unix the shelf opens only on a host-held lock.
+            held_lock: if cfg!(unix) {
+                None
+            } else {
+                Some(Box::new(Held(true)))
+            },
             lock_timeout: Some(Duration::from_millis(200)),
             indexes: None,
         }
@@ -431,6 +436,7 @@ fn a_file_from_before_shelf_logs_gets_it_filled() {
     assert_eq!(shelf.open("deal/a").unwrap().size(), 1);
 }
 
+#[cfg(unix)]
 #[test]
 fn two_writers_of_one_file_exclude_each_other() {
     let dir = tempfile::tempdir().unwrap();
@@ -487,9 +493,33 @@ fn a_shelf_on_a_host_held_lock_takes_none_of_its_own() {
         held_lock: Some(Box::new(Held(h))),
         ..Default::default()
     };
-    let shelf = open_with(&file(&dir), &clock, held(true)).unwrap();
-    // The shelf's own lock file is free.
-    open(&file(&dir), &clock).release().unwrap();
+    // The host keeps its lock and shares it with the shelf.
+    let shared: Arc<Held> = Arc::new(Held(true));
+    let shelf = open_with(
+        &file(&dir),
+        &clock,
+        Opts {
+            held_lock: Some(Box::new(shared.clone())),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        !dir.path().join("shelf.db.lock").exists(),
+        "no lock file is opened"
+    );
+    #[cfg(unix)]
+    open_with(
+        &file(&dir),
+        &clock,
+        Opts {
+            held_lock: None,
+            ..Default::default()
+        },
+    )
+    .unwrap()
+    .release()
+    .unwrap();
     shelf.release().unwrap();
     assert!(matches!(
         open_with(&file(&dir), &clock, held(false)),
@@ -506,6 +536,57 @@ fn a_shelf_on_a_host_held_lock_takes_none_of_its_own() {
         ),
         Err(ShelfError::Invalid(_))
     ));
+}
+
+#[cfg(not(unix))]
+#[test]
+fn off_unix_the_shelf_takes_no_lock_of_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    assert!(matches!(
+        open_with(
+            &file(&dir),
+            &clock,
+            Opts {
+                held_lock: None,
+                ..Default::default()
+            }
+        ),
+        Err(ShelfError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn a_host_table_and_a_lock_free_reader_are_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let host = shelf.host_log("node/chain", false).unwrap();
+    host.stores()
+        .unwrap()
+        .log
+        .append(&cll::log::AppendInput {
+            value: vec![5; 32],
+            appended_at: cll::log::Timestamp::from_unix_millis(0),
+        })
+        .unwrap();
+    Connection::open(file(&dir))
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE host_history (n INTEGER); INSERT INTO host_history VALUES (7);",
+        )
+        .unwrap();
+    // Another process reads the log while the writer holds the shelf.
+    let reader = cll::log::sqlite::SqliteStore::open(file(&dir), "node/chain").unwrap();
+    use cll::log::EntrySource as _;
+    assert_eq!(reader.scan_entries(0, 10).unwrap().len(), 1);
+    shelf.release().unwrap();
+    open(&file(&dir), &clock).release().unwrap();
+    let n: i64 = Connection::open(file(&dir))
+        .unwrap()
+        .query_row("SELECT n FROM host_history", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 7);
 }
 
 #[test]

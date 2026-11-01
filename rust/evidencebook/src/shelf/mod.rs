@@ -5,9 +5,10 @@
 //! every host log), capsule-emit's artifact store (the originals of every
 //! book and the records of every host log, under one namespace) and the
 //! shelf's own tables (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`),
-//! exactly as the Go shelf writes them, so a Go, a Rust and a Python writer
-//! continue each other's files. `testdata/shelf` holds the byte vectors and
-//! `test/interop/shelf` the storage interlock that check it.
+//! exactly as the Go shelf writes them, so a Go and a Rust writer continue
+//! each other's files. `testdata/shelf` holds the byte vectors, and
+//! `test/interop/shelf` (Go) and `rust/interop`'s `shelf` bin (Rust) run the
+//! storage interlock, that check it.
 //!
 //! - [`Shelf`] opens the file under the shelf's writer lock or a lock the
 //!   host already holds ([`HeldLock`]), and hands out one [`ShelfBook`] per
@@ -18,6 +19,18 @@
 //! - [`Cadence`] runs the heartbeat ticks that commit every live log's
 //!   checkpoint as a salted leaf of a sparse tree whose root alone reaches
 //!   the witness.
+//!
+//! **Readers without the lock.** Another process may read the file while a
+//! writer holds the shelf: the file is in WAL mode, so a reader that opens
+//! a log with checkpointed-local-log's `log::sqlite::SqliteStore::open` (which
+//! validates and writes nothing) or the artifact store on the same file sees
+//! every committed write and never waits on, or takes, the writer lock. Such a
+//! reader must not write. The shelf leaves every table it does not own (CLL's,
+//! the artifact store's, and any host table) as it finds it.
+//!
+//! **Platforms.** The shelf's own lock is a unix `flock`; off unix
+//! [`Shelf::open_sqlite`] opens only on a host-held lock ([`HeldLock`]),
+//! which takes no lock and never opens a lock file.
 //!
 //! This module is the one place the crate's public API names a `cll` type:
 //! a host log hands the host the log's CLL backend ([`HostLogStores`]),
@@ -118,6 +131,14 @@ pub enum ShelfError {
 pub trait HeldLock: Send + Sync {
     /// `Ok` while the host holds the lock.
     fn held(&self) -> Result<(), String>;
+}
+
+/// A shared lock is the lock it shares, so a host can keep its own handle
+/// and give the shelf a clone.
+impl<T: HeldLock + ?Sized> HeldLock for Arc<T> {
+    fn held(&self) -> Result<(), String> {
+        (**self).held()
+    }
 }
 
 /// The shelf's clock.

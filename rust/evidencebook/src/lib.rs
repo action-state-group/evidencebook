@@ -55,8 +55,7 @@
 //! is built.
 //!
 //! The cargo feature `shelf` adds [`shelf`] (evidencebook#254): one subject
-//! key's books in one SQLite file, the same file the Go and Python shelves
-//! write, with books that write, host logs, the writer lock and the
+//! key's books in one SQLite file, the same file the Go shelf writes, with books that write, host logs, the writer lock and the
 //! heartbeat cadence. Without the feature none of its dependencies is
 //! built.
 

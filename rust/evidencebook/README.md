@@ -34,7 +34,7 @@ small-order or non-canonical key never verifies. Witness receipts are checked
 by agent-action-capsule and follow its rules.
 
 The feature `shelf` adds the shelf (module `shelf`, evidencebook#254): one
-subject key's books in one SQLite file that Go and Python write too, a book
+subject key's books in one SQLite file that the Go shelf writes too, a book
 that writes and recovers a crash between a record's row and its log entry,
 host logs, the writer lock or a lock the host holds, the heartbeat cadence
 with its witnessed chain, and every book's originals in capsule-emit's

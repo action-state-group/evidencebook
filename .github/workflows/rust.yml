@@ -54,6 +54,24 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --locked --no-deps --all-features
 
+  windows:
+    # The shelf on a host-held lock opens off unix (evidencebook#254 §2.4):
+    # the Mesh plugin's Windows nodes migrate onto it. The shelf's own lock is
+    # unix-only, and its tests that need it are too.
+    name: Rust shelf on Windows (host-held lock)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+
+      - name: The shelf's tests
+        run: cargo test --locked -p evidencebook --features shelf --test shelf
+
   package:
     name: crates.io package check (dry run)
     runs-on: ubuntu-latest

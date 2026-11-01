@@ -42,7 +42,14 @@
   seals in its own format on the shelf's CLL backend and artifact store, in
   the cadence or outside it (`HostLog::write`, `HostLog::stores`).
   `shelf_logs` keeps book and host ids apart across reopens. `HostLogStores`
-  is the one public item that names a `cll` type (`tests/public_api.rs`).
+  is the one public item that names a `cll` type (`tests/public_api.rs`):
+  its `log` is checkpointed-local-log's concrete `SqliteStore`, so a breaking
+  checkpointed-local-log release is a breaking change of this crate, and a
+  host's own `checkpointed-local-log` pin moves with this crate's.
+- A shelf on a host-held lock opens off unix (an `Arc` of the host's lock is a
+  `HeldLock`); CI runs the shelf's tests on Windows. A reader in another
+  process may open a log or the artifact store on the file without the
+  shelf, taking no lock.
 - `Cadence`: `tick`, its unfinished-tick resume, `witnessed` (receipts
   verified with agent-action-capsule's witness verifier), `live`, `last`,
   `get`, `witnessed_tick`, `chain`, `standard_history_anchor` and
