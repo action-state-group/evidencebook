@@ -139,6 +139,9 @@ func migrateCommand() *cobra.Command {
 		if !isBook(p) || p.ReadOnly {
 			return cli.InputError("book migrate applies to a writable book profile")
 		}
+		if e = refuseUnderReproduction("book migrate"); e != nil {
+			return e
+		}
 		newLogID, _ := c.Flags().GetString("log-id")
 		result, e := migrateStore(c.Context(), p, newLogID, bookNow())
 		if e != nil {

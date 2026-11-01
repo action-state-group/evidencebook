@@ -31,6 +31,9 @@ var bookNow = time.Now
 // opens a reproduced scratch book (evidencebook#232): all record, Result and
 // checkpoint times are that one time, and every record carries the header's
 // reproduction marker. Unset, nothing changes.
+// maxEpochSeconds is 9999-12-31T23:59:59Z.
+const maxEpochSeconds = 253402300799
+
 const SourceDateEpochEnv = "SOURCE_DATE_EPOCH"
 
 // reproductionAt is the caller-given time of a reproduced scratch book, when
@@ -42,7 +45,8 @@ func reproductionAt() (time.Time, bool, error) {
 		return time.Time{}, false, nil
 	}
 	seconds, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || seconds < 0 {
+	// The year must stay four digits for the RFC 3339 times it is written as.
+	if err != nil || seconds < 0 || seconds > maxEpochSeconds {
 		return time.Time{}, false, cli.InputError(fmt.Sprintf("%s=%q is not a non-negative number of seconds since the Unix epoch", SourceDateEpochEnv, raw))
 	}
 	return time.Unix(seconds, 0).UTC(), true, nil
@@ -183,12 +187,6 @@ func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifact
 	}
 	if err = clock.floorAtLastRecord(ctx, book); err != nil {
 		return openedBook{}, errors.Join(err, book.Release())
-	}
-	if size := book.Size(); size > 0 && !reproduced {
-		last, qerr := book.Query(ctx, evidencebook.Filter{FromSeq: size, ToSeq: size})
-		if qerr == nil && len(last) > 0 && last[0].Header.Reproduction != nil {
-			return openedBook{}, errors.Join(cli.Hint(cli.ErrInput, fmt.Sprintf("this book is a reproduced scratch book (its times were given by the caller): it can be read and compared, never extended as a live book or countersigned; a reproduction run keeps adding to it only with %s set to a time not before its last record", SourceDateEpochEnv)), book.Release())
-		}
 	}
 	if err = clock.refuseIfAhead(p); err != nil {
 		return openedBook{}, errors.Join(err, book.Release())
@@ -1377,4 +1375,14 @@ func clockNow() time.Time {
 		return at
 	}
 	return bookNow()
+}
+
+// refuseUnderReproduction keeps a verb that stamps the wall clock into its
+// records (backfill's imported_at, migrate's import time) out of a
+// reproduction run, where it would break the byte-identical result.
+func refuseUnderReproduction(verb string) error {
+	if _, reproduced, _ := reproductionAt(); reproduced {
+		return cli.InputError(fmt.Sprintf("%s stamps the wall clock into its records, so it does not run with %s set (a reproduced scratch book); unset it", verb, SourceDateEpochEnv))
+	}
+	return nil
 }

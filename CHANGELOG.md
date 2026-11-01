@@ -161,7 +161,11 @@
   runs of one judge over one manifest give byte-identical bundles. Unset, nothing changes. A
   reproduced book cannot be extended without the variable, a live book refuses it, a time earlier
   than the book's last record is refused, and an unreadable value is an input error, never the
-  wall clock. Countersigning a marked bundle is the signer's to refuse (capsule-cli). Design:
+  wall clock. `backfill run` and `book migrate` stamp the wall clock and refuse to run with it set.
+  A marked book is read like any other. `book close` of the period that holds the caller's time is
+  refused as not yet ended, as a live one is. Mind build environments that set the variable
+  globally: every book written there is a reproduction. Countersigning a marked bundle is
+  capsule-cli's to refuse (action-state-group/capsule-cli#525). Design:
   `docs/design/232-reproduced-scratch-book.md`.
 
 ## v0.12.2 (2026-11-01)

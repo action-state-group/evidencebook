@@ -77,12 +77,15 @@ func TestAReproducedBookIsADeadEnd(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bookClock(t, day0)
 	reproduceOnce(t, "one")
-	require.NoError(t, os.Unsetenv(SourceDateEpochEnv)) // reproduceOnce set it with t.Setenv, which restores it
+	bookClock(t, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) // the wall clock is past the book's time
+	require.NoError(t, os.Unsetenv(SourceDateEpochEnv))        // reproduceOnce set it with t.Setenv, which restores it
+	// A marked book is read as any other: it can be listed and compared.
+	assert.Len(t, listLog(t, "one").Entries, 1)
 	// Without the caller's time the marked book cannot be extended or cut.
 	_, err := invoke(t, "", "publish", "--profile", "one", "--request", sealRequestFile(t, "judge-2"))
-	assert.ErrorContains(t, err, "reproduced scratch book")
+	assert.ErrorContains(t, err, "cannot be written as a live")
 	_, err = invoke(t, "", "cll", "checkpoint", "create", "--profile", "one")
-	assert.ErrorContains(t, err, "reproduced scratch book")
+	assert.ErrorContains(t, err, "cannot be written as a live")
 }
 
 func TestALiveBookRefusesACallerTime(t *testing.T) {
@@ -111,7 +114,7 @@ func TestAnUnreadableSourceDateEpochIsRefused(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	bookClock(t, day0)
 	p, _ := storedProfile(t, "a")
-	for _, value := range []string{"yesterday", "-5", "1.5"} {
+	for _, value := range []string{"yesterday", "-5", "1.5", "253402300800"} {
 		t.Setenv(SourceDateEpochEnv, value)
 		_, err := invoke(t, "", "publish", "--profile", p.Name, "--request", sealRequestFile(t, "x"))
 		assert.ErrorContains(t, err, SourceDateEpochEnv, value)
@@ -131,4 +134,15 @@ func TestResultBuildTakesTheCallersTime(t *testing.T) {
 		assert.Equal(t, "2026-10-31T00:00:00Z", record.Header.CommittedAt)
 		require.NotNil(t, record.Header.Reproduction)
 	})
+}
+
+func TestWallClockVerbsDoNotRunInAReproduction(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, day0)
+	p, _ := storedProfile(t, "a")
+	t.Setenv(SourceDateEpochEnv, windowEnd)
+	_, err := invoke(t, "", "book", "migrate", "--profile", p.Name)
+	assert.ErrorContains(t, err, SourceDateEpochEnv)
+	_, err = invoke(t, "", "backfill", "run", "--profile", p.Name, "--source", "-")
+	assert.ErrorContains(t, err, SourceDateEpochEnv)
 }

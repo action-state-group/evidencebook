@@ -43,8 +43,12 @@ The marker below is what tells a reader which meaning applies.
   header member, `Config.Reproduction` (needs `Config.Now`, the caller's time),
   the live/reproduction mix refusal.
 - `capsulectl-book`: the input (`SOURCE_DATE_EPOCH`, read when a book opens, so
-  it reaches `publish` and the checkpoint cut), guard 3 and the dead end for
-  its own verbs.
+  it reaches `publish` and the checkpoint cut) and guard 3. The dead end is the
+  root book's (a write of the other clock kind is refused), reached through
+  every capsulectl verb; reads of a marked book work without the variable.
+  `backfill run` and `book migrate` stamp the wall clock and refuse to run with
+  the variable set. `SOURCE_DATE_EPOCH` is also set globally by some build
+  environments; a book written there is a reproduction.
 - capsule-cli: refusing to countersign a bundle whose records carry the marker
   (the `countersign` command works on a bundle, outside any book).
 
