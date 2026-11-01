@@ -736,6 +736,18 @@
     },
     {
       "kind": "domain",
+      "raw": "x.xn--o1ach.xn--с-btb8b",
+      "normalized": "x.упр.срб",
+      "fp": "62f8150e550de00d200a21c3adaab6585056c6410fca32848d7deeaf8cdaa7c0"
+    },
+    {
+      "kind": "domain",
+      "raw": "x.xn--o1ach.xn--90a3ac",
+      "normalized": "x.упр.срб",
+      "fp": "62f8150e550de00d200a21c3adaab6585056c6410fca32848d7deeaf8cdaa7c0"
+    },
+    {
+      "kind": "domain",
       "raw": "[::1]",
       "normalized": null,
       "fp": null

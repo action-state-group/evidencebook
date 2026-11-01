@@ -247,8 +247,9 @@ def _alabel(label: str) -> str:
     """One label's ASCII form, validated, with no length limit (Go's
     ``idna.Lookup`` does not verify DNS length)."""
     if label.startswith("xn--"):
-        _from_punycode(label)
-        return label
+        # x/net keeps the decoded label and encodes it again, so the public
+        # suffix list is matched against the standard spelling.
+        return "xn--" + _from_punycode(label).encode("punycode").decode("ascii")
     if label.isascii():
         _validate_label(label)
         return label

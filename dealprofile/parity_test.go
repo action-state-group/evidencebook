@@ -136,7 +136,7 @@ var normalizeCases = []struct{ kind, raw string }{
 	{"domain", "ﬁ.com"}, {"domain", "a b.com"}, {"domain", "x@y@z.com"}, {"domain", "http://"}, {"domain", ""},
 	{"domain", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com"},
 	{"domain", "1a.שלום.co.il"}, {"domain", "www.1a.שלום.com"}, {"domain", "שלום.1a.com"}, {"domain", "a.שלום.com"}, {"domain", "xn--ls8héa-.example"},
-	{"domain", "xn--zcaé-.com"}, {"domain", "[::1]"}, {"domain", "a.b/c@d.example"},
+	{"domain", "xn--zcaé-.com"}, {"domain", "x.xn--o1ach.xn--с-btb8b"}, {"domain", "x.xn--o1ach.xn--90a3ac"}, {"domain", "[::1]"}, {"domain", "a.b/c@d.example"},
 	// a kind outside the closed set
 	{"nickname", "x"},
 }

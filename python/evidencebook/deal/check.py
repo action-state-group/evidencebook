@@ -11,7 +11,11 @@ A refusal matches Go's in its stage. Two diagnostics are worded differently:
 a JCS failure carries the Python JCS implementation's text, and a schema
 refusal carries ``jsonschema``'s wording (the reference checker's, which the
 negative fixtures' ``expected_error_contains`` is written in) where Go's
-validator has its own. The Unicode tables are Python's, not Go 1.27's
+validator has its own. The package refuses, where Go would seal, a ``str`` with
+a lone surrogate and a Python float that is a whole number (Go's
+``json.Marshal`` replaces invalid UTF-8 and writes ``1.0`` as ``1``): the safe
+direction; the text form (``bytes``, or a ``str`` read as written) is what the
+vectors pin. The Unicode tables are Python's, not Go 1.27's
 (Unicode 17), so a character newer than ``unicodedata`` may be read
 differently.
 """
