@@ -69,7 +69,7 @@ here moves money: a payment reference is a value you observed.
 | Step | Buyer | Seller |
 |---|---|---|
 | 12 | `loop_join` | `loop_join` |
-| 04 | `loop_admit` (the seller's key, `GO`) | `loop_admit` (the buyer's key, `GO`) |
+| 04 | `loop_admit` (the seller's two keys from its `loop_join`, `GO`) | `loop_admit` (the buyer's two keys, `GO`) |
 | 05 | `loop_deal_open` (item, price, rail, the user's words), then `loop_deal_push` | |
 | 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
 | 05 | `loop_deal_reconcile` (the seller's half: same terms?) | |
@@ -106,11 +106,18 @@ Their openings stay in your shelf.
 A deal counts on your card once it reaches `pay` or `commit`. It counts as `stamped_by_both` once
 your node has verified the counterparty's final half (x-deal-v0 §11).
 
+A counterparty's half is checked against the two keys your admission pinned. Its steps must be
+signed by the peer's signing key, and its checkpoint, which commits exactly those steps, must be
+signed by the peer's checkpoint key. Each step must also chain to the one before it, commit its
+record, and pass the profile's record checks.
+
 ## Bringing an existing ledger
 
 If Goose has been sealing into a capsule-emit ledger, run `loop_import` with its path, once.
 The node trusts the ledger's own signing key, copies every record in order exactly as it was
-sealed, and checks that the shelf holds the same records in the same order. Only then does it move
+sealed, and checks that the shelf holds the same records in the same order. It holds the
+ledger's writer lock throughout, and refuses while another writer (an older Goose server) holds
+it, so stop that server first. Only after the check does it move
 the old files to `GOOSE_HOME/archive/pre-shelf/`. If anything does not match, the old files stay
 where they are and the import refuses. Running it again after an interruption resumes it.
 
@@ -126,6 +133,7 @@ Go's evidencebook:
 go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)"
 ```
 
-It accepts the card only if Go derives exactly the same bytes, as of the same cadence tick, and
-every `standard_history/1` property passes. CI runs the scripted run and this check
+It reads a consistent snapshot of the shelf, so the node may keep running. It accepts the card
+only if Go derives exactly the same bytes as of the tick the card names, and every
+`standard_history/1` property passes. CI runs the scripted run and this check
 (`python/examples/goose/tests`).

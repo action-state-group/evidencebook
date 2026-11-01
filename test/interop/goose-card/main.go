@@ -26,7 +26,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -59,6 +58,7 @@ func main() {
 
 type written struct {
 	Card   string                 `json:"card"`
+	Tick   uint64                 `json:"tick"`
 	AsOf   standardhistory.AsOf   `json:"as_of"`
 	Policy standardhistory.Policy `json:"policy"`
 }
@@ -85,18 +85,18 @@ func run(args []string) error {
 		return err
 	}
 	defer os.RemoveAll(dir)
-	// A copy: opening a shelf takes its writer lock, and the node may be running.
-	for _, suffix := range []string{"", "-wal"} {
-		if err := copyFile(args[0]+suffix, filepath.Join(dir, "shelf.db"+suffix)); err != nil && !(suffix != "" && errors.Is(err, os.ErrNotExist)) {
-			return err
-		}
+	// A snapshot: opening a shelf takes its writer lock, and the node may be
+	// running. VACUUM INTO copies one consistent read of the file, WAL included.
+	copied := filepath.Join(dir, "shelf.db")
+	if err := snapshot(ctx, args[0], copied); err != nil {
+		return err
 	}
-	asOf, deals, err := derive(ctx, filepath.Join(dir, "shelf.db"), ed25519.PublicKey(key))
+	asOf, deals, err := derive(ctx, copied, card.Tick, ed25519.PublicKey(key))
 	if err != nil {
 		return err
 	}
 	if asOf != card.AsOf {
-		return fmt.Errorf("the card is as of %+v, the shelf's newest tick is %+v", card.AsOf, asOf)
+		return fmt.Errorf("the card is as of %+v, the shelf's tick %d is %+v", card.AsOf, card.Tick, asOf)
 	}
 	want, err := evidencebook.DeriveStandardHistory(holderKind, asOf, card.Policy, deals)
 	if err != nil {
@@ -122,9 +122,10 @@ func run(args []string) error {
 	return nil
 }
 
-// derive reads the shelf as Go's evidencebook opens it: the newest tick's
-// anchor and extents, and one deal entry per deal book under them.
-func derive(ctx context.Context, path string, key ed25519.PublicKey) (standardhistory.AsOf, []standardhistory.Deal, error) {
+// derive reads the shelf as Go's evidencebook opens it: tick n's anchor and
+// extents (the newest tick's when n is 0), and one deal entry per deal book
+// under them.
+func derive(ctx context.Context, path string, n uint64, key ed25519.PublicKey) (standardhistory.AsOf, []standardhistory.Deal, error) {
 	var asOf standardhistory.AsOf
 	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path}).String())
 	if err != nil {
@@ -158,7 +159,7 @@ func derive(ctx context.Context, path string, key ed25519.PublicKey) (standardhi
 	if err != nil {
 		return asOf, nil, err
 	}
-	anchor, err := cadence.StandardHistoryAnchor(ctx, 0)
+	anchor, err := cadence.StandardHistoryAnchor(ctx, n)
 	if err != nil {
 		return asOf, nil, err
 	}
@@ -233,18 +234,15 @@ func records(ctx context.Context, shelf *evidencebook.Shelf, id string, extent u
 	return all[:extent], nil
 }
 
-func copyFile(from, to string) error {
-	in, err := os.Open(from)
+// snapshot writes one consistent copy of the SQLite file at from to to.
+func snapshot(ctx context.Context, from, to string) error {
+	if _, err := os.Stat(from); err != nil {
+		return err
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: from, RawQuery: "mode=ro"}).String())
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		return errors.Join(err, out.Close())
-	}
-	return out.Close()
+	_, err = db.ExecContext(ctx, `VACUUM INTO ?`, to)
+	return errors.Join(err, db.Close())
 }

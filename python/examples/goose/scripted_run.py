@@ -56,8 +56,10 @@ async def run(out: Path) -> None:
             await ss.initialize()
             buyer, seller = Goose(bs, "buyer"), Goose(ss, "seller")
             b, s = await buyer.call("loop_join"), await seller.call("loop_join")
-            await buyer.call("loop_admit", peer_key_id=s["key_id"], decision="GO", reason="known inference seller")
-            await seller.call("loop_admit", peer_key_id=b["key_id"], decision="GO", reason="paying customer")
+            await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
+                             decision="GO", reason="known inference seller")
+            await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
+                              decision="GO", reason="paying customer")
 
             # 05: the buyer opens the deal and pushes its half; the seller
             # answers it (offer, acceptance, commit) and pushes its own.

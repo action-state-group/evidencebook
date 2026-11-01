@@ -22,6 +22,8 @@ import deal_records as dr  # noqa: E402
 import goose_node as gn  # noqa: E402
 from agent_action_capsule import standard_history as sh  # noqa: E402
 
+from capsule_emit.store_backed_ledger import LedgerError  # noqa: E402
+
 from evidencebook import deal  # noqa: E402
 
 CHECKER = HERE.parents[2] / "dealprofile" / "x-deal-v0" / "check_profile.py"
@@ -57,7 +59,7 @@ def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "r
     other's final half."""
     chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
     buyer.seal(chain, chain.open(clock.at, "buy 1k tokens"))
-    opened = gn.verify_half(buyer.half(DEAL))
+    opened = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
     chain = seller.new_deal(DEAL, dr.ROLE_SELLER, buyer.key_id, TERMS)
     seller.seal(chain, chain.open(clock.at, "sell 1k tokens") + chain.offer(clock.at)
                 + chain.accept_and_commit(clock.at, opened["records"][-1]["digest"]))
@@ -69,7 +71,7 @@ def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "r
         chain = node.deal(DEAL)
         node.seal(chain, chain.close(clock.at, status))
     for me, peer in ((buyer, seller), (seller, buyer)):
-        verified = gn.verify_half(me.half(DEAL))
+        verified = gn.verify_half(me.half(DEAL), me.checkpoint_key_id)
         peer.note(gn.HALF_RECEIVED, {"deal_id": DEAL, "key_id": verified["key_id"],
                                      "close_half_digest": verified["close_half_digest"]}, subject_ref=DEAL)
     clock.at += timedelta(minutes=1)
@@ -146,13 +148,15 @@ def test_a_half_that_does_not_verify_is_refused(nodes, clock):
     buyer, seller = nodes
     deal_through(buyer, seller, clock)
     half = seller.half(DEAL)
-    gn.verify_half(half)
+    gn.verify_half(half, seller.checkpoint_key_id)
+    with pytest.raises(gn.Refused, match="pinned checkpoint key"):
+        gn.verify_half(half, buyer.checkpoint_key_id)
 
     def broken(change) -> None:
         bad = copy.deepcopy(half)
         change(bad)
         with pytest.raises(gn.Refused):
-            gn.verify_half(bad)
+            gn.verify_half(bad, seller.checkpoint_key_id)
 
     broken(lambda h: h["steps"][3]["payload"]["body"].update(disposition="ASK"))     # payload not committed
     broken(lambda h: h["steps"][1]["capsule"].update(key_id=buyer.key_id))           # another signer
@@ -160,6 +164,23 @@ def test_a_half_that_does_not_verify_is_refused(nodes, clock):
     broken(lambda h: h["steps"].pop())                                              # the checkpoint covers more
     broken(lambda h: h["steps"][0]["capsule"].update(deal_id="deal-ffffffffffffffff"))
     broken(lambda h: h.update(half="something else"))
+
+
+def test_a_peer_half_needs_a_go_admission_pinning_its_checkpoint_key(nodes, clock):
+    buyer, seller = nodes
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"))
+    half = buyer.half(DEAL)
+    with pytest.raises(gn.Refused, match="no admission"):
+        seller.verify_peer_half(half)
+    seller.note(gn.ADMITTED, {"peer": buyer.key_id, "checkpoint_key_id": buyer.checkpoint_key_id, "decision": "NO"})
+    with pytest.raises(gn.Refused, match="is NO"):
+        seller.verify_peer_half(half)
+    seller.note(gn.ADMITTED, {"peer": buyer.key_id, "checkpoint_key_id": seller.checkpoint_key_id, "decision": "GO"})
+    with pytest.raises(gn.Refused, match="pinned checkpoint key"):
+        seller.verify_peer_half(half)
+    seller.note(gn.ADMITTED, {"peer": buyer.key_id, "checkpoint_key_id": buyer.checkpoint_key_id, "decision": "GO"})
+    assert seller.verify_peer_half(half)["deal_id"] == DEAL
 
 
 def test_a_deal_needs_its_own_role_and_an_open_book(nodes, clock):
@@ -219,7 +240,7 @@ def test_an_import_that_does_not_match_keeps_the_flat_files(tmp_path, clock):
             if source is first:
                 node.import_ledger(source)
         if source is other:
-            with pytest.raises(Exception):
+            with pytest.raises(LedgerError):
                 node.import_ledger(source)
             assert other.exists(), "a refused import moves nothing"
         node.close()
@@ -242,3 +263,109 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
                                     str(tmp_path / f"{node}-card.json"), (tmp_path / f"{node}.key").read_text()],
                                    cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
             assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
+
+
+def test_an_import_refuses_while_the_ledgers_writer_holds_its_lock(tmp_path, clock):
+    import fcntl
+
+    source = flat_ledger(tmp_path / "capsule-ledger", 1)
+    with open(source.with_name(source.name + ".lock"), "a+") as held:
+        fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+        node = gn.Node.open(tmp_path / "home", operator="goose-old", now=clock)
+        try:
+            with pytest.raises(gn.Refused, match="another writer"):
+                node.import_ledger(source)
+        finally:
+            node.close()
+    assert source.exists()
+
+
+@pytest.fixture
+def server(tmp_path, monkeypatch):
+    """loop_server's tools, called as Goose calls them, on one node per home."""
+    pytest.importorskip("mcp")
+    import loop_server
+
+    def use(home: str):
+        if loop_server._node is not None:
+            loop_server._node.close()
+        monkeypatch.setattr(loop_server, "_node", None)
+        monkeypatch.setattr(loop_server, "HOME", str(tmp_path / home))
+        monkeypatch.setattr(loop_server, "OPERATOR", f"goose-{home}")
+        return loop_server
+
+    yield use
+    if loop_server._node is not None:
+        loop_server._node.close()
+        loop_server._node = None
+
+
+def call(tool, **arguments) -> dict:
+    return json.loads(tool(**arguments))
+
+
+def test_the_server_refuses_unadmitted_peers_and_contradicting_halves(server, tmp_path):
+    ls = server("seller")
+    seller = call(ls.loop_join)
+    ls = server("buyer")
+    buyer = call(ls.loop_join)
+    assert call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                rail="lightning", asked="buy")["error"].startswith("no admission")
+    assert call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id="zz", decision="GO")["ok"] is False
+    assert call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id=seller["checkpoint_key_id"],
+                decision="GO")["ok"]
+    opened = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                  rail="lightning", asked="buy")
+    half = str(tmp_path / "half.json")
+    assert call(ls.loop_deal_push, deal_id=opened["deal_id"], out_path=half)["ok"]
+
+    ls = server("seller")
+    refused = call(ls.loop_deal_respond, request_file=half, asked="sell")
+    assert refused == {"ok": False, "error": f"no admission sealed for {buyer['key_id']}: call loop_admit first"}
+    call(ls.loop_admit, peer_key_id=buyer["key_id"], checkpoint_key_id=buyer["checkpoint_key_id"], decision="GO")
+    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["ok"]
+    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["error"].endswith("already open on this node")
+    reply = str(tmp_path / "reply.json")
+    call(ls.loop_deal_push, deal_id=opened["deal_id"], out_path=reply)
+
+    # A seller half stating other terms reads contradicted, and nothing is recorded.
+    contradicting = json.loads(Path(reply).read_text())
+    ls = server("buyer")
+    assert call(ls.loop_deal_reconcile, peer_file=reply)["state"] == "matched"
+    contradicting["steps"][0]["payload"]["body"]["terms"]["price_minor"] = 400
+    Path(reply).write_text(json.dumps(contradicting))
+    assert call(ls.loop_deal_reconcile, peer_file=reply)["ok"] is False, "a changed payload no longer verifies"
+    # A seller that signs other terms than the buyer opened with reads contradicted.
+    second = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                  rail="lightning", asked="buy again")["deal_id"]
+    call(ls.loop_deal_push, deal_id=second, out_path=half)
+    ls = server("seller")
+    node = ls.node()
+    opened = node.verify_peer_half(json.loads(Path(half).read_text()))
+    chain = node.new_deal(second, dr.ROLE_SELLER, buyer["key_id"], dr.Terms("x", 400, "USD", "lightning", False))
+    at = datetime.now(timezone.utc)
+    node.seal(chain, chain.open(at, "sell") + chain.offer(at)
+              + chain.accept_and_commit(at, opened["records"][-1]["digest"]))
+    call(ls.loop_deal_push, deal_id=second, out_path=reply)
+    ls = server("buyer")
+    assert call(ls.loop_deal_reconcile, peer_file=reply)["state"] == "contradicted"
+    # A refused import comes back as JSON, not a tool error.
+    assert call(ls.loop_import, ledger=str(tmp_path / "nothing"))["error"].startswith("no flat ledger")
+
+
+def test_go_checks_a_card_as_of_an_older_tick(nodes, clock, tmp_path):
+    if not os.environ.get("GOOSE_GO_CHECK"):
+        pytest.skip("GOOSE_GO_CHECK unset")
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock)
+    assert buyer.tick().ticked
+    old = buyer.standard_history()
+    clock.at += timedelta(minutes=6)
+    chain = buyer.new_deal("deal-ffffffffffffffff", dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "again") + chain.check_and_pay(clock.at, "ref2"))
+    assert buyer.tick().ticked and buyer.standard_history()["tick"] == old["tick"] + 1
+    card = tmp_path / "old-card.json"
+    card.write_text(json.dumps(old))
+    check = subprocess.run(["go", "run", "./test/interop/goose-card", str(buyer.home / "shelf.db"), str(card),
+                            buyer.key_id], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+    assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr

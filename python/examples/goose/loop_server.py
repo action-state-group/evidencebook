@@ -56,7 +56,9 @@ try:  # mcp >= 2 renamed FastMCP to MCPServer
 except ImportError:  # mcp < 2
     from mcp.server.fastmcp import FastMCP
 
-from evidencebook import Coverage, EvidenceRequest, Message, ResponderKeys, Subject
+from capsule_emit.store_backed_ledger import LedgerError
+
+from evidencebook import BookError, Coverage, EvidenceRequest, Message, ResponderKeys, Subject
 
 import deal_records as dr
 import goose_node as gn
@@ -107,7 +109,7 @@ def _tool(fn):
     def run(*args, **kwargs) -> str:
         try:
             return fn(*args, **kwargs)
-        except (gn.Refused, ValueError, OSError, KeyError) as exc:
+        except (gn.Refused, BookError, LedgerError, ValueError, OSError, KeyError) as exc:
             return _refuse(str(exc))
     return server.tool()(run)
 
@@ -158,7 +160,7 @@ def loop_probe() -> str:
     for book_id in books:
         if book_id.startswith("deal/") and book_id.count("/") == 1:
             try:
-                gn.verify_half(n.half(book_id[len("deal/"):]))
+                gn.verify_half(n.half(book_id[len("deal/"):]), n.checkpoint_key_id)
             except gn.Refused as exc:
                 failures.append({"book": book_id, "error": str(exc)})
     return _out(ok=not failures, step="12", books=books, imported=len(n.ledger_capsules()), failures=failures)
@@ -191,15 +193,19 @@ def loop_tick() -> str:
 
 
 @_tool
-def loop_admit(peer_key_id: str, decision: str, reason: str = "") -> str:
-    """Seal this node's GO or NO on a peer, named by its signing key, before
-    any deal with it."""
+def loop_admit(peer_key_id: str, checkpoint_key_id: str, decision: str, reason: str = "") -> str:
+    """Seal this node's GO or NO on a peer before any deal with it. The peer
+    is named by its signing key, and its checkpoint key is pinned with it
+    (both from its loop_join): its halves must be signed by the one and
+    checkpointed under the other."""
     decision = decision.strip().upper()
     if decision not in ("GO", "NO"):
         raise ValueError("decision must be GO or NO")
-    if len(peer_key_id) != 64:
-        raise ValueError("peer_key_id is the peer's 64-hex signing key")
-    sealed = node().note(gn.ADMITTED, {"peer": peer_key_id, "decision": decision, "reason": reason})
+    for key in (peer_key_id, checkpoint_key_id):
+        if len(key) != 64 or key.strip("0123456789abcdef"):
+            raise ValueError("peer_key_id and checkpoint_key_id are the peer's 64-hex keys")
+    sealed = node().note(gn.ADMITTED, {"peer": peer_key_id, "checkpoint_key_id": checkpoint_key_id,
+                                       "decision": decision, "reason": reason})
     return _out(ok=True, step="04", record_id=sealed.record_id, peer=peer_key_id, decision=decision)
 
 
@@ -244,8 +250,7 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     deal: its baseline at the buyer's terms, the task authority, the offer,
     the buyer's acceptance (its half, by digest) and the commit."""
     n = node()
-    verified = gn.verify_half(_read_json(request_file))
-    _admitted(verified["key_id"])
+    verified = n.verify_peer_half(_read_json(request_file))
     baseline = verified["records"][0]["payload"]
     if baseline["x-deal-v0"]["record_type"] != "baseline" or baseline["body"]["intent"].get("party_role"):
         raise gn.Refused("the half does not open a deal as a buyer")
@@ -266,7 +271,7 @@ def loop_deal_reconcile(peer_file: str) -> str:
     terms. A half that ends in a close is recorded as received (the
     card's ``stamped_by_both``)."""
     n = node()
-    verified = gn.verify_half(_read_json(peer_file))
+    verified = n.verify_peer_half(_read_json(peer_file))
     deal_id = verified["deal_id"]
     chain = n.deal(deal_id)
     if verified["key_id"] != chain.peer:

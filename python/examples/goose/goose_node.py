@@ -32,6 +32,7 @@ import os
 import shutil
 import sqlite3
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,14 +73,16 @@ HOLDER_KIND = "person"
 JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
 
 
-def verify_half(half: Any) -> dict:
+def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     """Check a counterparty's half (:meth:`Node.half`) on its own bytes:
     each step's Capsule passes Class 1 and its producer envelope verifies
     under the half's one key; it is that deal's step ``n`` (its ``action_id``
     and ``deal_id``), carries its record header, chains to the step before
     it, and commits its payload, which passes the profile's record checks
-    (x-deal-v0 §8); and the half's checkpoint is signed and commits exactly
-    these steps (the MMR over their ids has its peaks). Returns the deal id,
+    (x-deal-v0 §8); and the half's checkpoint is signed by
+    ``checkpoint_key_id``, the counterparty's checkpoint key the caller
+    pinned (x-deal-v0 §10, "Admission"), and commits exactly these steps (the
+    MMR over their ids has its peaks). Returns the deal id,
     the signing key, the steps' records and the digest of the final close
     half (x-deal-v0 §10), or raises :class:`Refused`."""
     from cll.checkpoint import core
@@ -114,7 +117,9 @@ def verify_half(half: Any) -> dict:
             records.append({"capsule": step["capsule"], "payload": payload, "digest": digest})
             parent = capsule["capsule_id"]
         checkpoint = read_checkpoint(bytes.fromhex(half["checkpoint"]["statement"]))
-        if checkpoint.entries != len(steps) or checkpoint.key_id != half["checkpoint"]["key_id"]:
+        if checkpoint.key_id != checkpoint_key_id:
+            raise Refused("the half's checkpoint is not signed by the counterparty's pinned checkpoint key")
+        if checkpoint.entries != len(steps):
             raise Refused("the half's checkpoint does not cover exactly its steps")
         if [nodes.hashes[p] for p in core.peaks(nodes.size())] != list(checkpoint.peaks):
             raise Refused("the half's checkpoint does not commit these steps")
@@ -180,6 +185,26 @@ def _secret(path: Path) -> bytes:
 
 def _raw(key: Ed25519PrivateKey) -> bytes:
     return key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+
+
+@contextmanager
+def _flat_ledger_lock(source: Path):
+    """capsule-emit's writer lock on a flat ledger: an exclusive ``flock`` on
+    ``<ledger>.lock`` beside it, the file every capsule-emit writer of that
+    ledger takes. ``import_flat`` requires it held, so no line is appended
+    between the copy, its check and the move. A held lock refuses: stop the
+    ledger's writer (an older Goose server) first."""
+    import fcntl
+
+    with open(source.with_name(source.name + ".lock"), "a+", encoding="utf-8") as fh:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Refused(f"another writer holds {source}'s lock: stop it, then import") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def _parse_time(text: str) -> datetime:
@@ -297,6 +322,21 @@ class Node:
         with self._lock:
             return self.shelf.open(NODE_BOOK).record_response(request_record_id, reply, keys)
 
+    def verify_peer_half(self, half: Any) -> dict:
+        """:func:`verify_half` under the checkpoint key this node's admission
+        of the half's signer pinned; a signer admitted with anything but GO,
+        or not at all, is refused."""
+        try:
+            signer = half["steps"][0]["capsule"]["key_id"]
+        except (KeyError, IndexError, TypeError):
+            raise Refused("not a goose-deal-half/1 with steps") from None
+        admission = self.admission(signer)
+        if admission is None:
+            raise Refused(f"no admission sealed for {signer}: call loop_admit first")
+        if admission["decision"] != "GO":
+            raise Refused(f"the sealed admission for {signer} is {admission['decision']}: no deal")
+        return verify_half(half, admission["checkpoint_key_id"])
+
     # -- deals -----------------------------------------------------------------------
 
     def _deal_key(self, deal_id: str) -> bytes:
@@ -384,16 +424,20 @@ class Node:
     def import_ledger(self, source: str | os.PathLike) -> dict:
         """Copy an existing capsule-emit flat ledger into the host log
         ``goose/ledger`` (design note §8): each line put as it was sealed and
-        appended in order, nothing re-signed or dropped, re-runnable. Only
-        after the log's entry count and head match the flat ledger are its
-        files moved to ``<home>/archive/pre-shelf/``; on any mismatch they
+        appended in order, nothing re-signed or dropped, re-runnable, under
+        the flat ledger's writer lock. Only after the log holds exactly the
+        flat ledger's records in order are its files moved to ``<home>/archive/pre-shelf/``; on any mismatch they
         stay where they are and nothing is moved."""
-        from capsule_emit import ledger as flat
-        from capsule_emit.store_backed_ledger import import_flat
-
         source = Path(source).expanduser()
         if not source.exists():
             raise Refused(f"no flat ledger at {source}")
+        with _flat_ledger_lock(source):
+            return self._import_locked(source)
+
+    def _import_locked(self, source: Path) -> dict:
+        from capsule_emit import ledger as flat
+        from capsule_emit.store_backed_ledger import import_flat
+
         keys = {e["key_id"] for e in flat.read_ledger_entries(str(source))
                 if isinstance(e, dict) and isinstance(e.get("key_id"), str)}
         missing = sorted(keys - {self.key_id} - {k.hex() for k in self._trusted()})
