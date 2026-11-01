@@ -28,6 +28,7 @@ const (
 	DoctorIdentifiedView    = "identified_view"
 	DoctorProbeCheckpoints  = "probe_checkpoints"
 	DoctorProbeHistoryCard  = "probe_history_card"
+	DoctorProbeStandardCard = "probe_standard_history"
 )
 
 // Doctor finding states. NOT_CHECKED means what it means everywhere: the
@@ -58,6 +59,9 @@ type DoctorFinding struct {
 	// Records names what shows the finding: record ids, a binding digest,
 	// or an envelope's anchor.
 	Records []string `json:"records,omitempty"`
+	// Card is the standard_history/1 card exactly as the book serves it to
+	// a signed requester (the probe_standard_history finding only).
+	Card json.RawMessage `json:"card,omitempty"`
 }
 
 // DoctorWitness is what the host knows of one witness delivery of this
@@ -85,7 +89,10 @@ type DoctorOptions struct {
 	// not delivered to any witness.
 	Witnesses []DoctorWitness
 	// Probe, when set, asks the node's own responder for checkpoints and
-	// then history_card/1, as a stranger, and verifies both answers.
+	// then history_card/1, as a stranger, and verifies both answers. A book
+	// that serves standard_history/1 also reports the card a signed
+	// requester receives, built in-process by the serve path's own decision
+	// and builder, so doctor seals nothing.
 	Probe DoctorTransport
 	// Keys are the responder keys this node advertises, which the probe
 	// verifies under. Either left empty is this book's own key.
@@ -129,7 +136,78 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	if err != nil {
 		return nil, err
 	}
-	return append(findings, cards, card), nil
+	findings = append(findings, cards, card)
+	if b.standardHistory != nil {
+		std, err := b.doctorStandardCard(ctx, opts.Policy)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, std)
+	}
+	return findings, nil
+}
+
+// doctorStandardCard is the standard_history/1 card a signed requester is
+// served now: the full_history request decided by the gate Respond applies
+// to an authenticated requester and built by buildArtifact, at the latest
+// checkpoint. It is not sent through Respond, which would seal an
+// evidence_request_answered record for the asker.
+func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (DoctorFinding, error) {
+	f := DoctorFinding{Check: DoctorProbeStandardCard, State: DoctorStateMismatch}
+	one := uint64(1)
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{MinFreshness: &Freshness{Size: &one}}}
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(nonce); err != nil {
+		return f, err
+	}
+	req.Profile, req.Nonce = ProfileID, hex.EncodeToString(nonce)
+	data, err := EncodeRequest(req, MediaTypeJSON)
+	if err != nil {
+		return f, err
+	}
+	check := readRequest(Message{Octets: data, MediaType: MediaTypeJSON})
+	if check.reason != "" {
+		return f, fmt.Errorf("%w: the probe's own request: %s", ErrInvalid, check.reason)
+	}
+	b.mu.Lock()
+	now, log := b.now(), b.logLocked()
+	_, isCLL := b.commitments.(cllMaterialSource)
+	b.mu.Unlock()
+	view, err := b.view(ctx, log)
+	if err != nil {
+		return f, err
+	}
+	if len(view.checkpoints) == 0 {
+		f.State = DoctorStateNotChecked
+		f.Detail = "standard_history/1 is served, but the book has no checkpoint to build the card at; a signed requester's ask would issue one, doctor does not"
+		return f, nil
+	}
+	g := gate{requester: "doctor-probe", relationship: view.relationship(""), policy: policy, standardHistory: true, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
+	// mayIssue is false: doctor never cuts a checkpoint.
+	d := decide(view, check, g, now, false)
+	switch {
+	case d.Reason != "":
+		f.Detail = fmt.Sprintf("standard_history/1 is refused %s to a signed requester, but the book serves it", d.Reason)
+		return f, nil
+	}
+	anchor := view.checkpoints[d.Anchor]
+	built, err := b.buildArtifact(ctx, view, check.request, anchor, d.Leaves, nil)
+	if err != nil {
+		f.Detail = fmt.Sprintf("the host cannot build the standard_history/1 card: %v", err)
+		return f, nil
+	}
+	f.State, f.Records, f.Card = DoctorStateMatch, []string{anchorDigest(anchor)}, built.artifact
+	f.Detail = "the standard_history/1 card a signed requester receives, whatever the tier, at the latest checkpoint; built in-process, not sent, so no record was sealed"
+	var card struct {
+		InWindow struct {
+			Of      int `json:"of"`
+			Counted int `json:"counted"`
+		} `json:"in_window"`
+	}
+	if json.Unmarshal(built.artifact, &card) == nil && card.InWindow.Of > 0 {
+		f.Detail += fmt.Sprintf("; window %d months, %d deals counted", card.InWindow.Of, card.InWindow.Counted)
+	}
+	return f, nil
 }
 
 // probeTarget is what a probe's answer is checked against: the advertised
