@@ -30,8 +30,12 @@ from .book import (
     RELATIONSHIP_COUNTERPARTY,
     RELATIONSHIP_IDENTIFIED,
     RELATIONSHIP_STRANGER,
+    OPENING_PREFIX,
+    RECORD_HEADER_MEMBER,
     Book,
+    CapsuleSealer,
     DerivationDefinition,
+    Opening,
     RequestLimiter,
     ResponderKeys,
     ResponderPolicy,
@@ -39,6 +43,8 @@ from .book import (
     SentRequest,
     SharePolicy,
     WindowLimiter,
+    new_opening,
+    verify_opening,
 )
 from .cadence import (
     Cadence,
@@ -54,6 +60,7 @@ from .cadence import (
 from .errors import BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, ReleasedError, UnsupportedError
 from .record import (
     CITES,
+    COMMIT_ALG_NONCE256,
     EPISTEMIC_TYPES,
     LINK_TYPES,
     OBSERVED_EVENT,
@@ -87,7 +94,8 @@ from .shelf import HeldLock, HostLog, HostLogStores, Shelf, ShelfRecord, ShelfRe
 from .store import FileStore, MemoryStore, Store, StoredRecord
 
 __all__ = [
-    "Book", "Checkpoint", "Entry", "Header", "Link", "Correlation", "Record",
+    "Book", "CapsuleSealer", "Opening", "new_opening", "verify_opening", "RECORD_HEADER_MEMBER", "OPENING_PREFIX",
+    "COMMIT_ALG_NONCE256", "Checkpoint", "Entry", "Header", "Link", "Correlation", "Record",
     "EvidenceRequest", "Subject", "Coverage", "Message", "Reply", "SentRequest", "ResponderKeys",
     "RespondOptions", "SharePolicy", "ResponderPolicy", "RequestLimiter", "WindowLimiter", "DerivationDefinition",
     "Signer", "Ed25519Signer", "Store", "MemoryStore", "FileStore", "StoredRecord",

@@ -7,6 +7,21 @@
   one record that carries it (a pay check, one of SH's three values); two carriers, a record that is
   no pay check, or another value read as absent. Eleven history and four check cases join the
   Go/Python parity vectors.
+- Records whose Capsule their caller seals, and field commitments, as Go's book makes them
+  (evidencebook#265, the deal books the Goose reference keeps):
+  - `Book.append_capsule(entry, originals, seal)` (Go `Book.AppendCapsule`): the book takes the
+    next position and builds the header, the caller's sealer returns a Capsule carrying it in
+    `evidence_record_header`, and the book accepts it only if it verifies as that record and is
+    signed by the book's signer.
+  - `Entry.fields`: salted `sha256-jcs-nonce256` commitments in the header's `field_commitments`,
+    each opening kept as an original `opening.<field>`; `Book.opening` reads one back, checked
+    against its commitment (`Opening`, `new_opening`, `verify_opening`).
+  - A book reopens records whose Capsule carries its header, as Go's does. Before this, a Python
+    book refused a deal book a Go writer left on a shared shelf.
+  - `evidencebook.deal.emit_input`: a step's or report's Capsule members as
+    `capsule_emit.produce.Input`, for the producer's own `produce.seal`.
+  - A Go writer and a Python continuer of one deal book (and the reverse) read the same steps and
+    openings (`test/interop/caller-sealed`, CI job `shelf-interlock`).
 - x-deal-v0 in Python: `evidencebook.deal`, at byte parity with Go's `dealprofile`
   (evidencebook#264, design evidencebook#254 §8), so a Python shelf can derive
   `standard_history/1` from deal books.

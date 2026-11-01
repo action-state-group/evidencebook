@@ -16,7 +16,7 @@ from typing import Any
 __all__ = [
     "ACTION_TYPE_FYI", "ACTION_TYPE_DECIDE", "EFFECT_DISPATCHED", "ATTESTATION_RUNTIME_CLAIMED",
     "RELATION_FOLLOWS", "RELATION_CONFIRMS", "Capsule", "Disposition", "Effect", "Chain", "Extension",
-    "rfc3339_seconds",
+    "rfc3339_seconds", "emit_input",
 ]
 
 ACTION_TYPE_FYI = "fyi"
@@ -92,3 +92,32 @@ def rfc3339_seconds(at: datetime) -> str:
     if at.tzinfo is None:
         at = at.replace(tzinfo=timezone.utc)
     return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def emit_input(capsule: Capsule, *extensions: Extension) -> Any:
+    """``capsule`` as ``capsule_emit.produce.Input``, with ``extensions``
+    after its own (a book record's ``evidence_record_header``, say): what
+    Go's ``dealprofile`` hands ``emit.Seal``. Sealing it stays the
+    producer's, with its own key."""
+    import json
+
+    from capsule_emit import produce
+
+    disposition = effect = chain = None
+    if capsule.disposition is not None:
+        d = capsule.disposition
+        disposition = produce.Disposition(d.decision, d.approver, d.human_disposed, d.verdict_class, d.reason_digest)
+    if capsule.effect is not None:
+        e = capsule.effect
+        effect = produce.Effect(e.type, e.status, e.irreversibility_class, e.effect_attestation)
+    if capsule.chain is not None:
+        chain = produce.Chain(capsule.chain.parent_capsule_id, capsule.chain.relation)
+    # An Extension's value is a JSON value, or bytes already JSON text (Go's
+    # json.RawMessage, such as a record header's canonical octets).
+    members = [produce.Extension(x.name, x.value if isinstance(x.value, bytes)
+                                 else json.dumps(x.value, ensure_ascii=False, separators=(",", ":")))
+               for x in (*capsule.extensions, *extensions)]
+    return produce.Input(action_id=capsule.action_id, action_type=capsule.action_type, operator=capsule.operator,
+                         developer=capsule.developer, timestamp=capsule.timestamp, disposition=disposition,
+                         effect=effect, chain=chain, extensions=tuple(members))
+

@@ -20,7 +20,7 @@ before it, is not here; the reference checker (``check_profile.py``) runs it.
 """
 from .capsule import (
     ACTION_TYPE_DECIDE, ACTION_TYPE_FYI, ATTESTATION_RUNTIME_CLAIMED, EFFECT_DISPATCHED, RELATION_CONFIRMS,
-    RELATION_FOLLOWS, Capsule, Chain, Disposition, Effect, Extension,
+    RELATION_FOLLOWS, Capsule, Chain, Disposition, Effect, Extension, emit_input,
 )
 from .check import (
     STAGE_CANONICALIZATION, STAGE_DIGEST, STAGE_PERSONAL_DATA, STAGE_SCHEMA, STAGE_WORDING, StageError, check,
