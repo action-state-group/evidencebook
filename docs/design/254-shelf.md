@@ -536,7 +536,7 @@ many-books case in Go (§1.1); the Python reference is what a Python developer c
 
 ## 10. Work items
 
-Each is filed separately on project 1; none is implemented in this note's lane.
+Each is filed separately on project 1, except P1, which is capsules-plugin#206 itself, retargeted; none is implemented in this note's lane.
 
 | # | Repository | Item | Depends on |
 |---|---|---|---|
@@ -545,10 +545,11 @@ Each is filed separately on project 1; none is implemented in this note's lane.
 | C1 | capsule-emit | Rust: capsule-emit on CLL 0.4.0, released | A2 |
 | C2 | capsule-emit | Python: capsule-emit on CLL 0.8, released | none |
 | E2 | evidencebook | Rust: the `shelf` feature (writing book, SQLite store, `Shelf`, `Cadence`, host log, lock or host-held lock, originals) on CLL 0.4.0, passing E1's vectors and interlock | E1, A2, C1 |
-| E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8, and x-deal-v0 in Python at parity with `dealprofile`, passing E1's vectors and interlock; amend #191 (D6) | E1, C2 |
-| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8) | E3, D3 |
+| E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8, passing E1's vectors and interlock; amend #191 (D6) | E1, C2 |
+| E5 | evidencebook | Python: x-deal-v0 (records, fingerprints, the §11 deal entries) at byte parity with `dealprofile` | E3 |
+| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8) | E3, E5, D3 |
 | C3 | capsule-emit | retire `examples/goose-capsule/loop_server.py` and point `docs/adapters/goose.md` and the example README at `python/examples/goose/` | G1 |
 | E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a `same_controller_asserted` binding stapling a Mesh and a Goose History), with a worked example CI runs | E2, E3, G1 |
-| P1 | Mesh-LLM/capsules-plugin | the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
+| P1 | Mesh-LLM/capsules-plugin | capsules-plugin#206, retargeted: the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
 | L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
 | A1 | agent-action-capsule | only if Steven rules for D4: a composed History carried by one request | D4 ruling |
