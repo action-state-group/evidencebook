@@ -12,7 +12,7 @@ is imported once as a host log, nothing re-signed.
     ----  ---------------------------------------------------------------
     01    loop_seal
     02    loop_book, loop_tick, loop_book_bundle
-    04    loop_admit
+    04    loop_admit, loop_deal_bundle
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
     07    loop_ask, loop_ask_reply (the asker's side)
@@ -282,7 +282,7 @@ def loop_deal_open(peer_key_id: str, item: str, price_minor: int, currency: str,
     n = node()
     deal_id = deal_id or f"deal-{os.urandom(8).hex()}"
     chain = n.new_deal(deal_id, dr.ROLE_BUYER, peer_key_id, dr.Terms(item, price_minor, currency, rail, refundable))
-    sealed = n.seal(chain, chain.open(_now(), asked))
+    sealed = n.open_deal(chain, chain.open(_now(), asked))
     return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 
@@ -311,7 +311,8 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
                      body["recourse"]["rail"], body["recourse"]["refundable"])
     deal_id = verified["deal_id"]
-    if n.has_deal(deal_id):
+    resumed = n.has_deal(deal_id)
+    if resumed:
         # An answer cut short part-way: the steps it sealed stay, the rest follow.
         chain = n.deal(deal_id)
         if chain.role != dr.ROLE_SELLER or chain.peer != verified["key_id"] or chain.terms != terms:
@@ -321,7 +322,7 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     steps = chain.respond(_now(), asked, verified["records"][-1]["digest"])
     if not steps:
         raise gn.Refused(f"deal {deal_id} is already answered")
-    sealed = n.seal(chain, steps)
+    sealed = n.seal(chain, steps) if resumed else n.open_deal(chain, steps)
     return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 
@@ -349,6 +350,19 @@ def loop_deal_reconcile(peer_file: str) -> str:
                           subject_ref=deal_id).record_id
     return _out(ok=True, step="05", deal_id=deal_id, state=state, steps=len(verified["records"]),
                 closed=verified["close_half_digest"] is not None, recorded=recorded)
+
+
+@_tool
+def loop_deal_bundle(deal_id: str, out_path: str) -> str:
+    """Write an Evidence Bundle of this node's record of a deal's opening to
+    ``out_path``: that record, the admission it cites (this node's GO,
+    sealed before the deal) and every record of the node book between them
+    and the checkpoint, so a verifier reads that no deal record cites a NO.
+    The deal's own steps stay in the deal's book (``loop_deal_push``)."""
+    n = node()
+    built = n.book_bundle(gn.NODE_BOOK, n.deal_opened(deal_id))
+    _write(out_path, json.dumps(built, sort_keys=True).encode())
+    return _out(ok=True, step="04", deal_id=deal_id, file=out_path)
 
 
 # -- 06 Settle and close ----------------------------------------------------------------------

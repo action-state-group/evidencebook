@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The Goose reference's deal cites the admission it rests on (evidencebook#302): the first step of a deal
+  cites the node book's `goose_admitted` GO record, a deal opened on a NO or no admission seals nothing, and
+  the node book seals `goose_deal_opened`, its record of the deal, citing the same admission. `loop_deal_bundle`
+  exports the opening and the admission as one Evidence Bundle, and a NO is cited by no record in it.
 - The Goose reference exports a book bundle (evidencebook#301): `loop_book_bundle` / `Node.book_bundle` write
   an `evidence-bundle/v2` for one record of a book (its position, inclusion proof and the checkpoint covering
   it), built by agent-action-capsule's producer and checked by its strict verifier; with a witness directory

@@ -268,9 +268,20 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
     call = json.loads((tmp_path / "buyer-model-call.json").read_text())
     assert call["effect"]["effect_attestation"] == "runtime_claimed" and call["model_attestation"]["model_id"] == \
         "rehearsal-model" and call["key_id"] == (tmp_path / "buyer.key").read_text()
+    # 04: the first step of the deal cites the admission, which the opening bundle carries beside the
+    # node's record of the deal, both under the buyer's key.
+    opening = json.loads((tmp_path / "buyer-opening-bundle.json").read_text())
+    first = json.loads((tmp_path / "buyer-half.json").read_text())["steps"][0]["capsule"]
+    cited = [l["target"] for l in first["evidence_record_header"]["links"] if l["type"] == "cites"]
+    ids = {r["capsule_id"] for r in opening["records"]}
+    assert len(cited) == 1 and cited[0] in ids and opening["root"] in ids and cited[0] != opening["root"]
+    assert {r["key_id"] for r in opening["records"]} == {(tmp_path / "buyer.key").read_text()}
     bundle = json.loads((tmp_path / "buyer-model-call-bundle.json").read_text())
     assert bundle["bundle_kind"] == "evidence-bundle/v2" and bundle["root"] == call["capsule_id"]
     if os.environ.get("GOOSE_GO_CHECK"):
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(tmp_path / "buyer-opening-bundle.json")],
+                               cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
         check = subprocess.run(["go", "run", "./test/interop/verify", str(tmp_path / "buyer-model-call-bundle.json")],
                                cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
         assert check.returncode == 0, check.stdout + check.stderr
@@ -692,3 +703,63 @@ def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(t
         assert not refused["ok"] and "holds no record" in refused["error"]
         assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
         assert (tmp_path / "call.cadence-witness-receipt.json").is_file()
+
+        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
+        assert receipt["receipt_b64"] and (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
+        assert (tmp_path / "call.checkpoint.cose").read_bytes() == node.book_checkpoint(gn.NODE_BOOK)
+
+def _admit(node: gn.Node, peer: gn.Node, decision: str = "GO") -> str:
+    return node.note(gn.ADMITTED, {"peer": peer.key_id, "checkpoint_key_id": peer.checkpoint_key_id,
+                                   "decision": decision, "reason": ""}).record_id
+
+
+def test_the_first_deal_step_cites_the_admission_and_the_node_book_records_the_opening(nodes, clock):
+    buyer, seller = nodes
+    admission = _admit(buyer, seller)
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    sealed = buyer.open_deal(chain, chain.open(clock.at, "buy"))
+    first = buyer.shelf.open(f"deal/{DEAL}").records()[0]
+    assert first.record_id == sealed[0].record_id
+    assert first.header.links_to("cites") == [admission]
+    opened = buyer.deal_opened(DEAL)
+    record = buyer.shelf.open(gn.NODE_BOOK).get(opened)
+    assert record.header.links_to("cites") == [admission] and record.seq > buyer.shelf.open(gn.NODE_BOOK).get(admission).seq
+    assert record.header.statement["first_step"] == first.record_id
+    # The half still verifies as a counterparty checks it.
+    gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
+
+
+def test_no_deal_opens_without_a_go_and_a_no_is_cited_by_nothing(nodes, clock):
+    buyer, seller = nodes
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    steps = chain.open(clock.at, "buy")
+    with pytest.raises(gn.Refused, match="no admission"):
+        buyer.open_deal(chain, steps)
+    no = _admit(buyer, seller, "NO")
+    with pytest.raises(gn.Refused, match="is NO"):
+        buyer.open_deal(chain, steps)
+    assert DEAL not in "".join(buyer.shelf.books()) and not buyer.notes(gn.DEAL_OPENED)
+    assert all(no not in r.header.links_to("cites") for r in buyer.shelf.open(gn.NODE_BOOK).records())
+    with pytest.raises(gn.Refused, match="sealed no opening"):
+        buyer.deal_opened(DEAL)
+
+
+def test_the_admission_and_the_deal_opening_export_as_one_bundle(nodes, clock, tmp_path):
+    from agent_action_capsule import bundle as aac
+
+    buyer, seller = nodes
+    admission = _admit(buyer, seller)
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.open_deal(chain, chain.open(clock.at, "buy"))
+    built = buyer.book_bundle(gn.NODE_BOOK, buyer.deal_opened(DEAL))
+    assert str(aac.verify_bundle(built, strict=True).verdict).endswith("VALID")
+    by_id = {r["capsule_id"]: r for r in built["records"]}
+    assert admission in by_id and built["root"] in by_id
+    keys = {r["key_id"] for r in built["records"]}
+    assert keys == {buyer.key_id}
+    if os.environ.get("GOOSE_GO_CHECK"):
+        path = tmp_path / "opening.json"
+        path.write_text(json.dumps(built))
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(path)], cwd=HERE.parents[2],
+                               capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
