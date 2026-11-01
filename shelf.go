@@ -109,8 +109,8 @@ var lockWriter = func(context.Context, string) (func() error, error) {
 //
 // The file has two kinds of handle: the shelf's own (records and
 // checkpoints of every book) and one per book's CLL log. Both use WAL and a
-// busy timeout, and CLL writes take an immediate transaction, so two writers
-// wait rather than fail. A record's append spans two handles (its log leaf,
+// busy timeout, and transactions on both begin IMMEDIATE, so two writers
+// wait under the busy timeout rather than fail. A record's append spans two handles (its log leaf,
 // then its row) and is not one transaction; that is the shape of the JSONL
 // journal and FileStore too, and Open's recovery reconciles a crash between
 // them. Do not fold the handles into one connection to "fix" it: the CLL
