@@ -355,11 +355,11 @@ jobs:
 
   shelf-interlock:
     # The shelf storage interlock (evidencebook#254 §5 item 2): the scripted
-    # shelf written by one process and continued by another, each dump equal
-    # to testdata/shelf, and two writers of one file excluding each other.
-    # Go writes and continues here; Rust (evidencebook#262) and Python
-    # (evidencebook#263) join it as writers and continuers of each other's
-    # files.
+    # shelf written by one process and continued by another, in every pair of
+    # languages, each dump (by every language) equal to testdata/shelf, and
+    # two writers of one file excluding each other across languages. Go and
+    # Python run here; Rust (evidencebook#262) joins as a writer and
+    # continuer of the others' files by adding itself to `langs`.
     name: Shelf storage interlock
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -371,33 +371,59 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Build the Go side
-        run: go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
-      - name: Write, continue and compare
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Build the Go side and install the Python side
         run: |
+          go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
+          python -m pip install ./python "agent-action-capsule==0.14.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.14.0" "cbor2==6.1.5"
+          printf '#!/bin/sh\nexec python "%s/test/interop/python-evidencebook/shelf.py" "$@"\n' "$PWD" > "$RUNNER_TEMP/shelf-py"
+          chmod +x "$RUNNER_TEMP/shelf-py"
+      - name: Write, continue and compare, in every pair of languages
+        run: |
+          langs="go py"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for writer in $langs; do
+            for continuer in $langs; do
+              dir="$work/$writer-$continuer"
+              "$RUNNER_TEMP/shelf-$writer" write "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-write.$reader.json" < /dev/null
+                cmp testdata/shelf/after-write.json "$dir/after-write.$reader.json"
+              done
+              "$RUNNER_TEMP/shelf-$continuer" continue "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-continue.$reader.json" < /dev/null
+                cmp testdata/shelf/after-continue.json "$dir/after-continue.$reader.json"
+              done
+              echo "written by $writer, continued by $continuer: every dump is the vector's"
+            done
+          done
+      - name: Two writers of one file exclude each other, in every pair of languages
+        run: |
+          langs="go py"
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
           "$RUNNER_TEMP/shelf-go" write "$work/s"
-          "$RUNNER_TEMP/shelf-go" dump "$work/s" > "$work/after-write.json"
-          cmp testdata/shelf/after-write.json "$work/after-write.json"
-          "$RUNNER_TEMP/shelf-go" continue "$work/s"
-          "$RUNNER_TEMP/shelf-go" dump "$work/s" > "$work/after-continue.json"
-          cmp testdata/shelf/after-continue.json "$work/after-continue.json"
-      - name: Two writers of one file exclude each other
-        run: |
-          work=$(mktemp -d)
-          trap 'rm -rf "$work"' EXIT
-          "$RUNNER_TEMP/shelf-go" write "$work/s"
-          "$RUNNER_TEMP/shelf-go" hold "$work/s" 20 > "$work/held" < /dev/null &
-          holder=$!
-          for _ in $(seq 100); do grep -q held "$work/held" && break; sleep 0.1; done
-          grep -q held "$work/held"
-          code=0
-          "$RUNNER_TEMP/shelf-go" try "$work/s" 500 || code=$?
-          test "$code" -eq 3
-          kill "$holder"
-          wait "$holder" || true
-          "$RUNNER_TEMP/shelf-go" try "$work/s" 5000
+          for holder in $langs; do
+            for trier in $langs; do
+              rm -f "$work/held"
+              "$RUNNER_TEMP/shelf-$holder" hold "$work/s" 20 > "$work/held" < /dev/null &
+              pid=$!
+              for _ in $(seq 100); do grep -q held "$work/held" && break; sleep 0.1; done
+              grep -q held "$work/held"
+              code=0
+              "$RUNNER_TEMP/shelf-$trier" try "$work/s" 500 < /dev/null || code=$?
+              test "$code" -eq 3
+              kill "$pid"
+              wait "$pid" || true
+              "$RUNNER_TEMP/shelf-$trier" try "$work/s" 5000 < /dev/null
+              echo "$holder holds, $trier waits"
+            done
+          done
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
@@ -487,7 +513,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install the package and its pinned dependencies
-        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.14.0" "checkpointed-local-log==0.7.0" "cbor2==6.1.5"
+        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.14.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.14.0" "cbor2==6.1.5"
       - name: Unit tests and testdata/evidence-request
         run: python -m pytest -q evidencebook/python/tests
       - name: Reproduce the History responder run byte for byte, and its -correlated run

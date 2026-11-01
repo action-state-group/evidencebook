@@ -2,7 +2,8 @@
 """The error classes every book operation raises, as Go's sentinel errors."""
 from __future__ import annotations
 
-__all__ = ["BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError"]
+__all__ = ["BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError",
+           "UnsupportedError"]
 
 
 class BookError(Exception):
@@ -27,3 +28,7 @@ class NotCoveredError(BookError):
 
 class ReleasedError(BookError):
     """The book was released; it takes no more writes (Go ``ErrReleased``)."""
+
+
+class UnsupportedError(BookError):
+    """The operation or stored format is not supported here (Go ``ErrUnsupported``)."""

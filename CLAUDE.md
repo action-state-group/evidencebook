@@ -81,7 +81,7 @@ text.
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
 | `rust/interop/` | `evidencebook-interop` (not published): the crate's Personal-Agent History and interop-profile runs, which the Rust CI `interop` job checks against the vectors and the Go runs |
-| `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book and the evidence request interaction, byte for byte with Go; not yet published |
+| `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book, the shelf and its cadence, and the evidence request interaction, byte for byte with Go; not yet published |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
 | `testdata/` | vectors and fixtures the Go and Rust tests read |
 | `schemas/`, `docs/` | the record header schema and vendored schemas; design notes, the interop PRD and the adapter and verifier guides |

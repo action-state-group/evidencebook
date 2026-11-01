@@ -40,7 +40,18 @@ from .book import (
     SharePolicy,
     WindowLimiter,
 )
-from .errors import BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, ReleasedError
+from .cadence import (
+    Cadence,
+    CadenceConfig,
+    CadenceTick,
+    LegacyCadence,
+    StandardHistoryAnchor,
+    TickResult,
+    WitnessCheck,
+    WitnessReceipt,
+    WitnessRejected,
+)
+from .errors import BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, ReleasedError, UnsupportedError
 from .record import (
     CITES,
     EPISTEMIC_TYPES,
@@ -72,6 +83,7 @@ from .request import (
     parse_reply,
 )
 from .signer import Ed25519Signer, Signer
+from .shelf import HeldLock, HostLog, HostLogStores, Shelf, ShelfRecord, ShelfRecords, SqliteStore, SqliteSubstrate
 from .store import FileStore, MemoryStore, Store, StoredRecord
 
 __all__ = [
@@ -79,6 +91,9 @@ __all__ = [
     "EvidenceRequest", "Subject", "Coverage", "Message", "Reply", "SentRequest", "ResponderKeys",
     "RespondOptions", "SharePolicy", "ResponderPolicy", "RequestLimiter", "WindowLimiter", "DerivationDefinition",
     "Signer", "Ed25519Signer", "Store", "MemoryStore", "FileStore", "StoredRecord",
+    "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore", "SqliteSubstrate", "HostLog", "HostLogStores", "HeldLock",
+    "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StandardHistoryAnchor", "TickResult", "WitnessCheck",
+    "WitnessReceipt", "WitnessRejected",
     "encode_request", "parse_reply",
     "PROFILE", "PROFILE_V1", "DERIVATION_HISTORY_CARD", "MEDIA_TYPE_JSON", "MEDIA_TYPE_CBOR", "DEFAULT_DEVELOPER",
     "MINIMUM_ABSENCE_WINDOW", "MAX_REPLY_BYTES", "MAX_REPLY_DEPTH", "MAX_REPLY_ITEMS", "MAX_REPLY_RECEIPTS",
@@ -87,5 +102,5 @@ __all__ = [
     "RELATIONSHIP_STRANGER", "RELATIONSHIP_IDENTIFIED", "RELATIONSHIP_COUNTERPARTY",
     "CITES", "EPISTEMIC_TYPES", "LINK_TYPES", "OBSERVED_EVENT", "PRODUCER_CLAIM",
     "RECORD_TYPE_REQUEST", "RECORD_TYPE_RESPONSE", "RECORD_TYPE_ABSENCE", "RECORD_TYPE_REQUEST_ANSWERED",
-    "BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError",
+    "BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError", "UnsupportedError",
 ]

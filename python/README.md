@@ -47,11 +47,53 @@ A reply not signed under the pinned responder key for the request is
 refused and not recorded. Malformed and unauthenticated requests are
 answered but never grow the log.
 
+## The shelf
+
+A shelf is one subject key's books in one SQLite file (evidencebook#254 §2),
+the same file Go's `OpenSQLiteShelf` writes: Go and Python each open,
+continue and verify the other's shelf.
+
+```python
+import sqlite3
+from capsule_emit.artifact.sqlite import SqliteArtifactStore
+
+db = sqlite3.connect("profile.db", isolation_level=None, check_same_thread=False)
+db.execute("PRAGMA foreign_keys=ON")
+originals = SqliteArtifactStore(db, "my-namespace", [signer.public_key()])
+originals.init()
+
+with eb.Shelf.open_sqlite("profile.db", operator="my-operator", signer=signer,
+                          checkpoint_key=log_key, originals=originals) as shelf:
+    book = shelf.open("deal/1")            # one CLL log per book
+    book.append(eb.Entry("observation", eb.OBSERVED_EVENT, payloads=(b"...",)))
+    cadence = shelf.cadence(eb.CadenceConfig(log_id="deal-cadence/0123456789abcdef",
+                                             ended=is_closed, witness_ids=["w"],
+                                             witnesses=directory))
+    result = cadence.tick(now)             # due on time alone
+    cadence.witnessed(result.tick.n, receipt)
+```
+
+- Each book is its own Checkpointed Local Log in the file (`cll.log.sqlite`),
+  checkpointed by CLL's checkpoint runner; its records and checkpoints are the
+  shelf's `book_records` and `book_checkpoints`, and its payloads go to the
+  one artifact store (`capsule_emit.artifact`). A book's open appends a record
+  stored but not yet in its log (a crash between the two writes).
+- The shelf takes an exclusive `flock` on `<file>.lock` (unix only), or the
+  host passes a lock it already holds (`held_lock`).
+- `Shelf.host_log` opens a log whose records the host seals itself, in the
+  cadence or outside it; `Shelf.legacy` opens a pre-shelf log in the cadence.
+- `Cadence` cuts ticks, verifies witness receipts with AAC's verifier, and
+  gives a log checkpoint's witnessed chain (`chain`) and a tick's
+  `standard_history/1` anchor (`standard_history_anchor`).
+  `import_legacy` carries a pre-shelf cadence in.
+
 ## What it reuses
 
 The request map, the reply envelope, the signed refusal, RFC 8785 and
-capsule ids come from `agent-action-capsule`. The MMR, its proofs and the
-checkpoint claims map come from `checkpointed-local-log`. The package adds
+capsule ids come from `agent-action-capsule`. The MMR, its proofs, the
+checkpoint claims map, the SQLite log and the checkpoint runner come from
+`checkpointed-local-log`, and a shelf's artifact store from `capsule-emit`.
+The package adds
 the book, its record capsules, the responder's decision steps (as Go's
 `evidencerequest.Decide` orders them) and the canonical Artifact.
 
@@ -60,8 +102,8 @@ the book, its record capsules, the responder's decision steps (as Go's
 It answers over the native binding (JSON or CBOR octets in, octets out);
 carrying them over A2A or MCP is the caller's. It keeps the two
 authenticated indexes whose roots a checkpoint commits, but serves no
-proofs over them, builds no Evidence Bundles and holds no field
-commitments.
+proofs over them, builds no Evidence Bundles and seals no field
+commitments (it reads and keeps those a Go book sealed).
 
 ## Development
 
@@ -71,4 +113,5 @@ python -m venv .venv && .venv/bin/pip install -e ".[test]"
 ```
 
 The interoperability programs in `../test/interop/python-evidencebook/`
-reproduce the Go runs byte for byte; CI runs them (job `python`).
+reproduce the Go runs byte for byte; CI runs them (jobs `python` and, for
+the shelf, `shelf-interlock`).

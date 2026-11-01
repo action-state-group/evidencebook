@@ -323,6 +323,16 @@ class Book:
     ``signer`` signs record envelopes, envelopes and refusals; ``log_key``
     signs the log's checkpoints and may be another key. ``now`` is the clock
     every commit, checkpoint and answer reads.
+
+    By default the log is in memory, rebuilt from ``store`` when the book
+    opens. A durable ``substrate`` (a shelf's :class:`~evidencebook.shelf.SqliteSubstrate`)
+    replaces ``log_id`` and ``log_key``: the open then checks every stored
+    record against the log position it claims and appends a record stored
+    but not yet in the log (a crash between the two writes) at its
+    ``committed_at``, where it must land at its seq. ``originals`` is an
+    artifact store (``capsule_emit.artifact``) that takes each record's
+    payloads instead of the store, as Go's book keeps them. ``indexes`` are
+    the book's authenticated indexes; ``None`` gives the defaults.
     """
 
     def __init__(
@@ -331,12 +341,15 @@ class Book:
         operator: str,
         *,
         signer: Signer,
-        log_id: str,
-        log_key: Signer,
+        log_id: str | None = None,
+        log_key: Signer | None = None,
         store: Store | None = None,
         developer: str = DEFAULT_DEVELOPER,
         now: Callable[[], datetime] | None = None,
         responder: ResponderPolicy | None = None,
+        substrate: CLLSubstrate | None = None,
+        originals: Any = None,
+        indexes: Sequence[Any] | None = None,
     ):
         if not book_id or not operator.strip() or not (developer or DEFAULT_DEVELOPER).strip():
             raise InvalidError("book id, operator and developer must not be empty")
@@ -344,14 +357,24 @@ class Book:
         self._responder.validate()
         self._id, self._operator, self._developer = book_id, operator, developer or DEFAULT_DEVELOPER
         self._signer = signer
-        self._substrate = CLLSubstrate(log_id, log_key)
+        if substrate is None:
+            if log_id is None or log_key is None:
+                raise InvalidError("a book needs its log id and log key, or a substrate")
+            substrate = CLLSubstrate(log_id, log_key)
+        elif log_id is not None or log_key is not None:
+            raise InvalidError("a book on a substrate takes no log id or log key")
+        self._substrate = substrate
         self._store = store if store is not None else MemoryStore()
+        self._originals = originals
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._lock = threading.Lock()
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
         self._order: list[str] = []
-        self._indexes = default_indexes()
+        self._indexes = default_indexes() if indexes is None else list(indexes)
+        # A record stored whose log append failed: it keeps its seq and is
+        # appended first, before anything new (Go's flushPendingLocked).
+        self._pending: tuple[Record, StoredRecord] | None = None
         self._roots: dict[str, dict] = {}
         self._checkpoints: list[Checkpoint] = []
         self._derivations: dict[str, DerivationDefinition] = {}
@@ -361,6 +384,7 @@ class Book:
     # -- opening ------------------------------------------------------------------
 
     def _recover(self) -> None:
+        recovered: list[tuple[Record, StoredRecord]] = []
         for i, stored in enumerate(self._store.records()):
             if stored.seq != i + 1:
                 raise CorruptError(f"stored records are not dense at seq {stored.seq}")
@@ -377,13 +401,26 @@ class Book:
                     or stored.capsule.get("capsule_id") != stored.record_id
                     or attestation.get("agent_input_digest") != _digest(stored.header)):
                 raise CorruptError(f"capsule for {stored.record_id} does not commit its header")
-            record = Record(stored.record_id, stored.seq, header)
-            self._substrate.append(record.record_id)
+            recovered.append((Record(stored.record_id, stored.seq, header), stored))
+        # The log holds a prefix of the stored records; a record above it was
+        # stored and not appended (a crash between the two writes), and is
+        # appended at its committed_at, where it must land at its seq. An
+        # in-memory log holds nothing yet, so every record is appended.
+        committed = self._substrate.entry_ids()
+        if len(committed) > len(recovered):
+            raise CorruptError(f"the log holds {len(committed)} identities, the store {len(recovered)} records")
+        for seq, record_id in enumerate(committed, start=1):
+            if recovered[seq - 1][0].record_id != record_id:
+                raise CorruptError(f"log seq {seq} is not stored record {recovered[seq - 1][0].record_id}")
+        for record, _ in recovered[len(committed):]:
+            self._commit(record)
+        for record, stored in recovered:
+            header = record.header
             self._admit(record, stored)
             if header.record_type == RECORD_TYPE_INDEX_ROOT:
                 root = header.statement
                 if not isinstance(root, dict) or not isinstance(root.get("index"), str):
-                    raise CorruptError(f"index_root record {stored.record_id} holds no index root")
+                    raise CorruptError(f"index_root record {record.record_id} holds no index root")
                 self._roots[root["index"]] = {k: root.get(k) for k in ("index", "root", "size")}
         for statement in self._store.checkpoints():
             try:
@@ -392,6 +429,44 @@ class Book:
                 raise CorruptError(f"stored checkpoint: {exc}") from None
             self._substrate.restore(cp)
             self._checkpoints.append(cp)
+
+    def _commit(self, record: Record) -> None:
+        """Append a stored record's id to the log at the time it says it was
+        committed, requiring it to land at its seq."""
+        at = parse_ns(record.header.committed_at)
+        if at is None:
+            raise CorruptError(f"committed_at of {record.record_id} is not an RFC 3339 time")
+        seq = self._substrate.append(record.record_id, from_nanos(at))
+        if seq != record.seq:
+            raise CorruptError(f"record {record.record_id} landed at {seq}, not {record.seq}")
+
+    def _flush_pending(self) -> None:
+        if self._pending is None:
+            return
+        record, stored = self._pending
+        try:
+            self._commit(record)
+        except Exception as exc:
+            raise CorruptError(f"record {record.record_id} is stored but not yet committed: {exc}") from exc
+        self._pending = None
+        self._admit(record, stored)
+
+    def _payloads(self, record_id: str) -> tuple[bytes, ...]:
+        """A record's payloads: kept with it, or held by the originals."""
+        payloads = self._stored[record_id].payloads
+        if payloads or self._originals is None:
+            return payloads
+        from capsule_emit.artifact import NotFoundError as NoOriginals
+
+        try:
+            held = self._originals.get(record_id)
+        except NoOriginals:
+            return ()
+        named = {a.name: a.content for a in held.artifacts if a.state == "present" and a.content is not None}
+        out = []
+        while f"payload-{len(out) + 1}" in named:
+            out.append(named[f"payload-{len(out) + 1}"])
+        return tuple(out)
 
     def _admit(self, record: Record, stored: StoredRecord) -> None:
         self._records[record.record_id] = record
@@ -442,7 +517,10 @@ class Book:
         with self._lock:
             if not self._released:
                 self._released = True
-                self._store.close()
+                try:
+                    self._store.close()
+                finally:
+                    self._substrate.close()
 
     def append(self, entry: Entry) -> Record:
         """Seal ``entry`` as a record, store it with its payloads, and commit
@@ -453,6 +531,7 @@ class Book:
     def _append(self, entry: Entry) -> Record:
         if self._released:
             raise ReleasedError("the book is released")
+        self._flush_pending()
         seq = len(self._order) + 1
         committed_at = utc(self._now())
         header = Header(
@@ -471,11 +550,24 @@ class Book:
             raise InvalidError(f"header: {exc}") from None
         record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
                                                    developer=self._developer, at=committed_at, signer=self._signer)
-        stored = StoredRecord(seq, record_id, header_bytes, capsule, envelope, tuple(bytes(p) for p in entry.payloads))
+        payloads = tuple(bytes(p) for p in entry.payloads)
+        if payloads and self._originals is not None:
+            # Originals are written after sealing, with the record they belong
+            # to, in one put: the artifact store never holds bytes no record
+            # commits.
+            from capsule_emit.artifact import PRESENT, Artifact, Record as Held
+
+            self._originals.put(Held(record_id, jcs(capsule), envelope, [
+                Artifact(name=f"payload-{i}", state=PRESENT, content=p) for i, p in enumerate(payloads, start=1)]))
+        stored = StoredRecord(seq, record_id, header_bytes, capsule, envelope, payloads)
         self._store.put_record(stored)
-        if self._substrate.append(record_id) != seq:
-            raise CorruptError(f"record {record_id} did not land at {seq}")
         record = Record(record_id, seq, header)
+        try:
+            self._commit(record)
+        except Exception as exc:
+            self._pending = (record, stored)
+            raise CorruptError(f"record {record_id} is stored but not yet committed; it keeps seq {seq} "
+                               f"and is retried first: {exc}") from exc
         self._admit(record, stored)
         return _detached(record)
 
@@ -488,6 +580,7 @@ class Book:
     def _checkpoint(self, at: datetime | None = None) -> Checkpoint:
         if self._released:
             raise ReleasedError("the book is released")
+        self._flush_pending()
         for index in self._indexes:
             root = index.root()
             if self._roots.get(root["index"]) == root:
@@ -656,7 +749,7 @@ class Book:
             record = self._records.get(response_record_id)
             if record is None or record.header.record_type != RECORD_TYPE_RESPONSE:
                 raise NotFoundError(f"{response_record_id} is not a response this book recorded")
-            payloads = self._stored[response_record_id].payloads
+            payloads = self._payloads(response_record_id)
             if not payloads:
                 raise NotFoundError(f"response {response_record_id} was recorded without its reply octets")
             return payloads[0]
