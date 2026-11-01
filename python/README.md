@@ -115,3 +115,22 @@ python -m venv .venv && .venv/bin/pip install -e ".[test]"
 The interoperability programs in `../test/interop/python-evidencebook/`
 reproduce the Go runs byte for byte; CI runs them (jobs `python` and, for
 the shelf, `shelf-interlock`).
+
+## x-deal-v0
+
+`evidencebook.deal` is the x-deal-v0 deal record profile, at byte parity with Go's
+`dealprofile` (see `dealprofile/x-deal-v0/PROFILE.md`): counterparty fingerprints, a record's
+payload and digest (`encode`, `check`), the sealed report and step members, and the
+`standard_history/1` deal entry (`standard_history_deal`) that
+`agent_action_capsule.standard_history.derive_card` counts.
+
+```python
+from evidencebook import deal
+
+payload, digest = deal.encode(record_json, local_values)  # raises deal.StageError
+key = deal.deal_key(store_secret, deal_id)
+fp = deal.fingerprint(key, "domain", "https://www.Example.com/")
+```
+
+It holds no deal logic and seals nothing: it returns bytes and plain Capsule members, and the
+producer seals them with its own key.
