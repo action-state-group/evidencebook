@@ -16,6 +16,7 @@ is imported once as a host log, nothing re-signed.
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
     07    loop_ask, loop_ask_reply (the asker's side)
+    09    loop_dispute_receive (a referee's Result sealed as received; the check is capsule-engine's)
     12    loop_join, loop_probe, loop_import
     cards loop_history_card, loop_standard_history
 
