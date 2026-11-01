@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `counterparty_class` on a pay check (F4.5, evidencebook-deal#93, evidencebook#273): a
+  `deal check` input for a `pay` may state `"counterparty_class"` (`person_agent`,
+  `business_agent` or `shop_preauth`, SH §7), which is sealed as the pay check's
+  top-level member and read by the History card. A `shop_preauth` deal is no
+  longer counted (it stays in `in_window.not_counted`); a deal that states none is
+  counted and in `class_missing`, as before. It is the caller's own statement,
+  never inferred from the rail, and is refused on any action but `pay`, on another
+  value and on a deal in the typed action records. Requires evidencebook
+  `v0.12.2` (evidencebook#288).
+
 ## v0.1.0-rc29
 
 This section also lists what `v0.1.0-rc28` carried: that tag was cut before this CHANGELOG

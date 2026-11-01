@@ -2115,6 +2115,9 @@ func dealCheckCommand() *cobra.Command {
 			if err := checkAuthorizedMax(snap, legState.wayToPay().Rail); err != nil {
 				return err
 			}
+			if err := checkCounterpartyClass(snap, events); err != nil {
+				return err
+			}
 			if err := normalizeTerms(snap.Terms); err != nil {
 				return err
 			}

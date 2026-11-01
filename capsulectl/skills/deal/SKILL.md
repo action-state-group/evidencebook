@@ -937,6 +937,19 @@ price: `authorized_max_minor` equal to `amount_minor`. Never pass the estimate
 when a larger maximum is shown. A pay by card, wallet, PayPal, or any rail that
 can hold more than it charges is refused without it.
 
+Only when the checkout itself shows the payment is authorized up front for a
+purchase from a shop (a card pre-authorization), add `"counterparty_class":
+"shop_preauth"` to the pay check; for a person you deal with through their
+agent, `person_agent`; for a business reached through its agent where you still
+have something to do after the agreement (pay later, deliver, turn up),
+`business_agent`. It is your statement, sealed with the check and never
+inferred from the rail or the payee: leave it out when you cannot tell. A deal
+marked `shop_preauth` is left out of the History card's counts, so state it
+only when it is true. State it once per deal, on the first pay check: a later
+check of the same deal (after a stale check, a changed detail or a hold) leaves
+it out, and is refused if it states it again. (Deals in the typed action
+records refuse it.)
+
 Always state `recourse` on a pay: the `rail` and whether it is `refundable`, as
 the checkout shows them. The user's rules read both; left out, the rule on a
 non-refundable payment cannot be checked. If the checkout asks for a deposit,
