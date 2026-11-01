@@ -91,6 +91,7 @@ from .request import (
     parse_reply,
 )
 from .signer import Ed25519Signer, Signer
+from .staple import DERIVATION_STANDARD_HISTORY, Staple, StapleCheck, check_staple, staple
 from .shelf import HeldLock, HostLog, HostLogStores, Shelf, ShelfRecord, ShelfRecords, SqliteStore, SqliteSubstrate
 from .store import FileStore, MemoryStore, Store, StoredRecord
 
@@ -103,7 +104,7 @@ __all__ = [
     "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore", "SqliteSubstrate", "HostLog", "HostLogStores", "HeldLock",
     "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StandardHistoryAnchor", "TickResult", "WitnessCheck",
     "WitnessReceipt", "WitnessRejected",
-    "encode_request", "parse_reply",
+    "encode_request", "parse_reply", "Staple", "StapleCheck", "staple", "check_staple", "DERIVATION_STANDARD_HISTORY",
     "PROFILE", "PROFILE_V1", "DERIVATION_HISTORY_CARD", "MEDIA_TYPE_JSON", "MEDIA_TYPE_CBOR", "DEFAULT_DEVELOPER",
     "MINIMUM_ABSENCE_WINDOW", "MAX_REPLY_BYTES", "MAX_REPLY_DEPTH", "MAX_REPLY_ITEMS", "MAX_REPLY_RECEIPTS",
     "WITNESSED", "UNWITNESSED", "WITNESS_RECEIPTS_MEMBER", "WitnessRow", "OUTCOME_ARTIFACT", "OUTCOME_ARTIFACT_FAILED", "OUTCOME_REFUSAL",
