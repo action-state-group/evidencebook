@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
+
+- `--contract FILE` pins a compiled Evidence Contract v0 to `--contract-digest` (the lowercase hex
+  SHA-256 of its bytes), as `--wording` and `--wording-digest` do for a wording pack: both or neither,
+  and not with `--permalink`. The page is the SDK's page for `View.Contract`; the JSON result names
+  `contract_ref` and `contract_sha256`, and a refusal names `--contract`. capsulectl requires
+  `report` `v0.4.0`, the release that carries `View.Contract`.
+
 ### Added: the Goose reference receives a referee's Result over the Nostr mailbox (step 09, #310)
 
 - `python/examples/goose`: `loop_dispute_ask` publishes a request for the Result to the referee's
