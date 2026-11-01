@@ -177,6 +177,11 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 	if err != nil {
 		return f, err
 	}
+	if !isCLL {
+		f.State = DoctorStateNotChecked
+		f.Detail = "standard_history/1 is configured, but this book's substrate is not a Checkpointed Local Log, so it serves no anchors and every request is refused"
+		return f, nil
+	}
 	if len(view.checkpoints) == 0 {
 		f.State = DoctorStateNotChecked
 		f.Detail = "standard_history/1 is served, but the book has no checkpoint to build the card at; a signed requester's ask would issue one, doctor does not"

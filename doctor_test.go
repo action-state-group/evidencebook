@@ -487,3 +487,31 @@ func TestDoctorProbeStandardCardEdges(t *testing.T) {
 		}
 	}
 }
+
+// On a substrate that serves no anchors the card finding says so, not that
+// a checkpoint is missing.
+func TestDoctorProbeStandardCardUnanchoredSubstrate(t *testing.T) {
+	cfg := newFixture(t, "book-sh-scitt", 1).config(t)
+	if err := cfg.Substrate.Release(); err != nil {
+		t.Fatal(err)
+	}
+	substrate, err := NewSCITTReceiptSubstrate("ts.example", &fakeTransparencyService{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Substrate = substrate
+	cfg.StandardHistory = &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}
+	book, err := Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	policy := DefaultSharePolicy()
+	findings, err := book.Doctor(context.Background(), DoctorOptions{Policy: policy, Probe: strangerTransport(book, policy)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateNotChecked || !strings.Contains(f.Detail, "not a Checkpointed Local Log") {
+		t.Errorf("finding = %+v", f)
+	}
+}
