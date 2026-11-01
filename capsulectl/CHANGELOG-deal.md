@@ -24,8 +24,8 @@
   `deal standard-history declare --holder-kind person|node` (declared once, and
   declaring again never turns answering back on; with no declaration there is
   no card), `policy [--months N | --all]` (its own file
-  beside the deal store, default the last 12 months, never part of the share
-  policy) and `card --out FILE [--shared]`, which seals the card as a Capsule
+  beside the deal store, default the last 3 months as 9b frame 4 states it, never
+  part of the share policy) and `card --out FILE [--shared]`, which seals the card as a Capsule
   and writes the bundle with the `x-standard-history/v0` block (policy and
   `as_of`; the deal entries only in your own copy). The card is as of the
   newest finished cadence tick, never one deal book's checkpoint, and counts
@@ -41,6 +41,11 @@
   A card is as of a tick cut after the last change of declaration or policy:
   run `deal tick` after a change. The settings files must be owner-protected
   regular files. Requires evidencebook `v0.11.0`.
+  rc28 shipped the card with a 12-month default. A holder who set no policy
+  (the default is never written to the file) moves to the 3-month window and a
+  new policy digest; `policy --months 12` keeps the old window. A card built
+  before the first `deal tick` after the upgrade applies the new window to an
+  anchor cut under the old default, so run `deal tick` first.
 
 - Requires capsule-viewer `v0.7.0` (the frames merged since 0.6.0:
   capsule-viewer#186, #187, #188, #189, #190, #192, #193). The presentation

@@ -1,5 +1,5 @@
 {
-  "bundle_digest": "ebfb7d8c8eb3383d354af8bef4cb6e539b0391e344b8aab008dc1135a64b983c",
+  "bundle_digest": "6f63fcc3c2b9a9d5b435eab43610bfc4cbe3b9e39a96541ffc716147ecf26d91",
   "checkpoint": {
     "findings": [],
     "status": "pass"
@@ -7,7 +7,7 @@
   "countersignatures": [],
   "disclosures": [
     {
-      "capsule_id": "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98",
+      "capsule_id": "4db76df15fe6a16de82567c122625cd1d6f64eb2297bf9dcbfec431022c4a2a5",
       "member": "agent_input",
       "status": "disclosure_match"
     }
@@ -35,10 +35,10 @@
     "status": "pass"
   },
   "record_identity": {
-    "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98": "passed"
+    "4db76df15fe6a16de82567c122625cd1d6f64eb2297bf9dcbfec431022c4a2a5": "passed"
   },
   "record_signatures": {
-    "9ddee99fca48034ee586f00f6f33fa44a3f8b5765e49d41e2b5f185a13bf6a98": "authored"
+    "4db76df15fe6a16de82567c122625cd1d6f64eb2297bf9dcbfec431022c4a2a5": "authored"
   },
   "say": "Checked: unchanged since it was locked.",
   "spec_version": "capsule-cli-result/v1",

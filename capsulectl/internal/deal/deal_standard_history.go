@@ -37,9 +37,9 @@ import (
 const (
 	shSettingsFile = "standard-history.json"
 	shPolicyFile   = "standard-history-policy.json"
-	// shDefaultPolicy is the policy a holder who sets none has: the last 12
-	// months.
-	shDefaultPolicy = `{"months":12}`
+	// shDefaultPolicy is the policy a holder who sets none has: the last 3
+	// months (9b frame 4, F4.8: "default 3").
+	shDefaultPolicy = `{"months":3}`
 	// shLogPrefix names the log a card's Capsule is sealed on: one log per
 	// card, as a History's.
 	shLogPrefix  = "standard-history/"
@@ -254,7 +254,7 @@ func shDeclareCommand() *cobra.Command {
 }
 
 func shPolicyCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "policy", Short: "Set the History card's window: the last N months (default 12) or all deals; with no flag, show it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "policy", Short: "Set the History card's window: the last N months (default 3) or all deals; with no flag, show it", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		months, _ := c.Flags().GetInt("months")
 		all, _ := c.Flags().GetBool("all")
 		p, err := cli.Selected(c)
