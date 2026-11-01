@@ -128,7 +128,7 @@ Two tables are new, in every language:
 - `shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`. An
   implementation refuses a file whose version it does not know. A file with no row is handled the
   same way in every language: if it holds `book_records`, it is a shelf written by evidencebook
-  up to v0.11.0 and gets version 1; if it holds none of the shelf's tables (a fresh file, or
+  by any release before the one that adds `shelf_meta` (v0.12.0 and earlier) and gets version 1; if it holds none of the shelf's tables (a fresh file, or
   capsule-cli's `deal.db` before migration), the shelf creates its tables and version 1.
 - `shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')))`:
   every log on the shelf other than the cadence log, written in the transaction that first gives
