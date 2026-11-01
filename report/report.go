@@ -39,9 +39,9 @@ import (
 
 // ErrRefused is the class of every refusal this package makes about its
 // input: a bundle that does not decode or verify, a root that is not one
-// Result, a view outside the card set or with a bad presentation block or
-// wording pack, a permalink or seal for a page that cannot have one, a page that is not a
-// report page.
+// Result, a view outside the card set or with a bad presentation block,
+// wording pack or contract, a permalink or seal for a page that cannot have
+// one, a page that is not a report page.
 // The page gate's refusal is not one of them: it carries capsule-cli's own
 // class (cli.ErrPartial for INCOMPLETE, cli.ErrBundleInvalid for INVALID).
 var ErrRefused = errors.New("report: refused")
@@ -147,6 +147,14 @@ type View struct {
 	// outcome-report/v1 or eu-ai-act-compliance/v1 block already draws the
 	// contract report looks the same; the block records the selection.
 	ContractReport bool
+	// Contract is the compiled Evidence Contract the Result cites, pinned
+	// to its digest the way Wording is. It reaches the page as the
+	// contract-report module's contract setting, from which the module reads
+	// each row's tier by (contract_ref, requirement_ref), and the page
+	// records its digest. Like Wording, it lives in the page, not in the
+	// bundle, so a page built with one gets no permalink. Without one, every
+	// row's tier is undecided.
+	Contract *Contract
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -202,11 +210,17 @@ type Page struct {
 	// from VALID.
 	Verdict     string
 	UnmetClaims []string
-	HTML        []byte
+	// ContractRef and ContractSHA256 name the View's Contract, when it has
+	// one; Tiers is the tier of each requirement_ref the Result's claims
+	// cite under ContractRef ("" when the contract names none).
+	ContractRef, ContractSHA256 string
+	Tiers                       map[string]string
+	HTML                        []byte
 
 	bundle map[string]interface{}
-	// worded is set when the page carries a wording layer.
-	worded bool
+	// worded is set when the page carries a wording layer; contracted when
+	// it carries a contract.
+	worded, contracted bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -232,6 +246,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 			return nil, refusal("wording: " + err.Error())
 		}
 	}
+	var contract checkedContract
+	if view.Contract != nil {
+		var err error
+		if contract, err = checkContract(*view.Contract); err != nil {
+			return nil, err
+		}
+	}
 	value, err := cli.DecodeBundleJSON(bundle)
 	if err != nil {
 		return nil, refusedBy{err}
@@ -249,6 +270,12 @@ func Build(bundle []byte, view View) (*Page, error) {
 	checked, err := cli.CheckResult(root.document, "")
 	if err != nil {
 		return nil, refusef("root %s carries a Result that cannot be rendered: %s", root.id, cli.SafeError(err))
+	}
+	var tiers map[string]string
+	if view.Contract != nil {
+		if tiers, err = contract.against(checked.Contracts, root.document); err != nil {
+			return nil, err
+		}
 	}
 	if root.form == FormBook {
 		// The book's own verifier checks the header the record commits and
@@ -289,7 +316,10 @@ func Build(bundle []byte, view View) (*Page, error) {
 	page := &Page{
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
-		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil,
+	}
+	if view.Contract != nil {
+		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers
 	}
 	// The bundle is judged as `verify --bundle` reads it from a file.
 	if reread, err := json.Marshal(value); err == nil {
@@ -309,9 +339,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err := cli.PageGate(value); err != nil {
 		return page, err
 	}
-	// With no wording, BuildOfflineHTML's default settings write exactly
+	// With no wording and no contract, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
-	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256})
+	options := emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256}
+	if view.Contract != nil {
+		options.Contract = &emitter.Contract{Text: view.Contract.Text, SHA256: view.Contract.SHA256}
+	}
+	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, options)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +356,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 // Permalink is a viewer link over the same bundle the page embeds, so both
 // carriers hold identical bytes; base is the viewer's bundle URL, the
 // public verifier's when empty. A draft page gets none, nor does a page with
-// a wording layer, which the permalink would not carry.
+// a wording layer or a contract, which the permalink would not carry.
 func (p *Page) Permalink(base string) (string, error) {
 	if p.Draft {
 		return "", refusal("a draft page gets no permalink")
@@ -332,6 +366,9 @@ func (p *Page) Permalink(base string) (string, error) {
 	}
 	if p.worded {
 		return "", refusal("a page with a wording layer gets no permalink: the permalink carries the bundle alone, and the viewer would show its own words")
+	}
+	if p.contracted {
+		return "", refusal("a page with a contract gets no permalink: the permalink carries the bundle alone, and the viewer would draw every tier undecided")
 	}
 	fragment, err := aacbundle.EncodeFragment(p.bundle)
 	if err != nil {

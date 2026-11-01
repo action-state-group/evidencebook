@@ -92,7 +92,12 @@ offline HTML page under a `report.View`. It verifies before it renders, reads
 only the bundle it is given, and refuses to write a page for a bundle that is
 not `VALID`, while still saying what it found. A view can carry a wording
 layer (`View.Wording`, an `aac.wording-pack/v0` pack over the viewer's own
-words) and select the contract report (`View.ContractReport`).
+words), select the contract report (`View.ContractReport`), and carry the
+compiled Evidence Contract the Result cites (`View.Contract`, pinned to its
+digest like the wording layer), from which the contract report reads each
+row's tier. Without a contract, every row's tier is undecided, never
+must-have. Like a page with a wording layer, a page built with a contract
+gets no permalink.
 `report.SealPage` seals the page's digest in the holder's book, and
 `report.CheckPage` later tells whether a page file is one the book sealed.
 
