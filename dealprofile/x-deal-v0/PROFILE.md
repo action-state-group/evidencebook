@@ -975,6 +975,12 @@ At every check, after the `check` record is sealed:
   - `history_scope`: `{days, max_records, complete}`.
   - `party_role`: `buyer` or `seller`, the side of the deal the user is on, as the deal's opening
     intent sealed it (`buyer` when it names none). Sent on every check, always explicit.
+  - `rules_pin` (a profile that pins rules per role): the pin this check runs under, `{pack,
+    definition_digests}`: the profile's `rules_checker.roles` entry for `party_role`, with the
+    flat digests when that entry names a pack alone, or the flat pin (no `pack`) when the role has
+    no entry. Either member may be absent, never both, and the checker's `definition_digest` must
+    be one of these digests. Only the acting role's pin is sent, never the other role's. Absent
+    when the profile pins no roles, so such a profile sends what it sent before.
   - `task_authority_record` (typed deals): the whole sealed task-authority record the check's
     `task_authority_ref` names, exactly as sealed: SHA-256 over its JCS bytes is the ref's digest,
     and its plan (`outcome_id`, `allowed_actions`, `preconditions`) is at `body`. It is the opening
