@@ -9,7 +9,9 @@ run one deal end to end and write their History cards.
 OUT receives, for each node (``buyer``, ``seller``): ``<node>/`` (its home:
 shelf, keys), ``<node>-card.json`` (its ``standard_history/1`` card and the
 inputs it was derived from), ``<node>-history-card.json`` (``history_card/1``
-for its deal's book) and ``<node>.key`` (its signing key), ``buyer-model-call.json`` (a model call the buyer
+for its deal's book) and ``<node>.key`` (its signing key), ``commitments/<key_id>.json`` with
+``commitments/policies/<key_id>.json`` (its signed commitment and policy,
+loop_advertise), ``buyer-model-call.json`` (a model call the buyer
 sealed, loop_seal) and ``buyer-model-call-bundle.json`` (that record proven in the node book,
 loop_book_bundle); ``buyer-opening-bundle.json`` is the buyer's admission and its record
 of the deal, one bundle (loop_deal_bundle). Go's check of a
@@ -108,6 +110,8 @@ async def run(out: Path) -> None:
                 await node.call("loop_history_card", book_id=f"deal/{deal_id}",
                                 out_path=str(out / f"{node.name}-history-card.json"))
                 (out / f"{node.name}.key").write_text(key["key_id"])
+                # 03: the node's signed commitment, laid out for the loop's nodes/commitments/.
+                await node.call("loop_advertise", out_dir=str(out / "commitments"))
 
 
 if __name__ == "__main__":

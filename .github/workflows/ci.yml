@@ -463,7 +463,8 @@ jobs:
     # tests, the scripted two-node run over MCP stdio, Go's check that each
     # node's standard_history/1 card is the one Go derives from its shelf, and
     # each node's deal half run through the checks a Mesh node on
-    # capsules-plugin v0.1.8 runs, with the crates it pins (D3 condition 2).
+    # capsules-plugin v0.1.8 runs, with the crates it pins (D3 condition 2),
+    # and each node's step 03 commitment through the loop's checker.
     name: Goose loop reference (scripted run, cards Go re-derives)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -490,8 +491,17 @@ jobs:
       - name: Install capsule-engine's referee (the Result's receive check, step 09)
         # The merge of capsule-engine#272; a release that carries capsule_engine.referee replaces the pin.
         run: python -m pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"
+      - name: Check out the loop's commitment checker (step 03)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: evidence-network/loop
+          # evidence-network/loop#338 (the goose community and /-joined streams); its merge commit replaces this.
+          ref: 115b29e0cbdcc99926ef52e9ad7b37d95bcbd0bf
+          path: loop-checkout
+          persist-credentials: false
       - name: Test the reference, run it, and check its cards with Go and its halves as a Mesh node does
         env:
+          GOOSE_LOOP_SCRIPTS: loop-checkout/scripts
           GOOSE_GO_CHECK: "1"
           GOOSE_REQUIRE_REFEREE: "1"
           GOOSE_MESH_CHECK: test/interop/goose-mesh-check/target/debug/goose-mesh-check

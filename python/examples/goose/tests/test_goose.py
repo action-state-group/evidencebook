@@ -264,6 +264,14 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
         mesh = subprocess.run([os.environ["GOOSE_MESH_CHECK"], *halves], cwd=HERE.parents[2], capture_output=True,
                               text=True, timeout=120)
         assert mesh.returncode == 0, mesh.stdout + mesh.stderr
+    # 03: each node's commitment, as loop_advertise wrote it, passes the loop's checker.
+    commitments = tmp_path / "commitments"
+    assert sorted(p.stem for p in commitments.glob("*.json")) == sorted(
+        (tmp_path / f"{node}.key").read_text() for node in ("buyer", "seller"))
+    if os.environ.get("GOOSE_LOOP_SCRIPTS"):
+        check = subprocess.run([sys.executable, "-B", str(Path(os.environ["GOOSE_LOOP_SCRIPTS"]) / "check_commitment.py"),
+                                str(commitments)], capture_output=True, text=True, timeout=120)
+        assert check.returncode == 0, check.stdout + check.stderr
     # 01: the Capsule loop_seal wrote names the model and claims no more than runtime_claimed.
     call = json.loads((tmp_path / "buyer-model-call.json").read_text())
     assert call["effect"]["effect_attestation"] == "runtime_claimed" and call["model_attestation"]["model_id"] == \
@@ -807,3 +815,20 @@ def test_an_opening_is_never_sealed_for_a_step_that_cites_a_no(nodes, clock):
     with pytest.raises(gn.Refused, match="no GO admission"):
         buyer.ensure_opening(DEAL)
     assert not buyer.notes(gn.DEAL_OPENED)
+
+
+def test_join_includes_the_commitment_and_advertise_writes_it(server, tmp_path):
+    ls = server("node")
+    joined = call(ls.loop_join, commitment_dir=str(tmp_path / "joined"))
+    doc = joined["commitment"]
+    assert doc["profile"] == "evidence-commitment/1" and doc["key_id"] == joined["key_id"]
+    assert joined["policy"]["key_id"] == joined["key_id"]
+    assert json.loads(Path(joined["commitment_files"][0]).read_text()) == doc
+    out = call(ls.loop_advertise, out_dir=str(tmp_path / "out"), node_id="cd" * 32, endpoint="nostr:mailbox",
+               bindings="aac-nostr-mailbox/v0, evidencebook/respond", answers_within="PT1H", human_gated=False)
+    assert out["ok"] and out["step"] == "03" and out["streams"] == [gn.NODE_BOOK]
+    written = json.loads((tmp_path / "out" / f"{'cd' * 32}.json").read_text())
+    assert written["ask"] == {"endpoint": "nostr:mailbox", "bindings": ["aac-nostr-mailbox/v0", "evidencebook/respond"]}
+    assert written["answers_within"] == "PT1H" and written["human_gated"] is False
+    assert (tmp_path / "out" / "policies" / f"{'cd' * 32}.json").is_file()
+    assert call(ls.loop_advertise, out_dir=str(tmp_path / "bad"), answers_within="24")["ok"] is False
