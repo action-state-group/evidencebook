@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -38,7 +39,9 @@ func check(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var capsule map[string]any
-	if err := json.Unmarshal(raw, &capsule); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&capsule); err != nil {
 		return nil, fmt.Errorf("not a JSON object: %w", err)
 	}
 	signature, _ := capsule["signature"].(string)
@@ -47,10 +50,14 @@ func check(path string) (map[string]any, error) {
 	// The envelope fields sit outside the Capsule ID's preimage.
 	delete(capsule, "signature")
 	delete(capsule, "key_id")
-	body, err := json.Marshal(capsule)
-	if err != nil {
+	// No HTML escaping, as JCS writes it.
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(capsule); err != nil {
 		return nil, err
 	}
+	body := bytes.TrimSpace(buf.Bytes())
 	if _, err := emit.VerifyCapsule(body); err != nil {
 		return nil, fmt.Errorf("class 1: %w", err)
 	}
@@ -67,6 +74,12 @@ func check(path string) (map[string]any, error) {
 	}
 	effect, _ := capsule["effect"].(map[string]any)
 	model, _ := capsule["model_attestation"].(map[string]any)
+	if effect["effect_attestation"] != "runtime_claimed" {
+		return nil, fmt.Errorf("effect_attestation %v, want runtime_claimed", effect["effect_attestation"])
+	}
+	if model["provider"] == nil || model["model_id"] == nil {
+		return nil, fmt.Errorf("model_attestation names no provider and model_id")
+	}
 	return map[string]any{"accepted": true, "capsule_id": capsuleID, "key_id": keyID,
 		"effect_attestation": effect["effect_attestation"],
 		"provider":           model["provider"], "model_id": model["model_id"]}, nil

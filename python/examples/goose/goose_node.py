@@ -345,8 +345,9 @@ class Node:
         """Seal one model call Goose made as an effect-boundary record of the
         node book: a Capsule the node signs in its own process, so its effect
         claims ``runtime_claimed`` and no more, its ``model_attestation``
-        names ``provider`` and ``model_id``, and ``prompt`` and ``completion``
-        (JSON values) are committed by digest. Returns the record and the
+        names ``provider`` and ``model_id``. ``prompt`` and ``completion`` (JSON
+        values) are committed by digest; the node keeps the prompt as the
+        record's payload and the completion by its digest only. Returns the record and the
         Capsule as a verifier reads it (with its ``signature`` and ``key_id``)."""
         if not provider or not model_id:
             raise Refused("a model call names its provider and model_id")

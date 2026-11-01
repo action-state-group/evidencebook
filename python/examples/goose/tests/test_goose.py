@@ -264,7 +264,14 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
         mesh = subprocess.run([os.environ["GOOSE_MESH_CHECK"], *halves], cwd=HERE.parents[2], capture_output=True,
                               text=True, timeout=120)
         assert mesh.returncode == 0, mesh.stdout + mesh.stderr
+    # 01: the Capsule loop_seal wrote names the model and claims no more than runtime_claimed.
+    call = json.loads((tmp_path / "buyer-model-call.json").read_text())
+    assert call["effect"]["effect_attestation"] == "runtime_claimed" and call["model_attestation"]["model_id"] == \
+        "rehearsal-model" and call["key_id"] == (tmp_path / "buyer.key").read_text()
     if os.environ.get("GOOSE_GO_CHECK"):
+        check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(tmp_path / "buyer-model-call.json")],
+                               cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
         for node in ("buyer", "seller"):
             check = subprocess.run(["go", "run", "./test/interop/goose-card", str(tmp_path / node / "shelf.db"),
                                     str(tmp_path / f"{node}-card.json"), (tmp_path / f"{node}.key").read_text()],
@@ -475,3 +482,16 @@ def test_a_model_call_without_a_model_is_refused(nodes, clock):
         with pytest.raises(gn.Refused, match="provider and model_id"):
             buyer.seal_model_call(provider, model, "p", "c", clock.at)
     assert buyer.shelf.open(gn.NODE_BOOK).records() == []
+
+
+def test_go_refuses_a_sealed_model_call_that_was_altered(nodes, clock, tmp_path):
+    if not os.environ.get("GOOSE_GO_CHECK"):
+        pytest.skip("GOOSE_GO_CHECK unset")
+    buyer, _ = nodes
+    _, capsule = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+    capsule["model_attestation"]["model_id"] = "another-model"
+    path = tmp_path / "altered.json"
+    path.write_text(json.dumps(capsule))
+    check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(path)], cwd=HERE.parents[2],
+                           capture_output=True, text=True, timeout=600)
+    assert check.returncode == 1 and "class 1" in check.stderr, check.stdout + check.stderr

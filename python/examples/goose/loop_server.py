@@ -130,8 +130,8 @@ def loop_seal(provider: str, model_id: str, prompt: str, completion: str, out_pa
     """Seal one model call Goose made: an effect-boundary record in this
     node's book, signed with its producer key in this process
     (``effect_attestation`` ``runtime_claimed``), whose ``model_attestation``
-    names ``provider`` and ``model_id``. The prompt and completion are
-    committed by digest and stay on this node. The Capsule is written to
+    names ``provider`` and ``model_id``. The prompt stays on this node
+    (committed by digest); the completion is committed by digest only. The Capsule is written to
     ``out_path`` as a verifier reads it."""
     sealed, capsule = node().seal_model_call(provider, model_id, prompt, completion, _now())
     _write(out_path, json.dumps(capsule, sort_keys=True, indent=2).encode())
