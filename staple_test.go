@@ -5,7 +5,10 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -161,6 +164,129 @@ func tamperedReply(t *testing.T, reply Reply) Reply {
 	t.Helper()
 	e := *reply.Envelope
 	e.Artifact = append(bytes.Clone(e.Artifact[:len(e.Artifact)-1]), ' ')
+	out, err := evidencerequest.EncodeReply(MediaTypeJSON, &e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Reply(out)
+}
+
+// stapleVector is one case of testdata/staple/staples.json, which the Rust
+// and Python checkers read too: a staple and whether CheckStaple passes it.
+type stapleVector struct {
+	Name    string `json:"name"`
+	Holder  string `json:"holder"`
+	Request string `json:"request"`
+	Reply   string `json:"reply"`
+	Pass    bool   `json:"pass"`
+	// Nonce and Anchor are what a passing staple reads as.
+	Nonce  string `json:"nonce,omitempty"`
+	Anchor string `json:"anchor,omitempty"`
+}
+
+const stapleVectorsPath = "testdata/staple/staples.json"
+
+// TestStapleVectors checks the shared vectors. EB_WRITE_STAPLE_VECTORS=1
+// writes them anew, for an intended change only: a staple carries a fresh
+// nonce, so every write changes the file.
+func TestStapleVectors(t *testing.T) {
+	if os.Getenv("EB_WRITE_STAPLE_VECTORS") == "1" {
+		writeStapleVectors(t)
+	}
+	raw, err := os.ReadFile(stapleVectorsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors []stapleVector
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors) < 2 {
+		t.Fatal("no staple vectors")
+	}
+	for _, v := range vectors {
+		got, err := CheckStaple(Staple{Request: Message{Octets: []byte(v.Request), MediaType: MediaTypeJSON},
+			Reply: Reply{Message: Message{Octets: []byte(v.Reply), MediaType: MediaTypeJSON}}}, v.Holder)
+		if (err == nil) != v.Pass {
+			t.Errorf("%s: pass %v, got %v", v.Name, v.Pass, err)
+		}
+		if err == nil && (got.Nonce != v.Nonce || got.Anchor != v.Anchor) {
+			t.Errorf("%s: read %s at %s", v.Name, got.Nonce, got.Anchor)
+		}
+	}
+}
+
+func writeStapleVectors(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	holder := KeyID(book.signer)
+	standard, err := book.Staple(ctx, DerivationStandardHistory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err := book.Staple(ctx, DerivationHistoryCard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := standardHistoryBookSeed(t, 33)
+	read := func(s Staple) StapleCheck {
+		got, err := CheckStaple(s, holder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	sc, cc := read(standard), read(card)
+	wide := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: sc.Anchor}, Nonce: sc.Nonce, Profile: ProfileID})
+	reworded := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: sc.Anchor}, Nonce: "00" + sc.Nonce[2:], Profile: ProfileID})
+	vector := func(name string, request Message, reply Reply, who string, pass bool, c StapleCheck) stapleVector {
+		v := stapleVector{Name: name, Holder: who, Request: string(request.Octets), Reply: string(reply.Octets), Pass: pass}
+		if pass {
+			v.Nonce, v.Anchor = c.Nonce, c.Anchor
+		}
+		return v
+	}
+	vectors := []stapleVector{
+		vector("standard_history/1", standard.Request, standard.Reply, holder, true, sc),
+		vector("history_card/1", card.Request, card.Reply, holder, true, cc),
+		vector("another holder", standard.Request, standard.Reply, KeyID(other.signer), false, sc),
+		vector("another request", reworded, standard.Reply, holder, false, sc),
+		vector("more than the card", wide, standard.Reply, holder, false, sc),
+		vector("a reply to another derivation", card.Request, standard.Reply, holder, false, sc),
+		vector("a tampered envelope", standard.Request, tamperedReply(t, standard.Reply), holder, false, sc),
+		vector("a card with more than the standard card", standard.Request, widenedCard(t, book, standard.Reply), holder, false, sc),
+	}
+	out, err := json.MarshalIndent(vectors, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(stapleVectorsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stapleVectorsPath, append(out, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// widenedCard is reply with a member the standard card does not have added
+// to its card and re-signed by the holder: a staple carrying more than the
+// standard card, under the holder's own key.
+func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
+	t.Helper()
+	e := *reply.Envelope
+	var card map[string]any
+	if err := json.Unmarshal(e.Artifact, &card); err != nil {
+		t.Fatal(err)
+	}
+	card["counterparties"] = []any{"carol"}
+	artifact, err := canonicalJSON(card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
+	if e, err = e.Sign(context.Background(), book.signer); err != nil {
+		t.Fatal(err)
+	}
 	out, err := evidencerequest.EncodeReply(MediaTypeJSON, &e, nil)
 	if err != nil {
 		t.Fatal(err)

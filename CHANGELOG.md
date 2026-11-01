@@ -20,6 +20,7 @@
   check runs under for `party_role` when the deal profile pins rules per role
   (`rules_checker.roles`). Absent when the profile pins no roles, so every input valid before
   stays valid. PROFILE.md ("The external rules checker") documents it.
+
 ### Added: `Book.Staple` and `CheckStaple`, a History card stapled to the holder's own message (#275)
 
 - `Book.Staple` builds a staple of `history_card/1` or `standard_history/1`: the holder's own
