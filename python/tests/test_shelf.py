@@ -543,8 +543,10 @@ def test_a_legacy_log_joins_the_cadence(fx):
     with fx.open() as shelf:
         with pytest.raises(InvalidError):
             shelf.legacy("legacy/x")  # outside the cadence
-        with pytest.raises(CorruptError):
+        with pytest.raises(NotFoundError):
             shelf.legacy("legacy/absent")  # never provisioned
+        with pytest.raises(InvalidError):
+            shelf.open("not a log id")
         shelf.open("deal/a").append(obs())
         with pytest.raises(InvalidError):
             shelf.legacy("deal/a")
@@ -629,3 +631,57 @@ def test_a_record_with_field_commitments_opens(fx):
     with fx.open() as shelf:
         assert shelf.open("deal/f").get(record_id).header.field_commitments[0] == ("amount", "ab" * 32)
         assert [r.retention for r in shelf.records().records] == ["AVAILABLE"]
+
+
+def test_a_tick_and_a_chain_run_beside_appends_to_the_same_book(fx):
+    """A cadence reads a book's log outside the book's lock; the log's
+    mirror keeps its own."""
+    with fx.open() as shelf:
+        c = cadence(shelf)
+        book = shelf.open("deal/a")
+        book.append(obs("0"))
+        first = c.tick(START).tick
+        witness(c, first)
+        statement = base64.urlsafe_b64decode(first.leaves.deals["deal/a"].statement + "==")
+        errors, stop = [], threading.Event()
+
+        def appends():
+            try:
+                for n in range(60):
+                    book.append(obs(str(n)))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+            finally:
+                stop.set()
+
+        writer = threading.Thread(target=appends)
+        writer.start()
+        due = first.due_next
+        while not stop.is_set():
+            try:
+                c.chain(statement)
+                result = c.tick(due)
+                due = result.due_next
+                shelf.records("deal/a")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+                break
+        writer.join()
+        assert not errors
+        assert book._substrate.entry_ids() == [r.record_id for r in book.records()]
+
+
+def test_a_lifecycle_record_without_a_state_lists_as_go_reads_it(fx):
+    from evidencebook.record import CITES, Link
+
+    with fx.open() as shelf:
+        book = shelf.open("deal/a")
+        first = book.append(obs())
+        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),)))
+        assert shelf.records().records[0].retention == ""
+        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),),
+                          statement={"retention_state": "WITHHELD"}))
+        assert shelf.records().records[0].retention == "WITHHELD"
+        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),), statement=[1]))
+        with pytest.raises(CorruptError):
+            shelf.records()

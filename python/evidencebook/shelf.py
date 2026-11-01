@@ -34,7 +34,7 @@ import cbor2
 from agent_action_capsule.canonical import jcs
 from cll.checkpoint import core
 from cll.checkpoint.runner import CheckpointRunner
-from cll.log import MAX_SCAN_LIMIT, AppendInput, CllError, INSERTED
+from cll.log import MAX_SCAN_LIMIT, AppendInput, CllError, INSERTED, validate_identifier
 from cll.log import sqlite as cllsqlite
 
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
@@ -225,10 +225,12 @@ class SqliteSubstrate(CLLSubstrate):
     the shelf's file and CLL's checkpoint runner over it, as Go's
     ``OpenCLLSQLite``. Proofs are served from the MMR rebuilt from the
     backend's entries, kept in step with every write, including a host's own
-    writes to its backend (:class:`HostLog`)."""
+    writes to its backend (:class:`HostLog`). The mirror has its own lock:
+    a cadence tick and a chain read a book's log outside the book's lock."""
 
     def __init__(self, backend: Any, log_id: str, checkpoint_key: Signer, witness_ids: Sequence[str] = ()):
         super().__init__(log_id, checkpoint_key)
+        self._mirror = threading.RLock()
         self._backend = backend
         # The book, not the runner, decides when to checkpoint: any pending
         # entry is due the moment the book asks.
@@ -242,11 +244,17 @@ class SqliteSubstrate(CLLSubstrate):
              provision: bool = True) -> SqliteSubstrate:
         """The log ``log_id`` in the file at ``path``, provisioned when the
         file holds nothing of it and ``provision`` is set. A log with any
-        state that fails to open is reported, never provisioned over."""
+        state that fails to open is reported, never provisioned over; one the
+        file holds nothing of, when not provisioned, is not found."""
+        if not validate_identifier(log_id):
+            raise InvalidError(f"log id {log_id!r} is not a CLL identifier")
         try:
             backend = cllsqlite.open(path, log_id)
         except (CllError, sqlite3.Error) as exc:
-            if not provision or not _log_absent(path, log_id):
+            absent = _log_absent(path, log_id)
+            if not provision and absent:
+                raise NotFoundError(f"the file holds no CLL log {log_id}") from None
+            if not absent:
                 raise CorruptError(f"open CLL log {log_id}: {exc}") from None
             cllsqlite.init(path, log_id)
             backend = cllsqlite.open(path, log_id)
@@ -262,14 +270,15 @@ class SqliteSubstrate(CLLSubstrate):
 
     def _sync(self) -> None:
         """Index entries the backend holds beyond the in-memory MMR."""
-        while True:
-            entries = self._backend.scan_entries(len(self._ids), MAX_SCAN_LIMIT)
-            if not entries:
-                return
-            for entry in entries:
-                if entry.seq != len(self._ids) + 1:
-                    raise CorruptError(f"CLL log {self.log_id} is not dense at seq {entry.seq}")
-                self._add(entry.value.hex())
+        with self._mirror:
+            while True:
+                entries = self._backend.scan_entries(len(self._ids), MAX_SCAN_LIMIT)
+                if not entries:
+                    return
+                for entry in entries:
+                    if entry.seq != len(self._ids) + 1:
+                        raise CorruptError(f"CLL log {self.log_id} is not dense at seq {entry.seq}")
+                    self._add(entry.value.hex())
 
     def _stored_checkpoint(self) -> Checkpoint | None:
         state = self._backend.load_cll()
@@ -282,12 +291,14 @@ class SqliteSubstrate(CLLSubstrate):
 
     @property
     def size(self) -> int:
-        self._sync()
-        return len(self._ids)
+        with self._mirror:
+            self._sync()
+            return len(self._ids)
 
     def entry_ids(self) -> list[str]:
-        self._sync()
-        return list(self._ids)
+        with self._mirror:
+            self._sync()
+            return list(self._ids)
 
     def entries_after(self, after_seq: int, limit: int = MAX_SCAN_LIMIT) -> list:
         """The backend's entries after ``after_seq``, at most ``limit``."""
@@ -300,37 +311,42 @@ class SqliteSubstrate(CLLSubstrate):
             raise InvalidError(f"record id {record_id!r} is not hex") from None
         if len(value) != 32 or value.hex() != record_id:
             raise InvalidError(f"record id {record_id!r} is not 64 lowercase hex characters")
-        self._sync()
-        result = self._backend.append(AppendInput(value, utc(at or datetime.now(timezone.utc))))
-        if result.outcome == INSERTED:
+        with self._mirror:
             self._sync()
-        return result.entry.seq
+            result = self._backend.append(AppendInput(value, utc(at or datetime.now(timezone.utc))))
+            if result.outcome == INSERTED:
+                self._sync()
+            return result.entry.seq
 
     def restore(self, checkpoint: Checkpoint) -> None:
         """Check a stored checkpoint against the log; the latest is the
         backend's own."""
-        self._sync()
-        latest = self._latest
-        super().restore(checkpoint)
-        self._latest = latest
+        with self._mirror:
+            self._sync()
+            latest = self._latest
+            super().restore(checkpoint)
+            self._latest = latest
 
     def checkpoint(self, now: datetime) -> Checkpoint:
-        self._sync()
-        while self._runner.run_once(utc(now)):
-            pass
-        latest = self._stored_checkpoint()
-        if latest is None:
-            raise NotFoundError(f"log {self.log_id} has no checkpoint yet")
-        self._latest = latest
-        return latest
+        with self._mirror:
+            self._sync()
+            while self._runner.run_once(utc(now)):
+                pass
+            latest = self._stored_checkpoint()
+            if latest is None:
+                raise NotFoundError(f"log {self.log_id} has no checkpoint yet")
+            self._latest = latest
+            return latest
 
     def inclusion_proof(self, seq: int, at: Checkpoint) -> bytes:
-        self._sync()
-        return super().inclusion_proof(seq, at)
+        with self._mirror:
+            self._sync()
+            return super().inclusion_proof(seq, at)
 
     def consistency_proof(self, old_size: int, new_size: int, at: Checkpoint) -> bytes:
-        self._sync()
-        return super().consistency_proof(old_size, new_size, at)
+        with self._mirror:
+            self._sync()
+            return super().consistency_proof(old_size, new_size, at)
 
     def _tree_at(self, at: Checkpoint) -> None:
         """Check the MMR reaches ``at`` and has its root."""
@@ -342,8 +358,9 @@ class SqliteSubstrate(CLLSubstrate):
         member as Go's ``ProveInclusion`` writes it."""
         if not at.covers(seq):
             raise InvalidError(f"seq {seq} is not under checkpoint {at.id}")
-        self._tree_at(at)
-        proof = core.inclusion_proof(self._nodes, seq - 1, at.tree_size)
+        with self._mirror:
+            self._tree_at(at)
+            proof = core.inclusion_proof(self._nodes, seq - 1, at.tree_size)
         return Ordered(v=proof.v, kind=proof.kind, size=proof.size, leaf_index=proof.leaf_index,
                        witness=list(proof.witness), peaks_left=list(proof.peaks_left),
                        peaks_right=list(proof.peaks_right))
@@ -353,8 +370,9 @@ class SqliteSubstrate(CLLSubstrate):
         ``ProveConsistency`` writes it."""
         if older.tree_size > newer.tree_size:
             raise InvalidError("the older checkpoint is larger than the newer")
-        self._tree_at(newer)
-        proof = core.consistency_proof(self._nodes, older.tree_size, newer.tree_size)
+        with self._mirror:
+            self._tree_at(newer)
+            proof = core.consistency_proof(self._nodes, older.tree_size, newer.tree_size)
         return Ordered(v=proof.v, kind=proof.kind, old_size=proof.size_a, new_size=proof.size_b,
                        old_peaks=list(proof.old_peaks), witness=[list(p) for p in proof.witness],
                        new_peaks=list(proof.new_peaks))
@@ -649,9 +667,12 @@ def _retention(headers: list[Header], ids: list[str], i: int, now_ns: int) -> st
     for later in headers[header.seq:]:
         if later.record_type != _LIFECYCLE or record_id not in later.links_to(CITES):
             continue
-        if not isinstance(later.statement, dict) or not isinstance(later.statement.get("retention_state"), str):
-            raise CorruptError(f"a lifecycle record of {record_id} holds no retention state")
-        state = later.statement["retention_state"]
+        # As Go reads it into a LifecycleStatement: no statement, or no
+        # retention_state, is the empty state; another shape is corrupt.
+        statement = {} if later.statement is None else later.statement
+        if not isinstance(statement, dict) or not isinstance(statement.get("retention_state", ""), (str, type(None))):
+            raise CorruptError(f"lifecycle record {ids[later.seq - 1]} holds no lifecycle statement")
+        state = statement.get("retention_state") or ""
     if state == _DELETED:
         return state
     held = state == _LEGAL_HOLD or _held_by(headers, ids, record_id, header, now_ns)
