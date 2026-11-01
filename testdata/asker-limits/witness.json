@@ -96,12 +96,12 @@
       "want": "unwitnessed"
     },
     {
-      "name": "two-inclusion-proofs",
+      "name": "malformed-second-proof",
       "carried": [
         {
           "entry_hash": "e19fa8a5550f7ece26e8826ee61d31a9a4e2b16ef62c3b2a711a295c07d27fb7",
           "leaf_index": 0,
-          "receipt_b64": "0oRHogEnGQGLAaEZAYyhIIJEgwEAgESDAQCA9lhA1+X/FL6Udj33CBmXy1rXiha2xp05y2iOf3nfjFVp6NZ3vetX+HijI4DrUOjAiAU1Gm5qWLdMWJAumQSsTudrAQ==",
+          "receipt_b64": "0oRHogEnGQGLAaEZAYyhIIJEgwEAgEtub3QgYSBwcm9vZvZYQNfl/xS+lHY99wgZl8ta14oWtsadOctojn9534xVaejWd73rV/h4oyOA61DowIgFNRpuali3TFiQLpkErE7nawE=",
           "tree_size": 1,
           "ts_url": "https://witness.test"
         }
