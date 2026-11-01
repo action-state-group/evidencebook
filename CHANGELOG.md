@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.13.0 (2026-11-01)
+
 ### Added: a guide path for History cards that staple (#266)
 
 - `docs/GUIDE.md` path 4 and `Example_staple`: a Goose agent's shelf (a book per deal, a node book,
