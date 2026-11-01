@@ -69,6 +69,7 @@ here moves money: a payment reference is a value you observed.
 | Step | Buyer | Seller |
 |---|---|---|
 | 12 | `loop_join` | `loop_join` |
+| 01 | `loop_seal` (a model call you made: provider, model id, prompt, completion) | |
 | 04 | `loop_admit` (the seller's two keys from its `loop_join`, `GO`) | `loop_admit` (the buyer's two keys, `GO`) |
 | 05 | `loop_deal_open` (item, price, rail, the user's words), then `loop_deal_push` | |
 | 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
@@ -78,6 +79,9 @@ here moves money: a payment reference is a value you observed.
 | 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
 | 02 | `loop_tick` | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
+
+`loop_seal` seals the model call as a `runtime_claimed` effect record of the node book and writes the Capsule
+(with its `signature` and `key_id`) to a file; `go run ./test/interop/goose-capsule FILE` checks it.
 
 The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`

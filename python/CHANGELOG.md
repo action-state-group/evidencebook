@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The Goose reference seals a model call (evidencebook#300): `loop_seal` / `Node.seal_model_call` commit one
+  effect-boundary Capsule to the node book (`effect_attestation` `runtime_claimed`, `model_attestation` naming
+  the provider and model id, prompt and completion committed by digest) and write it as a verifier reads it;
+  `test/interop/goose-capsule` checks it in Go.
+
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (evidencebook#283)
 
 - `evidencebook.deal` no longer copies `cases.Fold`'s Cherokee case swap; it

@@ -9,7 +9,7 @@ run one deal end to end and write their History cards.
 OUT receives, for each node (``buyer``, ``seller``): ``<node>/`` (its home:
 shelf, keys), ``<node>-card.json`` (its ``standard_history/1`` card and the
 inputs it was derived from), ``<node>-history-card.json`` (``history_card/1``
-for its deal's book) and ``<node>.key`` (its signing key). Go's check of a
+for its deal's book) and ``<node>.key`` (its signing key) and ``buyer-model-call.json`` (a model call the buyer sealed, loop_seal). Go's check of a
 card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
 OUT/<node>-card.json $(cat OUT/<node>.key)``.
 """
@@ -60,6 +60,12 @@ async def run(out: Path) -> None:
                              decision="GO", reason="known inference seller")
             await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
                               decision="GO", reason="paying customer")
+
+            # 01: the buyer seals a model call it made; the Capsule is the file a
+            # verifier reads.
+            await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
+                             prompt="buy 1k tokens of inference", completion="the seller's offer, summarised",
+                             out_path=str(out / "buyer-model-call.json"))
 
             # 05: the buyer opens the deal and pushes its half; the seller
             # answers it (offer, acceptance, commit) and pushes its own.

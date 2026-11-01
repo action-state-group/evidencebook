@@ -10,7 +10,7 @@ is imported once as a host log, nothing re-signed.
 
     step  tool(s)
     ----  ---------------------------------------------------------------
-    01    capsule_record (capsule-emit's seal-only server, unchanged)
+    01    loop_seal
     02    loop_book, loop_tick
     04    loop_admit
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
@@ -120,6 +120,22 @@ def _write(path: str, data: bytes) -> None:
 
 def _read_json(path: str) -> Any:
     return json.loads(Path(path).expanduser().read_text())
+
+
+# -- 01 Seal ------------------------------------------------------------------------------
+
+
+@_tool
+def loop_seal(provider: str, model_id: str, prompt: str, completion: str, out_path: str) -> str:
+    """Seal one model call Goose made: an effect-boundary record in this
+    node's book, signed with its producer key in this process
+    (``effect_attestation`` ``runtime_claimed``), whose ``model_attestation``
+    names ``provider`` and ``model_id``. The prompt and completion are
+    committed by digest and stay on this node. The Capsule is written to
+    ``out_path`` as a verifier reads it."""
+    sealed, capsule = node().seal_model_call(provider, model_id, prompt, completion, _now())
+    _write(out_path, json.dumps(capsule, sort_keys=True, indent=2).encode())
+    return _out(ok=True, step="01", record_id=sealed.record_id, capsule_id=capsule["capsule_id"], file=out_path)
 
 
 # -- 12 Join, probe and import ----------------------------------------------------------

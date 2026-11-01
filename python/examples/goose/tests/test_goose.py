@@ -440,3 +440,38 @@ def test_an_answer_cut_short_is_finished_by_answering_again(server, tmp_path):
     assert kinds.count(deal.TYPE_PROPOSED_ACTION) == 2 and kinds.count(deal.TYPE_ACTION_RECORD) == 2
     assert call(ls.loop_deal_respond, request_file=half, asked="sell")["error"].endswith("already answered")
     gn.verify_half(node.half(deal_id), node.checkpoint_key_id)
+
+
+def test_a_sealed_model_call_is_a_runtime_claimed_record_naming_its_model(nodes, clock, tmp_path):
+    from agent_action_capsule.canonical import jcs
+    from capsule_emit import produce
+
+    buyer, _ = nodes
+    sealed, capsule = buyer.seal_model_call("rehearsal", "rehearsal-model", "the prompt", "the completion", clock.at)
+    assert sealed.record_type == gn.MODEL_CALL and sealed.record_id == capsule["capsule_id"]
+    assert capsule["effect"]["effect_attestation"] == "runtime_claimed"
+    assert capsule["effect"]["type"] == "inference_completion"
+    assert {k: capsule["model_attestation"][k] for k in ("provider", "model_id")} == {
+        "provider": "rehearsal", "model_id": "rehearsal-model"}
+    assert capsule["key_id"] == buyer.key_id
+    # It is a record of the node book, and verifies as any Capsule does.
+    assert [r.record_id for r in buyer.shelf.open(gn.NODE_BOOK).records()] == [sealed.record_id]
+    body = dict(capsule)
+    signature = body.pop("signature")
+    body.pop("key_id")
+    produce.verify_capsule(jcs(body))
+    assert bytes(produce.verify_envelope(body["capsule_id"], bytes.fromhex(signature)).public_key).hex() == buyer.key_id
+    if os.environ.get("GOOSE_GO_CHECK"):
+        path = tmp_path / "model-call.json"
+        path.write_text(json.dumps(capsule))
+        check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(path)], cwd=HERE.parents[2],
+                               capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
+
+
+def test_a_model_call_without_a_model_is_refused(nodes, clock):
+    buyer, _ = nodes
+    for provider, model in (("", "m"), ("p", "")):
+        with pytest.raises(gn.Refused, match="provider and model_id"):
+            buyer.seal_model_call(provider, model, "p", "c", clock.at)
+    assert buyer.shelf.open(gn.NODE_BOOK).records() == []
