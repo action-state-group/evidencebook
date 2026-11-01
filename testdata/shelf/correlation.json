@@ -1,5 +1,5 @@
 {
-  "description": "Which record positions a correlation subject answers with (Personal-Agent History Profile v0 §1), written by shelf_correlation_vectors_test.go (EB_WRITE_SHELF_VECTORS=1) from correlationOf. A record carrying exchange_id is held under it alone; any other is held under its subject_ref, whatever else it carries. Every Rust shelf reads this file.",
+  "description": "Which record positions a correlation subject answers with (Personal-Agent History Profile v0 §1), written by shelf_correlation_vectors_test.go (EB_WRITE_SHELF_VECTORS=1) from correlationOf. A record carrying exchange_id is held under it alone; any other, including one whose exchange_id is empty, is held under its subject_ref, whatever else it carries. The Rust and Python shelves read this file.",
   "records": [
     {
       "subject_ref": "s-1",
@@ -37,9 +37,16 @@
       "correlation": {
         "twin_bracket_id": "t-2"
       }
+    },
+    {
+      "subject_ref": "s-6",
+      "correlation": {
+        "exchange_id": ""
+      }
     }
   ],
   "answers": {
+    "": [],
     "abababababababababababababababababababababababababababababababab": [],
     "absent": [],
     "s-1": [
@@ -54,6 +61,9 @@
       6
     ],
     "s-5": [],
+    "s-6": [
+      7
+    ],
     "t-1": [],
     "t-2": [],
     "x-1": [

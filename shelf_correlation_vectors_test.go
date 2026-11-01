@@ -43,7 +43,7 @@ func (r correlationVectorRecord) header() Header {
 func buildCorrelationVectors() correlationVectors {
 	digest := strings.Repeat("ab", 32)
 	v := correlationVectors{
-		Description: "Which record positions a correlation subject answers with (Personal-Agent History Profile v0 §1), written by shelf_correlation_vectors_test.go (EB_WRITE_SHELF_VECTORS=1) from correlationOf. A record carrying exchange_id is held under it alone; any other is held under its subject_ref, whatever else it carries. Every Rust shelf reads this file.",
+		Description: "Which record positions a correlation subject answers with (Personal-Agent History Profile v0 §1), written by shelf_correlation_vectors_test.go (EB_WRITE_SHELF_VECTORS=1) from correlationOf. A record carrying exchange_id is held under it alone; any other, including one whose exchange_id is empty, is held under its subject_ref, whatever else it carries. The Rust and Python shelves read this file.",
 		Records: []correlationVectorRecord{
 			{SubjectRef: "s-1", Correlation: map[string]string{"request_digest": digest}},
 			{SubjectRef: "s-2", Correlation: map[string]string{"exchange_id": "x-1"}},
@@ -52,6 +52,7 @@ func buildCorrelationVectors() correlationVectors {
 			{SubjectRef: "x-1"},
 			{SubjectRef: "s-5", Correlation: map[string]string{"exchange_id": "x-1", "request_digest": digest}},
 			{SubjectRef: "s-4", Correlation: map[string]string{"twin_bracket_id": "t-2"}},
+			{SubjectRef: "s-6", Correlation: map[string]string{"exchange_id": ""}},
 		},
 		Answers: map[string][]int{},
 	}
