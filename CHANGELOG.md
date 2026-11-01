@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.12.0 (2026-10-31)
+
 ### Added: the book answers `evidence-interop/1` requests (evidencebook#248)
 
 - `Respond`, and so the stream, HTTP, MCP and A2A carriages, answers a request
