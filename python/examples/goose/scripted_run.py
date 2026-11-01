@@ -11,7 +11,8 @@ shelf, keys), ``<node>-card.json`` (its ``standard_history/1`` card and the
 inputs it was derived from), ``<node>-history-card.json`` (``history_card/1``
 for its deal's book) and ``<node>.key`` (its signing key), ``buyer-model-call.json`` (a model call the buyer
 sealed, loop_seal) and ``buyer-model-call-bundle.json`` (that record proven in the node book,
-loop_book_bundle). Go's check of a
+loop_book_bundle); ``buyer-opening-bundle.json`` is the buyer's admission and its record
+of the deal, one bundle (loop_deal_bundle). Go's check of a
 card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
 OUT/<node>-card.json $(cat OUT/<node>.key)``.
 """
@@ -76,6 +77,8 @@ async def run(out: Path) -> None:
                                       asked="buy 1k tokens of inference from the seller")
             deal_id = opened["deal_id"]
             await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "buyer-half.json"))
+            # 04: the buyer's admission and its record of the deal that cites it, as one bundle.
+            await buyer.call("loop_deal_bundle", deal_id=deal_id, out_path=str(out / "buyer-opening-bundle.json"))
             await seller.call("loop_deal_respond", request_file=str(out / "buyer-half.json"),
                               asked="sell 1k tokens of inference at the listed price")
             await seller.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "seller-half.json"))

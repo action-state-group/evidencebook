@@ -76,7 +76,8 @@ type StepHeader struct {
 	CommittedAt time.Time
 	SubjectRef  string
 	// Cites is the parent Capsule, which the header's one cites link
-	// targets, when the step has one.
+	// targets, when the step has one. A producer may add the admission a
+	// first step rests on (PROFILE.md §1); the step builder does not.
 	Cites  []string
 	Fields map[string]string
 }

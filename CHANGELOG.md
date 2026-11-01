@@ -13,6 +13,14 @@
   member (#254 D4) and a library for `inference-service-history/0` (#322).
 - agent-action-capsule's Go module moves to `go/v0.19.0`, which verifies `controller_binding` joins.
 
+### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
+
+- `--contract FILE` pins a compiled Evidence Contract v0 to `--contract-digest` (the lowercase hex
+  SHA-256 of its bytes), as `--wording` and `--wording-digest` do for a wording pack: both or neither,
+  and not with `--permalink`. The page is the SDK's page for `View.Contract`; the JSON result names
+  `contract_ref` and `contract_sha256`, and a refusal names `--contract`. capsulectl requires
+  `report` `v0.4.0`, the release that carries `View.Contract`.
+
 ### Added: the Goose reference receives a referee's Result (step 09, #310)
 
 - `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
@@ -44,6 +52,15 @@
   `NOT_CHECKED`. A book that does not serve the card reports no such finding.
   capsulectl-book sets no `StandardHistorySource`, so it shows it only once a
   host serves the card.
+
+### Changed: capsulectl-book and `report` build against capsule-viewer 0.10.0
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-viewer `v0.10.0` (was `v0.9.0`;
+  the receipt's `paymentPreimageCheck` and `readerCadenceWitness` runtime, capsule-viewer#215).
+  The `report` fixtures' pages (`4-monthly-outcome`, `5-monthly-compliance`) are rewritten with
+  the new page runtime. The vendored History card module
+  (`capsulectl/internal/book/assets/standard-history`) is byte-identical in `go/v0.10.0` and
+  `go/v0.9.0` (same bundle sha256); only its `SOURCE.txt` names the new release.
 
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
 
