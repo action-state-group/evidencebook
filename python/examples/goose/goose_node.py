@@ -505,7 +505,7 @@ class Node:
             result = aac.verify_bundle(built, strict=True, witness_directory=self._witnesses)
             if self._witnesses is not None and [r.status for r in result.witness_receipts] != ["pass"]:
                 raise Refused(f"the witness receipt does not verify under the directory: {result.witness_receipts}")
-            if str(result.verdict) not in ("VALID", "Verdict.VALID"):
+            if result.verdict != "VALID":
                 raise Refused(f"the bundle does not verify: {result.verdict}")
             return built
 

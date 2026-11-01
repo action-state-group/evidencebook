@@ -237,7 +237,7 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     for name, data in files.items():
         _write(f"{stem}.{name}", data)
     return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
-                witnessed=chain is not None, beside=sorted(f"{stem}.{name}" for name in files))
+                witnessed=bool(receipts), cadence_extent=chain["extent"] if chain else None, beside=sorted(f"{stem}.{name}" for name in files))
 
 
 # -- 04 Admit -----------------------------------------------------------------------------

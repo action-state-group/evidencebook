@@ -520,7 +520,7 @@ def test_a_book_bundle_proves_a_record_and_go_accepts_it(nodes, clock, tmp_path)
     sealed, _ = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
     built = buyer.book_bundle(gn.NODE_BOOK, sealed.record_id)
     assert built["root"] == sealed.record_id and "extensions" not in built, "no witnessed tick yet"
-    assert str(aac.verify_bundle(built, strict=True).verdict).endswith("VALID")
+    assert aac.verify_bundle(built, strict=True).verdict == "VALID"
     # The bundle is the one record's place in the book, so the book's other record is carried too.
     assert len(built["records"]) == 2
     if os.environ.get("GOOSE_GO_CHECK"):
@@ -615,7 +615,7 @@ def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(t
         sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
         out = tmp_path / "call.json"
         done = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
-        assert done["ok"]
+        assert done["ok"] and done["witnessed"] and done["cadence_extent"] is None
         statement = (tmp_path / "call.checkpoint.cose").read_bytes()
         assert statement == node.book_checkpoint(gn.NODE_BOOK)
         receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
@@ -631,6 +631,13 @@ def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(t
         assert node.tick().ticked
         tick = node.cadence.last()
         node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint))
-        json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        again = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert again["cadence_extent"] == "all"
+        # A record sealed after the tick is under a newer checkpoint: the chain is of the earlier one ("part").
+        later, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p2", "c2", clock.at)
+        part = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, later.record_id, str(out)))
+        assert part["witnessed"] and part["cadence_extent"] == "part"
+        refused = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, "00" * 32, str(out)))
+        assert not refused["ok"] and "holds no record" in refused["error"]
         assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
         assert (tmp_path / "call.cadence-witness-receipt.json").is_file()
