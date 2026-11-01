@@ -268,7 +268,12 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
     call = json.loads((tmp_path / "buyer-model-call.json").read_text())
     assert call["effect"]["effect_attestation"] == "runtime_claimed" and call["model_attestation"]["model_id"] == \
         "rehearsal-model" and call["key_id"] == (tmp_path / "buyer.key").read_text()
+    bundle = json.loads((tmp_path / "buyer-model-call-bundle.json").read_text())
+    assert bundle["bundle_kind"] == "evidence-bundle/v2" and bundle["root"] == call["capsule_id"]
     if os.environ.get("GOOSE_GO_CHECK"):
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(tmp_path / "buyer-model-call-bundle.json")],
+                               cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
         check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(tmp_path / "buyer-model-call.json")],
                                cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
         assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
@@ -495,3 +500,195 @@ def test_go_refuses_a_sealed_model_call_that_was_altered(nodes, clock, tmp_path)
     check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(path)], cwd=HERE.parents[2],
                            capture_output=True, text=True, timeout=600)
     assert check.returncode == 1 and "class 1" in check.stderr, check.stdout + check.stderr
+
+
+def _witness_script():
+    import importlib.util
+
+    path = HERE.parents[2] / "test" / "interop" / "python-evidencebook" / "shelf.py"
+    spec = importlib.util.spec_from_file_location("shelfscript", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_book_bundle_proves_a_record_and_go_accepts_it(nodes, clock, tmp_path):
+    from agent_action_capsule import bundle as aac
+
+    buyer, _ = nodes
+    buyer.note(gn.JOINED, {"operator": buyer.operator, "key_id": buyer.key_id})
+    sealed, _ = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+    built = buyer.book_bundle(gn.NODE_BOOK, sealed.record_id)
+    assert built["root"] == sealed.record_id and "extensions" not in built, "no witnessed tick yet"
+    assert aac.verify_bundle(built, strict=True).verdict == "VALID"
+    # The bundle is the one record's place in the book, so the book's other record is carried too.
+    assert len(built["records"]) == 2
+    if os.environ.get("GOOSE_GO_CHECK"):
+        path = tmp_path / "bundle.json"
+        path.write_text(json.dumps(built))
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(path)], cwd=HERE.parents[2],
+                               capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
+
+
+class _Witness:
+    """The test witness (the shelf script's key) as a ``cll.checkpoint.witness`` submitter."""
+
+    def __init__(self, script, endpoint: str) -> None:
+        self.script, self.asked = script, 0
+        assert endpoint == script.DIRECTORY["witnesses"][0]["endpoint"]
+
+    def submit(self, statement: bytes):
+        from types import SimpleNamespace
+
+        self.asked += 1
+        r = self.script.mint_receipt(statement)
+        return SimpleNamespace(bytes=r.receipt, entry_hash=r.entry_hash, leaf_index=r.leaf_index, tree_size=r.tree_size)
+
+
+def test_a_bundle_carries_the_witnesss_receipt_for_the_books_own_checkpoint(tmp_path, clock):
+    from agent_action_capsule import bundle as aac
+
+    script, made = _witness_script(), []
+
+    def client(endpoint):
+        made.append(_Witness(script, endpoint))
+        return made[-1]
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=client) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        built = node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        [receipt] = built["checkpoint"]["witnesses"]
+        result = aac.verify_bundle(built, strict=True, witness_directory=script.DIRECTORY)
+        assert [r.status for r in result.witness_receipts] == ["pass"]
+        assert receipt["ts_url"] == script.DIRECTORY["witnesses"][0]["endpoint"] and receipt["receipt_b64"]
+        # The same checkpoint is asked once; a bundle without the directory's witness would not verify.
+        assert node.book_bundle(gn.NODE_BOOK, sealed.record_id)["checkpoint"]["witnesses"] == [receipt]
+        assert sum(w.asked for w in made) == 1
+        # A tick that the witness also saw adds the cadence chain.
+        assert node.tick().ticked
+        tick = node.cadence.last()
+        assert node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint)).state == "VERIFIED"
+        again = node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert again["extensions"][gn.CADENCE_EXTENSION]["state"] == "witnessed"
+
+
+def test_a_bad_receipt_is_not_kept_and_a_bad_endpoint_is_refused(tmp_path, clock):
+    script = _witness_script()
+    good = _Witness(script, script.DIRECTORY["witnesses"][0]["endpoint"])
+    answers = []
+
+    class Flaky:
+        def submit(self, statement):
+            answers.append(1)
+            if len(answers) == 1:
+                bad = good.submit(statement)
+                bad.entry_hash = "00" * 32  # a receipt that does not bind this checkpoint
+                return bad
+            return good.submit(statement)
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda _: Flaky()) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="does not verify"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert node.book_bundle(gn.NODE_BOOK, sealed.record_id)["checkpoint"]["witnesses"]
+        assert len(answers) == 2
+    directory = {"witnesses": [{**script.DIRECTORY["witnesses"][0], "endpoint": "witness.example"}]}
+    with gn.Node.open(tmp_path / "x", operator="goose-x", now=clock, witnesses=directory) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="gave no receipt"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+
+
+def test_a_receipt_the_directory_cannot_verify_and_a_two_witness_directory_are_refused(tmp_path, clock):
+    script = _witness_script()
+    row = script.DIRECTORY["witnesses"][0]
+
+    class Forged(_Witness):
+        def submit(self, statement):
+            got = super().submit(statement)
+            got.bytes = bytes([got.bytes[0] ^ 1]) + got.bytes[1:]
+            return got
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda e: Forged(script, e)) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert not node._db.execute("SELECT 1 FROM goose_book_receipts").fetchall(), "a bad receipt is not kept"
+    two = {"witnesses": [row, {**row, "name": "another", "endpoint": "https://other.test"}]}
+    with gn.Node.open(tmp_path / "x", operator="goose-x", now=clock, witnesses=two) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="exactly one witness"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+
+
+def test_a_witness_that_fails_leaves_no_bundle(tmp_path, clock):
+    from cll.log import ContentionError
+
+    script = _witness_script()
+
+    class Down:
+        def submit(self, statement):
+            raise ContentionError("connection refused")
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda _: Down()) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="gave no receipt"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+
+
+def test_a_book_bundle_refuses_what_the_node_does_not_hold(nodes):
+    buyer, _ = nodes
+    sealed, _ = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", AT)
+    with pytest.raises(gn.Refused, match="holds no book"):
+        buyer.book_bundle("deal/none", sealed.record_id)
+    with pytest.raises(gn.Refused, match="holds no record"):
+        buyer.book_bundle(gn.NODE_BOOK, "00" * 32)
+
+
+def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(tmp_path, clock, monkeypatch):
+    pytest.importorskip("mcp")
+    import hashlib
+
+    import loop_server
+
+    script = _witness_script()
+    directory = tmp_path / "witnesses.json"
+    directory.write_text(json.dumps(script.DIRECTORY))
+    monkeypatch.setenv("GOOSE_WITNESSES", str(directory))
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda endpoint: _Witness(script, endpoint)) as node:
+        monkeypatch.setattr(loop_server, "_node", node)
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        out = tmp_path / "call.json"
+        done = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert done["ok"] and done["witnessed"] and done["cadence_extent"] is None
+        statement = (tmp_path / "call.checkpoint.cose").read_bytes()
+        assert statement == node.book_checkpoint(gn.NODE_BOOK)
+        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
+        assert receipt == json.loads(out.read_text())["checkpoint"]["witnesses"][0]
+        # The receipt is over this very checkpoint: its entry hash binds the statement the file holds.
+        assert receipt["entry_hash"] == script.mint_receipt(statement).entry_hash
+        assert json.loads((tmp_path / "call.witnesses.json").read_text()) == script.DIRECTORY
+        if os.environ.get("GOOSE_GO_CHECK"):
+            check = subprocess.run(["go", "run", "./test/interop/verify", str(out), node.checkpoint_key_id,
+                                    str(tmp_path / "call.witnesses.json")], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+            assert check.returncode == 0 and "witnessed" in check.stdout, check.stdout + check.stderr
+        assert not (tmp_path / "call.cadence-checkpoint.cose").exists()
+        assert node.tick().ticked
+        tick = node.cadence.last()
+        node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint))
+        again = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert again["cadence_extent"] == "all"
+        # A record sealed after the tick is under a newer checkpoint: the chain is of the earlier one ("part").
+        later, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p2", "c2", clock.at)
+        part = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, later.record_id, str(out)))
+        assert part["witnessed"] and part["cadence_extent"] == "part"
+        refused = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, "00" * 32, str(out)))
+        assert not refused["ok"] and "holds no record" in refused["error"]
+        assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
+        assert (tmp_path / "call.cadence-witness-receipt.json").is_file()
