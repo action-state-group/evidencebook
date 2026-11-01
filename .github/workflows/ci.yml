@@ -486,7 +486,7 @@ jobs:
       - name: Build the v0.1.8 Mesh node's half checks
         run: cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
       - name: Install the package and the MCP SDK
-        run: python -m pip install "./python[test]" "mcp==2.3.0"
+        run: python -m pip install "./python[test]" "mcp==2.3.0" "websockets==17.4"
       - name: Install capsule-engine's referee (the Result's receive check, step 09)
         # The merge of capsule-engine#272; a release that carries capsule_engine.referee replaces the pin.
         run: python -m pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"

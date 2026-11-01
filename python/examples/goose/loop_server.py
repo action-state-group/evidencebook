@@ -16,7 +16,7 @@ is imported once as a host log, nothing re-signed.
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
     07    loop_ask, loop_ask_reply (the asker's side)
-    09    loop_dispute_receive (a referee's Result sealed as received; the check is capsule-engine's)
+    09    loop_dispute_ask, loop_dispute_poll (a referee's Result fetched over the Nostr mailbox and sealed as received; the check is capsule-engine's)
     12    loop_join, loop_probe, loop_import
     cards loop_history_card, loop_standard_history
 
@@ -433,21 +433,29 @@ def loop_ask_reply(request_record_id: str, reply_file: str, responder_key: str, 
 
 
 @_tool
-def loop_dispute_receive(result_file: str, result_capsule_file: str, deal_file: str) -> str:
-    """Seal a referee's Result into this node's book as received.
+def loop_dispute_ask(deal_file: str, poll_interval: int = 30) -> str:
+    """Ask the referee the deal terms name for the Result, over the Nostr mailbox.
 
-    ``result_file`` holds the Result document exactly as the referee wrote it,
-    ``result_capsule_file`` the referee's sealed ``referee.result`` capsule, and
-    ``deal_file`` ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``:
-    each party's signed half and the opening of its commitment. The Result must
-    verify, be signed by the referee both halves' terms name, name these
-    halves, and be about a deal this node sealed one half of. Otherwise it is
-    refused and the refusal sealed with its code. Both parties' books hold the
-    same ``result_digest``. Fetching the Result is the caller's: poll the
-    mailbox the terms name, or take the file the referee hands over."""
-    sealed = node().receive_dispute_result(_read_json(result_capsule_file),
-                                           Path(result_file).expanduser().read_bytes(), _read_json(deal_file))
-    return _out(ok=True, step="09", record_id=sealed.record_id)
+    ``deal_file`` holds ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``:
+    each party's signed half and the opening of its commitment. The terms'
+    ``referee`` names the ``mailbox_key``, the ``relays`` and ``answers_within``
+    (seconds); ``poll_interval`` (whole seconds) is how often you will call ``loop_dispute_poll``
+    and must not exceed ``answers_within``. Returns the request's event id."""
+    asked = node().ask_dispute_result(_read_json(deal_file), int(poll_interval))
+    return _out(ok=True, step="09", **asked)
+
+
+@_tool
+def loop_dispute_poll(request_event_id: str, deal_file: str) -> str:
+    """Poll the mailbox once for the Result asked for with ``loop_dispute_ask``.
+
+    ``status`` is ``received`` (the Result verified and is sealed in your book,
+    citing both halves), ``pending`` (before the request's deadline) or ``absent``
+    (the deadline passed with no reply; the absence is sealed). A reply that fails
+    verification is refused and the refusal sealed with its code. Both parties'
+    books then hold the same ``result_digest``."""
+    got = node().poll_dispute_result(request_event_id, _read_json(deal_file))
+    return _out(ok=True, step="09", **got)
 
 
 # -- History cards ----------------------------------------------------------------------------

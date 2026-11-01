@@ -18,13 +18,20 @@
   `contract_ref` and `contract_sha256`, and a refusal names `--contract`. capsulectl requires
   `report` `v0.4.0`, the release that carries `View.Contract`.
 
-### Added: the Goose reference receives a referee's Result (step 09, #310)
+### Added: the Goose reference receives a referee's Result over the Nostr mailbox (step 09, #310)
 
-- `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
-  capsule-engine's `verify_referee_result`, after binding each party's terms to its signed half,
-  and seals it in the node book as `goose_dispute_received`; both parties' books hold the same
-  `result_digest`. A Result that fails any check is refused and sealed as `goose_dispute_refused`
-  with the refusal's code.
+- `python/examples/goose`: `loop_dispute_ask` publishes a request for the Result to the referee's
+  mailbox key on the relays the deal terms name (`referee.mailbox_key`, `relays`,
+  `private_relays: true`, which the node requires because the events are not encrypted, and `answers_within`), with a fresh carriage key and a deadline of `answers_within`; the poll
+  interval may not exceed `answers_within`. `loop_dispute_poll` polls the relays for a reply that
+  passes the reply checks of `nostr-mailbox-v0` §4.2 (the binding's event kinds and checks carrying a Result, not an evidence envelope, so not a conforming use of it), verifies the Result with capsule-engine's
+  `verify_referee_result` after binding each party's terms to its signed half, and seals it as
+  `goose_dispute_received`. The record cites both judged halves, which the book holds as
+  `goose_dispute_half` records, and carries the SHA-256 of the Result's bytes: both parties' books
+  hold the same `result_digest`. A Result that fails any check is refused and sealed as
+  `goose_dispute_refused` with the refusal's code; no reply by the deadline is sealed once as
+  `goose_dispute_absent`, and a reply that arrives later is still taken. The transport is
+  `nostr_mailbox.py` (BIP-340, NIP-01, a poll per call); the example needs `websockets`.
 
 ### Added: `dealprofile.CheckChain`, the x-deal-v0 chain stage (§6) (#308)
 
