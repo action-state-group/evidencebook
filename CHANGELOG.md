@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.13.0 (2026-11-01)
+
 ### Added: a guide path for History cards that staple (#266)
 
 - `docs/GUIDE.md` path 4 and `Example_staple`: a Goose agent's shelf (a book per deal, a node book,
@@ -20,6 +22,22 @@
   check runs under for `party_role` when the deal profile pins rules per role
   (`rules_checker.roles`). Absent when the profile pins no roles, so every input valid before
   stays valid. PROFILE.md ("The external rules checker") documents it.
+
+### Added: `Book.Staple` and `CheckStaple`, a History card stapled to the holder's own message (#275)
+
+- `Book.Staple` builds a staple of `history_card/1` or `standard_history/1`: the holder's own
+  evidence request, pinned to its newest checkpoint and carrying a fresh nonce, with the signed
+  envelope its book answers it with. No other derivation is stapled, so a staple never carries more
+  than the standard card. Stapling `standard_history/1` seals an `evidence_request_answered`
+  record, so the holder's book records which card it attached. The holder's own staple is not
+  counted by the responder's limiter. Whether to staple is the host's setting; the book has no
+  default.
+- `CheckStaple` checks that a staple is presented by its holder and stays inside that cap: the
+  envelope verifies under the holder's key and answers that very request, the derivation and
+  subject are one of the two pairs, the anchor and profile are the requested ones, and a
+  `standard_history/1` card is of the standard card's form, and a `history_card/1` card has the
+  card's members and nothing else and ends at its anchor. It returns the anchor, nonce and issue time for the reader's replay
+  check against its own `min_freshness`.
 
 ### Changed: capsulectl-book `v0.1.0-rc30` pairs with capsulectl `v0.1.0-rc30`
 

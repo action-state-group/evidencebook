@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A History card stapled to the holder's own message (evidencebook#275): `staple(book, derivation)` builds the
+  holder's own request (pinned to its newest checkpoint, with a fresh nonce) and the envelope its book answers,
+  for `history_card/1` or `standard_history/1` only, so a staple never carries more than the standard card.
+  `check_staple(staple, holder)` checks it as Go's `CheckStaple` does, against the vectors Go writes
+  (`testdata/staple/staples.json`). The checker refuses a card with members beyond the card's own. The holder's own staple is not counted by
+  the book's limiter. The Python
+  responder does not answer `standard_history/1` yet (evidencebook#328), so only `history_card/1` is stapled
+  from a Python book; a staple of either from another implementation is checked.
 - `Header.reproduction` reads and writes the reproduced-scratch-book marker (evidencebook#232),
   so a marked header keeps its identity in Python. Writing a reproduction book is not implemented here.
 - The Goose reference's deal cites the admission it rests on (evidencebook#302): the first step of a deal

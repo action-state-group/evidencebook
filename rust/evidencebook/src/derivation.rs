@@ -306,7 +306,7 @@ pub(crate) fn subject_form(kind: SubjectKind) -> SubjectForm {
 /// The reader is this module's own rather than `serde_json`'s, so what it
 /// accepts does not depend on `serde_json`'s features (`arbitrary_precision`
 /// reads numbers through a private member name a document may also use).
-fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
+pub(crate) fn decode_strict(document: &[u8]) -> Result<Value, DerivationError> {
     let text = std::str::from_utf8(document)
         .map_err(|_| DerivationError::NotJson("JSON text is not valid UTF-8".into()))?;
     let mut reader = Reader {

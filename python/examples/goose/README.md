@@ -81,6 +81,7 @@ here moves money: a payment reference is a value you observed.
 | 09 | `loop_dispute_ask`, then `loop_dispute_poll` until `received` (the referee's Result, over the mailbox) | the same |
 | 02 | `loop_tick`, then `loop_book_bundle` (a record of a book, e.g. the one `loop_seal` returned) | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
+| 03 | `loop_advertise` | `loop_advertise` |
 
 `loop_book_bundle` writes the record's Evidence Bundle (`go run ./test/interop/verify FILE` checks it); beside it go `checkpoint.cose` and, with `GOOSE_WITNESSES` (a directory of one witness), that witness's receipt for this very
 checkpoint (`witness-receipt.json`, also in the bundle's `checkpoint.witnesses`) and `witnesses.json`; a witnessed cadence
@@ -91,6 +92,18 @@ tick adds `cadence-checkpoint.cose`, `cadence-witness-receipt.json` and the `x-c
 `runtime_claimed` is the node's own claim that the call happened, not the provider attesting it. The prompt is stored in
 your node book as the record's payload, so don't seal a prompt you would not disclose with the book; the completion is
 kept by digest only.
+
+`loop_advertise` is step 03. It writes the node's `evidence-commitment/1`, which says how the node can be asked and what it
+can answer, and never counts anything. It also writes the node's disclosure policy. Both are signed with your signing key.
+The files are `<node_id>.json` and `policies/<node_id>.json`, laid out as they go under `nodes/commitments/` in the loop
+repository (evidence-network/loop, `steps/03-advertise.md`), where you add them by pull request. The tool publishes nothing.
+`node_id` is your node's id in the loop's list; the default is your signing key. The commitment staples your node book's
+`history_card/1`. It does not staple a card for each deal, since those would publish every deal id. The node book's card
+does show the book's size, which grows with every record it holds, deal openings included. By default it says a person approves each answer (`human_gated`) and that an
+asker waits `PT24H` before recording an absence. `endpoint`, `bindings`, `answers_within` and `human_gated` change that.
+`loop_join` returns the same commitment and policy, and writes them when you give it `commitment_dir`. The loop's
+`scripts/check_commitment.py` is the check: CI runs it on the scripted run's commitments, with the loop checked out at the
+commit the workflow pins.
 
 The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`

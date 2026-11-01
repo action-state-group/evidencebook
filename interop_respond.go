@@ -228,6 +228,12 @@ type AnsweredStatement struct {
 // however many requests arrive at once, never holds Append, Checkpoint or
 // any other writer for longer than that (evidencebook#208).
 func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions) (Reply, Record, error) {
+	return b.respond(ctx, request, opts, false)
+}
+
+// respond is Respond; own marks the book's own request (Book.Staple), which
+// the cost policy does not count: the limiter and size cap are for askers.
+func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions, own bool) (Reply, Record, error) {
 	if err := opts.Policy.Validate(); err != nil {
 		return Reply{}, Record{}, err
 	}
@@ -236,7 +242,7 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 	}
 	b.answering.RLock()
 	defer b.answering.RUnlock()
-	a := answer{book: b, ctx: ctx, request: request, opts: opts, digest: digestBytes(request.Octets)}
+	a := answer{book: b, ctx: ctx, request: request, opts: opts, own: own, digest: digestBytes(request.Octets)}
 	reply, err := a.run()
 	if err != nil || !a.seal {
 		return reply, Record{}, err
@@ -260,6 +266,7 @@ type answer struct {
 	ctx       context.Context
 	request   Message
 	opts      RespondOptions
+	own       bool
 	now       time.Time
 	digest    string
 	statement AnsweredStatement
@@ -410,8 +417,8 @@ func (a *answer) run() (Reply, error) {
 	// Cost policy first: an oversized or over-limit request is declined
 	// before it is resolved (FR-37); it is read only to pick the reason
 	// (requestProfile).
-	oversized := len(a.request.Octets) > limit
-	limited := !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
+	oversized := !a.own && len(a.request.Octets) > limit
+	limited := !a.own && !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)
 	b.mu.Unlock()
 	if oversized || limited {

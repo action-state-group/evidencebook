@@ -981,6 +981,11 @@ class Node:
     def history_card(self, book_id: str) -> bytes:
         """``history_card/1`` for one book, as of its newest checkpoint: the
         reply octets a stranger's request gets (ER -02 §8.1)."""
+        return self.stapled_card(book_id)[0]
+
+    def stapled_card(self, book_id: str) -> tuple[bytes, bytes]:
+        """``history_card/1`` for one book and the signed statement of the
+        checkpoint it is anchored on (the card's anchor is its SHA-256)."""
         with self._lock:
             book = self.shelf.open(book_id)
             checkpoint = book.checkpoint()
@@ -989,7 +994,7 @@ class Node:
             reply, _ = book.respond(Message(encode_request(request)))
             if reply.envelope is None:
                 raise Refused(f"the book refused its own history_card/1 request: {reply.message.octets[:200]!r}")
-            return reply.message.octets
+            return reply.message.octets, checkpoint.statement
 
     def standard_history(self, tick: int = 0) -> dict:
         """``standard_history/1`` as of a cadence tick (the newest when 0):
