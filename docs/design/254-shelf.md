@@ -111,20 +111,40 @@ One SQLite file holds:
 
 | Tables | Owner | Contents |
 |---|---|---|
-| `cll_meta`, `cll_entries`, `cll_nodes`, `cll_witnesses` | CLL | one CLL log per book id, plus the cadence log and any legacy log |
+| `cll_meta`, `cll_entries`, `cll_nodes`, `cll_witnesses` | CLL | one CLL log per book id, plus the cadence log and every host log (§2.7) |
+| `capsule_store_*` | capsule-emit's artifact store (SQLite backend) | the originals of every book and the records of every host log, under the shelf's one namespace (§2.5) |
 | `book_records`, `book_checkpoints` | the shelf | each book's records (`book_id`, `seq`, `record_id`, `header`, `capsule`, `envelope`) and checkpoints |
 | `cadence_logs`, `cadence_live`, `cadence_ticks`, `cadence_witnessed` | the shelf | the cadence (§2.6) |
+| `shelf_meta`, `shelf_logs` | the shelf | the file's version, and every log's kind (below) |
 | host tables (for example `deal_shelf`, `shelf_mutations`) | the host | anything the host keeps beside the shelf |
 
-The shelf's tables are exactly `store_sqlite.go:14-60`, column for column. The file uses WAL, a
+The shelf's `book_*` and `cadence_*` tables are exactly `store_sqlite.go:14-60`, column for column. The file uses WAL, a
 busy timeout of 5000 ms and `synchronous=FULL` (`shelf.go:109-113`). The cadence's extents query
 uses SQLite's JSON1 functions (`cadence_standard_history.go:98-100`), so an implementation's
 SQLite must have them (rusqlite's bundled build and CPython's `sqlite3` both do).
 
-The shelf's schema gets a version row, `shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1),
-version INTEGER NOT NULL)`, written as 1 when the shelf creates its tables. An implementation
-refuses to open a file whose version it does not know. Today's Go shelf writes no version; a Go
-shelf opening a file without the row writes 1, since every such file has today's layout.
+Two tables are new, in every language:
+
+- `shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`. An
+  implementation refuses a file whose version it does not know. A file with no row is handled the
+  same way in every language: if it holds `book_records`, it is a shelf written by evidencebook
+  up to v0.11.0 and gets version 1; if it holds none of the shelf's tables (a fresh file, or
+  capsule-cli's `deal.db` before migration), the shelf creates its tables and version 1.
+- `shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')))`:
+  every log on the shelf other than the cadence log, written in the transaction that first gives
+  the log a record (a book) or that opens it as a host log (§2.7). `Open` refuses a `host` id and
+  `Legacy` and the host-log open refuse a `book` id, across reopens and languages; today Go only
+  stops `Legacy` from opening an id with `book_records` rows (`cadence.go:283-290`) and `Open`
+  never refuses a legacy id (`shelf.go:132-154`). A version 1 file without the table gets it filled
+  on open: each `book_records` id is a `book`, each other `cadence_logs` id a `host`.
+
+**Host parameters.** Some of what decides a shelf's bytes is configuration, not file content, and
+every process that writes one shelf, in any language, must use the same values: the signer and
+checkpoint key; each book's authenticated indexes (defaults or none, `shelf.go:41-46`, which decide
+whether `index_root` records enter the book's log); the artifact store namespace (§2.5); and the
+cadence's log id, interval, jitter or none, pad bucket and witness ids (`cadence.go:39-65`). The
+shelf does not store them; the host keeps them in its profile, as capsulectl does today. The
+interlock (§5) runs every language with one set of them.
 
 ### 2.3 Books
 
@@ -133,9 +153,13 @@ A book is one log id on the shelf. `Open(log_id)` returns the same book for the 
 could give two records one position. A book's store has FileStore's semantics: a record is stored
 once (the same record again is a no-op, another one under its id is `corrupt`), records list in
 seq order, checkpoints in the order kept, every write one transaction (`store_sqlite.go:62-108`).
-A record's row and its log entry are two writes, not one transaction, and the book's open
-reconciles a crash between them (`shelf.go:83-92`); a record above the log's entry count is
-pending, not committed (`shelf_records.go:31-37`).
+A record's row and its log entry are two writes, not one transaction (`shelf.go:83-92`). The
+book's open reconciles a crash between them (`book.go:152-230`): every stored record is checked
+against the log position it claims; a record stored but not yet in the log is appended again at
+its `committed_at` and must land at its `seq`, or the open fails; a log entry with no stored record
+is corrupt. Until then a record above the log's entry count is pending, not committed
+(`shelf_records.go:31-37`). Python's book has no durable log today (`_cll.py:1-13`), so this rule
+is new there.
 
 The record itself (header, capsule, envelope, payload and field commitments) is the book's, which
 the three implementations already share and test byte for byte (`testdata/derivation`,
@@ -153,13 +177,25 @@ or `fs2`/`fs4`) and Python (`fcntl.flock`) take the same lock on the same file, 
 writer of one shelf exclude each other. Off unix the shelf does not open (`shelf.go:73-76`), in
 every language.
 
+A host that already holds the store's lock under its own rules passes the held lock instead of a
+path, and the shelf takes none. The Mesh plugin needs this: its lock refuses a symlinked lock
+file, opens with `O_NOFOLLOW` and writes and reports the holder's pid (capsules-plugin
+`data_dir.rs:262-300`, tested at `:492,606,625`), and since `flock` is held per open file
+description, a second `flock` by the shelf on the same file from the same process would wait on
+itself. Go gains the same option. A shelf on a host-held lock takes no lock of its own, so the
+unix-only rule above does not apply to it: the plugin's lock is `LockFileEx` on Windows
+(`data_dir.rs:300-306`), so a Windows node opens its shelf and migrates like any other. The shelf's
+own lock stays unix-only until a consumer needs it elsewhere.
+
 ### 2.5 Originals
 
-A book's originals (payloads, openings, caller-sealed capsules) go to one artifact store the host
-passes, shared by every book (`shelf.go:36-40`). The store is capsule-emit's, in any of its
-interlocked backends; the shelf never reads its files itself. The Go deal plugin passes the JSONL
-originals file; a new shelf may pass the SQLite backend on the shelf's own file. Either way the
-store, not the shelf, owns the format.
+A book's originals (payloads, openings, caller-sealed capsules) and a host log's records go to
+one artifact store, shared by every log of the shelf (`shelf.go:36-40`), under one namespace, a
+host parameter. Record ids and capsule ids are digests, so logs never collide in it. The store is
+capsule-emit's SQLite backend on the shelf's own file, as capsulectl deal already does
+(capsule-cli `cli/storage.go:75-80`: `artifactsqlite.New(db, p.Namespace, keys)` on `deal.db`).
+The store, not the shelf, owns the `capsule_store_*` format, and capsule-emit's
+`artifact-interlock.yml` already checks it across languages.
 
 ### 2.6 The cadence
 
@@ -180,12 +216,8 @@ As `cadence.go`, `cadence_tree.go` and `cadence_import.go` define it, unchanged:
   `store_sqlite.go:96-120`);
 - receipts are verified with AAC's witness verifier, never the shelf's own (`cadence.go:143-173`).
 
-The cadence is optional: a shelf with one book that its witness sees directly (§3.2) runs none.
-To make that possible the contract adds one thing Go lacks: **a directly witnessed log** (a book
-or a host log, §2.7), whose own checkpoints are queued for the shelf's witnesses in the same commit, as the cadence log's are
-today (`openCLLSQLite`'s `witnessIDs`, `substrate_cll.go:69-94`). A shelf refuses to put a directly
-witnessed log in its cadence, which would hand the witness that book's checkpoints and so
-defeat the tree.
+The cadence is optional: a shelf whose only log is a host log that checkpoints and witnesses
+itself (the Mesh node, §7) runs none.
 
 ### 2.7 Host logs, legacy logs and import
 
@@ -199,8 +231,9 @@ seals itself, in its own record format, never converted into book records. The s
 host, under the shelf's lock, the log's CLL backend on the shelf's file and the shelf's artifact
 store (namespace = the log id), so the host's own log layer (for the Mesh plugin, capsule-emit's
 `Ledger::open_stores_with_indexer` and `CheckpointState::load_log`) runs on the shelf's storage. A
-host log is either in the cadence (a legacy log, as Go's) or directly witnessed (§2.6). A book id
-and a host log id never coincide (`Legacy` refuses a book, `cadence.go:283-290`).
+host log is either in the cadence (a legacy log, as Go's), or outside it, when its checkpoints and
+witness rows are the host's own on that backend (the Mesh plugin's `CheckpointState::load_log`,
+capsule-emit `checkpoint.rs:655-680`). `shelf_logs` keeps book and host ids apart (§2.2).
 
 `Cadence.ImportLegacy` carries a pre-shelf cadence's ticks and logs in once, re-runnably
 (`cadence_import.go:33-60`). Importing a host's pre-shelf files into a host log is the host's
@@ -233,57 +266,65 @@ checkpoint of that book the tick carries (`cadence_chain.go:20-35`). So on a she
 - a History over several books answers at a cadence tick, each book bounded by the largest of its
   checkpoints any tick up to the anchor carries (`Extents`, `cadence_standard_history.go:26-37`);
 - a log that is the key's only stream (the Mesh node's host log, §7) answers at its own checkpoint, as ISH
-  requires (`streams: one`, `answer_anchor: period_boundary`), and is witnessed directly (§2.6).
+  requires (`streams: one`, `answer_anchor: period_boundary`), and its host checkpoints and
+  witnesses it (§2.7).
 
 This is the "books on a shelf" half of Steven's statement, and it already has a spec.
 
-### 3.3 Two ecosystems: stapling Mesh and Goose cards
+### 3.3 Two ecosystems: stapling a Mesh card and a Goose card
 
-A Goose agent buys inference from a Mesh node. The relying party wants the Goose agent's deal
-History and the Mesh node's service History together. Under the frame they are two subjects
-(HF §4.1), and HF §4.8 forbids serving them under one key. HF §4.7: "They compose only by an
-explicit, evidence-backed link between their keys, never by being shown together". The link AAC
-defines is the controller binding record (`spec/controller-binding-v0.md`), whose `controller_binding`
-join basis Evidence Bundle -02 adopts for `composed/v1` (controller-binding-v0 §8).
+The reference case is one developer who runs a Mesh node and a Goose agent: a node key that serves
+inference and an agent key that makes deals. A relying party wants both Histories together. Under
+the frame they are two subjects (HF §4.1), and HF §4.8 forbids serving them under one key. HF
+§4.7: "They compose only by an explicit, evidence-backed link between their keys, never by being
+shown together". The link AAC defines is the controller binding record
+(`spec/controller-binding-v0.md`), and its §2 names exactly this case: records under two bound
+keys "can be joined as records about the activity of keys whose holders bound them, for example a
+service History and a personal History". Its `controller_binding` join basis is what Evidence
+Bundle -02 adopts for `composed/v1` (controller-binding-v0 §8).
 
-What a reference staple is, then, with what exists:
+What a reference staple is, with what exists:
 
-1. the Goose agent's card (`standard_history/1` from its Python deal shelf, §8), with its anchor's
+1. the Goose agent's card (`standard_history/1` from its Python shelf, §8), with its anchor's
    receipt beside it;
 2. the Mesh node's card (`inference-service-history/0` from its Rust shelf, with its embedded
    `history_card/1`);
-3. a controller binding record signed by both keys, which is the only thing that lets a verifier
-   show the two together;
-4. the deal itself joins them at record level: the Goose deal's step and the Mesh exchange record
-   cite each other by digest (each party's exchange half, ER "Exchange half").
+3. a binding record with the claim `same_controller_asserted` (controller-binding-v0 §3.2),
+   signed by both keys, which is the only thing that lets a verifier show the two together.
 
 Each card is asked for and answered by its own evidence request, as ER requires (one request, one
-subject, one artifact). What exists does **not** define a single request or a single answer that
-carries both cards: ER -02 has no multi-subject request, and HF has no composed History. If
-"stapled for one evidence-request" means one request and one answer, that is new spec (a
-composed History derivation, or a `composed/v1`-style container of Histories joined by a
-controller binding), and is a door for Steven (§9, D4). This note builds everything up to it, so
-the reference works with two requests today and with one request once that spec exists, without
-a storage change.
+subject, one artifact). Two things are **not** defined by what exists:
+
+- a single request or a single answer that carries both cards: ER -02 has no multi-subject request,
+  and HF has no composed History;
+- any way to show together the cards of two **counterparties** (a Goose buyer and someone else's
+  Mesh node). Neither can truthfully sign any of the three binding claims, and a binding between
+  them would also make their two halves of a deal "redundant, not corroborating" (CB §2 item 1).
+  Counterparties relate only through their records: each half of the deal cites the other by
+  digest (ER "Exchange half").
+
+Both are new spec and a door for Steven (§9, D4). The shelf needs no storage change for either:
+each card is derived from one shelf as it is.
 
 ### 3.4 What the reference shows a developer
 
 A developer copying the reference gets, in their own language:
 
-- a shelf (§2) holding their agent's books under one key;
-- `history_card/1` per book, and their ecosystem's History instance (a counting table and a
-  wording pack under the frame, HF §5) over the books at a tick;
-- the controller binding to staple their key's cards to a counterparty's.
+- a shelf (§2) holding their agent's logs under one key;
+- `history_card/1` per log, and their ecosystem's History instance (a counting table and a
+  wording pack under the frame, HF §5) over one log or over the books at a tick;
+- a controller binding to staple the Histories of two keys they hold.
 
-Mesh shows the one-stream, directly witnessed case in Rust; Goose shows the many-books, cadence
-case in Python; capsulectl deal shows the same many-books case in Go.
+Mesh shows the one-stream case in Rust (a host log that checkpoints and witnesses itself); Goose
+shows the many-books, cadence case in Python; capsulectl deal shows the same many-books case in Go.
 
 ## 4. What does not change
 
 No record, capsule, envelope, checkpoint, receipt, card or wire byte changes: the shelf is
 storage under the book, and the cards are derived as their specs say. `ledger-fetch/1`,
 `evidence-request/1`, `record-push/1`, `commitment/1` and `/ledger-checkpoint` keep their shapes.
-The cadence tree and its vectors (`testdata/cadence`, from capsule-cli `7a6b101`) do not change.
+The cadence tree does not change, and neither do its vectors (`testdata/cadence`, from
+capsule-cli `7a6b101`), which move to `testdata/shelf/cadence` byte for byte (§5).
 
 ## 5. Conformance
 
@@ -293,12 +334,15 @@ Two kinds, following the pattern the layers below already use.
    with an environment flag and otherwise compared byte for byte, as
    `interop_derivation_vectors_test.go:274-287` does): cadence leaves, fillers, derived fillers,
    tree roots and paths, padding record ids from fixed nonces, a tick's stored `leaves` JSON, the
-   `Records` listing of a fixed shelf, and `Extents` and `StandardHistoryAnchor` of a fixed
-   cadence. `testdata/cadence` moves under it and gains Rust and Python readers. Randomness (salts,
+   `Records` listing of a fixed shelf, `Extents` and `StandardHistoryAnchor` of a fixed
+   cadence, and the cadence chain a bundle carries (`Cadence.Chain`, `cadence_chain.go:20-35`, which
+   capsule-cli's released verifier reads). `testdata/cadence` moves under it, with the Go tests'
+   paths, and gains Rust and Python readers; `rust.yml`'s path filter gains `testdata/shelf/`. Randomness (salts,
    positions, nonces, jitter) comes from one injected source in every implementation, so a vector
    run is deterministic; production uses the system CSPRNG.
 2. **A storage interlock** (`test/interop/shelf/`, a CI job in `ci.yml` beside the personal-history
-   jobs, and in `rust.yml`'s path filter): each language writes one scripted shelf (two books, a
+   jobs, and in `rust.yml`'s path filter), every language run with one set of host parameters
+   (§2.2): each language writes one scripted shelf (two books, a
    legacy log, three ticks with a receipt, a crash left pending), and each other language opens it,
    continues it (appends, ticks, a reopen) and checks that records, checkpoints, ticks, `Records`,
    `Extents` and every checkpoint root are identical; the lock test has a Go and a Rust writer of
@@ -306,10 +350,11 @@ Two kinds, following the pattern the layers below already use.
 
 ## 6. The ports
 
-### 6.1 Go first: the contract's two additions
+### 6.1 Go first: the contract's additions
 
-The directly witnessed log (§2.6), the host log (§2.7) and the `shelf_meta` version row (§2.2), with tests, and the
-byte vectors and interlock harness (§5). Go moves to CLL `go/v0.3.0` in the same item if the
+The host log (§2.7), `shelf_meta` and `shelf_logs` with their fill rules (§2.2), the host-held
+lock (§2.4) and the injected random source (§5), with tests, and the byte vectors and interlock
+harness (§5). Go moves to CLL `go/v0.3.0` in the same item if the
 interlock needs it; CLL's own interlock shows the SQLite files are the same across its releases.
 
 ### 6.2 Rust
@@ -320,19 +365,25 @@ capsule-emit-artifact's `sqlite` feature):
 - a concrete book that writes: a record store with `put_record`/`put_checkpoint` over
   `book_records`/`book_checkpoints`, and a substrate over CLL's SQLite `Backend` and
   `CheckpointRunner` (CLL 0.4.0), replacing nothing the read traits do today;
-- `Shelf` (open, lock, `open`, `books`, `records`, `legacy`, `release`), `Cadence` (tick, finish,
+- `Shelf` (open, lock or a host-held lock, `open`, `books`, `records`, `legacy`, the host log
+  handle, `release`), `Cadence` (tick, finish,
   witnessed, live, import_legacy, chain, standard_history_anchor) as §2 states them;
 - originals through `capsule-emit-artifact`.
 
 The crate's `Book` trait and `RecordSource` stay; the shelf's book implements them, so every
 answer path (`respond`, `answer`, the derivations) works on a shelf book unchanged. This is what
-evidencebook#191 (Rust core at Go parity) needs for Mesh.
+evidencebook#191 (Rust core at Go parity) needs for Mesh. The crate's `evidence-request` and
+`agent-action-capsule` dependencies are on CLL 0.3.1 today (`rust/evidencebook/Cargo.toml:31-40`;
+agent-action-capsule `rust/evidence-request/Cargo.toml:31`), so they move to CLL 0.4.0 first (§7.4).
 
 ### 6.3 Python
 
 In `python/evidencebook`: a `SqliteStore` beside `MemoryStore` and `FileStore`, a substrate over
 CLL 0.8.0's `cll.log.sqlite` and checkpoint runner, `Shelf`, `Cadence` and the lock (`fcntl`),
-originals through `capsule_emit.artifact`, and the x-deal-v0 profile Goose needs (§8). This
+originals through `capsule_emit.artifact`, and the x-deal-v0 profile Goose needs (§8).
+`capsule_emit.artifact` is a new dependency of the package, and capsule-emit's Python package pins
+`checkpointed-local-log>=0.7,<0.8` (`python/pyproject.toml:45`), so capsule-emit's Python moves to
+CLL 0.8 first, or the two cannot be installed together. This
 overrides evidencebook#191's "native Python takes no new verbs" for the shelf (Ethan, 2026-10-31:
 "python 也要"); #191 is amended to say so.
 
@@ -340,7 +391,7 @@ overrides evidencebook#191's "native Python takes no new verbs" for the shelf (E
 
 Line numbers in this section are at capsules-plugin `cef06f9`, `crates/evidence-plugin/src/`.
 
-### 7.1 The node chain stays one stream: a directly witnessed host log
+### 7.1 The node chain stays one stream: a host log that witnesses itself
 
 Every record kind the plugin seals goes on one chain whose parent is the node's head: exchange
 halves, stage records, owner maintenance, adjudications, admission, asks, settlement, deal steps
@@ -353,7 +404,7 @@ checkpoint (`commitment.rs:23-26`). `inference-service-history/0` counts over th
 
 So the chain is not split into books. It becomes **one host log on the node's shelf**, with the
 same `log_id` (`<data dir>/log_id`, `owner_maintenance.rs:107-116`), the same capsules, the same
-positions and the same checkpoints, directly witnessed as today. Splitting deals into their own
+positions and the same checkpoints, checkpointed and witnessed by the plugin as today. Splitting deals into their own
 books would change every position a peer holds and the stream ISH counts; this note does not
 propose it (§9, D5).
 
@@ -361,12 +412,13 @@ On the shelf:
 
 - the file is `<data dir>/ledger/shelf.db`; the chain's CLL log and its records (capsule-emit's
   artifact store, SQLite backend, namespace = `log_id`) live in it;
-- the shelf's lock file is the plugin's own `<real ledger>/.capsules-writer.lock`, which the
-  shelf takes in place of the plugin's `flock` on it (`data_dir.rs:312-361`), as capsulectl deal
-  passes its `.deal.lock`; the plugin's other guards (`capsules.lock`, the `/proc` scan) stay;
-- the plugin opens capsule-emit's `Ledger::open_stores_with_indexer` (`ledger.rs:735`) on the
-  host log's entry store and the shelf's artifact store, and `CheckpointState::load_log`
-  (`checkpoint.rs:662`) on the host log's backend. Every other call site stays (§7.3);
+- the plugin keeps its own lock (`data_dir.rs:262-361`: `capsules.lock`, the ledger's
+  `.capsules-writer.lock`, the `/proc` scan) and hands the held lock to the shelf (§2.4), which
+  takes none of its own;
+- the plugin opens capsule-emit's `Ledger::open_stores_with_indexer` (capsule-emit
+  `rust/capsule-emit/src/ledger.rs:735`) on the host log's entry store and the shelf's artifact
+  store, and `CheckpointState::load_log` (capsule-emit `rust/capsule-emit/src/checkpoint.rs:662`) on
+  the host log's backend. Every other call site stays (§7.3);
 - the plugin's own files (`received-*.jsonl`, adjudications, `deal-links.jsonl`, file checkpoints,
   `sequence_counters.json` and the rest) stay where they are. Moving them onto the shelf is not
   needed for any card and is not proposed.
@@ -390,7 +442,7 @@ the current release).
 
 ### 7.3 What happens to #206's branch
 
-Reuse it, rebased onto the shelf. Of `cf7fe7d`'s 36 files:
+Reuse it, rebased onto the shelf. Of `cf7fe7d`'s 36 source files (40 with docs, `INSTALL.md` and the lockfile):
 
 - kept as written: the #208 approver fix (`producer/capsule.rs:1381-1406,1474-1478`, the four
   `emit_owner_maintenance` calls, the Class 1 test), the import journal pattern and its phases,
@@ -408,20 +460,28 @@ The flat path is removed once no supported release can create such a node; Ethan
 
 ### 7.4 One CLL version in the plugin's graph
 
-The plugin builds on capsule-emit 0.0.9 and evidencebook 0.0.11, both on CLL 0.3.1. The Rust shelf
-uses CLL 0.4.0 (its checkpoint runner, and the small-order-key refusal 0.3.1 lacks). capsule-emit's
-`Ledger` takes CLL's store traits, so capsule-emit, capsule-emit-artifact and evidencebook must
-move to CLL 0.4.0 together, released before the plugin item starts.
+The plugin builds on capsule-emit 0.0.9, evidencebook 0.0.11 and `evidence-request` `=0.3.0`, and
+pins `cll` 0.3.1 itself; all of them are on CLL 0.3.1, as are agent-action-capsule's
+`evidence-request` 0.4.0 and `agent-action-capsule` crates (`rust/evidence-request/Cargo.toml:31`).
+The Rust shelf uses CLL 0.4.0 (its checkpoint runner, and the small-order-key refusal 0.3.1 lacks).
+Two CLL lines in one graph are two sets of types, and capsule-emit's `Ledger` and evidencebook's
+answer path take CLL's types, so every crate that passes them moves to 0.4.0 and is released before
+the plugin item starts: agent-action-capsule's `evidence-request` and `agent-action-capsule`
+(A2), capsule-emit (C1), then evidencebook (E2); the plugin bumps its own `cll` and
+`evidence-request` pins (P1). capsule-emit-artifact has no CLL dependency and needs nothing.
 
 ### 7.5 loop
 
 loop reads `<data dir>/ledger/capsules.jsonl` directly in steps 04 (`04-admit:740`), 05
-(`05-deal:924,1081`), 06 (`06-settle:633-638`) and 07 (`07-ask:868,957,1082-1084,1199`), and
-`steps/ledger_proof.py` re-derives the MMR from those lines; 08 checks the copies those steps keep
-(`08-verify:453`). After the import that file is archived. As #206 planned, the loop PR in the same
-batch has those steps read `capsules chain-lines` output, which is today's line format, so every
-copy already published keeps verifying under 08 unchanged. Step 09 reads no chain file at
-`5907a93`. The loop-292 lane edits `steps/08-verify` and `08-verify.md` only; this touches neither.
+(`05-deal:924,1081`), 06 (`06-settle:633-638`), 07 (`07-ask:868,957,1082-1084,1199`) and 09
+(`09-dispute:127-129,712`: its `LEDGER_FILES` copy loop and the `/ledger-checkpoint` fetch for
+the chain), and `steps/ledger_proof.py` re-derives the MMR from those lines; 08 checks the copies
+those steps keep (`08-verify:453`), and 10 runs the pinned evaluator over the chain copy 05 keeps
+(`10-judge.md:36-44`). After the import that file is archived. As #206 planned, the loop PR in the
+same batch has 04, 05, 06, 07 and 09 read `capsules chain-lines` output, which is today's line
+format, and keep their copies under today's name `capsules.jsonl`, so 08, 10, `loop-ledger-check`
+(`steps/ledger-check.d/src/main.rs:23-24`) and every copy already published read them unchanged.
+The loop-292 lane edits `steps/08-verify` and `08-verify.md` only; this touches neither.
 
 ### 7.6 Timing
 
@@ -438,23 +498,33 @@ be the many-books half of the reference it needs:
 
 - the Python shelf (§6.3) and x-deal-v0 in Python (records, fingerprints, the §11 deal-entry
   mapping), at byte parity with Go's `dealprofile` (its fixtures, `dealprofile/testdata`);
-- the loop server sealing each deal's steps into that deal's book on the shelf and running the
-  cadence, and serving `history_card/1` per book and `standard_history/1` at a tick;
-- its existing flat ledger kept as a host log on the shelf (§2.7), imported as the Mesh chain is,
-  so nothing it sealed is lost or re-signed.
+- a Goose loop server that seals each deal's steps into that deal's book on the shelf, runs the
+  cadence, and serves `history_card/1` per book and `standard_history/1` at a tick.
 
-Whether Goose's deal halves become x-deal-v0 records changes what a Goose counterparty receives;
-it is a what for Sherlock2 (§9, D3). capsulectl deal is already the same many-books case in Go
-(§1.1); the Python reference is what a Python developer copies.
+**Where it lives.** In this repository (`python/examples/goose/`), not in capsule-emit:
+capsule-evidencebook depends on `capsule_emit.artifact` (§6.3), so a capsule-emit example that
+depended on capsule-evidencebook would make capsule-emit's CI (`python/tests/test_goose.py`) need
+a downstream package. capsule-emit's seal-only Goose server (`examples/goose-capsule/server.py`)
+stays; its loop server (`loop_server.py`) is retired in favour of this one, so one Goose loop
+reference remains, and its docs point here.
+
+**No import.** The retired loop server's ledgers are example stores, not a released product's
+history; they stay readable with `capsule-emit verify --store`. capsule-emit's Python ledger has
+only a file-path layout (`ledger.py:247,337,400`) and no store-backed mode to import into a host
+log, and building one for example stores is machinery with no consumer.
+
+Whether Goose's deal halves become x-deal-v0 records changes what a Goose counterparty receives,
+so it goes to Steven, with Sherlock2's recommendation (§9, D3). capsulectl deal is already the same
+many-books case in Go (§1.1); the Python reference is what a Python developer copies.
 
 ## 9. One-way doors
 
 | # | Door | Whose | Why |
 |---|---|---|---|
-| D1 | The shelf's file as a cross-language contract: the table set and columns of §2.2, the `shelf_meta` version row, the host log namespaces | engineering's, with Sherlock2's door confirmation | a storage format with no product meaning; every byte a peer sees is unchanged (§4) |
+| D1 | The shelf's file as a cross-language contract: the shelf's tables and columns in §2.2 (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`), the no-row rule, and one artifact store namespace per shelf; CLL's and capsule-emit's tables stay theirs | engineering's, with Sherlock2's door confirmation | a storage format with no product meaning; every byte a peer sees is unchanged (§4) |
 | D2 | The Mesh node import into `ledger/shelf.db` and the move of the flat chain files to `archive/pre-store/` | engineering's under #206's three conditions | Sherlock2 agreed #206's door is engineering's under those conditions (Buzz 341813f1); only the destination changes, so it is re-confirmed, not re-decided |
-| D3 | Goose's deal halves become x-deal-v0 deal records on per-deal books | Sherlock2's what | what a Goose counterparty receives changes |
-| D4 | One evidence request (or one answer) that carries Histories of two subject keys, stapled by a controller binding | Steven: public spec direction (ER, HF) | ER -02 and HF define no such request or composed History; this note builds the two-request staple and needs no storage change for either answer |
+| D3 | Goose's deal halves become x-deal-v0 deal records on per-deal books | Steven, with Sherlock2's recommendation, flagged in the DM with Steven | what a Goose counterparty receives changes |
+| D4 | One evidence request (or one answer) that carries Histories of two subject keys, and any way to show two counterparties' Histories together | Steven: public spec direction (ER, HF, CB) | ER -02 and HF define no such request or composed History, and no binding claim fits two counterparties (§3.3); the reference uses two requests and a `same_controller_asserted` binding, and needs no storage change either way |
 | D5 | Splitting the Mesh node's deals into their own books | Steven, if ever proposed | changes the positions peers hold and the stream ISH counts; not proposed here |
 | D6 | Native Python gains the shelf's verbs, amending evidencebook#191 | Ethan's how (decided 2026-10-31); Steven told after | #191's "no new verbs in native Python" was Ethan's rescope of Steven's Rust-core ruling |
 
@@ -464,12 +534,14 @@ Each is filed separately on project 1; none is implemented in this note's lane.
 
 | # | Repository | Item | Depends on |
 |---|---|---|---|
-| E1 | evidencebook | Go: the shelf contract's additions (directly witnessed log, host log, `shelf_meta`), `testdata/shelf` byte vectors with an injected random source, the storage interlock harness, CLL `go/v0.3.0` | this note |
-| E2 | evidencebook | Rust: the `shelf` feature (writing book, SQLite store, `Shelf`, `Cadence`, host log, lock, originals) on CLL 0.4.0, passing E1's vectors and interlock | E1, C1 |
-| E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8.0, and x-deal-v0 in Python at parity with `dealprofile`, passing E1's vectors and interlock; amend #191 (D6) | E1 |
-| E4 | evidencebook | Guide: "History cards that staple" (the §3 reference: shelf, per-book `history_card/1`, an instance at a tick, the controller-binding staple of a Mesh and a Goose card), with a worked example CI runs | E2, E3 |
-| C1 | capsule-emit | Rust: capsule-emit and capsule-emit-artifact on CLL 0.4.0, released | none |
-| P1 | Mesh-LLM/capsules-plugin | the node chain onto the Rust shelf: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept; after S08 | E2, C1, Devcon S08 |
-| L1 | evidence-network/loop | steps 04, 05, 06, 07 and `ledger_proof.py` read `capsules chain-lines`; merged in one batch with P1 | P1 |
-| G1 | capsule-emit | Goose's loop server on the Python shelf: per-deal x-deal-v0 books, the cadence, `history_card/1` and `standard_history/1`, its flat ledger imported as a host log | E3, D3 |
+| E1 | evidencebook | Go: the contract's additions (host log, `shelf_meta` and `shelf_logs` with their fill rules, the host-held lock, the injected random source), `testdata/shelf` byte vectors (moving `testdata/cadence`), the storage interlock harness, CLL `go/v0.3.0` | this note |
+| A2 | agent-action-capsule | Rust: `evidence-request` and `agent-action-capsule` on CLL 0.4.0, released | none |
+| C1 | capsule-emit | Rust: capsule-emit on CLL 0.4.0, released | A2 |
+| C2 | capsule-emit | Python: capsule-emit on CLL 0.8, released | none |
+| E2 | evidencebook | Rust: the `shelf` feature (writing book, SQLite store, `Shelf`, `Cadence`, host log, lock or host-held lock, originals) on CLL 0.4.0, passing E1's vectors and interlock | E1, A2, C1 |
+| E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8, and x-deal-v0 in Python at parity with `dealprofile`, passing E1's vectors and interlock; amend #191 (D6) | E1, C2 |
+| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8); with it, capsule-emit retires `examples/goose-capsule/loop_server.py` and points its docs there | E3, D3 |
+| E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a `same_controller_asserted` binding stapling a Mesh and a Goose History), with a worked example CI runs | E2, E3, G1 |
+| P1 | Mesh-LLM/capsules-plugin | the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
+| L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
 | A1 | agent-action-capsule | only if Steven rules for D4: a composed History carried by one request | D4 ruling |
