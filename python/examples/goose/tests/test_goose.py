@@ -268,7 +268,12 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
     call = json.loads((tmp_path / "buyer-model-call.json").read_text())
     assert call["effect"]["effect_attestation"] == "runtime_claimed" and call["model_attestation"]["model_id"] == \
         "rehearsal-model" and call["key_id"] == (tmp_path / "buyer.key").read_text()
+    bundle = json.loads((tmp_path / "buyer-model-call-bundle.json").read_text())
+    assert bundle["bundle_kind"] == "evidence-bundle/v2" and bundle["root"] == call["capsule_id"]
     if os.environ.get("GOOSE_GO_CHECK"):
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(tmp_path / "buyer-model-call-bundle.json")],
+                               cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
         check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(tmp_path / "buyer-model-call.json")],
                                cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
         assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
@@ -495,3 +500,54 @@ def test_go_refuses_a_sealed_model_call_that_was_altered(nodes, clock, tmp_path)
     check = subprocess.run(["go", "run", "./test/interop/goose-capsule", str(path)], cwd=HERE.parents[2],
                            capture_output=True, text=True, timeout=600)
     assert check.returncode == 1 and "class 1" in check.stderr, check.stdout + check.stderr
+
+
+def _witness_script():
+    import importlib.util
+
+    path = HERE.parents[2] / "test" / "interop" / "python-evidencebook" / "shelf.py"
+    spec = importlib.util.spec_from_file_location("shelfscript", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_book_bundle_proves_a_record_and_go_accepts_it(nodes, clock, tmp_path):
+    from agent_action_capsule import bundle as aac
+
+    buyer, _ = nodes
+    buyer.note(gn.JOINED, {"operator": buyer.operator, "key_id": buyer.key_id})
+    sealed, _ = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+    built = buyer.book_bundle(gn.NODE_BOOK, sealed.record_id)
+    assert built["root"] == sealed.record_id and "extensions" not in built, "no witnessed tick yet"
+    assert str(aac.verify_bundle(built, strict=True).verdict).endswith("VALID")
+    # The bundle is the one record's place in the book, so the book's other record is carried too.
+    assert len(built["records"]) == 2
+    if os.environ.get("GOOSE_GO_CHECK"):
+        path = tmp_path / "bundle.json"
+        path.write_text(json.dumps(built))
+        check = subprocess.run(["go", "run", "./test/interop/verify", str(path)], cwd=HERE.parents[2],
+                               capture_output=True, text=True, timeout=600)
+        assert check.returncode == 0, check.stdout + check.stderr
+
+
+def test_a_witnessed_ticks_receipt_travels_with_the_bundle(tmp_path, clock):
+    script = _witness_script()
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        assert node.tick().ticked
+        assert "extensions" not in node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        tick = node.cadence.last()
+        assert node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint)).state == "VERIFIED"
+        chain = node.book_bundle(gn.NODE_BOOK, sealed.record_id)["extensions"][gn.CADENCE_EXTENSION]
+        assert chain["state"] == "witnessed" and chain["log_id"] == gn.NODE_BOOK
+        assert chain["cadence"]["witnesses"][0]["receipt_b64"]
+
+
+def test_a_book_bundle_refuses_what_the_node_does_not_hold(nodes):
+    buyer, _ = nodes
+    sealed, _ = buyer.seal_model_call("rehearsal", "rehearsal-model", "p", "c", AT)
+    with pytest.raises(gn.Refused, match="holds no book"):
+        buyer.book_bundle("deal/none", sealed.record_id)
+    with pytest.raises(gn.Refused, match="holds no record"):
+        buyer.book_bundle(gn.NODE_BOOK, "00" * 32)

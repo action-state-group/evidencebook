@@ -54,7 +54,7 @@ from evidencebook import (
     CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Coverage, Ed25519Signer, Entry,
     EvidenceRequest, Link, Message, NotFoundError, Subject, deal, encode_request,
 )
-from evidencebook.cadence import CadenceConfig
+from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
 from evidencebook.shelf import Shelf
 
 import deal_records as dr
@@ -202,6 +202,24 @@ def _referee() -> Any:
         raise Refused("receiving a referee's Result needs a capsule-engine that has capsule_engine.referee "
                       "installed beside this node") from None
     return referee
+
+
+class _BookRecords:
+    """A book's records as agent-action-capsule's bundle producer reads a
+    record store: ``get(capsule_id)`` is the Capsule's JCS and its Producer
+    Envelope, ``not_found`` for any other id."""
+
+    def __init__(self, book) -> None:
+        self._book = book
+
+    def get(self, capsule_id: str):
+        from agent_action_capsule.bundle import StoredRecord
+        from capsule_emit.artifact import NotFoundError as NoRecord
+
+        held = self._book._stored.get(capsule_id)
+        if held is None:
+            raise NoRecord(capsule_id)
+        return StoredRecord(jcs(held.capsule), held.envelope)
 
 
 class Refused(ValueError):
@@ -409,6 +427,40 @@ class Node:
             capsule = json.loads(held.capsule)
             capsule["signature"], capsule["key_id"] = bytes(held.producer_envelope).hex(), self.key_id
             return capsule
+
+    def book_bundle(self, book_id: str, record_id: str) -> dict:
+        """An Evidence Bundle (``evidence-bundle/v2``) proving ``record_id``
+        is in ``book_id`` at its position under the book's newest checkpoint
+        (cut now if the book grew): the record, its inclusion proof and the
+        interval from the book's first record to that checkpoint, built by
+        agent-action-capsule's producer and checked by its strict verifier.
+        When a witnessed cadence tick carries that checkpoint, the cadence
+        chain with the witness's receipt travels as the
+        ``x-cadence-witness/v0`` extension."""
+        from agent_action_capsule import bundle as aac
+
+        with self._lock:
+            if book_id not in self.shelf.books():
+                raise Refused(f"this node holds no book {book_id}")
+            book = self.shelf.open(book_id)
+            if record_id not in {r.record_id for r in book.records()}:
+                raise Refused(f"book {book_id} holds no record {record_id}")
+            checkpoint = book.checkpoint()
+            extensions = {}
+            try:
+                extensions[CADENCE_EXTENSION] = self.cadence.chain(checkpoint.statement)
+            except NotFoundError:
+                pass  # no witnessed tick carries this checkpoint yet
+            try:
+                built = aac.build_evidence_bundle(
+                    aac.proof_source_from_cll(book._substrate.backend, _BookRecords(book)),
+                    root=record_id, interval_from=1, extensions=extensions or None)
+            except aac.BundleBuildError as exc:
+                raise Refused(f"no bundle: {exc}") from None
+            result = aac.verify_bundle(built, strict=True)
+            if str(result.verdict) not in ("VALID", "Verdict.VALID"):
+                raise Refused(f"the bundle does not verify: {result.verdict}")
+            return built
 
     def admission(self, peer: str) -> dict | None:
         """The newest admission sealed for ``peer``."""

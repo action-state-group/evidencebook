@@ -9,7 +9,9 @@ run one deal end to end and write their History cards.
 OUT receives, for each node (``buyer``, ``seller``): ``<node>/`` (its home:
 shelf, keys), ``<node>-card.json`` (its ``standard_history/1`` card and the
 inputs it was derived from), ``<node>-history-card.json`` (``history_card/1``
-for its deal's book) and ``<node>.key`` (its signing key) and ``buyer-model-call.json`` (a model call the buyer sealed, loop_seal). Go's check of a
+for its deal's book) and ``<node>.key`` (its signing key), ``buyer-model-call.json`` (a model call the buyer
+sealed, loop_seal) and ``buyer-model-call-bundle.json`` (that record proven in the node book,
+loop_book_bundle). Go's check of a
 card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
 OUT/<node>-card.json $(cat OUT/<node>.key)``.
 """
@@ -63,7 +65,7 @@ async def run(out: Path) -> None:
 
             # 01: the buyer seals a model call it made; the Capsule is the file a
             # verifier reads.
-            await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
+            sealed = await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
                              prompt="buy 1k tokens of inference", completion="the seller's offer, summarised",
                              out_path=str(out / "buyer-model-call.json"))
 
@@ -95,6 +97,9 @@ async def run(out: Path) -> None:
             # 02, then the cards.
             for node, key in ((buyer, b), (seller, s)):
                 await node.call("loop_tick")
+                if node is buyer:  # 02: the model call, proven in the node book
+                    await node.call("loop_book_bundle", book_id="goose/node", record_id=sealed["record_id"],
+                                    out_path=str(out / "buyer-model-call-bundle.json"))
                 await node.call("loop_probe")
                 await node.call("loop_standard_history", out_path=str(out / f"{node.name}-card.json"))
                 await node.call("loop_history_card", book_id=f"deal/{deal_id}",

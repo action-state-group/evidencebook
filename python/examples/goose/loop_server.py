@@ -11,7 +11,7 @@ is imported once as a host log, nothing re-signed.
     step  tool(s)
     ----  ---------------------------------------------------------------
     01    loop_seal
-    02    loop_book, loop_tick
+    02    loop_book, loop_tick, loop_book_bundle
     04    loop_admit
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
@@ -204,6 +204,19 @@ def loop_tick() -> str:
     tick = result.tick
     return _out(ok=True, step="02", ticked=result.ticked, due_next=result.due_next,
                 tick=None if tick is None else {"n": tick.n, "checkpoint_size": tick.checkpoint_size})
+
+
+@_tool
+def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
+    """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a
+    book to ``out_path``: the record, its position and inclusion proof, and
+    the book's checkpoint covering it. When a witnessed tick carries that
+    checkpoint, the witness's receipt travels in the ``x-cadence-witness/v0``
+    extension. ``capsulectl book verify --bundle`` reads it."""
+    built = node().book_bundle(book_id, record_id)
+    _write(out_path, json.dumps(built, sort_keys=True).encode())
+    return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
+                witnessed=gn.CADENCE_EXTENSION in built.get("extensions", {}))
 
 
 # -- 04 Admit -----------------------------------------------------------------------------

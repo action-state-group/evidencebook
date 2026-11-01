@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The Goose reference exports a book bundle (evidencebook#301): `loop_book_bundle` / `Node.book_bundle` write
+  an `evidence-bundle/v2` for one record of a book (its position, inclusion proof and the checkpoint covering
+  it), built by agent-action-capsule's producer and checked by its strict verifier; the witness's receipt for a
+  witnessed cadence tick carrying that checkpoint travels in the `x-cadence-witness/v0` extension. CI has Go
+  verify the bundle (`test/interop/verify`).
 - The Goose reference seals a model call (evidencebook#300): `loop_seal` / `Node.seal_model_call` commit one
   effect-boundary Capsule to the node book (`effect_attestation` `runtime_claimed`, `model_attestation` naming
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is
