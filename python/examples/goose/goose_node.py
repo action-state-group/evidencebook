@@ -640,12 +640,33 @@ class Node:
                 raise Refused(f"no admission sealed for {chain.peer}: call loop_admit first")
             if admission["decision"] != "GO":
                 raise Refused(f"the sealed admission for {chain.peer} is {admission['decision']}: no deal")
+            if not steps:
+                raise Refused("a deal opens with at least one step")
             sealed = self.seal(chain, steps, admission=admission["record_id"])
-            self.note(DEAL_OPENED, {"deal_id": chain.deal_id, "deal_book": f"deal/{chain.deal_id}",
-                                    "first_step": sealed[0].record_id, "peer": chain.peer,
-                                    "admission": admission["record_id"]},
-                      subject_ref=chain.deal_id, cites=(admission["record_id"],))
+            self.ensure_opening(chain.deal_id)
             return sealed
+
+    def ensure_opening(self, deal_id: str) -> str:
+        """The node-book record of the deal's opening, sealed now if the
+        deal's first step is sealed but its opening is not (an open cut short
+        between the two). It cites what the first step cites: the admission."""
+        with self._lock:
+            for record, statement in self.notes(DEAL_OPENED):
+                if statement.get("deal_id") == deal_id:
+                    return record.record_id
+            if f"deal/{deal_id}" not in self.shelf.books():
+                raise Refused(f"this node holds no deal {deal_id}")
+            first = self.shelf.open(f"deal/{deal_id}").records()[0]
+            cited = first.header.links_to(CITES)
+            if len(cited) != 1:
+                raise Refused(f"deal {deal_id}'s first step cites no single admission")
+            admission = next((s for r, s in self.notes(ADMITTED) if r.record_id == cited[0]), None)
+            if admission is None:
+                raise Refused(f"deal {deal_id}'s first step cites {cited[0]}, which is no admission of this node")
+            return self.note(DEAL_OPENED, {"deal_id": deal_id, "deal_book": f"deal/{deal_id}",
+                                           "first_step": first.record_id, "peer": admission["peer"],
+                                           "admission": cited[0]},
+                             subject_ref=deal_id, cites=(cited[0],)).record_id
 
     def deal_opened(self, deal_id: str) -> str:
         """The node-book record of the deal's opening."""

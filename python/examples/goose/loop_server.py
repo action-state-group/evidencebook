@@ -323,6 +323,8 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     if not steps:
         raise gn.Refused(f"deal {deal_id} is already answered")
     sealed = n.seal(chain, steps) if resumed else n.open_deal(chain, steps)
+    if resumed:
+        n.ensure_opening(deal_id)  # an answer cut short before its opening was recorded
     return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 
@@ -356,11 +358,12 @@ def loop_deal_reconcile(peer_file: str) -> str:
 def loop_deal_bundle(deal_id: str, out_path: str) -> str:
     """Write an Evidence Bundle of this node's record of a deal's opening to
     ``out_path``: that record, the admission it cites (this node's GO,
-    sealed before the deal) and every record of the node book between them
-    and the checkpoint, so a verifier reads that no deal record cites a NO.
-    The deal's own steps stay in the deal's book (``loop_deal_push``)."""
+    sealed before the deal) and the rest of the node book up to the
+    checkpoint, so a verifier reads that no opening record cites a NO. The
+    deal's own steps stay in the deal's book (``loop_deal_push``); the first
+    cites the same admission."""
     n = node()
-    built = n.book_bundle(gn.NODE_BOOK, n.deal_opened(deal_id))
+    built = n.book_bundle(gn.NODE_BOOK, n.ensure_opening(deal_id))
     _write(out_path, json.dumps(built, sort_keys=True).encode())
     return _out(ok=True, step="04", deal_id=deal_id, file=out_path)
 

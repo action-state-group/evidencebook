@@ -456,7 +456,7 @@ def test_an_answer_cut_short_is_finished_by_answering_again(server, tmp_path):
     node = ls.node()
     chain = node.new_deal(deal_id, dr.ROLE_SELLER, buyer["key_id"], dr.Terms("x", 500, "USD", "lightning", False))
     steps = chain.respond(datetime.now(timezone.utc), "sell", "00" * 32)
-    node.seal(chain, steps[:4])            # a crash after four of the eight steps
+    node.seal(chain, steps[:4], admission=node.admission(buyer["key_id"])["record_id"])  # a crash after four of the eight steps
     answered = call(ls.loop_deal_respond, request_file=half, asked="sell")
     assert answered["ok"] and len(answered["records"]) == 5   # task authority's evaluation onwards, not again
     kinds = [k for _, k, _ in node.deal(deal_id).records]
@@ -763,3 +763,37 @@ def test_the_admission_and_the_deal_opening_export_as_one_bundle(nodes, clock, t
         check = subprocess.run(["go", "run", "./test/interop/verify", str(path)], cwd=HERE.parents[2],
                                capture_output=True, text=True, timeout=600)
         assert check.returncode == 0, check.stdout + check.stderr
+
+
+def test_the_seller_cites_its_own_admission_too(nodes, clock):
+    buyer, seller = nodes
+    _admit(buyer, seller)
+    admission = _admit(seller, buyer)
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.open_deal(chain, chain.open(clock.at, "buy"))
+    opened = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
+    chain = seller.new_deal(DEAL, dr.ROLE_SELLER, buyer.key_id, TERMS)
+    seller.open_deal(chain, chain.respond(clock.at, "sell", opened["records"][-1]["digest"]))
+    records = seller.shelf.open(f"deal/{DEAL}").records()
+    assert records[0].header.links_to("cites") == [admission]
+    assert all(admission not in r.header.links_to("cites") for r in records[1:])
+    assert seller.shelf.open(gn.NODE_BOOK).get(seller.deal_opened(DEAL)).header.links_to("cites") == [admission]
+
+
+def test_a_later_no_refuses_a_deal_and_a_cut_short_open_is_finished(nodes, clock):
+    buyer, seller = nodes
+    _admit(buyer, seller)
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    admission = buyer.admission(seller.key_id)["record_id"]
+    buyer.seal(chain, chain.open(clock.at, "buy"), admission=admission)  # the open stops before its record
+    with pytest.raises(gn.Refused, match="sealed no opening"):
+        buyer.deal_opened(DEAL)
+    opened = buyer.ensure_opening(DEAL)
+    assert buyer.ensure_opening(DEAL) == opened and buyer.deal_opened(DEAL) == opened
+    assert buyer.shelf.open(gn.NODE_BOOK).get(opened).header.links_to("cites") == [admission]
+    other = buyer.new_deal("deal-ffffffffffffffff", dr.ROLE_BUYER, seller.key_id, TERMS)
+    with pytest.raises(gn.Refused, match="at least one step"):
+        buyer.open_deal(other, [])
+    _admit(buyer, seller, "NO")
+    with pytest.raises(gn.Refused, match="is NO"):
+        buyer.open_deal(other, other.open(clock.at, "again"))
