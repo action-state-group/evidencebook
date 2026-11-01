@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.13 (2026-11-01)
+
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
 
 - `deal::Record` gains `counterparty_class: Option<String>`, the x-deal-v0

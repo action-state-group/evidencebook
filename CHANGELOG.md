@@ -21,6 +21,37 @@
   `go/v0.9.0` release (was `go/v0.6.0`). capsulectl-book `v0.1.0-rc29` pairs with
   capsulectl `v0.1.0-rc29`.
 
+### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
+
+- `report.View.Contract` is a compiled Evidence Contract v0 (for example
+  evidencebook-skills `contracts/<id>/<version>.json`) with the lowercase hex
+  SHA-256 of its bytes, checked as `View.Wording` is. `Build` refuses a
+  contract the Result does not cite, one that lacks a requirement the Result's
+  claims cite, and a `tier` other than `must_have` or `informational`.
+- `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
+  requirement's tier by `requirement_ref`; `""` when the contract names none)
+  record what the page read. The contract reaches the page as the viewer's
+  contract setting (capsule-viewer#201), from which the contract-report
+  module reads each row's tier and which records the contract's digest. With
+  no contract every tier is undecided, never must-have. A page built with a
+  contract gets no permalink.
+
+### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`
+  (was the pseudo-version at the commit that adds `RequestSent`) and
+  capsule-viewer `v0.8.0` (capsule-viewer#196, #197, #200, #201) and
+  checkpointed-local-log `v0.3.0` (was `v0.1.0`), and `report/go.mod` requires
+  capsule-cli `v0.1.0-rc28`, capsule-viewer `v0.8.0` and agent-action-capsule
+  `v0.18.0`. The `report` fixtures' pages (`4-monthly-outcome`,
+  `5-monthly-compliance`) are rewritten with the viewer's page runtime, shell
+  styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
+  with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
+
+## v0.12.2 (2026-11-01)
+
+Go module only. The `report` and `capsulectl` entries above ship with their own tags.
+
 ### Added: `counterparty_class` on a pay check, read by the History card (#273)
 
 - x-deal-v0: a `check` record whose `body.action` is `pay` may carry a
@@ -99,33 +130,6 @@
   with one proof listed twice becomes `malformed-second-proof`, a valid
   proof followed by a malformed one, which every checkpointed-local-log
   release refuses.
-
-### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
-
-- `report.View.Contract` is a compiled Evidence Contract v0 (for example
-  evidencebook-skills `contracts/<id>/<version>.json`) with the lowercase hex
-  SHA-256 of its bytes, checked as `View.Wording` is. `Build` refuses a
-  contract the Result does not cite, one that lacks a requirement the Result's
-  claims cite, and a `tier` other than `must_have` or `informational`.
-- `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
-  requirement's tier by `requirement_ref`; `""` when the contract names none)
-  record what the page read. The contract reaches the page as the viewer's
-  contract setting (capsule-viewer#201), from which the contract-report
-  module reads each row's tier and which records the contract's digest. With
-  no contract every tier is undecided, never must-have. A page built with a
-  contract gets no permalink.
-
-### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
-
-- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`
-  (was the pseudo-version at the commit that adds `RequestSent`) and
-  capsule-viewer `v0.8.0` (capsule-viewer#196, #197, #200, #201) and
-  checkpointed-local-log `v0.3.0` (was `v0.1.0`), and `report/go.mod` requires
-  capsule-cli `v0.1.0-rc28`, capsule-viewer `v0.8.0` and agent-action-capsule
-  `v0.18.0`. The `report` fixtures' pages (`4-monthly-outcome`,
-  `5-monthly-compliance`) are rewritten with the viewer's page runtime, shell
-  styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
-  with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
 
 ## v0.12.1 (2026-10-31)
 
