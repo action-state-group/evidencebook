@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,12 @@ POLICY_PROFILE = "disclosure-policy/0"
 COMMUNITY = "goose"
 #: DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410).
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
+#: The forms the loop's checker requires of the members a caller sets
+#: (``scripts/check_commitment.py``: ``HEX64``, ``DURATION``, ``TOKEN``),
+#: refused here before anything is signed or written.
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+DURATION = re.compile(r"^P(?=\d|T\d)(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$")
+TOKEN = re.compile(r"^[a-z0-9][a-z0-9_./:+-]*$")
 #: What the node discloses, and to whom: its node book's card to anyone, a
 #: deal's half to that deal's counterparty only (``loop_deal_push``).
 POLICY = {"stranger_safe": ["history_card/1"], "share_deal_half": "counterparty"}
@@ -80,8 +87,15 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
     empty)."""
     s = settings or Settings()
     node_id = node_id or node.key_id
-    if not s.answers_within or s.answers_within.isdigit():
-        raise gn.Refused("answers_within is an ISO 8601 duration, e.g. PT24H")
+    if not HEX64.fullmatch(node_id):
+        raise gn.Refused("node_id is the node's id in the loop's list: 64 lowercase hex")
+    if not DURATION.fullmatch(s.answers_within):
+        raise gn.Refused("answers_within is an ISO 8601 duration in days, hours, minutes or seconds, e.g. PT24H")
+    if not s.endpoint.strip():
+        raise gn.Refused("the endpoint is not empty")
+    for name, values in (("bindings", s.bindings), ("subjects", s.subjects), ("derivations", s.derivations)):
+        if not values or not all(TOKEN.fullmatch(v) for v in values):
+            raise gn.Refused(f"{name} are lowercase names, e.g. evidencebook/respond")
     policy_bytes = _dump(_signed(node, {"profile": POLICY_PROFILE, "key_id": node.key_id, "policy": s.policy}))
     card, statement = node.stapled_card(gn.NODE_BOOK)
     at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)

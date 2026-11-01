@@ -496,7 +496,7 @@ jobs:
         with:
           repository: evidence-network/loop
           # evidence-network/loop#338 (the goose community and /-joined streams); its merge commit replaces this.
-          ref: 115b29e0cbdcc99926ef52e9ad7b37d95bcbd0bf
+          ref: b53dc487c958515f6207430f81fcb0029adefa37
           path: loop-checkout
           persist-credentials: false
       - name: Test the reference, run it, and check its cards with Go and its halves as a Mesh node does

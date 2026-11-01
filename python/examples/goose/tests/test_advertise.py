@@ -83,9 +83,20 @@ def test_a_node_with_a_listed_id_names_it_and_its_policy(node):
     assert doc["lcap"]["policy_uri"] == f"policies/{listed}.json"
 
 
-def test_a_count_as_answers_within_is_refused(node):
+@pytest.mark.parametrize("node_id, settings", [
+    ("", cm.Settings(answers_within="24")),
+    ("", cm.Settings(answers_within="24H")),
+    ("", cm.Settings(answers_within="P1W")),
+    ("", cm.Settings(answers_within="PT24h")),
+    ("", cm.Settings(bindings=("Evidencebook/Respond",))),
+    ("", cm.Settings(bindings=())),
+    ("", cm.Settings(endpoint=" ")),
+    ("../../x", cm.Settings()),
+    ("AB" * 32, cm.Settings()),
+])
+def test_what_the_checker_would_refuse_is_refused_before_signing(node, tmp_path, node_id, settings):
     with pytest.raises(gn.Refused):
-        cm.build(node, settings=cm.Settings(answers_within="24"))
+        cm.build(node, node_id, settings)
 
 
 @needs_loop

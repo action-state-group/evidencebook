@@ -832,3 +832,5 @@ def test_join_includes_the_commitment_and_advertise_writes_it(server, tmp_path):
     assert written["answers_within"] == "PT1H" and written["human_gated"] is False
     assert (tmp_path / "out" / "policies" / f"{'cd' * 32}.json").is_file()
     assert call(ls.loop_advertise, out_dir=str(tmp_path / "bad"), answers_within="24")["ok"] is False
+    assert call(ls.loop_advertise, out_dir=str(tmp_path / "bad"), node_id="../../escaped")["ok"] is False
+    assert not (tmp_path / "bad").exists() and not (tmp_path.parent / "escaped.json").exists()
