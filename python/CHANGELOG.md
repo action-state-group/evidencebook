@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- A receipt's referee is one both sides chose (x-deal-v0, evidencebook#277): `Report.referee`, required on
-  an adjudicator's report and refused on the others; `normalize_referee`, `report_referee` and `shared_referee`
-  (with `RefereeError` and its reasons), byte for byte with Go's `dealprofile` over the parity vectors.
+- The Goose reference's deal cites the admission it rests on (evidencebook#302): the first step of a deal
+  cites the node book's `goose_admitted` GO record, a deal opened on a NO or no admission seals nothing, and
+  the node book seals `goose_deal_opened`, its record of the deal, citing the same admission. `loop_deal_bundle`
+  exports the opening and the admission as one Evidence Bundle, and a NO is cited by no record in it.
 - The Goose reference exports a book bundle (evidencebook#301): `loop_book_bundle` / `Node.book_bundle` write
   an `evidence-bundle/v2` for one record of a book (its position, inclusion proof and the checkpoint covering
   it), built by agent-action-capsule's producer and checked by its strict verifier; with a witness directory
@@ -17,6 +18,9 @@
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is
   committed by digest only) and write it as a verifier reads it;
   `test/interop/goose-capsule` checks it in Go.
+- A receipt's referee is one both sides chose (x-deal-v0, evidencebook#277): `Report.referee`, required on
+  an adjudicator's report and refused on the others; `normalize_referee`, `report_referee` and `shared_referee`
+  (with `RefereeError` and its reasons), byte for byte with Go's `dealprofile` over the parity vectors.
 
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (evidencebook#283)
 
