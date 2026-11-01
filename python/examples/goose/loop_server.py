@@ -12,6 +12,7 @@ is imported once as a host log, nothing re-signed.
     ----  ---------------------------------------------------------------
     01    loop_seal
     02    loop_book, loop_tick, loop_book_bundle
+    03    loop_advertise (the node's signed evidence-commitment/1, for the loop's nodes/commitments/)
     04    loop_admit, loop_deal_bundle
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
@@ -62,6 +63,7 @@ from capsule_emit.store_backed_ledger import LedgerError
 
 from evidencebook import BookError, Coverage, EvidenceRequest, Message, ResponderKeys, Subject
 
+import commitment as cm
 import deal_records as dr
 import goose_node as gn
 
@@ -144,13 +146,20 @@ def loop_seal(provider: str, model_id: str, prompt: str, completion: str, out_pa
 
 
 @_tool
-def loop_join() -> str:
+def loop_join(node_id: str = "", commitment_dir: str = "") -> str:
     """Open this node's shelf and seal its join record. Returns the node's
-    signing key (its identity to peers), its checkpoint key and the shelf."""
+    signing key (its identity to peers), its checkpoint key, the shelf, and
+    its signed commitment (step 03, with the defaults ``loop_advertise``
+    takes) and policy. With ``commitment_dir``, both are also written there
+    as ``loop_advertise`` writes them."""
     n = node()
+    cm.check(node_id or n.key_id, cm.Settings())  # a refusal seals no join record
     sealed = n.note(gn.JOINED, {"operator": n.operator, "key_id": n.key_id})
+    doc, policy_bytes = cm.build(n, node_id)
+    files = [str(p) for p in cm.write(commitment_dir, doc, policy_bytes)] if commitment_dir else []
     return _out(ok=True, step="12", key_id=n.key_id, checkpoint_key_id=n.checkpoint_key_id,
-                shelf=str(n.home / "shelf.db"), record_id=sealed.record_id)
+                shelf=str(n.home / "shelf.db"), record_id=sealed.record_id, commitment=doc,
+                policy=json.loads(policy_bytes), commitment_files=files)
 
 
 @_tool
@@ -239,6 +248,31 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
         _write(f"{stem}.{name}", data)
     return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
                 witnessed=bool(receipts), cadence_extent=chain["extent"] if chain else None, beside=sorted(f"{stem}.{name}" for name in files))
+
+
+# -- 03 Advertise ---------------------------------------------------------------------------
+
+
+@_tool
+def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings: str = "",
+                   answers_within: str = "", human_gated: bool = True) -> str:
+    """Write this node's signed ``evidence-commitment/1`` and its signed
+    disclosure policy to ``out_dir`` as ``<node_id>.json`` and
+    ``policies/<node_id>.json``: add both under the loop repository's
+    ``nodes/commitments/`` by pull request. ``node_id`` is the node's id in
+    the loop's list (its key id when empty). ``endpoint`` and ``bindings``
+    (comma-separated) say how it is asked; ``answers_within`` (ISO 8601,
+    default PT24H) is how long an asker waits before recording absence. It
+    staples the node book's ``history_card/1`` and carries no counts."""
+    defaults = cm.Settings()
+    settings = cm.Settings(
+        endpoint=endpoint or defaults.endpoint,
+        bindings=tuple(b.strip() for b in bindings.split(",") if b.strip()) or defaults.bindings,
+        answers_within=answers_within or defaults.answers_within, human_gated=human_gated)
+    doc, policy_bytes = cm.build(node(), node_id, settings)
+    files = cm.write(out_dir, doc, policy_bytes)
+    return _out(ok=True, step="03", node_id=doc["node_id"], key_id=doc["key_id"], profile=doc["profile"],
+                streams=[c["stream"] for c in doc["history_cards"]], files=[str(p) for p in files])
 
 
 # -- 04 Admit -----------------------------------------------------------------------------
