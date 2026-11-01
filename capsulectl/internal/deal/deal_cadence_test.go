@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -111,6 +112,30 @@ func storeReceipt(t *testing.T, p cli.Profile, size uint64, signer ed25519.Priva
 	next := state
 	next.Receipt = &cll.WitnessReceiptState{Bytes: mintReceipt(t, entry, signer), EntryHash: hex.EncodeToString(entry), EntryHashScheme: witness.EntryHashSchemeCheckpointDigest, LeafIndex: ptr(int64(0)), TreeSize: ptr(int64(1))}
 	require.NoError(t, target.Log.CommitWitness(t.Context(), state.Attempts, next))
+}
+
+// deliverAnchorReceipt is deliver for a scrapi+https:// witness: its
+// Receipt's leaf is SHA-256 of the checkpoint statement (the anchor digest),
+// as CLL's SCRAPI client stores it.
+func deliverAnchorReceipt(t *testing.T, p cli.Profile, size uint64, signer ed25519.PrivateKey) {
+	t.Helper()
+	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	require.NoError(t, err)
+	service, err := cli.ServiceID(p)
+	require.NoError(t, err)
+	state, err := target.Log.GetWitness(t.Context(), service, size)
+	require.NoError(t, err)
+	entry := sha256.Sum256(state.Checkpoint)
+	next := state
+	next.Receipt = &cll.WitnessReceiptState{Bytes: mintReceipt(t, entry[:], signer), EntryHash: hex.EncodeToString(entry[:]), LeafIndex: ptr(int64(0)), TreeSize: ptr(int64(1))}
+	require.NoError(t, target.Log.CommitWitness(t.Context(), state.Attempts, next))
+	require.NoError(t, target.Close())
+	s, err := openDealSession(t.Context(), p)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, s.close()) }()
+	c, cp, err := s.cadenceOf(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, s.witnessNativeTicks(t.Context(), c, cp))
 }
 
 func cadenceSize(t *testing.T, p cli.Profile) uint64 {

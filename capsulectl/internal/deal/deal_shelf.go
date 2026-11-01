@@ -380,7 +380,10 @@ func (s *dealSession) witnessNativeTicks(ctx context.Context, c *evidencebook.Ca
 // receipts under: one row for the witness the profile pins (endpoint and
 // Ed25519 key), the same pin cli.VerifyWitness checks a stored receipt
 // against. A profile with no pin trusts no witness, so no receipt reads as
-// witnessed (evidencebook#115).
+// witnessed (evidencebook#115). The row's binding is the one the endpoint
+// names, as a receipt's ts_url names it: a scrapi+https:// witness's
+// Receipt has SHA-256 of the checkpoint statement as its leaf, so it also
+// covers a History card's anchor (IP1 §6.2.2).
 func pinnedWitnessDirectory(p cli.Profile) (witness.Directory, error) {
 	if p.Checkpoint.Endpoint == "" || p.Checkpoint.PublicKey == "" {
 		return witness.Directory{}, nil
@@ -388,8 +391,8 @@ func pinnedWitnessDirectory(p cli.Profile) (witness.Directory, error) {
 	row, err := json.Marshal(map[string]any{
 		"witnesses": []map[string]any{{
 			"name":        "profile-pinned witness",
-			"endpoint":    trimEndpoint(p.Checkpoint.Endpoint),
-			"binding":     "cll",
+			"endpoint":    witness.EndpointOf(p.Checkpoint.Endpoint),
+			"binding":     witness.BindingOf(p.Checkpoint.Endpoint),
 			"key_ids":     []string{strings.ToLower(p.Checkpoint.PublicKey)}, // a directory takes lowercase hex; a profile key may not be
 			"public_keys": []string{},
 		}},

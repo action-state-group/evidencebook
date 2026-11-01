@@ -1,7 +1,10 @@
 package deal
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
+	"github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,6 +27,19 @@ func readBundle(t *testing.T, path string) map[string]any {
 	var b map[string]any
 	require.NoError(t, json.Unmarshal(raw, &b))
 	return b
+}
+
+// assertCheckpointIsTheAnchor checks that as_of.checkpoint is lowercase hex
+// of octets whose SHA-256 is as_of.anchor (capsule-viewer
+// spec/presentation-contract-v0.md §3).
+func assertCheckpointIsTheAnchor(t *testing.T, asOf map[string]any, name string) {
+	t.Helper()
+	text, _ := asOf["checkpoint"].(string)
+	octets, err := hex.DecodeString(text)
+	require.NoError(t, err, name)
+	assert.Equal(t, hex.EncodeToString(octets), text, name+": lowercase hex")
+	digest := sha256.Sum256(octets)
+	assert.Equal(t, asOf["anchor"], hex.EncodeToString(digest[:]), name+": its SHA-256 is the anchor")
 }
 
 func shBlock(t *testing.T, b map[string]any) map[string]any {
@@ -399,7 +416,9 @@ func TestTheStandardHistoryGoldens(t *testing.T) {
 		} else {
 			assert.ElementsMatch(t, []string{"policy", "as_of"}, keysOf(block), name)
 		}
-		assert.ElementsMatch(t, []string{"anchor", "anchor_time", "first_checkpoint_time"}, keysOf(block["as_of"].(map[string]any)), name+": no checkpoint or receipts member")
+		asOf := block["as_of"].(map[string]any)
+		assert.ElementsMatch(t, []string{"anchor", "anchor_time", "first_checkpoint_time", "checkpoint"}, keysOf(asOf), name+": the anchor's checkpoint, and no receipts with no witness")
+		assertCheckpointIsTheAnchor(t, asOf, name)
 		policy, _ := block["policy"].(map[string]any)
 		assert.Equal(t, map[string]any{"months": float64(3)}, policy["window"], name+": the default window")
 		digest := sha256.Sum256([]byte(shDefaultPolicy))
@@ -599,4 +618,83 @@ func TestACounterpartyClassIsStatedOnceAcrossReChecks(t *testing.T) {
 	var card map[string]any
 	require.NoError(t, json.Unmarshal(reply.Envelope.Artifact, &card))
 	assert.Equal(t, map[string]any{"counted": float64(0), "not_counted": float64(1), "of": float64(1)}, card["in_window"])
+}
+
+// A card as of a tick a scrapi+https:// witness registered carries that
+// Receipt in both copies, and it is a Receipt for the anchor: AAC's
+// anchor_witnessed passes under a list naming the witness's key, and fails
+// under one naming another key.
+func TestAWitnessedCardCarriesItsAnchorReceipt(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, "scrapi+"+endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	retailDeal(t)
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+	*now = now.Add(3 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliverAnchorReceipt(t, p, cadenceSize(t, p), key)
+
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	for name, extra := range map[string][]string{"own": nil, "shared": {"--shared"}} {
+		path := filepath.Join(t.TempDir(), name+".json")
+		dealRun(t, append([]string{"standard-history", "card", "--out", path}, extra...)...)
+		result, err := verifyBundleOutput(t, path)
+		require.NoError(t, err, name)
+		assert.Equal(t, "VALID", result["verdict"], name)
+		asOf := shBlock(t, readBundle(t, path))["as_of"].(map[string]any)
+		assertCheckpointIsTheAnchor(t, asOf, name)
+		texts, ok := asOf["receipts"].([]any)
+		require.True(t, ok, name+": the receipts member")
+		require.Len(t, texts, 1, name)
+		receipt, err := hex.DecodeString(texts[0].(string))
+		require.NoError(t, err, name)
+		anchor := asOf["anchor"].(string)
+		report := witness.CheckAnchorWitnessed(anchor, [][]byte{receipt}, anchorPolicy(t, "the witness", public))
+		assert.Equal(t, witness.AnchorPass, report.Status, name)
+		require.NotNil(t, report.Witness, name)
+		assert.Equal(t, "the witness", *report.Witness, name)
+		assert.Equal(t, witness.AnchorFail, witness.CheckAnchorWitnessed(anchor, [][]byte{receipt}, anchorPolicy(t, "someone else", other)).Status, name)
+	}
+}
+
+// A cll witness's receipt covers the checkpoint payload's digest, not the
+// anchor, so a card as of a tick only it witnessed carries the checkpoint
+// and no receipts.
+func TestACllWitnessedCardCarriesNoReceipt(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 18, 24, 0, 0, time.UTC))
+	retailDeal(t)
+	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
+	*now = now.Add(3 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+	s, err := openDealSession(t.Context(), p)
+	require.NoError(t, err)
+	c, _, err := s.cadenceOf(t.Context())
+	require.NoError(t, err)
+	anchor, err := c.StandardHistoryAnchor(t.Context(), 0)
+	require.NoError(t, err)
+	require.NoError(t, s.close())
+	require.True(t, anchor.Tick.Witnessed, "the cll witness did witness the tick")
+
+	path := filepath.Join(t.TempDir(), "card.json")
+	dealRun(t, "standard-history", "card", "--out", path)
+	asOf := shBlock(t, readBundle(t, path))["as_of"].(map[string]any)
+	assertCheckpointIsTheAnchor(t, asOf, "cll")
+	assert.NotContains(t, asOf, "receipts")
+}
+
+// anchorPolicy is a reader's witness list of one witness with one Ed25519
+// key, as hex DER SubjectPublicKeyInfo.
+func anchorPolicy(t *testing.T, name string, public ed25519.PublicKey) witness.AnchorWitnessPolicy {
+	t.Helper()
+	der, err := x509.MarshalPKIXPublicKey(public)
+	require.NoError(t, err)
+	return witness.AnchorWitnessPolicy{Witnesses: []witness.AnchorWitness{{Name: name, Keys: []string{hex.EncodeToString(der)}}}}
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
+	"github.com/action-state-group/agent-action-capsule/go/witness"
 	"github.com/action-state-group/capsule-cli/cli"
 	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/action-state-group/capsule-emit/go/artifact"
@@ -354,6 +355,9 @@ type standardHistoryCard struct {
 	Policy standardhistory.Policy
 	AsOf   standardhistory.AsOf
 	Deals  []standardhistory.Deal
+	// Tick is the cadence tick the card is as of: its checkpoint statement
+	// is the anchor's octets, and its receipt the witness's.
+	Tick evidencebook.CadenceTick
 }
 
 // errNoTick is a card with no checkpoint to be as of.
@@ -425,7 +429,7 @@ func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standar
 	if err != nil {
 		return standardHistoryCard{}, err
 	}
-	return standardHistoryCard{Card: card, Policy: policy, AsOf: anchor.AsOf, Deals: deals}, nil
+	return standardHistoryCard{Card: card, Policy: policy, AsOf: anchor.AsOf, Deals: deals, Tick: anchor.Tick}, nil
 }
 
 // historyInput is one deal's sealed records through the extent its book's
@@ -545,7 +549,7 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool) (_
 	if err != nil {
 		return nil, err
 	}
-	block := map[string]interface{}{"policy": h.Policy, "as_of": h.AsOf}
+	block := map[string]interface{}{"policy": h.Policy, "as_of": shAsOfBlock(h)}
 	if !shared {
 		block["deals"] = h.Deals
 	}
@@ -556,6 +560,26 @@ func (s *dealSession) standardHistoryBundle(ctx context.Context, shared bool) (_
 	extensions[shExtension] = block
 	b["extensions"] = extensions
 	return b, nil
+}
+
+// shAsOfBlock is the block's as_of: the card's three members, the anchor's
+// cll-checkpoint octets (lowercase hex; their SHA-256 is the anchor), and
+// the anchor's witness Receipts when the tick holds one (capsule-viewer
+// spec/presentation-contract-v0.md §3). A Receipt goes in only when its leaf
+// is the anchor digest (IP1 §6.2.2): that is a scrapi+https:// witness's,
+// which the cadence verified before it marked the tick witnessed. A cll
+// witness's leaf is SHA-256 of the checkpoint payload's digest, so its
+// receipt does not cover the anchor and is never written. Both copies carry
+// them: they name no deal.
+func shAsOfBlock(h standardHistoryCard) map[string]interface{} {
+	asOf := map[string]interface{}{
+		"anchor": h.AsOf.Anchor, "anchor_time": h.AsOf.AnchorTime, "first_checkpoint_time": h.AsOf.FirstCheckpointTime,
+		"checkpoint": hex.EncodeToString(h.Tick.Checkpoint),
+	}
+	if r := h.Tick.Receipt; h.Tick.Witnessed && r != nil && witness.BindingOf(r.TSURL) == witness.BindingSCRAPI && r.EntryHash == h.AsOf.Anchor {
+		asOf["receipts"] = []string{hex.EncodeToString(r.Receipt)}
+	}
+	return asOf
 }
 
 // payloadOf is a held Capsule's payload, and whether the Capsule verifies
