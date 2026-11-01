@@ -243,10 +243,16 @@ fn decode_non_ascii_alabels(uts46: &Uts46, v: &str) -> Result<String, NotNormali
         match label.strip_prefix("xn--") {
             Some(rest) if !label.is_ascii() => {
                 // Go maps the whole name before it decodes, so a character
-                // UTS46 maps (ﬁ, µ) is mapped here too.
+                // UTS46 maps (ﬁ, µ) is mapped here too. Only the part before
+                // the last hyphen can hold one; it is mapped without the
+                // hyphen and the Punycode tail, which would fail the label
+                // checks (a bidi label may not end in a hyphen) that Go
+                // applies to the decoded label alone.
+                let (basic, tail) = rest.rsplit_once('-').ok_or(NotNormalizable)?;
                 let (mapped, ok) =
-                    uts46.to_unicode(rest.as_bytes(), AsciiDenyList::STD3, Hyphens::Allow);
+                    uts46.to_unicode(basic.as_bytes(), AsciiDenyList::STD3, Hyphens::Allow);
                 ok.map_err(|_| NotNormalizable)?;
+                let mapped = format!("{mapped}-{tail}");
                 let u = punycode_decode(&mapped).ok_or(NotNormalizable)?;
                 if u.is_empty() || u.is_ascii() || nfc(&u) != u {
                     return Err(NotNormalizable);

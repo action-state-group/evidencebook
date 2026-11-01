@@ -219,6 +219,9 @@ fn non_ascii_alabels_are_read_as_go_reads_them() {
     // The whole name is mapped before an xn-- label is decoded (Go, Python).
     assert_eq!(n("xn--ﬁcaé-.com").unwrap(), "ficaé.com");
     assert_eq!(n("xn--µcaé-.com").unwrap(), "μcaé.com");
+    // A right-to-left label, whose Punycode body ends in a hyphen.
+    assert_eq!(n("xn--שלום-.com").unwrap(), "שלום.com");
+    assert_eq!(n("xn--שלום-.co.il").unwrap(), "שלום.co.il");
 }
 
 #[test]
