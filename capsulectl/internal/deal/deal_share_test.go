@@ -454,9 +454,15 @@ func TestDealShareWithholdsTheCustomersNameFromTheMerchantEmail(t *testing.T) {
 	shareRun(t, dealID, "adjudicator", page)
 	raw, err := os.ReadFile(page)
 	require.NoError(t, err)
-	for _, n := range append(names, "Customer") {
+	for _, n := range names {
 		assert.NotContains(t, strings.ToLower(string(raw)), strings.ToLower(n))
 	}
+	// The surname alone is checked in what a reader can be shown: the markup
+	// and the JSON of the bundle and the deal page's data, as the share gate
+	// reads them. The viewer's runtime code is left out: since capsule-viewer
+	// 0.8.0 its wording says "customer" (Outcomes frame 5), whoever the
+	// customer is.
+	assert.NotContains(t, strings.ToLower(string(dealGateText(raw, nil))), "customer")
 	assert.Contains(t, string(raw), "Shipping to [withheld], [withheld], [withheld], [withheld] today")
 
 	// The gate alone, as if the scrubber had missed it.
