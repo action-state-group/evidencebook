@@ -12,8 +12,8 @@
   with `..Default::default()`. An absent `preimage` stays absent when read and
   written. A `body_evidence` that carries `preimage`, which `deny_unknown_fields`
   made this crate reject before, now reads.
-- `#[non_exhaustive]` is deliberately not added. No type in this crate uses the attribute,
-  the deal types mirror the profile's schema one to one, and adding it now
+- `#[non_exhaustive]` is deliberately not added. No type in this crate uses the
+  attribute, the deal types mirror the profile's schema one to one, and adding it now
   would break every literal outside the crate a second time. A profile member
   added later is a breaking change of the crate's pre-1.0 version, as here.
 - The crate has no counterpart of Go's `dealprofile.PreimageMatches`; the field
