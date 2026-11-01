@@ -21,7 +21,7 @@
   "evidence_ids": [
     "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
     "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b",
-    "a97e8b7193b38521d3e236b544706ed227c449fb03f603bcab5657db49e4147d"
+    "fd31e1f69d501d9c1fe9fc0146c914bc16ec25650bdb8dabf0a3460b893df2f5"
   ],
   "text": [
     "✓ Unchanged since it was sealed",
@@ -33,7 +33,7 @@
     "· 10 of 10 checks passed · 1 record",
     "Verification",
     "bundle digest",
-    "\"a97e8b7193b38521d3e236b544706ed227c449fb03f603bcab5657db49e4147d\"",
+    "\"fd31e1f69d501d9c1fe9fc0146c914bc16ec25650bdb8dabf0a3460b893df2f5\"",
     "checkpoint root",
     "\"4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047\"",
     "checkpoint size",
