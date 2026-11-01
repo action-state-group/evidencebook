@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The checks a Mesh node on capsules-plugin v0.1.8 runs over a counterparty's
+# deal half, at exactly the versions that release pins
+# (crates/evidence-plugin/Cargo.toml at v0.1.8), over a Goose node's halves
+# (python/examples/goose). D3 condition 2 of evidencebook#254, per the
+# coordinator's decision on evidencebook#265: what Goose writes stays
+# verifiable by the code a current Mesh node runs.
+[package]
+name = "goose-mesh-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+agent-action-capsule = { version = "=0.4.1", features = ["strict"] }
+capsule-emit = { version = "=0.0.9" }
+evidencebook = { version = "=0.0.11", features = ["deal"] }
+serde_json = "1"

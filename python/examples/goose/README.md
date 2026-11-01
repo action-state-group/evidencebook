@@ -138,7 +138,11 @@ Go's evidencebook:
 go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/buyer-card.json "$(cat /tmp/goose-run/buyer.key)"
 ```
 
-It reads a consistent snapshot of the shelf, so the node may keep running. It accepts the card
+A Mesh node on capsules-plugin v0.1.8 has no channel to receive a Goose half yet
+(evidencebook#291 adds one). CI instead runs each half through exactly the checks such a node runs
+over a counterparty's half, with the crates that release pins (`test/interop/goose-mesh-check`).
+
+The card check reads a consistent snapshot of the shelf, so the node may keep running. It accepts the card
 only if Go derives exactly the same bytes as of the tick the card names, and every
 `standard_history/1` property passes. CI runs the scripted run and this check
 (`python/examples/goose/tests`).

@@ -256,6 +256,13 @@ def test_the_server_over_mcp_stdio_writes_cards_go_accepts(tmp_path):
         result = json.loads((tmp_path / f"{node}-card.json").read_text())
         assert len(result["deals"]) == 1 and result["deals"][0]["happened"] == "stamped_by_both"
         assert json.loads((tmp_path / f"{node}-history-card.json").read_text())["derivation"] == "history_card/1"
+    # D3 condition 2: each final half passes the checks a Mesh node on
+    # capsules-plugin v0.1.8 runs over a counterparty's half, with the crates
+    # that release pins (test/interop/goose-mesh-check).
+    if os.environ.get("GOOSE_MESH_CHECK"):
+        halves = [str(tmp_path / f"{node}-final-half.json") for node in ("buyer", "seller")]
+        mesh = subprocess.run([os.environ["GOOSE_MESH_CHECK"], *halves], capture_output=True, text=True, timeout=120)
+        assert mesh.returncode == 0, mesh.stdout + mesh.stderr
     if os.environ.get("GOOSE_GO_CHECK"):
         for node in ("buyer", "seller"):
             check = subprocess.run(["go", "run", "./test/interop/goose-card", str(tmp_path / node / "shelf.db"),

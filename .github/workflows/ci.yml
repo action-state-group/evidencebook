@@ -456,8 +456,10 @@ jobs:
 
   goose:
     # The Goose loop reference (python/examples/goose, evidencebook#265): its
-    # tests, the scripted two-node run over MCP stdio, and Go's check that
-    # each node's standard_history/1 card is the one Go derives from its shelf.
+    # tests, the scripted two-node run over MCP stdio, Go's check that each
+    # node's standard_history/1 card is the one Go derives from its shelf, and
+    # each node's deal half run through the checks a Mesh node on
+    # capsules-plugin v0.1.8 runs, with the crates it pins (D3 condition 2).
     name: Goose loop reference (scripted run, cards Go re-derives)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -473,11 +475,18 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Build the v0.1.8 Mesh node's half checks
+        run: cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
       - name: Install the package and the MCP SDK
         run: python -m pip install "./python[test]" "mcp==2.3.0"
-      - name: Test the reference, run it, and check its cards with Go
+      - name: Test the reference, run it, and check its cards with Go and its halves as a Mesh node does
         env:
           GOOSE_GO_CHECK: "1"
+          GOOSE_MESH_CHECK: test/interop/goose-mesh-check/target/debug/goose-mesh-check
         run: python -m pytest -q python/examples/goose/tests
 
   registry-conformance:
