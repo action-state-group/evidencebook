@@ -7,7 +7,8 @@
 - New: `staple::check_staple(request, reply, holder)`, a reader's check of a staple it received:
   the holder's own request and the envelope its book answered, presented by `holder`, carrying
   `history_card/1` over `checkpoints` or `standard_history/1` over `full_history` and nothing
-  else. It returns the anchor, nonce and issue time for the reader's replay check. For
+  else. It returns the anchor, nonce and issue time for the reader's replay check. A
+  `history_card/1` card must have the card's members and nothing else and end at its anchor. For
   `standard_history/1` it checks the card has exactly the standard card's members; the rest of
   the card's form has no Rust checker yet. Go writes the shared vectors,
   `testdata/staple/staples.json`.

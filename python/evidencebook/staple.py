@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from dataclasses import dataclass
 
 from agent_action_capsule import standard_history as sh
@@ -93,8 +94,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     and stays inside the cap, as Go's ``CheckStaple`` does. Every failure is
     :class:`InvalidError`. It does not check the anchor's checkpoint, the
     card's own properties or the nonce's freshness: those are the reader's.
-    A ``history_card/1`` artifact is capped by its derivation and subject
-    only; the cap on what is stapled is enforced where it is built."""
+    A ``history_card/1`` artifact must have the card's members and nothing
+    else (:func:`_history_card_form`)."""
     if s.request.media_type != MEDIA_TYPE_JSON or s.reply.message.media_type != MEDIA_TYPE_JSON:
         raise InvalidError("a staple's request and reply are JSON")
     parsed = read_request(s.request)
@@ -123,6 +124,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
         raise InvalidError("the staple's envelope is as of another anchor")
     if e.profile != req.profile:  # read_request answers a request naming none as PROFILE
         raise InvalidError("the staple's envelope names another profile")
+    if req.derivation == DERIVATION_HISTORY_CARD:
+        _history_card_form(e.artifact, e.anchor_digest)
     if req.derivation == DERIVATION_STANDARD_HISTORY:
         try:
             card = strict_json(e.artifact)
@@ -132,3 +135,41 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
             if status == "FAIL":
                 raise InvalidError(f"the stapled card fails {name}")
     return StapleCheck(req.derivation, e.anchor_digest, req.nonce, e.issued_at, e.artifact)
+
+
+_LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
+
+
+def _history_card_form(artifact: bytes, anchor: str) -> None:
+    """A ``history_card/1`` artifact (ER §8.1) with the card's members and
+    nothing else, as Go's ``historyCardForm`` checks it: anchor, derivation,
+    evidence_stream, history and subject; each history entry exactly a
+    checkpoint and the consistency proof from the one before (null for the
+    first), as lowercase hex; the last checkpoint is the anchor. No
+    signature or proof is checked: the checkpoint key is the reader's."""
+    def bad(why: str) -> InvalidError:
+        return InvalidError(f"the stapled history_card/1 {why}")
+    try:
+        card = strict_json(artifact)
+    except ValueError:
+        card = None
+    if not isinstance(card, dict):
+        raise bad("is not a JSON object")
+    if set(card) != {"anchor", "derivation", "evidence_stream", "history", "subject"}:
+        raise bad("has members other than the card's")
+    stream = card["evidence_stream"]
+    if card["derivation"] != DERIVATION_HISTORY_CARD or card["anchor"] != anchor or not isinstance(stream, str) \
+            or not stream or card["subject"] != {"checkpoints": None}:
+        raise bad("does not name its derivation, anchor, stream and subject")
+    history = card["history"]
+    if not isinstance(history, list) or not history:
+        raise bad("has no history")
+    for i, entry in enumerate(history):
+        if not isinstance(entry, dict) or set(entry) != {"checkpoint", "consistency_from_previous"}:
+            raise bad(f"entry {i} has members other than a checkpoint and its consistency proof")
+        checkpoint, proof = entry["checkpoint"], entry["consistency_from_previous"]
+        hex_text = lambda v: isinstance(v, str) and _LOWER_HEX.match(v) is not None  # noqa: E731
+        if not hex_text(checkpoint) or (proof is None) != (i == 0) or (i > 0 and not hex_text(proof)):
+            raise bad(f"entry {i} is not a hex checkpoint with its consistency proof")
+    if hashlib.sha256(bytes.fromhex(history[-1]["checkpoint"])).hexdigest() != anchor:
+        raise bad("does not end at its anchor")

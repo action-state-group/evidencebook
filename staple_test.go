@@ -258,6 +258,27 @@ func writeStapleVectors(t *testing.T) {
 		vector("a tampered envelope", standard.Request, tamperedReply(t, standard.Reply), holder, false, sc),
 		vector("a card with more than the standard card", standard.Request, widenedCard(t, book, standard.Reply), holder, false, sc),
 		emptyNonce(t, book, standard, holder),
+		vector("a history card with more than the card", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			c["records"] = []any{"a record body"}
+		}), holder, false, cc),
+		vector("a history card that does not end at its anchor", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			h := c["history"].([]any)
+			c["history"] = h[:len(h)-1]
+		}), holder, false, cc),
+		vector("a history card whose first entry has a proof", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			c["history"].([]any)[0].(map[string]any)["consistency_from_previous"] = "00"
+		}), holder, false, cc),
+		vector("a history card with uppercase hex", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			e := c["history"].([]any)[0].(map[string]any)
+			e["checkpoint"] = strings.ToUpper(e["checkpoint"].(string))
+		}), holder, false, cc),
+		vector("a history card with no history", card.Request, widened(t, book, card.Reply, func(c map[string]any) { c["history"] = []any{} }), holder, false, cc),
+		vector("a history card over another subject", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			c["subject"] = map[string]any{"full_history": nil}
+		}), holder, false, cc),
+		vector("a history card entry with more than a checkpoint", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			c["history"].([]any)[0].(map[string]any)["record"] = "a record body"
+		}), holder, false, cc),
 		vector("an envelope under another profile", standard.Request, resigned(t, book, standard.Reply, func(e *Envelope) { e.Profile = ProfileIDv1 }), holder, false, sc),
 	}
 	out, err := json.MarshalIndent(vectors, "", "  ")
@@ -294,12 +315,19 @@ func resigned(t *testing.T, book *Book, reply Reply, change func(*Envelope)) Rep
 // holder's own key.
 func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
 	t.Helper()
+	return widened(t, book, reply, func(card map[string]any) { card["counterparties"] = []any{"carol"} })
+}
+
+// widened is reply with its card changed by widen and re-signed by the
+// holder.
+func widened(t *testing.T, book *Book, reply Reply, widen func(map[string]any)) Reply {
+	t.Helper()
 	return resigned(t, book, reply, func(e *Envelope) {
 		var card map[string]any
 		if err := json.Unmarshal(e.Artifact, &card); err != nil {
 			t.Fatal(err)
 		}
-		card["counterparties"] = []any{"carol"}
+		widen(card)
 		artifact, err := canonicalJSON(card)
 		if err != nil {
 			t.Fatal(err)

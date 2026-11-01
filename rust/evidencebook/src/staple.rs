@@ -78,9 +78,8 @@ fn refuse<T>(why: impl Into<String>) -> Result<T, StapleError> {
 /// derivation and subject are one of the two pairs, and the anchor is the
 /// one the request pinned, as is the profile. It does not check the
 /// anchor's checkpoint, the card's properties or the nonce's freshness:
-/// those are the reader's. A `history_card/1` artifact is capped by its
-/// derivation and subject only; the cap on what is stapled is enforced
-/// where it is built.
+/// those are the reader's. A `history_card/1` artifact must have the card's
+/// members and nothing else, and end at its anchor.
 pub fn check_staple(
     request: &[u8],
     reply: &[u8],
@@ -139,6 +138,9 @@ pub fn check_staple(
     if e.profile != asked {
         return refuse("the envelope names another profile");
     }
+    if derivation == DERIVATION_HISTORY_CARD {
+        history_card_form(&e.artifact, pin)?;
+    }
     if derivation == DERIVATION_STANDARD_HISTORY {
         let card: Value = match serde_json::from_slice(&e.artifact) {
             Ok(card) => card,
@@ -160,6 +162,87 @@ pub fn check_staple(
         issued_at: e.issued_at.clone(),
         artifact: e.artifact.clone(),
     })
+}
+
+/// A `history_card/1` artifact (ER §8.1) with the card's members and nothing
+/// else, as Go's `historyCardForm` checks it: anchor, derivation,
+/// evidence_stream, history and subject; each history entry exactly a
+/// checkpoint and the consistency proof from the one before (null for the
+/// first), as lowercase hex; the last checkpoint is the anchor. No signature
+/// or proof is checked: the checkpoint key is the reader's.
+fn history_card_form(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
+    let bad = |why: &str| StapleError(format!("the stapled history_card/1 {why}"));
+    let hex_text = |v: &Value| {
+        v.as_str().is_some_and(|s| {
+            !s.is_empty()
+                && s.len() % 2 == 0
+                && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+        })
+    };
+    let card: Value = serde_json::from_slice(artifact).map_err(|_| bad("is not a JSON object"))?;
+    let Some(members) = card.as_object() else {
+        return Err(bad("is not a JSON object"));
+    };
+    let mut names: Vec<&str> = members.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    if names
+        != [
+            "anchor",
+            "derivation",
+            "evidence_stream",
+            "history",
+            "subject",
+        ]
+    {
+        return Err(bad("has members other than the card's"));
+    }
+    let stream_ok = members["evidence_stream"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty());
+    if members["derivation"] != DERIVATION_HISTORY_CARD
+        || members["anchor"] != anchor
+        || !stream_ok
+        || members["subject"] != serde_json::json!({"checkpoints": null})
+    {
+        return Err(bad(
+            "does not name its derivation, anchor, stream and subject",
+        ));
+    }
+    let history = match members["history"].as_array() {
+        Some(h) if !h.is_empty() => h,
+        _ => return Err(bad("has no history")),
+    };
+    for (i, entry) in history.iter().enumerate() {
+        let Some(entry) = entry.as_object() else {
+            return Err(bad(&format!(
+                "entry {i} has members other than a checkpoint and its consistency proof"
+            )));
+        };
+        let mut names: Vec<&str> = entry.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        if names != ["checkpoint", "consistency_from_previous"] {
+            return Err(bad(&format!(
+                "entry {i} has members other than a checkpoint and its consistency proof"
+            )));
+        }
+        let proof = &entry["consistency_from_previous"];
+        if !hex_text(&entry["checkpoint"])
+            || proof.is_null() != (i == 0)
+            || (i > 0 && !hex_text(proof))
+        {
+            return Err(bad(&format!(
+                "entry {i} is not a hex checkpoint with its consistency proof"
+            )));
+        }
+    }
+    let last = history[history.len() - 1]["checkpoint"]
+        .as_str()
+        .unwrap_or_default();
+    let raw = hex::decode(last).map_err(|_| bad("does not end at its anchor"))?;
+    if hex::encode(Sha256::digest(raw)) != anchor {
+        return Err(bad("does not end at its anchor"));
+    }
+    Ok(())
 }
 
 /// A staple as built: the holder's own request and the reply its book

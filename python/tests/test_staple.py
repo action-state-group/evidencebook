@@ -73,3 +73,12 @@ def test_the_holders_staple_is_not_counted_by_the_limiter() -> None:
     assert b.respond(stranger)[0].refusal is not None  # the strangers' bucket is spent
     for _ in range(2):
         check_staple(staple(b, eb.DERIVATION_HISTORY_CARD), b.key_id)
+
+
+def test_an_empty_pin_is_refused() -> None:
+    v = next(v for v in _vectors() if v["name"] == "history_card/1")
+    request = json.loads(v["request"])
+    request["coverage"]["expected_pin"] = ""
+    with pytest.raises(eb.InvalidError, match="expected_pin is not a digest"):
+        check_staple(Staple(eb.Message(json.dumps(request).encode()), eb.Reply(eb.Message(v["reply"].encode()))),
+                     v["holder"])

@@ -115,11 +115,10 @@ type StapleCheck struct {
 // request, the derivation is history_card/1 over checkpoints or
 // standard_history/1 over full_history, the anchor and profile are the
 // ones the request named, and a standard_history/1 card is of the standard
-// card's form. A history_card/1 artifact is capped by its derivation and
-// subject only: its form, like the anchor's checkpoint, the card's own
-// properties and the nonce's freshness, is the reader's verifier and
-// policy. The cap on what is stapled is enforced where it is built
-// (Book.Staple).
+// card's form, and a history_card/1 artifact has the card's members and
+// nothing else (historyCardForm). It does not check the anchor's
+// checkpoint, the card's own properties or the nonce's freshness: those
+// are the reader's verifier and policy.
 func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 	if s.Request.MediaType != MediaTypeJSON || s.Reply.MediaType != MediaTypeJSON {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request and reply are JSON", ErrInvalid)
@@ -161,6 +160,11 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 		// Verify leaves the profile to its caller (profile §3.3 step 5).
 		return StapleCheck{}, fmt.Errorf("%w: the staple's envelope names another profile", ErrInvalid)
 	}
+	if req.Derivation == DerivationHistoryCard {
+		if err := historyCardForm(e.Artifact, e.Anchor.Digest); err != nil {
+			return StapleCheck{}, err
+		}
+	}
 	if req.Derivation == DerivationStandardHistory {
 		properties, err := standardhistory.Check(e.Artifact, nil, nil, nil)
 		if err != nil {
@@ -173,4 +177,76 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 		}
 	}
 	return StapleCheck{Derivation: req.Derivation, Anchor: e.Anchor.Digest, Nonce: req.Nonce, IssuedAt: e.IssuedAt, Artifact: e.Artifact}, nil
+}
+
+// historyCardForm checks that a history_card/1 artifact (ER §8.1) has the
+// card's members and nothing else: anchor, derivation, evidence_stream,
+// history and subject, each history entry exactly a checkpoint and the
+// consistency proof from the one before (null for the first), as lowercase
+// hex, the last checkpoint being the anchor. It checks no signature or
+// proof: the checkpoint key is the reader's.
+func historyCardForm(artifact []byte, anchor string) error {
+	bad := func(why string) error { return fmt.Errorf("%w: the stapled history_card/1 %s", ErrInvalid, why) }
+	decoded, err := evidencerequest.DecodeJSON(artifact)
+	card, ok := decoded.(map[string]any)
+	if err != nil || !ok {
+		return bad("is not a JSON object")
+	}
+	if !keysExactly(card, "anchor", "derivation", "evidence_stream", "history", "subject") {
+		return bad("has members other than the card's")
+	}
+	stream, _ := card["evidence_stream"].(string)
+	subject, _ := card["subject"].(map[string]any)
+	if card["derivation"] != DerivationHistoryCard || card["anchor"] != anchor || stream == "" ||
+		len(subject) != 1 || !keysExactly(subject, "checkpoints") || subject["checkpoints"] != nil {
+		return bad("does not name its derivation, anchor, stream and subject")
+	}
+	history, _ := card["history"].([]any)
+	if len(history) == 0 {
+		return bad("has no history")
+	}
+	for i, item := range history {
+		entry, _ := item.(map[string]any)
+		if !keysExactly(entry, "checkpoint", "consistency_from_previous") {
+			return bad(fmt.Sprintf("entry %d has members other than a checkpoint and its consistency proof", i))
+		}
+		checkpoint, _ := entry["checkpoint"].(string)
+		proof, isText := entry["consistency_from_previous"].(string)
+		if !lowerHex(checkpoint) || (i == 0) != (entry["consistency_from_previous"] == nil) || (i > 0 && (!isText || !lowerHex(proof))) {
+			return bad(fmt.Sprintf("entry %d is not a hex checkpoint with its consistency proof", i))
+		}
+		if i == len(history)-1 {
+			raw, _ := hex.DecodeString(checkpoint)
+			if digestBytes(raw) != anchor {
+				return bad("does not end at its anchor")
+			}
+		}
+	}
+	return nil
+}
+
+// keysExactly reports whether m has exactly the members names.
+func keysExactly(m map[string]any, names ...string) bool {
+	if m == nil || len(m) != len(names) {
+		return false
+	}
+	for _, name := range names {
+		if _, ok := m[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// lowerHex reports whether s is non-empty lowercase hex of whole octets.
+func lowerHex(s string) bool {
+	if s == "" || len(s)%2 != 0 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
