@@ -17,10 +17,6 @@
   no contract every tier is undecided, never must-have. A page built with a
   contract gets no permalink.
 
-### Added: x-deal-v0 evidence may carry a Lightning payment's preimage
-
-- x-deal-v0: evidence of a payment the user received may carry `preimage` (64 lowercase hex, only with `received_to`), a Lightning payment's proof of settlement; its SHA-256 is the step's `ln.payment_hash` (Steven, Buzz 79b46dfb item 5: seal the preimage, not the BOLT11). `dealprofile.PreimageMatches` and `fixtures/preimage-vectors.json` give the check; the Rust types carry the member (devcon-workshop#12).
-
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`
@@ -32,6 +28,14 @@
   `5-monthly-compliance`) are rewritten with the viewer's page runtime, shell
   styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
   with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
+
+## v0.12.1 (2026-10-31)
+
+Go module only. `report` and `capsulectl` changes under Unreleased ship with their own tags.
+
+### Added: x-deal-v0 evidence may carry a Lightning payment's preimage
+
+- x-deal-v0: evidence of a payment the user received may carry `preimage` (64 lowercase hex, only with `received_to`), a Lightning payment's proof of settlement; its SHA-256 is the step's `ln.payment_hash` (Steven, Buzz 79b46dfb item 5: seal the preimage, not the BOLT11). `dealprofile.PreimageMatches` and `fixtures/preimage-vectors.json` give the check; the Rust types carry the member (devcon-workshop#12).
 
 ## v0.12.0 (2026-10-31)
 
