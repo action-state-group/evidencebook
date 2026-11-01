@@ -156,12 +156,23 @@ func (s *dealSession) dealBundleOf(path, dealID string, events []sealedEvent) (m
 	if err != nil {
 		return nil, err
 	}
+	return s.dealBundleFrom(raw, dealID, events, func(why string) error {
+		return cli.InputError("--bundle " + path + " is not this deal's report bundle: " + why + " (write one with `deal report --deal " + dealID + " --bundle FILE`)")
+	})
+}
+
+// dealBundleCheck is dealBundleOf over a bundle's bytes, a stored
+// countersigned bundle's (deal_grade.go).
+func (s *dealSession) dealBundleCheck(raw []byte, dealID string, events []sealedEvent) (map[string]interface{}, error) {
+	return s.dealBundleFrom(raw, dealID, events, func(why string) error {
+		return fmt.Errorf("%w: a stored countersigned bundle is not this deal's report bundle: %s", cli.ErrConflict, why)
+	})
+}
+
+func (s *dealSession) dealBundleFrom(raw []byte, dealID string, events []sealedEvent, notThis func(why string) error) (map[string]interface{}, error) {
 	b, err := cli.DecodeBundleJSON(raw)
 	if err != nil {
 		return nil, err
-	}
-	notThis := func(why string) error {
-		return cli.InputError("--bundle " + path + " is not this deal's report bundle: " + why + " (write one with `deal report --deal " + dealID + " --bundle FILE`)")
 	}
 	if err = cli.VerifyProducedBundle(b, true); err != nil {
 		return nil, notThis("it does not verify")
@@ -219,17 +230,20 @@ func decodeCountersignEntries(path string) ([]cli.CountersignatureEntry, error) 
 }
 
 func dealCountersignCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "countersign", Short: "Verify (and with --entry, attach) a countersignature on this deal's report bundle; sends nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "countersign", Short: "Verify (and with --entry, attach) a countersignature on this deal's report bundle and keep it with that bundle; sends nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		bundlePath, _ := c.Flags().GetString("bundle")
 		entryPath, _ := c.Flags().GetString("entry")
 		directory, _ := c.Flags().GetString("directory")
 		if bundlePath == "" {
 			return cli.InputError("--bundle is required: this deal's report bundle file, from `deal report --bundle`")
 		}
-		if directory == "" {
-			return cli.InputError("--directory is required: a countersigner directory URL or file you choose, to resolve who signed")
-		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
+			if directory == "" {
+				directory = profileCountersignDirectory(s.p)
+			}
+			if directory == "" {
+				return cli.InputError("--directory is required when the profile names no countersigner directory (profile update --countersign-directory): a countersigner directory URL or file you choose, to resolve who signed")
+			}
 			b, err := s.dealBundleOf(bundlePath, dealID, events)
 			if err != nil {
 				return err
@@ -246,6 +260,14 @@ func dealCountersignCommand() *cobra.Command {
 			view, err := dealCountersignVerify(ctx, b, directory, s.p)
 			if err != nil {
 				return err
+			}
+			// Every countersignature that verified is kept with the exact
+			// bundle it covers, so a later report states it (deal_grade.go)
+			// whichever file the user keeps.
+			if view.Finding != "not_countersigned" {
+				if err = s.storeCountersigned(ctx, dealID, b); err != nil {
+					return err
+				}
 			}
 			out := map[string]any{"deal_id": dealID, "bundle": bundlePath, "countersign": view}
 			if entryPath != "" {
@@ -265,6 +287,6 @@ func dealCountersignCommand() *cobra.Command {
 	cmd.Flags().String("deal", "", "Deal ID from `deal open`")
 	cmd.Flags().String("bundle", "", "This deal's report bundle file (from `deal report --bundle`)")
 	cmd.Flags().String("entry", "", "A countersign/v1 entry (or an array of them) to attach to the bundle once it verifies")
-	cmd.Flags().String("directory", "", "Countersigner directory (HTTPS URL or file) that resolves signers; no list is privileged")
+	cmd.Flags().String("directory", "", "Countersigner directory (HTTPS URL or file) used to identify who signed; default: the profile's countersign.directory")
 	return cmd
 }

@@ -31,8 +31,8 @@ import (
 // deal_steps.local holds each step's raw values and commitment nonces,
 // deal_disclosures each shared copy's disclosure record, deal_reports the
 // sealed report capsule of each copy written (dealSealReport),
-// deal_keys each deal's key, and deal_store the store secret the keys derive
-// from. What is sealed is only the x-deal-v0 record derived from them.
+// deal_keys each deal's key, deal_store the store secret the keys derive
+// from, and deal_countersignatures each countersigned bundle (deal_grade.go). What is sealed is only the x-deal-v0 record derived from them.
 var dealIndexSchema = []string{
 	dealStepsTable,
 	`CREATE TABLE IF NOT EXISTS deal_disclosures (
@@ -49,6 +49,7 @@ var dealIndexSchema = []string{
 	dealCadenceSchema,
 	dealDeferredEmailSchema,
 	dealRequestsSchema,
+	dealCountersignaturesSchema,
 }
 
 // dealSession holds the write lock, the index handle and the signing key for
@@ -395,6 +396,10 @@ func (s *dealSession) load(ctx context.Context, dealID string) (_ []sealedEvent,
 			return nil, cli.ErrConflict
 		}
 		if i == len(entries) {
+			// Finishing a step a crash left half sealed is a writer's.
+			if s.shared {
+				return nil, cli.Hint(cli.ErrConflict, "the deal's last step is half sealed: run any deal command on its writable profile once, then read it again")
+			}
 			se, err := s.recoverStep(ctx, events, ev, r.CapsuleID)
 			if err != nil {
 				return nil, err
@@ -2474,6 +2479,14 @@ func dealReportCommand() *cobra.Command {
 		recipient = strings.TrimSpace(recipient)
 		fromBundle, _ := c.Flags().GetString("from-bundle")
 		directory, _ := c.Flags().GetString("directory")
+		readOnly, _ := c.Flags().GetBool("read-only")
+		if readOnly && (htmlPath != "" || emailPath != "" || bundlePath != "" || fromBundle != "" || audience != cli.DealAudienceKeep) {
+			return cli.InputError("--read-only writes nothing: it takes no --html, --email, --bundle, --from-bundle or --share")
+		}
+		run := runDeal
+		if readOnly {
+			run = runDealRead
+		}
 		// A countersignature covers one exact bundle: your own copy. A shared
 		// copy withholds records, so it is a different bundle.
 		if fromBundle != "" && audience != cli.DealAudienceKeep {
@@ -2496,7 +2509,10 @@ func dealReportCommand() *cobra.Command {
 		default:
 			return cli.InputError("--share must be keep, counterparty or adjudicator")
 		}
-		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
+		return run(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
+			if directory == "" {
+				directory = profileCountersignDirectory(s.p)
+			}
 			report, reportErr := s.dealReportFor(ctx, events)
 			if reportErr != nil {
 				return reportErr
@@ -2533,13 +2549,30 @@ func dealReportCommand() *cobra.Command {
 				// page and the email would carry.
 				if s.dp.Checkpoint.Signing == (cli.Secret{}) {
 					out["assurance"] = dealAssurance(map[string]interface{}{})
+					grade, err := s.dealGradeOf(ctx, map[string]interface{}{}, events)
+					if err != nil {
+						return err
+					}
+					out["grade"] = grade
 					return cli.Output(c, reportSay(out, s.p, events, ""))
 				}
 				b, err := s.dealReportBundle(ctx, events, report, cli.DealAudienceKeep, "", false)
+				// A read that writes nothing cuts no checkpoint: with none
+				// covering the deal's last step, its witness is unchecked.
+				if errors.Is(err, errNotCovered) {
+					b, err = nil, nil
+				}
 				if err != nil {
 					return err
 				}
-				out["assurance"] = dealAssurance(b)
+				if b != nil {
+					out["assurance"] = dealAssurance(b)
+				}
+				grade, err := s.dealGradeOf(ctx, b, events)
+				if err != nil {
+					return err
+				}
+				out["grade"] = grade
 				return cli.Output(c, reportSay(out, s.p, events, ""))
 			}
 			// --from-bundle renders the receipt from a bundle file this deal
@@ -2591,6 +2624,11 @@ func dealReportCommand() *cobra.Command {
 				return err
 			}
 			out["assurance"] = assurance
+			grade, err := s.dealGradeOf(ctx, b, events)
+			if err != nil {
+				return err
+			}
+			out["grade"] = grade
 			if htmlPath != "" {
 				if err = cli.AtomicFile(htmlPath, []byte(page), false); err != nil {
 					return err
@@ -2650,7 +2688,8 @@ func dealReportCommand() *cobra.Command {
 	cmd.Flags().String("share", cli.DealAudienceKeep, "Who the page is for: keep (your own copy, nothing withheld), counterparty or adjudicator (a shared copy, put on record first)")
 	cmd.Flags().String("to", "", "With --share: who the shared copy is for, as sealed in the disclosure record")
 	cmd.Flags().String("from-bundle", "", "Render from this deal's earlier bundle file instead of a new one, with any countersignatures it carries (see `deal countersign`)")
-	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned")
+	cmd.Flags().String("directory", "", "With --from-bundle: the countersigner directory (HTTPS URL or file) that resolves who countersigned; default: the profile's countersign.directory")
+	cmd.Flags().Bool("read-only", false, "Read the deal as it stands and write nothing: no checkpoint cut, nothing sealed, no file (for a History built over many deals)")
 	return cmd
 }
 

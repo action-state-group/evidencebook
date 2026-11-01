@@ -29,6 +29,28 @@
   checkpoint, its final close). A deal without one stays `receipt_only` or `no_record`.
   Run `deal terms-result` and then `deal tick` before the card.
 
+- Builds against capsulectl `v0.1.0-rc31` (its profile names the countersigner directory,
+  capsule-cli#522), which pins capsule-viewer `v0.10.0`.
+
+- The owner's report states its grade, keeps countersignatures, and has a read that
+  writes nothing (evidencebook-deal#64, actionstate-muse#311 §3.1, §3.3, §4):
+  - `deal report` (the user's own copy) carries `grade`: the rung reached
+    (`self_attested`, `witnessed`, `witnessed_in_part`, `countersigned` or
+    `countersigned_in_part`), the
+    witness's state with the time of the checkpoint it signed (`witness.at`) and, in
+    part, the steps it covers, and the stored countersignatures. It is what capsulectl
+    checked, beside the bundle; nothing sealed changes. A shared copy carries none.
+  - `deal countersign` keeps every countersignature it verifies in the deal store
+    (`deal_countersignatures`) with the exact bundle it covers. A later report states
+    each against that stored bundle: through step k of n, the signer, its
+    `recomputed_at`; it never attaches one to its own bundle. Signers resolve against
+    the profile's `countersign.directory` only (capsule-cli#522), which both commands'
+    `--directory` now defaults to; one not checked says why (`unchecked_reason`).
+  - `deal report --read-only` reads a deal and writes nothing: no checkpoint is cut,
+    nothing sealed, no file written, the store opened as `deal checkpoint status`
+    opens it. A deal with no checkpoint over its last step states its witness
+    `unchecked`.
+
 - `counterparty_class` on a pay check (F4.5, evidencebook-deal#93, evidencebook#273): a
   `deal check` input for a `pay` may state `"counterparty_class"` (`person_agent`,
   `business_agent` or `shop_preauth`, SH §7), which is sealed as the pay check's

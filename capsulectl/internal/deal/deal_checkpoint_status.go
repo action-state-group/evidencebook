@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -98,6 +99,44 @@ func openDealSessionRead(ctx context.Context, p cli.Profile, dealID string) (_ *
 	return s, nil
 }
 
+// runDealRead is runDeal over a read session (openDealSessionRead): the deal
+// is loaded as the store holds it, and nothing is written, cut or migrated.
+func runDealRead(c *cobra.Command, _ bool, fn func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error) (err error) {
+	p, err := cli.Selected(c)
+	if err != nil {
+		return err
+	}
+	dealID, _ := c.Flags().GetString("deal")
+	if dealID == "" {
+		return cli.InputError("--deal is required: a deal id as printed by `deal open`")
+	}
+	if !cli.DealIDPattern.MatchString(dealID) {
+		return cli.InputError("--deal must be a deal id as printed by `deal open`: deal- followed by 16 hex characters")
+	}
+	ctx := c.Context()
+	s, err := openDealSessionRead(ctx, p, dealID)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, s.close()) }()
+	err = s.db.QueryRowContext(ctx, `SELECT deal_key FROM deal_keys WHERE deal_id=?`, dealID).Scan(&s.dkey)
+	if errors.Is(err, sql.ErrNoRows) {
+		return cli.InputError("unknown deal: " + dealID)
+	}
+	if err != nil {
+		return err
+	}
+	events, err := s.load(ctx, dealID)
+	if err != nil {
+		return err
+	}
+	return fn(ctx, s, dealID, events)
+}
+
+// errNotCovered is a read session's answer when the deal's latest checkpoint
+// does not cover its last step: a writer would cut one, a read cannot.
+var errNotCovered = errors.New("no checkpoint covers the deal's last step yet")
+
 // openDealStoreRead is openDealSessionRead without a deal: the store's
 // handle, holding its shelf (and so its lock: a read waits for a step being
 // sealed, never for a tick's sleep), and no log opened. A read session
@@ -130,6 +169,11 @@ func openDealStoreRead(ctx context.Context, p cli.Profile) (_ *dealSession, err 
 	}
 	keys, err := cli.ParseKeys(append(append([]string{}, p.TrustedKeys...), hex.EncodeToString(s.key.Public().(ed25519.PublicKey))))
 	if err != nil {
+		return nil, err
+	}
+	// A record verifies under the profile's trusted keys only, as a writer
+	// verifies it, never under the read's own unused key.
+	if s.keys, err = cli.ParseKeys(p.TrustedKeys); err != nil {
 		return nil, err
 	}
 	if s.db, _, err = cli.SqliteConnection(p); err != nil {
