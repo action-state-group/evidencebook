@@ -141,6 +141,12 @@ go run ./test/interop/goose-card /tmp/goose-run/buyer/shelf.db /tmp/goose-run/bu
 A Mesh node on capsules-plugin v0.1.8 has no channel to receive a Goose half yet
 (evidencebook#291 adds one). CI instead runs each half through exactly the checks such a node runs
 over a counterparty's half, with the crates that release pins (`test/interop/goose-mesh-check`).
+To run it on a scripted run's halves:
+
+```bash
+cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
+test/interop/goose-mesh-check/target/debug/goose-mesh-check /tmp/goose-run/buyer-final-half.json /tmp/goose-run/seller-final-half.json
+```
 
 The card check reads a consistent snapshot of the shelf, so the node may keep running. It accepts the card
 only if Go derives exactly the same bytes as of the tick the card names, and every

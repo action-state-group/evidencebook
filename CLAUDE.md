@@ -48,9 +48,12 @@ dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/de
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
 
 # The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
-# scripted two-node run over MCP stdio, and Go's check of each node's card
+# scripted two-node run over MCP stdio, Go's check of each node's card, and each node's deal half
+# through a capsules-plugin v0.1.8 Mesh node's checks (each check skips when its variable is unset)
 (cd python && .venv/bin/pip install "mcp==2.3.0")
-GOOSE_GO_CHECK=1 python/.venv/bin/python -m pytest -q python/examples/goose/tests
+cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
+GOOSE_GO_CHECK=1 GOOSE_MESH_CHECK=test/interop/goose-mesh-check/target/debug/goose-mesh-check \
+  python/.venv/bin/python -m pytest -q python/examples/goose/tests
 
 # Release helper
 python -m pytest -q .github/test_release.py
