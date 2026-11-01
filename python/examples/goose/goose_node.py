@@ -71,6 +71,8 @@ POLICY = {"window": {"all": True}}
 HOLDER_KIND = "person"
 #: The record types of the node book.
 JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
+#: A model call the node sealed (``Node.seal_model_call``).
+MODEL_CALL = "goose_model_call"
 
 
 def verify_half(half: Any, checkpoint_key_id: str) -> dict:
@@ -338,6 +340,54 @@ class Node:
             return [(r, r.header.statement) for r in self.shelf.open(NODE_BOOK).records()
                     if r.header.record_type == record_type]
 
+    def seal_model_call(self, provider: str, model_id: str, prompt: Any, completion: Any,
+                        at: datetime | None = None) -> tuple[SealedStep, dict]:
+        """Seal one model call Goose made as an effect-boundary record of the
+        node book: a Capsule the node signs in its own process, so its effect
+        claims ``runtime_claimed`` and no more, its ``model_attestation``
+        names ``provider`` and ``model_id``. ``prompt`` and ``completion`` (JSON
+        values) are committed by digest; the node keeps the prompt as the
+        record's payload and the completion by its digest only. Returns the record and the
+        Capsule as a verifier reads it (with its ``signature`` and ``key_id``)."""
+        if not provider or not model_id:
+            raise Refused("a model call names its provider and model_id")
+        at = (at or self._now()).replace(microsecond=0)
+        action_id = f"model-call-{os.urandom(8).hex()}"
+        payload = json.dumps(prompt, sort_keys=True).encode()
+        with self._lock:
+            entry = Entry(MODEL_CALL, PRODUCER_CLAIM, subject_ref=action_id)
+
+            def seal(_header, header_json: bytes):
+                return produce.seal(produce.SealInput(
+                    capsule=produce.Input(
+                        action_id=action_id, action_type=produce.ActionType.FYI, operator=self.operator,
+                        developer=self.developer, timestamp=at,
+                        effect=produce.Effect("inference_completion", produce.EffectStatus.CONFIRMED,
+                                              produce.IrreversibilityClass.TWO_WAY,
+                                              produce.EffectAttestation.RUNTIME_CLAIMED,
+                                              request_digest=produce.digest_json(prompt),
+                                              response_digest=produce.digest_json(completion)),
+                        extensions=(produce.Extension(RECORD_HEADER_MEMBER, header_json),)),
+                    identity=self._identity, payload=json.loads(payload), agent_output=completion,
+                    model=produce.Model(provider, model_id)))
+
+            self._inflight = at
+            try:
+                record = self.shelf.open(NODE_BOOK).append_capsule(
+                    entry, [Artifact("payload", PRESENT, PAYLOAD_DIGEST, payload)], seal)
+            finally:
+                self._inflight = None
+            return SealedStep(record.record_id, record.seq, MODEL_CALL), self.capsule(record.record_id)
+
+    def capsule(self, record_id: str) -> dict:
+        """The Capsule a caller-sealed record is, with its producer
+        ``signature`` and ``key_id`` (the form a verifier reads)."""
+        with self._lock:
+            held = self.originals.get(record_id)
+            capsule = json.loads(held.capsule)
+            capsule["signature"], capsule["key_id"] = bytes(held.producer_envelope).hex(), self.key_id
+            return capsule
+
     def admission(self, peer: str) -> dict | None:
         """The newest admission sealed for ``peer``."""
         found = None
@@ -452,8 +502,7 @@ class Node:
             steps = []
             for record in book.records():
                 held = self.originals.get(record.record_id)
-                capsule = json.loads(held.capsule)
-                capsule["signature"], capsule["key_id"] = bytes(held.producer_envelope).hex(), self.key_id
+                capsule = self.capsule(record.record_id)
                 payload = next(bytes(a.content) for a in held.artifacts if a.name == "payload")
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
             return {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
