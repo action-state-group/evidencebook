@@ -652,6 +652,24 @@ pub(crate) fn decode_stored(sr: &StoredRecord) -> Result<BookRecord, ShelfError>
     }
     let capsule: Value =
         serde_json::from_slice(&sr.capsule).map_err(|_| corrupt("capsule is not JSON"))?;
+    // The capsule verifies as Go's capsule-emit `VerifyCapsule` checks it: AAC
+    // format 4 under JCS only, then Class 1 verification.
+    if capsule.get("format_version").and_then(Value::as_str) != Some(seal::FORMAT_VERSION)
+        || capsule.get("canonicalization_id").and_then(Value::as_str)
+            != Some(canonical::CANONICALIZATION_JCS)
+    {
+        return Err(corrupt("capsule is not AAC format 4 under JCS"));
+    }
+    let strict = agent_action_capsule::verify::decode_capsule_json(&sr.capsule)
+        .map_err(|_| corrupt("capsule is not strict JSON"))?;
+    let class1 = agent_action_capsule::verify::verify(&strict, None);
+    if !class1.ok {
+        let codes: Vec<&str> = class1.findings.iter().map(|f| f.code.as_str()).collect();
+        return Err(corrupt(&format!(
+            "capsule fails Class 1 verification: {}",
+            codes.join(", ")
+        )));
+    }
     let id = canonical::compute_capsule_id(&capsule).map_err(|_| corrupt("capsule"))?;
     if capsule.get("capsule_id").and_then(Value::as_str) != Some(sr.record_id.as_str())
         || id != sr.record_id

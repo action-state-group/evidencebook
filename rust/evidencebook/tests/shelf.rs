@@ -1023,3 +1023,125 @@ fn records_fold_retention_through_lifecycle_records_and_live_holds() {
     assert_eq!(state(&in_range.record_id), "LEGAL_HOLD");
     assert_eq!(state(&cites.record_id), "LEGAL_HOLD");
 }
+
+#[test]
+fn an_unfinished_tick_is_finished_as_the_same_tick() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let cadence = shelf.cadence(cadence_config(&[])).unwrap();
+    shelf
+        .open("deal/a")
+        .unwrap()
+        .append(&observation("a", "1"))
+        .unwrap();
+    let first = tick(&cadence, &clock);
+    shelf.release().unwrap();
+
+    // A crash after the root and its padding reached the cadence log and
+    // before the tick's row was completed: the root is found, not appended.
+    let conn = Connection::open(file(&dir)).unwrap();
+    conn.execute(
+        "UPDATE cadence_ticks SET entry_seq = 0, checkpoint_size = 0, checkpoint = x'' WHERE tick = 1",
+        [],
+    )
+    .unwrap();
+    let shelf = open(&file(&dir), &clock);
+    let cadence = shelf.cadence(cadence_config(&[])).unwrap();
+    let resumed = cadence.tick(start()).unwrap();
+    assert!(resumed.ticked);
+    assert_eq!(resumed.tick.unwrap(), first);
+    shelf.release().unwrap();
+
+    // A crash after the second tick's row and before its root: the resume
+    // appends the root after the first tick's entries and pads to the bucket.
+    // (Its own filler nonce gives it its own root.)
+    let mut leaves = first.leaves.clone();
+    leaves.filler_nonce = "ab".repeat(32);
+    conn.execute(
+        "INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (2, ?, ?, 0, 0, x'', ?)",
+        rusqlite::params![
+            first.due_next.rfc3339(),
+            first.due_next.plus(Duration::from_secs(300)).rfc3339(),
+            leaves.to_json()
+        ],
+    )
+    .unwrap();
+    let entries_before: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cll_entries WHERE log_id = 'cadence/0123456789abcdef'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(entries_before, 4);
+    let shelf = open(&file(&dir), &clock);
+    let cadence = shelf.cadence(cadence_config(&[])).unwrap();
+    let second = cadence.tick(start()).unwrap().tick.unwrap();
+    assert_eq!(
+        (second.n, second.entry_seq, second.checkpoint_size),
+        (2, 5, 15)
+    );
+    assert_eq!(second.leaves, leaves, "the stored leaves are the tick's");
+    assert_eq!(cadence.last().unwrap().unwrap(), second);
+}
+
+#[test]
+fn a_record_its_caller_sealed_with_its_header_inline_is_read() {
+    use evidencebook::canonical::{compute_capsule_id, jcs};
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    // A book's record capsule, carrying its header in the record header
+    // member instead of committing it as its input digest, as Go's
+    // AppendCapsule writes it.
+    let shelf = open(&dir.path().join("source.db"), &clock);
+    let sealed = shelf
+        .open("deal/a")
+        .unwrap()
+        .append(&observation("a", "1"))
+        .unwrap();
+    shelf.release().unwrap();
+    let inline = |commit_too: bool| {
+        let mut capsule: serde_json::Value = serde_json::from_slice(&sealed.capsule).unwrap();
+        let header: serde_json::Value = serde_json::from_slice(&sealed.header_bytes).unwrap();
+        capsule[evidencebook::shelf::RECORD_HEADER_MEMBER] = header;
+        if !commit_too {
+            capsule["model_attestation"]["compute_attestation"]["agent_input_digest"] = // vocabulary-gate: AAC capsule member, "model_attestation"
+                json!(hex::encode(Sha256::digest(b"the caller's own input")));
+        }
+        let id = compute_capsule_id(&capsule).unwrap();
+        capsule["capsule_id"] = json!(id);
+        (id, jcs(&capsule).unwrap())
+    };
+    let plant = |path: &Path, id: &str, capsule: &[u8]| {
+        Connection::open(path)
+            .unwrap()
+            .execute(
+                "INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES ('deal/a', 1, ?, ?, ?, x'00')",
+                rusqlite::params![id, sealed.header_bytes, capsule],
+            )
+            .unwrap();
+    };
+    let (id, capsule) = inline(false);
+    open(&file(&dir), &clock).release().unwrap();
+    plant(&file(&dir), &id, &capsule);
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    assert_eq!(
+        book.size(),
+        1,
+        "the stored record is committed at its position"
+    );
+    let record = book.record_by_digest(&id).unwrap();
+    assert_eq!(book.entry_of(&record.body).unwrap(), id);
+    assert_eq!(book.header_of(&record).unwrap(), sealed.header);
+    shelf.release().unwrap();
+
+    // A capsule that both carries and commits its header is refused.
+    let other = tempfile::tempdir().unwrap();
+    let (twice, capsule) = inline(true);
+    open(&file(&other), &clock).release().unwrap();
+    plant(&file(&other), &twice, &capsule);
+    let shelf = open(&file(&other), &clock);
+    assert!(matches!(shelf.open("deal/a"), Err(ShelfError::Corrupt(_))));
+}
