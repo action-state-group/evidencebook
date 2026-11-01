@@ -8,7 +8,8 @@ may contain identifiers is carried as a salted commitment. Raw values, the
 per-deal key and the commitment nonces stay in the producer's local store.
 
 Go's string functions are matched rune for rune: ``strings.ToLower`` is the
-simple (one-to-one) lowercase mapping, full case folding per CaseFolding.txt (``cases.Fold``, with the Cherokee small forms mapped to the capitals),
+simple (one-to-one) lowercase mapping, ``cases.Fold`` full case folding (with
+the Cherokee small forms mapped to the capitals, as CaseFolding.txt folds them),
 ``unicode.IsPunct`` the Unicode punctuation categories, ``strings.TrimSpace``
 and ``strings.Fields`` the White_Space property (not Python's ``str.strip``,
 which also strips U+001C to U+001F), and RE2's ``\\d`` and ``\\s`` are ASCII.

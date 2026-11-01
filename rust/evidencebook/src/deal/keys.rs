@@ -8,8 +8,9 @@
 //! producer's local store.
 //!
 //! Go's string functions are matched rune for rune: `strings.ToLower` is the
-//! simple (one-to-one) lowercase mapping, `cases.Fold` full case folding,
-//! `unicode.IsPunct` the Unicode punctuation categories, `strings.TrimSpace`
+//! simple (one-to-one) lowercase mapping, `cases.Fold` full case folding
+//! (with the Cherokee small forms mapped to the capitals, as CaseFolding.txt
+//! folds them), `unicode.IsPunct` the Unicode punctuation categories, `strings.TrimSpace`
 //! and `strings.Fields` the White_Space property, and RE2's `\d` and `\s`
 //! are ASCII.
 

@@ -40,7 +40,7 @@
   (evidencebook#264, design evidencebook#254 §8), so a Python shelf can derive
   `standard_history/1` from deal books.
   - Names, `normalize`, `fingerprint`, `deal_key`, `profile_key` and `commit_text`
-    (fingerprints under Go's Unicode rules: `strings.ToLower`, `cases.Fold`, the White_Space
+    (fingerprints under Go's Unicode rules: `strings.ToLower`, `cases.Fold` with the Cherokee small forms folded to the capitals (evidencebook#283), the White_Space
     trim, x/net's `idna.Lookup` and its public suffix tables, vendored byte for byte), the
     record-level stages (`check`, `encode`, `digest`, `check_digest`: canonicalization,
     personal_data, wording, schema) over the profile's vendored schemas, `report_payload`,
