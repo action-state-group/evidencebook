@@ -81,7 +81,7 @@ def staple(book, derivation: str) -> Staple:
     # authenticated requester.
     options = RespondOptions(authenticated_requester=book.key_id) if derivation == DERIVATION_STANDARD_HISTORY \
         else RespondOptions()
-    reply, _ = book.respond(request, options)
+    reply, _ = book._respond(request, options, own=True)  # the limiter is for askers
     if reply.envelope is None:
         reason = reply.refusal.reason if reply.refusal is not None else ""
         raise InvalidError(f"the book refused its own {derivation} request ({reason})")
@@ -92,7 +92,9 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     """Check that ``s`` is presented by ``holder`` (lowercase hex Ed25519)
     and stays inside the cap, as Go's ``CheckStaple`` does. Every failure is
     :class:`InvalidError`. It does not check the anchor's checkpoint, the
-    card's own properties or the nonce's freshness: those are the reader's."""
+    card's own properties or the nonce's freshness: those are the reader's.
+    A ``history_card/1`` artifact is capped by its derivation and subject
+    only; the cap on what is stapled is enforced where it is built."""
     if s.request.media_type != MEDIA_TYPE_JSON or s.reply.message.media_type != MEDIA_TYPE_JSON:
         raise InvalidError("a staple's request and reply are JSON")
     parsed = read_request(s.request)

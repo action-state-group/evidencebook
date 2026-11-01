@@ -9,7 +9,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 )
@@ -238,7 +240,7 @@ func writeStapleVectors(t *testing.T) {
 	}
 	sc, cc := read(standard), read(card)
 	wide := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: Coverage{ExpectedPin: sc.Anchor}, Nonce: sc.Nonce, Profile: ProfileID})
-	reworded := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: sc.Anchor}, Nonce: "00" + sc.Nonce[2:], Profile: ProfileID})
+	reworded := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: sc.Anchor}, Nonce: flipped(sc.Nonce), Profile: ProfileID})
 	vector := func(name string, request Message, reply Reply, who string, pass bool, c StapleCheck) stapleVector {
 		v := stapleVector{Name: name, Holder: who, Request: string(request.Octets), Reply: string(reply.Octets), Pass: pass}
 		if pass {
@@ -255,6 +257,7 @@ func writeStapleVectors(t *testing.T) {
 		vector("a reply to another derivation", card.Request, standard.Reply, holder, false, sc),
 		vector("a tampered envelope", standard.Request, tamperedReply(t, standard.Reply), holder, false, sc),
 		vector("a card with more than the standard card", standard.Request, widenedCard(t, book, standard.Reply), holder, false, sc),
+		emptyNonce(t, book, standard, holder),
 		vector("an envelope under another profile", standard.Request, resigned(t, book, standard.Reply, func(e *Envelope) { e.Profile = ProfileIDv1 }), holder, false, sc),
 	}
 	out, err := json.MarshalIndent(vectors, "", "  ")
@@ -303,4 +306,46 @@ func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
 		}
 		e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
 	})
+}
+
+// flipped is nonce with its first character changed, so it always differs.
+func flipped(nonce string) string {
+	first := "0"
+	if nonce[0] == '0' {
+		first = "1"
+	}
+	return first + nonce[1:]
+}
+
+// The holder's own staple is not counted by the book's limiter: strangers
+// that used up the shared bucket cannot stop the holder stapling.
+func TestStapleIsNotCountedByTheLimiter(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, func(c *Config) {
+		c.Responder = ResponderPolicy{Limiter: NewWindowLimiter(1, time.Hour)}
+	})
+	pin := anchorPin(t, book)
+	stranger := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: Coverage{ExpectedPin: pin}})
+	mustEnvelope(t, respondAs(t, book, stranger, ""))
+	if reply := respondAs(t, book, stranger, ""); reply.Refusal == nil {
+		t.Fatal("the limiter let a second stranger through")
+	}
+	for _, derivation := range []string{DerivationHistoryCard, DerivationStandardHistory, DerivationHistoryCard} {
+		if _, err := book.Staple(ctx, derivation); err != nil {
+			t.Fatalf("%s: %v", derivation, err)
+		}
+	}
+}
+
+// emptyNonce is the holder's staple re-signed over a request whose nonce is
+// the empty text: a staple with nothing for the reader's replay check.
+func emptyNonce(t *testing.T, book *Book, s Staple, holder string) stapleVector {
+	t.Helper()
+	got, err := CheckStaple(s, holder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := strings.Replace(string(s.Request.Octets), `"nonce":"`+got.Nonce+`"`, `"nonce":""`, 1)
+	reply := resigned(t, book, s.Reply, func(e *Envelope) { e.RequestDigest = digestBytes([]byte(request)) })
+	return stapleVector{Name: "an empty nonce", Holder: holder, Request: request, Reply: string(reply.Octets)}
 }

@@ -54,7 +54,8 @@ var stapleSubjects = map[string]SubjectKind{
 // standard_history/1 needs Config.StandardHistory. Its answer is sealed as
 // an evidence_request_answered record, as for any authenticated requester
 // (the holder answers itself), so the holder's book records which standard
-// card it attached; history_card/1 is public and grows no record.
+// card it attached; history_card/1 is public and grows no record. The
+// book's own request is not counted by its limiter.
 func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
 	subject, ok := stapleSubjects[derivation]
 	if !ok {
@@ -82,7 +83,7 @@ func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
 	if derivation == DerivationStandardHistory {
 		opts.AuthenticatedRequester = KeyID(b.signer)
 	}
-	reply, _, err := b.Respond(ctx, request, opts)
+	reply, _, err := b.respond(ctx, request, opts, true)
 	if err != nil {
 		return Staple{}, err
 	}
@@ -113,9 +114,12 @@ type StapleCheck struct {
 // the cap: the envelope verifies under holder's key and answers this very
 // request, the derivation is history_card/1 over checkpoints or
 // standard_history/1 over full_history, the anchor and profile are the
-// ones the request named, and a standard_history/1 card is of the standard card's form. It
-// does not check the anchor's checkpoint, the card's own properties or the
-// nonce's freshness: those are the reader's verifier and policy.
+// ones the request named, and a standard_history/1 card is of the standard
+// card's form. A history_card/1 artifact is capped by its derivation and
+// subject only: its form, like the anchor's checkpoint, the card's own
+// properties and the nonce's freshness, is the reader's verifier and
+// policy. The cap on what is stapled is enforced where it is built
+// (Book.Staple).
 func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 	if s.Request.MediaType != MediaTypeJSON || s.Reply.MediaType != MediaTypeJSON {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request and reply are JSON", ErrInvalid)

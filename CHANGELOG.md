@@ -27,12 +27,14 @@
   evidence request, pinned to its newest checkpoint and carrying a fresh nonce, with the signed
   envelope its book answers it with. No other derivation is stapled, so a staple never carries more
   than the standard card. Stapling `standard_history/1` seals an `evidence_request_answered`
-  record, so the holder's book records which card it attached. Whether to staple is the host's
-  setting; the book has no default.
+  record, so the holder's book records which card it attached. The holder's own staple is not
+  counted by the responder's limiter. Whether to staple is the host's setting; the book has no
+  default.
 - `CheckStaple` checks that a staple is presented by its holder and stays inside that cap: the
   envelope verifies under the holder's key and answers that very request, the derivation and
-  subject are one of the two pairs, the anchor is the pinned one, and a `standard_history/1` card is
-  of the standard card's form. It returns the anchor, nonce and issue time for the reader's replay
+  subject are one of the two pairs, the anchor and profile are the requested ones, and a
+  `standard_history/1` card is of the standard card's form; a `history_card/1` artifact's form is
+  the reader's verifier. It returns the anchor, nonce and issue time for the reader's replay
   check against its own `min_freshness`.
 
 ### Changed: capsulectl-book `v0.1.0-rc30` pairs with capsulectl `v0.1.0-rc30`

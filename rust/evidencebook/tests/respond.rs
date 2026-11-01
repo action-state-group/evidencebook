@@ -1118,3 +1118,55 @@ fn a_bad_member_wins_over_a_bad_coverage_count() {
         );
     }
 }
+
+/// evidencebook#275: a `history_card/1` staple, built from the book and
+/// passed by the checker a reader runs; it grows no record.
+#[test]
+fn a_history_card_staple_is_the_books_own_answer_and_grows_no_record() {
+    use evidencebook::staple::{check_staple, staple_history_card};
+    let (mut b, _) = book();
+    b.add("observation", Some("carol")); // past the last checkpoint: stapling cuts one
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let policy = ResponderPolicy::default();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+    };
+    let holder = hex::encode(signer.verifying_key().to_bytes());
+    let first = staple_history_card(&mut b, &responder).unwrap();
+    let len = b.len();
+    let second = staple_history_card(&mut b, &responder).unwrap();
+    assert_eq!(b.len(), len, "a public card grows no record");
+    let (a, c) = (
+        check_staple(&first.request, &first.reply, &holder).unwrap(),
+        check_staple(&second.request, &second.reply, &holder).unwrap(),
+    );
+    let newest = b.stated_checkpoints().unwrap().pop().unwrap();
+    assert_eq!(a.anchor, evidencebook::answer::anchor_digest(&newest));
+    assert_eq!(a.anchor, c.anchor);
+    assert_ne!(a.nonce, c.nonce);
+    assert!(check_staple(&first.request, &first.reply, &"00".repeat(32)).is_err());
+}
+
+/// The holder's own staple is not counted by the caller's limiter.
+#[test]
+fn a_history_card_staple_is_not_counted_by_the_limiter() {
+    use evidencebook::staple::{check_staple, staple_history_card};
+    let (mut b, _) = book();
+    let signer = key("responder");
+    let derivations = Derivations::new();
+    let policy = ResponderPolicy {
+        limiter: Some(Box::new(WindowLimiter::new(0, 60)) as Box<dyn RequestLimiter>),
+        ..ResponderPolicy::default()
+    };
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+    };
+    let holder = hex::encode(signer.verifying_key().to_bytes());
+    let s = staple_history_card(&mut b, &responder).unwrap();
+    check_staple(&s.request, &s.reply, &holder).unwrap();
+}

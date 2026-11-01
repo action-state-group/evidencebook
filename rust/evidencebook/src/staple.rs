@@ -1,6 +1,7 @@
 //! A History card stapled to the holder's own message (evidencebook#275):
 //! the check a reader runs on a staple it received, as the Go
-//! `CheckStaple` and the Python `check_staple` do.
+//! `CheckStaple` and the Python `check_staple` do, and a `history_card/1`
+//! staple built from a book.
 //!
 //! A staple is the holder's own evidence request (subject, derivation,
 //! coverage pinned to its newest checkpoint, a fresh nonce) and the signed
@@ -15,9 +16,15 @@
 //! which has no Rust checker yet. The card's properties are the reader's
 //! verifier in every language.
 
-use crate::answer::DERIVATION_HISTORY_CARD;
+use crate::answer::{self, DERIVATION_HISTORY_CARD};
+use crate::ask::Book;
+use crate::canonical::jcs;
+use crate::respond::{respond, RespondOptions, Responder, ResponderPolicy, SharePolicy};
+use crate::store::CheckpointedLog;
 use evidence_request::envelope::{parse_reply, Binding, Reply, PROFILE};
 use evidence_request::request::{self, Coverage, Derivation, Subject};
+use rand_core::{OsRng, RngCore};
+use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -69,8 +76,11 @@ fn refuse<T>(why: impl Into<String>) -> Result<T, StapleError> {
 /// `holder` (lowercase hex Ed25519) and stays inside the cap: the envelope
 /// verifies under the holder's key and answers this very request, the
 /// derivation and subject are one of the two pairs, and the anchor is the
-/// one the request pinned, as is the profile. It does not check the anchor's checkpoint, the
-/// card's properties or the nonce's freshness: those are the reader's.
+/// one the request pinned, as is the profile. It does not check the
+/// anchor's checkpoint, the card's properties or the nonce's freshness:
+/// those are the reader's. A `history_card/1` artifact is capped by its
+/// derivation and subject only; the cap on what is stapled is enforced
+/// where it is built.
 pub fn check_staple(
     request: &[u8],
     reply: &[u8],
@@ -97,6 +107,9 @@ pub fn check_staple(
     let (Coverage::ExpectedPin(pin), Some(nonce)) = (&req.coverage, &req.nonce) else {
         return refuse("the request pins its anchor and carries a nonce");
     };
+    if nonce.is_empty() {
+        return refuse("the request pins its anchor and carries a nonce");
+    }
     let e = match parse_reply(reply, Binding::Json) {
         Ok(Reply::Envelope(e)) => e,
         Ok(Reply::Refusal(_)) => return refuse("the reply is a refusal"),
@@ -147,6 +160,69 @@ pub fn check_staple(
         issued_at: e.issued_at.clone(),
         artifact: e.artifact.clone(),
     })
+}
+
+/// A staple as built: the holder's own request and the reply its book
+/// answered it with, both JSON.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Staple {
+    pub request: Vec<u8>,
+    pub reply: Vec<u8>,
+}
+
+/// Build a `history_card/1` staple from `book`, as of its newest checkpoint
+/// (cut now if the book grew past it), as Go's `Book.Staple` does. A public
+/// card grows no record. `standard_history/1` is not stapled here: this
+/// crate's responder does not answer it yet.
+pub fn staple_history_card<B: Book + CheckpointedLog>(
+    book: &mut B,
+    responder: &Responder<'_>,
+) -> Result<Staple, StapleError> {
+    let fail = |e: &dyn std::fmt::Display| StapleError(e.to_string());
+    let covered = answer::anchors(book)
+        .map_err(|e| fail(&e))?
+        .last()
+        .map(|a| a.size);
+    let leaves = book.leaf_count().map_err(|e| fail(&e))?;
+    if covered != Some(leaves) {
+        book.checkpoint().map_err(|e| fail(&e))?;
+    }
+    let Some(newest) = book.stated_checkpoints().map_err(|e| fail(&e))?.pop() else {
+        return refuse("the book has no checkpoint to staple");
+    };
+    let mut nonce = [0u8; 16];
+    OsRng.fill_bytes(&mut nonce);
+    let request = jcs(&json!({
+        "coverage": {"expected_pin": answer::anchor_digest(&newest)},
+        "derivation": DERIVATION_HISTORY_CARD,
+        "nonce": hex::encode(nonce),
+        "profile": PROFILE,
+        "subject": {"checkpoints": null},
+    }))
+    .map_err(|e| fail(&e))?;
+    let opts = RespondOptions {
+        authenticated_requester: None,
+        policy: SharePolicy::default(),
+    };
+    // The holder's own request is not counted by the limiter, which is for
+    // askers; the rest of the caller's policy applies.
+    let own = ResponderPolicy {
+        refusal_policy: responder.policy.refusal_policy,
+        limiter: None,
+        max_request_bytes: responder.policy.max_request_bytes,
+        max_answer_items: responder.policy.max_answer_items,
+    };
+    let responder = Responder {
+        signer: responder.signer,
+        derivations: responder.derivations,
+        policy: &own,
+    };
+    let (reply, _) =
+        respond(book, &responder, &request, Binding::Json, &opts).map_err(|e| fail(&e))?;
+    if !matches!(parse_reply(&reply, Binding::Json), Ok(Reply::Envelope(_))) {
+        return refuse("the book refused its own history_card/1 request");
+    }
+    Ok(Staple { request, reply })
 }
 
 #[cfg(test)]
