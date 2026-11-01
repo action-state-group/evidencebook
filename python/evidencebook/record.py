@@ -140,6 +140,11 @@ class Header:
     correlation: Correlation | None = None
     statement: Any = None
     v: int = HEADER_VERSION
+    #: Salted per-field commitments, as ``(name, commitment)`` pairs in name
+    #: order, under ``commit_alg``. This package reads and keeps them (a
+    #: shelf holds books Go wrote with them) but seals none.
+    field_commitments: tuple[tuple[str, str], ...] = ()
+    commit_alg: str = ""
 
     def value(self) -> dict:
         """The header as a JSON value, members omitted as Go omits them."""
@@ -157,6 +162,10 @@ class Header:
                 out[name] = getattr(self, name)
         if self.payload_commitments:
             out["payload_commitments"] = list(self.payload_commitments)
+        if self.field_commitments:
+            out["field_commitments"] = dict(self.field_commitments)
+        if self.commit_alg:
+            out["commit_alg"] = self.commit_alg
         if self.correlation is not None:
             out["correlation"] = self.correlation.value()
         if self.statement is not None:
@@ -182,6 +191,8 @@ class Header:
             counterparty_ref=value.get("counterparty_ref", ""),
             correlation=Correlation(**correlation) if correlation is not None else None,
             statement=value.get("statement"),
+            field_commitments=tuple(sorted((value.get("field_commitments") or {}).items())),
+            commit_alg=value.get("commit_alg", ""),
         )
 
     def links_to(self, link_type: str) -> list[str]:

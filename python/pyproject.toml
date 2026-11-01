@@ -20,11 +20,13 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
 ]
 # The request map, reply envelope, signed refusal, RFC 8785 and capsule ids
-# are agent-action-capsule's; the MMR, its proofs and the checkpoint claims
-# map are checkpointed-local-log's. Nothing here reimplements them.
+# are agent-action-capsule's; the MMR, its proofs, the checkpoint claims map,
+# the SQLite log and the checkpoint runner are checkpointed-local-log's; a
+# shelf's artifact store is capsule-emit's. Nothing here reimplements them.
 dependencies = [
     "agent-action-capsule>=0.14.0,<0.15",
-    "checkpointed-local-log>=0.7.0,<0.8",
+    "checkpointed-local-log>=0.8.0,<0.9",
+    "capsule-emit>=0.14.0,<0.15",
     # The checkpoint reader decodes with cbor2's strict mode and keeps every
     # tag cbor2 6.1 decodes semantically raw (_cll.SEMANTIC_TAGS), so cbor2 is
     # pinned to the minor version that list was taken from.

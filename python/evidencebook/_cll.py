@@ -381,13 +381,27 @@ class CLLSubstrate:
         self._key = checkpoint_key
         self._nodes = _Nodes()
         self._leaf_sizes: list[int] = []  # the MMR size after each leaf
+        self._ids: list[str] = []
         self._latest: Checkpoint | None = None
 
     @property
     def size(self) -> int:
         return len(self._leaf_sizes)
 
-    def append(self, record_id: str) -> int:
+    def entry_ids(self) -> list[str]:
+        """The record ids the log commits, in seq order."""
+        return list(self._ids)
+
+    def close(self) -> None:
+        """Nothing to release: the log is in memory."""
+
+    def append(self, record_id: str, at: datetime | None = None) -> int:
+        """Commit ``record_id`` at the next seq and return it. ``at`` is the
+        entry's time; an in-memory log keeps none."""
+        self._add(record_id)
+        return len(self._leaf_sizes)
+
+    def _add(self, record_id: str) -> None:
         try:
             value = bytes.fromhex(record_id)
         except ValueError:
@@ -396,7 +410,7 @@ class CLLSubstrate:
             raise InvalidError(f"record id {record_id!r} is not 64 lowercase hex characters")
         core.add_leaf(self._nodes, core.leaf_hash(value))
         self._leaf_sizes.append(self._nodes.size())
-        return len(self._leaf_sizes)
+        self._ids.append(record_id)
 
     def restore(self, checkpoint: Checkpoint) -> None:
         """Take a stored checkpoint of this log as the latest, after checking

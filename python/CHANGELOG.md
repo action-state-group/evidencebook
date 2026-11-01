@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- The shelf: one subject key's books in one SQLite file, the file Go's shelf writes
+  (evidencebook#263, design evidencebook#254).
+  - `Shelf.open_sqlite` takes an exclusive `flock` on `<file>.lock` or a lock the host holds,
+    creates or checks the shelf's tables (`shelf_meta`, `shelf_logs`), and opens one book per
+    log id: `SqliteStore` keeps its records and checkpoints, `SqliteSubstrate` its Checkpointed
+    Local Log over CLL's SQLite backend and checkpoint runner, and its payloads go to the
+    shelf's `capsule_emit.artifact` store. A book's open appends a record stored but not yet in
+    its log, at its `committed_at`; a log entry with no stored record is corrupt.
+  - `Shelf.host_log` and `Shelf.legacy` open logs whose records the host seals itself;
+    `Shelf.records` lists committed records without opening a book.
+  - `Cadence` (`Shelf.cadence`) cuts ticks on time alone, verifies witness receipts with AAC's
+    verifier (`witnessed`), and gives `chain`, `standard_history_anchor` and `import_legacy`.
+    Every salt, position, nonce and jitter comes from one random source.
+  - The scripted shelf of `testdata/shelf` reproduces Go's dumps byte for byte, and Go and
+    Python write and continue each other's files (CI job `shelf-interlock`).
+  - `Book` takes a `substrate`, `originals` and `indexes`; a record whose log append fails
+    keeps its seq and is appended first. `Header` keeps `field_commitments` and `commit_alg`.
+    `UnsupportedError` is new.
+  - The package requires `checkpointed-local-log` 0.8 and `capsule-emit` 0.14.
+
 - `Book.respond` answers `evidence-interop/1` requests (evidencebook#248).
   - A request naming `/1` gets the same artifact as under `/0`, in an envelope naming
     `/1`; a request naming `/0` or no profile is answered as before. An unknown profile

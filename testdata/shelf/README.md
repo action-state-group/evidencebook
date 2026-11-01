@@ -45,5 +45,8 @@ the same script equals the vector's byte for byte. The dump's encoding is Go's
 byte order, `<`, `>` and `&` written as `\u003c`, `\u003e` and `\u0026`,
 no other escaping beyond JSON's, and one final newline.
 
-The storage interlock (`test/interop/shelf`, CI job `shelf-interlock`) runs
-the phases in separate processes and compares each dump with these files.
+The storage interlock (CI job `shelf-interlock`) runs the phases in separate
+processes, Go's `test/interop/shelf` and Python's
+`test/interop/python-evidencebook/shelf.py`, each language writing and
+continuing the other's file, and compares every language's dump with these
+files. Python's `tests/test_shelf.py` reads every file here.
