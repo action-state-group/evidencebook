@@ -1,5 +1,5 @@
 capsule-viewer, History card module capsuleviewer.standard-history/v0.
-Files from standard-history-module-v0.6.0.tar.gz of capsule-viewer's release go/v0.6.0
-(https://github.com/action-state-group/capsule-viewer/releases/tag/go%2Fv0.6.0),
-bundle sha256 13b9271d217eea45ec5d14e7cb5a80e8b0d85a89b6fe531227b454a8f8b52315.
+Files from standard-history-module-v0.9.0.tar.gz of capsule-viewer's release go/v0.9.0
+(https://github.com/action-state-group/capsule-viewer/releases/tag/go%2Fv0.9.0),
+bundle sha256 5a9a0812555c5d267b1d2c3405a0f3a776d47a2211351b1872af62b93d3f78da.
 presentation.json is that bundle's own handshake entry, copied unchanged; manifest.json is its manifest.

@@ -89,7 +89,7 @@
     "doesnt.all": "That these are all the holder's deals. It is the window the holder's policy sets, and shop purchases are not counted.",
     "doesnt.one": "Anything about a single deal.",
     "doesnt.statement": "That the counts are right. Without the deal entries they are the holder's own statement.",
-    "doesnt.witness": "That an outside witness saw the snapshot. This page does not check the witness receipt.",
+    "doesnt.witness": "That an outside witness saw the snapshot.",
     "doesnt.signature": "That the holder's key signed it. This page does not check the signature.",
     "doesnt.next": "What the other side will do with it. That's up to their rules. Most deal small without it and ask for more before a big one.",
     "heading.say": "Tell your agent",
@@ -140,6 +140,19 @@
     "size.chip.all": "all as agreed",
     "size.chip.held": "{n} as agreed",
     "size.chip.did_not_hold": "{n} didn't",
-    "size.chip.undecided": "{n} unsure"
+    "size.chip.undecided": "{n} unsure",
+    "doesnt.witness_counts": "That a witness checked the counts. A witness you accept recorded this snapshot; it did not check the counts.",
+    "witness.line": "Snapshot recorded {month} {day}, {year} {hh}:{mm} UTC by {witness}",
+    "witness.line.untimed": "Snapshot recorded by {witness}",
+    "witness.came": "A witness receipt came with the card. This page has not checked it against a witness you accept.",
+    "witness.list.heading": "Witnesses you accept",
+    "witness.list.none": "None. Nothing in the card or its bundle can add one.",
+    "witness.list.some": "{names}. Nothing in the card or its bundle can add one.",
+    "witness.list.help": "A list of the witnesses you accept: their names and the hex DER public keys they sign receipts under. It stays on this page only and is gone when the page closes.",
+    "witness.list.label": "Witness list (JSON)",
+    "witness.list.save": "Save",
+    "witness.list.reset": "Back to none",
+    "witness.list.bad": "That is not a witness list, so nothing changed.",
+    "property.anchor_witnessed": "A witness you accept recorded the snapshot"
   }
 }
