@@ -26,7 +26,9 @@
   nonce or profile is added. The octets must be a well-formed request in
   JCS, so the recorded digest is the one the responder signed its reply over;
   `evidence-interop/0` and `/1` requests are read. A nonce the book already
-  used is refused; a request without one is recorded every time. The live-16
+  used is refused; a request without one is recorded every time. The record marks the request
+  `composed_elsewhere`, so the book is not read as vouching for members it keeps but never
+  checks, such as `requester_auth`. The live-16
   requests (`testdata/live16-ask/`) are recorded with the digest their
   replies answer.
 

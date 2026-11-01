@@ -717,7 +717,8 @@ def test_live16_requests_are_recorded_as_sent_and_their_replies_verify(clock, na
         assert member.encode() in octets
     sent = b.request_sent(eb.Message(octets, eb.MEDIA_TYPE_JSON), "stevenmih-1")
     assert sent.octets == octets and sent.digest == fixture["reply"]["request_digest"]
-    assert b.get(sent.record_id).header.statement == {"request": fixture["request"], "responder_ref": "stevenmih-1"}
+    assert b.get(sent.record_id).header.statement == {
+        "request": fixture["request"], "responder_ref": "stevenmih-1", "composed_elsewhere": True}
     reply = eb.Message(json.dumps(fixture["reply"]).encode(), eb.MEDIA_TYPE_JSON)
     statement = b.record_response(sent.record_id, reply, eb.ResponderKeys(LIVE16_KEY, LIVE16_KEY)).header.statement
     assert statement["outcome"] == eb.OUTCOME_ARTIFACT and "failure" not in statement
@@ -750,6 +751,9 @@ def test_request_sent_refuses_what_was_not_sent(clock):
     for _ in range(2):
         b.request_sent(eb.Message(no_nonce.encode()), "responder")
     assert b.size() == 3
+    # A request the book composed is not marked.
+    made = b.request(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=1)))
+    assert "composed_elsewhere" not in b.get(made.record_id).header.statement
 
 
 def test_a_refusal_reason_conforms_under_the_profile_the_request_asked_for(clock):

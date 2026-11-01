@@ -280,6 +280,7 @@ fn live16_requests_are_recorded_as_sent() {
         assert_eq!(entry.record_type, "evidence_request");
         assert_eq!(entry.statement["request"], fixture["request"]);
         assert_eq!(entry.statement["responder_ref"], "stevenmih-1");
+        assert_eq!(entry.statement["composed_elsewhere"], true);
     }
 }
 
@@ -325,4 +326,8 @@ fn only_a_well_formed_request_in_jcs_is_recorded_as_sent() {
         request_sent(&mut book, no_nonce.as_bytes(), "responder").unwrap();
     }
     assert_eq!(book.records.len(), 3);
+    // A request the book composed is not marked.
+    request(&mut book, &ask("n-2"), "responder").unwrap();
+    let (_, entry, _) = book.records.last().unwrap();
+    assert!(entry.statement.get("composed_elsewhere").is_none());
 }

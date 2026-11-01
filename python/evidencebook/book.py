@@ -539,12 +539,17 @@ class Book:
         if jcs(value) != request.octets:
             raise InvalidError("a sent request must be in JCS (RFC 8785), as it was transmitted")
         octets = bytes(request.octets)
-        return self._record_request(octets, value, check.request.nonce, responder)
+        return self._record_request(octets, value, check.request.nonce, responder, composed_elsewhere=True)
 
-    def _record_request(self, octets: bytes, value: dict, nonce: str | None, responder: str) -> SentRequest:
+    def _record_request(self, octets: bytes, value: dict, nonce: str | None, responder: str,
+                        composed_elsewhere: bool = False) -> SentRequest:
         statement: dict[str, Any] = {"request": value}
         if responder:
             statement["responder_ref"] = responder
+        if composed_elsewhere:
+            # Another tool composed the request and the book checked only that it is
+            # well formed, so the record does not vouch for members it keeps unchecked.
+            statement["composed_elsewhere"] = True
         with self._lock:
             for record_id in self._order:
                 if not nonce or self._records[record_id].header.record_type != RECORD_TYPE_REQUEST:

@@ -160,7 +160,7 @@ pub fn request(
     // The same reader the responder uses: a request that would not be read
     // as well formed is never sent.
     parse_request(&bytes).map_err(|why| AskError::Invalid(format!("request: {why}")))?;
-    record_request(book, value, bytes, Some(nonce), responder)
+    record_request(book, value, bytes, Some(nonce), responder, false)
 }
 
 /// Record a request that another tool composed and sent to `responder`,
@@ -169,7 +169,8 @@ pub fn request(
 /// `audience` or requester authentication, ER §3), and no nonce or profile
 /// is added. The octets must be a well-formed request (profile §6.1 steps 1
 /// to 5) in JCS, the form a requester transmits JSON in (P-9), so the
-/// recorded digest is the one the responder signs its reply over. A nonce
+/// recorded digest is the one the responder signs its reply over, and the
+/// record marks the request `composed_elsewhere`. A nonce
 /// this book already used is refused; a request without one has nothing to
 /// compare.
 pub fn request_sent(
@@ -192,7 +193,7 @@ pub fn request_sent(
         ));
     }
     let nonce = req.nonce.filter(|n| !n.is_empty());
-    record_request(book, value, octets.to_vec(), nonce, responder)
+    record_request(book, value, octets.to_vec(), nonce, responder, true)
 }
 
 /// Commit the request `value` (whose JCS is `bytes`), as transmitted to
@@ -203,6 +204,7 @@ fn record_request(
     bytes: Vec<u8>,
     nonce: Option<String>,
     responder: &str,
+    composed_elsewhere: bool,
 ) -> Result<SentRequest, AskError> {
     for leaf in 0..book.len() {
         let Some(nonce) = nonce.as_deref() else {
@@ -233,6 +235,12 @@ fn record_request(
     statement.insert("request".into(), value);
     if !responder.is_empty() {
         statement.insert("responder_ref".into(), json!(responder));
+    }
+    if composed_elsewhere {
+        // Another tool composed the request and the book checked only that it
+        // is well formed, so the record does not vouch for members it keeps
+        // unchecked.
+        statement.insert("composed_elsewhere".into(), json!(true));
     }
     let sealed = book.seal(&Entry {
         record_type: crate::record::record_types::REQUEST.into(),
