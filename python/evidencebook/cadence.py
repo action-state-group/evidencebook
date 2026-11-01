@@ -535,10 +535,7 @@ class Cadence:
                 # entry, so it has no checkpoint to carry: the tick skips it.
                 if log.mmr_size() == 0:
                     continue
-                try:
-                    cp = log.cut_local(at)
-                except Exception as exc:
-                    raise type(exc)(f"checkpoint {log_id} for the tick: {exc}") from exc
+                cp = log.cut_local(at)
                 salt = random.hex(32)
                 deals[log_id] = TickLeaf(log_id, cp.tree_size, hashlib.sha256(cp.statement).hexdigest(), salt,
                                          random_position(random, used),

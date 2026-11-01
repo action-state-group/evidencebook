@@ -456,9 +456,11 @@ class Book:
         payloads = self._stored[record_id].payloads
         if payloads or self._originals is None:
             return payloads
+        from capsule_emit.artifact import NotFoundError as NoOriginals
+
         try:
             held = self._originals.get(record_id)
-        except Exception:  # noqa: BLE001 -- no originals held is no payload
+        except NoOriginals:
             return ()
         named = {a.name: a.content for a in held.artifacts if a.state == "present" and a.content is not None}
         out = []
