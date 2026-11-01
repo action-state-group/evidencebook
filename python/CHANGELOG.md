@@ -7,6 +7,12 @@
 - `evidencebook.deal` no longer copies `cases.Fold`'s Cherokee case swap; it
   uses CaseFolding.txt (`str.casefold`), which Go's `dealprofile` now matches.
 
+### Fixed: a null deal record is no step (evidencebook#298)
+
+- `standard_history_deal` reads a deal-log record whose payload is JSON `null` as no step, as Go's
+  `dealprofile` does, instead of raising (evidencebook#298). Two history cases join the Go/Python/Rust
+  parity vectors, with four `xn--` domain cases that pin the label mapping (evidencebook#299).
+
 - The Goose loop reference, `python/examples/goose/` (evidencebook#265): a Goose MCP server whose
   node keeps one book per deal of x-deal-v0 steps on a shelf, imports an existing capsule-emit
   ledger as a host log without re-signing it, runs the cadence, and answers `history_card/1` per

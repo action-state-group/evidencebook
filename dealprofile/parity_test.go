@@ -139,6 +139,8 @@ var normalizeCases = []struct{ kind, raw string }{
 	{"domain", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com"},
 	{"domain", "1a.שלום.co.il"}, {"domain", "www.1a.שלום.com"}, {"domain", "שלום.1a.com"}, {"domain", "a.שלום.com"}, {"domain", "xn--ls8héa-.example"},
 	{"domain", "xn--zcaé-.com"}, {"domain", "x.xn--o1ach.xn--с-btb8b"}, {"domain", "x.xn--o1ach.xn--90a3ac"}, {"domain", "[::1]"}, {"domain", "a.b/c@d.example"},
+	// an xn-- label maps the part before its last hyphen with UTS46 (the Hebrew case is the #295 regression)
+	{"domain", "xn--ﬁcaé-.com"}, {"domain", "xn--µcaé-.com"}, {"domain", "xn--שלום-.com"}, {"domain", "xn--zcaé-。com"},
 	// a kind outside the closed set
 	{"nickname", "x"},
 }
@@ -297,6 +299,9 @@ func parityHistories(t *testing.T) []parityHistory {
 	}
 	add("no records", nil, nil, false)
 	add("a record that is not JSON", []HistoryRecord{{Payload: []byte("not json"), CommittedAt: historyStart}}, nil, false)
+	add("a null record", []HistoryRecord{{Payload: []byte("null"), CommittedAt: historyStart}}, nil, false)
+	withNull := append([]HistoryRecord{{Payload: []byte("null"), CommittedAt: historyStart}}, typed...)
+	add("a typed deal after a null record", withNull, nil, false)
 	add("a record that is an array", []HistoryRecord{{Payload: []byte("[]"), CommittedAt: historyStart}}, nil, false)
 	add("a block of the wrong type", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":5}`), CommittedAt: historyStart}}, nil, false)
 	add("a deal id of the wrong type", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"deal_id":5,"record_type":"baseline"},"body":{}}`), CommittedAt: historyStart}}, nil, false)

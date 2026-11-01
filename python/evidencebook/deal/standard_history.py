@@ -163,6 +163,8 @@ def _read_record(r: HistoryRecord) -> _Rec | None:
     as a sealed report, which says nothing the entry reads."""
     try:
         top = _loads(r.payload)
+        if top is None:
+            return None  # JSON null: Go decodes it into no member, so it is no step
         if not isinstance(top, dict):
             raise ValueError("not an object")
         block = top.get("x-deal-v0")
