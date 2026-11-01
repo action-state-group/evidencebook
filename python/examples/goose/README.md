@@ -82,6 +82,9 @@ here moves money: a payment reference is a value you observed.
 
 `loop_seal` seals the model call as a `runtime_claimed` effect record of the node book and writes the Capsule
 (with its `signature` and `key_id`) to a file; `go run ./test/interop/goose-capsule FILE` checks it.
+`runtime_claimed` is the node's own claim that the call happened, not the provider attesting it. The prompt is stored in
+your node book as the record's payload, so don't seal a prompt you would not disclose with the book; the completion is
+kept by digest only.
 
 The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`
