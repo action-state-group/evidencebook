@@ -18,8 +18,8 @@ github.com/action-state-group/checkpointed-local-log/go v0.3.0 h1:vT7HEljD2jOm9C
 github.com/action-state-group/checkpointed-local-log/go v0.3.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
 github.com/action-state-group/evidencebook v0.12.1 h1:KR/q6+4AWA85Npxugl1gGpgWhyKUJQWm2WIxUr8tvy4=
 github.com/action-state-group/evidencebook v0.12.1/go.mod h1:UYdDd52SuDUZSMYC42K79a0k+l6Ed95jk/w1Sw8bubQ=
-github.com/action-state-group/evidencebook/report v0.3.1 h1:G0KCzNr99njsZDAXOpBTMDCHiFSRJ5vc1tDkBVY2+EA=
-github.com/action-state-group/evidencebook/report v0.3.1/go.mod h1:8ZgpyhQSEPwO0HOXwtVejKkDHpfpaqGo/El3TxmgegU=
+github.com/action-state-group/evidencebook/report v0.4.0 h1:RaE97CVA2HvX4iXdMX32CFI5HyhUb8UEqFqXehiOKeo=
+github.com/action-state-group/evidencebook/report v0.4.0/go.mod h1:z/3GTqYSFky1CyKODYUt5p/Ho1XuYsHXVlZ9b8UXbLo=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
