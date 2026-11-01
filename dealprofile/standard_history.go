@@ -235,7 +235,11 @@ func agreedAmount(step historyRecord, byDigest map[string]historyRecord) (standa
 		return standardhistory.Amount{}, fmt.Errorf("%w: the %s step's check is not on its log", ErrUnpriced, step.str("action"))
 	}
 	var minor *int64
-	_ = json.Unmarshal(check.body["amount_minor"], &minor)
+	// Unmarshal allocates the pointer before a wrong type fails it: an
+	// amount_minor that is no whole number is no amount, not an amount of 0.
+	if err := json.Unmarshal(check.body["amount_minor"], &minor); err != nil {
+		minor = nil
+	}
 	currency := check.str("currency")
 	if minor == nil || *minor < 0 || currency == "" {
 		return standardhistory.Amount{}, fmt.Errorf("%w: its check states no amount and currency", ErrUnpriced)
