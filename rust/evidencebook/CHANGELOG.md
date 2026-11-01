@@ -9,9 +9,10 @@
   user received (evidencebook#260, shipped in Go v0.12.1). The struct is public
   and not `#[non_exhaustive]`, so a struct literal that names every field no
   longer compiles. Migrate by adding `preimage: None` or ending the literal
-  with `..Default::default()`. Reading and writing JSON is unchanged: an absent
-  `preimage` stays absent.
-- `#[non_exhaustive]` is deliberately not added. No type in this crate uses it,
+  with `..Default::default()`. An absent `preimage` stays absent when read and
+  written. A `body_evidence` that carries `preimage`, which `deny_unknown_fields`
+  made this crate reject before, now reads.
+- `#[non_exhaustive]` is deliberately not added. No type in this crate uses the attribute,
   the deal types mirror the profile's schema one to one, and adding it now
   would break every literal outside the crate a second time. A profile member
   added later is a breaking change of the crate's pre-1.0 version, as here.
