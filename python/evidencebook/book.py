@@ -484,6 +484,9 @@ class Book:
         self._lock = threading.Lock()
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
+        # Whether each stored header has a statement member (the retention
+        # fold tells an absent statement from a null one), read once at admit.
+        self._stated: dict[str, bool] = {}
         self._order: list[str] = []
         self._indexes = default_indexes() if indexes is None else list(indexes)
         # A record stored whose log append failed: it keeps its seq and is
@@ -583,6 +586,7 @@ class Book:
     def _admit(self, record: Record, stored: StoredRecord) -> None:
         self._records[record.record_id] = record
         self._stored[record.record_id] = stored
+        self._stated[record.record_id] = "statement" in json.loads(stored.header)
         self._order.append(record.record_id)
         if record.header.record_type != RECORD_TYPE_INDEX_ROOT:
             # A root record is proven by the log, not by the index it commits.
@@ -686,7 +690,7 @@ class Book:
             # deleted record's openings are not given out.
             from .shelf import _retention
 
-            stated = ["statement" in json.loads(self._stored[i].header) for i in self._order]
+            stated = [self._stated[i] for i in self._order]
             now = utc(self._now())
             state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
                                record.seq - 1, nanos(now))
