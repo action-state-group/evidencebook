@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### `deal::check_chain`, the chain stage (PROFILE.md §6) (evidencebook#308)
+
+- New: `deal::check_chain` (and `check_chain_values`), with `deal::STAGE_CHAIN`: one deal's
+  records read in `seq` order against PROFILE.md §6, as the reference checker's `check_chain`
+  and Go's `dealprofile.CheckChain` do, with the same refusals in the same order and the same
+  text. `dealprofile/testdata/chain-vectors.json` pins it (every prefix of the positive
+  chains, each negative fixture and single-member mutations).
+
 ### Breaking: `deal::Error` has an `Unpriced` variant (evidencebook#284)
 
 - `deal::Error` gains `Unpriced(String)`, a deal with no recorded amount

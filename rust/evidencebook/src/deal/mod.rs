@@ -19,8 +19,10 @@
 //! the sealer's; the [`Capsule`] docs say where capsule-emit 0.0.8's differs
 //! from the one Go seals.
 //!
-//! The chain stage, which reads a record against the records before it, is
-//! not here; the reference checker (`check_profile.py`) runs it.
+//! The chain stage (PROFILE.md §6), which reads a record against the records
+//! before it, is [`check_chain`]: the same refusals, in the same order and with
+//! the same text, as the reference checker's `check_chain`
+//! (`check_profile.py`).
 //!
 //! A refusal matches Go's in its stage, and in its text wherever the
 //! profile's fixtures name one. Two diagnostics are written differently: a
@@ -33,6 +35,7 @@
 //! a character newer than a table may be read differently.
 
 mod capsule;
+mod chain;
 mod check;
 mod keys;
 mod names;
@@ -48,6 +51,7 @@ pub use capsule::{
     Capsule, Chain, Disposition, Effect, Extension, ACTION_TYPE_DECIDE, ACTION_TYPE_FYI,
     ATTESTATION_RUNTIME_CLAIMED, EFFECT_DISPATCHED, RELATION_CONFIRMS, RELATION_FOLLOWS,
 };
+pub use chain::{check_chain, check_chain_values, STAGE_CHAIN};
 pub use check::{
     check, check_digest, digest, encode, Error, StageError, STAGE_CANONICALIZATION, STAGE_DIGEST,
     STAGE_PERSONAL_DATA, STAGE_SCHEMA, STAGE_WORDING,

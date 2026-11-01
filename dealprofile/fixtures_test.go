@@ -200,8 +200,8 @@ var schemaWordingOnly = map[string]string{
 // same reason: its expected text is in the refusal (at the schema stage, in
 // one of the failed leaves, which name the member that failed). A negative
 // it rejects at the chain stage passes every record-level stage here, as
-// there: this package has no chain stage, and CI runs the reference checker
-// over the chains Go builds (TestBaselineSteps, DEALPROFILE_BUILT_CHAINS).
+// there; CheckChain refuses it (TestChainVectors), and CI runs the reference
+// checker over the chains Go builds (TestBaselineSteps, DEALPROFILE_BUILT_CHAINS).
 func TestNegativeFixtures(t *testing.T) {
 	store := localStoreValues(loadFingerprints(t))
 	files, err := filepath.Glob(filepath.Join(fixturesDir, "negative", "*.json"))
@@ -237,5 +237,5 @@ func TestNegativeFixtures(t *testing.T) {
 		}
 		assert.Contains(t, se.Error()+"\n"+strings.Join(se.Causes, "\n"), want, name)
 	}
-	t.Logf("%d negatives rejected at the record-level stages; %d are the chain stage's, which the reference checker runs", len(files)-chain, chain)
+	t.Logf("%d negatives rejected at the record-level stages; %d are the chain stage's, which TestChainVectors runs", len(files)-chain, chain)
 }

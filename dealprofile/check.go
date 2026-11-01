@@ -21,7 +21,7 @@ import (
 // The record-level stages a record must pass, in the order the reference
 // checker (x-deal-v0/check_profile.py, check_record) runs them, and the
 // digest stage a claimed digest is checked at. The chain stage, which reads
-// a record against the records before it, is not here yet.
+// a record against the records before it, is CheckChain (StageChain).
 const (
 	StageCanonicalization = "canonicalization"
 	StagePersonalData     = "personal_data"

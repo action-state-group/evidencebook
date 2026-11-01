@@ -5,6 +5,10 @@
   python3 check_profile.py            validate every fixture, recompute every JCS digest
   python3 check_profile.py --selftest RFC 8785 (JCS) self-test only
   python3 check_profile.py --regen    rewrite fixtures/ deterministically (maintainers only)
+  python3 check_profile.py --chain-vectors
+                                      print the chain stage's verdicts over the fixtures and their
+                                      mutations (testdata/chain-vectors.json, which Go's and Rust's
+                                      chain stages are tested against; CI regenerates and compares)
   python3 check_profile.py FILE...    check deal records (one JSON record per file, or a
                                       JSON array = one deal in seq order)
   python3 check_profile.py --openings=OPENINGS.json FILE
@@ -2674,7 +2678,143 @@ def regen():
     print(f"regenerated {len(records)} + {len(records1)} positives, negatives and vectors under {FIX}")
 
 
+def chain_vectors():
+    """The chain stage's verdict over every prefix of each positive chain and over each
+    negative fixture's chain, as testdata/chain-vectors.json holds it. Go's and Rust's
+    chain stages are checked against it (the file is regenerated with --chain-vectors and
+    CI fails on a difference), so the three read §6 alike: same refusal, same text. A case
+    names its records by fixture (a positive chain and its prefix length, or a negative
+    fixture, whose chain is its chain_prefix, chain_between and record, as run_fixtures
+    builds it); error is empty for a chain that passes."""
+    out = []
+
+    def verdict(chain):
+        try:
+            check_chain(chain)
+        except StageError as e:
+            return e.stage, str(e)[len(e.stage) + 3:]
+        return "", ""
+
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale"):
+        recs = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
+        for n in range(1, len(recs) + 1):
+            if chain_dir in ("positive-sale", "positive-typed-seller") and n < 2:
+                continue
+            stage, err = verdict(recs[:n])
+            out.append({"name": f"{chain_dir}/{n}", "stage": stage, "error": err})
+    for p in sorted((FIX / "negative").glob("*.json")):
+        f = load(p)
+        prefix = [load(FIX / f.get("chain_dir", "positive") / n)["record"] for n in f.get("chain_prefix", [])]
+        prefix += f.get("chain_between", [])
+        try:
+            stage, err = verdict(prefix + [f["record"]])
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+            continue  # a record the schema stage refuses first: the chain stage never reads it
+        out.append({"name": f"negative/{p.name}", "stage": stage, "error": err})
+    out.extend(_mutation_vectors(verdict))
+    return out
+
+
+def _relink(chain, k, new_k):
+    """chain with record k replaced by new_k and every later record re-pointed at the
+    changed digests (each digest string a mutation changed is replaced wherever a later
+    record carries it), so a mutation is read by the rules after it, not only by the
+    link check right behind it."""
+    mapping = {record_digest(chain[k]): record_digest(new_k)}
+    out = list(chain[:k]) + [new_k]
+
+    def sub(v):
+        if isinstance(v, str):
+            return mapping.get(v, v)
+        if isinstance(v, list):
+            return [sub(x) for x in v]
+        if isinstance(v, dict):
+            return {a: sub(b) for a, b in v.items()}
+        return v
+    for r in chain[k + 1:]:
+        n = sub(r)
+        mapping[record_digest(r)] = record_digest(n)
+        out.append(n)
+    return out
+
+
+def _leaf_paths(v, path=()):
+    if isinstance(v, dict):
+        for a, b in v.items():
+            yield from _leaf_paths(b, path + (a,))
+    elif isinstance(v, list):
+        for n, b in enumerate(v):
+            yield from _leaf_paths(b, path + (n,))
+    else:
+        yield path
+
+
+def _alternatives(v):
+    if isinstance(v, bool):
+        return [not v]
+    if isinstance(v, int):
+        return [v + 1, 0]
+    if isinstance(v, str):
+        if re.fullmatch(r"[0-9a-f]{64}", v):
+            return ["0" * 64]
+        return [v + "x", ""]
+    return []
+
+
+def apply_mutation(rec, path, op, value=None):
+    """rec with the member at path deleted (op delete) or replaced (op set)."""
+    rec = json.loads(json.dumps(rec))
+    node = rec
+    for step in path[:-1]:
+        node = node[step]
+    if op == "delete":
+        del node[path[-1]]
+    else:
+        node[path[-1]] = value
+    return rec
+
+
+def _mutation_vectors(verdict):
+    """Single-member mutations of each positive chain's records (a member deleted, or
+    set to another value), each chain re-linked after the mutation. A case names the
+    chain, the record index, the path, the operation and the value; the verdict is the
+    reference checker's. Every distinct refusal keeps its first few cases, and so do the
+    chains that pass, so the file stays small and every rule a mutation reaches is in it."""
+    seen, out = {}, []
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale"):
+        chain = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
+        for k, rec in enumerate(chain):
+            for path in _leaf_paths(rec):
+                if path[-1] == "canonicalization":
+                    continue
+                node = rec
+                for step in path:
+                    node = node[step]
+                ops = [("delete", None)] if not isinstance(path[-1], int) else []
+                ops += [("set", alt) for alt in _alternatives(node)]
+                for op, value in ops:
+                    try:
+                        mutated = _relink(chain, k, apply_mutation(rec, list(path), op, value))
+                        stage, err = verdict(mutated)
+                    except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+                        continue  # a record the rules cannot read: the record-level stages refuse it first
+                    key = (stage, err)
+                    if seen.get(key, 0) >= (12 if not stage else 2):
+                        continue
+                    seen[key] = seen.get(key, 0) + 1
+                    out.append({"name": f"mutation/{chain_dir}/{k + 1}/{'.'.join(str(x) for x in path)}/{op}"
+                                        + ("" if op == "delete" else "=" + json.dumps(value)),
+                                "chain": chain_dir, "index": k, "path": list(path), "op": op, "value": value,
+                                "stage": stage, "error": err})
+    return out
+
+
 def main(argv):
+    if "--chain-vectors" in argv:
+        json.dump({"note": "Generated by check_profile.py --chain-vectors; Go's and Rust's chain stages are checked against it.",
+                   "cases": chain_vectors()}, sys.stdout, indent=2, ensure_ascii=False)
+        print()
+        return 0
     if "--regen" in argv:
         regen()
         return 0
