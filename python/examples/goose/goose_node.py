@@ -224,10 +224,15 @@ def _flat_ledger_lock(source: Path):
     ``<ledger>.lock`` beside it, the file every capsule-emit writer of that
     ledger takes. ``import_flat`` requires it held, so no line is appended
     between the copy, its check and the move. A held lock refuses: stop the
-    ledger's writer (an older Goose server) first."""
+    ledger's writer (an older Goose server) first. A ledger store directory
+    is locked at its real path, as capsule-emit resolves it
+    (``ledger_store.store_root``), so a symlink to it locks the same file."""
     import fcntl
 
-    with open(source.with_name(source.name + ".lock"), "a+", encoding="utf-8") as fh:
+    from capsule_emit.ledger_store import store_root
+
+    locked = store_root(source) if source.is_dir() else source
+    with open(locked.with_name(locked.name + ".lock"), "a+", encoding="utf-8") as fh:
         try:
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

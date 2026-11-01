@@ -279,6 +279,22 @@ def test_an_import_refuses_while_the_ledgers_writer_holds_its_lock(tmp_path, clo
     assert source.exists()
 
 
+def test_an_import_through_a_symlink_takes_the_stores_own_lock(tmp_path, clock):
+    import fcntl
+
+    source = flat_ledger(tmp_path / "capsule-ledger", 1)
+    link = tmp_path / "linked-ledger"
+    link.symlink_to(source)
+    with open(source.with_name(source.name + ".lock"), "a+") as held:
+        fcntl.flock(held.fileno(), fcntl.LOCK_EX)
+        node = gn.Node.open(tmp_path / "home", operator="goose-old", now=clock)
+        try:
+            with pytest.raises(gn.Refused, match="another writer"):
+                node.import_ledger(link)
+        finally:
+            node.close()
+
+
 @pytest.fixture
 def server(tmp_path, monkeypatch):
     """loop_server's tools, called as Goose calls them, on one node per home."""
