@@ -799,6 +799,9 @@ func openBackfillTarget(c *cobra.Command, use cli.TargetUse) (*cli.Target, error
 func backfillCommands() *cobra.Command {
 	root := &cobra.Command{Use: "backfill", Short: "Import an agent host's own records as backfilled Capsules (effects only)"}
 	run := &cobra.Command{Use: "run", Short: "Import one watermark pass of backfill-source-record/v0 lines and commit an import record (signs)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+		if err = refuseUnderReproduction("backfill run"); err != nil {
+			return err
+		}
 		var opt backfillOptions
 		opt.expectEvery, _ = c.Flags().GetDuration("expect-every")
 		opt.promoteAround, _ = c.Flags().GetDuration("promote-around")

@@ -12,7 +12,7 @@ digest (evidence-network/loop#177).
 
 ## Ruling
 A scratch book built to reproduce results may take one caller-given time
-(`--at <RFC 3339>`, or `SOURCE_DATE_EPOCH`) on all three stamps. Everything
+(`SOURCE_DATE_EPOCH`, the reproducible-builds convention; an `--at` flag was dropped because `publish` and the checkpoint cut are capsule-cli commands that a plugin flag cannot reach) on all three stamps. Everything
 else keeps the wall clock.
 
 ## What `committed_at` means
@@ -33,22 +33,29 @@ The marker below is what tells a reader which meaning applies.
    and capsulectl refuses to countersign a marked book. A reproduction can be
    compared, never extended as a live book or vouched.
 3. Monotonic: caller times are non-decreasing with `seq`; capsulectl rejects
-   a time earlier than the previous record's.
-4. Default: without `--at` (or `SOURCE_DATE_EPOCH`) there is no marker and the
+   a time earlier than the previous record's (the same time is allowed, since
+   one run stamps one time).
+4. Default: without `SOURCE_DATE_EPOCH` there is no marker and the
    wall clock is used.
 
 ## Where each part lives
 - `evidencebook` (this module, Rust and Python mirrors): the `reproduction`
   header member, `Config.Reproduction` (needs `Config.Now`, the caller's time),
   the live/reproduction mix refusal.
-- `capsulectl-book`: the input (`--at` on its own verbs, `SOURCE_DATE_EPOCH`
-  for the core's `publish` and checkpoint paths, which are capsule-cli's
-  commands), guards 2 and 3.
+- `capsulectl-book`: the input (`SOURCE_DATE_EPOCH`, read when a book opens, so
+  it reaches `publish` and the checkpoint cut) and guard 3. The dead end is the
+  root book's (a write of the other clock kind is refused), reached through
+  every capsulectl verb; reads of a marked book work without the variable.
+  `backfill run` and `book migrate` stamp the wall clock and refuse to run with
+  the variable set. `SOURCE_DATE_EPOCH` is also set globally by some build
+  environments; a book written there is a reproduction.
+- capsule-cli: refusing to countersign a bundle whose records carry the marker
+  (the `countersign` command works on a bundle, outside any book).
 
 ## Out of scope
 Caller-given times on a live book. Backdating a live record stays impossible.
 
 ## Test
-Two runs of loop step 10 over one step-08 manifest with `--at <window end>`
+Two runs of loop step 10 over one step-08 manifest with `SOURCE_DATE_EPOCH=<window end>`
 give byte-identical bundles; countersign and append on the result fail.
 `TestReproductionBooksAreByteIdentical` is the root half.
