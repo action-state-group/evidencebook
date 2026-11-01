@@ -6,9 +6,9 @@
 
 - `python/examples/goose`: `loop_dispute_ask` publishes a request for the Result to the referee's
   mailbox key on the relays the deal terms name (`referee.mailbox_key`, `relays`,
-  `answers_within`), with a fresh carriage key and a deadline of `answers_within`; the poll
+  `private_relays: true`, which the node requires because the events are not encrypted, and `answers_within`), with a fresh carriage key and a deadline of `answers_within`; the poll
   interval may not exceed `answers_within`. `loop_dispute_poll` polls the relays for a reply that
-  passes the checks of `nostr-mailbox-v0` §4.2, verifies the Result with capsule-engine's
+  passes the reply checks of `nostr-mailbox-v0` §4.2 (the binding's event kinds and checks carrying a Result, not an evidence envelope, so not a conforming use of it), verifies the Result with capsule-engine's
   `verify_referee_result` after binding each party's terms to its signed half, and seals it as
   `goose_dispute_received`. The record cites both judged halves, which the book holds as
   `goose_dispute_half` records, and carries the SHA-256 of the Result's bytes: both parties' books

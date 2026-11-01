@@ -211,15 +211,28 @@ def _referee() -> Any:
     return referee
 
 
+def _party_half(parties: Any, role: str) -> Any:
+    try:
+        return parties[role]["half"]["capsule_id"]
+    except (KeyError, TypeError):
+        return None
+
+
 def _referee_route(terms: dict) -> dict:
     """Where the deal terms say the referee is reached: ``referee.mailbox_key`` (64 lowercase
-    hex), ``referee.relays`` (websocket URLs) and ``referee.answers_within`` (seconds). Both
+    hex), ``referee.relays`` (websocket URLs), ``referee.private_relays`` (true: only the parties and the
+    referee can read them) and ``referee.answers_within`` (seconds). Both
     parties' terms must name the same route."""
     routes = {role: (t.get("referee") if isinstance(t, dict) else None) for role, t in terms.items()}
     route = routes["buyer"]
     if not isinstance(route, dict) or jcs(route) != jcs(routes["seller"]):
         raise Refused("both parties' terms must name one referee route")
     key, relays, within = route.get("mailbox_key"), route.get("relays"), route.get("answers_within")
+    if route.get("private_relays") is not True:
+        # The binding's events are not encrypted (nostr-mailbox-v0 §8, N-3) and a Result names both halves
+        # and the referee, so the terms must say the relays are readable only by the parties and the referee.
+        raise Refused("the terms' referee must declare private_relays: true, relays that only the two parties "
+                      "and the referee can read (the mailbox events are not encrypted)")
     if not (isinstance(key, str) and len(key) == 64 and key == key.lower() and all(c in "0123456789abcdef" for c in key)):
         raise Refused("the terms' referee names no mailbox_key (64 lowercase hex)")
     if not (isinstance(relays, list) and relays and all(isinstance(u, str) and u.startswith(("ws://", "wss://"))
@@ -705,6 +718,9 @@ class Node:
         asked = next((st for _, st in self.notes(DISPUTE_ASKED) if st["request_event_id"] == request_event_id), None)
         if asked is None:
             raise Refused("this node's book holds no such request")
+        for role in ("buyer", "seller"):
+            if _party_half(parties, role) != asked[f"{role}_half"]:
+                raise Refused(f"the deal file's {role} half is not the one this request was sent for")
         factory = relay_factory or mb.Relay
         relays = [factory(u) for u in asked["relays"]]
         last: Refused | None = None

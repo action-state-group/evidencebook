@@ -89,7 +89,7 @@ class Deal:
     """One deal: two nodes, a referee book, both halves and the sealed Result."""
 
     def __init__(self, tmp_path: Path, monkeypatch, *, named_referee: str | None = None, signer: str = "referee",
-                 answers_within: int = 3600) -> None:
+                 answers_within: int = 3600, route: dict | None = None) -> None:
         self.relay = FakeRelay()
         self.mailbox_secret = mb.new_secret()
         self.answered: set[str] = set()
@@ -103,7 +103,7 @@ class Deal:
             "buyer": {"operator": "buyer-co", "book_key_id": self.buyer.key_id, "deal_id": "deal-b"},
             "seller": {"operator": "seller-co", "book_key_id": self.seller.key_id, "deal_id": "deal-s"},
             "referee": {"key_id": named_referee or keys["referee"], "mailbox_key": mb.public_key(self.mailbox_secret),
-                        "relays": [self.relay.url], "answers_within": answers_within},
+                        "relays": [self.relay.url], "private_relays": True, "answers_within": answers_within, **(route or {})},
         }
         self.terms = terms
         monkeypatch.setenv("CAPSULE_SIGNING_KEY_PATH", str(tmp_path / "buyer" / "producer.key"))
@@ -294,12 +294,82 @@ def test_a_poll_interval_longer_than_answers_within_is_refused(tmp_path, monkeyp
         d.close()
 
 
-def test_terms_that_name_no_mailbox_are_refused(deal):
+@pytest.mark.parametrize("route,message", [
+    ({"relays": []}, "names no relays"),
+    ({"relays": ["https://relay.example"]}, "names no relays"),
+    ({"mailbox_key": "AB" * 32}, "mailbox_key"),
+    ({"mailbox_key": "ab" * 31}, "mailbox_key"),
+    ({"private_relays": False}, "private_relays"),
+    ({"private_relays": "yes"}, "private_relays"),
+    ({"answers_within": 0}, "answers_within"),
+    ({"answers_within": "3600"}, "answers_within"),
+])
+def test_terms_that_name_no_usable_mailbox_are_refused(tmp_path, monkeypatch, route, message):
+    d = Deal(tmp_path, monkeypatch, route=route)
+    try:
+        with pytest.raises(gn.Refused, match=message):
+            d.buyer.ask_dispute_result(d.parties(), poll_interval=1)
+        assert d.relay.events == [] and _held(d.buyer, gn.DISPUTE_ASKED) == []
+    finally:
+        d.close()
+
+
+def test_the_two_parties_terms_must_name_one_referee_route(deal):
     parties = deal.parties()
-    parties["buyer"]["terms"] = copy.deepcopy(deal.terms)
-    del parties["buyer"]["terms"]["referee"]["relays"]
+    parties["seller"]["terms"] = {**deal.terms, "referee": {**deal.terms["referee"], "answers_within": 7}}
+    # The seller's opening no longer recomputes its half, which is refused first; the route check is
+    # the second line of defence for terms that both open their halves yet differ.
     with pytest.raises(gn.Refused, match="opening"):
         deal.buyer.ask_dispute_result(parties, poll_interval=1)
+    with pytest.raises(gn.Refused, match="one referee route"):
+        gn._referee_route({"buyer": deal.terms, "seller": parties["seller"]["terms"]})
+
+
+def test_a_poll_with_another_deals_file_is_refused(deal):
+    asked = deal.buyer.ask_dispute_result(deal.parties(), poll_interval=1)
+    deal.serve()
+    other = deal.parties()
+    other["buyer"]["half"] = {**other["buyer"]["half"], "capsule_id": "sha256:" + "0" * 64}
+    with pytest.raises(gn.Refused, match="not the one this request was sent for"):
+        deal.buyer.poll_dispute_result(asked["request_event_id"], other)
+    assert _held(deal.buyer, gn.DISPUTE_RECEIVED) == []
+
+
+def test_an_event_with_a_non_string_member_is_no_reply_and_breaks_no_poll(deal):
+    asked = deal.buyer.ask_dispute_result(deal.parties(), poll_interval=1)
+    hostile = {"id": "0" * 64, "pubkey": 123, "created_at": 1, "kind": mb.REPLY_KIND, "content": "",
+               "tags": [["e", asked["request_event_id"]], ["m", gn.MAILBOX_MEDIA]], "sig": "0" * 128}
+    deal.relay.events.append(hostile)
+    assert deal.buyer.poll_dispute_result(asked["request_event_id"], deal.parties())["status"] == "pending"
+    for bad in (hostile, {**hostile, "kind": True}, {**hostile, "tags": [["e", 5]]}):
+        with pytest.raises(mb.MailboxError):
+            mb.Event.from_json(bad)
+    assert not mb.check_event(mb.Event("0" * 64, 123, 1, 4701, (), "", "0" * 128))
+
+
+def test_a_failed_reply_publish_leaves_the_request_to_be_answered_next_round(deal, monkeypatch):
+    deal.buyer.ask_dispute_result(deal.parties(), poll_interval=1)
+    real = mb.Relay.publish
+    monkeypatch.setattr(mb.Relay, "publish", lambda self, ev: (_ for _ in ()).throw(mb.MailboxError("down")))
+    assert deal.serve() == [] and deal.answered == set()
+    monkeypatch.setattr(mb.Relay, "publish", real)
+    assert len(deal.serve()) == 1
+
+
+def test_a_relay_that_cuts_the_connection_is_a_transport_condition(deal):
+    from websockets.sync.server import serve
+    server = serve(lambda ws: ws.close(), "127.0.0.1", 0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"ws://127.0.0.1:{server.socket.getsockname()[1]}"
+    try:
+        for call in (lambda: mb.Relay(url, timeout=2).query({"kinds": [4701]}),
+                     lambda: mb.Relay(url, timeout=2).publish(mb.sign_event(mb.new_secret(), 4700, [], "", 1))):
+            with pytest.raises(mb.MailboxError):
+                call()
+        assert mb.poll_replies([mb.Relay(url, timeout=2), mb.Relay(deal.relay.url)], "ab" * 32,
+                               gn.MAILBOX_MEDIA, "cd" * 32) == []
+    finally:
+        server.shutdown()
 
 
 def test_no_reply_is_pending_then_an_absence_sealed_once_and_a_late_reply_is_still_taken(deal):

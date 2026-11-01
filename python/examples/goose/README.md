@@ -93,8 +93,10 @@ checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and
 
 Step 09 is the dispute: the referee the deal terms name seals a Result (capsule-engine's `referee`), and
 that Result reaches each judged party's own book over the AAC Nostr mailbox
-(`nostr-mailbox-v0`, experimental). Goose has no inbound listener, so the party polls. The terms
-name the referee's `mailbox_key`, its `relays` and `answers_within` (seconds). `loop_dispute_ask`
+(`nostr-mailbox-v0`, experimental). This uses the binding's event kinds, addressing and reply checks to
+carry a Result, which is not an evidence envelope, so it is not a conforming use of the binding
+(§4.2); extending the binding for it is tracked in https://github.com/action-state-group/agent-action-capsule/issues/549. Goose has no inbound listener, so the party polls. The terms
+name the referee's `mailbox_key`, its `relays`, `private_relays: true` and `answers_within` (seconds). `loop_dispute_ask`
 publishes a request to that mailbox, with a deadline of `answers_within`; its `poll_interval`
 may not be longer than `answers_within`. `loop_dispute_poll` fetches the replies once. It returns
 `received`, `pending` or, once the deadline has passed with no reply, `absent`, which it seals
@@ -113,8 +115,9 @@ not the bytes, and both parties' books hold the same digest. The referee's side 
 The tools need `capsule-engine` installed beside the node: a release that has `capsule_engine.referee`
 (0.3.0 does not), or until one ships the commit CI uses,
 `pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`,
-and `pip install "websockets==17.4"` for the mailbox. The events are not encrypted (binding §8): a relay and
-anyone who reads it sees the request and the Result.
+and `pip install "websockets==17.4"` for the mailbox. The events are not encrypted (binding §8, N-3), and a Result names both halves and the
+referee, so the terms must declare `private_relays: true`, relays that only the two parties and the referee can read, or the
+node refuses to ask. Use a relay that authenticates its readers until the binding specifies encryption.
 
 `scripted_run.py` runs that table, except step 09 (which needs a referee node; `tests/test_dispute.py` runs it), with two nodes, each a `loop_server.py` process spoken to
 over MCP stdio, as Goose speaks to it:

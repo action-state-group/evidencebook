@@ -3,6 +3,13 @@
 (experimental), as far as the Goose node needs it: build and check NIP-01 events
 signed with BIP-340, publish them to a relay, and poll a relay for replies.
 
+This is not a conforming use of the binding: the binding's reply carries an
+evidence envelope or refusal (§4.2), and here a reply carries a referee's Result
+(``{"result", "capsule"}`` JSON), so what is used is the binding's event kinds,
+addressing and reply checks, with a payload the binding does not define. An extension
+of the binding for it is tracked in action-state-group/agent-action-capsule (see the
+Goose README).
+
 Both parties connect outward; the relay only moves bytes. A request is a kind
 4700 event addressed to the mailbox key by a ``p`` tag; a reply is a kind 4701
 event whose ``e`` tag names the request event (binding §4). ``content`` is the
@@ -159,11 +166,15 @@ class Event:
     @classmethod
     def from_json(cls, value: Any) -> "Event":
         try:
-            tags = tuple(tuple(str(x) for x in t) for t in value["tags"])
-            if not all(isinstance(x, str) for t in value["tags"] for x in t):
-                raise TypeError("tag members are strings")
-            return cls(value["id"], value["pubkey"], int(value["created_at"]), int(value["kind"]), tags,
-                       value["content"], value["sig"])
+            strings = (value["id"], value["pubkey"], value["content"], value["sig"])
+            numbers = (value["created_at"], value["kind"])
+            if not all(isinstance(x, str) for x in strings) or not all(
+                    isinstance(x, int) and not isinstance(x, bool) for x in numbers):
+                raise TypeError("id, pubkey, content and sig are strings; created_at and kind are integers")
+            if not all(isinstance(t, list) and all(isinstance(x, str) for x in t) for t in value["tags"]):
+                raise TypeError("tags are lists of strings")
+            return cls(value["id"], value["pubkey"], value["created_at"], value["kind"],
+                       tuple(tuple(t) for t in value["tags"]), value["content"], value["sig"])
         except (KeyError, TypeError, ValueError) as exc:
             raise MailboxError(f"not an event: {exc}") from None
 
@@ -192,7 +203,7 @@ def check_event(event: Event) -> bool:
         if event.id != _event_id(event.pubkey, event.created_at, event.kind, event.tags, event.content):
             return False
         return schnorr_verify(bytes.fromhex(event.id), bytes.fromhex(event.pubkey), bytes.fromhex(event.sig))
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
@@ -261,12 +272,20 @@ class Relay:
         except ImportError:
             raise MailboxError("the mailbox transport needs the websockets package installed") from None
         try:
-            return connect(self.url, open_timeout=self.timeout, close_timeout=self.timeout)
+            return connect(self.url, open_timeout=self.timeout, close_timeout=1)
         except Exception as exc:  # unreachable relay, refused handshake: all one transport condition
             raise MailboxError(f"relay {self.url} could not be reached: {exc}") from None
 
     def publish(self, event: Event) -> None:
         """Send ``event`` and wait for the relay's ``OK``; a refusal is a transport condition."""
+        try:
+            self._publish(event)
+        except MailboxError:
+            raise
+        except Exception as exc:  # a connection cut mid-exchange, a malformed OK
+            raise MailboxError(f"relay {self.url} failed: {exc}") from None
+
+    def _publish(self, event: Event) -> None:
         with self._connect() as ws:
             ws.send(json.dumps(["EVENT", event.to_json()]))
             deadline = time.monotonic() + self.timeout
@@ -276,13 +295,21 @@ class Relay:
                 except (TimeoutError, ValueError):
                     break
                 if isinstance(msg, list) and msg[:1] == ["OK"] and msg[1:2] == [event.id]:
-                    if msg[2] is True:
+                    if msg[2:3] == [True]:
                         return
                     raise MailboxError(f"relay {self.url} did not accept the event: {msg[3:4]}")
             raise MailboxError(f"relay {self.url} did not answer the event")
 
     def query(self, flt: dict) -> list[Event]:
         """The stored events matching ``flt``, read to the relay's end-of-stored-events."""
+        try:
+            return self._query(flt)
+        except MailboxError:
+            raise
+        except Exception as exc:  # a connection cut mid-exchange
+            raise MailboxError(f"relay {self.url} failed: {exc}") from None
+
+    def _query(self, flt: dict) -> list[Event]:
         events: list[Event] = []
         with self._connect() as ws:
             ws.send(json.dumps(["REQ", "poll", flt]))
@@ -374,12 +401,16 @@ def serve_round(relays: Iterable[Relay], secret: bytes, answer: Callable[[bytes]
             if octets is None:
                 continue
             reply = answer(octets)
-            answered.add(req.id)
             if reply is None:
+                answered.add(req.id)
                 continue
             event = sign_event(secret, REPLY_KIND,
                                [("e", req.id), ("p", req.pubkey), ("m", req.tag("m")[0][1])], encode(reply),
                                int(now()))
-            relay.publish(event)
+            try:
+                relay.publish(event)
+            except MailboxError:
+                continue  # not answered: the next round tries again
+            answered.add(req.id)
             done.append(req.id)
     return done
