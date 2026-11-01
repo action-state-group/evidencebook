@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fixed: shelf transactions take the write lock when they begin
+
+- Every transaction on a shelf's own handle begins `IMMEDIATE`. A
+  transaction that read and then wrote (storing a record or a checkpoint, a
+  tick's witness, an import) began deferred, so under WAL another
+  connection's commit between its read and its first write, such as another
+  book's append to its CLL log, failed the write at once with
+  `SQLITE_BUSY_SNAPSHOT` ("database is locked (517)"), which the busy
+  timeout does not cover. A book checkpointing while another book appends
+  could fail that way. It now waits for the lock under the busy timeout. No
+  stored byte changes.
+
 ### Added: the shelf contract's Go additions and the shelf vectors (#261)
 
 - `Shelf.HostLog(ctx, logID, inCadence)` opens a host log: a log on the shelf
