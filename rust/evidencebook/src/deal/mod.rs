@@ -40,6 +40,7 @@ mod publicsuffix;
 mod record;
 mod report;
 mod schema;
+mod standard_history;
 mod step;
 mod types;
 
@@ -58,5 +59,8 @@ pub use names::*;
 pub use record::{decode, Body, Record};
 pub use report::{report_capsule, report_payload, Checkpoint, Report};
 pub use schema::profile_schema;
+pub use standard_history::{
+    minor_units, standard_history_deal, HistoryInput, HistoryRecord, HistoryResult,
+};
 pub use step::{step_capsule, Decide, StepHeader, StepInput};
 pub use types::*;

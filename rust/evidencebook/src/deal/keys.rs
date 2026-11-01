@@ -143,6 +143,7 @@ fn norm_domain(v: &str) -> Result<String, NotNormalizable> {
     let v = p.domain_port.replace(&v, "");
     let v = v.trim_end_matches('.');
     let uts46 = Uts46::new();
+    let v = decode_non_ascii_alabels(&uts46, v)?;
     let ascii = uts46
         .to_ascii(
             v.as_bytes(),
@@ -159,6 +160,102 @@ fn norm_domain(v: &str) -> Result<String, NotNormalizable> {
     let (out, ok) = uts46.to_unicode(registrable.as_bytes(), AsciiDenyList::STD3, Hyphens::Check);
     ok.map_err(|_| NotNormalizable)?;
     Ok(out.into_owned())
+}
+
+/// RFC 3492 decoding as x/net's `idna` does it: the part before the last
+/// hyphen is copied rune for rune, whatever the runes are (the `idna` crate
+/// reads only ASCII there and refuses such a label that Go accepts).
+fn punycode_decode(encoded: &str) -> Option<String> {
+    if encoded.is_empty() {
+        return Some(String::new());
+    }
+    let chars: Vec<char> = encoded.chars().collect();
+    let split = chars.iter().rposition(|&c| c == '-')?;
+    let mut out: Vec<char> = chars[..split].to_vec();
+    let (mut i, mut n, mut bias) = (0u32, 128u32, 72u32);
+    let limit = i32::MAX as u32;
+    let mut pos = split + 1;
+    while pos < chars.len() {
+        let (old_i, mut w, mut k) = (i, 1u32, 36u32);
+        loop {
+            let c = *chars.get(pos)?;
+            let digit = match c {
+                'a'..='z' => c as u32 - 'a' as u32,
+                'A'..='Z' => c as u32 - 'A' as u32,
+                '0'..='9' => c as u32 - '0' as u32 + 26,
+                _ => return None,
+            };
+            pos += 1;
+            i = i.checked_add(digit.checked_mul(w)?)?;
+            if i > limit {
+                return None;
+            }
+            let t = if k <= bias {
+                1
+            } else if k >= bias + 26 {
+                26
+            } else {
+                k - bias
+            };
+            if digit < t {
+                break;
+            }
+            w = w.checked_mul(36 - t)?;
+            if w > limit {
+                return None;
+            }
+            k += 36;
+        }
+        if out.len() >= 1024 {
+            return None;
+        }
+        let x = out.len() as u32 + 1;
+        let mut delta = i - old_i;
+        delta = if old_i == 0 { delta / 700 } else { delta / 2 };
+        delta += delta / x;
+        let mut kk = 0;
+        while delta > 35 * 26 / 2 {
+            delta /= 35;
+            kk += 36;
+        }
+        bias = kk + 36 * delta / (delta + 38);
+        n = n.checked_add(i / x)?;
+        i %= x;
+        out.insert(i as usize, char::from_u32(n)?);
+        i += 1;
+    }
+    Some(out.into_iter().collect())
+}
+
+/// Go accepts an `xn--` label whose part before the last hyphen holds
+/// non-ASCII characters and reads it as the label it decodes to; the `idna`
+/// crate refuses it. Such a label is replaced by its decoded form, which must
+/// be NFC and survive `to_unicode` unchanged (every character valid as
+/// written, none mapped), and which `to_ascii` then encodes as Go does.
+fn decode_non_ascii_alabels(uts46: &Uts46, v: &str) -> Result<String, NotNormalizable> {
+    if v.is_ascii() || !v.split('.').any(|l| l.starts_with("xn--")) {
+        return Ok(v.to_string());
+    }
+    let mut labels = Vec::new();
+    for label in v.split('.') {
+        match label.strip_prefix("xn--") {
+            Some(rest) if !label.is_ascii() => {
+                let u = punycode_decode(rest).ok_or(NotNormalizable)?;
+                if u.is_empty() || u.is_ascii() || nfc(&u) != u {
+                    return Err(NotNormalizable);
+                }
+                let (back, ok) =
+                    uts46.to_unicode(u.as_bytes(), AsciiDenyList::STD3, Hyphens::Check);
+                ok.map_err(|_| NotNormalizable)?;
+                if back != u {
+                    return Err(NotNormalizable);
+                }
+                labels.push(u);
+            }
+            _ => labels.push(label.to_string()),
+        }
+    }
+    Ok(labels.join("."))
 }
 
 fn norm_name(v: &str) -> Result<String, NotNormalizable> {

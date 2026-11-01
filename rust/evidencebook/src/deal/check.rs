@@ -59,6 +59,11 @@ pub enum Error {
     /// is not a copy audience or a step with no developer name.
     #[error("{0}")]
     Invalid(String),
+    /// A deal whose agreeing step rests on a check with no amount, or a
+    /// currency with no ISO 4217 minor units: SH has no entry for it, so the
+    /// card cannot be built ([`standard_history_deal`](super::standard_history_deal)).
+    #[error("{0}")]
+    Unpriced(String),
 }
 
 impl Error {

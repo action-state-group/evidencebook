@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### `deal` reads Go's parity vectors (evidencebook#284)
+
+- New: `deal::standard_history_deal` (with `HistoryInput`, `HistoryRecord`,
+  `HistoryResult`) and `deal::minor_units`, the `standard_history/1` deal entry
+  and ISO 4217 minor units, at byte parity with Go's `dealprofile` and the
+  Python package. `deal::Error` gains an `Unpriced` variant (a deal with no
+  recorded amount), so an exhaustive `match` on it needs an arm.
+- Fixed: a domain with an `xn--` label whose part before the last hyphen holds
+  non-ASCII characters (`xn--zcaé-.com`) is read as Go reads it, not refused.
+- Known divergence: Go's Cherokee case fold (evidencebook#283).
+
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
 
 - `deal::Record` gains `counterparty_class: Option<String>`, the x-deal-v0
