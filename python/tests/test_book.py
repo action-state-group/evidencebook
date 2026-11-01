@@ -6,14 +6,17 @@ import base64
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from agent_action_capsule.canonical import jcs
+from agent_action_capsule.evidence_request import sign_refusal
 
 import evidencebook as eb
 from agent_action_capsule.evidence_request import Refusal
 from evidencebook.request import refusal_conforming, request_profile
 from evidencebook.book import KIND_CLL_CHECKPOINT, KIND_CLL_INCLUSION_PROOF
+from evidencebook.signer import EvidenceSigner
 
 START = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
@@ -692,3 +695,97 @@ def test_a_malformed_stored_header_or_index_root_is_corruption(clock):
                 s.seq, s.record_id, header, s.capsule, s.envelope)
         with pytest.raises(eb.CorruptError):
             book(clock, store=broken)
+
+
+# --- a request another tool sent (evidencebook#245, #247) ----------------------------
+
+LIVE16 = Path(__file__).resolve().parents[2] / "testdata" / "live16-ask"
+LIVE16_KEY = "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9"
+
+
+def live16(name: str) -> dict:
+    return json.loads((LIVE16 / f"{name}.json").read_text())
+
+
+@pytest.mark.parametrize("name,profile", [("checkpoints", eb.PROFILE), ("history_card", eb.PROFILE),
+                                          ("exchange", eb.PROFILE_V1)])
+def test_live16_requests_are_recorded_as_sent_and_their_replies_verify(clock, name, profile):
+    b = book(clock)
+    fixture = live16(name)
+    octets = jcs(fixture["request"])
+    for member in ('"audience":', '"requester_auth":', '"requester_id":', f'"profile":"{profile}"'):
+        assert member.encode() in octets
+    sent = b.request_sent(eb.Message(octets, eb.MEDIA_TYPE_JSON), "stevenmih-1")
+    assert sent.octets == octets and sent.digest == fixture["reply"]["request_digest"]
+    assert b.get(sent.record_id).header.statement == {
+        "request": fixture["request"], "responder_ref": "stevenmih-1", "composed_elsewhere": True}
+    reply = eb.Message(json.dumps(fixture["reply"]).encode(), eb.MEDIA_TYPE_JSON)
+    statement = b.record_response(sent.record_id, reply, eb.ResponderKeys(LIVE16_KEY, LIVE16_KEY)).header.statement
+    assert statement["outcome"] == eb.OUTCOME_ARTIFACT and "failure" not in statement
+
+
+def test_request_sent_refuses_what_was_not_sent(clock):
+    b = book(clock)
+    ok = '{"audience":"a","coverage":{"min_freshness":1},"nonce":"n1","subject":{"checkpoints":null}}'
+    two = '{"coverage":{"expected_pin":"' + "ab" * 32 + '","min_freshness":1},"subject":{"checkpoints":null}}'
+    for name, octets, media_type in [
+        ("CBOR", ok, eb.MEDIA_TYPE_CBOR),
+        ("not JCS", '{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}', eb.MEDIA_TYPE_JSON),
+        ("whitespace", '{"coverage": {"min_freshness":1},"subject":{"checkpoints":null}}', eb.MEDIA_TYPE_JSON),
+        ("no subject", '{"coverage":{"min_freshness":1}}', eb.MEDIA_TYPE_JSON),
+        ("two coverages", two, eb.MEDIA_TYPE_JSON),
+        ("unknown profile", '{"coverage":{"min_freshness":1},"profile":"evidence-interop/9",'
+                            '"subject":{"checkpoints":null}}', eb.MEDIA_TYPE_JSON),
+        ("not JSON", '{"subject":', eb.MEDIA_TYPE_JSON),
+    ]:
+        with pytest.raises(eb.InvalidError):
+            b.request_sent(eb.Message(octets.encode(), media_type), "responder")
+    assert b.size() == 0
+    b.request_sent(eb.Message(ok.encode()), "responder")
+    reused = '{"coverage":{"min_freshness":2},"nonce":"n1","subject":{"checkpoints":null}}'
+    with pytest.raises(eb.InvalidError, match="nonce already used"):
+        b.request_sent(eb.Message(reused.encode()), "responder")
+    with pytest.raises(eb.InvalidError, match="nonce already used"):
+        b.request(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=1), nonce="n1"))
+    no_nonce = '{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}}'
+    for _ in range(2):
+        b.request_sent(eb.Message(no_nonce.encode()), "responder")
+    assert b.size() == 3
+    # A request the book composed is not marked.
+    made = b.request(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=1)))
+    assert "composed_elsewhere" not in b.get(made.record_id).header.statement
+
+
+def test_a_refusal_reason_conforms_under_the_profile_the_request_asked_for(clock):
+    r = book(clock, "responder")
+    r.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    r.checkpoint()
+    q = book(clock, "requester")
+    for profile, want in [(eb.PROFILE_V1, eb.OUTCOME_REFUSAL), (eb.PROFILE, eb.OUTCOME_REFUSAL_NONCONFORMING)]:
+        octets = ('{"coverage":{"min_freshness":1},"nonce":"%s","profile":"%s","subject":{"checkpoints":null}}'
+                  % (profile, profile)).encode()
+        sent = q.request_sent(eb.Message(octets), "responder")
+        refusal = sign_refusal(sent.digest, "capacity_exceeded", signer=EvidenceSigner(r._signer),
+                                  issued_at="2026-10-31T12:00:00Z")
+        reply = eb.request.encode_refusal(refusal, eb.MEDIA_TYPE_JSON)
+        statement = q.record_response(sent.record_id, reply.message, keys_of(r)).header.statement
+        assert statement["outcome"] == want and statement["reason"] == "capacity_exceeded"
+
+
+def test_a_record_set_body_is_the_preimage_or_the_ledger_capsule():
+    from evidencebook.book import _digest, _record_body_matches
+    from evidencebook._capsule import capsule_preimage
+
+    artifact = json.loads(base64.b64decode(live16("exchange")["reply"]["artifact"]))
+    assert len(artifact["records"]) == 1
+    entry = artifact["records"][0]
+    capsule = bytes.fromhex(entry["body"])
+    digest = entry["digest"]
+    preimage = capsule_preimage(json.loads(capsule), digest)
+    assert _record_body_matches(capsule, digest) and _record_body_matches(preimage, digest)
+    changed = capsule.replace(b'"action_type":"fyi"', b'"action_type":"fyj"', 1)
+    assert changed != capsule
+    other = "ab" * 32
+    for body, d in [(changed, digest), (capsule, other), (preimage, other), (b"not json", digest)]:
+        assert not _record_body_matches(body, d)
+    assert _digest(preimage) == digest

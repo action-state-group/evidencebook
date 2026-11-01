@@ -4,7 +4,7 @@
 
 use evidencebook::answer::{Record, RecordSource};
 use evidencebook::ask::{
-    record_absence, request, AskError, AskedRequest, Book, Entry, SealError, Sealed,
+    record_absence, request, request_sent, AskError, AskedRequest, Book, Entry, SealError, Sealed,
 };
 use evidencebook::record::{EpistemicType, Link, LinkType};
 use serde_json::{json, Map, Value};
@@ -233,4 +233,101 @@ fn only_a_recorded_request_can_be_given_an_absence() {
         record_absence(&mut book, &digest("none"), "2026-10-27T00:05:00Z", "").unwrap_err(),
         AskError::NotFound(_)
     ));
+}
+
+/// JCS octets of a fixture's request, as a requester transmits it.
+fn jcs_of(value: &Value) -> Vec<u8> {
+    evidence_request::jcs::to_string(value)
+        .unwrap()
+        .into_bytes()
+}
+
+/// The capsules plugin's sealed requests from live-16 07-ask
+/// (`testdata/live16-ask/README.md`) carry members the request draft does
+/// not define (audience, requester_id, requester_auth). Recorded as sent,
+/// each keeps every member and has the digest stevenmih-1 signed its reply
+/// over (Go `TestRequestSentLive16`).
+#[test]
+fn live16_requests_are_recorded_as_sent() {
+    let mut book = Mem::at("2026-10-31T12:00:00Z");
+    for (name, profile) in [
+        ("checkpoints", "evidence-interop/0"),
+        ("history_card", "evidence-interop/0"),
+        // The fixture is named for the request draft's subject form, a word the
+        // crate's vocabulary gate keeps out of its text.
+        ("ex\u{63}hange", "evidence-interop/1"),
+    ] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../../testdata/live16-ask/{name}.json"));
+        let fixture: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let octets = jcs_of(&fixture["request"]);
+        let text = String::from_utf8(octets.clone()).unwrap();
+        for member in ["\"audience\":", "\"requester_auth\":", "\"requester_id\":"] {
+            assert!(text.contains(member), "{name}: no {member}");
+        }
+        assert!(
+            text.contains(&format!("\"profile\":\"{profile}\"")),
+            "{name}"
+        );
+        let sent = request_sent(&mut book, &octets, "stevenmih-1").unwrap();
+        assert_eq!(sent.bytes, octets, "{name}");
+        assert_eq!(
+            sent.digest,
+            fixture["reply"]["request_digest"].as_str().unwrap(),
+            "{name}"
+        );
+        let (_, entry, _) = book.records.last().unwrap();
+        assert_eq!(entry.record_type, "evidence_request");
+        assert_eq!(entry.statement["request"], fixture["request"]);
+        assert_eq!(entry.statement["responder_ref"], "stevenmih-1");
+        assert_eq!(entry.statement["composed_elsewhere"], true);
+    }
+}
+
+#[test]
+fn only_a_well_formed_request_in_jcs_is_recorded_as_sent() {
+    let mut book = Mem::at("2026-10-31T12:00:00Z");
+    let ok = r#"{"audience":"a","coverage":{"min_freshness":1},"nonce":"n1","subject":{"checkpoints":null}}"#;
+    let pin = "ab".repeat(32);
+    let two_coverages = format!(
+        r#"{{"coverage":{{"expected_pin":"{pin}","min_freshness":1}},"subject":{{"checkpoints":null}}}}"#
+    );
+    for (name, octets) in [
+        (
+            "not JCS",
+            r#"{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}"#,
+        ),
+        (
+            "whitespace",
+            r#"{"coverage": {"min_freshness":1},"subject":{"checkpoints":null}}"#,
+        ),
+        ("no subject", r#"{"coverage":{"min_freshness":1}}"#),
+        ("two coverages", two_coverages.as_str()),
+        (
+            "unknown profile",
+            r#"{"coverage":{"min_freshness":1},"profile":"evidence-interop/9","subject":{"checkpoints":null}}"#,
+        ),
+        ("not JSON", r#"{"subject":"#),
+    ] {
+        let err = request_sent(&mut book, octets.as_bytes(), "responder").unwrap_err();
+        assert!(matches!(err, AskError::Invalid(_)), "{name}: {err:?}");
+    }
+    assert!(book.records.is_empty(), "a refused request is not recorded");
+    request_sent(&mut book, ok.as_bytes(), "responder").unwrap();
+    let reused = r#"{"coverage":{"min_freshness":2},"nonce":"n1","subject":{"checkpoints":null}}"#;
+    let err = request_sent(&mut book, reused.as_bytes(), "responder").unwrap_err();
+    assert!(matches!(err, AskError::Invalid(m) if m.contains("nonce already used")));
+    // request refuses a nonce request_sent used, too.
+    let err = request(&mut book, &ask("n1"), "responder").unwrap_err();
+    assert!(matches!(err, AskError::Invalid(m) if m.contains("nonce already used")));
+    // A request without a nonce is recorded as sent, every time.
+    let no_nonce = r#"{"coverage":{"min_freshness":1},"subject":{"checkpoints":null}}"#;
+    for _ in 0..2 {
+        request_sent(&mut book, no_nonce.as_bytes(), "responder").unwrap();
+    }
+    assert_eq!(book.records.len(), 3);
+    // A request the book composed is not marked.
+    request(&mut book, &ask("n-2"), "responder").unwrap();
+    let (_, entry, _) = book.records.last().unwrap();
+    assert!(entry.statement.get("composed_elsewhere").is_none());
 }
