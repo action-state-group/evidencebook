@@ -658,19 +658,21 @@ def _held_by(headers: list[Header], ids: list[str], record_id: str, header: Head
     return False
 
 
-def _retention(headers: list[Header], ids: list[str], i: int, now_ns: int) -> str:
+def _retention(headers: list[Header], ids: list[str], stated: list[bool], i: int, now_ns: int) -> str:
     """Go's ``retentionOf``: the header's state folded through every later
     lifecycle record citing it; an AVAILABLE or PARTIAL record under a live
-    retention commitment reads LEGAL_HOLD."""
+    retention commitment reads LEGAL_HOLD. ``stated`` says whether each
+    stored header has a ``statement`` member."""
     header, record_id = headers[i], ids[i]
     state = header.retention_state
     for later in headers[header.seq:]:
         if later.record_type != _LIFECYCLE or record_id not in later.links_to(CITES):
             continue
-        # As Go reads it into a LifecycleStatement: no statement, or no
-        # retention_state, is the empty state; another shape is corrupt.
+        # As Go reads it into a LifecycleStatement: a null statement or no
+        # retention_state is the empty state; no statement member at all, or
+        # another shape, is corrupt (json.Unmarshal of nothing fails).
         statement = {} if later.statement is None else later.statement
-        if not isinstance(statement, dict) or not isinstance(statement.get("retention_state", ""), (str, type(None))):
+        if not stated[later.seq - 1] or not isinstance(statement, dict) or not isinstance(statement.get("retention_state", ""), (str, type(None))):
             raise CorruptError(f"lifecycle record {ids[later.seq - 1]} holds no lifecycle statement")
         state = statement.get("retention_state") or ""
     if state == _DELETED:
@@ -853,6 +855,7 @@ class Shelf:
                 book, committed = rows[i][0], entries.get(rows[i][0], 0)
                 headers: list[Header] = []
                 ids: list[str] = []
+                stated: list[bool] = []
                 while i < len(rows) and rows[i][0] == book:
                     _, seq, record_id, header = rows[i]
                     i += 1
@@ -862,14 +865,16 @@ class Shelf:
                     if seq != len(ids) + 1:
                         raise CorruptError(f"{book} holds record {record_id} at seq {seq} after {len(ids)} records")
                     try:
-                        headers.append(Header.from_value(json.loads(bytes(header))))
+                        value = json.loads(bytes(header))
+                        headers.append(Header.from_value(value))
+                        stated.append("statement" in value)
                     except (ValueError, TypeError, KeyError, AttributeError) as exc:
                         raise CorruptError(f"header of {record_id} in {book}: {exc}") from None
                     ids.append(record_id)
                 for j, header in enumerate(headers):
                     retention = ""
                     if header.payload_commitments or header.field_commitments:
-                        retention = _retention(headers, ids, j, now_ns)
+                        retention = _retention(headers, ids, stated, j, now_ns)
                     out.records.append(ShelfRecord(book, header.seq, ids[j], header, retention))
             return out
 

@@ -671,17 +671,24 @@ def test_a_tick_and_a_chain_run_beside_appends_to_the_same_book(fx):
         assert book._substrate.entry_ids() == [r.record_id for r in book.records()]
 
 
-def test_a_lifecycle_record_without_a_state_lists_as_go_reads_it(fx):
+def test_lifecycle_statements_list_as_go_reads_them(fx):
     from evidencebook.record import CITES, Link
 
     with fx.open() as shelf:
         book = shelf.open("deal/a")
         first = book.append(obs())
-        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),)))
+        cites = (Link(CITES, first.record_id),)
+        book.append(Entry("lifecycle", "producer_claim", links=cites, statement={}))
         assert shelf.records().records[0].retention == ""
-        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),),
-                          statement={"retention_state": "WITHHELD"}))
+        book.append(Entry("lifecycle", "producer_claim", links=cites, statement={"retention_state": "WITHHELD"}))
         assert shelf.records().records[0].retention == "WITHHELD"
-        book.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, first.record_id),), statement=[1]))
-        with pytest.raises(CorruptError):
-            shelf.records()
+        book.append(Entry("lifecycle", "producer_claim", links=cites, statement={"retention_state": None}))
+        assert shelf.records().records[0].retention == ""
+        # Go's records fails on a lifecycle record with no statement member,
+        # or with one that is not an object.
+        for bad in ({}, {"statement": [1]}):
+            other = shelf.open(f"deal/bad{len(bad)}")
+            cited = other.append(obs())
+            other.append(Entry("lifecycle", "producer_claim", links=(Link(CITES, cited.record_id),), **bad))
+            with pytest.raises(CorruptError):
+                shelf.records(other.book_id)
