@@ -50,8 +50,8 @@ answered but never grow the log.
 ## The shelf
 
 A shelf is one subject key's books in one SQLite file (evidencebook#254 §2),
-the same file Go's `OpenSQLiteShelf` writes: a shelf any language writes,
-every other opens, continues and verifies.
+the same file Go's `OpenSQLiteShelf` writes: Go and Python each open,
+continue and verify the other's shelf.
 
 ```python
 import sqlite3
