@@ -70,7 +70,7 @@ deal = ["dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:ic
 
 # The shelf (evidencebook#254 §2, module `shelf`): one subject key's books in
 # one SQLite file, its writer lock or a host-held one, host logs, the heartbeat
-# cadence and its witnessed chain, the same file Go writes.
+# cadence and its witnessed chain, the same file Go and Python write.
 shelf = ["cll/sqlite", "dep:rusqlite", "dep:capsule-emit-artifact", "dep:base64", "dep:libc"]
 
 [package.metadata.docs.rs]

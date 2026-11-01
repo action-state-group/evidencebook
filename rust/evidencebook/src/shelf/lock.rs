@@ -1,7 +1,7 @@
 //! The shelf's own writer lock (Go `shelf_lock_unix.go`): an exclusive
 //! advisory `flock(LOCK_EX|LOCK_NB)` on a lock file, retried every 50 ms
-//! until the caller's deadline, so a Go and a Rust writer of one shelf
-//! exclude each other (evidencebook#254 §2.4). Off unix the shelf's
+//! until the caller's deadline, so a Go, a Python and a Rust writer of one
+//! shelf exclude each other (evidencebook#254 §2.4). Off unix the shelf's
 //! own lock does not exist; a shelf on a host-held lock takes none.
 
 use super::ShelfError;

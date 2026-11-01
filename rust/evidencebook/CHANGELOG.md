@@ -59,9 +59,9 @@
   opening one, with each record's retention state and the records a crash
   left pending.
 - The Rust shelf reads `testdata/shelf` byte for byte, and joins the shelf
-  storage interlock: Go and Rust each continue the other's file, and a Go and
-  a Rust writer of one file exclude each other (`evidencebook-interop`, bin
-  `shelf`).
+  storage interlock: Go, Python and Rust each continue the others' files,
+  and the writers of one file in any two of them exclude each other
+  (`evidencebook-interop`, bin `shelf`).
 
 ### Changed: checkpointed-local-log 0.4.0, evidence-request 0.4.1, agent-action-capsule 0.8.0
 

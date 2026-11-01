@@ -5,10 +5,11 @@
 //! every host log), capsule-emit's artifact store (the originals of every
 //! book and the records of every host log, under one namespace) and the
 //! shelf's own tables (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`),
-//! exactly as the Go shelf writes them, so a Go and a Rust writer continue
-//! each other's files. `testdata/shelf` holds the byte vectors, and
-//! `test/interop/shelf` (Go) and `rust/interop`'s `shelf` bin (Rust) run the
-//! storage interlock, that check it.
+//! exactly as the Go shelf writes them, so Go, Python and Rust writers
+//! continue each other's files. `testdata/shelf` holds the byte vectors, and
+//! `test/interop/shelf` (Go), `test/interop/python-evidencebook/shelf.py`
+//! (Python) and `rust/interop`'s `shelf` bin (Rust) run the storage
+//! interlock, that check it.
 //!
 //! - [`Shelf`] opens the file under the shelf's writer lock or a lock the
 //!   host already holds ([`HeldLock`]), and hands out one [`ShelfBook`] per

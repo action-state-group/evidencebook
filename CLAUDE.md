@@ -42,7 +42,7 @@ WORK=$(mktemp -d) EB_DIR=$PWD test/cleanroom/run.sh
 EB_WRITE_SHELF_VECTORS=1 go test -run 'TestShelfTreeVectors|TestShelfVectors' . ./internal/shelfscript
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/interop/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
-# The Rust side (feature `shelf`): Go writes, Rust continues; the interlock job runs every pair
+# The Rust side (feature `shelf`): Go writes, Rust continues; the interlock job runs every pair of Go, Python and Rust
 (cd rust && cargo build --locked -p evidencebook-interop --bin shelf)
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/debug/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
@@ -87,7 +87,7 @@ text.
 | `rust/interop/` | `evidencebook-interop` (not published): the crate's Personal-Agent History and interop-profile runs, which the Rust CI `interop` job checks against the vectors and the Go runs, and the Rust side of the shelf storage interlock (bin `shelf`, `shelf-interlock` in ci.yml) |
 | `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book, the shelf and its cadence, and the evidence request interaction, byte for byte with Go; not yet published |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
-| `testdata/` | vectors and fixtures the Go and Rust tests read |
+| `testdata/` | vectors and fixtures the Go, Rust and Python tests read |
 | `schemas/`, `docs/` | the record header schema and vendored schemas; design notes, the interop PRD and the adapter and verifier guides |
 
 The Go module stays at the repository root. Moving it into `go/` would change
