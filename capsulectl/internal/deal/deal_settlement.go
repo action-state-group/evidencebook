@@ -21,9 +21,10 @@ import (
 // the user sells, the user is the payee, and two of the four legs are theirs
 // to seal:
 //
-//   - payment_received: the payee-observed leg. It wraps the rail's own
-//     confirmation by digest and reads every value from it; it never requests
-//     or moves money.
+//   - payment_received: the payee-observed leg. It reads every value from the
+//     rail's own confirmation (x402: wrapped by digest; Lightning: the
+//     wallet's invoice and transaction, deal_settlement_lightning.go); it
+//     never requests or moves money.
 //   - delivered: what the seller handed over or performed (direction sent).
 //     It is the seller's statement of a handoff, never proof of receipt; it
 //     may resolve a deliver_by or perform_by obligation.
@@ -78,6 +79,27 @@ func settlementNoteEvent(c *cobra.Command, kind string) (dealEvent, error) {
 	var built settlement.Built
 	switch kind {
 	case noteKindPaymentReceived:
+		if flag("ln-invoice") != "" || flag("ln-transaction") != "" {
+			if flag("settle-response") != "" || flag("requirements") != "" || flag("receipt") != "" ||
+				c.Flags().Changed("asset-scale") || c.Flags().Changed("receive-fee") {
+				return dealEvent{}, cli.InputError("payment_received reads one rail: x402 (--settle-response, --requirements) or Lightning (--ln-invoice, --ln-transaction, which read the asset and the fee from the wallet), not both")
+			}
+			invoice, err := read("ln-invoice", true)
+			if err != nil {
+				return dealEvent{}, err
+			}
+			transaction, err := read("ln-transaction", true)
+			if err != nil {
+				return dealEvent{}, err
+			}
+			var preimage string
+			if built, preimage, err = payeeObservedLightning(invoice, transaction, termsRef, observedAt); err != nil {
+				return dealEvent{}, cli.InputError("payment_received: " + err.Error())
+			}
+			ev.Evidence = &dealEvidence{About: "payment received", Source: "lightning_wallet",
+				SettlementAccounts: built.AccountIDs, ReceivedTo: built.AccountIDs[0], Preimage: preimage}
+			break
+		}
 		in := settlement.X402Receipt{TermsRef: termsRef, ObservedAt: observedAt}
 		if in.SettleResponse, err = read("settle-response", true); err != nil {
 			return dealEvent{}, err
@@ -215,7 +237,7 @@ func checkSettlementNote(events []sealedEvent, ev *dealEvent, kind string) error
 // refuseSettlementInput keeps the settlement fields out of an evidence note's
 // --input: only the settlement kinds build them, from the rail's files.
 func refuseSettlementInput(e *dealEvidence) error {
-	if e != nil && (len(e.Settlement) > 0 || len(e.SettlementObjects) > 0 || len(e.SettlementAccounts) > 0 || len(e.SettlementNonces) > 0 || e.ReceivedTo != "") {
+	if e != nil && (len(e.Settlement) > 0 || len(e.SettlementObjects) > 0 || len(e.SettlementAccounts) > 0 || len(e.SettlementNonces) > 0 || e.ReceivedTo != "" || e.Preimage != "") {
 		return cli.InputError("evidence --input cannot set a settlement leg: use deal note --kind payment_received or delivered")
 	}
 	return nil
@@ -229,6 +251,8 @@ func addSettlementNoteFlags(cmd *cobra.Command) {
 	f.String("receipt", "", "payment_received: the x402 signed receipt you issued, if any (wrapped by digest)")
 	f.Int("asset-scale", 0, "payment_received: the asset's decimals, when it is not a known asset")
 	f.String("receive-fee", "", "payment_received: the fee your system reported deducted on receipt, in atomic units (any scheme but exact)")
+	f.String("ln-invoice", "", "payment_received: the Lightning invoice your wallet issued for the sale, as JSON with payment_hash, payee and amount_msat (mesh-llm wallet fund-wallet prints it); its BOLT11 string is not sealed")
+	f.String("ln-transaction", "", "payment_received: your wallet's inbound transaction for that invoice, as JSON (one entry of mesh-llm wallet get-transactions); its preimage, when the wallet reports one, is checked against the payment hash and sealed")
 	f.String("content", "", "delivered: a file holding exactly what you handed over (only its SHA-256 is sealed)")
 	f.String("content-digest", "", "delivered: the SHA-256 of what you handed over, when you hold only the digest")
 	f.String("carrier", "", "delivered: the carrier, for goods shipped")

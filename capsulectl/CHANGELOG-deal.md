@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Builds against capsulectl `v0.1.0-rc28`, evidencebook `v0.12.0`, capsule-viewer
+- Builds against capsulectl `v0.1.0-rc28`, evidencebook `v0.12.1`, capsule-viewer
   `v0.8.0` (capsule-viewer#196, #197, #200, #201), agent-action-capsule `v0.18.0`
   and checkpointed-local-log `v0.3.0`. The presentation goldens are rebuilt
   (`build-fixtures.sh` with capsulectl-book `v0.1.0-rc28`, then the snapshots and
@@ -10,6 +10,16 @@
   scripts out of its check for the bare word "customer": that runtime says
   "customer" since viewer 0.8.0, whoever the customer is.
 
+- `deal note --kind payment_received` also seals a Lightning payment, from
+  the payee's own wallet: `--ln-invoice` (the invoice the wallet issued) and
+  `--ln-transaction` (its inbound transaction). The payee_observed leg names
+  the payment by `ln.payment_hash`, with what the wallet credited as
+  `received` and what it deducted as `receive_fee`. The wallet's preimage,
+  once its SHA-256 is the payment hash, is sealed on the step's record
+  (body_evidence `preimage`, evidencebook#260; Steven, Buzz 79b46dfb
+  item 5); the BOLT11 string and the receiving node id are never sealed
+  (devcon-workshop#12). Lightning is a rail without recourse: a `pay` check
+  on it pauses, as Zelle or crypto does.
 - The History card (`standard_history/1`, evidencebook-deal#85, evidencebook#237):
   `deal standard-history declare --holder-kind person|node` (declared once, and
   declaring again never turns answering back on; with no declaration there is
