@@ -49,12 +49,18 @@ for (const source of modules) vm.runInContext(source, context);
 vm.runInContext(bootstrap.slice(0, bootstrap.indexOf("\nrenderEvidenceGraph(")), context);
 const EG = vm.runInContext("EvidenceGraph", context);
 ` + verifiedContextJS + `const bundle = vm.runInContext("window.__BUNDLE__", context);
-const words = vm.runInContext("globalThis.capsulectlDealPage.words", context);
+const words = vm.runInContext("globalThis.capsulectlDealPage.words", context) || {};
 // "withhold": the switch step's disclosure is dropped from the file.
 if (edit === "withhold") {
   const report = bundle.extensions["x-deal-report/v0"].agent_input.report;
   const step = report.journey.find((m) => m.move === "switched").step;
   delete bundle.disclosures[step];
+}
+// "withhold-approval": each approval's disclosure is dropped from the file.
+if (edit === "withhold-approval") {
+  for (const [id, d] of Object.entries(bundle.disclosures)) {
+    if ((((d || {}).agent_input || {})["x-deal-v0"] || {}).record_type === "approval") delete bundle.disclosures[id];
+  }
 }
 (async () => {
   const ctx = await verifiedContext(context, EG, bundle);
@@ -68,6 +74,8 @@ if (edit === "withhold") {
     banner: banner ? banner.dataset.checked : "",
     bannerText: banner ? banner.children[0].textContent : "",
     stamps: L0.all((n) => n.dataset.stamp !== undefined).map((n) => n.dataset.stamp),
+    stampText: L0.all((n) => n.dataset.stamp !== undefined).map((n) => n.textContent),
+    close: (L0.all((n) => n.dataset.close !== undefined)[0] || { dataset: {} }).dataset.close || "",
     pill: (L0.all((n) => /\bdeal-pill\b/.test(n.className))[0] || { textContent: "" }).textContent,
     restsNote: L0.all((n) => n.dataset.sealed !== undefined || n.dataset.unchecked !== undefined).length,
     refusal: model.refusal || "",
@@ -94,7 +102,14 @@ func renderJourney(t *testing.T, id string, share bool, edit ...string) map[stri
 		args = append(args, "--share", cli.DealAudienceCounterparty, "--to", "the shop")
 	}
 	dealRun(t, args...)
-	driver := filepath.Join(dir, "driver.js")
+	return renderPageUnderNode(t, node, page, edit...)
+}
+
+// renderPageUnderNode renders a deal page's deal view (any page the plugin
+// writes) under node with the journey driver, after the driver's edit.
+func renderPageUnderNode(t *testing.T, node, page string, edit ...string) map[string]any {
+	t.Helper()
+	driver := filepath.Join(t.TempDir(), "driver.js")
 	require.NoError(t, os.WriteFile(driver, []byte(dealPageJourneyDriver), 0o600))
 	out, err := exec.Command(node, append([]string{driver, page}, edit...)...).CombinedOutput()
 	require.NoError(t, err, string(out))
@@ -148,8 +163,9 @@ func TestTheReceiptFaceSaysOnlyWhatWasChecked(t *testing.T) {
 	require.Empty(t, own["refusal"])
 	assert.Equal(t, "yes", own["banner"])
 	assert.Equal(t, "Your copy only · checked", own["bannerText"])
-	assert.Equal(t, []any{"passed", "passed", "not checked", "missing", "not checked"}, own["stamps"], "the deal is witnessed but the page cannot check the witness, and the other side is not in the file")
-	assert.Equal(t, "2 passed · 3 not checkable here", own["pill"], "no failure to name, and the unchecked ones are said")
+	assert.Equal(t, []any{"passed", "passed", "missing", "passed", "missing", "not checked", "not checked", "missing", "not checked"}, own["stamps"],
+		"no record is signed with the person's key, card settlement is not in the file, the deal is open, the page cannot check the witness, and the other side is not in the file")
+	assert.Equal(t, "3 passed · 6 not checkable here", own["pill"], "no failure to name, and the unchecked ones are said")
 	assert.EqualValues(t, 1, own["restsNote"], "what the words rest on is on the face")
 
 	shared := renderJourney(t, id, true)
@@ -162,7 +178,8 @@ func TestTheReceiptFaceSaysOnlyWhatWasChecked(t *testing.T) {
 	assert.Equal(t, "no", withheld["banner"])
 	assert.Equal(t, "Your copy only · not fully checked", withheld["bannerText"])
 	assert.Equal(t, "failed", withheld["stamps"].([]any)[1])
-	assert.Equal(t, "1 passed · 1 failed · 3 not checkable here", withheld["pill"], "a check that ran and failed is on the pill")
+	assert.Equal(t, "1 passed · 1 failed · 7 not checkable here", withheld["pill"], "a check that ran and failed is on the pill")
+	assert.Equal(t, "not checked", withheld["stamps"].([]any)[3], "a withheld step may be an act: the order is not passed")
 }
 
 // The sealed report's journey is facts only: no word from a wording pack,

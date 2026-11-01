@@ -410,8 +410,10 @@ func witnessCoverage(events []sealedEvent, cadence map[string]interface{}) map[s
 // bootstrap then shows the runtime's "unable to verify in this viewer"
 // state with verifyCommand, never a failed verification.
 // pageWords are the wording-pack entries the deal page reads, so the page
-// and the chat speak from one pack (capsule-cli#345).
-var pageWords = []string{"report.title"}
+// and the chat speak from one pack (capsule-cli#345): the title, and the
+// History card's size strings the receipt names a settlement's band with
+// (capsule-viewer's consumer pack, evidencebook-deal#94).
+var pageWords = []string{"report.title", "size.between", "size.range", "size.under", "size.zero"}
 
 // journeyPageWords are the words the user's own page words its journey
 // with (capsule-cli#370), as dealJourney words the report's: each move's

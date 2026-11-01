@@ -273,6 +273,10 @@
     "say.sale.new": "Listed: {item} at {price}; I'll keep each buyer in their own thread.",
     "say.sale.new.no_price": "Listed: {item}; I'll keep each buyer in their own thread.",
     "say.verify_email.failed": "{sender}'s email did not check out, so I'm not relying on it.",
-    "say.verify_email.ok": "{sender}'s email checks out: signed by {domain}."
+    "say.verify_email.ok": "{sender}'s email checks out: signed by {domain}.",
+    "size.between": "{low} – {high}",
+    "size.range": "{low} to under {high} {currency}",
+    "size.under": "under {amount}",
+    "size.zero": "zero amount, {currency}"
   }
 }
