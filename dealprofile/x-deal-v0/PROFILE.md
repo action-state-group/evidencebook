@@ -124,6 +124,10 @@ deal's log:
     anomalies. A shared copy seals the section already rewritten for its audience.
   - `nonce` is a fresh 256-bit random value, so the Capsule's `agent_input_digest` confirms
     no guess at the text.
+  - `referee` is on an adjudicator's copy only, and required there: the referee the party
+    hands the copy to, as it names it, NFC and with leading and trailing white space removed.
+    It is how each party's choice of referee is sealed (section 10, "A referee both sides
+    chose"). No other copy carries it.
 - **In the bundle:** the `x-deal-v0` extension only names the Capsule:
   `{"sealed_report": "<capsule id>"}`. The text is its disclosed payload, and any edit fails
   the disclosure check.
@@ -1196,7 +1200,8 @@ reconcile:
   outcome record it refs.
 
 **Openings (DR §5).** A `disclose --deal ID --share counterparty --to WHO` file, and a
-`disclose --deal ID --share adjudicator --to WHO` file for an adjudicator the user names, carries
+`disclose --deal ID --share adjudicator --to WHO` file for the referee the user names (its sealed
+report's `referee`), carries
 `field_openings` for the party's own final close only, keyed by its half digest. It does so when
 the close commits non-empty terms. The close's amount is a structured field, so it is carried
 even when it equals the user's spending limit or floor: the bounds are kept by field (the bound
@@ -1255,6 +1260,25 @@ files: `deal terms-result --check RESULT --copy FILE --copy FILE --party-key SIG
   checked alone.
 - **A Result made without the other party's openings** names one half where the files give two,
   and "differs" on its evidence. That is never a finding that a claim is false.
+- **The referee.** The check still runs when the two files do not name the same referee, as the
+  next paragraph says, and tells its reader which case it is, in these words: "not a referee you
+  both chose: one side named X, the other named Y", or that a file names no referee (one sealed
+  before this rule). It never says "a referee you both chose" then. These are the reader's words,
+  built from `SharedReferee`'s reason and names, not its error text.
+
+**A referee both sides chose.** Each party chooses the referee when it hands over its own
+adjudicator's copy: the copy's sealed report names it in `referee` (section 1), under that party's
+key. A referee is one both sides chose only when two adjudicator's copies, admitted as above (one
+deal, two parties, each under its pinned keys), name the same `referee`, byte for byte.
+- A reader says "a referee you both chose" only then (`dealprofile.SharedReferee`).
+- One copy alone names the referee that side chose, never both sides'. A reader says so.
+- A copy sealed before this rule names no referee, so it never counts as both sides' choice.
+- `SharedReferee` reads payloads its caller admitted: it checks no signature, and it compares
+  the names as sealed, so a referee named in another case or with other characters is another
+  referee. Its `different` reason carries both names (`Named`), so the parties can see the
+  mismatch.
+- The match is on the name each side typed, not on a key: "both chose" means both sides named
+  the same referee, not that the referee is a verified party.
 
 ## 11. The History card's deal entries (`standard_history/1`)
 

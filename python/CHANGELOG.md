@@ -18,6 +18,9 @@
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is
   committed by digest only) and write it as a verifier reads it;
   `test/interop/goose-capsule` checks it in Go.
+- A receipt's referee is one both sides chose (x-deal-v0, evidencebook#277): `Report.referee`, required on
+  an adjudicator's report and refused on the others; `normalize_referee`, `report_referee` and `shared_referee`
+  (with `RefereeError` and its reasons), byte for byte with Go's `dealprofile` over the parity vectors.
 
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (evidencebook#283)
 
