@@ -16,7 +16,8 @@
   Python package.
 - Fixed: a domain with an `xn--` label whose part before the last hyphen holds
   non-ASCII characters (`xn--zcaé-.com`) is read as Go reads it, not refused.
-- A name with Cherokee letters folds as CaseFolding.txt does here; Go's fold differs (evidencebook#283).
+- A name with Cherokee letters folds as CaseFolding.txt does, which Go's `dealprofile` now matches
+  (evidencebook#283); the parity vectors pin it.
 
 ## 0.0.13 (2026-11-01)
 

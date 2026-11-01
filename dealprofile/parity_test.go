@@ -107,6 +107,8 @@ var normalizeCases = []struct{ kind, raw string }{
 	{"name", "ǅungla"}, {"name", "ﬁnance corp"}, {"name", "A\x1cB"}, {"name", "A\u0085B C"}, {"name", "A\x0bB"},
 	{"name", "---"}, {"name", "the"}, {"name", "llc inc"}, {"name", "The The Co"},
 	{"name", "O'Brien & Sons, Ltd."}, {"name", "日本語 株式会社"}, {"name", "Ａｂｃ"}, {"name", "a­b"}, {"name", "x_y¿z¡"},
+	// Cherokee: both cases of one name fold to the capitals (CaseFolding.txt), not to each other
+	{"name", "Ꭰ"}, {"name", "ꭰ"}, {"name", "ᏣᎳᎩ ᎠᏂᏴᏫᏯ"}, {"name", "ꮳꭳꭹ ꭰꮒꮄꮻꮿ"}, {"name", "Ᏸ ᏸ"},
 	// phones
 	{"phone", "(415) 555-0199"}, {"phone", "+1 415 555 0199 ext. 12"}, {"phone", "415-555-0199 x7"}, {"phone", "415-555-0199 #7"},
 	{"phone", "1 415 555 0199"}, {"phone", "+44 20 7946 0958"}, {"phone", "+4"}, {"phone", "12345"}, {"phone", "+1234567"},

@@ -436,8 +436,10 @@ different fingerprints.
 **Reference behavior.** The table's "lowercase", "casefold" and "IDNA" are what the Go package
 `dealprofile` does, and the Python package (`evidencebook.deal`) matches it: lowercase is the
 simple one-to-one mapping per character (U+0130 → `i`, not `i` + U+0307); trim and token splitting
-use the White_Space property; casefold is `golang.org/x/text/cases.Fold`; the domain is mapped and
-validated as UTS 46 (non-transitional, STD3 rules, the hyphen and joiner checks, and the Bidi Rule
+use the White_Space property; casefold is `golang.org/x/text/cases.Fold`, except that the Cherokee
+small forms (U+AB70..U+ABBF, U+13F8..U+13FD) are mapped to the capitals (U+13A0..U+13F5), as
+Unicode's CaseFolding.txt folds them (`cases.Fold` swaps Cherokee case instead), so both cases of
+one Cherokee name have one fingerprint; the domain is mapped and validated as UTS 46 (non-transitional, STD3 rules, the hyphen and joiner checks, and the Bidi Rule
 over every label of a domain that has a right-to-left one; not the IDNA 2008 character classes, and
 no length limits), then reduced with the Public Suffix List snapshot of `golang.org/x/net` v0.59.0.
 `dealprofile/testdata/parity-vectors.json` holds Go's answers for inputs beyond the fixtures, with

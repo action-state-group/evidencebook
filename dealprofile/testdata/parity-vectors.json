@@ -135,6 +135,36 @@
       "fp": "1a445a0eada1624324c38a5e62ae7001c46847024ac4fd98305ed5ea7f0d868d"
     },
     {
+      "kind": "name",
+      "raw": "Ꭰ",
+      "normalized": "Ꭰ",
+      "fp": "38f92e40825fbfd8c39e96cba498d269e5e84144d7f4d8a7da8eaf16a427c201"
+    },
+    {
+      "kind": "name",
+      "raw": "ꭰ",
+      "normalized": "Ꭰ",
+      "fp": "38f92e40825fbfd8c39e96cba498d269e5e84144d7f4d8a7da8eaf16a427c201"
+    },
+    {
+      "kind": "name",
+      "raw": "ᏣᎳᎩ ᎠᏂᏴᏫᏯ",
+      "normalized": "ᏣᎳᎩ ᎠᏂᏴᏫᏯ",
+      "fp": "338b6ce9c21f1d08d638db7404e1e8579e7014df0e8d25d8a7cf40dc3fec3f4f"
+    },
+    {
+      "kind": "name",
+      "raw": "ꮳꭳꭹ ꭰꮒꮄꮻꮿ",
+      "normalized": "ᏣᎣᎩ ᎠᏂᎴᏫᏯ",
+      "fp": "99d04110cd7b92616579480845a06546a924ec4f5c25fdea04bea4aebb0feb6e"
+    },
+    {
+      "kind": "name",
+      "raw": "Ᏸ ᏸ",
+      "normalized": "Ᏸ Ᏸ",
+      "fp": "556c3e4db724e94b8bd8765319220d33c9d1f74102ceeadaeffcb3362c6bae23"
+    },
+    {
       "kind": "phone",
       "raw": "(415) 555-0199",
       "normalized": "+14155550199",

@@ -8,7 +8,8 @@ may contain identifiers is carried as a salted commitment. Raw values, the
 per-deal key and the commitment nonces stay in the producer's local store.
 
 Go's string functions are matched rune for rune: ``strings.ToLower`` is the
-simple (one-to-one) lowercase mapping, ``cases.Fold`` full case folding,
+simple (one-to-one) lowercase mapping, ``cases.Fold`` full case folding (with
+the Cherokee small forms mapped to the capitals, as CaseFolding.txt folds them),
 ``unicode.IsPunct`` the Unicode punctuation categories, ``strings.TrimSpace``
 and ``strings.Fields`` the White_Space property (not Python's ``str.strip``,
 which also strips U+001C to U+001F), and RE2's ``\\d`` and ``\\s`` are ASCII.
@@ -105,15 +106,10 @@ def go_lower(s: str) -> str:
 
 
 def fold(s: str) -> str:
-    """Go ``cases.Fold().String``: full case folding, except that x/text
-    folds the capital Cherokee letters (U+13A0..U+13F5) to their small forms
-    (U+AB70..U+ABBF, U+13F8..U+13FD), where Unicode's CaseFolding.txt, which
-    ``str.casefold`` follows, folds the small forms to the capitals."""
-    return "".join(_CHEROKEE.get(c) or c.casefold() for c in s)
-
-
-_CHEROKEE = {**{chr(0x13A0 + i): chr(0xAB70 + i) for i in range(0x50)},
-             **{chr(0x13F0 + i): chr(0x13F8 + i) for i in range(6)}}
+    """Full case folding per Unicode's CaseFolding.txt, which ``str.casefold`` follows. Go's
+    ``cases.Fold`` swaps Cherokee case instead, so ``dealprofile`` maps the small Cherokee forms to
+    the capitals after folding and agrees with this."""
+    return s.casefold()
 
 
 def _nfc(s: str) -> str:

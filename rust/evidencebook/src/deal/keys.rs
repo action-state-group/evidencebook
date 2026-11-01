@@ -8,8 +8,9 @@
 //! producer's local store.
 //!
 //! Go's string functions are matched rune for rune: `strings.ToLower` is the
-//! simple (one-to-one) lowercase mapping, `cases.Fold` full case folding,
-//! `unicode.IsPunct` the Unicode punctuation categories, `strings.TrimSpace`
+//! simple (one-to-one) lowercase mapping, `cases.Fold` full case folding
+//! (with the Cherokee small forms mapped to the capitals, as CaseFolding.txt
+//! folds them), `unicode.IsPunct` the Unicode punctuation categories, `strings.TrimSpace`
 //! and `strings.Fields` the White_Space property, and RE2's `\d` and `\s`
 //! are ASCII.
 
@@ -92,7 +93,8 @@ pub(crate) fn go_lower(s: &str) -> String {
     s.chars().map(|c| cm.simple_lowercase(c)).collect()
 }
 
-/// Go `cases.Fold().String`: full case folding.
+/// Full case folding per CaseFolding.txt, which `dealprofile` matches (Cherokee small forms fold to
+/// the capitals; the parity vectors pin it).
 pub(crate) fn fold(s: &str) -> String {
     CaseMapper::new().fold_string(s).into_owned()
 }

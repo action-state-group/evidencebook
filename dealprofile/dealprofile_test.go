@@ -175,3 +175,10 @@ func TestStepCapsuleRefusals(t *testing.T) {
 	_, _, err = StepCapsule(bad)
 	assert.ErrorContains(t, err, "not follows or confirms")
 }
+
+func TestFoldCaseTakesBothCherokeeCasesToTheCapitals(t *testing.T) {
+	assert.Equal(t, "Ꭰ", foldCase.String("ꭰ"))
+	assert.Equal(t, "Ꭰ", foldCase.String("Ꭰ"))
+	assert.Equal(t, "Ᏼ", foldCase.String("ᏼ"))
+	assert.Equal(t, "ss", foldCase.String("ß"), "other full folds are unchanged")
+}
