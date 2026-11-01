@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`
+  (was the pseudo-version at the commit that adds `RequestSent`) and
+  capsule-viewer `v0.8.0` (capsule-viewer#196, #197, #200, #201) and
+  checkpointed-local-log `v0.3.0` (was `v0.1.0`), and `report/go.mod` requires
+  capsule-cli `v0.1.0-rc28`, capsule-viewer `v0.8.0` and agent-action-capsule
+  `v0.18.0`. The `report` fixtures' pages (`4-monthly-outcome`,
+  `5-monthly-compliance`) are rewritten with the viewer's page runtime, shell
+  styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
+  with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
+
 ## v0.12.0 (2026-10-31)
 
 ### Added: the book answers `evidence-interop/1` requests (evidencebook#248)
