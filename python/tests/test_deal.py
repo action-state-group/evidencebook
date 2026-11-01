@@ -437,7 +437,7 @@ PARITY = load(TESTDATA / "parity-vectors.json")
 
 
 def test_parity_corpus_sizes():
-    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (126, 95, 75)
+    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (131, 95, 75)
 
 
 @pytest.mark.parametrize("x", PARITY["normalize"], ids=[f"{x['kind']}:{x['raw']!r}" for x in PARITY["normalize"]])
@@ -527,10 +527,9 @@ def test_the_counterparty_class_seam():
     assert "counterparty_class" not in entry
 
 
-def test_fold_is_x_texts_for_cherokee():
-    # Go's current fold swaps Cherokee case (capitals to small forms, small forms to capitals) where
-    # CaseFolding.txt folds both to the capitals; the vectors do not pin it.
-    assert fold("Ꭰ") == "ꭰ" and fold("ꭰ") == "Ꭰ"
+def test_fold_takes_both_cherokee_cases_to_the_capitals():
+    # CaseFolding.txt; Go (dealprofile) and Rust agree, and the parity vectors pin it.
+    assert fold("Ꭰ") == "Ꭰ" and fold("ꭰ") == "Ꭰ" and fold("ᏸ") == "Ᏸ"
 
 
 def test_parity_vectors_hold_only_characters_the_running_unicode_assigns():

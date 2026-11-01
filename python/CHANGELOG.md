@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (evidencebook#283)
+
+- `evidencebook.deal` no longer copies `cases.Fold`'s Cherokee case swap; it
+  uses CaseFolding.txt (`str.casefold`), which Go's `dealprofile` now matches.
+
 - The Goose loop reference, `python/examples/goose/` (evidencebook#265): a Goose MCP server whose
   node keeps one book per deal of x-deal-v0 steps on a shelf, imports an existing capsule-emit
   ledger as a host log without re-signing it, runs the cadence, and answers `history_card/1` per

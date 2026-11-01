@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
+
+- `dealprofile`: `cases.Fold` swaps Cherokee case, so `Ꭰ` and `ꭰ` had different
+  fingerprints and the personal-data scan missed a local value in the other case.
+  The fold now follows CaseFolding.txt (small forms to capitals), as the Rust
+  crate and Python already do or now do. **The fingerprint of a name written in
+  Cherokee changes**; a deal already sealed with one no longer matches.
+  PROFILE.md section 4 states the rule; `testdata/parity-vectors.json` pins it.
+
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc29 and capsule-viewer 0.9.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc29`, evidencebook `v0.12.1`

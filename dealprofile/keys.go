@@ -108,7 +108,28 @@ func normDomain(v string) (string, error) {
 	return out, nil
 }
 
-var foldCase = cases.Fold()
+var caseFolder = cases.Fold()
+
+// foldCase is full case folding as Unicode's CaseFolding.txt defines it.
+// x/text's cases.Fold swaps Cherokee case instead (the capitals U+13A0..U+13F5
+// fold to the small forms U+AB70..U+ABBF and U+13F8..U+13FD, and the small
+// forms to the capitals), so the two cases of one Cherokee name would differ;
+// CaseFolding.txt folds the small forms to the capitals, and so does this.
+type foldCaser struct{}
+
+var foldCase foldCaser
+
+func (foldCaser) String(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0xAB70 && r <= 0xABBF:
+			return r - 0xAB70 + 0x13A0
+		case r >= 0x13F8 && r <= 0x13FD:
+			return r - 0x13F8 + 0x13F0
+		}
+		return r
+	}, caseFolder.String(s))
+}
 
 func normName(v string) (string, error) {
 	v = foldCase.String(norm.NFC.String(v))

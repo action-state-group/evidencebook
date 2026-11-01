@@ -92,7 +92,8 @@ pub(crate) fn go_lower(s: &str) -> String {
     s.chars().map(|c| cm.simple_lowercase(c)).collect()
 }
 
-/// Go `cases.Fold().String`: full case folding.
+/// Full case folding per CaseFolding.txt, which `dealprofile` matches (Cherokee small forms fold to
+/// the capitals; the parity vectors pin it).
 pub(crate) fn fold(s: &str) -> String {
     CaseMapper::new().fold_string(s).into_owned()
 }

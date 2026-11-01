@@ -39,7 +39,7 @@ fn corpus_sizes() {
             list(&v, "check").len(),
             list(&v, "history").len()
         ),
-        (126, 95, 75)
+        (131, 95, 75)
     );
 }
 
@@ -196,19 +196,6 @@ fn minor_units_are_gos() {
             "{code:?}"
         );
     }
-}
-
-#[test]
-fn cherokee_fold_is_casefolding_txt_not_gos() {
-    // A recorded divergence (evidencebook#283): Go's `cases.Fold` swaps
-    // Cherokee case (capitals to small forms, small forms to capitals) where
-    // CaseFolding.txt folds both to the capitals, which is what ICU4X (and so
-    // this crate) does. The vectors do not pin it; a name with Cherokee letters
-    // fingerprints differently in Rust until #283 settles which fold the
-    // profile means. This test fails, and is to be updated, when it does.
-    let name = |s: &str| deal::normalize("name", s).unwrap();
-    assert_eq!(name("Ꭰ"), "Ꭰ");
-    assert_eq!(name("ꭰ"), "Ꭰ");
 }
 
 #[test]
