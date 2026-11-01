@@ -216,8 +216,9 @@ fn non_ascii_alabels_are_read_as_go_reads_them() {
     let n = |s: &str| deal::normalize("domain", s);
     // UTS46 maps an ideographic full stop before it splits the labels.
     assert_eq!(n("xn--zcaé-。com").unwrap(), "zcaé.com");
-    // A decoded label must hold only characters valid as written.
-    assert!(n("xn--ﬁcaé-.com").is_err());
+    // The whole name is mapped before an xn-- label is decoded (Go, Python).
+    assert_eq!(n("xn--ﬁcaé-.com").unwrap(), "ficaé.com");
+    assert_eq!(n("xn--µcaé-.com").unwrap(), "μcaé.com");
 }
 
 #[test]

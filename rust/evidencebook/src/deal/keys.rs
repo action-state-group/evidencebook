@@ -242,7 +242,12 @@ fn decode_non_ascii_alabels(uts46: &Uts46, v: &str) -> Result<String, NotNormali
     for label in v.split('.') {
         match label.strip_prefix("xn--") {
             Some(rest) if !label.is_ascii() => {
-                let u = punycode_decode(rest).ok_or(NotNormalizable)?;
+                // Go maps the whole name before it decodes, so a character
+                // UTS46 maps (ﬁ, µ) is mapped here too.
+                let (mapped, ok) =
+                    uts46.to_unicode(rest.as_bytes(), AsciiDenyList::STD3, Hyphens::Allow);
+                ok.map_err(|_| NotNormalizable)?;
+                let u = punycode_decode(&mapped).ok_or(NotNormalizable)?;
                 if u.is_empty() || u.is_ascii() || nfc(&u) != u {
                     return Err(NotNormalizable);
                 }
