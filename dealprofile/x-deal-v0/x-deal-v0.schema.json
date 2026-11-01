@@ -323,7 +323,7 @@
     "body_evidence": {
       "type": "object", "additionalProperties": false,
       "required": ["source", "verified"],
-      "dependentRequired": { "wrapped": ["wrapped_octets", "wrapped_held"], "wrapped_octets": ["wrapped"], "wrapped_held": ["wrapped"], "carrier_headers_commitment": ["wrapped"] },
+      "dependentRequired": { "wrapped": ["wrapped_octets", "wrapped_held"], "wrapped_octets": ["wrapped"], "wrapped_held": ["wrapped"], "carrier_headers_commitment": ["wrapped"], "preimage": ["received_to"] },
       "if": { "required": ["wrapped"] }, "then": { "properties": { "source": { "const": "wrapped_object" } } },
       "properties": {
         "source": { "$ref": "#/$defs/ns_token" },
@@ -357,6 +357,10 @@
             "fp_alg": { "const": "hmac-sha256-deal-key" },
             "payee": { "$ref": "#/$defs/hex64" }
           }
+        },
+        "preimage": {
+          "description": "On evidence of a Lightning payment the user received (with received_to): the payment's preimage, 64 lowercase hex, the proof that it settled. Its SHA-256 is the leg's payment_ref value (ln.payment_hash), which a verifier holding the step's Capsule checks. Never the invoice.",
+          "$ref": "#/$defs/hex64"
         }
       }
     },

@@ -17,6 +17,10 @@
   no contract every tier is undecided, never must-have. A page built with a
   contract gets no permalink.
 
+### Added: x-deal-v0 evidence may carry a Lightning payment's preimage
+
+- x-deal-v0: evidence of a payment the user received may carry `preimage` (64 lowercase hex, only with `received_to`), a Lightning payment's proof of settlement; its SHA-256 is the step's `ln.payment_hash` (Steven, Buzz 79b46dfb item 5: seal the preimage, not the BOLT11). `dealprofile.PreimageMatches` and `fixtures/preimage-vectors.json` give the check; the Rust types carry the member (devcon-workshop#12).
+
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`

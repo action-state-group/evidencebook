@@ -1434,6 +1434,15 @@ def local_store_values():
     return [x["raw"] for x in v["vectors"]] + [x["text"] for x in v["commitments"] if len(x["text"]) >= 24]
 
 
+def preimage_matches(preimage: str, payment_hash: str) -> bool:
+    """body_evidence preimage against the leg's ln.payment_hash: SHA-256 over the 32 octets the hex
+    names, both 64 lowercase hex (dealprofile.PreimageMatches)."""
+    h64 = re.compile(r"^[0-9a-f]{64}$")
+    if not (h64.match(preimage) and h64.match(payment_hash)):
+        return False
+    return hashlib.sha256(bytes.fromhex(preimage)).hexdigest() == payment_hash
+
+
 def run_fixtures() -> int:
     SKIPPED_NEEDS_JSONSCHEMA.clear()
     bad = 0
@@ -1456,6 +1465,10 @@ def run_fixtures() -> int:
         ok = jcs(x["document"]).decode("utf-8") == x["text"] and commitment(x["nonce"], x["text"]) == x["bounds_commitment"]
         bad += not ok
         print(f"{'ok  ' if ok else 'FAIL'} commercial-bounds/v0 {x['document']['min_total_minor']:<16} {x['bounds_commitment'][:16]}…")
+    for x in load(FIX / "preimage-vectors.json")["vectors"]:
+        ok = preimage_matches(x["preimage"], x["payment_hash"]) == x["matches"]
+        bad += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} preimage {x['label']}")
     store = local_store_values()
 
     # Four positive chains: x-deal-v0 throughout, one sealed in the typed action
