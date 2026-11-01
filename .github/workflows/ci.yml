@@ -454,6 +454,32 @@ jobs:
             done
           done
 
+  goose:
+    # The Goose loop reference (python/examples/goose, evidencebook#265): its
+    # tests, the scripted two-node run over MCP stdio, and Go's check that
+    # each node's standard_history/1 card is the one Go derives from its shelf.
+    name: Goose loop reference (scripted run, cards Go re-derives)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install the package and the MCP SDK
+        run: python -m pip install "./python[test]" "mcp==2.3.0"
+      - name: Test the reference, run it, and check its cards with Go
+        env:
+          GOOSE_GO_CHECK: "1"
+        run: python -m pytest -q python/examples/goose/tests
+
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
     runs-on: ubuntu-latest

@@ -47,6 +47,11 @@ dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/debug/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
 
+# The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
+# scripted two-node run over MCP stdio, and Go's check of each node's card
+(cd python && .venv/bin/pip install "mcp==2.3.0")
+GOOSE_GO_CHECK=1 python/.venv/bin/python -m pytest -q python/examples/goose/tests
+
 # Release helper
 python -m pytest -q .github/test_release.py
 

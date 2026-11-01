@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Goose loop reference, `python/examples/goose/` (evidencebook#265): a Goose MCP server whose
+  node keeps one book per deal of x-deal-v0 steps on a shelf, imports an existing capsule-emit
+  ledger as a host log without re-signing it, runs the cadence, and answers `history_card/1` per
+  book and `standard_history/1` as of a tick. CI runs a scripted two-node run over MCP stdio and
+  checks each node's card with Go (`test/interop/goose-card`). It is an example, not part of the
+  package.
 - `counterparty_class` (evidencebook#273): the vendored x-deal-v0 schema allows the optional top-level
   member on a pay check, and `standard_history_deal` fills the entry's `counterparty_class` from the
   one record that carries it (a pay check, one of SH's three values); two carriers, a record that is
