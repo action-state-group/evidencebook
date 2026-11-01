@@ -36,6 +36,13 @@
         "twin_bracket_id": { "type": "string" }
       }
     },
+    "reproduction": {
+      "description": "Marks a record of a reproduced scratch book: committed_at was given by the caller, not read from a clock (evidencebook#232). Absent in a book that stamps the wall clock.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clock"],
+      "properties": { "clock": { "const": "caller" } }
+    },
     "statement": {}
   },
   "dependentRequired": {

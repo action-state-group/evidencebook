@@ -144,6 +144,15 @@
   styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
   with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
 
+### Added: the `reproduction` header member and `Config.Reproduction` (#232)
+
+- A reproduced scratch book takes the caller's time (`Config.Now`) on every record and
+  checkpoint and marks each record's digested header `reproduction: {"clock": "caller"}`, so
+  two runs over the same inputs give byte-identical records and a reader can tell the time is
+  not a commit time. A book keeps one clock kind for its whole history: writing the other kind
+  into it is `ErrInvalid`, a checkpoint included (the Rust and Python mirrors read and write the marker but do not
+  guard against mixing). The published `record-header.schema.json` accepts the member. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
+
 ## v0.12.2 (2026-11-01)
 
 Go module only. The `report` and `capsulectl` entries above ship with their own tags.

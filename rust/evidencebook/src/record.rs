@@ -185,8 +185,23 @@ pub struct Header {
     pub counterparty_ref: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub correlation: BTreeMap<String, String>,
+    /// Marks a record of a reproduced scratch book (evidencebook#232): its
+    /// `committed_at` was given by the caller, not read from a clock. It is
+    /// part of the digested header. Absent in a book that stamps the wall clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reproduction: Option<Reproduction>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statement: Option<serde_json::Value>,
+}
+
+/// The only clock a [`Reproduction`] names: the caller gave the times.
+pub const REPRODUCTION_CLOCK_CALLER: &str = "caller";
+
+/// The header marker of a reproduced scratch book.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Reproduction {
+    pub clock: String,
 }
 
 impl Header {
@@ -221,6 +236,14 @@ impl Header {
             return Err(RecordError::Invalid(format!(
                 "payload commitment {digest:?} is not a lowercase SHA-256 digest"
             )));
+        }
+        if let Some(r) = &self.reproduction {
+            if r.clock != REPRODUCTION_CLOCK_CALLER {
+                return Err(RecordError::Invalid(format!(
+                    "reproduction clock {:?} is not {REPRODUCTION_CLOCK_CALLER:?}",
+                    r.clock
+                )));
+            }
         }
         for link in &self.links {
             if !is_digest(&link.target) {
@@ -284,6 +307,7 @@ mod tests {
             principal_ref: None,
             counterparty_ref: None,
             correlation: BTreeMap::new(),
+            reproduction: None,
             statement: None,
         }
     }
@@ -391,5 +415,25 @@ mod tests {
         assert_eq!(v["links"][0]["type"], "supersedes");
         assert_eq!(h.links_to(LinkType::Supersedes), vec!["c".repeat(64)]);
         assert!(h.links_to(LinkType::Cites).is_empty());
+    }
+
+    #[test]
+    fn a_reproduction_marker_round_trips_and_is_validated() {
+        let mut h = header();
+        h.reproduction = Some(Reproduction {
+            clock: REPRODUCTION_CLOCK_CALLER.into(),
+        });
+        assert!(h.validate().is_ok());
+        let v = serde_json::to_value(&h).unwrap();
+        assert_eq!(v["reproduction"], serde_json::json!({"clock": "caller"}));
+        assert_eq!(serde_json::from_value::<Header>(v).unwrap(), h);
+        assert!(serde_json::to_value(header())
+            .unwrap()
+            .get("reproduction")
+            .is_none());
+        h.reproduction = Some(Reproduction {
+            clock: "wall".into(),
+        });
+        assert!(h.validate().is_err());
     }
 }

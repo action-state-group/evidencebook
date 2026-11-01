@@ -135,6 +135,16 @@ func (c Correlation) empty() bool {
 	return c == Correlation{}
 }
 
+// ReproductionClockCaller is the only clock a Reproduction names: the
+// caller gave the times.
+const ReproductionClockCaller = "caller"
+
+// Reproduction is the header marker of a reproduced scratch book
+// (evidencebook#232).
+type Reproduction struct {
+	Clock string `json:"clock"`
+}
+
 // Header is the durable, privacy-minimized record header (Evidence Layer §4).
 // Its canonical JSON is committed as the record capsule's agent_input_digest,
 // so every field below is fixed at commit.
@@ -160,7 +170,14 @@ type Header struct {
 	PrincipalRef     string            `json:"principal_ref,omitempty"`
 	CounterpartyRef  string            `json:"counterparty_ref,omitempty"`
 	Correlation      *Correlation      `json:"correlation,omitempty"`
-	Statement        json.RawMessage   `json:"statement,omitempty"`
+	// Reproduction marks a record of a reproduced scratch book: its
+	// committed_at (and the book's checkpoint times) were given by the
+	// caller, not read from a clock, so no reader may take them as a real
+	// commit time. It is part of the digested header, so it cannot be
+	// stripped without changing the record's identity. Absent in a book that
+	// stamps the wall clock.
+	Reproduction *Reproduction   `json:"reproduction,omitempty"`
+	Statement    json.RawMessage `json:"statement,omitempty"`
 }
 
 // Record is one committed entry: its identity, position, and header.
@@ -235,6 +252,9 @@ func validateHeader(h Header) error {
 		if !hex64.MatchString(digest) {
 			return fmt.Errorf("%w: payload commitment %q is not a lowercase SHA-256 digest", ErrInvalid, digest)
 		}
+	}
+	if h.Reproduction != nil && h.Reproduction.Clock != ReproductionClockCaller {
+		return fmt.Errorf("%w: reproduction clock %q is not %q", ErrInvalid, h.Reproduction.Clock, ReproductionClockCaller)
 	}
 	if h.Links == nil {
 		return fmt.Errorf("%w: links must be present, possibly empty", ErrInvalid)

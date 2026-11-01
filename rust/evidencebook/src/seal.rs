@@ -131,6 +131,7 @@ pub fn header(
         principal_ref: None,
         counterparty_ref: None,
         correlation: Default::default(),
+        reproduction: None,
         statement: (!entry.statement.is_null()).then(|| entry.statement.clone()),
     })
 }

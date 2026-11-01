@@ -41,6 +41,15 @@ type Config struct {
 	// only when Checkpoint is called or an answer requires it.
 	CheckpointEvery uint64
 	Now             func() time.Time
+	// Reproduction makes this a reproduced scratch book: Now is the
+	// caller's given time, not a clock, and every record carries the
+	// Reproduction marker. It requires Now. A book is one or the other for
+	// its whole history: opened the other way, its writes are refused
+	// (ErrInvalid), checkpoints included, so a reproduction can be compared but
+	// never extended as a live book. A live book is not protected from a
+	// caller-supplied Now by this alone; capsulectl-book gives Now only to a
+	// Reproduction book.
+	Reproduction bool
 
 	// Responder is the responder's cost and abuse policy for Respond
 	// (FR-37). The zero value answers the most specific reason with no rate
@@ -65,6 +74,7 @@ type Book struct {
 	id, operator, developer string
 	checkpointEvery         uint64
 	now                     func() time.Time
+	reproduction            bool
 
 	store       Store
 	commitments Substrate
@@ -107,6 +117,9 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 	if cfg.Store == nil || cfg.Substrate == nil || cfg.Originals == nil || cfg.Signer == nil {
 		return nil, fmt.Errorf("%w: store, substrate, originals and signer are required", ErrInvalid)
 	}
+	if cfg.Reproduction && cfg.Now == nil {
+		return nil, fmt.Errorf("%w: a reproduction book needs the caller's time (Now)", ErrInvalid)
+	}
 	if err := cfg.Responder.validate(); err != nil {
 		return nil, err
 	}
@@ -116,7 +129,7 @@ func Open(ctx context.Context, cfg Config) (*Book, error) {
 	b := &Book{
 		responder: cfg.Responder, standardHistory: cfg.StandardHistory, derivations: make(map[string]derivationEntry),
 		id: cfg.BookID, operator: cfg.Operator, developer: cfg.Developer,
-		checkpointEvery: cfg.CheckpointEvery, now: cfg.Now,
+		checkpointEvery: cfg.CheckpointEvery, now: cfg.Now, reproduction: cfg.Reproduction,
 		store: cfg.Store, commitments: cfg.Substrate, originals: cfg.Originals, signer: cfg.Signer,
 		operational: cfg.Operational, index: cfg.Authenticated, discovery: cfg.Discovery,
 		records: make(map[string]Record), roots: make(map[string]IndexRoot),
@@ -470,6 +483,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := checkOriginals(originals); err != nil {
 		return Record{}, err
 	}
+	if err := b.refuseOtherClockKind(); err != nil {
+		return Record{}, err
+	}
 	seq := uint64(len(b.order)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
 	header := Header{
@@ -479,6 +495,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 		Links:       append([]Link{}, entry.Links...),
 		SubjectRef:  entry.SubjectRef, PrincipalRef: entry.PrincipalRef, CounterpartyRef: entry.CounterpartyRef,
 		Statement: entry.Statement,
+	}
+	if b.reproduction {
+		header.Reproduction = &Reproduction{Clock: ReproductionClockCaller}
 	}
 	if statementAt != nil {
 		if header.Statement, err = statementAt(seq, header.CommittedAt); err != nil {
@@ -699,6 +718,9 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Checkpoint{}, err
 	}
+	if err := b.refuseOtherClockKind(); err != nil {
+		return Checkpoint{}, err
+	}
 	b.checkpointing = true
 	defer func() { b.checkpointing = false }()
 	for _, index := range b.index {
@@ -762,4 +784,20 @@ func (b *Book) latestLocked(ctx context.Context) (Checkpoint, bool, error) {
 
 func (b *Book) storedLocked(ctx context.Context, recordID string) (StoredRecord, error) {
 	return b.store.GetRecord(ctx, recordID)
+}
+
+// refuseOtherClockKind refuses a write (a record or a checkpoint) into a book
+// of the other clock kind than this Book was opened as.
+func (b *Book) refuseOtherClockKind() error {
+	if n := len(b.log); n > 0 && (b.log[n-1].Header.Reproduction != nil) != b.reproduction {
+		return fmt.Errorf("%w: this book's records are %s, so it cannot be written as a %s book", ErrInvalid, markedWord(!b.reproduction), markedWord(b.reproduction))
+	}
+	return nil
+}
+
+func markedWord(reproduction bool) string {
+	if reproduction {
+		return "reproduction (caller-timed)"
+	}
+	return "live (wall-clock)"
 }
