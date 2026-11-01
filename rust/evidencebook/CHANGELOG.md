@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.12 (2026-10-31)
+
 ### Breaking: `deal::EvidenceBody` has a `preimage` field (evidencebook#260, evidencebook#269)
 
 - `deal::EvidenceBody` gains `preimage: Option<String>`, the x-deal-v0
