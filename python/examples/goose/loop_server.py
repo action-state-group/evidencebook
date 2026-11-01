@@ -320,11 +320,13 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     else:
         chain = n.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
     steps = chain.respond(_now(), asked, verified["records"][-1]["digest"])
+    if resumed:
+        n.ensure_opening(deal_id)  # a crash after the last step but before its opening was recorded
     if not steps:
         raise gn.Refused(f"deal {deal_id} is already answered")
     sealed = n.seal(chain, steps) if resumed else n.open_deal(chain, steps)
     if resumed:
-        n.ensure_opening(deal_id)  # an answer cut short before its opening was recorded
+        n.ensure_opening(deal_id)  # an answer cut short part-way through its steps
     return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 

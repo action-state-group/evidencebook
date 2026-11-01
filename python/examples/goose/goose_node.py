@@ -661,8 +661,8 @@ class Node:
             if len(cited) != 1:
                 raise Refused(f"deal {deal_id}'s first step cites no single admission")
             admission = next((s for r, s in self.notes(ADMITTED) if r.record_id == cited[0]), None)
-            if admission is None:
-                raise Refused(f"deal {deal_id}'s first step cites {cited[0]}, which is no admission of this node")
+            if admission is None or admission.get("decision") != "GO":
+                raise Refused(f"deal {deal_id}'s first step cites {cited[0]}, which is no GO admission of this node")
             return self.note(DEAL_OPENED, {"deal_id": deal_id, "deal_book": f"deal/{deal_id}",
                                            "first_step": first.record_id, "peer": admission["peer"],
                                            "admission": cited[0]},

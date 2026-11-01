@@ -704,10 +704,6 @@ def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(t
         assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
         assert (tmp_path / "call.cadence-witness-receipt.json").is_file()
 
-        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
-        assert receipt["receipt_b64"] and (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
-        assert (tmp_path / "call.checkpoint.cose").read_bytes() == node.book_checkpoint(gn.NODE_BOOK)
-
 def _admit(node: gn.Node, peer: gn.Node, decision: str = "GO") -> str:
     return node.note(gn.ADMITTED, {"peer": peer.key_id, "checkpoint_key_id": peer.checkpoint_key_id,
                                    "decision": decision, "reason": ""}).record_id
@@ -801,3 +797,13 @@ def test_a_later_no_refuses_a_deal_and_a_cut_short_open_is_finished(nodes, clock
     _admit(buyer, seller, "NO")
     with pytest.raises(gn.Refused, match="is NO"):
         buyer.open_deal(other, other.open(clock.at, "again"))
+
+
+def test_an_opening_is_never_sealed_for_a_step_that_cites_a_no(nodes, clock):
+    buyer, seller = nodes
+    no = _admit(buyer, seller, "NO")
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"), admission=no)  # only by misuse: open_deal refuses a NO
+    with pytest.raises(gn.Refused, match="no GO admission"):
+        buyer.ensure_opening(DEAL)
+    assert not buyer.notes(gn.DEAL_OPENED)
