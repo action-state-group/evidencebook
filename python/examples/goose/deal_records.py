@@ -181,6 +181,15 @@ class DealChain:
     def open(self, at: datetime, asked: str) -> list[Step]:
         """The deal's first steps: the baseline, and for a seller its task
         authority. ``asked`` is the user's own words, committed."""
+        if self.records:
+            raise ValueError(f"deal {self.deal_id} is already open")
+        n = len(self._built)
+        self._baseline(at, asked)
+        if self._seller:
+            self._task_authority(at, asked)
+        return self._since(n)
+
+    def _baseline(self, at: datetime, asked: str) -> Step:
         t = self.terms
         commitment, nonce = _commit(asked)
         intent: dict[str, Any] = {"verbatim_commitment": commitment, "asked": {"item": t.item},
@@ -190,35 +199,42 @@ class DealChain:
         body = {"deal_type": "purchase", "intent": intent,
                 "terms": {"item": t.item, "price_minor": t.price_minor, "currency": t.currency},
                 "recourse": {"rail": t.rail, "refundable": t.refundable}}
-        if self.records:
-            raise ValueError(f"deal {self.deal_id} is already open")
-        steps = [self._step(self._untyped(deal.TYPE_BASELINE, at, body, channel="app_chat",
-                                          counterparty=self._counterparty(deal.FP_ALG)),
-                            at, {"open": {"asked": asked, "peer": self.peer}, "nonces": {"verbatim": nonce}})]
-        if self._seller:
-            commitment, nonce = _commit(asked)
-            steps.append(self._step(self._typed(deal.TYPE_TASK_AUTHORITY, at,
-                                                {"verbatim_commitment": commitment, "allowed": ["offer", "commit"]},
-                                                [("source", self.records[0][0])]),
-                                    at, {"nonces": {"verbatim": nonce}}))
-        return steps
+        return self._step(self._untyped(deal.TYPE_BASELINE, at, body, channel="app_chat",
+                                        counterparty=self._counterparty(deal.FP_ALG)),
+                          at, {"open": {"asked": asked, "peer": self.peer}, "nonces": {"verbatim": nonce}})
 
-    def _evaluated(self, action: str, at: datetime, extra: dict) -> tuple[str, str]:
-        """A seller's proposed action and its evaluation: the task authority
-        alone covers it (``DO``). Returns (proposed, evaluation) digests."""
+    def _task_authority(self, at: datetime, asked: str) -> Step:
+        commitment, nonce = _commit(asked)
+        return self._step(self._typed(deal.TYPE_TASK_AUTHORITY, at,
+                                      {"verbatim_commitment": commitment, "allowed": ["offer", "commit"]},
+                                      [("source", self.records[0][0])]),
+                          at, {"nonces": {"verbatim": nonce}})
+
+    def _has(self, kind: str, action: str = "") -> bool:
+        return any(k == kind and (not action or a == action) for _, k, a in self.records)
+
+    def _evaluated(self, action: str, at: datetime, extra: dict) -> str:
+        """A seller's proposed action and its evaluation, each sealed unless
+        the deal already holds it: the task authority alone covers the action
+        (``DO``). Returns the evaluation's digest."""
         t, ta = self.terms, self._latest(deal.TYPE_TASK_AUTHORITY)
-        body = {"action": action, "action_class": self._class(action), "amount_minor": t.price_minor,
-                "currency": t.currency, "terms": {"item": t.item, "price_minor": t.price_minor}, "spend_minor": 0,
-                "taxonomy_version": TAXONOMY_VERSION, "task_authority_ref": _ref(ta, "record"),
-                "counterparty": self._counterparty(deal.TYPED_FP_ALG), **extra}
-        proposed = self._step(self._typed(deal.TYPE_PROPOSED_ACTION, at, body), at, {"proposed": action}).digest
+        if not self._has(deal.TYPE_PROPOSED_ACTION, action):
+            body = {"action": action, "action_class": self._class(action), "amount_minor": t.price_minor,
+                    "currency": t.currency, "terms": {"item": t.item, "price_minor": t.price_minor},
+                    "spend_minor": 0, "taxonomy_version": TAXONOMY_VERSION, "task_authority_ref": _ref(ta, "record"),
+                    "counterparty": self._counterparty(deal.TYPED_FP_ALG), **extra}
+            self._step(self._typed(deal.TYPE_PROPOSED_ACTION, at, body), at, {"proposed": action})
+        proposed = self._latest_proposed(action)
+        i = next(i for i, (d, _, _) in enumerate(self.records) if d == proposed)
+        if i + 1 < len(self.records) and self.records[i + 1][1] == deal.TYPE_ACTION_EVALUATION:
+            return self.records[i + 1][0]
         evaluation = {"disposition": "DO", "findings": [], "options": [], "judge": {"kind": "rules"},
                       "proposed_action_digest": proposed, "task_authority_ref": _ref(ta, "record"),
                       "ruleset_digest": RULESET_DIGEST, "materiality": deal.MATERIALITY_MODE_NONE,
                       "materiality_digest": None, "valid_until": _at(at + _VALID_FOR),
                       "authority_basis": [{"type": "task_authority", "ref": _ref(ta, "record")}]}
-        return proposed, self._step(self._typed(deal.TYPE_ACTION_EVALUATION, at, evaluation,
-                                                [("checks", proposed)]), at, {"evaluated": action}).digest
+        return self._step(self._typed(deal.TYPE_ACTION_EVALUATION, at, evaluation, [("checks", proposed)]),
+                          at, {"evaluated": action}).digest
 
     def _typed_act(self, action: str, at: datetime, evaluation: str, refs=()) -> Step:
         t = self.terms
@@ -234,30 +250,42 @@ class DealChain:
         return self._step(self._typed(deal.TYPE_ACTION_RECORD, at, body, [("authorized_by", evaluation), *refs]),
                           at, {"act": action}, decide)
 
-    def offer(self, at: datetime) -> list[Step]:
-        """A seller's offer at the listed terms, proposed with no proposal of
-        the buyer's before it (x-deal-v0 §6 rule 9), evaluated and made."""
+    def respond(self, at: datetime, asked: str, request_half: str) -> list[Step]:
+        """A seller's whole answer to a buyer's opening half: the baseline
+        and task authority, the offer at the listed terms (proposed with no
+        proposal of the buyer's before it, x-deal-v0 §6 rule 9), the buyer's
+        acceptance (its half, committed by digest) and the commit resting on
+        it. Each step is sealed only if the deal does not hold it yet, so an
+        answer cut short part-way is finished by answering again; one already
+        complete returns no steps."""
         if not self._seller:
-            raise ValueError("only a seller offers")
+            raise ValueError("only a seller responds to a buyer's half")
+        self._open_for_more()
         n = len(self._built)
-        _, evaluation = self._evaluated("offer", at, {"no_proposal": True})
-        self._typed_act("offer", at, evaluation)
+        if not self.records:
+            self._baseline(at, asked)
+        if not self._has(deal.TYPE_TASK_AUTHORITY):
+            self._task_authority(at, asked)
+        if not self._has(deal.TYPE_ACTION_RECORD, "offer"):
+            self._typed_act("offer", at, self._evaluated("offer", at, {"no_proposal": True}))
+        if not self._has(deal.TYPE_ACTION_APPROVAL):
+            commitment, nonce = _commit(request_half)
+            self._step(self._typed(deal.TYPE_ACTION_APPROVAL, at, {
+                "authority": "counterparty_acceptance", "kind": "counterparty-acceptance-observation",
+                "channel": "app_chat", "content_commitment": commitment, "observed_at": _at(at),
+                "proposed_action_ref": _ref(self._latest_proposed("offer"), "record")}), at,
+                {"accepted_by": request_half, "nonces": {"content": nonce}})
+        if not self._has(deal.TYPE_ACTION_RECORD, "commit"):
+            self._typed_act("commit", at, self._evaluated("commit", at, {}),
+                            [("source", self._latest(deal.TYPE_ACTION_APPROVAL))])
         return self._since(n)
 
-    def accept_and_commit(self, at: datetime, request_half: str) -> list[Step]:
-        """The buyer's acceptance, observed as its request half (committed by
-        that half's digest), then the seller's commit resting on it."""
-        n = len(self._built)
-        offer = self._latest_proposed("offer")
-        commitment, nonce = _commit(request_half)
-        acceptance = self._step(self._typed(deal.TYPE_ACTION_APPROVAL, at, {
-            "authority": "counterparty_acceptance", "kind": "counterparty-acceptance-observation",
-            "channel": "app_chat", "content_commitment": commitment, "observed_at": _at(at),
-            "proposed_action_ref": _ref(offer, "record")}), at,
-            {"accepted_by": request_half, "nonces": {"content": nonce}}).digest
-        _, evaluation = self._evaluated("commit", at, {})
-        self._typed_act("commit", at, evaluation, [("source", acceptance)])
-        return self._since(n)
+    def _open_for_more(self) -> None:
+        """A deal finally closed takes no more steps: after a close whose
+        outcome is final only confirming evidence may follow (x-deal-v0 §6
+        rule 7), and this reference seals none."""
+        if self._has(deal.TYPE_CLOSE):
+            raise ValueError(f"deal {self.deal_id} is closed")
 
     def _latest_proposed(self, action: str) -> str:
         for digest, kind, proposed in reversed(self.records):
@@ -271,6 +299,9 @@ class DealChain:
         by its commitment."""
         if self._seller:
             raise ValueError("only a buyer pays")
+        self._open_for_more()
+        if self._has(deal.TYPE_ACTION, "pay"):
+            raise ValueError(f"deal {self.deal_id} is already paid")
         n, t = len(self._built), self.terms
         body = {"action": "pay", "action_class": "money.purchase", "amount_minor": t.price_minor,
                 "authorized_max_minor": t.price_minor, "currency": t.currency, "spend_minor": t.price_minor,
@@ -301,6 +332,7 @@ class DealChain:
         close commits the agreed price and currency (x-deal-v0 §10)."""
         if status not in _STATUSES:
             raise ValueError(f"status must be one of {sorted(_STATUSES)}")
+        self._open_for_more()
         n, t = len(self._built), self.terms
         outcome, reason, actor = _STATUSES[status]
         differences = [] if status == "received" else [{"question": "delivered", "rule": "not_delivered"}]

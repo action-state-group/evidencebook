@@ -248,7 +248,8 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     """Answer a buyer's pushed half as the seller: the half must verify and
     come from a peer admitted with GO. Seals this node's side of the same
     deal: its baseline at the buyer's terms, the task authority, the offer,
-    the buyer's acceptance (its half, by digest) and the commit."""
+    the buyer's acceptance (its half, by digest) and the commit. An answer
+    cut short part-way is finished by calling it again."""
     n = node()
     verified = n.verify_peer_half(_read_json(request_file))
     baseline = verified["records"][0]["payload"]
@@ -257,11 +258,19 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
     body = baseline["body"]
     terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
                      body["recourse"]["rail"], body["recourse"]["refundable"])
-    chain = n.new_deal(verified["deal_id"], dr.ROLE_SELLER, verified["key_id"], terms)
-    at = _now()
-    steps = chain.open(at, asked) + chain.offer(at) + chain.accept_and_commit(at, verified["records"][-1]["digest"])
+    deal_id = verified["deal_id"]
+    if n.has_deal(deal_id):
+        # An answer cut short part-way: the steps it sealed stay, the rest follow.
+        chain = n.deal(deal_id)
+        if chain.role != dr.ROLE_SELLER or chain.peer != verified["key_id"] or chain.terms != terms:
+            raise gn.Refused(f"deal {deal_id} is already open on this node with another party or other terms")
+    else:
+        chain = n.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
+    steps = chain.respond(_now(), asked, verified["records"][-1]["digest"])
+    if not steps:
+        raise gn.Refused(f"deal {deal_id} is already answered")
     sealed = n.seal(chain, steps)
-    return _out(ok=True, step="05", deal_id=verified["deal_id"], records=[s.record_id for s in sealed])
+    return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 
 @_tool

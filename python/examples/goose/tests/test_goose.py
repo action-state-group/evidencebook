@@ -61,8 +61,7 @@ def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "r
     buyer.seal(chain, chain.open(clock.at, "buy 1k tokens"))
     opened = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
     chain = seller.new_deal(DEAL, dr.ROLE_SELLER, buyer.key_id, TERMS)
-    seller.seal(chain, chain.open(clock.at, "sell 1k tokens") + chain.offer(clock.at)
-                + chain.accept_and_commit(clock.at, opened["records"][-1]["digest"]))
+    seller.seal(chain, chain.respond(clock.at, "sell 1k tokens", opened["records"][-1]["digest"]))
     clock.at += timedelta(seconds=10)
     chain = buyer.deal(DEAL)
     buyer.seal(chain, chain.check_and_pay(clock.at, "ln:payment-hash"))
@@ -190,7 +189,7 @@ def test_a_deal_needs_its_own_role_and_an_open_book(nodes, clock):
     with pytest.raises(gn.Refused):
         buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
     with pytest.raises(ValueError):
-        buyer.deal(DEAL).offer(clock.at)
+        buyer.deal(DEAL).respond(clock.at, "sell", "00" * 32)
     with pytest.raises(gn.Refused):
         seller.deal(DEAL)
     with pytest.raises(ValueError):
@@ -324,7 +323,7 @@ def test_the_server_refuses_unadmitted_peers_and_contradicting_halves(server, tm
     assert refused == {"ok": False, "error": f"no admission sealed for {buyer['key_id']}: call loop_admit first"}
     call(ls.loop_admit, peer_key_id=buyer["key_id"], checkpoint_key_id=buyer["checkpoint_key_id"], decision="GO")
     assert call(ls.loop_deal_respond, request_file=half, asked="sell")["ok"]
-    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["error"].endswith("already open on this node")
+    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["error"].endswith("already answered")
     reply = str(tmp_path / "reply.json")
     call(ls.loop_deal_push, deal_id=opened["deal_id"], out_path=reply)
 
@@ -344,8 +343,7 @@ def test_the_server_refuses_unadmitted_peers_and_contradicting_halves(server, tm
     opened = node.verify_peer_half(json.loads(Path(half).read_text()))
     chain = node.new_deal(second, dr.ROLE_SELLER, buyer["key_id"], dr.Terms("x", 400, "USD", "lightning", False))
     at = datetime.now(timezone.utc)
-    node.seal(chain, chain.open(at, "sell") + chain.offer(at)
-              + chain.accept_and_commit(at, opened["records"][-1]["digest"]))
+    node.seal(chain, chain.respond(at, "sell", opened["records"][-1]["digest"]))
     call(ls.loop_deal_push, deal_id=second, out_path=reply)
     ls = server("buyer")
     assert call(ls.loop_deal_reconcile, peer_file=reply)["state"] == "contradicted"
@@ -369,3 +367,52 @@ def test_go_checks_a_card_as_of_an_older_tick(nodes, clock, tmp_path):
     check = subprocess.run(["go", "run", "./test/interop/goose-card", str(buyer.home / "shelf.db"), str(card),
                             buyer.key_id], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
     assert check.returncode == 0 and json.loads(check.stdout)["accepted"], check.stdout + check.stderr
+
+
+def test_a_closed_deal_takes_no_more_steps(nodes, clock):
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock)
+    for node in (buyer, seller):
+        with pytest.raises(ValueError, match="is closed"):
+            node.deal(DEAL).close(clock.at, "received")
+    with pytest.raises(ValueError, match="is closed"):
+        buyer.deal(DEAL).check_and_pay(clock.at, "again")
+
+
+def test_a_half_the_profiles_chain_stage_refuses_is_refused(nodes, clock):
+    """A half honestly signed but whose steps break a profile chain rule (a
+    pay after a final close) verifies on every record and fails the chain."""
+    buyer, seller = nodes
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"))
+    chain = buyer.deal(DEAL)
+    buyer.seal(chain, chain.close(clock.at, "received"))
+    chain = buyer.deal(DEAL)
+    chain.records = [r for r in chain.records if r[1] != deal.TYPE_CLOSE]   # step around the guard
+    buyer.seal(chain, chain.check_and_pay(clock.at, "late"))
+    with pytest.raises(gn.Refused, match="not a deal the profile allows"):
+        gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
+
+
+def test_an_answer_cut_short_is_finished_by_answering_again(server, tmp_path):
+    ls = server("seller")
+    seller = call(ls.loop_join)
+    ls = server("buyer")
+    buyer = call(ls.loop_join)
+    call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id=seller["checkpoint_key_id"], decision="GO")
+    deal_id = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                   rail="lightning", asked="buy")["deal_id"]
+    half = str(tmp_path / "half.json")
+    call(ls.loop_deal_push, deal_id=deal_id, out_path=half)
+    ls = server("seller")
+    call(ls.loop_admit, peer_key_id=buyer["key_id"], checkpoint_key_id=buyer["checkpoint_key_id"], decision="GO")
+    node = ls.node()
+    chain = node.new_deal(deal_id, dr.ROLE_SELLER, buyer["key_id"], dr.Terms("x", 500, "USD", "lightning", False))
+    steps = chain.respond(datetime.now(timezone.utc), "sell", "00" * 32)
+    node.seal(chain, steps[:4])            # a crash after four of the eight steps
+    answered = call(ls.loop_deal_respond, request_file=half, asked="sell")
+    assert answered["ok"] and len(answered["records"]) == 5   # task authority's evaluation onwards, not again
+    kinds = [k for _, k, _ in node.deal(deal_id).records]
+    assert kinds.count(deal.TYPE_PROPOSED_ACTION) == 2 and kinds.count(deal.TYPE_ACTION_RECORD) == 2
+    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["error"].endswith("already answered")
+    gn.verify_half(node.half(deal_id), node.checkpoint_key_id)

@@ -104,18 +104,27 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
                 raise Refused(f"step {n} is not signed by the half's key")
             if capsule.get("action_id") != f"{deal_id}/{n}" or capsule.get("deal_id") != deal_id:
                 raise Refused(f"step {n} is not step {n} of deal {deal_id}")
-            if RECORD_HEADER_MEMBER not in capsule:
-                raise Refused(f"step {n} carries no record header")
+            header = capsule.get(RECORD_HEADER_MEMBER)
+            if not isinstance(header, dict) or header.get("record_type") != deal.STEP_RECORD_TYPE \
+                    or header.get("seq") != n or header.get("subject_ref") != f"{deal_id}/{n}":
+                raise Refused(f"step {n} does not carry its deal step's record header")
             chained = (capsule.get("chain") or {}).get("parent_capsule_id")
             if chained != parent:
                 raise Refused(f"step {n} does not chain to the step before it")
             digest = deal.digest(payload)
-            if capsule["model_attestation"]["compute_attestation"].get("agent_input_digest") != digest:
+            if capsule["model_attestation"]["compute_attestation"].get("agent_input_digest") != digest \
+                    or header.get("payload_commitments") != [digest]:
                 raise Refused(f"step {n}'s Capsule does not commit its payload")
             deal.check(payload)
             core.add_leaf(nodes, core.leaf_hash(bytes.fromhex(capsule["capsule_id"])))
             records.append({"capsule": step["capsule"], "payload": payload, "digest": digest})
             parent = capsule["capsule_id"]
+        # The profile's chain stage (§6), which the record checks leave out:
+        # the reference checker's own, as the step-09 referee runs it.
+        try:
+            _profile_checker().check_chain([r["payload"] for r in records])
+        except Exception as exc:  # its StageError, or a chain it cannot read
+            raise Refused(f"the half's steps are not a deal the profile allows: {exc}") from None
         checkpoint = read_checkpoint(bytes.fromhex(half["checkpoint"]["statement"]))
         if checkpoint.key_id != checkpoint_key_id:
             raise Refused("the half's checkpoint is not signed by the counterparty's pinned checkpoint key")
@@ -131,6 +140,28 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     final = closes[-1]["capsule"] if closes else None
     return {"deal_id": deal_id, "key_id": key_id, "records": records,
             "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None}
+
+
+def _profile_checker():
+    """The x-deal-v0 reference checker (``check_profile.py``), loaded once
+    from this repository, or from ``$GOOSE_CHECK_PROFILE`` in a copy of the
+    example outside it."""
+    global _CHECKER
+    if _CHECKER is None:
+        import importlib.util
+
+        path = os.environ.get("GOOSE_CHECK_PROFILE") or str(
+            Path(__file__).resolve().parents[3] / "dealprofile" / "x-deal-v0" / "check_profile.py")
+        spec = importlib.util.spec_from_file_location("check_profile", path)
+        if spec is None or not os.path.exists(path):
+            raise Refused(f"the profile's reference checker is not at {path}: set GOOSE_CHECK_PROFILE")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CHECKER = module
+    return _CHECKER
+
+
+_CHECKER = None
 
 
 class _Nodes:
@@ -365,6 +396,10 @@ class Node:
             first = book.records()[0].record_id
             peer = json.loads(book.opening(first, deal.LOCAL_FIELD).text)["open"]["peer"]
             return dr.DealChain.resume(deal_id, role, self._deal_key(deal_id), peer, terms, payloads)
+
+    def has_deal(self, deal_id: str) -> bool:
+        with self._lock:
+            return f"deal/{deal_id}" in self.shelf.books()
 
     def new_deal(self, deal_id: str, role: str, peer: str, terms: dr.Terms) -> dr.DealChain:
         if f"deal/{deal_id}" in self.shelf.books():

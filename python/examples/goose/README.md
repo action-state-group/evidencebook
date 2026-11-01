@@ -108,8 +108,13 @@ your node has verified the counterparty's final half (x-deal-v0 §11).
 
 A counterparty's half is checked against the two keys your admission pinned. Its steps must be
 signed by the peer's signing key, and its checkpoint, which commits exactly those steps, must be
-signed by the peer's checkpoint key. Each step must also chain to the one before it, commit its
-record, and pass the profile's record checks.
+signed by the peer's checkpoint key. Each step must also chain to the one before it, carry its
+deal-step header, and commit its record. The records must pass the profile's record checks and
+its chain rules, as checked by the reference checker `dealprofile/x-deal-v0/check_profile.py`. In
+a copy of the example outside this repository, point `GOOSE_CHECK_PROFILE` at that file.
+
+A closed deal takes no more steps. If `loop_deal_respond` is cut short part-way, call it again
+with the same half: it seals only the steps the deal does not hold yet.
 
 ## Bringing an existing ledger
 
