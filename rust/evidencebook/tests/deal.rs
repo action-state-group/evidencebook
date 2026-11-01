@@ -357,7 +357,7 @@ const SCHEMA_WORDING_ONLY: &[(&str, &str)] = &[
 /// rejected here at the same stage, for the same reason: its expected text
 /// is in the refusal (at the schema stage, in one of the failed leaves). A
 /// negative it rejects at the chain stage passes every record-level stage
-/// here, as in Go.
+/// here, as in Go; `tests/deal_chain.rs` checks the chain stage's refusals.
 #[test]
 fn negative_fixtures() {
     let store = local_store_values(&fingerprints());
@@ -813,6 +813,8 @@ fn baseline_steps() {
             assert_eq!(header.cites, cites, "{at} cites");
             assert_eq!(header.fields, s.header.fields, "{at} fields");
         }
+        let records: Vec<&[u8]> = chain.iter().map(|r| r.as_bytes()).collect();
+        deal::check_chain(&records).unwrap_or_else(|e| panic!("{}: chain stage: {e}", d.flow));
         if let Some(dir) = &out {
             let path = Path::new(dir).join(format!("{}.json", d.flow));
             fs::write(&path, format!("[{}]", chain.join(","))).unwrap();

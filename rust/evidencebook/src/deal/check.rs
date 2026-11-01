@@ -3,8 +3,8 @@
 //!
 //! The stages run in the order the reference checker
 //! (`x-deal-v0/check_profile.py`, `check_record`) runs them. The chain
-//! stage, which reads a record against the records before it, is not here:
-//! CI runs the reference checker over the chains the implementations build.
+//! stage, which reads a record against the records before it, is
+//! [`check_chain`](super::check_chain).
 
 use std::sync::OnceLock;
 

@@ -120,6 +120,10 @@ jobs:
         run: |
           python check_profile.py | tee "$RUNNER_TEMP/check_profile.out"
           tail -n 1 "$RUNNER_TEMP/check_profile.out" | grep -qx "ALL OK"
+      - name: Check testdata/chain-vectors.json is the reference checker's chain-stage verdict (Go's and Rust's chain stages are tested against it)
+        run: |
+          (cd dealprofile/x-deal-v0 && python check_profile.py --chain-vectors) > "$RUNNER_TEMP/chain-vectors.json"
+          diff dealprofile/testdata/chain-vectors.json "$RUNNER_TEMP/chain-vectors.json"
       - name: Run check_profile.py over every chain package dealprofile builds (the chain stage, which only the reference checker runs)
         run: |
           mkdir -p "$RUNNER_TEMP/built-chains"

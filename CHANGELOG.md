@@ -10,6 +10,18 @@
   `result_digest`. A Result that fails any check is refused and sealed as `goose_dispute_refused`
   with the refusal's code.
 
+### Added: `dealprofile.CheckChain`, the x-deal-v0 chain stage (§6) (#308)
+
+- `dealprofile.CheckChain` reads a deal's records in `seq` order against PROFILE.md §6
+  (sequence, hash chain, references, approvals, limits, close, reversals, offers and
+  acceptance, a seller's representations, and a sale's own log), as the reference checker's
+  `check_chain` does: the same refusals, in the same order, with the same text, at
+  `StageChain`. A verifier built on Go no longer reports the stage `not_checked`.
+  `testdata/chain-vectors.json`, written by `check_profile.py --chain-vectors`, pins the
+  reference checker's verdict over every prefix of the positive chains, each negative
+  fixture and single-member mutations of the positive chains; CI regenerates it and
+  fails on a difference, and the Rust crate is tested against the same file.
+
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
 
 - `dealprofile`: `cases.Fold` swaps Cherokee case, so `Ꭰ` and `ꭰ` had different

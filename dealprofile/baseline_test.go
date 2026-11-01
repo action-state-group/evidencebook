@@ -114,6 +114,9 @@ func TestBaselineSteps(t *testing.T) {
 			identity := identityOf(t, d.SigningSeed)
 			var chain []json.RawMessage
 			defer func() {
+				if !t.Failed() {
+					assert.NoError(t, CheckChain(rawRecords(chain)), "the chain stage over the chain this package built")
+				}
 				if out != "" && !t.Failed() {
 					raw, err := json.Marshal(chain)
 					require.NoError(t, err)
@@ -208,4 +211,12 @@ func TestBaselineReports(t *testing.T) {
 	}
 	assert.Positive(t, forms["standalone"], "a standalone report is frozen")
 	assert.Positive(t, forms["in_log"], "an in-log report is frozen")
+}
+
+func rawRecords(chain []json.RawMessage) []any {
+	out := make([]any, len(chain))
+	for i, r := range chain {
+		out[i] = []byte(r)
+	}
+	return out
 }
