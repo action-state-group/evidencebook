@@ -213,26 +213,27 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     book to ``out_path``: the record, its position and inclusion proof, and
     the book's checkpoint covering it. ``capsulectl verify --bundle`` reads
     it. Beside it (``<out_path minus .json>.<name>``) go the book's checkpoint
-    (``checkpoint.cose``) and, when a witnessed tick carries that checkpoint,
-    the cadence checkpoint the witness signed (``cadence-checkpoint.cose``),
-    its receipt (``witness-receipt.json``) and the witness directory
-    (``witnesses.json``, from GOOSE_WITNESSES). The receipt is over the
-    cadence checkpoint, which commits the book's: the witness sees that one
-    only. The chain also travels in the bundle's ``x-cadence-witness/v0``
-    extension."""
+    (``checkpoint.cose``) and, with GOOSE_WITNESSES set, the witness's receipt
+    for that very checkpoint (``witness-receipt.json``, also in the bundle's
+    ``checkpoint.witnesses``) and the directory (``witnesses.json``). When a
+    witnessed cadence tick also carries the checkpoint, the cadence's
+    checkpoint and receipt go as ``cadence-checkpoint.cose`` and
+    ``cadence-witness-receipt.json`` and the chain travels in the bundle's
+    ``x-cadence-witness/v0`` extension."""
     n = node()
     built = n.book_bundle(book_id, record_id)
     stem = str(Path(out_path).expanduser().with_suffix(""))
     _write(out_path, json.dumps(built, sort_keys=True).encode())
     files = {"checkpoint.cose": n.book_checkpoint(book_id)}
+    receipts = built["checkpoint"].get("witnesses") or []
+    if receipts:
+        files["witness-receipt.json"] = json.dumps(receipts[0], sort_keys=True).encode()
+        files["witnesses.json"] = Path(os.environ["GOOSE_WITNESSES"]).expanduser().read_bytes()
     chain = built.get("extensions", {}).get(gn.CADENCE_EXTENSION)
     if chain:
-        witness = chain["cadence"]["witnesses"][0]
         cose = chain["cadence"]["checkpoint"]["cose"]
         files["cadence-checkpoint.cose"] = base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))
-        files["witness-receipt.json"] = json.dumps(witness, sort_keys=True).encode()
-        if os.environ.get("GOOSE_WITNESSES"):
-            files["witnesses.json"] = Path(os.environ["GOOSE_WITNESSES"]).expanduser().read_bytes()
+        files["cadence-witness-receipt.json"] = json.dumps(chain["cadence"]["witnesses"][0], sort_keys=True).encode()
     for name, data in files.items():
         _write(f"{stem}.{name}", data)
     return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,

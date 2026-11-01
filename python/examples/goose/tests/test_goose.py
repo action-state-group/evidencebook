@@ -531,17 +531,63 @@ def test_a_book_bundle_proves_a_record_and_go_accepts_it(nodes, clock, tmp_path)
         assert check.returncode == 0, check.stdout + check.stderr
 
 
-def test_a_witnessed_ticks_receipt_travels_with_the_bundle(tmp_path, clock):
-    script = _witness_script()
-    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY) as node:
+class _Witness:
+    """The test witness (the shelf script's key) as a ``cll.checkpoint.witness`` submitter."""
+
+    def __init__(self, script, endpoint: str) -> None:
+        self.script, self.asked = script, 0
+        assert endpoint == script.DIRECTORY["witnesses"][0]["endpoint"]
+
+    def submit(self, statement: bytes):
+        from types import SimpleNamespace
+
+        self.asked += 1
+        r = self.script.mint_receipt(statement)
+        return SimpleNamespace(bytes=r.receipt, entry_hash=r.entry_hash, leaf_index=r.leaf_index, tree_size=r.tree_size)
+
+
+def test_a_bundle_carries_the_witnesss_receipt_for_the_books_own_checkpoint(tmp_path, clock):
+    from agent_action_capsule import bundle as aac
+
+    script, made = _witness_script(), []
+
+    def client(endpoint):
+        made.append(_Witness(script, endpoint))
+        return made[-1]
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=client) as node:
         sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        built = node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        [receipt] = built["checkpoint"]["witnesses"]
+        result = aac.verify_bundle(built, strict=True, witness_directory=script.DIRECTORY)
+        assert [r.status for r in result.witness_receipts] == ["pass"]
+        assert receipt["ts_url"] == script.DIRECTORY["witnesses"][0]["endpoint"] and receipt["receipt_b64"]
+        # The same checkpoint is asked once; a bundle without the directory's witness would not verify.
+        assert node.book_bundle(gn.NODE_BOOK, sealed.record_id)["checkpoint"]["witnesses"] == [receipt]
+        assert sum(w.asked for w in made) == 1
+        # A tick that the witness also saw adds the cadence chain.
         assert node.tick().ticked
-        assert "extensions" not in node.book_bundle(gn.NODE_BOOK, sealed.record_id)
         tick = node.cadence.last()
         assert node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint)).state == "VERIFIED"
-        chain = node.book_bundle(gn.NODE_BOOK, sealed.record_id)["extensions"][gn.CADENCE_EXTENSION]
-        assert chain["state"] == "witnessed" and chain["log_id"] == gn.NODE_BOOK
-        assert chain["cadence"]["witnesses"][0]["receipt_b64"]
+        again = node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert again["extensions"][gn.CADENCE_EXTENSION]["state"] == "witnessed"
+
+
+def test_a_witness_that_fails_leaves_no_bundle(tmp_path, clock):
+    from cll.log import ContentionError
+
+    script = _witness_script()
+
+    class Down:
+        def submit(self, statement):
+            raise ContentionError("connection refused")
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda _: Down()) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="gave no receipt"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
 
 
 def test_a_book_bundle_refuses_what_the_node_does_not_hold(nodes):
@@ -555,25 +601,36 @@ def test_a_book_bundle_refuses_what_the_node_does_not_hold(nodes):
 
 def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(tmp_path, clock, monkeypatch):
     pytest.importorskip("mcp")
+    import hashlib
+
     import loop_server
 
     script = _witness_script()
     directory = tmp_path / "witnesses.json"
     directory.write_text(json.dumps(script.DIRECTORY))
     monkeypatch.setenv("GOOSE_WITNESSES", str(directory))
-    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY) as node:
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda endpoint: _Witness(script, endpoint)) as node:
         monkeypatch.setattr(loop_server, "_node", node)
         sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
         out = tmp_path / "call.json"
-        bare = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
-        assert bare["ok"] and not bare["witnessed"] and (tmp_path / "call.checkpoint.cose").is_file()
-        assert not (tmp_path / "call.witness-receipt.json").exists()
+        done = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert done["ok"]
+        statement = (tmp_path / "call.checkpoint.cose").read_bytes()
+        assert statement == node.book_checkpoint(gn.NODE_BOOK)
+        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
+        assert receipt == json.loads(out.read_text())["checkpoint"]["witnesses"][0]
+        # The receipt is over this very checkpoint: its entry hash binds the statement the file holds.
+        assert receipt["entry_hash"] == script.mint_receipt(statement).entry_hash
+        assert (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
+        if os.environ.get("GOOSE_GO_CHECK"):
+            check = subprocess.run(["go", "run", "./test/interop/verify", str(out), node.checkpoint_key_id,
+                                    str(directory)], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+            assert check.returncode == 0 and "witnessed" in check.stdout, check.stdout + check.stderr
+        assert not (tmp_path / "call.cadence-checkpoint.cose").exists()
         assert node.tick().ticked
         tick = node.cadence.last()
         node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint))
-        done = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
-        assert done["witnessed"]
+        json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
         assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
-        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
-        assert receipt["receipt_b64"] and (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
-        assert (tmp_path / "call.checkpoint.cose").read_bytes() == node.book_checkpoint(gn.NODE_BOOK)
+        assert (tmp_path / "call.cadence-witness-receipt.json").is_file()

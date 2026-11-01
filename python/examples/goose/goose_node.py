@@ -26,6 +26,7 @@ first use with mode 0600. Nothing here moves money or opens a connection.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -293,8 +294,9 @@ class Node:
     """One Goose node's shelf. Open it with :meth:`open`; one process holds
     a home at a time (the shelf's writer lock)."""
 
-    def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any):
+    def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None):
         self.home, self.operator, self.developer = home, operator, developer
+        self._witnesses, self._witness_client = witnesses, witness_client
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._inflight: datetime | None = None
         self._lock = threading.RLock()
@@ -307,6 +309,9 @@ class Node:
         try:
             for statement in ("PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL"):
                 self._db.execute(statement)
+            # The witness receipt a book checkpoint got, by the checkpoint's digest: asked once.
+            self._db.execute("CREATE TABLE IF NOT EXISTS goose_book_receipts (book_id TEXT NOT NULL, "
+                             "checkpoint_sha256 TEXT NOT NULL, receipt TEXT NOT NULL, PRIMARY KEY (book_id, checkpoint_sha256))")
             self.originals = SqliteArtifactStore(self._db, NAMESPACE, [self.signer.public_key(), *self._trusted()])
             self.originals.init()
             self.shelf = Shelf.open_sqlite(home / "shelf.db", operator=operator, developer=developer,
@@ -326,15 +331,18 @@ class Node:
 
     @classmethod
     def open(cls, home: str | os.PathLike, *, operator: str, developer: str = "goose-loop@v1", now=None,
-             witnesses: Any = None) -> Node:
+             witnesses: Any = None, witness_client: Any = None) -> Node:
         """The node at ``home``, created on first use. ``witnesses`` is the
-        witness directory cadence receipts are checked under (a
-        ``witnesses.json`` mapping), or ``None``."""
+        witness directory receipts are checked under (a ``witnesses.json``
+        mapping), or ``None``. With one witness in it, a book bundle carries
+        that witness's receipt for the book's own checkpoint, asked of
+        ``witness_client(endpoint)`` (a ``cll.checkpoint.witness`` submitter;
+        ``HttpWitnessClient`` when not given)."""
         path = Path(home).expanduser()
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not operator:
             raise Refused("an operator name is required")
-        return cls(path, operator, developer, now, witnesses)
+        return cls(path, operator, developer, now, witnesses, witness_client)
 
     def close(self) -> None:
         try:
@@ -434,15 +442,44 @@ class Node:
         with self._lock:
             return self.shelf.open(book_id).checkpoint().statement
 
+    def _book_receipt(self, book_id: str, checkpoint) -> dict:
+        """The directory's witness's receipt for ``checkpoint``, in a bundle's
+        ``checkpoint.witnesses`` form; asked of the witness once per
+        checkpoint and kept."""
+        rows = self._witnesses.get("witnesses") if isinstance(self._witnesses, dict) else self._witnesses
+        if not isinstance(rows, list) or len(rows) != 1 or not rows[0].get("endpoint"):
+            raise Refused("a book receipt needs a witness directory with exactly one witness and its endpoint")
+        endpoint = rows[0]["endpoint"]
+        digest = hashlib.sha256(checkpoint.statement).hexdigest()
+        with self._lock:
+            held = self._db.execute("SELECT receipt FROM goose_book_receipts WHERE book_id = ? AND checkpoint_sha256 = ?",
+                                    (book_id, digest)).fetchone()
+            if held:
+                return json.loads(held[0])
+            from cll.checkpoint.witness import HttpWitnessClient
+            from cll.log import ContentionError, RejectedError
+
+            client = (self._witness_client or HttpWitnessClient)(endpoint)
+            try:
+                got = client.submit(checkpoint.statement)
+            except (ContentionError, RejectedError) as exc:
+                raise Refused(f"the witness at {endpoint} gave no receipt for {book_id}: {exc}") from None
+            receipt = {"ts_url": endpoint, "entry_hash": got.entry_hash,
+                       "receipt_b64": base64.b64encode(bytes(got.bytes)).decode(), "leaf_index": got.leaf_index,
+                       "tree_size": got.tree_size}
+            self._db.execute("INSERT INTO goose_book_receipts VALUES (?, ?, ?)", (book_id, digest, json.dumps(receipt)))
+            return receipt
+
     def book_bundle(self, book_id: str, record_id: str) -> dict:
         """An Evidence Bundle (``evidence-bundle/v2``) proving ``record_id``
         is in ``book_id`` at its position under the book's newest checkpoint
         (cut now if the book grew): the record, its inclusion proof and the
         interval from the book's first record to that checkpoint, built by
         agent-action-capsule's producer and checked by its strict verifier.
-        When a witnessed cadence tick carries that checkpoint, the cadence
-        chain with the witness's receipt travels as the
-        ``x-cadence-witness/v0`` extension."""
+        With a witness directory the witness's receipt for that checkpoint
+        is on the bundle's ``checkpoint.witnesses`` and must verify under the
+        directory. When a witnessed cadence tick also carries it, the cadence
+        chain travels as the ``x-cadence-witness/v0`` extension."""
         from agent_action_capsule import bundle as aac
 
         with self._lock:
@@ -463,7 +500,11 @@ class Node:
                     root=record_id, interval_from=1, extensions=extensions or None)
             except aac.BundleBuildError as exc:
                 raise Refused(f"no bundle: {exc}") from None
-            result = aac.verify_bundle(built, strict=True)
+            if self._witnesses is not None:
+                built["checkpoint"]["witnesses"] = [self._book_receipt(book_id, checkpoint)]
+            result = aac.verify_bundle(built, strict=True, witness_directory=self._witnesses)
+            if self._witnesses is not None and [r.status for r in result.witness_receipts] != ["pass"]:
+                raise Refused(f"the witness receipt does not verify under the directory: {result.witness_receipts}")
             if str(result.verdict) not in ("VALID", "Verdict.VALID"):
                 raise Refused(f"the bundle does not verify: {result.verdict}")
             return built
