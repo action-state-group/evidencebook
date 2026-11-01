@@ -178,6 +178,11 @@ impl Serialize for Record {
 impl<'de> Deserialize<'de> for Record {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Record, D::Error> {
         let r = RecordIn::deserialize(d)?;
+        // Go's Record cannot hold an empty class (omitempty drops it, so its
+        // decode refuses the text): neither can this one.
+        if r.counterparty_class.as_deref() == Some("") {
+            return Err(D::Error::custom("counterparty_class is empty"));
+        }
         let body = Body::from_value(&r.block.record_type, r.body).map_err(D::Error::custom)?;
         Ok(Record {
             block: r.block,

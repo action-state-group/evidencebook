@@ -302,4 +302,8 @@ fn a_pay_check_carries_the_counterparty_class() {
     let rec: Record = deal::decode(&serde_json::to_vec(&record).unwrap()).unwrap();
     assert_eq!(rec.counterparty_class, None);
     assert_eq!(serde_json::to_value(&rec).unwrap(), record);
+
+    // An empty class is no value, as Go's decode reads it: refused.
+    record["counterparty_class"] = Value::String(String::new());
+    assert!(deal::decode::<Record>(&serde_json::to_vec(&record).unwrap()).is_err());
 }
