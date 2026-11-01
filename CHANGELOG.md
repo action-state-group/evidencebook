@@ -2,12 +2,6 @@
 
 ## Unreleased
 
-### Fixed: a wrongly typed `amount_minor` is unpriced in `dealprofile.StandardHistoryDeal`
-
-- A check whose `amount_minor` is a string, a boolean or an array read as an amount
-  of 0 (`json.Unmarshal` into a `*int64` allocates the pointer before it fails). It now
-  refuses the deal as `ErrUnpriced`, as the Python reader does; the parity vectors pin it (#282).
-
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc29 and capsule-viewer 0.9.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc29`, evidencebook `v0.12.1`
@@ -51,6 +45,12 @@
 ## v0.12.2 (2026-11-01)
 
 Go module only. The `report` and `capsulectl` entries above ship with their own tags.
+
+### Fixed: a wrongly typed `amount_minor` is unpriced in `dealprofile.StandardHistoryDeal`
+
+- A check whose `amount_minor` is a string, a boolean or an array read as an amount
+  of 0 (`json.Unmarshal` into a `*int64` allocates the pointer before it fails). It now
+  refuses the deal as `ErrUnpriced`, as the Python reader does; the parity vectors pin it (#282).
 
 ### Added: `counterparty_class` on a pay check, read by the History card (#273)
 
