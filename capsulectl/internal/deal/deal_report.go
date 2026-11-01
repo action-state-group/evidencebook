@@ -409,11 +409,32 @@ func witnessCoverage(events []sealedEvent, cadence map[string]interface{}) map[s
 // runtime's plain SHA-256 switched off) cannot verify anything: the
 // bootstrap then shows the runtime's "unable to verify in this viewer"
 // state with verifyCommand, never a failed verification.
-// pageWords are the wording-pack entries the deal page reads, so the page
-// and the chat speak from one pack (capsule-cli#345): the title, and the
+// pageWords are the core's wording-pack entries the deal page reads, so the
+// page and the chat speak from one pack (capsule-cli#345): the title, and the
 // History card's size strings the receipt names a settlement's band with
-// (capsule-viewer's consumer pack, evidencebook-deal#94).
+// (capsule-viewer's consumer pack, evidencebook-deal#94). The page's own
+// words are this plugin's page.* entries (assets/wording/capsulectl-deal-en.json,
+// evidencebook-deal#97), which deal-view.js holds built in.
 var pageWords = []string{"report.title", "size.between", "size.range", "size.under", "size.zero"}
+
+// dealPageWords are the entries of w the page speaks with: pageWords, and the
+// page.* words that differ from this plugin's built-in pack. The built-in
+// ones are the module's own (DEAL_VIEW_WORDS), so a viewer that opens the
+// bundle itself speaks the same words and a page carries only a pinned pack's
+// changes.
+func dealPageWords(w cli.Wording) map[string]string {
+	words := map[string]string{}
+	builtin := cli.BuiltinWording().Entries
+	for k, v := range w.Entries {
+		if slices.Contains(pageWords, k) || (strings.HasPrefix(k, pagePrefix) && builtin[k] != v) {
+			words[k] = v
+		}
+	}
+	return words
+}
+
+// pagePrefix starts the keys of the words deal-view.js speaks with.
+const pagePrefix = "page."
 
 // journeyPageWords are the words the user's own page words its journey
 // with (capsule-cli#370), as dealJourney words the report's: each move's
@@ -479,12 +500,7 @@ func dealPageBoot(b map[string]interface{}, countersign dealCountersignView, w c
 	if err != nil {
 		return nil, nil, err
 	}
-	words := map[string]string{}
-	for _, k := range pageWords {
-		if v, ok := w.Entries[k]; ok {
-			words[k] = v
-		}
-	}
+	words := dealPageWords(w)
 	if audience, _ := dealPageReport(b)["audience"].(string); audience == cli.DealAudienceKeep {
 		maps.Copy(words, journeyPageWords(w))
 	}

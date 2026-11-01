@@ -181,7 +181,7 @@ const cases = JSON.parse(fs.readFileSync(0, "utf8"));
 context.cases = cases;
 process.stdout.write(JSON.stringify(vm.runInContext(` + "`" + `({
   close: cases.close.map((c) => dealCloseStatus(c.close, c.records, c.book)),
-  band: cases.band.map((b) => dealBandLabel(b, {})),
+  band: cases.band.map((b) => dealBandLabel(b)),
   afterYes: cases.afterYes.map((steps) => { const r = dealAfterYes(steps); return r.state + (r.why ? ":" + r.why : "") + (r.act ? ":" + r.act.id : "") + (r.approvers && r.approvers.length ? " by " + r.approvers.join(",") : ""); }),
   settlement: cases.settlement.map((steps) => dealSettlement(steps)),
 })` + "`" + `, context)));
@@ -232,6 +232,8 @@ func TestTheCloseStatusIsReadFromTheirLinks(t *testing.T) {
 	assert.Equal(t, []any{"unilateral", "agreed", "contested", "unilateral", "unilateral", "unilateral"}, got["close"])
 }
 
+// A viewer opens a bundle with no capsulectlDealPage: the drivers here run
+// the module without one, so its built-in words are what is checked.
 // The band's words are the History card's (capsule-viewer
 // standard_history_card.js bandLabel): a symbol's sub-ten bands are one
 // "under $10", others keep their decade in their own units.

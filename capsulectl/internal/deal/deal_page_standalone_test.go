@@ -59,6 +59,8 @@ vm.runInContext("globalThis.window = globalThis;", context);
 vm.runInContext(bundleScript, context);
 vm.runInContext(runtime, context);
 for (const source of modules) vm.runInContext(source, context);
+// The bootstrap's first statement sets the page's data, its words included.
+vm.runInContext(bootstrap.slice(0, bootstrap.indexOf("\nrenderEvidenceGraph(")), context);
 const EG = vm.runInContext("EvidenceGraph", context);
 ` + verifiedContextJS + `const bundle = vm.runInContext("window.__BUNDLE__", context);
 const x = (bundle.extensions || {})["x-deal-report/v0"] || {};
