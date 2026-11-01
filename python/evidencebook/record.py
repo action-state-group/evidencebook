@@ -228,7 +228,7 @@ class Header:
         if self.commit_alg and self.commit_alg != COMMIT_ALG_NONCE256:
             raise InvalidError(f"commit_alg {self.commit_alg!r} is not {COMMIT_ALG_NONCE256}")
         for name, digest in self.field_commitments:
-            if not FIELD_NAME.match(name) or not isinstance(digest, str) or not _HEX64.match(digest):
+            if not isinstance(name, str) or not FIELD_NAME.match(name) or not isinstance(digest, str) or not _HEX64.match(digest):
                 raise InvalidError(f"field commitment {name!r} is not a field name with a lowercase SHA-256 digest")
         for digest in self.payload_commitments:
             if not _HEX64.match(digest):

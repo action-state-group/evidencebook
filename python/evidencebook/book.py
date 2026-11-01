@@ -67,7 +67,7 @@ from ._capsule import capsule_preimage, seal_record
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
 from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
-from .errors import BookError, CorruptError, InvalidError, NotFoundError, ReleasedError
+from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError, UnavailableError
 from .record import (
     AVAILABLE,
     CITES,
@@ -238,7 +238,7 @@ def verify_opening(commitment: str, opening: Opening) -> bool:
     opening opens nothing."""
     try:
         return isinstance(commitment, str) and bool(_NONCE.match(commitment)) and opening.commitment() == commitment
-    except InvalidError:
+    except (InvalidError, AttributeError, TypeError):
         return False
 
 
@@ -263,12 +263,15 @@ def _header_commitment(record_id: str, capsule: Any, header: bytes) -> str:
     ``agent_input_digest`` (a record the book sealed) or carries it in
     :data:`RECORD_HEADER_MEMBER` (a record its caller sealed), never both
     (Go ``checkCapsuleCommitsHeader``)."""
+    from capsule_emit.produce import verify_capsule
+
     if not isinstance(capsule, dict):
         return "the capsule is not a JSON object"
     try:
-        if compute_capsule_id(capsule) != record_id or capsule.get("capsule_id") != record_id:
+        # As Go's emit.VerifyCapsule: AAC format 4 under JCS, Class 1, and the id.
+        if verify_capsule(jcs(capsule)).capsule_id != record_id or capsule.get("capsule_id") != record_id:
             return "it does not verify as that id"
-    except (TypeError, ValueError) as exc:
+    except Exception as exc:  # Class1Error, a malformed capsule: it is not this record
         return f"it does not verify as that id: {exc}"
     attestation = capsule.get("model_attestation")
     attestation = attestation.get("compute_attestation") if isinstance(attestation, dict) else None
@@ -669,7 +672,8 @@ class Book:
     def opening(self, record_id: str, name: str) -> Opening:
         """The opening of a record's field commitment ``name``, read from the
         artifact store and checked against the commitment its header carries
-        (Go ``Book.Opening``)."""
+        (Go ``Book.Opening``). :class:`UnavailableError` when the record is
+        withheld or deleted."""
         from capsule_emit.artifact import NotFoundError as NoOriginals
         from capsule_emit.artifact import PRESENT
 
@@ -678,6 +682,16 @@ class Book:
             commitment = dict(record.header.field_commitments).get(name) if record is not None else None
             if commitment is None:
                 raise NotFoundError(f"record {record_id} commits no field {name!r}")
+            # Go's retention fold (shelf.py holds the port): a withheld or
+            # deleted record's openings are not given out.
+            from .shelf import _retention
+
+            stated = ["statement" in json.loads(self._stored[i].header) for i in self._order]
+            now = utc(self._now())
+            state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
+                               record.seq - 1, nanos(now))
+            if state in ("WITHHELD", "DELETED"):
+                raise UnavailableError(f"record {record_id} is {state}")
             if self._originals is None:
                 raise CorruptError(f"record {record_id} commits field {name!r} but the book has no artifact store")
             try:
@@ -775,13 +789,13 @@ class Book:
         is signed by the book's signer (Go ``checkCallerSealed``)."""
         from capsule_emit.produce import verify_envelope
 
+        # A sealer's error propagates as raised, as Go's "seal record: %w"
+        # keeps its identity: a signer's I/O failure is not bad input.
+        sealed = seal(copy.deepcopy(header), bytes(header_bytes))
         try:
-            sealed = seal(copy.deepcopy(header), bytes(header_bytes))
-        except BookError:
-            raise
-        except Exception as exc:
-            raise InvalidError(f"seal record: {exc}") from exc
-        capsule_id, payload, envelope = sealed.capsule_id, bytes(sealed.payload), bytes(sealed.envelope)
+            capsule_id, payload, envelope = sealed.capsule_id, bytes(sealed.payload), bytes(sealed.envelope)
+        except (AttributeError, TypeError) as exc:
+            raise InvalidError(f"the sealer returned no sealed capsule: {exc}") from None
         try:
             capsule = strict_json(payload)
         except Exception as exc:

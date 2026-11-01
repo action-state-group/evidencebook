@@ -177,8 +177,11 @@ def test_a_sealer_error_writes_nothing_and_the_position_is_reused(originals):
         raise RuntimeError("crashed")
 
     entry, held, seal, _ = step(1)
-    with pytest.raises(eb.InvalidError, match="seal record: crashed"):
+    # The sealer's own error propagates as raised (Go wraps it with %w).
+    with pytest.raises(RuntimeError, match="crashed"):
         b.append_capsule(entry, held, broken)
+    with pytest.raises(eb.InvalidError, match="no sealed capsule"):
+        b.append_capsule(entry, held, lambda h, j: object())
     assert b.append_capsule(entry, held, seal).seq == 1
 
 
@@ -242,3 +245,64 @@ def test_an_opening_checks_its_nonce_and_text():
         eb.Opening("0" * 64, "\ud800").canonical()
     assert not eb.verify_opening("not hex", eb.Opening("0" * 64, "t"))
     assert len(eb.new_opening("t").nonce) == 64
+
+
+def test_a_capsule_failing_class_1_is_refused_though_its_id_recomputes(originals):
+    from agent_action_capsule.canonical import compute_capsule_id
+
+    b = book(originals)
+    entry, held, seal, _ = step(1)
+
+    def malformed(h, header_json):
+        sealed = seal(h, header_json)
+        capsule = json.loads(sealed.payload)
+        capsule["action_type"] = 12345
+        del capsule["capsule_id"]
+        capsule["capsule_id"] = compute_capsule_id(capsule)
+        # produce.sign refuses such a capsule, so its envelope is signed directly.
+        from agent_action_capsule.media_types import CAPSULE_ID_MEDIA_TYPE
+        from evidencebook.signer import sign1
+
+        envelope = sign1(SIGNER, {3: CAPSULE_ID_MEDIA_TYPE, 4: SIGNER.public_key(), 1: -8},
+                         bytes.fromhex(capsule["capsule_id"]))
+        return produce.Result(capsule["capsule_id"], jcs(capsule), envelope)
+
+    with pytest.raises(eb.InvalidError, match="does not verify as that id"):
+        b.append_capsule(entry, held, malformed)
+    assert b.size() == 0
+
+
+def test_a_capsule_committing_its_header_as_its_payload_alone_is_refused(originals):
+    b = book(originals)
+    entry, held, _, _ = step(1)
+    capsule, _ = deal.step_capsule(deal.StepInput(deal_id="d1", seq=1, operator="op", developer="dev", at=START))
+    identity = produce.new_ed25519_signing_identity(SEED)
+
+    def book_style(h, header_json):
+        return produce.seal(produce.SealInput(capsule=deal.emit_input(capsule), identity=identity,
+                                              payload=json.loads(header_json)))
+
+    with pytest.raises(eb.InvalidError, match=f"does not carry its record header in {eb.RECORD_HEADER_MEMBER}"):
+        b.append_capsule(entry, held, book_style)
+
+
+def test_a_withheld_records_openings_are_unavailable(originals):
+    b = book(originals)
+    record = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, fields={"terms": "net 30"}))
+    assert b.opening(record.record_id, "terms").text == "net 30"
+    b.append(eb.Entry("lifecycle", eb.OBSERVED_EVENT, links=(eb.Link(eb.CITES, record.record_id),),
+                      statement={"retention_state": "WITHHELD"}))
+    with pytest.raises(eb.UnavailableError, match="WITHHELD"):
+        b.opening(record.record_id, "terms")
+
+
+def test_verify_opening_never_raises():
+    assert not eb.verify_opening("0" * 64, None)
+    assert not eb.verify_opening("0" * 64, {"nonce": "0" * 64, "text": "t"})
+
+
+def test_a_field_commitment_name_that_is_not_text_is_invalid():
+    header = eb.Header("b", 1, "observation", eb.OBSERVED_EVENT, "2026-10-01T00:00:00Z", retention_state="AVAILABLE",
+                       field_commitments=((7, "0" * 64),), commit_alg=eb.COMMIT_ALG_NONCE256)
+    with pytest.raises(eb.InvalidError, match="field commitment"):
+        header.validate()

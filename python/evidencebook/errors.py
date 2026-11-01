@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = ["BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError",
-           "UnsupportedError"]
+           "UnsupportedError", "UnavailableError"]
 
 
 class BookError(Exception):
@@ -32,3 +32,8 @@ class ReleasedError(BookError):
 
 class UnsupportedError(BookError):
     """The operation or stored format is not supported here (Go ``ErrUnsupported``)."""
+
+
+class UnavailableError(BookError):
+    """A record's originals are not available: its retention state is
+    WITHHELD or DELETED (Go ``UnavailableError``)."""

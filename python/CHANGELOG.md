@@ -15,9 +15,11 @@
     signed by the book's signer.
   - `Entry.fields`: salted `sha256-jcs-nonce256` commitments in the header's `field_commitments`,
     each opening kept as an original `opening.<field>`; `Book.opening` reads one back, checked
-    against its commitment (`Opening`, `new_opening`, `verify_opening`).
-  - A book reopens records whose Capsule carries its header, as Go's does. Before this, a Python
-    book refused a deal book a Go writer left on a shared shelf.
+    against its commitment (`Opening`, `new_opening`, `verify_opening`), and raises the new
+    `UnavailableError` for a withheld or deleted record, as Go does.
+  - A book reopens records whose Capsule carries its header, as Go's does, and checks every stored
+    Capsule as Go's `emit.VerifyCapsule` does (AAC format 4 under JCS, Class 1, its id). Before
+    this, a Python book refused a deal book a Go writer left on a shared shelf.
   - `evidencebook.deal.emit_input`: a step's or report's Capsule members as
     `capsule_emit.produce.Input`, for the producer's own `produce.seal`.
   - A Go writer and a Python continuer of one deal book (and the reverse) read the same steps and
