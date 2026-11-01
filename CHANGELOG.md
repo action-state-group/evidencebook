@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
+
+- `report.View.Contract` is a compiled Evidence Contract v0 (for example
+  evidencebook-skills `contracts/<id>/<version>.json`) with the lowercase hex
+  SHA-256 of its bytes, checked as `View.Wording` is. `Build` refuses a
+  contract the Result does not cite, one that lacks a requirement the Result's
+  claims cite, and a `tier` other than `must_have` or `informational`.
+- `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
+  requirement's tier by `requirement_ref`; `""` when the contract names none)
+  record what the page read. The contract reaches the page as the viewer's
+  contract setting (capsule-viewer#201), from which the contract-report
+  module reads each row's tier and which records the contract's digest. With
+  no contract every tier is undecided, never must-have. A page built with a
+  contract gets no permalink.
+
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc28 and capsule-viewer 0.8.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc28`, evidencebook `v0.12.0`
@@ -70,24 +85,6 @@
   `evidence-interop/1` and nests JSON at most 128 levels deep everywhere. A
   bundle extension or derivation definition deeper than that is refused; the
   derivation vectors' `too-deep` definition is now 129 levels.
-
-### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
-
-- `report.View.Contract` is a compiled Evidence Contract v0 (for example
-  evidencebook-skills `contracts/<id>/<version>.json`) with the lowercase hex
-  SHA-256 of its bytes, checked as `View.Wording` is. `Build` refuses a
-  contract the Result does not cite, one that lacks a requirement the Result's
-  claims cite, and a `tier` other than `must_have` or `informational`.
-- `Page.ContractRef`, `Page.ContractSHA256` and `Page.Tiers` (each cited
-  requirement's tier by `requirement_ref`; `""` when the contract names none)
-  record what the page read. The contract reaches the page as the viewer's
-  contract setting (capsule-viewer#201), from which the contract-report
-  module reads each row's tier and which records the contract's digest. With
-  no contract every tier is undecided, never must-have. A page built with a
-  contract gets no permalink.
-- `report/go.mod` and `capsulectl/go.mod` require capsule-viewer `v0.8.0`;
-  the `report` fixtures' pages (`4-monthly-outcome`, `5-monthly-compliance`)
-  are rewritten with its page runtime.
 
 ## v0.11.0 (2026-10-31)
 
