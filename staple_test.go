@@ -276,6 +276,7 @@ func writeStapleVectors(t *testing.T) {
 		vector("a history card over another subject", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
 			c["subject"] = map[string]any{"full_history": nil}
 		}), holder, false, cc),
+		duplicateMember(t, book, card, holder),
 		vector("a history card entry with more than a checkpoint", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
 			c["history"].([]any)[0].(map[string]any)["record"] = "a record body"
 		}), holder, false, cc),
@@ -376,4 +377,17 @@ func emptyNonce(t *testing.T, book *Book, s Staple, holder string) stapleVector 
 	request := strings.Replace(string(s.Request.Octets), `"nonce":"`+got.Nonce+`"`, `"nonce":""`, 1)
 	reply := resigned(t, book, s.Reply, func(e *Envelope) { e.RequestDigest = digestBytes([]byte(request)) })
 	return stapleVector{Name: "an empty nonce", Holder: holder, Request: request, Reply: string(reply.Octets)}
+}
+
+// duplicateMember is the holder's history_card/1 staple with its card
+// re-signed after a second "anchor" member is put before the first: JSON a
+// reader that keeps either member would read differently from one that
+// keeps the other, so every checker refuses it.
+func duplicateMember(t *testing.T, book *Book, s Staple, holder string) stapleVector {
+	t.Helper()
+	reply := resigned(t, book, s.Reply, func(e *Envelope) {
+		e.Artifact = append([]byte(`{"anchor":"`+strings.Repeat("0", 64)+`",`), e.Artifact[1:]...)
+		e.ArtifactDigest = digestBytes(e.Artifact)
+	})
+	return stapleVector{Name: "a history card with a duplicate member", Holder: holder, Request: string(s.Request.Octets), Reply: string(reply.Octets)}
 }

@@ -19,6 +19,7 @@
 use crate::answer::{self, DERIVATION_HISTORY_CARD};
 use crate::ask::Book;
 use crate::canonical::jcs;
+use crate::derivation::decode_strict;
 use crate::respond::{respond, RespondOptions, Responder, ResponderPolicy, SharePolicy};
 use crate::store::CheckpointedLog;
 use evidence_request::envelope::{parse_reply, Binding, Reply, PROFILE};
@@ -131,7 +132,7 @@ pub fn check_staple(
     }
     // `verify` leaves the profile to its caller (profile §3.3 step 5); a
     // request naming none is answered as `evidence-interop/0`.
-    let asked = serde_json::from_slice::<Value>(request)
+    let asked = decode_strict(request)
         .ok()
         .and_then(|v| v.get("profile").and_then(Value::as_str).map(str::to_owned))
         .unwrap_or_else(|| PROFILE.to_owned());
@@ -142,7 +143,7 @@ pub fn check_staple(
         history_card_form(&e.artifact, pin)?;
     }
     if derivation == DERIVATION_STANDARD_HISTORY {
-        let card: Value = match serde_json::from_slice(&e.artifact) {
+        let card = match decode_strict(&e.artifact) {
             Ok(card) => card,
             Err(_) => return refuse("the stapled card is not JSON"),
         };
@@ -179,7 +180,9 @@ fn history_card_form(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
                 && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
         })
     };
-    let card: Value = serde_json::from_slice(artifact).map_err(|_| bad("is not a JSON object"))?;
+    // A duplicate member is refused, as Go's DecodeJSON and Python's
+    // strict_json refuse it; serde_json would keep the last one.
+    let card = decode_strict(artifact).map_err(|_| bad("is not a JSON object"))?;
     let Some(members) = card.as_object() else {
         return Err(bad("is not a JSON object"));
     };
