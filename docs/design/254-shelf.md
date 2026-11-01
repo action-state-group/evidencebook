@@ -235,6 +235,13 @@ host log is either in the cadence (a legacy log, as Go's), or outside it, when i
 witness rows are the host's own on that backend (the Mesh plugin's `CheckpointState::load_log`,
 capsule-emit `checkpoint.rs:655-680`). `shelf_logs` keeps book and host ids apart (§2.2).
 
+A write to a host log in the cadence is lent the stores under the shelf's lock and keeps nothing
+past it, since the write puts the log back in the live set. A host log outside the cadence is
+never touched by the shelf after it is opened, so its host may hold the two stores for as long as
+the shelf is open (Rust `HostLog::stores`), as capsule-emit's ledger and checkpoint state keep
+their handles. Its writes are then serialized by the host's own lock, and the stores close when
+the shelf is released.
+
 `Cadence.ImportLegacy` carries a pre-shelf cadence's ticks and logs in once, re-runnably
 (`cadence_import.go:33-60`). Importing a host's pre-shelf files into a host log is the host's
 (its records, its journal), on the shelf's stores; §7.2 is the Mesh case.

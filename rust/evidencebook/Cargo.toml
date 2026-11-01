@@ -19,7 +19,7 @@ name = "evidencebook"
 path = "src/lib.rs"
 
 [dependencies]
-cll = { package = "checkpointed-local-log", version = "0.3.1" }
+cll = { package = "checkpointed-local-log", version = "0.4.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
@@ -34,10 +34,10 @@ ciborium = "0.2"
 # refusal profile, the interop profile's envelope, and (`cll`) the encoders and
 # checks of the Checkpointed Local Log material, on the same
 # checkpointed-local-log line as this crate.
-evidence-request = { version = "0.3", default-features = false, features = ["cll"] }
+evidence-request = { version = "0.4.1", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
-agent-action-capsule = { version = "0.5.0", default-features = false, features = ["strict"] }
+agent-action-capsule = { version = "0.8.0", default-features = false, features = ["strict"] }
 # The `deal` feature's dependencies (the x-deal-v0 reference profile, module
 # `deal`): its schemas' validator, the normalization of counterparty
 # identifiers (Unicode normalization, case mapping, general categories, IDNA,
@@ -50,6 +50,15 @@ icu_normalizer = { version = "2", optional = true }
 icu_properties = { version = "2", optional = true }
 idna = { version = "1.1", optional = true }
 regex = { version = "1", optional = true }
+# The `shelf` feature's dependencies (module `shelf`): the shelf's SQLite file
+# (the same rusqlite line checkpointed-local-log's and the artifact store's
+# `sqlite` features use), the artifact store that keeps every book's
+# originals, base64 for the stored statements, and libc for the writer lock's
+# flock. None is built without the feature.
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+capsule-emit-artifact = { version = "0.0.2", features = ["sqlite"], optional = true }
+base64 = { version = "0.22", optional = true }
+libc = { version = "0.2", optional = true }
 
 [features]
 default = []
@@ -58,6 +67,11 @@ default = []
 # Its record checks read numbers as written, as Go's json.Number does
 # (agent-action-capsule's `strict` already turns this on).
 deal = ["dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:icu_properties", "dep:idna", "dep:regex", "serde_json/arbitrary_precision"]
+
+# The shelf (evidencebook#254 §2, module `shelf`): one subject key's books in
+# one SQLite file, its writer lock or a host-held one, host logs, the heartbeat
+# cadence and its witnessed chain, the same file Go and Python write.
+shelf = ["cll/sqlite", "dep:rusqlite", "dep:capsule-emit-artifact", "dep:base64", "dep:libc"]
 
 [package.metadata.docs.rs]
 all-features = true

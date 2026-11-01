@@ -216,7 +216,7 @@ impl Checkpoint {
         }
     }
 
-    fn from_log(cp: CheckpointRecord) -> Self {
+    pub(crate) fn from_log(cp: CheckpointRecord) -> Self {
         Self {
             v: cp.v,
             kind: cp.kind,
@@ -807,17 +807,16 @@ mod tests {
         let first = cut(&mut s, 3, &key).unwrap();
         assert!(first.verify_signature_offline());
         // The identity key with R the identity and S = 0 signs every
-        // message under the lenient check; the strict one refuses it.
+        // message under a lenient check; this crate's strict check refuses
+        // it, and so does the log's own since checkpointed-local-log 0.4.0
+        // (its small-order key refusal).
         let identity = format!("01{}", "00".repeat(31));
         let forged = Checkpoint {
             key_id: identity.clone(),
             signature: format!("{identity}{}", "00".repeat(32)),
             ..first.clone()
         };
-        assert!(
-            forged.to_log().verify_signature_offline(),
-            "the lenient check accepts it"
-        );
+        assert!(!forged.to_log().verify_signature_offline());
         assert!(!forged.verify_signature_offline());
         assert_eq!((first.prev_size, first.prev_root.as_str()), (0, ""));
         for n in 3..5 {

@@ -1,8 +1,13 @@
 //! The embedded log never escapes the crate's public API.
 //!
-//! Scans every source file for a public item whose signature line names a
-//! `cll` path, and for a `pub use` of anything from `cll`. Private helpers may
-//! use the log freely; a caller must only ever see this crate's own types.
+//! Scans every source file, in every module directory, for a public item
+//! whose signature line names a `cll` path, and for a `pub use` of anything
+//! from `cll`. Private helpers may use the log freely; a caller must only
+//! ever see this crate's own types.
+//!
+//! One line is exempt, and it is named exactly ([`EXEMPT`]): a shelf's host
+//! log hands its host the log's CLL backend, because the host's own log
+//! layer runs on it (evidencebook#254 §2.7).
 //! The scan is line-based, so a public signature is kept on the line that
 //! names its types (rustfmt's layout for every signature in this crate).
 
@@ -35,18 +40,49 @@ fn public_lines_naming_cll(src: &str) -> Vec<String> {
     hits
 }
 
+/// The one public line allowed to name a `cll` type: the file (under
+/// `src/`) and the trimmed line.
+const EXEMPT: (&str, &str) = (
+    "shelf/mod.rs",
+    "pub log: Arc<cll::log::sqlite::SqliteStore>,",
+);
+
+fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            sources(&path, out);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+}
+
 #[test]
 fn no_public_item_names_a_cll_type() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    sources(&dir, &mut files);
     let mut hits = Vec::new();
-    for entry in fs::read_dir(&dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            for hit in public_lines_naming_cll(&fs::read_to_string(&path).unwrap()) {
-                hits.push(format!("{}:{hit}", path.display()));
+    let mut exempt_seen = false;
+    for path in files {
+        let relative = path
+            .strip_prefix(&dir)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        for hit in public_lines_naming_cll(&fs::read_to_string(&path).unwrap()) {
+            if relative == EXEMPT.0 && hit.ends_with(EXEMPT.1) {
+                exempt_seen = true;
+                continue;
             }
+            hits.push(format!("{}:{hit}", path.display()));
         }
     }
+    assert!(
+        exempt_seen,
+        "the exemption names a line that no longer exists"
+    );
     assert!(
         hits.is_empty(),
         "public API names cll:\n{}",

@@ -8,11 +8,17 @@ description = "The personal-history and responder runs of the evidencebook crate
 publish = false
 
 [dependencies]
-evidencebook = { path = "../evidencebook" }
-evidence-request = { version = "0.3", default-features = false, features = ["cll"] }
+evidencebook = { path = "../evidencebook", features = ["shelf"] }
+evidence-request = { version = "0.4.1", default-features = false, features = ["cll"] }
 ciborium = "0.2"
 ed25519-dalek = "2"
 hex = "0.4"
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 tempfile = "3"
+# The shelf storage interlock's Rust side (src/shelf.rs, bin shelf).
+agent-action-capsule = { version = "0.8.0", default-features = false, features = ["strict"] }
+base64 = "0.22"
+capsule-emit-artifact = { version = "0.0.2", features = ["sqlite"] }
+cll = { package = "checkpointed-local-log", version = "0.4.0" }
+rusqlite = { version = "0.40", features = ["bundled"] }

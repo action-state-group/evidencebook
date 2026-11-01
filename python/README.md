@@ -50,8 +50,8 @@ answered but never grow the log.
 ## The shelf
 
 A shelf is one subject key's books in one SQLite file (evidencebook#254 §2),
-the same file Go's `OpenSQLiteShelf` writes: Go and Python each open,
-continue and verify the other's shelf.
+the same file Go's `OpenSQLiteShelf` and Rust's `Shelf::open_sqlite` write: Go,
+Python and Rust each open, continue and verify the others' shelves.
 
 ```python
 import sqlite3

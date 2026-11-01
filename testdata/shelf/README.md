@@ -46,7 +46,14 @@ byte order, `<`, `>` and `&` written as `\u003c`, `\u003e` and `\u0026`,
 no other escaping beyond JSON's, and one final newline.
 
 The storage interlock (CI job `shelf-interlock`) runs the phases in separate
-processes, Go's `test/interop/shelf` and Python's
-`test/interop/python-evidencebook/shelf.py`, each language writing and
-continuing the other's file, and compares every language's dump with these
-files. Python's `tests/test_shelf.py` reads every file here.
+processes: Go's `test/interop/shelf`, Python's
+`test/interop/python-evidencebook/shelf.py` and Rust's `rust/interop` bin
+`shelf`. Every language writes, and continues every language's file
+(its own included), and every language's dump is compared with these files.
+
+## Readers
+
+- Python: `python/tests/test_shelf.py` reads every file here.
+- Rust: `rust/evidencebook/src/shelf/tree.rs` reads `tree.json`, and
+  `rust/interop/tests/shelf_vectors.rs` runs `script.json` and compares its
+  dumps with `after-write.json` and `after-continue.json`.
