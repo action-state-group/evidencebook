@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Builds against capsulectl `v0.1.0-rc28`, evidencebook `v0.12.0`, capsule-viewer
+  `v0.8.0` (capsule-viewer#196, #197, #200, #201), agent-action-capsule `v0.18.0`
+  and checkpointed-local-log `v0.3.0`. The presentation goldens are rebuilt
+  (`build-fixtures.sh` with capsulectl-book `v0.1.0-rc28`, then the snapshots and
+  pages). The share test for the customer's name now leaves the viewer's runtime
+  scripts out of its check for the bare word "customer": that runtime says
+  "customer" since viewer 0.8.0, whoever the customer is.
+
 - The History card (`standard_history/1`, evidencebook-deal#85, evidencebook#237):
   `deal standard-history declare --holder-kind person|node` (declared once, and
   declaring again never turns answering back on; with no declaration there is
