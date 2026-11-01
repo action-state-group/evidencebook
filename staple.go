@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -111,8 +112,8 @@ type StapleCheck struct {
 // hex Ed25519 key the reader names for its counterparty) and stays inside
 // the cap: the envelope verifies under holder's key and answers this very
 // request, the derivation is history_card/1 over checkpoints or
-// standard_history/1 over full_history, the anchor is the one the request
-// pinned, and a standard_history/1 card is of the standard card's form. It
+// standard_history/1 over full_history, the anchor and profile are the
+// ones the request named, and a standard_history/1 card is of the standard card's form. It
 // does not check the anchor's checkpoint, the card's own properties or the
 // nonce's freshness: those are the reader's verifier and policy.
 func CheckStaple(s Staple, holder string) (StapleCheck, error) {
@@ -152,6 +153,9 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 		return StapleCheck{}, fmt.Errorf("%w: the staple's envelope signs another derivation or subject", ErrInvalid)
 	case e.Anchor.Digest != req.Coverage.ExpectedPin:
 		return StapleCheck{}, fmt.Errorf("%w: the staple's envelope is as of another anchor", ErrInvalid)
+	case e.Profile != cmp.Or(req.Profile, ProfileID):
+		// Verify leaves the profile to its caller (profile §3.3 step 5).
+		return StapleCheck{}, fmt.Errorf("%w: the staple's envelope names another profile", ErrInvalid)
 	}
 	if req.Derivation == DerivationStandardHistory {
 		properties, err := standardhistory.Check(e.Artifact, nil, nil, nil)

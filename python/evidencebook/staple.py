@@ -119,6 +119,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
         raise InvalidError("the staple's envelope signs another derivation or subject")
     if e.anchor_digest != req.coverage.expected_pin:
         raise InvalidError("the staple's envelope is as of another anchor")
+    if e.profile != req.profile:  # read_request answers a request naming none as PROFILE
+        raise InvalidError("the staple's envelope names another profile")
     if req.derivation == DERIVATION_STANDARD_HISTORY:
         try:
             card = strict_json(e.artifact)

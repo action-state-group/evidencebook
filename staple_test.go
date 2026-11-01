@@ -255,6 +255,7 @@ func writeStapleVectors(t *testing.T) {
 		vector("a reply to another derivation", card.Request, standard.Reply, holder, false, sc),
 		vector("a tampered envelope", standard.Request, tamperedReply(t, standard.Reply), holder, false, sc),
 		vector("a card with more than the standard card", standard.Request, widenedCard(t, book, standard.Reply), holder, false, sc),
+		vector("an envelope under another profile", standard.Request, resigned(t, book, standard.Reply, func(e *Envelope) { e.Profile = ProfileIDv1 }), holder, false, sc),
 	}
 	out, err := json.MarshalIndent(vectors, "", "  ")
 	if err != nil {
@@ -268,23 +269,14 @@ func writeStapleVectors(t *testing.T) {
 	}
 }
 
-// widenedCard is reply with a member the standard card does not have added
-// to its card and re-signed by the holder: a staple carrying more than the
-// standard card, under the holder's own key.
-func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
+// resigned is reply with its envelope changed by change and re-signed by
+// the holder: a staple its own holder made wrong.
+func resigned(t *testing.T, book *Book, reply Reply, change func(*Envelope)) Reply {
 	t.Helper()
 	e := *reply.Envelope
-	var card map[string]any
-	if err := json.Unmarshal(e.Artifact, &card); err != nil {
-		t.Fatal(err)
-	}
-	card["counterparties"] = []any{"carol"}
-	artifact, err := canonicalJSON(card)
+	change(&e)
+	e, err := e.Sign(context.Background(), book.signer)
 	if err != nil {
-		t.Fatal(err)
-	}
-	e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
-	if e, err = e.Sign(context.Background(), book.signer); err != nil {
 		t.Fatal(err)
 	}
 	out, err := evidencerequest.EncodeReply(MediaTypeJSON, &e, nil)
@@ -292,4 +284,23 @@ func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
 		t.Fatal(err)
 	}
 	return Reply(out)
+}
+
+// widenedCard is reply with a member the standard card does not have added
+// to its card: a staple carrying more than the standard card, under the
+// holder's own key.
+func widenedCard(t *testing.T, book *Book, reply Reply) Reply {
+	t.Helper()
+	return resigned(t, book, reply, func(e *Envelope) {
+		var card map[string]any
+		if err := json.Unmarshal(e.Artifact, &card); err != nil {
+			t.Fatal(err)
+		}
+		card["counterparties"] = []any{"carol"}
+		artifact, err := canonicalJSON(card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.Artifact, e.ArtifactDigest = artifact, digestBytes(artifact)
+	})
 }

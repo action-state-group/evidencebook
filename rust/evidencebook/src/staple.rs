@@ -16,7 +16,7 @@
 //! verifier in every language.
 
 use crate::answer::DERIVATION_HISTORY_CARD;
-use evidence_request::envelope::{parse_reply, Binding, Reply};
+use evidence_request::envelope::{parse_reply, Binding, Reply, PROFILE};
 use evidence_request::request::{self, Coverage, Derivation, Subject};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -69,7 +69,7 @@ fn refuse<T>(why: impl Into<String>) -> Result<T, StapleError> {
 /// `holder` (lowercase hex Ed25519) and stays inside the cap: the envelope
 /// verifies under the holder's key and answers this very request, the
 /// derivation and subject are one of the two pairs, and the anchor is the
-/// one the request pinned. It does not check the anchor's checkpoint, the
+/// one the request pinned, as is the profile. It does not check the anchor's checkpoint, the
 /// card's properties or the nonce's freshness: those are the reader's.
 pub fn check_staple(
     request: &[u8],
@@ -116,6 +116,15 @@ pub fn check_staple(
     }
     if &e.anchor.digest != pin {
         return refuse("the envelope is as of another anchor");
+    }
+    // `verify` leaves the profile to its caller (profile §3.3 step 5); a
+    // request naming none is answered as `evidence-interop/0`.
+    let asked = serde_json::from_slice::<Value>(request)
+        .ok()
+        .and_then(|v| v.get("profile").and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_else(|| PROFILE.to_owned());
+    if e.profile != asked {
+        return refuse("the envelope names another profile");
     }
     if derivation == DERIVATION_STANDARD_HISTORY {
         let card: Value = match serde_json::from_slice(&e.artifact) {
