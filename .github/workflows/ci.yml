@@ -495,8 +495,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: evidence-network/loop
-          # evidence-network/loop#338 (the goose community and /-joined streams); its merge commit replaces this.
-          ref: b53dc487c958515f6207430f81fcb0029adefa37
+          # The merge of evidence-network/loop#338 (the goose community and /-joined streams).
+          ref: 8b5531a36228178504b50110fe90113a6fd9acbf
           path: loop-checkout
           persist-credentials: false
       - name: Test the reference, run it, and check its cards with Go and its halves as a Mesh node does
