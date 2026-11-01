@@ -43,6 +43,8 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit import produce
 from capsule_emit.artifact import PAYLOAD_DIGEST, PRESENT, Artifact
 from capsule_emit.artifact.sqlite import SqliteArtifactStore
+from capsule_emit.signing import AuthorshipVerdict, verify_capsule_signature_tristate
+from capsule_emit.verification import verify_capsule
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding, NoEncryption, PrivateFormat, load_pem_private_key,
@@ -57,7 +59,7 @@ from evidencebook.shelf import Shelf
 
 import deal_records as dr
 
-__all__ = ["Node", "verify_half", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
+__all__ = ["Node", "verify_half", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
 
 NODE_BOOK = "goose/node"
 LEDGER_LOG = "goose/ledger"
@@ -71,6 +73,9 @@ POLICY = {"window": {"all": True}}
 HOLDER_KIND = "person"
 #: The record types of the node book.
 JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
+#: A referee's Result delivered into this book, and one refused on delivery
+#: (step 09, evidencebook#310).
+DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_refused"
 #: A model call the node sealed (``Node.seal_model_call``).
 MODEL_CALL = "goose_model_call"
 
@@ -180,6 +185,23 @@ class _Nodes:
 
     def append_nodes(self, hashes: list[bytes]) -> None:
         self.hashes.extend(hashes)
+
+
+def _authentic(capsule: Any) -> bool:
+    """The capsule recomputes and its signature verifies under the key_id it carries."""
+    return (isinstance(capsule, dict) and verify_capsule(capsule).ok
+            and verify_capsule_signature_tristate(capsule)[0] is AuthorshipVerdict.AUTHORED)
+
+
+def _referee() -> Any:
+    """capsule-engine's referee, which holds the Result's receive check. It is
+    this example's one extra dependency, imported on first use."""
+    try:
+        from capsule_engine import referee
+    except ImportError:
+        raise Refused("receiving a referee's Result needs a capsule-engine that has capsule_engine.referee "
+                      "installed beside this node") from None
+    return referee
 
 
 class Refused(ValueError):
@@ -507,6 +529,75 @@ class Node:
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
             return {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
                     "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
+
+    # -- 09 Dispute ------------------------------------------------------------------
+
+    def receive_dispute_result(self, capsule: Any, octets: bytes, parties: Any) -> SealedStep:
+        """Seal a referee's Result into this book as received.
+
+        *octets* are the Result document exactly as the referee wrote them (its
+        JCS); *capsule* is the referee's sealed ``referee.result``; *parties*
+        is ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``, each
+        half with the opening of its commitment, as the referee's
+        ``Party`` takes them. The Result must verify, be signed by the referee
+        both halves' terms name, name these two halves, and be about a deal this
+        node's key sealed one half of. Anything else is refused, and the refusal
+        is sealed with its code (never silence). The record's ``result_digest``
+        is the SHA-256 of *octets*, so every party's book holds the same one."""
+        referee = _referee()
+        digest = hashlib.sha256(octets).hexdigest()
+        with self._lock:  # check and seal as one step, or two deliveries of one Result both seal
+            try:
+                try:
+                    self._check_dispute_result(referee, capsule, octets, parties)
+                except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                    if isinstance(exc, referee.RefereeError):
+                        raise
+                    # A float in the octets, terms that are not an object: a delivery that is no Result.
+                    raise referee.RefereeError("not_a_result", f"the delivery cannot be read: {exc}") from exc
+            except referee.RefereeError as exc:
+                if not self._noted(DISPUTE_REFUSED, digest, code=exc.code):
+                    self.note(DISPUTE_REFUSED, {"result_digest": digest, "code": exc.code}, subject_ref=digest)
+                raise Refused(str(exc)) from exc
+            if self._noted(DISPUTE_RECEIVED, digest):
+                raise Refused("this Result is already received in this book")
+            halves = (parties["buyer"]["half"]["capsule_id"], parties["seller"]["half"]["capsule_id"])
+            return self.note(DISPUTE_RECEIVED, {
+                "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
+                "buyer_half": halves[0], "seller_half": halves[1],
+            }, subject_ref=digest)
+
+    def _noted(self, record_type: str, digest: str, **members: Any) -> bool:
+        return any(st.get("result_digest") == digest and all(st.get(k) == v for k, v in members.items())
+                   for _, st in self.notes(record_type))
+
+    def _check_dispute_result(self, referee: Any, capsule: Any, octets: bytes, parties: Any) -> None:
+        err = referee.RefereeError
+        try:
+            roles = {role: parties[role] for role in ("buyer", "seller")}
+            doc = json.loads(octets)
+            halves = {r: p["half"] for r, p in roles.items()}
+            terms = {r: p["terms"] for r, p in roles.items()}
+            actions = {r: p["action"] for r, p in roles.items()}
+        except (KeyError, TypeError, ValueError):
+            raise err("not_a_result", "the delivery is not a Result document with both parties' openings") from None
+        if jcs(doc) != octets:
+            raise err("result_mismatch", "the Result octets are not the referee's JCS bytes")
+        for role in roles:
+            # verify_referee_result takes the openings as given: bind each to
+            # its signed half here, or a forged terms file could name its own referee.
+            half = halves[role]
+            if not _authentic(half):
+                raise err("half_unverified", f"the {role}'s half does not verify under the key it carries")
+            committed = ((half.get("model_attestation") or {}).get("compute_attestation") or {}).get("action_digest")
+            if committed != referee.action_digest(actions[role], terms[role]):
+                raise err("opening_mismatch", f"the {role}'s opening does not recompute its half's action_digest")
+        if self.key_id not in {halves["buyer"].get("key_id"), halves["seller"].get("key_id")}:
+            raise err("not_a_party", "this node's key sealed neither half the Result judges")
+        if halves["buyer"].get("key_id") == halves["seller"].get("key_id"):
+            raise err("halves_unpaired", "both halves are signed by one key")
+        referee.verify_referee_result(capsule, doc, buyer_half=halves["buyer"], seller_half=halves["seller"],
+                                      buyer_terms=terms["buyer"], seller_terms=terms["seller"])
 
     # -- the imported ledger ---------------------------------------------------------
 

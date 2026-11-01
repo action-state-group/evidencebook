@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added: the Goose reference receives a referee's Result (step 09, #310)
+
+- `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
+  capsule-engine's `verify_referee_result`, after binding each party's terms to its signed half,
+  and seals it in the node book as `goose_dispute_received`; both parties' books hold the same
+  `result_digest`. A Result that fails any check is refused and sealed as `goose_dispute_refused`
+  with the refusal's code.
+
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
 
 - `dealprofile`: `cases.Fold` swaps Cherokee case, so `Ꭰ` and `ꭰ` had different

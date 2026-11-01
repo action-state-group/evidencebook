@@ -90,7 +90,18 @@ The other tools are `loop_import` (your existing ledger), `loop_book` (a book's 
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`
 (an evidence request you send, and its verified answer).
 
-`scripted_run.py` runs that whole table with two nodes, each a `loop_server.py` process spoken to
+`loop_dispute_receive` is step 09, the receiving half: a referee named in the deal terms seals a
+Result (capsule-engine's `referee`), and each judged party seals it into its own book as received.
+It takes the Result document as the referee wrote it, the referee's sealed `referee.result` capsule, and
+each party's signed half with the opening of its commitment. It refuses, and seals the refusal with its
+code, a Result that does not verify, that is not signed by the referee both halves' terms name, that
+names other halves, or about a deal this node's key sealed no half of. Both parties' books then hold
+the same `result_digest`, the SHA-256 of the Result's bytes. Fetching the Result is yours: poll the
+mailbox the terms name, or take the file the referee hands over. The tool needs `capsule-engine` installed
+beside the node: a release that has `capsule_engine.referee` (0.3.0 does not), or until one ships the commit CI uses,
+`pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`.
+
+`scripted_run.py` runs that table, except step 09 (which needs a referee node; `tests/test_dispute.py` runs it), with two nodes, each a `loop_server.py` process spoken to
 over MCP stdio, as Goose speaks to it:
 
 ```bash

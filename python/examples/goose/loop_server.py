@@ -16,6 +16,7 @@ is imported once as a host log, nothing re-signed.
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
     07    loop_ask, loop_ask_reply (the asker's side)
+    09    loop_dispute_receive (a referee's Result sealed as received; the check is capsule-engine's)
     12    loop_join, loop_probe, loop_import
     cards loop_history_card, loop_standard_history
 
@@ -372,6 +373,27 @@ def loop_ask_reply(request_record_id: str, reply_file: str, responder_key: str, 
                                  ResponderKeys(signer=responder_key, checkpoint=checkpoint_key))
     statement = record.header.statement
     return _out(ok=True, step="07", record_id=record.record_id, outcome=statement.get("outcome"))
+
+
+# -- 09 Dispute -----------------------------------------------------------------------------
+
+
+@_tool
+def loop_dispute_receive(result_file: str, result_capsule_file: str, deal_file: str) -> str:
+    """Seal a referee's Result into this node's book as received.
+
+    ``result_file`` holds the Result document exactly as the referee wrote it,
+    ``result_capsule_file`` the referee's sealed ``referee.result`` capsule, and
+    ``deal_file`` ``{"buyer": {"half", "action", "terms"}, "seller": {...}}``:
+    each party's signed half and the opening of its commitment. The Result must
+    verify, be signed by the referee both halves' terms name, name these
+    halves, and be about a deal this node sealed one half of. Otherwise it is
+    refused and the refusal sealed with its code. Both parties' books hold the
+    same ``result_digest``. Fetching the Result is the caller's: poll the
+    mailbox the terms name, or take the file the referee hands over."""
+    sealed = node().receive_dispute_result(_read_json(result_capsule_file),
+                                           Path(result_file).expanduser().read_bytes(), _read_json(deal_file))
+    return _out(ok=True, step="09", record_id=sealed.record_id)
 
 
 # -- History cards ----------------------------------------------------------------------------
