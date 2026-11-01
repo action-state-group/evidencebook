@@ -13,6 +13,14 @@
   member (#254 D4) and a library for `inference-service-history/0` (#322).
 - agent-action-capsule's Go module moves to `go/v0.19.0`, which verifies `controller_binding` joins.
 
+### Added: `external-check-input/v0` carries the acting role's rules pin (#230)
+
+- `dealprofile/x-deal-v0/external-check-input-v0.schema.json` allows an optional top-level
+  `rules_pin`, `{pack, definition_digests}` (either may be absent, never both): the pin the
+  check runs under for `party_role` when the deal profile pins rules per role
+  (`rules_checker.roles`). Absent when the profile pins no roles, so every input valid before
+  stays valid. PROFILE.md ("The external rules checker") documents it.
+
 ### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
 
 - `--contract FILE` pins a compiled Evidence Contract v0 to `--contract-digest` (the lowercase hex
