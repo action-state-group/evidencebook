@@ -273,41 +273,38 @@ This is the "books on a shelf" half of Steven's statement, and it already has a 
 
 ### 3.3 Two ecosystems: stapling a Mesh card and a Goose card
 
-The reference case is one developer who runs a Mesh node and a Goose agent: a node key that serves
-inference and an agent key that makes deals. A relying party wants both Histories together. Under
-the frame they are two subjects (HF §4.1), and HF §4.8 forbids serving them under one key. HF
-§4.7: "They compose only by an explicit, evidence-backed link between their keys, never by being
-shown together". The link AAC defines is the controller binding record
-(`spec/controller-binding-v0.md`), and its §2 names exactly this case: records under two bound
-keys "can be joined as records about the activity of keys whose holders bound them, for example a
-service History and a personal History". Its `controller_binding` join basis is what Evidence
-Bundle -02 adopts for `composed/v1` (controller-binding-v0 §8).
+The reference case is a deal between two parties: a Goose agent that buys inference and the Mesh
+node that serves it. Each party's History is its own subject (HF §4.1), each is answered by its
+own evidence request (one request, one subject, one artifact; ER), and HF §4.8 forbids serving
+both under one key. HF §4.7: they "compose only by an explicit, evidence-backed link between their
+keys, never by being shown together".
 
-What a reference staple is, with what exists:
+**The deal is the link.** Evidence Bundle -02's `composed/v1` block carries the answers of several
+responders, each to its own request, as members of one portable object, and declares the joins
+between them (EB -02 "The composed/v1 Extension", "Joins"). Two bases join counterparties on their
+deal, evaluated on each member's root record:
 
-1. the Goose agent's card (`standard_history/1` from its Python shelf, §8), with its anchor's
-   receipt beside it;
-2. the Mesh node's card (`inference-service-history/0` from its Rust shelf, with its embedded
-   `history_card/1`);
-3. a binding record with the claim `same_controller_asserted` (controller-binding-v0 §3.2),
-   signed by both keys, which is the only thing that lets a verifier show the two together.
+- `shared_artifact_digest`: each party's half of the deal cites the other's by digest (ER
+  "Exchange half"), so the two root records carry the same digest;
+- `pre_agreed_identifier`: both root records carry the deal id, compared by its SHA-256.
 
-Each card is asked for and answered by its own evidence request, as ER requires (one request, one
-subject, one artifact). Two things are **not** defined by what exists:
+So a relying party staples the two parties' evidence of one deal by composing their answers on
+the deal digest. That exists today for Evidence Bundles of the two halves.
 
-- a single request or a single answer that carries both cards: ER -02 has no multi-subject request,
-  and HF has no composed History;
-- any way to show together the cards of two **counterparties** (a Goose buyer and someone else's
-  Mesh node). No binding claim states that two independent parties dealt with each other:
-  `same_controller_asserted` is false for them, `delegated_by` states a delegation, and
-  `same_organization_credentialed`, where true, joins their records only as one organization's
-  activity (CB §2 item 2). Any binding between them would also make their two halves of a deal
-  "redundant, not corroborating" (CB §2 item 1).
-  Counterparties relate only through their records: each half of the deal cites the other by
-  digest (ER "Exchange half").
+**One operator, two keys.** When one operator holds both keys (a Mesh node and its owner's Goose
+agent), the `controller_binding` basis joins them, through a binding record with the claim
+`same_controller_asserted` (controller-binding-v0 §3.2, §8). Such a join is "redundant, not
+corroborating" (EB -02 "Same custody is redundant, not corroborating"; CB §2 item 1). It never
+joins counterparties: no binding claim states that two independent parties dealt with each other.
 
-Both are new spec and a door for Steven (§9, D4). The shelf needs no storage change for either:
-each card is derived from one shelf as it is.
+**What is not defined.** `composed/v1` members are Evidence Bundles, refusals or absences, and its
+joins read each member's root record; whether a History answer (a `standard_history/1` or
+`inference-service-history/0` envelope) can be a member, and what its root record is, is not
+stated. Sherlock2 recommends (Buzz, evidencebook channel, reply to bdaa01e7) keeping ER's one
+request, one subject, one artifact, with no multi-subject request: one request for two keys means
+one responder answering for another key. The possible gap is only that membership, and it is a
+door for Steven (§9, D4). The shelf needs no storage change either way: each card is derived from
+one shelf as it is.
 
 ### 3.4 What the reference shows a developer
 
@@ -316,7 +313,9 @@ A developer copying the reference gets, in their own language:
 - a shelf (§2) holding their agent's logs under one key;
 - `history_card/1` per log, and their ecosystem's History instance (a counting table and a
   wording pack under the frame, HF §5) over one log or over the books at a tick;
-- a controller binding to staple the Histories of two keys they hold.
+- their half of each deal, citing the counterparty's half by digest, so a relying party can join
+  the two parties' answers in `composed/v1`;
+- a controller binding only for two keys they hold themselves.
 
 Mesh shows the one-stream case in Rust (a host log that checkpoints and witnesses itself); Goose
 shows the many-books, cadence case in Python; capsulectl deal shows the same many-books case in Go.
@@ -514,13 +513,21 @@ stays; its loop server (`loop_server.py`) is retired in favour of this one (C3, 
 neither file at `5907a93`), so one Goose loop
 reference remains, and its docs point here.
 
-**No import.** The retired loop server's ledgers are example stores, not a released product's
-history; they stay readable with `capsule-emit verify --store`. capsule-emit's Python ledger has
-only a file-path layout (`ledger.py:247,337,400`) and no store-backed mode to import into a host
-log, and building one for example stores is machinery with no consumer.
+**Goose's existing ledger is kept.** Nothing Goose has sealed is re-signed or dropped (Sherlock2's
+condition on D3): a Goose agent's flat ledger becomes a host log on its shelf, imported as the Mesh
+chain is (§7.2: journalled, put as stored, appended in order, counted and checked, flat files moved
+to an archive only after the check). capsule-emit's Python ledger has only a file-path layout today
+(`ledger.py:247,337,400`), so it first gains what its Rust ledger has, the same ledger over a CLL
+entry store and an artifact store (`Ledger::open_stores_with_indexer`, capsule-emit
+`rust/capsule-emit/src/ledger.rs:735`), as ledger plan step 6 already moves every user to (C4).
+
+**Peers keep verifying.** A Mesh node on the current release must still verify the halves of a
+Goose deal. The plugin already seals x-deal-v0 deal steps (`deal_records.rs`); if x-deal-v0 changes
+the exchange half a Mesh peer receives from Goose, Goose sends both forms for an overlap window,
+and G1's acceptance includes a two-node run against the current plugin release.
 
 Whether Goose's deal halves become x-deal-v0 records changes what a Goose counterparty receives,
-so it goes to Steven, with Sherlock2's recommendation (§9, D3). capsulectl deal is already the same
+so it goes to Steven, with Sherlock2's recommendation: yes, on the two conditions above (§9, D3). capsulectl deal is already the same
 many-books case in Go (§1.1); the Python reference is what a Python developer copies.
 
 ## 9. One-way doors
@@ -529,8 +536,8 @@ many-books case in Go (§1.1); the Python reference is what a Python developer c
 |---|---|---|---|
 | D1 | The shelf's file as a cross-language contract: the shelf's tables and columns in §2.2 (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`), the no-row rule, and one artifact store namespace per shelf; CLL's and capsule-emit's tables stay theirs | engineering's, with Sherlock2's door confirmation | a storage format with no product meaning; every byte a peer sees is unchanged (§4) |
 | D2 | The Mesh node import into `ledger/shelf.db` and the move of the flat chain files to `archive/pre-store/` | engineering's under #206's three conditions | Sherlock2 agreed #206's door is engineering's under those conditions (Buzz 341813f1); only the destination changes, so it is re-confirmed, not re-decided |
-| D3 | Goose's deal halves become x-deal-v0 deal records on per-deal books | Steven, with Sherlock2's recommendation, flagged in the DM with Steven | what a Goose counterparty receives changes |
-| D4 | One evidence request (or one answer) that carries Histories of two subject keys, and any way to show two counterparties' Histories together | Steven: public spec direction (ER, HF, CB) | ER -02 and HF define no such request or composed History, and no binding claim fits two counterparties (§3.3); the reference uses two requests and a `same_controller_asserted` binding, and needs no storage change either way |
+| D3 | Goose's deal halves become x-deal-v0 deal records on per-deal books | Steven, flagged in the DM with Steven; Sherlock2 recommends yes on two conditions: nothing sealed is re-signed or dropped, and a Mesh node on the current release still verifies Goose's halves (§8) | what a Goose counterparty receives changes |
+| D4 | Whether a History answer can be a `composed/v1` member, so a relying party joins two parties' Histories on their deal digest | Steven: public spec direction (EB -02, ER, HF); Sherlock2 recommends no multi-subject request, and at most this membership rule | `composed/v1` defines Evidence Bundle members only (§3.3); the reference staples the parties' answers on the deal today and needs no storage change either way |
 | D5 | Splitting the Mesh node's deals into their own books | Steven, if ever proposed | changes the positions peers hold and the stream ISH counts; not proposed here |
 | D6 | Native Python gains the shelf's verbs, amending evidencebook#191 | Ethan's how (decided 2026-10-31); Steven told after | #191's "no new verbs in native Python" was Ethan's rescope of Steven's Rust-core ruling |
 
@@ -547,9 +554,10 @@ Each is filed separately on project 1, except P1, which is capsules-plugin#206 i
 | E2 | evidencebook | Rust: the `shelf` feature (writing book, SQLite store, `Shelf`, `Cadence`, host log, lock or host-held lock, originals) on CLL 0.4.0, passing E1's vectors and interlock | E1, A2, C1 |
 | E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8, passing E1's vectors and interlock; amend #191 (D6) | E1, C2 |
 | E5 | evidencebook | Python: x-deal-v0 (records, fingerprints, the §11 deal entries) at byte parity with `dealprofile` | E3 |
-| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8) | E3, E5, D3 |
+| C4 | capsule-emit | Python: the ledger over a CLL entry store and an artifact store, at parity with Rust's `open_stores_with_indexer`, released | C2 |
+| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8), importing an existing Goose ledger as a host log, with a two-node run against the current plugin release | E3, E5, C4, D3 |
 | C3 | capsule-emit | retire `examples/goose-capsule/loop_server.py` and point `docs/adapters/goose.md` and the example README at `python/examples/goose/` | G1 |
-| E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a `same_controller_asserted` binding stapling a Mesh and a Goose History), with a worked example CI runs | E2, E3, G1 |
+| E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a Goose and a Mesh party's answers composed in `composed/v1` on their deal digest, and `controller_binding` for one operator's two keys), with a worked example CI runs | E2, E3, G1 |
 | P1 | Mesh-LLM/capsules-plugin | capsules-plugin#206, retargeted: the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
 | L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
-| A1 | agent-action-capsule | only if Steven rules for D4: a composed History carried by one request | D4 ruling |
+| A1 | agent-action-capsule | only if Steven rules for D4: a History answer as a `composed/v1` member (its root record for joins) | D4 ruling |
