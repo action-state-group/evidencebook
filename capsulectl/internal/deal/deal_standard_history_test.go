@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -71,16 +73,16 @@ func TestAPersonDoesNotAnswerByDefault(t *testing.T) {
 	assert.Equal(t, true, dealRun(t, "standard-history", "declare", "--holder-kind", "person", "--answer")["answers"])
 }
 
-// The policy is its own file: the default is the last 12 months, its digest
+// The policy is its own file: the default is the last 3 months, its digest
 // is the SHA-256 of the file's octets, and a change moves the digest.
 func TestThePolicyDefaultAndDigest(t *testing.T) {
 	dealFixture(t)
 	first := dealRun(t, "standard-history", "policy")
-	assert.Equal(t, map[string]any{"months": float64(12)}, first["window"])
+	assert.Equal(t, map[string]any{"months": float64(3)}, first["window"])
 	digest := first["policy_digest"].(string)
 	assert.Len(t, digest, 64)
-	set := dealRun(t, "standard-history", "policy", "--months", "3")
-	assert.Equal(t, map[string]any{"months": float64(3)}, set["window"])
+	set := dealRun(t, "standard-history", "policy", "--months", "6")
+	assert.Equal(t, map[string]any{"months": float64(6)}, set["window"])
 	assert.NotEqual(t, digest, set["policy_digest"])
 	assert.Equal(t, map[string]any{"all": true}, dealRun(t, "standard-history", "policy", "--all")["window"])
 	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "policy", "--months", "3", "--all")
@@ -117,7 +119,7 @@ func TestTheCardCountsTheDealsUnderTheAnchor(t *testing.T) {
 	assert.NotContains(t, sharedBlock, "deals", "no deal entry leaves in the shared copy")
 	assert.Equal(t, ownBlock["policy"], sharedBlock["policy"])
 	assert.Equal(t, ownBlock["as_of"], sharedBlock["as_of"])
-	assert.Equal(t, map[string]any{"months": float64(12)}, ownBlock["policy"].(map[string]any)["window"])
+	assert.Equal(t, map[string]any{"months": float64(3)}, ownBlock["policy"].(map[string]any)["window"])
 	assert.Equal(t, standardhistory.Derivation, "standard_history/1")
 }
 
@@ -266,7 +268,7 @@ func TestTheCardIsAsOfItsAnchor(t *testing.T) {
 
 	// A policy change is in no card until a tick follows it.
 	*now = now.Add(3 * time.Hour)
-	dealRun(t, "standard-history", "policy", "--months", "3")
+	dealRun(t, "standard-history", "policy", "--months", "6")
 	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "x.json"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "deal tick")
@@ -276,7 +278,7 @@ func TestTheCardIsAsOfItsAnchor(t *testing.T) {
 	later := respondCard(t, cardRequest(t, fullHistory))
 	require.NotNil(t, later.Envelope)
 	require.NoError(t, json.Unmarshal(later.Envelope.Artifact, &card))
-	assert.Equal(t, map[string]any{"months": float64(3)}, card["window"])
+	assert.Equal(t, map[string]any{"months": float64(6)}, card["window"])
 }
 
 func pinRequest(t *testing.T, pin string) string {
@@ -398,6 +400,10 @@ func TestTheStandardHistoryGoldens(t *testing.T) {
 			assert.ElementsMatch(t, []string{"policy", "as_of"}, keysOf(block), name)
 		}
 		assert.ElementsMatch(t, []string{"anchor", "anchor_time", "first_checkpoint_time"}, keysOf(block["as_of"].(map[string]any)), name+": no checkpoint or receipts member")
+		policy, _ := block["policy"].(map[string]any)
+		assert.Equal(t, map[string]any{"months": float64(3)}, policy["window"], name+": the default window")
+		digest := sha256.Sum256([]byte(shDefaultPolicy))
+		assert.Equal(t, hex.EncodeToString(digest[:]), policy["digest"], name+": the default policy's digest")
 	}
 }
 
@@ -415,7 +421,7 @@ func TestAFailedPolicyChangeLeavesThePolicyAlone(t *testing.T) {
 	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "policy", "--all")
 	require.Error(t, err)
 	require.NoError(t, os.Chmod(settings, 0o600))
-	assert.Equal(t, map[string]any{"months": float64(12)}, dealRun(t, "standard-history", "policy")["window"])
+	assert.Equal(t, map[string]any{"months": float64(3)}, dealRun(t, "standard-history", "policy")["window"])
 	dealRun(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
 }
 
@@ -445,9 +451,9 @@ func TestTheSamePolicyAgainMakesNoAnchorStale(t *testing.T) {
 	dealRun(t, "standard-history", "declare", "--holder-kind", "node")
 	*now = now.Add(3 * time.Hour)
 	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
-	dealRun(t, "standard-history", "policy", "--months", "12")
-	dealRun(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
 	dealRun(t, "standard-history", "policy", "--months", "3")
+	dealRun(t, "standard-history", "card", "--out", filepath.Join(t.TempDir(), "card.json"))
+	dealRun(t, "standard-history", "policy", "--months", "6")
 	_, err := invoke(t, "", "--profile", "deal", "deal", "standard-history", "card", "--out", filepath.Join(t.TempDir(), "again.json"))
 	require.Error(t, err, "a different policy does")
 }
