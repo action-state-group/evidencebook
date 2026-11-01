@@ -801,3 +801,15 @@ def test_a_reproduction_marker_round_trips_in_the_header():
     assert header.value() == value
     del value["reproduction"]
     assert Header.from_value(value).value() == value
+
+
+def test_a_malformed_or_unknown_reproduction_marker_is_refused():
+    from evidencebook.record import Header
+
+    base = {"v": 1, "book_id": "b", "seq": 1, "record_type": "r", "epistemic_type": "observed_event",
+            "committed_at": "2026-10-31T00:00:00Z", "links": []}
+    for marker in ({"clock": "caller", "x": 1}, {"clock": ""}, {}, "caller"):
+        with pytest.raises(eb.InvalidError):
+            Header.from_value({**base, "reproduction": marker})
+    with pytest.raises(eb.InvalidError):
+        Header.from_value({**base, "reproduction": {"clock": "wall"}}).validate()

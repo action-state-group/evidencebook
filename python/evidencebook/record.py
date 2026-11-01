@@ -214,8 +214,18 @@ class Header:
             statement=value.get("statement"),
             field_commitments=tuple(sorted((value.get("field_commitments") or {}).items())),
             commit_alg=value.get("commit_alg", ""),
-            reproduction=(value.get("reproduction") or {}).get("clock", ""),
+            reproduction=cls._reproduction_clock(value.get("reproduction")),
         )
+
+    @staticmethod
+    def _reproduction_clock(marker: Any) -> str:
+        """The clock of a ``reproduction`` member; any other shape is refused,
+        as Go and Rust refuse it, since dropping it would change the identity."""
+        if marker is None:
+            return ""
+        if not isinstance(marker, dict) or set(marker) != {"clock"} or not isinstance(marker["clock"], str) or not marker["clock"]:
+            raise InvalidError(f"reproduction {marker!r} is not {{\"clock\": ...}}")
+        return marker["clock"]
 
     def links_to(self, link_type: str) -> list[str]:
         """The targets of every link of type ``link_type``."""
@@ -232,6 +242,8 @@ class Header:
             raise InvalidError("retention_state is required with payload_commitments or field_commitments")
         if bool(self.field_commitments) != bool(self.commit_alg):
             raise InvalidError("commit_alg is present exactly when field_commitments are")
+        if self.reproduction and self.reproduction != "caller":
+            raise InvalidError(f"reproduction clock {self.reproduction!r} is not 'caller'")
         if self.commit_alg and self.commit_alg != COMMIT_ALG_NONCE256:
             raise InvalidError(f"commit_alg {self.commit_alg!r} is not {COMMIT_ALG_NONCE256}")
         for name, digest in self.field_commitments:

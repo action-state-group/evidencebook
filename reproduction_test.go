@@ -81,6 +81,8 @@ func TestABookKeepsItsClockKind(t *testing.T) {
 		require.NoError(t, err, "opening to read is allowed")
 		_, err = other.Append(context.Background(), observation("s", "two"))
 		assert.True(t, errors.Is(err, ErrInvalid), "reproduction=%v: %v", reproduction, err)
+		_, err = other.Checkpoint(context.Background())
+		assert.True(t, errors.Is(err, ErrInvalid), "checkpoint, reproduction=%v: %v", reproduction, err)
 		require.NoError(t, other.Release())
 	}
 }

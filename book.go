@@ -45,8 +45,10 @@ type Config struct {
 	// caller's given time, not a clock, and every record carries the
 	// Reproduction marker. It requires Now. A book is one or the other for
 	// its whole history: opened the other way, its writes are refused
-	// (ErrInvalid), so a reproduction can be compared but never extended as
-	// a live book, nor a live book backdated.
+	// (ErrInvalid), checkpoints included, so a reproduction can be compared but
+	// never extended as a live book. A live book is not protected from a
+	// caller-supplied Now by this alone; capsulectl-book gives Now only to a
+	// Reproduction book.
 	Reproduction bool
 
 	// Responder is the responder's cost and abuse policy for Respond
@@ -481,8 +483,8 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := checkOriginals(originals); err != nil {
 		return Record{}, err
 	}
-	if n := len(b.log); n > 0 && (b.log[n-1].Header.Reproduction != nil) != b.reproduction {
-		return Record{}, fmt.Errorf("%w: this book's records are %s, so it cannot be written as a %s book", ErrInvalid, markedWord(!b.reproduction), markedWord(b.reproduction))
+	if err := b.refuseOtherClockKind(); err != nil {
+		return Record{}, err
 	}
 	seq := uint64(len(b.order)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
@@ -716,6 +718,9 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Checkpoint{}, err
 	}
+	if err := b.refuseOtherClockKind(); err != nil {
+		return Checkpoint{}, err
+	}
 	b.checkpointing = true
 	defer func() { b.checkpointing = false }()
 	for _, index := range b.index {
@@ -779,6 +784,15 @@ func (b *Book) latestLocked(ctx context.Context) (Checkpoint, bool, error) {
 
 func (b *Book) storedLocked(ctx context.Context, recordID string) (StoredRecord, error) {
 	return b.store.GetRecord(ctx, recordID)
+}
+
+// refuseOtherClockKind refuses a write (a record or a checkpoint) into a book
+// of the other clock kind than this Book was opened as.
+func (b *Book) refuseOtherClockKind() error {
+	if n := len(b.log); n > 0 && (b.log[n-1].Header.Reproduction != nil) != b.reproduction {
+		return fmt.Errorf("%w: this book's records are %s, so it cannot be written as a %s book", ErrInvalid, markedWord(!b.reproduction), markedWord(b.reproduction))
+	}
+	return nil
 }
 
 func markedWord(reproduction bool) string {

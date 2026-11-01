@@ -314,9 +314,20 @@ func TestTheHeaderSchemaAcceptsFieldCommitments(t *testing.T) {
 			t.Fatalf("a sealed header fails the schema: %v\n%s", err, header)
 		}
 	}
+	marked := plain.Header
+	marked.Reproduction = &Reproduction{Clock: ReproductionClockCaller}
+	header, _ := canonicalJSON(marked)
+	if err := validate(header); err != nil {
+		t.Fatalf("a reproduction header fails the schema: %v\n%s", err, header)
+	}
+	marked.Reproduction.Clock = "wall"
+	header, _ = canonicalJSON(marked)
+	if validate(header) == nil {
+		t.Fatal("a reproduction clock other than caller must fail the schema")
+	}
 	bad := salted.Header
 	bad.FieldCommitments = nil
-	header, _ := canonicalJSON(bad)
+	header, _ = canonicalJSON(bad)
 	if validate(header) == nil {
 		t.Fatal("commit_alg without field_commitments must fail the schema")
 	}

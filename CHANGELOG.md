@@ -8,7 +8,8 @@
   checkpoint and marks each record's digested header `reproduction: {"clock": "caller"}`, so
   two runs over the same inputs give byte-identical records and a reader can tell the time is
   not a commit time. A book keeps one clock kind for its whole history: writing the other kind
-  into it is `ErrInvalid`. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
+  into it is `ErrInvalid`, a checkpoint included (the Rust and Python mirrors read and write the marker but do not
+  guard against mixing). The published `record-header.schema.json` accepts the member. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
 
 ### Added: the Goose reference receives a referee's Result (step 09, #310)
 
