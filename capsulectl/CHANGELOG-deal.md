@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The deal view's words are a wording pack (F8.10, evidencebook-deal#97): the English
+  `deal-view.js` hardcoded is now the `page.*` entries of
+  `assets/wording/capsulectl-deal-en.json`. The module holds them built in (a table the
+  pack generates and a test holds to it), so a viewer that opens a bundle shows them; a
+  page capsulectl writes carries only the `page.*` words a pinned pack changes. The
+  page's text is unchanged (the presentation snapshots are identical); a pack pinned on
+  a deal profile must now hold the `page.*` keys too.
+
 - The History card bundle carries its anchor (F4.7, evidencebook-deal#100):
   `deal standard-history card` writes `as_of.checkpoint` in both copies (the
   anchor's `cll-checkpoint` octets as hex; their SHA-256 is `as_of.anchor`), and

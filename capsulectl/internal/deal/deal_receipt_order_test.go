@@ -109,7 +109,7 @@ func TestADigitInADateDoesNotSettleAMaterialPick(t *testing.T) {
 func TestReceiptPutsFactsFirst(t *testing.T) {
 	page, err := os.ReadFile("assets/deal-view.js")
 	require.NoError(t, err)
-	order := []string{"\"Done\"}: ${String(last && last.text)", `"Your side · in your book"`, `"What this receipt proves"`, `el("h2", "What the agent did")`, `el("h2", "Where this deal stands")`, `more.append(header, provenance)`, `el("h2", "What your agent told whom")`}
+	order := []string{`"page.card.done"`, `W("page.ours.own")`, `W("page.proves.title")`, `el("h2", W("page.did.title"))`, `el("h2", W("page.life.title"))`, `more.append(header, provenance)`, `el("h2", W("page.told.title"))`}
 	last := -1
 	for _, marker := range order {
 		at := strings.Index(string(page), marker)

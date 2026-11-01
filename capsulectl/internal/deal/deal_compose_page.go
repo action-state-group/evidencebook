@@ -84,7 +84,7 @@ func composedPage(composition, keep map[string]interface{}, verifyCommand string
 	if err != nil {
 		return "", err
 	}
-	boot := map[string]interface{}{}
+	boot := map[string]interface{}{"words": dealPageWords(w)}
 	if keep != nil {
 		if boot, _, err = dealPageBoot(keep, dealNotCountersigned(), w); err != nil {
 			return "", err
