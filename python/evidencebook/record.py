@@ -24,6 +24,8 @@ __all__ = [
     "ADJUDICATION",
     "CITES",
     "AVAILABLE",
+    "COMMIT_ALG_NONCE256",
+    "FIELD_NAME",
     "RECORD_TYPE_REQUEST",
     "RECORD_TYPE_REQUEST_ANSWERED",
     "RECORD_TYPE_RESPONSE",
@@ -73,6 +75,15 @@ RECORD_TYPE_RETENTION_COMMITMENT = "retention_commitment"
 
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
+#: The salted per-field commitment a header's field_commitments use
+#: (agent-action-capsule spec/presentation-contract-v0.md §7.2):
+#: ``lowercase_hex(SHA-256(JCS({"nonce": N, "text": T})))``, N 32 fresh
+#: random bytes in lowercase hex per committed text.
+COMMIT_ALG_NONCE256 = "sha256-jcs-nonce256"
+#: A field name: 1-56 of [a-z0-9_], starting with a letter or digit, so its
+#: opening's original name, ``opening.<field>``, fits capsule-emit's 64.
+FIELD_NAME = re.compile(r"[a-z0-9][a-z0-9_]{0,55}\Z")
+
 
 @dataclass(frozen=True)
 class Link:
@@ -119,6 +130,11 @@ class Entry:
     counterparty_ref: str = ""
     correlation: Correlation = field(default_factory=Correlation)
     statement: Any = None
+    #: Texts the record commits field by field (Go ``Entry.Fields``): each
+    #: becomes a salted ``sha256-jcs-nonce256`` commitment in the header's
+    #: ``field_commitments`` and its opening an original of the record, so
+    #: the text leaves only when disclosed.
+    fields: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -141,8 +157,7 @@ class Header:
     statement: Any = None
     v: int = HEADER_VERSION
     #: Salted per-field commitments, as ``(name, commitment)`` pairs in name
-    #: order, under ``commit_alg``. This package reads and keeps them (a
-    #: shelf holds books Go wrote with them) but seals none.
+    #: order, under ``commit_alg`` (:data:`COMMIT_ALG_NONCE256`).
     field_commitments: tuple[tuple[str, str], ...] = ()
     commit_alg: str = ""
 
@@ -206,8 +221,15 @@ class Header:
             raise InvalidError("book_id, seq, record_type and committed_at are required")
         if self.epistemic_type not in EPISTEMIC_TYPES:
             raise InvalidError(f"epistemic_type {self.epistemic_type!r} is not registered")
-        if self.payload_commitments and self.retention_state != AVAILABLE:
-            raise InvalidError("retention_state is required with payload_commitments")
+        if (self.payload_commitments or self.field_commitments) and self.retention_state != AVAILABLE:
+            raise InvalidError("retention_state is required with payload_commitments or field_commitments")
+        if bool(self.field_commitments) != bool(self.commit_alg):
+            raise InvalidError("commit_alg is present exactly when field_commitments are")
+        if self.commit_alg and self.commit_alg != COMMIT_ALG_NONCE256:
+            raise InvalidError(f"commit_alg {self.commit_alg!r} is not {COMMIT_ALG_NONCE256}")
+        for name, digest in self.field_commitments:
+            if not isinstance(name, str) or not FIELD_NAME.match(name) or not isinstance(digest, str) or not _HEX64.match(digest):
+                raise InvalidError(f"field commitment {name!r} is not a field name with a lowercase SHA-256 digest")
         for digest in self.payload_commitments:
             if not _HEX64.match(digest):
                 raise InvalidError(f"payload commitment {digest!r} is not a lowercase SHA-256 digest")

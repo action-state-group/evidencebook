@@ -18,6 +18,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -66,10 +67,12 @@ from ._capsule import capsule_preimage, seal_record
 from ._cll import CLLSubstrate, Checkpoint, read_checkpoint
 from ._index import default_indexes
 from ._time import from_nanos, nanos, parse_ns, profile_time, profile_time_ns, rfc3339_nano, utc
-from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError
+from .errors import CorruptError, InvalidError, NotFoundError, ReleasedError, UnavailableError
 from .record import (
     AVAILABLE,
     CITES,
+    COMMIT_ALG_NONCE256,
+    FIELD_NAME,
     DERIVED_METRIC,
     OBSERVED_EVENT,
     PRODUCER_CLAIM,
@@ -130,6 +133,12 @@ __all__ = [
     "REFUSAL_POLICY_SPECIFIC",
     "REFUSAL_POLICY_UNIFORM",
     "Book",
+    "CapsuleSealer",
+    "Opening",
+    "OPENING_PREFIX",
+    "RECORD_HEADER_MEMBER",
+    "new_opening",
+    "verify_opening",
     "SentRequest",
     "ResponderKeys",
     "SharePolicy",
@@ -175,6 +184,111 @@ def _digest(data: bytes) -> str:
 
 
 # --- policies -------------------------------------------------------------------
+
+
+#: The top-level Capsule member through which a Capsule its caller seals
+#: (:meth:`Book.append_capsule`) carries its own record header: the header's
+#: JSON, exactly as the book canonicalized it (Go ``RecordHeaderMember``). A
+#: record the book seals itself commits its header as the Capsule's
+#: ``agent_input_digest`` instead, and carries no such member.
+RECORD_HEADER_MEMBER = "evidence_record_header"
+#: Names a record's field openings among its originals: ``opening.<field>``
+#: holds JCS({nonce, text}), whose SHA-256 is that field's commitment.
+OPENING_PREFIX = "opening."
+
+#: What :meth:`Book.append_capsule` calls under the book's lock: the record's
+#: header with its position and commit time assigned, and its canonical JSON.
+CapsuleSealer = Callable[[Header, bytes], Any]
+
+_NONCE = re.compile(r"[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True)
+class Opening:
+    """What opens one field commitment: the nonce and the text (Go
+    ``Opening``). It stays with the record's originals and leaves only when
+    disclosed."""
+
+    nonce: str
+    text: str
+
+    def canonical(self) -> bytes:
+        """JCS({nonce, text}), the octets the commitment hashes."""
+        if not isinstance(self.nonce, str) or not _NONCE.match(self.nonce):
+            raise InvalidError("an opening's nonce is 64 lowercase hex characters")
+        if not isinstance(self.text, str):
+            raise InvalidError("an opening's text is a string")
+        try:
+            self.text.encode("utf-8")
+        except UnicodeEncodeError:
+            raise InvalidError("an opening's text is not valid UTF-8") from None
+        return jcs({"nonce": self.nonce, "text": self.text})
+
+    def commitment(self) -> str:
+        return _digest(self.canonical())
+
+
+def new_opening(text: str) -> Opening:
+    """An opening of ``text`` under a fresh 32-byte nonce."""
+    return Opening(os.urandom(32).hex(), text)
+
+
+def verify_opening(commitment: str, opening: Opening) -> bool:
+    """Whether ``opening`` opens ``commitment``. Never raises: a malformed
+    opening opens nothing."""
+    try:
+        return isinstance(commitment, str) and bool(_NONCE.match(commitment)) and opening.commitment() == commitment
+    except (InvalidError, AttributeError, TypeError):
+        return False
+
+
+def _field_originals(fields: dict[str, str]) -> tuple[list[Any], tuple[tuple[str, str], ...]]:
+    """An entry's committed texts as their openings, held as originals, and
+    the header's field_commitments in name order."""
+    from capsule_emit.artifact import PRESENT, Artifact
+
+    originals, commitments = [], []
+    for name in sorted(fields or {}):
+        if not isinstance(name, str) or not FIELD_NAME.match(name):
+            raise InvalidError(f"field name {name!r} is not 1-56 of [a-z0-9_], starting with a letter or digit")
+        content = new_opening(fields[name]).canonical()
+        originals.append(Artifact(name=OPENING_PREFIX + name, state=PRESENT, content=content))
+        commitments.append((name, _digest(content)))
+    return originals, tuple(commitments)
+
+
+def _header_commitment(record_id: str, capsule: Any, header: bytes) -> str:
+    """Why ``capsule`` is not record ``record_id`` committing ``header``, or
+    "" when it is: it verifies as that id and commits the header as its
+    ``agent_input_digest`` (a record the book sealed) or carries it in
+    :data:`RECORD_HEADER_MEMBER` (a record its caller sealed), never both
+    (Go ``checkCapsuleCommitsHeader``)."""
+    from capsule_emit.produce import verify_capsule
+
+    if not isinstance(capsule, dict):
+        return "the capsule is not a JSON object"
+    try:
+        # As Go's emit.VerifyCapsule: AAC format 4 under JCS, Class 1, and the id.
+        if verify_capsule(jcs(capsule)).capsule_id != record_id or capsule.get("capsule_id") != record_id:
+            return "it does not verify as that id"
+    except Exception as exc:  # Class1Error, a malformed capsule: it is not this record
+        return f"it does not verify as that id: {exc}"
+    attestation = capsule.get("model_attestation")
+    attestation = attestation.get("compute_attestation") if isinstance(attestation, dict) else None
+    committed = isinstance(attestation, dict) and attestation.get("agent_input_digest") == _digest(header)
+    inline = RECORD_HEADER_MEMBER in capsule
+    if inline and committed:
+        return "it commits its header twice"
+    if inline:
+        try:
+            carried = jcs(capsule[RECORD_HEADER_MEMBER])
+        except (TypeError, ValueError) as exc:
+            return f"its {RECORD_HEADER_MEMBER}: {exc}"
+        if carried != header:
+            return "it carries a header other than its record's"
+    elif not committed:
+        return "it does not commit its header"
+    return ""
 
 
 class RequestLimiter(Protocol):
@@ -370,6 +484,9 @@ class Book:
         self._lock = threading.Lock()
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
+        # Whether each stored header has a statement member (the retention
+        # fold tells an absent statement from a null one), read once at admit.
+        self._stated: dict[str, bool] = {}
         self._order: list[str] = []
         self._indexes = default_indexes() if indexes is None else list(indexes)
         # A record stored whose log append failed: it keeps its seq and is
@@ -396,11 +513,9 @@ class Book:
                 raise CorruptError(f"header of {stored.record_id} is not canonical or disagrees with the store")
             if header.book_id != self._id:
                 raise CorruptError(f"record {stored.record_id} belongs to book {header.book_id!r}")
-            attestation = stored.capsule.get("model_attestation", {}).get("compute_attestation", {})
-            if (compute_capsule_id(stored.capsule) != stored.record_id
-                    or stored.capsule.get("capsule_id") != stored.record_id
-                    or attestation.get("agent_input_digest") != _digest(stored.header)):
-                raise CorruptError(f"capsule for {stored.record_id} does not commit its header")
+            detail = _header_commitment(stored.record_id, stored.capsule, stored.header)
+            if detail:
+                raise CorruptError(f"capsule for {stored.record_id} does not commit its header: {detail}")
             recovered.append((Record(stored.record_id, stored.seq, header), stored))
         # The log holds a prefix of the stored records; a record above it was
         # stored and not appended (a crash between the two writes), and is
@@ -471,6 +586,7 @@ class Book:
     def _admit(self, record: Record, stored: StoredRecord) -> None:
         self._records[record.record_id] = record
         self._stored[record.record_id] = stored
+        self._stated[record.record_id] = "statement" in json.loads(stored.header)
         self._order.append(record.record_id)
         if record.header.record_type != RECORD_TYPE_INDEX_ROOT:
             # A root record is proven by the log, not by the index it commits.
@@ -528,37 +644,136 @@ class Book:
         with self._lock:
             return self._append(entry)
 
-    def _append(self, entry: Entry) -> Record:
+    def append_capsule(self, entry: Entry, originals: Sequence[Any], seal: CapsuleSealer) -> Record:
+        """Commit a Capsule the caller seals itself as the record (Go
+        ``Book.AppendCapsule``): the Capsule is the record and its id the log
+        entry, with no record of the book's own around it.
+
+        Under the book's lock the book takes the next position, builds the
+        header (``payload_commitments`` the SHA-256 of each present original
+        that is not a field opening, in order; ``field_commitments`` from
+        ``entry.fields``) and calls ``seal(header, header_json)``. The Capsule
+        it returns (an object with ``capsule_id``, ``payload``, the Capsule's
+        JCS octets, and ``envelope``, as ``capsule_emit.produce.seal``
+        returns) must carry ``header_json`` as its
+        :data:`RECORD_HEADER_MEMBER` member, must not also commit it as its
+        ``agent_input_digest``, and must be signed by the book's signer, or
+        nothing is written. The Capsule, its envelope and ``originals``
+        (``capsule_emit.artifact.Artifact``) then go to the artifact store in
+        one put, the record to the store, and its id to the log. ``seal``
+        must not call back into the book.
+
+        ``entry.payloads`` must be empty: a caller-sealed record's originals
+        are named, and may be bound to the Capsule's own digests, so they are
+        passed as ``originals``."""
+        if seal is None:
+            raise InvalidError("a sealer is required")
+        if entry.payloads:
+            raise InvalidError("a caller-sealed record's payloads are passed as originals")
+        with self._lock:
+            return self._append(entry, list(originals), seal)
+
+    def opening(self, record_id: str, name: str) -> Opening:
+        """The opening of a record's field commitment ``name``, read from the
+        artifact store and checked against the commitment its header carries
+        (Go ``Book.Opening``). :class:`UnavailableError` when the record is
+        withheld or deleted."""
+        from capsule_emit.artifact import NotFoundError as NoOriginals
+        from capsule_emit.artifact import PRESENT
+
+        with self._lock:
+            record = self._records.get(record_id)
+            commitment = dict(record.header.field_commitments).get(name) if record is not None else None
+            if commitment is None:
+                raise NotFoundError(f"record {record_id} commits no field {name!r}")
+            # Go's retention fold (shelf.py holds the port): a withheld or
+            # deleted record's openings are not given out.
+            from .shelf import _retention
+
+            stated = [self._stated[i] for i in self._order]
+            now = utc(self._now())
+            state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
+                               record.seq - 1, nanos(now))
+            if state in ("WITHHELD", "DELETED"):
+                raise UnavailableError(f"record {record_id} is {state}")
+            if self._originals is None:
+                raise CorruptError(f"record {record_id} commits field {name!r} but the book has no artifact store")
+            try:
+                held = self._originals.get(record_id)
+            except NoOriginals:
+                raise CorruptError(f"the artifact store holds none of record {record_id}'s originals") from None
+            for original in held.artifacts:
+                if original.name != OPENING_PREFIX + name:
+                    continue
+                if original.state != PRESENT or original.content is None:
+                    raise CorruptError(f"record {record_id} holds the opening of its field {name!r} purged")
+                try:
+                    value = json.loads(bytes(original.content))
+                    found = Opening(value["nonce"], value["text"])
+                except (ValueError, TypeError, KeyError) as exc:
+                    raise CorruptError(f"opening {original.name} of {record_id}: {exc}") from None
+                if not verify_opening(commitment, found):
+                    raise CorruptError(f"opening {original.name} of {record_id} does not open its field commitment")
+                return found
+            raise CorruptError(f"the artifact store holds no opening of field {name!r} of record {record_id}")
+
+    def _append(self, entry: Entry, originals: list[Any] | None = None, caller_seal: CapsuleSealer | None = None) -> Record:
+        from capsule_emit.artifact import NEVER_RETAINED, PRESENT, Artifact, Record as Held
+
         if self._released:
             raise ReleasedError("the book is released")
         self._flush_pending()
+        for original in originals or ():
+            if original.name.startswith(OPENING_PREFIX):
+                raise InvalidError(f"original {original.name!r} uses the name of a field opening")
+        if caller_seal is None:
+            originals = [Artifact(name=f"payload-{i}", state=PRESENT, content=bytes(p))
+                         for i, p in enumerate(entry.payloads, start=1)]
+        openings, field_commitments = _field_originals(entry.fields)
+        if (openings or caller_seal is not None) and self._originals is None:
+            raise InvalidError("field openings and caller-sealed records need the book's artifact store")
+        originals = list(originals) + openings
+        names: set[str] = set()
+        for original in originals:
+            present = original.state == PRESENT and original.content is not None
+            if not (present or (original.state == NEVER_RETAINED and original.content is None)):
+                raise InvalidError(f"original {original.name!r} must be present with content, or never retained without")
+            if original.name in names:
+                raise InvalidError(f"original {original.name!r} is given more than once")
+            names.add(original.name)
         seq = len(self._order) + 1
         committed_at = utc(self._now())
+        payload_commitments = tuple(_digest(bytes(o.content)) for o in originals
+                                    if o.state == PRESENT and not o.name.startswith(OPENING_PREFIX))
         header = Header(
             book_id=self._id, seq=seq, record_type=entry.record_type, epistemic_type=entry.epistemic_type,
             committed_at=rfc3339_nano(committed_at), links=tuple(entry.links),
             event_time_claim=rfc3339_nano(entry.event_time_claim) if entry.event_time_claim else "",
-            payload_commitments=tuple(_digest(p) for p in entry.payloads),
-            retention_state=AVAILABLE if entry.payloads else "",
+            payload_commitments=payload_commitments,
+            retention_state=AVAILABLE if payload_commitments or field_commitments else "",
             subject_ref=entry.subject_ref, principal_ref=entry.principal_ref, counterparty_ref=entry.counterparty_ref,
             correlation=None if entry.correlation.empty() else entry.correlation, statement=copy.deepcopy(entry.statement),
+            field_commitments=field_commitments, commit_alg=COMMIT_ALG_NONCE256 if field_commitments else "",
         )
         header.validate()
         try:
             header_bytes = jcs(header.value())
         except (TypeError, ValueError) as exc:
             raise InvalidError(f"header: {exc}") from None
-        record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
-                                                   developer=self._developer, at=committed_at, signer=self._signer)
-        payloads = tuple(bytes(p) for p in entry.payloads)
-        if payloads and self._originals is not None:
+        if caller_seal is None:
+            record_id, capsule, envelope = seal_record(header, header_bytes, operator=self._operator,
+                                                       developer=self._developer, at=committed_at, signer=self._signer)
+            capsule_bytes = jcs(capsule)
+        else:
+            record_id, capsule, capsule_bytes, envelope = self._check_caller_sealed(caller_seal, header, header_bytes)
+        if originals and self._originals is not None:
             # Originals are written after sealing, with the record they belong
             # to, in one put: the artifact store never holds bytes no record
             # commits.
-            from capsule_emit.artifact import PRESENT, Artifact, Record as Held
-
-            self._originals.put(Held(record_id, jcs(capsule), envelope, [
-                Artifact(name=f"payload-{i}", state=PRESENT, content=p) for i, p in enumerate(payloads, start=1)]))
+            self._originals.put(Held(record_id, capsule_bytes, envelope, originals))
+        elif caller_seal is not None:
+            self._originals.put(Held(record_id, capsule_bytes, envelope, []))
+        payloads = tuple(bytes(p) for p in entry.payloads)
         stored = StoredRecord(seq, record_id, header_bytes, capsule, envelope, payloads)
         self._store.put_record(stored)
         record = Record(record_id, seq, header)
@@ -570,6 +785,39 @@ class Book:
                                f"and is retried first: {exc}") from exc
         self._admit(record, stored)
         return _detached(record)
+
+    def _check_caller_sealed(self, seal: CapsuleSealer, header: Header,
+                             header_bytes: bytes) -> tuple[str, dict, bytes, bytes]:
+        """Run a caller's sealer and accept its Capsule only as a record of
+        this book: it verifies, carries exactly this header, and its envelope
+        is signed by the book's signer (Go ``checkCallerSealed``)."""
+        from capsule_emit.produce import verify_envelope
+
+        # A sealer's error propagates as raised, as Go's "seal record: %w"
+        # keeps its identity: a signer's I/O failure is not bad input.
+        sealed = seal(copy.deepcopy(header), bytes(header_bytes))
+        try:
+            capsule_id, payload, envelope = sealed.capsule_id, bytes(sealed.payload), bytes(sealed.envelope)
+        except (AttributeError, TypeError) as exc:
+            raise InvalidError(f"the sealer returned no sealed capsule: {exc}") from None
+        try:
+            capsule = strict_json(payload)
+        except Exception as exc:
+            raise InvalidError(f"the sealed capsule is not this record: {exc}") from None
+        if not isinstance(capsule, dict) or jcs(capsule) != payload:
+            raise InvalidError("the sealed capsule is not this record: its octets are not a JCS object")
+        detail = _header_commitment(capsule_id, capsule, header_bytes)
+        if detail:
+            raise InvalidError(f"the sealed capsule is not this record: {detail}")
+        if RECORD_HEADER_MEMBER not in capsule:
+            raise InvalidError(f"the sealed capsule does not carry its record header in {RECORD_HEADER_MEMBER}")
+        try:
+            verified = verify_envelope(capsule_id, envelope)
+        except Exception as exc:
+            raise InvalidError(f"the sealed capsule's envelope: {exc}") from None
+        if bytes(verified.public_key or b"") != bytes(self._signer.public_key()):
+            raise InvalidError("the sealed capsule is not signed by the book's signer")
+        return capsule_id, capsule, payload, envelope
 
     def checkpoint(self, at: datetime | None = None) -> Checkpoint:
         """Commit any changed index roots as records, then checkpoint the log

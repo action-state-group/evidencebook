@@ -431,6 +431,28 @@ jobs:
               echo "$holder holds, $trier waits"
             done
           done
+      - name: Caller-sealed records (a deal book's steps), written and continued in every pair of Go and Python
+        run: |
+          go build -o "$RUNNER_TEMP/sealed-go" ./test/interop/caller-sealed
+          printf '#!/bin/sh\nexec python "%s/test/interop/python-evidencebook/caller_sealed.py" "$@"\n' "$PWD" > "$RUNNER_TEMP/sealed-py"
+          chmod +x "$RUNNER_TEMP/sealed-py"
+          langs="go py"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for writer in $langs; do
+            for continuer in $langs; do
+              dir="$work/$writer-$continuer"
+              "$RUNNER_TEMP/sealed-$writer" write "$dir" < /dev/null
+              "$RUNNER_TEMP/sealed-$continuer" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/sealed-$writer" continue "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/sealed-$reader" read "$dir" > "$dir/read.$reader.json" < /dev/null
+              done
+              cmp "$dir/read.go.json" "$dir/read.py.json"
+              test "$(grep -c '"seq"' "$dir/read.go.json")" -eq 3
+              echo "written by $writer, continued by $continuer: both readers open every step"
+            done
+          done
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
