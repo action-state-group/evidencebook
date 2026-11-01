@@ -410,7 +410,7 @@ func TestAnUnfinishedTickIsResumedNotRepeated(t *testing.T) {
 // and nothing in the cadence log yet.
 func pendingTick(t *testing.T, shelf *Shelf, n uint64) TickLeaves {
 	t.Helper()
-	nonce, _ := randomHex(32)
+	nonce, _ := newRandomSource(nil).hex(32)
 	leaves := TickLeaves{Deals: map[string]TickLeaf{}, FillerIndex: 7, FillerNonce: nonce}
 	encoded, _ := json.Marshal(leaves)
 	if _, err := shelf.db.Exec(`INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) VALUES (?, ?, ?, 0, 0, x'', ?)`,
@@ -468,7 +468,7 @@ func TestATickStoppedInItsPaddingPadsOnlyToTheBucket(t *testing.T) {
 	if _, err := c.log.Append(ctx, hex.EncodeToString(root), tickTime); err != nil {
 		t.Fatal(err)
 	}
-	padding, _ := paddingRecordID()
+	padding, _ := paddingRecordID(newRandomSource(nil))
 	if _, err := c.log.Append(ctx, padding, tickTime); err != nil {
 		t.Fatal(err)
 	}

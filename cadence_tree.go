@@ -3,7 +3,6 @@
 package evidencebook
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -16,7 +15,7 @@ import (
 // witness. Every construction here is capsule-cli's (internal/cli
 // deal_cadence.go at 7a6b101: cadenceLeaf, cadenceFillerLeaf, cadenceNode,
 // cadenceEmpty, cadenceTree, cadenceFold), byte for byte, so receipts its
-// released builds issued keep verifying; testdata/cadence holds vectors
+// released builds issued keep verifying; testdata/shelf/cadence holds vectors
 // written by that code.
 
 // CadenceDepth is the tree's fixed depth: every path is 16 hashes, and a
@@ -139,19 +138,19 @@ type TickLeaves struct {
 	FillerCount uint64 `json:"filler_count,omitempty"`
 }
 
-// randomPositions hands out fresh, uniform, unused positions in the tree.
+// positions hands out fresh, uniform, unused positions in the tree.
 type positions map[uint64]bool
 
-func (used positions) random() (uint64, error) {
+func (used positions) random(source randomSource) (uint64, error) {
 	if len(used) >= 1<<CadenceDepth {
 		return 0, fmt.Errorf("%w: the cadence tree is full", ErrInvalid)
 	}
 	for {
-		var b [8]byte
-		if _, err := rand.Read(b[:]); err != nil {
+		i, err := source.uniform(1 << CadenceDepth)
+		if err != nil {
 			return 0, err
 		}
-		if i := binary.BigEndian.Uint64(b[:]) % (1 << CadenceDepth); !used[i] {
+		if !used[i] {
 			used[i] = true
 			return i, nil
 		}
@@ -242,13 +241,4 @@ func (l TickLeaves) Tree(index uint64) (root []byte, path [][]byte, err error) {
 	}
 	root, path = cadenceTree(leaves, index)
 	return root, path, nil
-}
-
-// randomHex is n fresh CSPRNG bytes in lowercase hex.
-func randomHex(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }

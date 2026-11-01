@@ -31,7 +31,7 @@ type cadenceVectors struct {
 // The construction is capsule-cli's, byte for byte: the vectors were written
 // by its own cadenceLeaf, cadenceFillerLeaf and cadenceTree (testdata).
 func TestCadenceTreeMatchesCapsuleCLI(t *testing.T) {
-	raw, err := os.ReadFile("testdata/cadence/capsule-cli-7a6b101.json")
+	raw, err := os.ReadFile("testdata/shelf/cadence/capsule-cli-7a6b101.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,8 +117,8 @@ func TestDerivedFillersAreDeterministicAndFillTheGap(t *testing.T) {
 // occupied positions, exactly as a tick that held every log, and its tree is
 // rebuilt from the stored seed and count alone.
 func TestATicksOccupancyIsTheLifetimeCountPlusOne(t *testing.T) {
-	seedHex, _ := randomHex(32)
-	nonceHex, _ := randomHex(32)
+	seedHex, _ := newRandomSource(nil).hex(32)
+	nonceHex, _ := newRandomSource(nil).hex(32)
 	l := TickLeaves{Deals: map[string]TickLeaf{
 		"deal/a": {LogID: "deal/a", Size: 3, CheckpointSHA256: hex.EncodeToString(bytes.Repeat([]byte{1}, 32)), Salt: hex.EncodeToString(bytes.Repeat([]byte{2}, 32)), Index: 9},
 	}, FillerIndex: 1, FillerNonce: nonceHex, FillerSeed: seedHex, FillerCount: 4}

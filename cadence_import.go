@@ -33,7 +33,8 @@ type LegacyCadence struct {
 // ImportLegacy carries a pre-shelf cadence into this one, in one
 // transaction, under the shelf's lock:
 //
-//   - every log in legacy.Logs is registered: it counts into H;
+//   - every log in legacy.Logs is registered: it counts into H, and
+//     shelf_logs records it as a host log;
 //   - each tick not already held is stored, numbered after the cadence's
 //     last tick, with its due time, leaves, checkpoint and receipt, so the
 //     cadence continues from it and Chain rebuilds a bundle anchored on it;
@@ -111,8 +112,20 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, id).Scan(&records); err != nil {
 			return err
 		}
-		if records > 0 {
+		if _, open := s.books[id]; records > 0 || open {
 			return fmt.Errorf("%w: %s is a book, not a legacy log", ErrInvalid, id)
+		}
+		if host, open := s.hosts[id]; open && !host.inCadence {
+			return fmt.Errorf("%w: %s is a host log outside the cadence", ErrInvalid, id)
+		}
+		var known int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?`, id).Scan(&known); err != nil {
+			return err
+		}
+		if kind, err := s.logKind(ctx, id); err != nil {
+			return err
+		} else if kind == logKindHost && known == 0 {
+			return fmt.Errorf("%w: %s is a host log outside the cadence", ErrInvalid, id)
 		}
 	}
 	ended := map[string]bool{}
@@ -135,6 +148,10 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			return fmt.Errorf("%w: the cadence's last tick is unfinished; tick first, which finishes it, then import", ErrInvalid)
 		}
 		for id := range logs {
+			// A legacy log is a host log (shelf_logs), so Open refuses it.
+			if err := claimLogKind(ctx, tx, id, logKindHost); err != nil {
+				return err
+			}
 			if err := markLive(ctx, tx, id); err != nil {
 				return err
 			}

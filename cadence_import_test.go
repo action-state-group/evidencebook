@@ -71,7 +71,7 @@ func newPaddedLegacyFixture(t *testing.T, padBucket uint64, logs ...string) *leg
 	l.ticks = []CadenceTick{first, second}
 	// The pre-shelf writer's receipt for its first tick.
 	witnessLegacy(t, &l.ticks[0])
-	for _, table := range []string{"cadence_ticks", "cadence_witnessed", "cadence_live", "cadence_logs"} {
+	for _, table := range []string{"cadence_ticks", "cadence_witnessed", "cadence_live", "cadence_logs", "shelf_logs"} {
 		if _, err := l.shelf.db.Exec(`DELETE FROM ` + table); err != nil {
 			t.Fatal(err)
 		}

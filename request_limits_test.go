@@ -207,9 +207,13 @@ func writeWitnessVectors(t *testing.T, path string) {
 	forged := mintReceipt(t, statement, holderKey)
 	malformed := mintReceipt(t, statement, witnessKey)
 	delete(malformed, "receipt_b64")
-	// The same genuine receipt with its one inclusion proof listed twice:
-	// the proofs are unprotected, so the signature still verifies, but the
-	// verifier accepts exactly one proof.
+	// The same genuine receipt with a malformed proof after its one valid
+	// inclusion proof: the proofs are unprotected, so the signature still
+	// verifies, but the receipt profile decodes every proof before it
+	// verifies any, so a valid proof cannot hide a malformed later one. (Two
+	// valid proofs are a receipt-profile case the shared receipt vectors
+	// decide; CLL accepts them from go/v0.3.0 and Python 0.8.0, so this set,
+	// which Python on CLL 0.7 also reads, does not pin them.)
 	doubled := mintReceipt(t, statement, witnessKey)
 	raw, err := base64.StdEncoding.DecodeString(doubled["receipt_b64"].(string))
 	if err != nil {
@@ -221,7 +225,7 @@ func writeWitnessVectors(t *testing.T, path string) {
 	}
 	vdp := message.Headers.Unprotected[int64(396)].(map[any]any)
 	proofs := vdp[int64(-1)].([]any)
-	vdp[int64(-1)] = []any{proofs[0], proofs[0]}
+	vdp[int64(-1)] = []any{proofs[0], []byte("not a proof")}
 	message.Headers.RawUnprotected = nil // re-encode the edited header, not the decoded bytes
 	if raw, err = message.MarshalCBOR(); err != nil {
 		t.Fatal(err)
@@ -241,7 +245,7 @@ func writeWitnessVectors(t *testing.T, path string) {
 			{Name: "another-checkpoint", Carried: []json.RawMessage{entry(mintReceipt(t, earlier, witnessKey))}, Want: Unwitnessed},
 			{Name: "malformed", Carried: []json.RawMessage{entry(malformed)}, Want: Unwitnessed},
 			{Name: "bogus-receipt-bytes", Carried: []json.RawMessage{entry(tampered)}, Want: Unwitnessed},
-			{Name: "two-inclusion-proofs", Carried: []json.RawMessage{entry(doubled)}, Want: Unwitnessed},
+			{Name: "malformed-second-proof", Carried: []json.RawMessage{entry(doubled)}, Want: Unwitnessed},
 			{Name: "non-ascii-digit-position", Carried: []json.RawMessage{entry(map[string]any{
 				"ts_url": testWitnessURL, "entry_hash": good0["entry_hash"], "receipt_b64": good0["receipt_b64"], "leaf_index": "\uff10", "tree_size": "1",
 			})}, Want: Unwitnessed},

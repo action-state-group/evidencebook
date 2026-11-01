@@ -233,7 +233,7 @@ func shape(v any) any {
 // cross-check stale.
 func TestTheChainKeepsTheShapeCapsuleCLIVerified(t *testing.T) {
 	ctx := context.Background()
-	raw, err := os.ReadFile("testdata/cadence/chain-verified-by-capsule-cli-7a6b101.json")
+	raw, err := os.ReadFile("testdata/shelf/cadence/chain-verified-by-capsule-cli-7a6b101.json")
 	if err != nil {
 		t.Fatal(err)
 	}
