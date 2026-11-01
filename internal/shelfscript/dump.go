@@ -22,7 +22,8 @@ import (
 // and node digest of every log, and what the shelf derives from them:
 // Records, each finished tick's StandardHistoryAnchor, and the cadence chain
 // of every checkpoint a tick carries. Two implementations agree when their
-// dumps of the same script are equal.
+// dumps of the same script are equal byte for byte, in the encoding
+// testdata/shelf/README.md states (marshal's).
 //
 // Dump reads a copy of the file, so it never changes the shelf: deriving a
 // chain opens a book, and opening a book with a pending record recovers it.

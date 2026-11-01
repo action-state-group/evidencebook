@@ -118,6 +118,15 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 		if host, open := s.hosts[id]; open && !host.inCadence {
 			return fmt.Errorf("%w: %s is a host log outside the cadence", ErrInvalid, id)
 		}
+		var known int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?`, id).Scan(&known); err != nil {
+			return err
+		}
+		if kind, err := s.logKind(ctx, id); err != nil {
+			return err
+		} else if kind == logKindHost && known == 0 {
+			return fmt.Errorf("%w: %s is a host log outside the cadence", ErrInvalid, id)
+		}
 	}
 	ended := map[string]bool{}
 	for id := range logs {

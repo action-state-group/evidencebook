@@ -4,7 +4,8 @@
 // (evidencebook#254 §5 item 2): CLL's storage-interlock one layer up. Each
 // language runs the scripted shelf (internal/shelfscript) with the same host
 // parameters; one writes it, another continues it, and the dumps of every
-// pair must equal the Go run's (testdata/shelf/shelf.json).
+// pair must equal the Go run's, byte for byte (testdata/shelf/after-write.json
+// and after-continue.json).
 //
 //	shelf write DIR       the writer phase, on a new DIR/shelf.db
 //	shelf continue DIR    the continuer phase, on DIR/shelf.db

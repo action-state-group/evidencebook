@@ -201,6 +201,17 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if s.cadence != nil {
 		return nil, fmt.Errorf("%w: the shelf already runs a cadence (%s)", ErrInvalid, s.cadence.cfg.LogID)
 	}
+	// The cadence log is never a book or a host log: neither open in this
+	// process nor recorded in shelf_logs.
+	_, book := s.books[cfg.LogID]
+	_, host := s.hosts[cfg.LogID]
+	kind, err := s.logKind(ctx, cfg.LogID)
+	if err != nil {
+		return nil, err
+	}
+	if book || host || kind != "" {
+		return nil, fmt.Errorf("%w: %s is a %s log, not the cadence log", ErrInvalid, cfg.LogID, map[bool]string{true: "book", false: "host"}[book || kind == logKindBook])
+	}
 	log, err := openCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
 	if err != nil {
 		return nil, err
@@ -295,8 +306,8 @@ func (s *Shelf) Legacy(ctx context.Context, logID string) (*LegacyLog, error) {
 // holds nothing of it. inCadence registers it with the cadence as Legacy
 // does; otherwise the cadence never checkpoints it and the host checkpoints
 // and witnesses it on its backend. It is the same *HostLog for the same id
-// for the shelf's lifetime, and an id opened in the other mode, or as a book,
-// is refused (ErrInvalid).
+// for the shelf's lifetime. An id opened before in the other mode, in this
+// process or as the file records it, or a book's id, is refused (ErrInvalid).
 func (s *Shelf) HostLog(ctx context.Context, logID string, inCadence bool) (*HostLog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -346,17 +357,27 @@ func (s *Shelf) hostLocked(ctx context.Context, logID string, inCadence, provisi
 		return nil, err
 	}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		if err := claimLogKind(ctx, tx, logID, logKindHost); err != nil {
+		held, err := logKindOf(ctx, tx, logID)
+		if err != nil {
 			return err
-		}
-		if !inCadence {
-			return nil
 		}
 		var known int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?`, logID).Scan(&known); err != nil {
 			return err
 		}
-		if known > 0 {
+		// The mode is durable without a column of its own: a host log in the
+		// cadence is in cadence_logs from the transaction that first opens
+		// it (rows are never deleted), and one outside it never is.
+		switch {
+		case !inCadence && known > 0:
+			return fmt.Errorf("%w: host log %s is in the cadence", ErrInvalid, logID)
+		case inCadence && held == logKindHost && known == 0:
+			return fmt.Errorf("%w: host log %s is outside the cadence", ErrInvalid, logID)
+		}
+		if err := claimLogKind(ctx, tx, logID, logKindHost); err != nil {
+			return err
+		}
+		if !inCadence || known > 0 {
 			return nil
 		}
 		return markLive(ctx, tx, logID)
@@ -505,6 +526,14 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 		if err != nil {
 			return TickResult{}, err
 		}
+		// A host log opened in the cadence but not yet written holds no
+		// entry, so it has no checkpoint to carry: the tick skips it, and
+		// the occupancy floor counts it like a log the tick dropped.
+		if held, err := log.MMRSize(ctx); err != nil {
+			return TickResult{}, err
+		} else if held == 0 {
+			continue
+		}
 		statement, size, err := log.CutLocal(ctx, at)
 		if err != nil {
 			return TickResult{}, fmt.Errorf("checkpoint %s for the tick: %w", id, err)
@@ -521,7 +550,8 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	}
 	// The occupancy floor: H+1 occupied positions, as when every log was in
 	// every tick.
-	if gap := lifetime - uint64(len(live)); lifetime > uint64(len(live)) && gap > 0 {
+	if carried := uint64(len(leaves.Deals)); lifetime > carried {
+		gap := lifetime - carried
 		if leaves.FillerSeed, err = random.hex(32); err != nil {
 			return TickResult{}, err
 		}

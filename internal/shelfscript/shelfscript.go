@@ -3,10 +3,12 @@
 // Package shelfscript is the scripted shelf of the cross-language shelf
 // conformance (evidencebook#254 §5): one set of host parameters, a writer
 // phase and a continuer phase, and a dump of everything a shelf file holds
-// that the contract fixes. Go's byte vectors (testdata/shelf/shelf.json) are
-// its dump, and the storage interlock (test/interop/shelf) runs its phases
-// in separate processes, one language each, and compares the dumps. Rust and
-// Python implement the same script from the vector's "script" member.
+// that the contract fixes. Its vectors are testdata/shelf/script.json (the
+// host parameters and both phases, Script) and after-write.json and
+// after-continue.json (the dumps after each phase). The storage interlock
+// (test/interop/shelf) runs the phases in separate processes, one language
+// each, and compares each dump with them byte for byte. Rust and Python run
+// the same script from script.json.
 package shelfscript
 
 import (

@@ -25,8 +25,10 @@ the bytes they read:
 - a tree position: `uniform(2^16)`, drawn again while it is taken.
 
 A tick draws, in this order: filler 0's position and its nonce (32 bytes);
-for each live log in log id order, its salt (32 bytes) and its position; the
-derived fillers' seed (32 bytes) when the tick has any; the jitter,
+for each live log that holds an entry, in log id order, its salt (32 bytes)
+and its position (a live log with no entry yet, a host log opened in the
+cadence and not yet written, is skipped and counted among the derived
+fillers); the derived fillers' seed (32 bytes) when the tick has any; the jitter,
 `uniform(2 × jitter_ns + 1) − jitter_ns` nanoseconds, when the cadence has
 jitter; then each padding record's nonce (32 bytes).
 
@@ -38,7 +40,10 @@ node digest, and what the shelf derives: `Records` (with any pending record),
 each finished tick's tree root and `StandardHistoryAnchor` with its
 `Extents`, and the cadence chain (`Cadence.Chain`) of every checkpoint a tick
 carries, keyed `"<tick> <log id>"`. An implementation agrees when its dump of
-the same script, parsed, equals the vector's.
+the same script equals the vector's byte for byte. The dump's encoding is Go's
+`encoding/json` `MarshalIndent` with a two-space indent: object keys in
+byte order, `<`, `>` and `&` written as `\u003c`, `\u003e` and `\u0026`,
+no other escaping beyond JSON's, and one final newline.
 
 The storage interlock (`test/interop/shelf`, CI job `shelf-interlock`) runs
 the phases in separate processes and compares each dump with these files.

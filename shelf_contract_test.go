@@ -211,8 +211,15 @@ func TestBookAndHostLogIdsStayApart(t *testing.T) {
 			t.Fatalf("a host log on a book: %v", err)
 		}
 	}
+	cadenceID := "deal-cadence/0123456789abcdef"
+	noEnd := func(context.Context, string) (bool, error) { return false, nil }
+	for _, id := range []string{"node/chain", "deal/book", "deal/empty"} {
+		if _, err := shelf.Cadence(ctx, CadenceConfig{LogID: id, Ended: noEnd}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("a cadence on %s: %v", id, err)
+		}
+	}
 	c, _ := newCadence(t, shelf)
-	if _, err := shelf.HostLog(ctx, c.cfg.LogID, false); !errors.Is(err, ErrInvalid) {
+	if _, err := shelf.HostLog(ctx, cadenceID, false); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a host log on the cadence log: %v", err)
 	}
 	if err := shelf.Release(); err != nil {
@@ -225,6 +232,9 @@ func TestBookAndHostLogIdsStayApart(t *testing.T) {
 	}
 	if _, err := shelf.HostLog(ctx, "deal/book", false); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a host log on a book after reopen: %v", err)
+	}
+	if _, err := shelf.Cadence(ctx, CadenceConfig{LogID: "node/chain", Ended: noEnd}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a cadence on a recorded host log after reopen: %v", err)
 	}
 	// The store refuses too: a record under a host id never lands.
 	store := &sqliteStore{db: shelf.db, bookID: "node/chain"}
@@ -246,6 +256,47 @@ func TestBookAndHostLogIdsStayApart(t *testing.T) {
 	}
 	if err := c.ImportLegacy(ctx, LegacyCadence{Logs: []string{"node/chain"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("importing a host log outside the cadence: %v", err)
+	}
+}
+
+// The mode of a host log holds across processes: the file records it, as
+// cadence_logs membership, so a reopen cannot switch it either way.
+func TestAHostLogKeepsItsModeAcrossReopens(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf := f.open(t)
+	if _, err := shelf.HostLog(ctx, "node/in", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := shelf.HostLog(ctx, "node/out", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := shelf.Release(); err != nil {
+		t.Fatal(err)
+	}
+
+	shelf = f.open(t)
+	c, _ := newCadence(t, shelf)
+	if _, err := shelf.HostLog(ctx, "node/in", false); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a cadence host log reopened outside it: %v", err)
+	}
+	for _, open := range []func() error{
+		func() error { _, err := shelf.HostLog(ctx, "node/out", true); return err },
+		func() error { _, err := shelf.Legacy(ctx, "node/out"); return err },
+		func() error { return c.ImportLegacy(ctx, LegacyCadence{Logs: []string{"node/out"}}) },
+	} {
+		if err := open(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("a host log outside the cadence enrolled in it after a reopen: %v", err)
+		}
+	}
+	// Every tick still runs: the refused opens left the live set alone, and
+	// node/in, opened in the cadence but never written, has no checkpoint
+	// to carry, so the tick skips it and a derived filler stands in for it.
+	if tick := mustTick(t, c, tickTime); len(tick.Leaves.Deals) != 0 || tick.Leaves.FillerCount != 1 {
+		t.Fatalf("the tick's leaves %+v", tick.Leaves)
+	}
+	if live, _ := c.Live(ctx); !reflect.DeepEqual(live, []string{"node/in"}) {
+		t.Fatalf("live %v", live)
 	}
 }
 
