@@ -922,7 +922,12 @@ ruleset, for a checker whose ruleset depends on the deal (on its `party_role`, s
 `"definition_digests": ["<64 hex>", …]`, with or without `definition_digest`: the checker must
 report one of them all. A profile
 stores one digest as `definition_digest` and two or more as `definition_digests`; `profile show`
-and `doctor` print every one. The executable must sit under a trusted plugin root, and the
+and `doctor` print every one. To pin rules per role, `FILE` may also give `"roles": {"buyer":
+{…}, "seller": {…}}`, each entry naming a rules `pack` (an opaque identifier of the ruleset
+package, such as `asg/seller`), a `definition_digest` or `definition_digests`, or both. A check
+then runs under the acting role's pin: that role's entry, with the flat digests above when the
+entry names a `pack` alone, or the flat pin when the role has no entry. The checker is sent that
+pin as `rules_pin` and, when that pin has digests, must report one of them; the other role's pin is never used. The executable must sit under a trusted plugin root, and the
 profile pins its SHA-256.
 
 At every check, after the `check` record is sealed:
@@ -975,6 +980,14 @@ At every check, after the `check` record is sealed:
   - `history_scope`: `{days, max_records, complete}`.
   - `party_role`: `buyer` or `seller`, the side of the deal the user is on, as the deal's opening
     intent sealed it (`buyer` when it names none). Sent on every check, always explicit.
+  - `rules_pin` (a profile that pins rules per role): the pin this check runs under, `{pack,
+    definition_digests}`: the `roles` entry for `party_role`, with the flat digests when that
+    entry names a pack alone, or the flat pin (no `pack`) when the role has no entry. Either
+    member may be absent, never both. When `definition_digests` is present, the checker's
+    `definition_digest` must be one of them; when it is absent, no ruleset is pinned. Only the
+    acting role's pin is sent, never the other role's. Absent when the profile pins no roles, so
+    such a profile sends what it sent before, and when that pin names nothing (the role has no
+    entry and the flat pin no digest), never sent empty.
   - `task_authority_record` (typed deals): the whole sealed task-authority record the check's
     `task_authority_ref` names, exactly as sealed: SHA-256 over its JCS bytes is the ref's digest,
     and its plan (`outcome_id`, `allowed_actions`, `preconditions`) is at `body`. It is the opening
@@ -1014,7 +1027,7 @@ At every check, after the `check` record is sealed:
     "Not allowed". Under an `escalate` nothing reads "Not allowed".
   - A checker that is configured but changed since it was pinned, refused the input, timed
     out, printed anything else, or reported a `definition_digest` that is not pinned
-    adds a `rules_not_checked` difference naming why, and the check pauses.
+    (under `roles`, not one of the acting role's digests, when it has any) adds a `rules_not_checked` difference naming why, and the check pauses.
 
 The verdict's `rules` seals the outcome as data:
 - `status: evaluated`, with `ruleset_id`, `definition_digest`, `checker_sha256`, `verdict`,

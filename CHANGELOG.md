@@ -2,14 +2,13 @@
 
 ## Unreleased
 
-### Added: the `reproduction` header member and `Config.Reproduction` (#232)
+### Added: `external-check-input/v0` carries the acting role's rules pin (#230)
 
-- A reproduced scratch book takes the caller's time (`Config.Now`) on every record and
-  checkpoint and marks each record's digested header `reproduction: {"clock": "caller"}`, so
-  two runs over the same inputs give byte-identical records and a reader can tell the time is
-  not a commit time. A book keeps one clock kind for its whole history: writing the other kind
-  into it is `ErrInvalid`, a checkpoint included (the Rust and Python mirrors read and write the marker but do not
-  guard against mixing). The published `record-header.schema.json` accepts the member. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
+- `dealprofile/x-deal-v0/external-check-input-v0.schema.json` allows an optional top-level
+  `rules_pin`, `{pack, definition_digests}` (either may be absent, never both): the pin the
+  check runs under for `party_role` when the deal profile pins rules per role
+  (`rules_checker.roles`). Absent when the profile pins no roles, so every input valid before
+  stays valid. PROFILE.md ("The external rules checker") documents it.
 
 ### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
 
@@ -108,6 +107,15 @@
   `5-monthly-compliance`) are rewritten with the viewer's page runtime, shell
   styles and the CSP hashes that come with them. capsulectl-book `v0.1.0-rc28` pairs
   with capsulectl `v0.1.0-rc28`, and carries `book request --sent` (#253).
+
+### Added: the `reproduction` header member and `Config.Reproduction` (#232)
+
+- A reproduced scratch book takes the caller's time (`Config.Now`) on every record and
+  checkpoint and marks each record's digested header `reproduction: {"clock": "caller"}`, so
+  two runs over the same inputs give byte-identical records and a reader can tell the time is
+  not a commit time. A book keeps one clock kind for its whole history: writing the other kind
+  into it is `ErrInvalid`, a checkpoint included (the Rust and Python mirrors read and write the marker but do not
+  guard against mixing). The published `record-header.schema.json` accepts the member. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
 
 ## v0.12.2 (2026-11-01)
 
