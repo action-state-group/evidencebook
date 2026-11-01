@@ -19,6 +19,6 @@ tempfile = "3"
 # The shelf storage interlock's Rust side (src/shelf.rs, bin shelf).
 agent-action-capsule = { version = "0.8.0", default-features = false, features = ["strict"] }
 base64 = "0.22"
-capsule-emit-artifact = { version = "0.0.1", features = ["sqlite"] }
+capsule-emit-artifact = { version = "0.0.2", features = ["sqlite"] }
 cll = { package = "checkpointed-local-log", version = "0.4.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }
