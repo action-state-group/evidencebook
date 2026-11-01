@@ -11,7 +11,7 @@ is imported once as a host log, nothing re-signed.
     step  tool(s)
     ----  ---------------------------------------------------------------
     01    loop_seal
-    02    loop_book, loop_tick
+    02    loop_book, loop_tick, loop_book_bundle
     04    loop_admit
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
@@ -42,6 +42,7 @@ files over the caller's own channel.
 """
 from __future__ import annotations
 
+import base64
 import functools
 import json
 import os
@@ -204,6 +205,40 @@ def loop_tick() -> str:
     tick = result.tick
     return _out(ok=True, step="02", ticked=result.ticked, due_next=result.due_next,
                 tick=None if tick is None else {"n": tick.n, "checkpoint_size": tick.checkpoint_size})
+
+
+@_tool
+def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
+    """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a
+    book to ``out_path``: the record, its position and inclusion proof, and
+    the book's checkpoint covering it. ``capsulectl verify --bundle`` reads
+    it. Beside it (``<out_path minus .json>.<name>``) go the book's checkpoint
+    (``checkpoint.cose``) and, with GOOSE_WITNESSES set, the witness's receipt
+    for that very checkpoint (``witness-receipt.json``, also in the bundle's
+    ``checkpoint.witnesses``) and the directory (``witnesses.json``). When a
+    witnessed cadence tick also carries the checkpoint, the cadence's
+    checkpoint and receipt go as ``cadence-checkpoint.cose`` and
+    ``cadence-witness-receipt.json`` and the chain travels in the bundle's
+    ``x-cadence-witness/v0`` extension."""
+    n = node()
+    built = n.book_bundle(book_id, record_id)
+    stem = str(Path(out_path).expanduser().with_suffix(""))
+    _write(out_path, json.dumps(built, sort_keys=True).encode())
+    cose = built["checkpoint"]["cose"]  # the bundle's own, not a newer cut
+    files = {"checkpoint.cose": base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))}
+    receipts = built["checkpoint"].get("witnesses") or []
+    if receipts:
+        files["witness-receipt.json"] = json.dumps(receipts[0], sort_keys=True).encode()
+        files["witnesses.json"] = json.dumps(n.witness_directory, sort_keys=True).encode()  # the one the receipt was checked under
+    chain = built.get("extensions", {}).get(gn.CADENCE_EXTENSION)
+    if chain:
+        cose = chain["cadence"]["checkpoint"]["cose"]
+        files["cadence-checkpoint.cose"] = base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))
+        files["cadence-witness-receipt.json"] = json.dumps(chain["cadence"]["witnesses"][0], sort_keys=True).encode()
+    for name, data in files.items():
+        _write(f"{stem}.{name}", data)
+    return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
+                witnessed=bool(receipts), cadence_extent=chain["extent"] if chain else None, beside=sorted(f"{stem}.{name}" for name in files))
 
 
 # -- 04 Admit -----------------------------------------------------------------------------

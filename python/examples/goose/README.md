@@ -78,8 +78,12 @@ here moves money: a payment reference is a value you observed.
 | 06 | `loop_deal_close` (`received` or `not_received`) | `loop_deal_close` |
 | 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
 | 09 | `loop_dispute_ask`, then `loop_dispute_poll` until `received` (the referee's Result, over the mailbox) | the same |
-| 02 | `loop_tick` | `loop_tick` |
+| 02 | `loop_tick`, then `loop_book_bundle` (a record of a book, e.g. the one `loop_seal` returned) | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
+
+`loop_book_bundle` writes the record's Evidence Bundle (`go run ./test/interop/verify FILE` checks it); beside it go `checkpoint.cose` and, with `GOOSE_WITNESSES` (a directory of one witness), that witness's receipt for this very
+checkpoint (`witness-receipt.json`, also in the bundle's `checkpoint.witnesses`) and `witnesses.json`; a witnessed cadence
+tick adds `cadence-checkpoint.cose`, `cadence-witness-receipt.json` and the `x-cadence-witness/v0` extension.
 
 `loop_seal` seals the model call as a `runtime_claimed` effect record of the node book and writes the Capsule
 (with its `signature` and `key_id`) to a file; `go run ./test/interop/goose-capsule FILE` checks it.
