@@ -4,7 +4,7 @@ Status: the answer doc for #206. Written 2026-10-30 from the attack discussion o
 
 ## Answers, one row per attack
 
-Each attack #206 lists, and each row added to it since, has one row: what answers it (a test, or a decision with who made it) and where that stands. "Plugin" is the capsules-plugin mesh responder (`crates/evidence-plugin/src/`), which checks signed requests; "book" is this repository's responder (`Book.Respond`, with Rust and Python parity), whose caller names the asker. Plugin tests are unit tests in the file named.
+Each attack #206 lists, each row added to it since (8 and 9), and each attack this note raises beyond them (10 to 13), has one row: what answers it (a test, or a decision with who made it) and where that stands. "Plugin" is the capsules-plugin mesh responder (`crates/evidence-plugin/src/`), which checks signed requests; "book" is this repository's responder (`Book.Respond`, with Rust and Python parity), whose caller names the asker. Plugin tests are unit tests in the file named.
 
 | # | Attack | Answer | Status | Applies to |
 |---|---|---|---|---|
@@ -21,6 +21,10 @@ Each attack #206 lists, and each row added to it since, has one row: what answer
 | 7 | The responder picks which records to answer with | Interval coverage is withheld, so a producer-selected answer verifies only as INCOMPLETE (capsule-viewer#159). Decided (Sherlock2 confirming): one vector per answer kind shows no producer-selected answer verifies as COMPLETE; any kind that does is a finding of its own. | decided; vectors not built: Mesh-LLM/capsules-plugin#233 | plugin |
 | 8 | The unheld-key oracle under the `specific` refusal policy | `uniform` folds `no_such_subject` and `not_authorized` into `policy_declined` (`TestRefusalsDoNotEnumerateRecords`, uniform case). Steven ruled that `uniform` becomes the default and `specific` an operator opt-in. See R6. | decided; not built: #225 | book |
 | 9 | Left out before sealing, and the answer still looks complete | The requester reconciles its own sealed halves against the provider's answers (`ReconcileAsked`). Tests: `TestReconcileAskedNamesExactlyTheUnsealed`, `TestReconcileAskedVectors`. See R7. | answered: #229 | book |
+| 10 | Recorded absence as a weapon: flood a holder during a dispute window so every asker records an absence | Decided in spec (Steven approved, amended): the holder may seal an unavailable-window statement, registered by a transparency service the reader accepts, which a reader shows beside the absence as the holder's statement, never as proof (ER -02 §4.7, agent-action-capsule#476). An absence stays chargeable only against a retention commitment. See P1. | decided; readers built (agent-action-capsule#477); sealing and reading in the book (#223) and drawing it (capsule-viewer#164) not built | both |
+| 11 | A hostile answer built to exhaust the verifier | The requester checks stated limits (size, JSON nesting, items, receipts) before the work each bounds; over a limit on unsigned octets the reply is refused unrecorded, on signed content it is received and failed with the limit named. Tests: `TestLimitVectors`, `TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen`, `TestASignedEnvelopeOverACountLimitIsReceivedAndFailed`, `TestBundleLimits`; Python `test_limits.py`. See A1. | answered: #216 | book (requester) |
+| 12 | A fork that verifies: a self-consistent chain never registered with a witness the asker trusts | An answer reads `witnessed` only with a verifying receipt from a witness the requester lists; anything else that verifies reads `unwitnessed`, and the pages say so. Tests: `TestWitnessVectors`, `TestRecordResponseWitnessStanding`, `TestBundleWitnessStanding`. See A2. | answered: #216, #221, capsule-viewer#163, capsule-viewer#165, Mesh-LLM/capsules-plugin#156 | book (requester), pages |
+| 13 | A staple costs one key, so the growth report's node and checkpoint counts can be inflated | The report carries a caveat line on the inflatable rows, shows distinct verified controllers beside nodes with no ranking, and sources existence proofs only from the lab's own participation (evidence-network/loop#175). The cost of a key is accepted: these rows measure evidence activity, not nodes or deals. See N1. | answered: evidence-network/loop#175 | network report |
 
 ## The frame
 
@@ -119,7 +123,7 @@ Status: answered (row 9).
 
 **Answer.** Evidence Request -02 §4.7, "Unavailable-Window Statements" (agent-action-capsule#473; spec PR agent-action-capsule#476). The holder may seal a signed statement giving a start, an end and a `reason_class` from a closed list (`flood`, `maintenance`, `outage`, `other_declared`). Only a receipt from a transparency service the reader accepts as independent of the holder registers and dates it. A reader that holds an absence and a covering statement shows "no answer; holder states unavailability" with the class and the stated period, never as a refusal or as proof of an attack, and labels it "stated afterwards" when it was registered after the asker's window closed. The absence and the retention commitment are unchanged; how much the statement weighs is relying-party policy. Vectors: `vectors/evidence-request/unavailable-window.json` in agent-action-capsule (35 cases).
 
-Status: decided in spec; ER -02 §4.7 merged in agent-action-capsule#476 (`d3bd61b`), and -02 is posted as `draft-mih-agent-evidence-request-02` (dated 30 October 2026; the IETF archive copy's SHA-256 is `ee5e2b90bda08fd956c271f512b52f4a834bcff3a1cae0144f644f5955bef948`). Implementation, not built: #223 (seal and read statements), capsule-viewer#164 (draw it), agent-action-capsule#477 (the Go and Rust readers run the vectors).
+Status: decided in spec; ER -02 §4.7 merged in agent-action-capsule#476 (`d3bd61b`), and -02 is posted as `draft-mih-agent-evidence-request-02` (dated 30 October 2026; the IETF archive copy's SHA-256 is `ee5e2b90bda08fd956c271f512b52f4a834bcff3a1cae0144f644f5955bef948`). Implementation: the Go and Rust readers run the vectors (agent-action-capsule#477, done); not built: #223 (seal and read statements), capsule-viewer#164 (draw it).
 
 ### Asker side
 
@@ -156,6 +160,8 @@ Status: answered (#209).
 
 **N1. A staple costs one key.** The growth report counts staples that verify. Anyone can mint nodes with signed, self-consistent, even witnessed checkpoints, so "nodes with a verifying staple" and "checkpoints cut per week" are inflatable at near zero cost. Witnessed checkpoints, key age and a controller declaration raise the cost but do not remove it. Owner: **evidence-network/loop#170**. Answer shape: a caveat line on the inflatable rows ("a staple costs one key; these rows measure evidence activity, not nodes or deals"), "distinct controllers" shown beside "nodes" with no ranking, and the existence-proof rows (decisions limited or refused; lab deals with outside nodes, settled, disputed) sourced only from the lab's own participation with real settlement. Lab-to-lab never counts.
 
+**Answer.** evidence-network/loop#175 (merged) adds the caveat line, shows distinct verified controllers beside nodes, and keeps a lab-only existence-proof section. Status: answered.
+
 ## The one design move that removes most of this
 
 Stop answering strangers over the request path. The commitment already carries the staple and travels on two carriers, the `commitment/1` mesh channel and the loop's `nodes/`. A relying party that holds the staple can admit at micro value with no round trip, and the network report can be built from collected staples with no request to any node. What remains on the request path is authenticated: a counterparty's `exchange` ask at dispute time, and an identified asker's `range` under a disclosure profile. That is a smaller, better-bounded surface, and R1, R2 and A1 are the items that still bite on it.
@@ -167,9 +173,9 @@ Stop answering strangers over the request path. The commitment already carries t
 | R1 responder lock | #208 | evidencebook | code, load test | answered: #215 |
 | R7 left out before sealing | #206 row 9 | evidencebook | code, vectors, answer doc | answered: `ReconcileAsked` |
 | R2–R6 flooding, replay, range, keys, refusal oracle | #206 | evidencebook | answer doc, tests, decisions | answered: R2 (Mesh-LLM/capsules-plugin#239), R3 (Mesh-LLM/capsules-plugin#237), R4 (Mesh-LLM/capsules-plugin#168; item 5 accepted); decided, not built: R5 (Mesh-LLM/capsules-plugin#232), R6 (#225); row 7's vectors: Mesh-LLM/capsules-plugin#233 |
-| P1 absence under attack | #473 | agent-action-capsule | ruling, spec text | decided: ER -02 §4.7, merged in agent-action-capsule#476; implementation open: #223, capsule-viewer#164, agent-action-capsule#477 |
+| P1 absence under attack | #473 | agent-action-capsule | ruling, spec text | decided: ER -02 §4.7, merged in agent-action-capsule#476; readers done: agent-action-capsule#477; open: #223, capsule-viewer#164 |
 | A1, A2 asker-side limits and forks | #209 | evidencebook | code, vectors | answered: #216, #221, capsule-viewer#163 and #165, Mesh-LLM/capsules-plugin#156 |
-| N1 Sybil staples | #170 | evidence-network/loop | report rule, wording | open |
+| N1 Sybil staples | #170 | evidence-network/loop | report rule, wording | answered: evidence-network/loop#175 |
 
 Each of #208, #209, #473 and loop#170 asks for its row in #206's answer doc, so #206 stays the one list.
 
