@@ -1059,12 +1059,19 @@ class Book:
         seals an ``evidence_request_answered`` record and returns it;
         otherwise the record is ``None``. Malformed and unauthenticated
         traffic never grows the log."""
+        return self._respond(request, options)
+
+    def _respond(self, request: Message, options: RespondOptions | None = None,
+                 own: bool = False) -> tuple[Reply, Record | None]:
+        """:meth:`respond`; ``own`` marks the book's own request (``staple``),
+        which the cost policy does not count: the limiter and size cap are for
+        askers."""
         options = options or RespondOptions()
         options.policy.validate()
         if request.media_type not in (MEDIA_TYPE_JSON, MEDIA_TYPE_CBOR):
             raise InvalidError(f"a request is carried as {MEDIA_TYPE_JSON} or {MEDIA_TYPE_CBOR}, not {request.media_type!r}")
         with self._lock:
-            answer = _Answer(self, request, options)
+            answer = _Answer(self, request, options, own)
             reply = answer.run()
             if not answer.seal:
                 return reply, None
@@ -1192,8 +1199,9 @@ def _limit_reason(profile: str) -> str:
 
 
 class _Answer:
-    def __init__(self, book: Book, request: Message, options: RespondOptions):
+    def __init__(self, book: Book, request: Message, options: RespondOptions, own: bool = False):
         self.book = book
+        self.own = own
         self.request = request
         self.options = options
         self.now = utc(book._now())
@@ -1213,9 +1221,9 @@ class _Answer:
         # Cost policy first: an oversized or over-limit request is declined
         # before it is resolved; it is read only to pick the reason
         # (request_profile).
-        if len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
+        if not self.own and len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
             return self.refuse(_limit_reason(request_profile(self.request)))
-        if policy.limiter is not None and not policy.limiter.allow(requester, self.now):
+        if not self.own and policy.limiter is not None and not policy.limiter.allow(requester, self.now):
             return self.refuse(_limit_reason(request_profile(self.request)))
         # The book answers evidence-interop/0 and /1, and an unknown
         # profile's detail lists both (§3.3 step 4).
