@@ -304,8 +304,9 @@ func parityHistories(t *testing.T) []parityHistory {
 	add("a record with a float", []HistoryRecord{{Payload: []byte(`{"x-deal-v0":{"deal_id":"deal-0123456789abcdef","record_type":"baseline"},"body":{"n":1.5}}`), CommittedAt: historyStart}}, nil, false)
 	add("a report passed over", []HistoryRecord{{Payload: []byte(`{"type":"deal_report","profile":"x-deal-v0"}`), CommittedAt: historyStart}}, nil, false)
 
-	// An amount_minor of the wrong type (a string, a boolean, a fraction) is
-	// unpriced, as the profile's schema would refuse it (checkCases below).
+	// An amount_minor of the wrong type (a string, a boolean, an array) is
+	// unpriced, as the profile's schema would refuse it (checkCases below). A
+	// fraction never gets that far: a record with a float is refused earlier.
 	commit := map[string]any{"action": "commit", "amount_minor": 100, "currency": "USD"}
 	for _, role := range []string{"", "seller", "buyer", "other"} {
 		add("classic role "+role, classicDeal(t, role, commit).records, nil, false)
