@@ -1,6 +1,6 @@
 # evidencebook#206: attacks on the evidence request, what holds and what does not
 
-Status: the answer doc for #206. Written 2026-10-30 from the attack discussion of 2026-10-29 and the 2026-10-24 security review of the ARD / AI Catalog proposal; the answer table was added 2026-11-01. Code references in the sections below are to this repository at `5cf7016` and to Mesh-LLM/capsules-plugin at `86c6062` unless stated; the table's are to both repositories' `main` once Mesh-LLM/capsules-plugin#237 and Mesh-LLM/capsules-plugin#239 merge (rows 1 and 3), which this table lands after.
+Status: the answer doc for #206. Written 2026-10-30 from the attack discussion of 2026-10-29 and the 2026-10-24 security review of the ARD / AI Catalog proposal; the answer table was added 2026-11-01. Code references in the sections below are to this repository at `5cf7016` and to Mesh-LLM/capsules-plugin at `86c6062` unless stated; the table's are to both repositories' `main` on 2026-11-01, capsules-plugin at `45f5a1c` (after Mesh-LLM/capsules-plugin#237 and Mesh-LLM/capsules-plugin#239 merged).
 
 ## Answers, one row per attack
 
