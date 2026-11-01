@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### `Header.reproduction`, the reproduced-scratch-book marker (evidencebook#232)
+
+- New: `Header::reproduction` (`Reproduction`, `REPRODUCTION_CLOCK_CALLER`), read, validated
+  and written as Go does, so a reproduced book's header keeps its identity here. Writing one
+  is not implemented in this crate.
+
 ### `deal::check_chain`, the chain stage (PROFILE.md §6) (evidencebook#308)
 
 - New: `deal::check_chain` (and `check_chain_values`), with `deal::STAGE_CHAIN`: one deal's

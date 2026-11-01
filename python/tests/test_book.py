@@ -789,3 +789,15 @@ def test_a_record_set_body_is_the_preimage_or_the_ledger_capsule():
     for body, d in [(changed, digest), (capsule, other), (preimage, other), (b"not json", digest)]:
         assert not _record_body_matches(body, d)
     assert _digest(preimage) == digest
+
+
+def test_a_reproduction_marker_round_trips_in_the_header():
+    from evidencebook.record import Header
+
+    value = {"v": 1, "book_id": "b", "seq": 1, "record_type": "r", "epistemic_type": "observed_event",
+             "committed_at": "2026-10-31T00:00:00Z", "links": [], "reproduction": {"clock": "caller"}}
+    header = Header.from_value(value)
+    assert header.reproduction == "caller"
+    assert header.value() == value
+    del value["reproduction"]
+    assert Header.from_value(value).value() == value

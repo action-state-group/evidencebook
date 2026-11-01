@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `Header.reproduction` reads and writes the reproduced-scratch-book marker (evidencebook#232),
+  so a marked header keeps its identity in Python. Writing a reproduction book is not implemented here.
+
 - The Goose reference seals a model call (evidencebook#300): `loop_seal` / `Node.seal_model_call` commit one
   effect-boundary Capsule to the node book (`effect_attestation` `runtime_claimed`, `model_attestation` naming
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is

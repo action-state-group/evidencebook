@@ -160,6 +160,10 @@ class Header:
     #: order, under ``commit_alg`` (:data:`COMMIT_ALG_NONCE256`).
     field_commitments: tuple[tuple[str, str], ...] = ()
     commit_alg: str = ""
+    #: The ``reproduction`` marker's clock (``"caller"``) of a reproduced
+    #: scratch book (evidencebook#232), or ``""`` when absent. Part of the
+    #: digested header: a reader that drops it would compute another identity.
+    reproduction: str = ""
 
     def value(self) -> dict:
         """The header as a JSON value, members omitted as Go omits them."""
@@ -183,6 +187,8 @@ class Header:
             out["commit_alg"] = self.commit_alg
         if self.correlation is not None:
             out["correlation"] = self.correlation.value()
+        if self.reproduction:
+            out["reproduction"] = {"clock": self.reproduction}
         if self.statement is not None:
             out["statement"] = self.statement
         return out
@@ -208,6 +214,7 @@ class Header:
             statement=value.get("statement"),
             field_commitments=tuple(sorted((value.get("field_commitments") or {}).items())),
             commit_alg=value.get("commit_alg", ""),
+            reproduction=(value.get("reproduction") or {}).get("clock", ""),
         )
 
     def links_to(self, link_type: str) -> list[str]:

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added: the `reproduction` header member and `Config.Reproduction` (#232)
+
+- A reproduced scratch book takes the caller's time (`Config.Now`) on every record and
+  checkpoint and marks each record's digested header `reproduction: {"clock": "caller"}`, so
+  two runs over the same inputs give byte-identical records and a reader can tell the time is
+  not a commit time. A book keeps one clock kind for its whole history: writing the other kind
+  into it is `ErrInvalid`. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
+
 ### Added: the Goose reference receives a referee's Result (step 09, #310)
 
 - `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
