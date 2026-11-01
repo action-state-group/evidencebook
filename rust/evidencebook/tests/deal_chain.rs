@@ -152,3 +152,17 @@ fn unreadable_record() {
         "[chain] seq position 1: a record is a JSON object"
     );
 }
+
+#[test]
+fn edge_inputs() {
+    assert_eq!(
+        check_chain_values(&[]).unwrap_err().to_string(),
+        "[chain] a record the chain rules cannot read: no records"
+    );
+    assert_eq!(
+        check_chain_values(&[serde_json::json!([])])
+            .unwrap_err()
+            .to_string(),
+        "[chain] seq position 1: a record is a JSON object"
+    );
+}

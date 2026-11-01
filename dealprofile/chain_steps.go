@@ -432,7 +432,6 @@ func (c *dealChain) step(typed bool) {
 			}
 		}
 	}
-	_ = strings.TrimSpace
 }
 
 func anyNotIn(list, in any) bool {
@@ -445,7 +444,7 @@ func anyNotIn(list, in any) bool {
 }
 
 func (c *dealChain) confirmLimits(j int) {
-	i, body := c.i, c.body
+	body := c.body
 	prop := c.bodyOf(j)
 	// A late answer (the proposal was replaced by a later intent, or is
 	// already confirmed) is sealed as said but changes nothing.
@@ -501,7 +500,6 @@ func (c *dealChain) confirmLimits(j int) {
 	c.maxTotal, c.allowed = next["max_total_minor"], next["allowed"]
 	c.delegated, _ = next["delegated"].([]any)
 	c.bounds, c.boundsKnown = mp(limits["new"])["bounds_commitment"], true
-	_ = i
 }
 
 func (c *dealChain) action(typed bool) {

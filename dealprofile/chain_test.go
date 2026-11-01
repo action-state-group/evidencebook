@@ -190,3 +190,63 @@ func TestChainUnreadableRecord(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, "[chain] seq position 1: a record is a JSON object", err.Error())
 }
+
+// An integer written -0 passes the record-level stages and is the integer 0
+// to the reference checker's parser, so the chain rules read it as 0: the
+// baseline asks max_total_minor -0 and the task authority carries 0.
+func TestChainNegativeZeroIsZero(t *testing.T) {
+	const dir = "positive-typed"
+	var docs []any
+	for _, r := range chainOf(t, dir+"/"+strconv.Itoa(len(chainFiles(t, dir)))) {
+		d, err := decode(r)
+		require.NoError(t, err)
+		docs = append(docs, d)
+	}
+	digests := make([]string, len(docs))
+	for i, d := range docs {
+		var err error
+		digests[i], err = Digest(d)
+		require.NoError(t, err)
+	}
+	docs[0].(map[string]any)["body"].(map[string]any)["intent"].(map[string]any)["max_total_minor"] = json.Number("-0")
+	docs[1].(map[string]any)["body"].(map[string]any)["max_total_minor"] = json.Number("0")
+	mapping := map[string]string{}
+	var sub func(v any)
+	sub = func(v any) {
+		switch x := v.(type) {
+		case []any:
+			for i := range x {
+				if s, ok := x[i].(string); ok && mapping[s] != "" {
+					x[i] = mapping[s]
+				}
+				sub(x[i])
+			}
+		case map[string]any:
+			for k := range x {
+				if s, ok := x[k].(string); ok && mapping[s] != "" {
+					x[k] = mapping[s]
+				}
+				sub(x[k])
+			}
+		}
+	}
+	for i := range docs {
+		sub(docs[i])
+		var err error
+		mapping[digests[i]], err = Digest(docs[i])
+		require.NoError(t, err)
+	}
+	assert.NoError(t, CheckChain(docs))
+}
+
+func TestChainEdgeInputs(t *testing.T) {
+	err := CheckChain(nil)
+	require.Error(t, err)
+	assert.Equal(t, "[chain] a record the chain rules cannot read: no records", err.Error())
+	_, ok := validUTC("0000-01-01T00:00:00Z")
+	assert.False(t, ok)
+	_, ok = validUTC("2026-02-29T00:00:00Z")
+	assert.False(t, ok)
+	_, ok = validUTC("2028-02-29T23:59:59Z")
+	assert.True(t, ok)
+}

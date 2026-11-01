@@ -49,7 +49,10 @@ func CheckChain(records []any) (err error) {
 			panic(p)
 		}
 	}()
-	if len(docs) > 0 && !isTyped(docs[0]) && block(docs[0])["record_type"] == TypeSale {
+	if len(docs) == 0 {
+		return stageErr(StageChain, "a record the chain rules cannot read: no records")
+	}
+	if !isTyped(docs[0]) && block(docs[0])["record_type"] == TypeSale {
 		checkSaleChain(docs)
 	} else {
 		checkDealChain(docs)
@@ -87,7 +90,47 @@ func str(v any) string {
 
 func has(m obj, k string) bool { _, ok := m[k]; return ok }
 
-func same(a, b any) bool { return reflect.DeepEqual(a, b) }
+// same is JSON equality as the checker's == reads it: an integer written -0
+// is the integer 0 (the record-level stages let it through, and Python's
+// parser makes it 0), and the other numbers are equal when written alike.
+func same(a, b any) bool {
+	switch x := a.(type) {
+	case json.Number:
+		y, ok := b.(json.Number)
+		return ok && zeroed(x) == zeroed(y)
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !same(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for k, v := range x {
+			w, ok := y[k]
+			if !ok || !same(v, w) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+func zeroed(n json.Number) json.Number {
+	if n == "-0" {
+		return "0"
+	}
+	return n
+}
 
 func truthy(v any) bool {
 	switch x := v.(type) {
@@ -278,7 +321,7 @@ func checkHandover(rec obj, partyRole string) string {
 // the profile's pattern: a real date and time of day.
 func validUTC(s string) (time.Time, bool) {
 	t, err := time.Parse("2006-01-02T15:04:05Z", s)
-	return t, err == nil && len(s) == 20
+	return t, err == nil && len(s) == 20 && t.Year() >= 1
 }
 
 func checkSaleChain(docs []obj) {
@@ -776,9 +819,6 @@ func checkDealChain(raw []obj) {
 		c.docs = append(c.docs, readable(r))
 	}
 	records := c.docs
-	if len(records) == 0 {
-		return
-	}
 	// A chain sealed in the typed action records opens with the baseline and then
 	// the user's task authority; its authority steps are typed records.
 	c.typedChain = len(records) > 1 && block(records[1])["typed"] == TypeTaskAuthority

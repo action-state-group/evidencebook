@@ -25,17 +25,10 @@ type R<T> = Result<T, String>;
 /// with its root. The refusal is [`Error::Stage`] at [`STAGE_CHAIN`], whose
 /// `detail` begins `seq position N:`.
 pub fn check_chain(records: &[&[u8]]) -> Result<(), Error> {
-    let mut docs = Vec::with_capacity(records.len());
-    for (i, r) in records.iter().enumerate() {
-        let d = decode(r)?;
-        if !d.is_object() {
-            return Err(refusal(format!(
-                "seq position {}: a record is a JSON object",
-                i + 1
-            )));
-        }
-        docs.push(d);
-    }
+    let docs: Vec<Value> = records
+        .iter()
+        .map(|r| decode(r))
+        .collect::<Result<_, _>>()?;
     check_values(&docs).map_err(refusal)
 }
 
@@ -53,14 +46,19 @@ fn refusal(detail: String) -> Error {
 }
 
 fn check_values(docs: &[Value]) -> R<()> {
-    if let Some(first) = docs.first() {
-        if !is_typed(first.as_object().unwrap_or(&Map::new()))
-            && s(g(g(first, PROFILE), "record_type")) == TYPE_SALE
-        {
-            return check_sale_chain(docs);
-        }
+    if docs.is_empty() {
+        return Err("a record the chain rules cannot read: no records".into());
     }
-    check_deal_chain(docs)
+    if let Some(i) = docs.iter().position(|d| !d.is_object()) {
+        return Err(msg(i, "a record is a JSON object"));
+    }
+    let digests: Vec<String> = docs.iter().map(digest_of).collect::<R<_>>()?;
+    if !is_typed(docs[0].as_object().unwrap_or(&Map::new()))
+        && s(g(g(&docs[0], PROFILE), "record_type")) == TYPE_SALE
+    {
+        return check_sale_chain(docs, &digests);
+    }
+    check_deal_chain(docs, digests)
 }
 
 fn msg(i: usize, m: impl AsRef<str>) -> String {
@@ -378,7 +376,7 @@ fn valid_utc(x: &str) -> bool {
     y >= 1 && (1..=days).contains(&da) && h < 24 && mi < 60 && se < 60
 }
 
-fn check_sale_chain(docs: &[Value]) -> R<()> {
+fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
     if docs.len() < 2 {
         bail_at!(
             0,
@@ -403,7 +401,7 @@ fn check_sale_chain(docs: &[Value]) -> R<()> {
             "a sale's root is followed by its task authority (task-authority/v0)"
         );
     }
-    let d0 = digest_of(root)?;
+    let d0 = digests[0].clone();
     if num(g(ta, "seq")).unwrap_or(0) != 2
         || !string_is(g(g(ta, "prev"), "digest"), &d0)
         || !string_is(g(g(ta, "chain_root"), "digest"), &d0)
@@ -434,9 +432,8 @@ fn check_sale_chain(docs: &[Value]) -> R<()> {
             "the sale's task authority carries the floor its root states"
         );
     }
-    let sale_ta = digest_of(ta)?;
+    let sale_ta = digests[1].clone();
     let (mut prev, mut at) = (sale_ta.clone(), s(g(ta, "at")).to_string());
-    let digests: Vec<String> = docs.iter().map(digest_of).collect::<R<_>>()?;
     let (mut registrations, mut opened) = (HashSet::new(), HashSet::new());
     let mut closed = false;
     // A listing post (rule 15): every post check asks, and only the user's own
@@ -987,10 +984,10 @@ impl Chain {
     }
 }
 
-fn check_deal_chain(raw: &[Value]) -> R<()> {
+fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
     let mut c = Chain {
         docs: raw.iter().map(readable).collect(),
-        digests: raw.iter().map(digest_of).collect::<R<_>>()?,
+        digests,
         by_dig: HashMap::new(),
         i: 0,
         typed_chain: false,

@@ -124,7 +124,7 @@ jobs:
         run: |
           (cd dealprofile/x-deal-v0 && python check_profile.py --chain-vectors) > "$RUNNER_TEMP/chain-vectors.json"
           diff dealprofile/testdata/chain-vectors.json "$RUNNER_TEMP/chain-vectors.json"
-      - name: Run check_profile.py over every chain package dealprofile builds (the chain stage, which only the reference checker runs)
+      - name: Run check_profile.py over every chain package dealprofile builds (the reference checker's chain stage; Go and Rust run theirs over the same chains in their own tests)
         run: |
           mkdir -p "$RUNNER_TEMP/built-chains"
           DEALPROFILE_BUILT_CHAINS="$RUNNER_TEMP/built-chains" go test ./dealprofile -run TestBaselineSteps -count=1

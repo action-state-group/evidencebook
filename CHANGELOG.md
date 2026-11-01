@@ -16,7 +16,7 @@
   (sequence, hash chain, references, approvals, limits, close, reversals, offers and
   acceptance, a seller's representations, and a sale's own log), as the reference checker's
   `check_chain` does: the same refusals, in the same order, with the same text, at
-  `StageChain`. A verifier built on Go no longer reports the stage `not_checked`.
+  `StageChain`. A verifier built on Go can run the stage instead of leaving it unchecked.
   `testdata/chain-vectors.json`, written by `check_profile.py --chain-vectors`, pins the
   reference checker's verdict over every prefix of the positive chains, each negative
   fixture and single-member mutations of the positive chains; CI regenerates it and
