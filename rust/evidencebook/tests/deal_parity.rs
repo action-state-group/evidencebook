@@ -39,7 +39,7 @@ fn corpus_sizes() {
             list(&v, "check").len(),
             list(&v, "history").len()
         ),
-        (126, 95, 72)
+        (126, 95, 75)
     );
 }
 

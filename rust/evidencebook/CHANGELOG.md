@@ -16,7 +16,9 @@
   Python package.
 - Fixed: a domain with an `xn--` label whose part before the last hyphen holds
   non-ASCII characters (`xn--zcaé-.com`) is read as Go reads it, not refused.
-- Known divergence: Go's Cherokee case fold (evidencebook#283).
+- A name with Cherokee letters folds as CaseFolding.txt does here; Go's fold differs (evidencebook#283).
+
+## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
 

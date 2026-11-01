@@ -3162,6 +3162,33 @@
       }
     },
     {
+      "name": "classic check: a boolean amount",
+      "records": [
+        {
+          "payload": "{\"body\":{\"deal_type\":\"purchase\",\"intent\":{\"verbatim_commitment\":\"00\"}},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"baseline\",\"seq\":1}}",
+          "committed_at": "2026-10-06T09:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\",\"amount_minor\":true,\"currency\":\"USD\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"check\",\"seq\":2}}",
+          "committed_at": "2026-10-06T10:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"result\":\"pass\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"verdict\",\"refs\":[{\"digest\":\"cc0d0b63ea52487fcde83ffa9e80eee1cf4c43adedb02eb7a227b5bee7e079d8\",\"digest_alg\":\"SHA-256\",\"rel\":\"checks\",\"type\":\"deal-record\"}],\"seq\":3}}",
+          "committed_at": "2026-10-06T11:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"choice\":\"proceed\",\"proceed\":true},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"approval\",\"refs\":[{\"digest\":\"ce5cbb5aa4c69815573e90a8093ea3b2dfffdf48f892433213bdf96589015e28\",\"digest_alg\":\"SHA-256\",\"rel\":\"approves\",\"type\":\"deal-record\"}],\"seq\":4}}",
+          "committed_at": "2026-10-06T12:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"action\",\"refs\":[{\"digest\":\"99f51c21e8908e160ddb44faad859e103e6b3b7070f2631b4154dd0bffd662ab\",\"digest_alg\":\"SHA-256\",\"rel\":\"authorized_by\",\"type\":\"deal-record\"}],\"seq\":5}}",
+          "committed_at": "2026-10-06T13:00:00Z"
+        }
+      ],
+      "entry": null,
+      "error": "unpriced"
+    },
+    {
       "name": "classic check: a huge amount",
       "records": [
         {
@@ -3281,6 +3308,33 @@
       "error": "unpriced"
     },
     {
+      "name": "classic check: a string amount",
+      "records": [
+        {
+          "payload": "{\"body\":{\"deal_type\":\"purchase\",\"intent\":{\"verbatim_commitment\":\"00\"}},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"baseline\",\"seq\":1}}",
+          "committed_at": "2026-10-06T09:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\",\"amount_minor\":\"100\",\"currency\":\"USD\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"check\",\"seq\":2}}",
+          "committed_at": "2026-10-06T10:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"result\":\"pass\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"verdict\",\"refs\":[{\"digest\":\"2422ea3c53bfa5d54a0fff7b37f7d09d991b3bfde1c4e59af511810f8378cb54\",\"digest_alg\":\"SHA-256\",\"rel\":\"checks\",\"type\":\"deal-record\"}],\"seq\":3}}",
+          "committed_at": "2026-10-06T11:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"choice\":\"proceed\",\"proceed\":true},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"approval\",\"refs\":[{\"digest\":\"dbe11d826d9abfa59da1105ab8475650b61f1ef1fd6fac37f694fb782d6d9f32\",\"digest_alg\":\"SHA-256\",\"rel\":\"approves\",\"type\":\"deal-record\"}],\"seq\":4}}",
+          "committed_at": "2026-10-06T12:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"action\",\"refs\":[{\"digest\":\"16486a0d366cd1178d8ec1c18f19270b84c90136bcdde5d36794a50ee8eb09ef\",\"digest_alg\":\"SHA-256\",\"rel\":\"authorized_by\",\"type\":\"deal-record\"}],\"seq\":5}}",
+          "committed_at": "2026-10-06T13:00:00Z"
+        }
+      ],
+      "entry": null,
+      "error": "unpriced"
+    },
+    {
       "name": "classic check: a zero amount",
       "records": [
         {
@@ -3317,6 +3371,33 @@
         "happened": "no_record",
         "disputes": []
       }
+    },
+    {
+      "name": "classic check: an array amount",
+      "records": [
+        {
+          "payload": "{\"body\":{\"deal_type\":\"purchase\",\"intent\":{\"verbatim_commitment\":\"00\"}},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"baseline\",\"seq\":1}}",
+          "committed_at": "2026-10-06T09:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\",\"amount_minor\":[1],\"currency\":\"USD\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"check\",\"seq\":2}}",
+          "committed_at": "2026-10-06T10:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"result\":\"pass\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"verdict\",\"refs\":[{\"digest\":\"89ab32fb362ac9399eecf98259057aca064fd365e7dc5e0bdc5d47af09759b45\",\"digest_alg\":\"SHA-256\",\"rel\":\"checks\",\"type\":\"deal-record\"}],\"seq\":3}}",
+          "committed_at": "2026-10-06T11:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"choice\":\"proceed\",\"proceed\":true},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"approval\",\"refs\":[{\"digest\":\"11688123ebe928e7f03e7d2336145ec62f256b465c0afd13586aab4adcfbdaba\",\"digest_alg\":\"SHA-256\",\"rel\":\"approves\",\"type\":\"deal-record\"}],\"seq\":4}}",
+          "committed_at": "2026-10-06T12:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"action\",\"refs\":[{\"digest\":\"aed4ad56d390588a31ce5a93fe8b780a0af88f1aeefcecd164d6045794ec90c5\",\"digest_alg\":\"SHA-256\",\"rel\":\"authorized_by\",\"type\":\"deal-record\"}],\"seq\":5}}",
+          "committed_at": "2026-10-06T13:00:00Z"
+        }
+      ],
+      "entry": null,
+      "error": "unpriced"
     },
     {
       "name": "classic check: no amount",
