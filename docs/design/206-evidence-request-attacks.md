@@ -1,6 +1,6 @@
 # evidencebook#206: attacks on the evidence request, what holds and what does not
 
-Status: the answer doc for #206. Written 2026-10-30 from the attack discussion of 2026-10-29 and the 2026-10-24 security review of the ARD / AI Catalog proposal; the answer table was added 2026-11-01. Code references in the sections below are to this repository at `5cf7016` and to Mesh-LLM/capsules-plugin at `86c6062` unless stated; the table's are to both repositories' `main` on 2026-11-01.
+Status: the answer doc for #206. Written 2026-10-30 from the attack discussion of 2026-10-29 and the 2026-10-24 security review of the ARD / AI Catalog proposal; the answer table was added 2026-11-01. Code references in the sections below are to this repository at `5cf7016` and to Mesh-LLM/capsules-plugin at `86c6062` unless stated; the table's are to both repositories' `main` once Mesh-LLM/capsules-plugin#237 and Mesh-LLM/capsules-plugin#239 merge (rows 1 and 3), which this table lands after.
 
 ## Answers, one row per attack
 
@@ -79,7 +79,7 @@ Status: answered.
 
 **R4. Locating a withheld record, and cadence leakage.** #206 items 4 and 5. `range` is refused to every asker, so bisection is not open. But a counterparty asking `correlation`, `exchange` or `exchange_corroboration/1` over a key gets a refusal of the whole answer when a matched record is `never_leaves`, which locates a withheld record. Log size and cadence are public in the checkpoint list; what a counterparty gains beyond that is only which refusal it gets. Owner: **#206**; item 5 may be accepted in writing.
 
-**Decision, item 4.** Fix (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9). A `never_leaves` record leaves no one's answer, so it drops out of the matched set for every remote asker before counting and gating, and the answer is the same whether or not one exists. Every remote answer stays INCOMPLETE, so dropping a record never yields a false COMPLETE. It lands after the vectors of #206 row 7. Implementation: Mesh-LLM/capsules-plugin#161. The book's Go responder has no `never_leaves` equivalent.
+**Decision, item 4.** Fix (Steven, 2026-10-30, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=79b46dfbf4f038b19623ec4c593c5eb44260a78c1907c19c5e8b245efc52dfd9). A `never_leaves` record leaves no one's answer, so it drops out of the matched set for every remote asker before counting and gating, and the answer is the same whether or not one exists. Every remote answer stays INCOMPLETE, so dropping a record never yields a false COMPLETE. Tracked in Mesh-LLM/capsules-plugin#161 and implemented in Mesh-LLM/capsules-plugin#168 (merged), ahead of row 7's vectors: dropping the record never yields a COMPLETE answer, so it did not need to wait for them. The book's Go responder has no `never_leaves` equivalent.
 
 Status: answered (Mesh-LLM/capsules-plugin#168, test `a_record_that_never_leaves_changes_no_keyed_answer`). Item 5 is accepted in writing (the table's row 5).
 
