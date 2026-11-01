@@ -252,7 +252,8 @@ explained once where they are defined; this is the order to follow.
    never their phone, address or exact pickup spot.
 10. **Payment and delivery notes.** The user is the payee, and you move no
     money. Both notes need the buyer's terms capsule (`--terms`), and
-    `payment_received` reads an x402 settlement. When the buyer paid that way
+    `payment_received` reads an x402 settlement or a Lightning payment
+    your own wallet received. When the buyer paid that way
     and you hold their terms leg, note `payment_received`; when the item is
     handed over or shipped, note `delivered`, naming the date it resolves. The
     shapes are under "Where the user sells". The delivery note is the user's
@@ -465,6 +466,23 @@ money.
    ```sh
    capsulectl --profile deal deal note --deal ID --kind payment_received --terms terms.json \
      --settle-response settle.json --requirements requirements.json [--receipt receipt.jws]
+   ```
+
+   **Payment received** (Lightning). Pass the invoice your wallet issued for the
+   sale (as `mesh-llm wallet fund-wallet` printed it) and your wallet's inbound
+   transaction for it (its entry in `mesh-llm wallet get-transactions`). Its
+   preimage, the proof the payment settled, is checked against the payment
+   hash and sealed on the step's record; the invoice's BOLT11 string is never
+   sealed. Never print or paste the preimage yourself. The leg names the payment by its
+   hash. The buyer's terms leg names bitcoin in millisatoshi
+   (`deal terms-leg --asset bip122:000000000019d6689c085ae165831e93/slip44:0
+   --asset-scale 11 --amount MSAT ...`). A payment still pending in your wallet
+   is not noted yet; the node it was paid to is sealed only as its per-deal
+   fingerprint:
+
+   ```sh
+   capsulectl --profile deal deal note --deal ID --kind payment_received --terms terms.json \
+     --ln-invoice invoice.json --ln-transaction transaction.json
    ```
 
 2. **Delivered**: what you handed over (`--content FILE`, only its SHA-256 is

@@ -252,6 +252,10 @@ type dealEvidence struct {
 	// ReceivedTo is the account a payment was received to (the rail's
 	// pay-to), sealed only as its per-deal fingerprint (received_to).
 	ReceivedTo string `json:"received_to,omitempty"`
+	// Preimage is a received Lightning payment's preimage, the proof it
+	// settled, checked against the leg's payment hash before it is sealed
+	// (body_evidence preimage; Steven, Buzz 79b46dfb item 5).
+	Preimage string `json:"preimage,omitempty"`
 	// Wrapped is a held object (deal_wrapped.go): its octets and carrier
 	// headers, kept on the device, and the digest its record seals. Only
 	// `deal note --object|--object-digest` sets it, never --input.
@@ -1386,7 +1390,7 @@ var railNames = map[string]string{
 	"card": "card", "credit_card": "credit card", "debit_card": "debit card", "paypal": "PayPal",
 	"zelle": "Zelle", "wire": "wire transfer", "gift_card": "gift card", "crypto": "crypto",
 	"cash_app": "Cash App", "venmo": "Venmo", "western_union": "Western Union", "moneygram": "MoneyGram",
-	"cash": "cash", "bank_transfer": "bank transfer",
+	"cash": "cash", "bank_transfer": "bank transfer", "lightning": "Lightning",
 }
 
 // railsWithoutRecourse are payment rails that give the payer no dispute or
@@ -1395,6 +1399,7 @@ var railNames = map[string]string{
 var railsWithoutRecourse = map[string]bool{
 	"zelle": true, "wire": true, "gift_card": true, "crypto": true, "cash_app": true,
 	"venmo": true, "western_union": true, "moneygram": true, "cash": true, "bank_transfer": true,
+	"lightning": true,
 }
 
 func normRail(r string) string {

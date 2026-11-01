@@ -907,6 +907,9 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 			}
 			body["received_to"] = map[string]interface{}{"fp_alg": dealprofile.FPAlg, "payee": fp}
 		}
+		if ev.Evidence.Preimage != "" {
+			body["preimage"] = ev.Evidence.Preimage
+		}
 		if ev.Evidence.Who != nil {
 			setIDs(counterpartyIDs(key, *ev.Evidence.Who))
 			if ev.Evidence.Who.DomainAgeDays != nil {
