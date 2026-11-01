@@ -42,6 +42,15 @@
   capsulectl-book sets no `StandardHistorySource`, so it shows it only once a
   host serves the card.
 
+### Changed: capsulectl-book and `report` build against capsule-viewer 0.10.0
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-viewer `v0.10.0` (was `v0.9.0`;
+  the receipt's `paymentPreimageCheck` and `readerCadenceWitness` runtime, capsule-viewer#215).
+  The `report` fixtures' pages (`4-monthly-outcome`, `5-monthly-compliance`) are rewritten with
+  the new page runtime. The vendored History card module
+  (`capsulectl/internal/book/assets/standard-history`) is byte-identical in `go/v0.10.0` and
+  `go/v0.9.0` (same bundle sha256); only its `SOURCE.txt` names the new release.
+
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
 
 - `dealprofile`: `cases.Fold` swaps Cherokee case, so `Ꭰ` and `ꭰ` had different
