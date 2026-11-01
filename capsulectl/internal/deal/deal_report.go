@@ -19,6 +19,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
@@ -164,9 +165,31 @@ func (s *dealSession) dealAssemble(ctx context.Context, events []sealedEvent, wi
 	}
 	// Cut locally: a report, like every deal event, never queues anything
 	// for the witness; only a due tick does.
-	if !offLog {
+	if !offLog && !s.shared {
 		if _, err := cli.CutCheckpoint(ctx, localOnly(s.dp), s.t.Log); err != nil {
 			return nil, nil, err
+		}
+	}
+	// A read session cuts nothing: it reads the deal at its latest
+	// checkpoint, which must cover every step.
+	if s.shared {
+		state, err := s.t.Log.LoadCLL(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if state.Checkpoint == nil {
+			return nil, nil, errNotCovered
+		}
+		record, err := checkpoint.ParseRecord(state.Checkpoint.Bytes)
+		if err != nil {
+			return nil, nil, err
+		}
+		steps, err := s.stepsIn(ctx, events[0].Event.DealID, mmrLeafCount(record.MMRSize))
+		if err != nil {
+			return nil, nil, err
+		}
+		if steps < uint64(len(events)) {
+			return nil, nil, errNotCovered
 		}
 	}
 	return s.dealAssembleAtCheckpoint(ctx, events, withhold)

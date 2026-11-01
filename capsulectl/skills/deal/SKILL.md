@@ -1165,6 +1165,15 @@ text is left out unless an anomaly points at that message.
 A merchant email result carries its own `scope` line (it covers one email
 from the merchant about this deal). Pass it on as written.
 
+To read where a deal stands without changing anything, as for a list of
+many deals, run `deal report --deal ID --read-only`: it cuts no checkpoint,
+seals nothing and writes no file. Its `grade` says how far the deal's record
+reached (self-attested, witnessed with the witness's time, countersigned);
+see COUNTERSIGN.md. Name a countersigner as the signer the grade resolved,
+never as the seller or the other side. Never call a countersignature
+confirmed, independent or notarized. When it covers part of the deal, say
+"through step k of n".
+
 Every page opens with its scope (this one deal, not a record of everything the agent did), whether it is countersigned, and what it does not claim. What
 was verified, the witness receipt included, is the page's own verification
 section, said once; anyone can also run `capsulectl verify --bundle
