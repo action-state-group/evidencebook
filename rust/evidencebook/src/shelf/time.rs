@@ -43,7 +43,7 @@ impl Time {
     }
 
     /// This instant plus `d`.
-    pub fn add(self, d: Duration) -> Self {
+    pub fn plus(self, d: Duration) -> Self {
         Self(self.0 + d.as_nanos() as i128)
     }
 

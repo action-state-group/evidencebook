@@ -19,7 +19,8 @@
 //! The Checkpointed Local Log (`cll`, published as `checkpointed-local-log`)
 //! is the reference commitment substrate. It is embedded, never exposed: no
 //! public item of this crate takes or returns a `cll` type
-//! (`tests/public_api.rs` enforces this). Callers ask the book's substrate for
+//! (`tests/public_api.rs` enforces this), except the CLL backend a shelf's
+//! host log hands its host, whose own log layer runs on it. Callers ask the book's substrate for
 //! checkpoints and inclusion evidence in this crate's own types.
 //!
 //! Answers, reconcile inputs and index rebuilds read a book through the
@@ -52,6 +53,12 @@
 //! with), byte for byte with the Go package `dealprofile`. Nothing else in
 //! the crate depends on it, and without the feature none of its dependencies
 //! is built.
+//!
+//! The cargo feature `shelf` adds [`shelf`] (evidencebook#254): one subject
+//! key's books in one SQLite file, the same file the Go and Python shelves
+//! write, with books that write, host logs, the writer lock and the
+//! heartbeat cadence. Without the feature none of its dependencies is
+//! built.
 
 pub mod answer;
 pub mod ask;

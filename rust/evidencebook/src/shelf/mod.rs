@@ -161,6 +161,12 @@ pub struct ShelfConfig {
     /// Each book's authenticated indexes; `None` gives every book the
     /// defaults.
     pub authenticated_indexes: Option<IndexChoice>,
+    /// The profile's correlation key: the `correlation` member under which
+    /// a book's [`crate::store::RecordSource::correlation`] holds a record
+    /// that carries it. A record that carries none, or every record when
+    /// this is `None`, is held under its `subject_ref`. The key's name is
+    /// the profile's, never this crate's.
+    pub correlation_key: Option<String>,
 }
 
 /// What every book and host log of a shelf shares.
@@ -173,6 +179,7 @@ pub(crate) struct ShelfShared {
     pub(crate) originals: Arc<dyn ArtifactStore + Send + Sync>,
     now: Option<Clock>,
     authenticated: Option<IndexChoice>,
+    pub(crate) correlation_key: Option<String>,
     db: Mutex<Connection>,
 }
 
@@ -266,6 +273,7 @@ impl Shelf {
             originals: cfg.originals,
             now: cfg.now,
             authenticated: cfg.authenticated_indexes,
+            correlation_key: cfg.correlation_key,
             db: Mutex::new(conn),
         });
         Ok(Shelf(Arc::new(ShelfInner {
@@ -326,10 +334,7 @@ impl Shelf {
             .authenticated
             .as_ref()
             .map_or(Indexes::Defaults, |f| f(log_id));
-        let book = match ShelfBook::open(shared.clone(), log_id, log, indexes) {
-            Ok(book) => book,
-            Err(e) => return Err(e),
-        };
+        let book = ShelfBook::open(shared.clone(), log_id, log, indexes)?;
         state.books.insert(log_id.to_string(), book.clone());
         Ok(book)
     }
@@ -556,8 +561,8 @@ impl HostLog {
     }
 
     /// The log's stores, for a host log outside the cadence whose host keeps
-    /// them open for as long as it runs (its own ledger and checkpoint state
-    /// on them, as the Mesh plugin does under its own held lock). The cadence
+    /// them open for as long as it runs (its own log layer and checkpoint
+    /// state on them, under the host's own held lock). The cadence
     /// never touches such a log, so the host's writes need no shelf lock. A
     /// log in the cadence is refused: every write to it goes through
     /// [`HostLog::write`].

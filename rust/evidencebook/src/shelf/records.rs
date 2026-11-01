@@ -202,8 +202,8 @@ fn retention_of(records: &[&Stored], at: usize, now: Time) -> Result<String, She
 }
 
 /// Whether an unexpired retention commitment covers `record` (Go `heldBy`):
-/// one naming it by id, a range of positions holding it, or an exchange it
-/// cites.
+/// one naming it by id, a range of positions holding it, or an interaction
+/// half it cites.
 fn held_by(records: &[&Stored], record: &Stored, now: Time) -> bool {
     records.iter().any(|r| {
         if record_type(&r.header) != RETENTION_COMMITMENT {
@@ -223,13 +223,12 @@ fn held_by(records: &[&Stored], record: &Stored, now: Time) -> bool {
         if now > until {
             return false;
         }
+        let cites = |half: &str| links_to(&record.header, LinkType::Cites).contains(&half);
         match subject {
             Subject::Record(digest) => digest == record.record_id,
             // A range names leaf indexes, from 0.
             Subject::Range(a, b) => (a..=b).contains(&(record.seq - 1)),
-            Subject::Exchange(digest) => {
-                links_to(&record.header, LinkType::Cites).contains(&digest.as_str())
-            }
+            Subject::Exchange(half) => cites(&half), // the "exchange" form; vocabulary-gate: request-draft wire token
             _ => false,
         }
     })

@@ -427,7 +427,7 @@ impl Cadence {
             jitter = i128::from(state.random.uniform(2 * j + 1)?) - i128::from(j);
         }
         let due_next = now
-            .add(self.cfg.interval)
+            .plus(self.cfg.interval)
             .add_nanos(jitter)
             .truncate(Duration::from_secs(1));
         let tick = CadenceTick {

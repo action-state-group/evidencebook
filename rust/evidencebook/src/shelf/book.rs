@@ -650,8 +650,9 @@ pub(crate) fn decode_stored(sr: &StoredRecord) -> Result<BookRecord, ShelfError>
         return Err(corrupt("capsule does not verify as that id"));
     }
     let header_digest = hex::encode(Sha256::digest(&sr.header));
-    let committed = capsule
-        .pointer("/model_attestation/compute_attestation/agent_input_digest") // vocabulary-gate: AAC capsule member
+    let attestation = capsule.get("model_attestation"); // vocabulary-gate: AAC capsule member
+    let committed = attestation
+        .and_then(|a| a.pointer("/compute_attestation/agent_input_digest"))
         .and_then(Value::as_str)
         == Some(header_digest.as_str());
     let inline = capsule.get(RECORD_HEADER_MEMBER);
@@ -705,18 +706,17 @@ impl RecordSource for ShelfBook {
     }
 
     fn correlation(&self, id: &str) -> Vec<u64> {
-        // A record carrying correlation.exchange_id is held under it alone;
-        // only one carrying none is held under its subject_ref (Go's
-        // correlation index).
+        // A record carrying the profile's correlation key is held under it
+        // alone; only one carrying none is held under its subject_ref (Go's
+        // correlation index, keyed by the profile).
+        let key = self.0.shared.correlation_key.as_deref();
         self.0
             .lock()
             .records
             .iter()
             .filter(|r| {
-                let held = r
-                    .header
-                    .get("correlation")
-                    .and_then(|c| c.get("exchange_id"))
+                let held = key
+                    .and_then(|k| r.header.get("correlation")?.get(k))
                     .and_then(Value::as_str)
                     .filter(|e| !e.is_empty())
                     .or_else(|| r.subject_ref());

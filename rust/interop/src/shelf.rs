@@ -139,6 +139,7 @@ pub fn open(
         originals: Arc::new(originals),
         now: Some(Arc::new(move || now.now())),
         authenticated_indexes: None,
+        correlation_key: None,
     })?;
     let ended: Vec<String> = v
         .pointer(&hp("/cadence/ended"))
@@ -209,7 +210,7 @@ impl Env {
     fn tick(&self) -> Result<evidencebook::shelf::CadenceTick, Error> {
         let now = match self.cadence.last()? {
             Some(last) => last.due_next,
-            None => start().add(Duration::from_secs(30)),
+            None => start().plus(Duration::from_secs(30)),
         };
         self.clock.set(now);
         let result = self.cadence.tick(now)?;
@@ -348,7 +349,7 @@ pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
                     env = Some(open(
                         path,
                         str_of("stream"),
-                        start().add(Duration::from_secs(at as u64)),
+                        start().plus(Duration::from_secs(at as u64)),
                         None,
                     )?);
                 }
@@ -380,7 +381,7 @@ pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
                     path,
                     str_of("book"),
                     &observation(str_of("subject"), None),
-                    released_at.add(Duration::from_secs(at as u64)),
+                    released_at.plus(Duration::from_secs(at as u64)),
                 )?,
                 other => return Err(format!("unknown step {other:?}").into()),
             }
@@ -607,7 +608,7 @@ pub fn dump(dir: &Path) -> Result<String, Error> {
     let e = open(
         &path,
         "evidencebook shelf vectors/dump",
-        start().add(Duration::from_secs(3 * 3600)),
+        start().plus(Duration::from_secs(3 * 3600)),
         None,
     )?;
     let derived = derive(&e);

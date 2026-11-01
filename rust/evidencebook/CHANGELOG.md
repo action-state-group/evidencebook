@@ -20,6 +20,49 @@
   is carried and not checked. The Python package has no deal profile, so it has
   no matching change.
 
+### Added: the shelf, behind the feature `shelf` (evidencebook#262)
+
+- Module `shelf`: one subject key's books in one SQLite file, the file Go's
+  shelf writes, table for table (evidencebook#254 §2). `Shelf::open_sqlite`
+  takes the shelf's writer lock (`flock` on `<file>.lock` or a lock file the
+  host names, waiting up to `lock_timeout`) or checks a lock the host already
+  holds (`HeldLock`, which takes none of its own and opens off unix too). It
+  refuses a `shelf_meta` version it does not know and fills `shelf_meta` and
+  `shelf_logs` in a file from before them.
+- `ShelfBook` is a book that writes: `append` seals each record as `seal`
+  does, keeps its payloads in the shelf's artifact store
+  (capsule-emit-artifact, SQLite backend), stores it in `book_records` and
+  appends its id to the book's CLL log; `checkpoint` commits the default
+  authenticated indexes' changed roots, then checkpoints with the log's
+  runner. Opening a book commits a record a crash left stored but not in its
+  log, and refuses a log entry with no stored record. It implements
+  `RecordSource`, `CheckpointedLog` and `ask::Book`, so `answer`, `respond`
+  and the derivations run on it unchanged.
+- `Shelf::host_log` and `Shelf::legacy` open a host log: a log the host
+  seals in its own format on the shelf's CLL backend and artifact store, in
+  the cadence or outside it (`HostLog::write`, `HostLog::stores`).
+  `shelf_logs` keeps book and host ids apart across reopens. `HostLogStores`
+  is the one public item that names a `cll` type (`tests/public_api.rs`).
+- `Cadence`: `tick`, its unfinished-tick resume, `witnessed` (receipts
+  verified with agent-action-capsule's witness verifier), `live`, `last`,
+  `get`, `witnessed_tick`, `chain`, `standard_history_anchor` and
+  `import_legacy`, with every salt, position, nonce and jitter drawn from one
+  injected `RandomSource` (`SeededStream` is the vectors' stream).
+- `Shelf::records` lists the committed records of every book without
+  opening one, with each record's retention state and the records a crash
+  left pending.
+- The Rust shelf reads `testdata/shelf` byte for byte, and joins the shelf
+  storage interlock: Go and Rust each continue the other's file, and a Go and
+  a Rust writer of one file exclude each other (`evidencebook-interop`, bin
+  `shelf`).
+
+### Changed: checkpointed-local-log 0.4.0, evidence-request 0.4.1, agent-action-capsule 0.8.0
+
+- The crate requires `checkpointed-local-log` 0.4.0, `evidence-request`
+  0.4.1 and `agent-action-capsule` 0.8.0, so one CLL line is in its graph
+  (evidencebook#254 §7.4). CLL 0.4.0 refuses a small-order checkpoint key
+  itself, as this crate's strict check already did.
+
 ### Added: `respond` answers `evidence-interop/1` requests (evidencebook#248)
 
 - `respond` answers a request naming `evidence-interop/1` with the same

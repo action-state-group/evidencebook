@@ -9,7 +9,8 @@ Each public item's documentation names the draft section it implements.
 
 The `cll` library (published as `checkpointed-local-log`) is the
 commitment substrate, and it is embedded, not exposed: no public item takes or
-returns a `cll` type (`tests/public_api.rs`).
+returns a `cll` type (`tests/public_api.rs`), except the CLL backend a shelf's
+host log hands its host.
 The substrate keeps one sequence commitment, the MMR.
 
 `answer` builds the artifact response to an evidence request
@@ -31,6 +32,15 @@ not carry. The crate's own Ed25519 checks (checkpoint signatures, the served
 summary's checkpoint statement, `SealedRecord::verify`) are strict: a
 small-order or non-canonical key never verifies. Witness receipts are checked
 by agent-action-capsule and follow its rules.
+
+The feature `shelf` adds the shelf (module `shelf`, evidencebook#254): one
+subject key's books in one SQLite file that Go and Python write too, a book
+that writes and recovers a crash between a record's row and its log entry,
+host logs, the writer lock or a lock the host holds, the heartbeat cadence
+with its witnessed chain, and every book's originals in capsule-emit's
+artifact store. A shelf book implements the read traits and `ask::Book`, so
+the answer path runs on it unchanged. Like `seal`, it does not seal records
+with field commitments.
 
 The crate carries no deployment vocabulary. Record kinds, correlation key
 names and content comparators come from the calling profile.
@@ -58,7 +68,11 @@ names and content comparators come from the calling profile.
   makes the Go book's Personal-Agent History run and answers the
   interop-profile vectors with this crate. The Rust CI job `interop` checks
   the first against the corpus's `run_sha256` and the second with the
-  profile's reference verifier, and compares both with the Go runs.
+  profile's reference verifier, and compares both with the Go runs. Its
+  `shelf` module and bin run the scripted shelf of `testdata/shelf` (at the
+  repository root): `tests/shelf_vectors.rs` compares each phase's dump with
+  the Go vectors byte for byte, and CI's `shelf-interlock` job has Go and
+  Rust continue each other's files and exclude each other's writers.
 
 ## Changes
 

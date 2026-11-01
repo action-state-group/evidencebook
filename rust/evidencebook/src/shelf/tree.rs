@@ -71,16 +71,16 @@ pub fn cadence_tree(leaves: &HashMap<u64, [u8; 32]>, index: u64) -> ([u8; 32], V
     let mut level = leaves.clone();
     let mut index = index;
     let mut path = Vec::with_capacity(CADENCE_DEPTH);
-    for h in 0..CADENCE_DEPTH {
-        path.push(*level.get(&(index ^ 1)).unwrap_or(&empty[h]));
+    for empty_h in &empty[..CADENCE_DEPTH] {
+        path.push(*level.get(&(index ^ 1)).unwrap_or(empty_h));
         let mut next = HashMap::with_capacity(level.len() / 2 + 1);
         for &i in level.keys() {
             let parent = i >> 1;
             if next.contains_key(&parent) {
                 continue;
             }
-            let left = level.get(&(parent << 1)).unwrap_or(&empty[h]);
-            let right = level.get(&(parent << 1 | 1)).unwrap_or(&empty[h]);
+            let left = level.get(&(parent << 1)).unwrap_or(empty_h);
+            let right = level.get(&(parent << 1 | 1)).unwrap_or(empty_h);
             next.insert(parent, node(left, right));
         }
         level = next;

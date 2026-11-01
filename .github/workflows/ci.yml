@@ -357,12 +357,11 @@ jobs:
     # The shelf storage interlock (evidencebook#254 §5 item 2): the scripted
     # shelf written by one process and continued by another, in every pair of
     # languages, each dump (by every language) equal to testdata/shelf, and
-    # two writers of one file excluding each other across languages. Go and
-    # Python run here; Rust (evidencebook#262) joins as a writer and
-    # continuer of the others' files by adding itself to `langs`.
+    # two writers of one file excluding each other across languages: Go,
+    # Python and Rust.
     name: Shelf storage interlock
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -375,6 +374,14 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Build the Rust side
+        run: |
+          cargo build --locked --manifest-path rust/Cargo.toml -p evidencebook-interop --bin shelf
+          cp rust/target/debug/shelf "$RUNNER_TEMP/shelf-rs"
       - name: Build the Go side and install the Python side
         run: |
           go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
@@ -383,7 +390,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/shelf-py"
       - name: Write, continue and compare, in every pair of languages
         run: |
-          langs="go py"
+          langs="go py rs"
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
           for writer in $langs; do
@@ -404,7 +411,7 @@ jobs:
           done
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
-          langs="go py"
+          langs="go py rs"
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
           "$RUNNER_TEMP/shelf-go" write "$work/s"
