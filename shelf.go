@@ -109,8 +109,8 @@ var lockWriter = func(context.Context, string) (func() error, error) {
 //
 // The file has two kinds of handle: the shelf's own (records and
 // checkpoints of every book) and one per book's CLL log. Both use WAL and a
-// busy timeout, and CLL writes take an immediate transaction, so two writers
-// wait rather than fail. A record's append spans two handles (its log leaf,
+// busy timeout, and transactions on both begin IMMEDIATE, so two writers
+// wait under the busy timeout rather than fail. A record's append spans two handles (its log leaf,
 // then its row) and is not one transaction; that is the shape of the JSONL
 // journal and FileStore too, and Open's recovery reconciles a crash between
 // them. Do not fold the handles into one connection to "fix" it: the CLL
@@ -141,7 +141,15 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if err != nil {
 		return nil, errors.Join(err, unlock())
 	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute}).String())
+	// Every transaction on the shelf's handle begins IMMEDIATE: most read
+	// and then write, and under WAL a deferred one reads a snapshot, so a
+	// commit by another connection to the file (a book's CLL log, another
+	// process) before its first write fails that write at once: with
+	// SQLITE_BUSY_SNAPSHOT (517) when the other connection committed after
+	// the snapshot, or SQLITE_BUSY (5) when it holds the write lock then. The
+	// busy timeout covers neither. An immediate one waits for the write lock
+	// under the busy timeout instead.
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_txlock=immediate"}).String())
 	if err != nil {
 		return nil, errors.Join(err, unlock())
 	}

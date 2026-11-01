@@ -108,7 +108,8 @@ func openDB(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute}).String())
+	// As the shelf's own handle: every transaction begins IMMEDIATE.
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_txlock=immediate"}).String())
 	if err != nil {
 		return nil, err
 	}

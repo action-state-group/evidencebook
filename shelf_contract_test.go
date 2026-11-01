@@ -551,3 +551,76 @@ func TestAnInjectedRandomSourceMakesTicksDeterministic(t *testing.T) {
 		t.Fatal("another stream drew the same ticks")
 	}
 }
+
+// A shelf transaction that reads and then writes takes the write lock when
+// it begins (BEGIN IMMEDIATE). Under WAL a deferred one would read a
+// snapshot, and another connection's commit before its first write (a
+// book's CLL append, another process) would fail that write at once with
+// SQLITE_BUSY_SNAPSHOT (517), or with SQLITE_BUSY (5) while the other holds
+// the write lock; the busy timeout covers neither.
+func TestAShelfTransactionHoldsTheWriteLockFromItsStart(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf := f.open(t)
+	other := rawShelfDB(t, f.path)
+	committed := make(chan error, 1)
+	err := shelf.inTx(ctx, func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs`).Scan(&n); err != nil {
+			return err
+		}
+		go func() {
+			_, err := other.ExecContext(ctx, `INSERT INTO cadence_logs (log_id) VALUES ('other')`)
+			committed <- err
+		}()
+		// A deferred transaction lets the other write commit here; an
+		// immediate one holds it back until this one commits.
+		select {
+		case err := <-committed:
+			committed <- err
+		case <-time.After(300 * time.Millisecond):
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO cadence_logs (log_id) VALUES ('mine')`)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("the transaction's write after another connection's commit: %v", err)
+	}
+	if err := <-committed; err != nil {
+		t.Fatalf("the other connection's write: %v", err)
+	}
+	var n int
+	if err := other.QueryRow(`SELECT COUNT(*) FROM cadence_logs WHERE log_id IN ('mine', 'other')`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("both writes landed: %d %v", n, err)
+	}
+}
+
+// The same race through the book API: one book checkpoints while another
+// appends, each append committing on its own CLL connection between the
+// first book's reads and writes.
+func TestABookCheckpointsWhileAnotherAppends(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	a, b := mustOpenBook(t, shelf, "deal/a"), mustOpenBook(t, shelf, "deal/b")
+	done := make(chan error, 1)
+	go func() {
+		for i := range 60 {
+			if _, err := b.Append(ctx, observation("b", fmt.Sprint(i))); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	for i := range 30 {
+		if _, err := a.Append(ctx, observation("a", fmt.Sprint(i))); err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+		if _, err := a.Checkpoint(ctx); err != nil {
+			t.Fatalf("checkpoint %d: %v", i, err)
+		}
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the other book's appends: %v", err)
+	}
+}
