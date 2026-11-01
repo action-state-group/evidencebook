@@ -10,6 +10,7 @@
 
 use capsule_emit_artifact::sqlite::SqliteStore as ArtifactSqlite;
 use capsule_emit_artifact::Store as _;
+use cll::log::EntryStore as _;
 use ed25519_dalek::SigningKey;
 use evidence_request::envelope::Signer as EnvelopeSigner;
 use evidence_request::registry::SubjectForm;
@@ -334,6 +335,27 @@ fn a_host_log_outside_the_cadence_hands_out_its_stores() {
     let shelf = open(&file(&dir), &clock);
     let host = shelf.host_log("node/chain", false).unwrap();
     let stores = host.stores().unwrap();
+    // The backend coerces to the trait objects a host's log layer takes:
+    // an entry store, and a checkpoint log as capsule-emit defines one.
+    trait CheckpointLog:
+        cll::log::EntrySource
+        + cll::log::CheckpointStateStore
+        + cll::log::WitnessStateStore
+        + Send
+        + Sync
+    {
+    }
+    impl<T> CheckpointLog for T where
+        T: cll::log::EntrySource
+            + cll::log::CheckpointStateStore
+            + cll::log::WitnessStateStore
+            + Send
+            + Sync
+            + ?Sized
+    {
+    }
+    let _entries: Arc<dyn cll::log::EntryStore + Send + Sync> = stores.log.clone();
+    let _checkpoints: Arc<dyn CheckpointLog> = stores.log.clone();
     let appended = stores
         .log
         .append(&cll::log::AppendInput {

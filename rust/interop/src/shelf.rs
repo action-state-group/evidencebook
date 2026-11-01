@@ -11,6 +11,7 @@ use base64::Engine as _;
 use capsule_emit_artifact::sqlite::SqliteStore as ArtifactSqlite;
 use capsule_emit_artifact::Store as _;
 use ciborium::Value as Cbor;
+use cll::log::EntryStore as _;
 use ed25519_dalek::{Signer as _, SigningKey};
 use evidencebook::record::EpistemicType;
 use evidencebook::shelf::{

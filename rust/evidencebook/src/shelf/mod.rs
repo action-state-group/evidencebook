@@ -509,9 +509,13 @@ impl Shelf {
 
 /// What a host log's writes run on (Go `HostLogStores`): the log's CLL
 /// backend on the shelf's file and the shelf's artifact store, under the
-/// shelf's one namespace. Both are the shelf's; they close with it.
+/// shelf's one namespace. Both are the shelf's; they close with it. The
+/// backend is the concrete SQLite store, so it coerces to whichever trait
+/// object the host's log layer takes (an `Arc<dyn EntryStore + Send +
+/// Sync>` for capsule-emit's ledger, an `Arc<dyn CheckpointLog>` for its
+/// checkpoint state).
 pub struct HostLogStores {
-    pub log: Arc<dyn cll::log::Backend + Send + Sync>,
+    pub log: Arc<cll::log::sqlite::SqliteStore>,
     pub originals: Arc<dyn ArtifactStore + Send + Sync>,
 }
 

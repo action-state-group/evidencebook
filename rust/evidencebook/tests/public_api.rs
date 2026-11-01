@@ -44,7 +44,7 @@ fn public_lines_naming_cll(src: &str) -> Vec<String> {
 /// `src/`) and the trimmed line.
 const EXEMPT: (&str, &str) = (
     "shelf/mod.rs",
-    "pub log: Arc<dyn cll::log::Backend + Send + Sync>,",
+    "pub log: Arc<cll::log::sqlite::SqliteStore>,",
 );
 
 fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
