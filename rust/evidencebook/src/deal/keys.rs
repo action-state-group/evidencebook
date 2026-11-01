@@ -236,6 +236,8 @@ fn decode_non_ascii_alabels(uts46: &Uts46, v: &str) -> Result<String, NotNormali
     if v.is_ascii() || !v.split('.').any(|l| l.starts_with("xn--")) {
         return Ok(v.to_string());
     }
+    // UTS46 maps these to a full stop before it splits the labels.
+    let v = v.replace(['\u{3002}', '\u{ff0e}', '\u{ff61}'], ".");
     let mut labels = Vec::new();
     for label in v.split('.') {
         match label.strip_prefix("xn--") {

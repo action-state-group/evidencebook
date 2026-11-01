@@ -134,7 +134,14 @@ fn read_record(r: &HistoryRecord) -> Result<Option<(String, Rec)>, Error> {
     if r.payload.starts_with(&[0xEF, 0xBB, 0xBF]) {
         return Err(not_json("a byte order mark"));
     }
-    let top: Value = serde_json::from_slice(&r.payload).map_err(|e| not_json(&e.to_string()))?;
+    // Go replaces invalid UTF-8 with U+FFFD where serde_json refuses it; a lone
+    // surrogate escape is still refused (the one acknowledged difference).
+    let text = String::from_utf8_lossy(&r.payload);
+    let top: Value = serde_json::from_str(&text).map_err(|e| not_json(&e.to_string()))?;
+    // Go's Unmarshal of `null` into a struct is a no-op: the record is no step.
+    if top.is_null() {
+        return Ok(None);
+    }
     let Value::Object(top) = top else {
         return Err(not_json("not an object"));
     };
@@ -260,24 +267,57 @@ fn minute(at: &str) -> Result<String, Error> {
     {
         return Err(bad());
     }
-    let (y, mo, d, h, mi) = (
+    let (y, mo, d, h, mi, sec) = (
         num(0, 4)?,
         num(5, 7)?,
         num(8, 10)?,
         num(11, 13)?,
         num(14, 16)?,
+        num(17, 19)?,
     );
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if !(1..=12).contains(&mo)
+        || d < 1
+        || d > month_days[mo as usize - 1]
+        || h > 23
+        || mi > 59
+        || sec > 59
+    {
+        return Err(bad());
+    }
     let mut i = 19;
     if b[i] == b'.' {
-        i += 1;
+        let start = i + 1;
+        i = start;
         while i < b.len() && b[i].is_ascii_digit() {
             i += 1;
+        }
+        if i == start {
+            return Err(bad());
         }
     }
     let offset = match b.get(i) {
         Some(b'Z' | b'z') if i + 1 == b.len() => 0,
         Some(sign @ (b'+' | b'-')) if i + 6 == b.len() && b[i + 3] == b':' => {
-            let m = num(i + 1, i + 3)? * 60 + num(i + 4, i + 6)?;
+            let (oh, om) = (num(i + 1, i + 3)?, num(i + 4, i + 6)?);
+            if oh > 23 || om > 59 {
+                return Err(bad());
+            }
+            let m = oh * 60 + om;
             if *sign == b'+' {
                 m
             } else {
@@ -386,7 +426,9 @@ fn reconcile_outcome(results: &[HistoryResult]) -> &'static str {
     let Some(res) = results.iter().rev().find(|r| r.verified) else {
         return "undecided";
     };
-    let Ok(Value::Object(doc)) = serde_json::from_slice::<Value>(&res.result) else {
+    let Ok(Value::Object(doc)) =
+        serde_json::from_str::<Value>(&String::from_utf8_lossy(&res.result))
+    else {
         return "undecided";
     };
     let Some(Value::Array(claims)) = doc.get("claims") else {
@@ -490,4 +532,46 @@ pub fn minor_units(currency: &str) -> Option<u8> {
         return Some(*s);
     }
     (currency.len() == 3 && TWO_DECIMAL_CURRENCIES.contains(&format!(" {currency} "))).then_some(2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minute;
+
+    #[test]
+    fn minute_floors_to_utc() {
+        for (at, want) in [
+            ("2026-10-06T09:09:59Z", "2026-10-06T09:09:00Z"),
+            ("2026-10-06T09:09:59.123456Z", "2026-10-06T09:09:00Z"),
+            ("2026-10-06T01:30:00+05:30", "2026-10-05T20:00:00Z"),
+            ("2026-10-06T23:30:00-02:00", "2026-10-07T01:30:00Z"),
+            ("2024-02-29T00:00:00Z", "2024-02-29T00:00:00Z"),
+            ("2026-01-01T00:00:00+01:00", "2025-12-31T23:00:00Z"),
+        ] {
+            assert_eq!(minute(at).unwrap(), want, "{at}");
+        }
+    }
+
+    #[test]
+    fn minute_refuses_what_is_not_rfc_3339() {
+        for at in [
+            "",
+            "2026-10-06",
+            "2026-10-06T09:09Z",
+            "2026-10-06T09:09:xxZ",
+            "2026-13-01T00:00:00Z",
+            "2026-02-30T00:00:00Z",
+            "2025-02-29T00:00:00Z",
+            "2026-10-06T24:00:00Z",
+            "2026-10-06T09:60:00Z",
+            "2026-10-06T09:09:60Z",
+            "2026-10-06T09:09:00.Z",
+            "2026-10-06T09:09:00",
+            "2026-10-06T09:09:00+24:00",
+            "2026-10-06T09:09:00+01",
+            "2026-10-06T09:09:00Zjunk",
+        ] {
+            assert!(minute(at).is_err(), "{at}");
+        }
+    }
 }

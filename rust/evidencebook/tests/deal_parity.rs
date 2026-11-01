@@ -210,3 +210,32 @@ fn cherokee_fold_is_casefolding_txt_not_gos() {
     assert_eq!(name("Ꭰ"), "Ꭰ");
     assert_eq!(name("ꭰ"), "Ꭰ");
 }
+
+#[test]
+fn non_ascii_alabels_are_read_as_go_reads_them() {
+    let n = |s: &str| deal::normalize("domain", s);
+    // UTS46 maps an ideographic full stop before it splits the labels.
+    assert_eq!(n("xn--zcaé-。com").unwrap(), "zcaé.com");
+    // A decoded label must hold only characters valid as written.
+    assert!(n("xn--ﬁcaé-.com").is_err());
+}
+
+#[test]
+fn a_null_record_is_no_step_and_invalid_utf8_is_replaced() {
+    let at = "2026-10-06T09:00:00Z".to_string();
+    let input = |payload: &[u8]| deal::HistoryInput {
+        records: vec![deal::HistoryRecord {
+            payload: payload.to_vec(),
+            committed_at: at.clone(),
+        }],
+        ..Default::default()
+    };
+    assert!(deal::standard_history_deal(&input(b"null"))
+        .unwrap()
+        .is_none());
+    // Not an object and not a step in Go either way; invalid bytes in a string are U+FFFD.
+    assert!(deal::standard_history_deal(&input(b"{\"a\":\"\xff\"}"))
+        .unwrap()
+        .is_none());
+    assert!(deal::standard_history_deal(&input(b"[]")).is_err());
+}
