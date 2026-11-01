@@ -359,7 +359,7 @@
           }
         },
         "preimage": {
-          "description": "On evidence of a Lightning payment the user received (with received_to): the payment's preimage, 64 lowercase hex, the proof that it settled. Its SHA-256 is the leg's payment_ref value (ln.payment_hash), which a verifier holding the step's Capsule checks. Never the invoice.",
+          "description": "On evidence of a Lightning payment the user received (with received_to): the payment's preimage, 64 lowercase hex, the proof that it settled. Its SHA-256 is the step's leg payment_ref value (ln.payment_hash): the sealer checks it; a reader holding the step's Capsule can repeat the check. Never the invoice.",
           "$ref": "#/$defs/hex64"
         }
       }
