@@ -4,7 +4,6 @@ package evidencebook
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
@@ -12,13 +11,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"math/bits"
 	"strconv"
 	"strings"
 	"time"
 
 	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
+	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	cllsqlite "github.com/action-state-group/checkpointed-local-log/go/store/sqlite"
 )
 
@@ -253,69 +252,135 @@ func (l bookLog) CutLocal(ctx context.Context, at time.Time) ([]byte, uint64, er
 	return cp.Statement, cp.TreeSize, nil
 }
 
-// LegacyLog is a deal's log from before the upgrade (#36 §4): its capsules
-// are not book records, so it is never converted. It takes part in the
-// cadence like a book. Every write to it goes through Append, under the
-// shelf's lock.
-type LegacyLog struct {
-	shelf *Shelf
-	id    string
-	log   *CLLSubstrate
+// HostLog is a log on the shelf whose records the host seals itself, in its
+// own record format, never converted into book records (evidencebook#254
+// §2.7). The shelf hands the host, under its lock, the log's CLL backend on
+// the shelf's file and the shelf's artifact store (Write), so the host's own
+// log layer runs on the shelf's storage. A host log is in the cadence, which
+// checkpoints it like a book, or outside it, when its checkpoints and witness
+// rows are the host's own on that backend. shelf_logs records it as a host
+// log, so Open refuses its id across reopens.
+type HostLog struct {
+	shelf     *Shelf
+	id        string
+	log       *CLLSubstrate
+	inCadence bool
+}
+
+// LegacyLog is a deal's log from before the upgrade (#36 §4): a host log in
+// the cadence, whose capsules are not book records, so it is never
+// converted. Every write to it goes through Append, under the shelf's lock.
+type LegacyLog = HostLog
+
+// HostLogStores is what a host log's writes run on: the log's CLL backend on
+// the shelf's file and the shelf's artifact store, under the shelf's one
+// namespace (ShelfConfig.Originals). Both are the shelf's; the host must not
+// close them or keep them past the write.
+type HostLogStores struct {
+	Log       cll.Backend
+	Originals ArtifactStore
 }
 
 // Legacy opens an existing log of the shelf's file that is not a book and
 // registers it with the cadence: it counts into the lifetime log count and
 // is live until it has ended and a witnessed tick carries its final
-// checkpoint. It never provisions a log.
+// checkpoint. It never provisions a log. A book's id is refused (ErrInvalid).
 func (s *Shelf) Legacy(ctx context.Context, logID string) (*LegacyLog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.legacyLocked(ctx, logID, true)
+	return s.hostLocked(ctx, logID, true, false)
 }
 
-func (s *Shelf) legacyLocked(ctx context.Context, logID string, register bool) (*LegacyLog, error) {
+// HostLog opens logID as a host log, provisioning its CLL log when the file
+// holds nothing of it. inCadence registers it with the cadence as Legacy
+// does; otherwise the cadence never checkpoints it and the host checkpoints
+// and witnesses it on its backend. It is the same *HostLog for the same id
+// for the shelf's lifetime, and an id opened in the other mode, or as a book,
+// is refused (ErrInvalid).
+func (s *Shelf) HostLog(ctx context.Context, logID string, inCadence bool) (*HostLog, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hostLocked(ctx, logID, inCadence, true)
+}
+
+// hostLocked opens a host log. inCadence registers it with the cadence;
+// provision creates its CLL log when absent.
+func (s *Shelf) hostLocked(ctx context.Context, logID string, inCadence, provision bool) (*HostLog, error) {
 	if s.released {
 		return nil, ErrReleased
 	}
-	if legacy, ok := s.legacy[logID]; ok {
-		return legacy, nil
+	if host, ok := s.hosts[logID]; ok {
+		if host.inCadence != inCadence {
+			return nil, fmt.Errorf("%w: host log %s is already open %s the cadence", ErrInvalid, logID, map[bool]string{true: "in", false: "outside"}[host.inCadence])
+		}
+		return host, nil
+	}
+	if _, ok := s.books[logID]; ok {
+		return nil, fmt.Errorf("%w: %s is a book, not a host log", ErrInvalid, logID)
+	}
+	if s.cadence != nil && s.cadence.cfg.LogID == logID {
+		return nil, fmt.Errorf("%w: %s is the cadence log", ErrInvalid, logID)
+	}
+	kind, err := s.logKind(ctx, logID)
+	if err != nil {
+		return nil, err
 	}
 	var records int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, logID).Scan(&records); err != nil {
 		return nil, err
 	}
-	if records > 0 {
-		return nil, fmt.Errorf("%w: %s is a book, not a legacy log", ErrInvalid, logID)
+	if kind == logKindBook || records > 0 {
+		return nil, fmt.Errorf("%w: %s is a book, not a host log", ErrInvalid, logID)
 	}
-	backend, err := cllsqlite.Open(s.cfg.Path, logID)
-	if err != nil {
-		return nil, fmt.Errorf("open legacy log %s: %w", logID, err)
+	var log *CLLSubstrate
+	if provision {
+		log, err = OpenCLLSQLite(s.cfg.Path, logID, s.cfg.CheckpointKey)
+	} else {
+		var backend cll.Backend
+		if backend, err = cllsqlite.Open(s.cfg.Path, logID); err != nil {
+			return nil, fmt.Errorf("open legacy log %s: %w", logID, err)
+		}
+		log, err = newCLLSubstrate(backend, logID, s.cfg.CheckpointKey)
 	}
-	log, err := newCLLSubstrate(backend, logID, s.cfg.CheckpointKey)
 	if err != nil {
 		return nil, err
 	}
-	if register {
+	err = s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := claimLogKind(ctx, tx, logID, logKindHost); err != nil {
+			return err
+		}
+		if !inCadence {
+			return nil
+		}
 		var known int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?`, logID).Scan(&known); err != nil {
-			return nil, errors.Join(err, log.Release())
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?`, logID).Scan(&known); err != nil {
+			return err
 		}
-		if known == 0 {
-			if err := s.inTx(ctx, func(tx *sql.Tx) error { return markLive(ctx, tx, logID) }); err != nil {
-				return nil, errors.Join(err, log.Release())
-			}
+		if known > 0 {
+			return nil
 		}
+		return markLive(ctx, tx, logID)
+	})
+	if err != nil {
+		return nil, errors.Join(err, log.Release())
 	}
-	legacy := &LegacyLog{shelf: s, id: logID, log: log}
-	s.legacy[logID] = legacy
-	return legacy, nil
+	host := &HostLog{shelf: s, id: logID, log: log, inCadence: inCadence}
+	s.hosts[logID] = host
+	return host, nil
 }
 
 // Append runs write, the profile's own step for this log (it opens its own
 // handle on the log), under the shelf's lock. write must not call the shelf
-// or its cadence: the lock is held. Append puts the log back in the live set: an append to a closed deal (later evidence) re-enters the
-// tick like any append.
-func (l *LegacyLog) Append(ctx context.Context, write func() error) error {
+// or its cadence: the lock is held. For a log in the cadence, Append puts it
+// back in the live set: an append to a closed deal (later evidence) re-enters
+// the tick like any append.
+func (l *HostLog) Append(ctx context.Context, write func() error) error {
+	return l.Write(ctx, func(HostLogStores) error { return write() })
+}
+
+// Write runs write on the log's stores (HostLogStores) under the shelf's
+// lock, as Append does. write must not call the shelf or its cadence.
+func (l *HostLog) Write(ctx context.Context, write func(HostLogStores) error) error {
 	l.shelf.mu.Lock()
 	defer l.shelf.mu.Unlock()
 	if l.shelf.released {
@@ -324,15 +389,19 @@ func (l *LegacyLog) Append(ctx context.Context, write func() error) error {
 	// The log is live before the write, so no write, finished or not, is
 	// left outside the tick; a log live without a new entry costs only one
 	// unchanged checkpoint in the next tick.
-	if err := l.shelf.inTx(ctx, func(tx *sql.Tx) error { return markLive(ctx, tx, l.id) }); err != nil {
-		return err
+	if l.inCadence {
+		if err := l.shelf.inTx(ctx, func(tx *sql.Tx) error { return markLive(ctx, tx, l.id) }); err != nil {
+			return err
+		}
 	}
-	return write()
+	l.log.mu.Lock()
+	defer l.log.mu.Unlock()
+	return write(HostLogStores{Log: l.log.log, Originals: l.shelf.cfg.Originals})
 }
 
-func (l *LegacyLog) LogID() string { return l.id }
+func (l *HostLog) LogID() string { return l.id }
 
-func (l *LegacyLog) MMRSize(ctx context.Context) (uint64, error) {
+func (l *HostLog) MMRSize(ctx context.Context) (uint64, error) {
 	leaves, err := l.log.Size(ctx)
 	if err != nil {
 		return 0, err
@@ -340,9 +409,9 @@ func (l *LegacyLog) MMRSize(ctx context.Context) (uint64, error) {
 	return mmrSize(leaves), nil
 }
 
-func (l *LegacyLog) substrate() Substrate { return l.log }
+func (l *HostLog) substrate() Substrate { return l.log }
 
-func (l *LegacyLog) CutLocal(ctx context.Context, at time.Time) ([]byte, uint64, error) {
+func (l *HostLog) CutLocal(ctx context.Context, at time.Time) ([]byte, uint64, error) {
 	cp, err := l.log.Checkpoint(ctx, at)
 	if err != nil {
 		return nil, 0, err
@@ -376,7 +445,7 @@ func (s *Shelf) cadenceLogLocked(ctx context.Context, logID string) (CadenceLog,
 		}
 		return bookLog{book}, nil
 	}
-	return s.legacyLocked(ctx, logID, false)
+	return s.hostLocked(ctx, logID, true, false)
 }
 
 // Tick cuts a tick when one is due at now; otherwise it reports when one
@@ -418,12 +487,17 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	if len(live) >= 1<<CadenceDepth || lifetime >= 1<<CadenceDepth {
 		return TickResult{}, fmt.Errorf("%w: too many logs for one cadence tree", ErrInvalid)
 	}
+	// Every draw is from the shelf's one source, in this order: filler 0's
+	// position and nonce; each live log's salt and position, in log id
+	// order; the derived fillers' seed when there are any; the jitter; then
+	// each padding record's nonce (finishLocked).
+	random := s.random
 	used := positions{}
 	leaves := TickLeaves{Deals: map[string]TickLeaf{}}
-	if leaves.FillerIndex, err = used.random(); err != nil {
+	if leaves.FillerIndex, err = used.random(random); err != nil {
 		return TickResult{}, err
 	}
-	if leaves.FillerNonce, err = randomHex(32); err != nil {
+	if leaves.FillerNonce, err = random.hex(32); err != nil {
 		return TickResult{}, err
 	}
 	for _, id := range live {
@@ -437,10 +511,10 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 		}
 		sum := sha256.Sum256(statement)
 		leaf := TickLeaf{LogID: id, Size: size, CheckpointSHA256: hex.EncodeToString(sum[:]), Statement: base64.RawURLEncoding.EncodeToString(statement)}
-		if leaf.Salt, err = randomHex(32); err != nil {
+		if leaf.Salt, err = random.hex(32); err != nil {
 			return TickResult{}, err
 		}
-		if leaf.Index, err = used.random(); err != nil {
+		if leaf.Index, err = used.random(random); err != nil {
 			return TickResult{}, err
 		}
 		leaves.Deals[id] = leaf
@@ -448,18 +522,19 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	// The occupancy floor: H+1 occupied positions, as when every log was in
 	// every tick.
 	if gap := lifetime - uint64(len(live)); lifetime > uint64(len(live)) && gap > 0 {
-		if leaves.FillerSeed, err = randomHex(32); err != nil {
+		if leaves.FillerSeed, err = random.hex(32); err != nil {
 			return TickResult{}, err
 		}
 		leaves.FillerCount = gap
 	}
+	// The jitter is uniform over [-Jitter, +Jitter] in nanoseconds.
 	jitter := time.Duration(0)
 	if c.cfg.Jitter > 0 {
-		r, err := rand.Int(rand.Reader, big.NewInt(int64(2*c.cfg.Jitter)+1))
+		r, err := random.uniform(uint64(2*c.cfg.Jitter) + 1)
 		if err != nil {
 			return TickResult{}, err
 		}
-		jitter = time.Duration(r.Int64()) - c.cfg.Jitter
+		jitter = time.Duration(r) - c.cfg.Jitter
 	}
 	tick := CadenceTick{N: n, At: at, DueNext: now.UTC().Add(c.cfg.Interval + jitter).Truncate(time.Second), Leaves: leaves}
 	encoded, err := json.Marshal(leaves)
@@ -525,7 +600,7 @@ func (c *Cadence) finishLocked(ctx context.Context, tick CadenceTick) (TickResul
 	}
 	// Padding records bring the leaf count to a multiple of the bucket.
 	for count := end; count%c.cfg.PadBucket != 0; count++ {
-		id, err := paddingRecordID()
+		id, err := paddingRecordID(s.random)
 		if err != nil {
 			return TickResult{}, err
 		}
@@ -550,11 +625,16 @@ func (c *Cadence) finishLocked(ctx context.Context, tick CadenceTick) (TickResul
 // capsule-cli's dealPaddingRecordID: the JCS digest of {"record_type":
 // "padding", "epistemic_type": "producer_claim", "store_nonce": <fresh 256
 // bits>}. Its only content is the nonce.
-func paddingRecordID() (string, error) {
-	nonce, err := randomHex(32)
+func paddingRecordID(random randomSource) (string, error) {
+	nonce, err := random.hex(32)
 	if err != nil {
 		return "", err
 	}
+	return paddingRecordIDFor(nonce)
+}
+
+// paddingRecordIDFor is the padding record id for nonce (64 lowercase hex).
+func paddingRecordIDFor(nonce string) (string, error) {
 	encoded, err := canonicalJSON(map[string]any{"record_type": "padding", "epistemic_type": "producer_claim", "store_nonce": nonce})
 	if err != nil {
 		return "", err

@@ -58,7 +58,22 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 	PRIMARY KEY (book_id, n),
 	UNIQUE (book_id, checkpoint_id)
 );
+-- The file's shelf version, and the kind of every log on the shelf but the
+-- cadence log (evidencebook#254 §2.2): a book's row is written with its first
+-- record, a host log's when it is opened as one.
+CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
 `
+
+// ShelfVersion is the shelf file version this implementation writes and the
+// only one it opens (shelf_meta.version).
+const ShelfVersion = 1
+
+// The kinds of shelf_logs.
+const (
+	logKindBook = "book"
+	logKindHost = "host"
+)
 
 // sqliteStore is one book's Store in a database several books share, every
 // row keyed by its book id. It has FileStore's semantics: a record is stored
@@ -70,9 +85,93 @@ type sqliteStore struct {
 	bookID string
 }
 
-func initSQLiteStore(db *sql.DB) error {
-	_, err := db.Exec(sqliteStoreSchema)
-	return err
+// initSQLiteStore creates the shelf's tables when absent, in one
+// transaction, and applies the fill rules of evidencebook#254 §2.2: a file
+// with no shelf_meta row (a fresh file, capsule-cli's deal.db before
+// migration, or a shelf from v0.12.0 or earlier) gets version 1, and a file
+// without shelf_logs gets it filled, each book_records id a book and each
+// other cadence_logs id a host log. A version it does not know is refused
+// before anything is written.
+func initSQLiteStore(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	hasTable := func(name string) (bool, error) {
+		var n int
+		err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
+		return n > 0, err
+	}
+	hasMeta, err := hasTable("shelf_meta")
+	if err != nil {
+		return err
+	}
+	versioned := false
+	if hasMeta {
+		var version int64
+		switch err := tx.QueryRowContext(ctx, `SELECT version FROM shelf_meta WHERE id = 1`).Scan(&version); {
+		case errors.Is(err, sql.ErrNoRows):
+		case err != nil:
+			return err
+		case version != ShelfVersion:
+			return fmt.Errorf("%w: shelf file version %d (this build opens version %d)", ErrUnsupported, version, ShelfVersion)
+		default:
+			versioned = true
+		}
+	}
+	hasLogs, err := hasTable("shelf_logs")
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, sqliteStoreSchema); err != nil {
+		return err
+	}
+	if !versioned {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_meta (id, version) VALUES (1, ?)`, ShelfVersion); err != nil {
+			return err
+		}
+	}
+	if !hasLogs {
+		for _, statement := range []string{
+			`INSERT INTO shelf_logs (log_id, kind) SELECT DISTINCT book_id, 'book' FROM book_records`,
+			`INSERT INTO shelf_logs (log_id, kind) SELECT log_id, 'host' FROM cadence_logs WHERE log_id NOT IN (SELECT book_id FROM book_records)`,
+		} {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// logKindOf is logID's kind as shelf_logs records it, empty when it has no
+// row (a book with no record yet, or a log the shelf has not seen).
+func logKindOf(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, logID string) (string, error) {
+	var kind string
+	err := q.QueryRowContext(ctx, `SELECT kind FROM shelf_logs WHERE log_id = ?`, logID).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return kind, err
+}
+
+// claimLogKind records logID as kind in tx, refusing a log shelf_logs already
+// holds as the other kind.
+func claimLogKind(ctx context.Context, tx *sql.Tx, logID, kind string) error {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_logs (log_id, kind) VALUES (?, ?) ON CONFLICT (log_id) DO NOTHING`, logID, kind); err != nil {
+		return err
+	}
+	held, err := logKindOf(ctx, tx, logID)
+	if err != nil {
+		return err
+	}
+	if held != kind {
+		return fmt.Errorf("%w: %s is a %s log, not a %s log", ErrInvalid, logID, held, kind)
+	}
+	return nil
 }
 
 func (s *sqliteStore) PutRecord(ctx context.Context, record StoredRecord) error {
@@ -97,6 +196,9 @@ func (s *sqliteStore) PutRecord(ctx context.Context, record StoredRecord) error 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES (?, ?, ?, ?, ?, ?)`,
 		s.bookID, record.Seq, record.RecordID, []byte(record.Header), []byte(record.Capsule), record.Envelope); err != nil {
+		return err
+	}
+	if err := claimLogKind(ctx, tx, s.bookID, logKindBook); err != nil {
 		return err
 	}
 	if err := markLive(ctx, tx, s.bookID); err != nil {

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"path/filepath"
 	"sync"
@@ -26,6 +27,18 @@ type ShelfConfig struct {
 	// "<deal.db>.deal.lock" (lockDealStore). Empty means Path + ".lock",
 	// which excludes only other shelves.
 	LockPath string
+	// HeldLock is the store's writer lock when the host already holds it
+	// under its own rules (evidencebook#254 §2.4): the shelf then takes no
+	// lock of its own and leaves the host's to the host, so LockPath must be
+	// empty. The shelf's own lock is unix-only; a shelf on a held lock opens
+	// on any platform.
+	HeldLock HeldLock
+	// Random is the shelf's one random source: every salt, tree position,
+	// filler nonce and seed, jitter and padding nonce the cadence draws comes
+	// from it, in the order the shelf vectors (testdata/shelf) state. Nil is
+	// the system CSPRNG, which production uses; a fixed stream makes a run
+	// deterministic, as the cross-language vectors and interlock need.
+	Random io.Reader
 
 	Operator  string
 	Developer string
@@ -46,6 +59,13 @@ type ShelfConfig struct {
 	AuthenticatedIndexes func(logID string) []AuthenticatedIndex
 }
 
+// HeldLock is a writer lock a host holds on the shelf's store. Held reports
+// nil while the host holds it; the shelf asks once, when it opens, and never
+// releases it.
+type HeldLock interface {
+	Held() error
+}
+
 // Shelf is one profile's books, each its own log (evidencebook#36 §1): a
 // deal's bundle is built from its book alone, so it carries no other deal's
 // records. A shelf holds the profile's writer lock from OpenSQLiteShelf to
@@ -63,8 +83,10 @@ type Shelf struct {
 	cfg    ShelfConfig
 	db     *sql.DB
 	unlock func() error
+	random randomSource
 	books  map[string]*Book
-	legacy map[string]*LegacyLog
+	// hosts are the host logs the shelf opened (Legacy, HostLog).
+	hosts map[string]*HostLog
 	// cadenceLogs are the cadence logs Cadence opened, released with the
 	// shelf.
 	cadenceLogs []*CLLSubstrate
@@ -79,8 +101,11 @@ var lockWriter = func(context.Context, string) (func() error, error) {
 }
 
 // OpenSQLiteShelf takes the writer lock, waiting for any other holder until
-// ctx is done, and opens the shelf's SQLite file, creating its tables when
-// absent.
+// ctx is done (or checks the host's held lock), and opens the shelf's SQLite
+// file, creating its tables when absent. A file whose shelf_meta version it
+// does not know is refused (ErrUnsupported); one with no shelf_meta row is a
+// fresh file or a shelf from v0.12.0 or earlier, and gets version 1, with
+// shelf_logs filled from what it holds (evidencebook#254 §2.2).
 //
 // The file has two kinds of handle: the shelf's own (records and
 // checkpoints of every book) and one per book's CLL log. Both use WAL and a
@@ -94,12 +119,23 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	if cfg.Path == "" || cfg.Operator == "" || cfg.Signer == nil || cfg.Originals == nil || len(cfg.CheckpointKey) == 0 {
 		return nil, fmt.Errorf("%w: path, operator, signer, checkpoint key and originals are required", ErrInvalid)
 	}
-	if cfg.LockPath == "" {
-		cfg.LockPath = cfg.Path + ".lock"
-	}
-	unlock, err := lockWriter(ctx, cfg.LockPath)
-	if err != nil {
-		return nil, err
+	var unlock func() error
+	if cfg.HeldLock != nil {
+		if cfg.LockPath != "" {
+			return nil, fmt.Errorf("%w: a shelf on a host-held lock takes no lock path", ErrInvalid)
+		}
+		if err := cfg.HeldLock.Held(); err != nil {
+			return nil, fmt.Errorf("%w: the host's writer lock is not held: %v", ErrInvalid, err)
+		}
+		unlock = func() error { return nil }
+	} else {
+		if cfg.LockPath == "" {
+			cfg.LockPath = cfg.Path + ".lock"
+		}
+		var err error
+		if unlock, err = lockWriter(ctx, cfg.LockPath); err != nil {
+			return nil, err
+		}
 	}
 	absolute, err := filepath.Abs(cfg.Path)
 	if err != nil {
@@ -115,14 +151,18 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 			return nil, errors.Join(err, db.Close(), unlock())
 		}
 	}
-	if err := initSQLiteStore(db); err != nil {
+	if err := initSQLiteStore(ctx, db); err != nil {
 		return nil, errors.Join(err, db.Close(), unlock())
 	}
-	return &Shelf{cfg: cfg, db: db, unlock: unlock, books: make(map[string]*Book), legacy: make(map[string]*LegacyLog)}, nil
+	return &Shelf{
+		cfg: cfg, db: db, unlock: unlock, random: newRandomSource(cfg.Random),
+		books: make(map[string]*Book), hosts: make(map[string]*HostLog),
+	}, nil
 }
 
 // Open returns the book whose log id is logID, creating it on first use. It
-// is the same *Book for the same id for the shelf's lifetime.
+// is the same *Book for the same id for the shelf's lifetime. A host log's
+// id is refused (ErrInvalid), in this process or as shelf_logs records it.
 func (s *Shelf) Open(ctx context.Context, logID string) (*Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -135,6 +175,16 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	}
 	if book, ok := s.books[logID]; ok {
 		return book, nil
+	}
+	if _, ok := s.hosts[logID]; ok {
+		return nil, fmt.Errorf("%w: %s is a host log, not a book", ErrInvalid, logID)
+	}
+	kind, err := s.logKind(ctx, logID)
+	if err != nil {
+		return nil, err
+	}
+	if kind == logKindHost {
+		return nil, fmt.Errorf("%w: %s is a host log, not a book", ErrInvalid, logID)
 	}
 	substrate, err := OpenCLLSQLite(s.cfg.Path, logID, s.cfg.CheckpointKey)
 	if err != nil {
@@ -151,6 +201,11 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	}
 	s.books[logID] = book
 	return book, nil
+}
+
+// logKind is logID's kind as shelf_logs records it (logKindOf).
+func (s *Shelf) logKind(ctx context.Context, logID string) (string, error) {
+	return logKindOf(ctx, s.db, logID)
 }
 
 func (s *Shelf) authenticated(logID string) []AuthenticatedIndex {
@@ -197,8 +252,8 @@ func (s *Shelf) Release() error {
 	for _, book := range s.books {
 		errs = append(errs, book.Release())
 	}
-	for _, legacy := range s.legacy {
-		errs = append(errs, legacy.log.Release())
+	for _, host := range s.hosts {
+		errs = append(errs, host.log.Release())
 	}
 	for _, log := range s.cadenceLogs {
 		errs = append(errs, log.Release())
