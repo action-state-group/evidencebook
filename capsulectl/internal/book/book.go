@@ -31,10 +31,10 @@ var bookNow = time.Now
 // opens a reproduced scratch book (evidencebook#232): all record, Result and
 // checkpoint times are that one time, and every record carries the header's
 // reproduction marker. Unset, nothing changes.
+const SourceDateEpochEnv = "SOURCE_DATE_EPOCH"
+
 // maxEpochSeconds is 9999-12-31T23:59:59Z.
 const maxEpochSeconds = 253402300799
-
-const SourceDateEpochEnv = "SOURCE_DATE_EPOCH"
 
 // reproductionAt is the caller-given time of a reproduced scratch book, when
 // SOURCE_DATE_EPOCH is set. An unreadable value is an input error, never the
