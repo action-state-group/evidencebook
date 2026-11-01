@@ -13,7 +13,7 @@ import (
 
 // testdata/shelf/correlation.json: which record positions a correlation
 // subject answers with, by correlationOf, for records carrying each
-// correlation member or none. Rust's shelf reads the same file.
+// correlation member or none. The Rust and Python shelves read the same file.
 
 type correlationVectorRecord struct {
 	SubjectRef  string            `json:"subject_ref"`

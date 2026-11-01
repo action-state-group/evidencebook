@@ -55,6 +55,7 @@ processes: Go's `test/interop/shelf`, Python's
 ## Readers
 
 - Python: `python/tests/test_shelf.py` reads every file here, `correlation.json` included.
-- Rust: `rust/evidencebook/src/shelf/tree.rs` reads `tree.json`, and
-  `rust/interop/tests/shelf_vectors.rs` also reads `correlation.json` and runs `script.json` and compares its
-  dumps with `after-write.json` and `after-continue.json`.
+- Rust: `rust/evidencebook/src/shelf/tree.rs` reads `tree.json`.
+  `rust/interop/tests/shelf_vectors.rs` reads `correlation.json`, and runs
+  `script.json` and compares the script's dumps with `after-write.json` and
+  `after-continue.json`.

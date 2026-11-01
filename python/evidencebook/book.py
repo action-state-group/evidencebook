@@ -883,7 +883,7 @@ class _View:
 
     def correlated(self, correlation_id: str) -> list[int]:
         # A record carrying correlation.exchange_id is held under it alone;
-        # only one carrying none is held under its subject_ref.
+        # only one carrying no exchange_id is held under its subject_ref.
         def held_under(h: Header) -> str:
             if h.correlation is not None and h.correlation.exchange_id:
                 return h.correlation.exchange_id
