@@ -36,3 +36,7 @@
 .cv-sh__seg--did_not_hold { fill: var(--cv-color-negative-fg); }
 /* Undecided is never the agreed tone: grey. */
 .cv-sh__seg--undecided { fill: var(--cv-color-neutral-fg); opacity: 0.45; }
+/* The reader's witness list: the line the card draws, and the editor under the checks. */
+.cv-sh__witness { margin: 0; font-weight: 600; }
+[data-sh-witness-list="true"] textarea { display: block; inline-size: stretch; box-sizing: border-box; margin: var(--cv-space-1) 0; font-size: var(--cv-font-size-sm); }
+[data-sh-witness-list="true"] button { margin-right: var(--cv-space-2); }

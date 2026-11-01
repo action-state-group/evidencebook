@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc29 and capsule-viewer 0.9.0
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc29`, evidencebook `v0.12.1`
+  (was `v0.12.0`; it carries the x-deal-v0 Lightning preimage, #260) and
+  capsule-viewer `v0.9.0` (calibration per clause, the History card's witness line and the
+  red mark on a withheld claim: capsule-viewer#205, #206, #207); `report/go.mod`
+  requires capsule-cli `v0.1.0-rc29` and capsule-viewer `v0.9.0`. The `report` fixtures'
+  pages (`4-monthly-outcome`, `5-monthly-compliance`) are rewritten with the
+  viewer's page runtime, and the vendored History card module
+  (`capsulectl/internal/book/assets/standard-history`) is the one in capsule-viewer's
+  `go/v0.9.0` release (was `go/v0.6.0`). capsulectl-book `v0.1.0-rc29` pairs with
+  capsulectl `v0.1.0-rc29`.
+
 ### Added: `counterparty_class` on a pay check, read by the History card (#273)
 
 - x-deal-v0: a `check` record whose `body.action` is `pay` may carry a
