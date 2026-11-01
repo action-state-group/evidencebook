@@ -32,6 +32,25 @@ func TestPinnedWitnessDirectoryTrustsOnlyTheProfilesWitness(t *testing.T) {
 	assert.False(t, ok, "no other witness is trusted")
 }
 
+// A scrapi+https:// witness's row is under the scrapi binding, so its
+// Receipts are checked as SCITT Receipts over the checkpoint statement, and
+// no cll receipt from the same host is trusted.
+func TestPinnedWitnessDirectoryKeepsTheEndpointsBinding(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	var p cli.Profile
+	p.Checkpoint.Endpoint = "scrapi+https://ts.example/"
+	p.Checkpoint.PublicKey = hex.EncodeToString(public)
+
+	directory, err := pinnedWitnessDirectory(p)
+	require.NoError(t, err)
+	row, ok := directory.RowFor("scrapi+https://ts.example")
+	require.True(t, ok)
+	assert.Equal(t, "scrapi", row.Binding)
+	_, ok = directory.RowFor("https://ts.example")
+	assert.False(t, ok, "the same host under the cll binding is not trusted")
+}
+
 func TestPinnedWitnessDirectoryOfAnUnpinnedProfileTrustsNoWitness(t *testing.T) {
 	directory, err := pinnedWitnessDirectory(cli.Profile{})
 	require.NoError(t, err)

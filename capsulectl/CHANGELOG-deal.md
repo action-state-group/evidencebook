@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- The History card bundle carries its anchor (F4.7, evidencebook-deal#100):
+  `deal standard-history card` writes `as_of.checkpoint` in both copies (the
+  anchor's `cll-checkpoint` octets as hex; their SHA-256 is `as_of.anchor`), and
+  `as_of.receipts` when the cadence tick the card is as of holds a witness
+  Receipt for that anchor (interop profile v1 §6.2.2), so capsule-viewer's History
+  card can say who recorded the snapshot (capsule-viewer#183). Only a
+  `scrapi+https://` witness's Receipt covers the anchor; a `cll` witness's receipt
+  covers the checkpoint payload's digest and is never written. A deal profile
+  whose `checkpoint.endpoint` is a `scrapi+https://` Transparency Service now
+  gets its cadence ticks witnessed: the cadence checks the Receipt under that
+  binding, not always under `cll`. The default witness is unchanged.
+
 - `counterparty_class` on a pay check (F4.5, evidencebook-deal#93, evidencebook#273): a
   `deal check` input for a `pay` may state `"counterparty_class"` (`person_agent`,
   `business_agent` or `shop_preauth`, SH §7), which is sealed as the pay check's
