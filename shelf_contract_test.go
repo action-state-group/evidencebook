@@ -556,7 +556,8 @@ func TestAnInjectedRandomSourceMakesTicksDeterministic(t *testing.T) {
 // it begins (BEGIN IMMEDIATE). Under WAL a deferred one would read a
 // snapshot, and another connection's commit before its first write (a
 // book's CLL append, another process) would fail that write at once with
-// SQLITE_BUSY_SNAPSHOT, which the busy timeout does not cover.
+// SQLITE_BUSY_SNAPSHOT (517), or with SQLITE_BUSY (5) while the other holds
+// the write lock; the busy timeout covers neither.
 func TestAShelfTransactionHoldsTheWriteLockFromItsStart(t *testing.T) {
 	ctx := context.Background()
 	f := newShelfFixture(t)

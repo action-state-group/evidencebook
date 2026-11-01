@@ -144,9 +144,11 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	// Every transaction on the shelf's handle begins IMMEDIATE: most read
 	// and then write, and under WAL a deferred one reads a snapshot, so a
 	// commit by another connection to the file (a book's CLL log, another
-	// process) before its first write fails that write at once with
-	// SQLITE_BUSY_SNAPSHOT, which the busy timeout does not cover. An
-	// immediate one waits for the write lock under the busy timeout instead.
+	// process) before its first write fails that write at once: with
+	// SQLITE_BUSY_SNAPSHOT (517) when the other connection committed after
+	// the snapshot, or SQLITE_BUSY (5) when it holds the write lock then. The
+	// busy timeout covers neither. An immediate one waits for the write lock
+	// under the busy timeout instead.
 	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_txlock=immediate"}).String())
 	if err != nil {
 		return nil, errors.Join(err, unlock())

@@ -9,8 +9,8 @@
   tick's witness, an import) began deferred, so under WAL another
   connection's commit between its read and its first write, such as another
   book's append to its CLL log, failed the write at once with
-  `SQLITE_BUSY_SNAPSHOT` ("database is locked (517)"), which the busy
-  timeout does not cover. A book checkpointing while another book appends
+  `SQLITE_BUSY_SNAPSHOT` ("database is locked (517)") or `SQLITE_BUSY`
+  ("database is locked (5)"), neither of which the busy timeout covers. A book checkpointing while another book appends
   could fail that way. It now waits for the lock under the busy timeout. No
   stored byte changes.
 
