@@ -5,7 +5,13 @@
 - A receipt's referee is one both sides chose (x-deal-v0, evidencebook#277): `Report.referee`, required on
   an adjudicator's report and refused on the others; `normalize_referee`, `report_referee` and `shared_referee`
   (with `RefereeError` and its reasons), byte for byte with Go's `dealprofile` over the parity vectors.
-
+- The Goose reference exports a book bundle (evidencebook#301): `loop_book_bundle` / `Node.book_bundle` write
+  an `evidence-bundle/v2` for one record of a book (its position, inclusion proof and the checkpoint covering
+  it), built by agent-action-capsule's producer and checked by its strict verifier; with a witness directory
+  the witness's receipt for the book's own checkpoint is on the bundle's `checkpoint.witnesses` (asked of the witness
+  once per checkpoint), and a witnessed cadence tick adds the `x-cadence-witness/v0` extension. `loop_book_bundle` also writes the
+  book's `checkpoint.cose`, the receipt and the directory beside the bundle. CI has Go verify the bundle, as a
+  witnessed answer too (`test/interop/verify`).
 - The Goose reference seals a model call (evidencebook#300): `loop_seal` / `Node.seal_model_call` commit one
   effect-boundary Capsule to the node book (`effect_attestation` `runtime_claimed`, `model_attestation` naming
   the provider and model id; the prompt is kept in the node book as the record's payload, the completion is
