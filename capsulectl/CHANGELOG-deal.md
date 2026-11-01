@@ -24,6 +24,14 @@
   value and on a deal in the typed action records. Requires evidencebook
   `v0.12.2` (evidencebook#288).
 
+- `TestADealPageWithoutWebCrypto` runs a built deal page with no `crypto` global
+  again, against capsule-viewer/go v0.9.0 (evidencebook-deal#54): the runtime
+  verifies every record, the graph closure and the coverage with its plain
+  SHA-256, and the deal view says it cannot check the report's signature there
+  and shows none of the report; with WebCrypto the page shows it. v0.9.0 has no
+  switch to turn the SHA-256 fallback off, so the "unable to verify in this
+  viewer" page is not covered end to end here.
+
 ## v0.1.0-rc29
 
 This section also lists what `v0.1.0-rc28` carried: that tag was cut before this CHANGELOG

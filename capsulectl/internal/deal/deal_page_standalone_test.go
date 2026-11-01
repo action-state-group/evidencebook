@@ -14,10 +14,11 @@ import (
 
 // verifiedContextJS is a node driver's verifiedContext(context, EG, bundle):
 // the verified context the page's runtime builds, the one a presentation
-// module's buildModel receives. The runtime exports no context builder;
-// renderEvidenceGraph hands the context to the registry it is given before
-// it renders anything but its checking bar, and this registry keeps it and
-// stops the render there.
+// module's buildModel receives. It goes through renderEvidenceGraph, the
+// page's own entry point (with its no-SHA-256 gate), rather than the exported
+// buildVerifiedBundleContext: renderEvidenceGraph hands the context to the
+// registry it is given before it renders anything but its checking bar, and
+// this registry keeps it and stops the render there.
 const verifiedContextJS = `async function verifiedContext(context, EG, bundle) {
   if (vm.runInContext("typeof document", context) === "undefined")
     vm.runInContext("globalThis.document = { createElement: () => ({ dataset: {}, append() {} }) };", context);
@@ -42,6 +43,7 @@ const fs = require("fs");
 const vm = require("vm");
 const { webcrypto } = require("crypto");
 const [page, edit] = process.argv.slice(2);
+// "no-crypto" runs the page as a plain-http or file: page sees it: no crypto global.
 const html = fs.readFileSync(page, "utf8");
 const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
 const bundleJSON = scripts.find((s) => html.slice(0, html.indexOf(s)).endsWith('<script type="application/json">'));
@@ -50,7 +52,8 @@ const bundleParser = scripts.find((s) => s.startsWith("window.__BUNDLE__ = JSON.
 const runtime = scripts.find((s) => s.includes("var EvidenceGraph = "));
 const bootstrap = scripts.find((s) => s.includes('document.getElementById("app")'));
 const modules = scripts.filter((s) => s !== bundleJSON && s !== bundleParser && s !== runtime && s !== bootstrap);
-const sandbox = { console, TextEncoder, TextDecoder, atob, btoa, URL, setTimeout, clearTimeout, queueMicrotask, crypto: webcrypto };
+const sandbox = { console, TextEncoder, TextDecoder, atob, btoa, URL, setTimeout, clearTimeout, queueMicrotask };
+if (edit !== "no-crypto") sandbox.crypto = webcrypto;
 const context = vm.createContext(sandbox);
 vm.runInContext("globalThis.window = globalThis;", context);
 vm.runInContext(bundleScript, context);
@@ -78,12 +81,22 @@ if (edit === "stripped") {
 (async () => {
   const ctx = await verifiedContext(context, EG, bundle);
   const resolution = await EG.resolvePresentation(ctx);
-  if (resolution.kind !== "module") {
-    process.stdout.write(JSON.stringify({ presentation: resolution.kind }));
-    return;
+  const v = ctx.verification;
+  const out = {
+    crypto: vm.runInContext("typeof crypto", context),
+    ed25519: String(EG.ed25519Available()),
+    checks: [v.graphClosure.status, v.intervalCoverage.status, v.perRecordMembership.status].join(","),
+    records: Object.values(v.capsuleResults).every((r) => r.ok) ? "ok" : "failed",
+    findings: Object.values(v.capsuleResults).flatMap((r) => r.findings.map((f) => f.code)).filter((c) => c !== "chain_check_store_level").join(","),
+    disclosures: v.disclosures.every((d) => d.status === "disclosure_match" || d.status === "withheld") ? "ok" : "failed",
+    presentation: resolution.kind,
+  };
+  if (resolution.kind === "module") {
+    const view = await resolution.module.buildModel(ctx);
+    out.refusal = view.refusal || "";
+    out.scope = view.report ? view.report.scope : "";
   }
-  const view = await resolution.module.buildModel(ctx);
-  process.stdout.write(JSON.stringify({ refusal: view.refusal || "", scope: view.report ? view.report.scope : "" }));
+  process.stdout.write(JSON.stringify(out));
 })();
 `
 
