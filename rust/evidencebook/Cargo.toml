@@ -19,7 +19,7 @@ name = "evidencebook"
 path = "src/lib.rs"
 
 [dependencies]
-cll = { package = "checkpointed-local-log", version = "0.3.1" }
+cll = { package = "checkpointed-local-log", version = "0.4.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
@@ -34,10 +34,10 @@ ciborium = "0.2"
 # refusal profile, the interop profile's envelope, and (`cll`) the encoders and
 # checks of the Checkpointed Local Log material, on the same
 # checkpointed-local-log line as this crate.
-evidence-request = { version = "0.3", default-features = false, features = ["cll"] }
+evidence-request = { version = "0.4.1", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
-agent-action-capsule = { version = "0.5.0", default-features = false, features = ["strict"] }
+agent-action-capsule = { version = "0.8.0", default-features = false, features = ["strict"] }
 # The `deal` feature's dependencies (the x-deal-v0 reference profile, module
 # `deal`): its schemas' validator, the normalization of counterparty
 # identifiers (Unicode normalization, case mapping, general categories, IDNA,
