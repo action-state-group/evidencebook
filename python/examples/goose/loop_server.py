@@ -229,7 +229,7 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     receipts = built["checkpoint"].get("witnesses") or []
     if receipts:
         files["witness-receipt.json"] = json.dumps(receipts[0], sort_keys=True).encode()
-        files["witnesses.json"] = Path(os.environ["GOOSE_WITNESSES"]).expanduser().read_bytes()
+        files["witnesses.json"] = json.dumps(n.witness_directory, sort_keys=True).encode()  # the one the receipt was checked under
     chain = built.get("extensions", {}).get(gn.CADENCE_EXTENSION)
     if chain:
         cose = chain["cadence"]["checkpoint"]["cose"]

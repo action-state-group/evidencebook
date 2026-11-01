@@ -366,6 +366,11 @@ class Node:
         return [bytes.fromhex(k) for k in json.loads(path.read_text())] if path.exists() else []
 
     @property
+    def witness_directory(self) -> Any:
+        """The witness directory receipts are checked under, or ``None``."""
+        return self._witnesses
+
+    @property
     def key_id(self) -> str:
         return self.signer.public_key().hex()
 

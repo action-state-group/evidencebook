@@ -602,6 +602,29 @@ def test_a_bad_receipt_is_not_kept_and_a_bad_endpoint_is_refused(tmp_path, clock
             node.book_bundle(gn.NODE_BOOK, sealed.record_id)
 
 
+def test_a_receipt_the_directory_cannot_verify_and_a_two_witness_directory_are_refused(tmp_path, clock):
+    script = _witness_script()
+    row = script.DIRECTORY["witnesses"][0]
+
+    class Forged(_Witness):
+        def submit(self, statement):
+            got = super().submit(statement)
+            got.bytes = bytes([got.bytes[0] ^ 1]) + got.bytes[1:]
+            return got
+
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY,
+                      witness_client=lambda e: Forged(script, e)) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+        assert not node._db.execute("SELECT 1 FROM goose_book_receipts").fetchall(), "a bad receipt is not kept"
+    two = {"witnesses": [row, {**row, "name": "another", "endpoint": "https://other.test"}]}
+    with gn.Node.open(tmp_path / "x", operator="goose-x", now=clock, witnesses=two) as node:
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        with pytest.raises(gn.Refused, match="exactly one witness"):
+            node.book_bundle(gn.NODE_BOOK, sealed.record_id)
+
+
 def test_a_witness_that_fails_leaves_no_bundle(tmp_path, clock):
     from cll.log import ContentionError
 
@@ -650,10 +673,10 @@ def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(t
         assert receipt == json.loads(out.read_text())["checkpoint"]["witnesses"][0]
         # The receipt is over this very checkpoint: its entry hash binds the statement the file holds.
         assert receipt["entry_hash"] == script.mint_receipt(statement).entry_hash
-        assert (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
+        assert json.loads((tmp_path / "call.witnesses.json").read_text()) == script.DIRECTORY
         if os.environ.get("GOOSE_GO_CHECK"):
             check = subprocess.run(["go", "run", "./test/interop/verify", str(out), node.checkpoint_key_id,
-                                    str(directory)], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
+                                    str(tmp_path / "call.witnesses.json")], cwd=HERE.parents[2], capture_output=True, text=True, timeout=600)
             assert check.returncode == 0 and "witnessed" in check.stdout, check.stdout + check.stderr
         assert not (tmp_path / "call.cadence-checkpoint.cose").exists()
         assert node.tick().ticked
