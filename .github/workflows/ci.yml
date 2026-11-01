@@ -353,6 +353,52 @@ jobs:
             "$work/aac/python/tests/test_personal_history_basic_v0_vectors.py" \
             -k "not test_sha256sums_and_registration"
 
+  shelf-interlock:
+    # The shelf storage interlock (evidencebook#254 §5 item 2): the scripted
+    # shelf written by one process and continued by another, each dump equal
+    # to testdata/shelf, and two writers of one file excluding each other.
+    # Go writes and continues here; Rust (evidencebook#262) and Python
+    # (evidencebook#263) join it as writers and continuers of each other's
+    # files.
+    name: Shelf storage interlock
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the Go side
+        run: go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
+      - name: Write, continue and compare
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          "$RUNNER_TEMP/shelf-go" write "$work/s"
+          "$RUNNER_TEMP/shelf-go" dump "$work/s" > "$work/after-write.json"
+          cmp testdata/shelf/after-write.json "$work/after-write.json"
+          "$RUNNER_TEMP/shelf-go" continue "$work/s"
+          "$RUNNER_TEMP/shelf-go" dump "$work/s" > "$work/after-continue.json"
+          cmp testdata/shelf/after-continue.json "$work/after-continue.json"
+      - name: Two writers of one file exclude each other
+        run: |
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          "$RUNNER_TEMP/shelf-go" write "$work/s"
+          "$RUNNER_TEMP/shelf-go" hold "$work/s" 20 > "$work/held" < /dev/null &
+          holder=$!
+          for _ in $(seq 100); do grep -q held "$work/held" && break; sleep 0.1; done
+          grep -q held "$work/held"
+          code=0
+          "$RUNNER_TEMP/shelf-go" try "$work/s" 500 || code=$?
+          test "$code" -eq 3
+          kill "$holder"
+          wait "$holder" || true
+          "$RUNNER_TEMP/shelf-go" try "$work/s" 5000
+
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
     runs-on: ubuntu-latest

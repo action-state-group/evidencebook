@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+### Added: the shelf contract's Go additions and the shelf vectors (#261)
+
+- `Shelf.HostLog(ctx, logID, inCadence)` opens a host log: a log on the shelf
+  whose records the host seals in its own format. `HostLog.Write` runs the
+  host's write under the shelf's lock on the log's CLL backend and the
+  shelf's artifact store (`HostLogStores`). A host log in the cadence is
+  ticked like a book; one outside it is never counted or checkpointed by the
+  cadence. `LegacyLog` is now an alias of `HostLog`, and `Legacy` and
+  `LegacyLog.Append` behave as before.
+- The shelf's file gains `shelf_meta` (version 1, `ShelfVersion`) and
+  `shelf_logs` (each log's kind, `book` or `host`). A file with no
+  `shelf_meta` row, which includes every shelf v0.12.0 and earlier wrote, gets
+  version 1, and a file without `shelf_logs` gets it filled from
+  `book_records` and `cadence_logs`. A version this build does not know is
+  refused with `ErrUnsupported`. `Open` refuses a host log's id, and
+  `Legacy`, `HostLog` and `ImportLegacy` refuse a book's id, across reopens.
+- `ShelfConfig.HeldLock`: a host that already holds the store's writer lock
+  passes it, and the shelf takes no lock of its own. Such a shelf opens on
+  any platform.
+- `ShelfConfig.Random` is the shelf's one random source, for every salt,
+  tree position, filler nonce and seed, jitter and padding nonce the cadence
+  draws. Nil is the system CSPRNG. Each draw is now defined on the bytes it
+  reads (a tick's jitter is a uniform draw of 8-byte big-endian values, with
+  rejection), so another implementation fed the same stream draws the same
+  values.
+- `testdata/shelf/` holds the shelf vectors written by this build:
+  `tree.json` (cadence leaves, fillers, derived fillers, empty roots, trees
+  and paths, padding record ids and random draws), and `script.json` with
+  `after-write.json` and `after-continue.json` (a scripted shelf's tables,
+  CLL entries, `Records`, `StandardHistoryAnchor` and `Extents` of each tick,
+  and the cadence chain of every checkpoint a tick carries).
+  `EB_WRITE_SHELF_VECTORS=1` regenerates them. `testdata/cadence` moved to
+  `testdata/shelf/cadence` unchanged.
+- `test/interop/shelf` is Go's side of the shelf storage interlock: it
+  writes, continues and dumps the scripted shelf, and holds or tries the
+  shelf's lock. CI's `shelf-interlock` job runs it.
+
+### Changed: checkpointed-local-log go/v0.3.0
+
+- The module requires checkpointed-local-log `go/v0.3.0` (was `v0.1.0`). Its
+  receipt verifier applies the receipt profile shared with scitt-cose and
+  agent-action-capsule, so a receipt that carries several valid inclusion
+  proofs now counts as witnessed. The `asker-limits` witness vector's case
+  with one proof listed twice becomes `malformed-second-proof`, a valid
+  proof followed by a malformed one, which every checkpointed-local-log
+  release refuses.
+
 ### Added: `report` takes the compiled Evidence Contract, pinned to its digest (#204)
 
 - `report.View.Contract` is a compiled Evidence Contract v0 (for example

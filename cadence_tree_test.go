@@ -31,7 +31,7 @@ type cadenceVectors struct {
 // The construction is capsule-cli's, byte for byte: the vectors were written
 // by its own cadenceLeaf, cadenceFillerLeaf and cadenceTree (testdata).
 func TestCadenceTreeMatchesCapsuleCLI(t *testing.T) {
-	raw, err := os.ReadFile("testdata/cadence/capsule-cli-7a6b101.json")
+	raw, err := os.ReadFile("testdata/shelf/cadence/capsule-cli-7a6b101.json")
 	if err != nil {
 		t.Fatal(err)
 	}

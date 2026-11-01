@@ -15,7 +15,7 @@ import (
 // witness. Every construction here is capsule-cli's (internal/cli
 // deal_cadence.go at 7a6b101: cadenceLeaf, cadenceFillerLeaf, cadenceNode,
 // cadenceEmpty, cadenceTree, cadenceFold), byte for byte, so receipts its
-// released builds issued keep verifying; testdata/cadence holds vectors
+// released builds issued keep verifying; testdata/shelf/cadence holds vectors
 // written by that code.
 
 // CadenceDepth is the tree's fixed depth: every path is 16 hashes, and a

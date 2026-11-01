@@ -1,0 +1,159 @@
+{
+  "continue_phase": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/continue",
+      "at": 3600
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a5"
+    },
+    {
+      "op": "append",
+      "book": "deal/c",
+      "subject": "c",
+      "payload": "c1"
+    },
+    {
+      "op": "host_append",
+      "n": 4
+    },
+    {
+      "op": "tick",
+      "witness": true
+    },
+    {
+      "op": "release"
+    },
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/continue/reopen",
+      "at": 7200
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a6"
+    },
+    {
+      "op": "tick"
+    },
+    {
+      "op": "release"
+    }
+  ],
+  "description": "The scripted shelf of evidencebook#254 §5, written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Run write_phase on a new file, then continue_phase; after-write.json and after-continue.json are the dumps (Dump) after each. Random streams are internal/detrand's: block i of stream s is SHA-256(UTF8(s) ‖ uint64be(i)). The witness receipt for each witnessed tick is in the dumps' cadence_ticks.receipt.",
+  "file": "shelf.db",
+  "host_parameters": {
+    "authenticated_indexes": "defaults",
+    "cadence": {
+      "ended": [
+        "deal/b",
+        "legacy/old"
+      ],
+      "interval_s": 300,
+      "jitter_s": 60,
+      "log_id": "deal-cadence/0123456789abcdef",
+      "pad_bucket": 4,
+      "witness_ids": [
+        "test-witness"
+      ],
+      "witness_url": "https://witness.test"
+    },
+    "clock": "the time a step sets; reads never advance it",
+    "developer": "",
+    "host_log": {
+      "in_cadence": true,
+      "log_id": "legacy/old",
+      "value": "SHA-256(UTF8(\"legacy/old\") ‖ uint8(n))"
+    },
+    "lock_path": "shelf.db.lock",
+    "operator": "shelf-vectors-operator",
+    "originals": {
+      "namespace": "shelf",
+      "store": "capsule-emit artifact store, SQLite backend, on the shelf's file"
+    },
+    "record": "observation (epistemic_type observed_event), subject_ref the step's subject, one payload: the step's payload in UTF-8 (none for plant_pending)"
+  },
+  "keys": {
+    "checkpoint_public": "ed54a59fb1ac3a51239351362941b868e85a60e3d7b2485d828821dc7a69c279",
+    "checkpoint_seed": "1112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f30",
+    "signer_public": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+    "signer_seed": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "witness_public": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
+    "witness_seed": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"
+  },
+  "start": "2026-10-31T12:00:00Z",
+  "write_phase": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/write"
+    },
+    {
+      "op": "host_append",
+      "n": 1
+    },
+    {
+      "op": "host_append",
+      "n": 2
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a1"
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a2"
+    },
+    {
+      "op": "append",
+      "book": "deal/b",
+      "subject": "b",
+      "payload": "b1"
+    },
+    {
+      "op": "tick",
+      "witness": true
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a3"
+    },
+    {
+      "op": "tick"
+    },
+    {
+      "op": "append",
+      "book": "deal/b",
+      "subject": "b",
+      "payload": "b2"
+    },
+    {
+      "op": "host_append",
+      "n": 3
+    },
+    {
+      "op": "tick",
+      "witness": true
+    },
+    {
+      "op": "release"
+    },
+    {
+      "op": "plant_pending",
+      "at": 60,
+      "book": "deal/a",
+      "subject": "a4"
+    }
+  ]
+}

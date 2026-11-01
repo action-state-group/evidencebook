@@ -37,6 +37,12 @@ go test -race ./...
 # (CI: the verifier-pack job in ci.yml; needs network access)
 WORK=$(mktemp -d) EB_DIR=$PWD test/cleanroom/run.sh
 
+# Shelf vectors (testdata/shelf) and the storage interlock (CI: shelf-interlock in ci.yml);
+# regenerate the vectors only for an intended change
+EB_WRITE_SHELF_VECTORS=1 go test -run 'TestShelfTreeVectors|TestShelfVectors' . ./internal/shelfscript
+dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/interop/shelf continue "$dir/s" \
+  && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
+
 # Release helper
 python -m pytest -q .github/test_release.py
 
@@ -55,7 +61,7 @@ CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
 `rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`testdata/evidence-request/`, `dealprofile/` (the x-deal-v0 profile the
+`testdata/evidence-request/`, `testdata/shelf/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
 crate's `deal` feature implements: its schemas, fixtures and Go package), the
 Go and Python interop programs it compares with (`test/interop/personal-history/`, `test/interop/responder/`,
 `test/interop/python-profile/`, `test/interop/python-personal/`, and the root
