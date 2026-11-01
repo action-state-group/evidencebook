@@ -546,25 +546,26 @@ class Node:
         is the SHA-256 of *octets*, so every party's book holds the same one."""
         referee = _referee()
         digest = hashlib.sha256(octets).hexdigest()
-        try:
+        with self._lock:  # check and seal as one step, or two deliveries of one Result both seal
             try:
-                self._check_dispute_result(referee, capsule, octets, parties)
-            except (ValueError, TypeError, AttributeError, KeyError) as exc:
-                if isinstance(exc, referee.RefereeError):
-                    raise
-                # A float in the octets, terms that are not an object: a delivery that is no Result.
-                raise referee.RefereeError("not_a_result", f"the delivery cannot be read: {exc}") from exc
-        except referee.RefereeError as exc:
-            if not self._noted(DISPUTE_REFUSED, digest, code=exc.code):
-                self.note(DISPUTE_REFUSED, {"result_digest": digest, "code": exc.code}, subject_ref=digest)
-            raise Refused(str(exc)) from exc
-        if self._noted(DISPUTE_RECEIVED, digest):
-            raise Refused("this Result is already received in this book")
-        halves = (parties["buyer"]["half"]["capsule_id"], parties["seller"]["half"]["capsule_id"])
-        return self.note(DISPUTE_RECEIVED, {
-            "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
-            "buyer_half": halves[0], "seller_half": halves[1],
-        }, subject_ref=digest)
+                try:
+                    self._check_dispute_result(referee, capsule, octets, parties)
+                except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                    if isinstance(exc, referee.RefereeError):
+                        raise
+                    # A float in the octets, terms that are not an object: a delivery that is no Result.
+                    raise referee.RefereeError("not_a_result", f"the delivery cannot be read: {exc}") from exc
+            except referee.RefereeError as exc:
+                if not self._noted(DISPUTE_REFUSED, digest, code=exc.code):
+                    self.note(DISPUTE_REFUSED, {"result_digest": digest, "code": exc.code}, subject_ref=digest)
+                raise Refused(str(exc)) from exc
+            if self._noted(DISPUTE_RECEIVED, digest):
+                raise Refused("this Result is already received in this book")
+            halves = (parties["buyer"]["half"]["capsule_id"], parties["seller"]["half"]["capsule_id"])
+            return self.note(DISPUTE_RECEIVED, {
+                "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
+                "buyer_half": halves[0], "seller_half": halves[1],
+            }, subject_ref=digest)
 
     def _noted(self, record_type: str, digest: str, **members: Any) -> bool:
         return any(st.get("result_digest") == digest and all(st.get(k) == v for k, v in members.items())

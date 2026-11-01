@@ -101,7 +101,7 @@ mailbox the terms name, or take the file the referee hands over. The tool needs 
 beside the node: a release that has `capsule_engine.referee` (0.3.0 does not), or until one ships the commit CI uses,
 `pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`.
 
-`scripted_run.py` runs that whole table with two nodes, each a `loop_server.py` process spoken to
+`scripted_run.py` runs that table, except step 09 (which needs a referee node; `tests/test_dispute.py` runs it), with two nodes, each a `loop_server.py` process spoken to
 over MCP stdio, as Goose speaks to it:
 
 ```bash

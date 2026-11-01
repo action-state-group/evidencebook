@@ -5,7 +5,7 @@ Two Goose nodes (buyer, seller) and a referee, each with its own key. The
 parties' halves are signed with their node's key and open to terms that name
 the referee; the referee seals its Result with capsule-engine. Each node then
 receives the Result and seals it as received; every refusal is sealed too.
-The Result's content is built from capsule-engine's own claim builders, so
+The Result's content is one claim built with capsule-engine's public result types, so
 what is under test is delivery, not the referee's judgments (capsule-engine's
 tests hold those)."""
 from __future__ import annotations
@@ -33,7 +33,7 @@ if os.environ.get("GOOSE_REQUIRE_REFEREE"):
     from capsule_engine import referee
 else:
     referee = pytest.importorskip("capsule_engine.referee")
-from capsule_engine.report.result import build_result  # noqa: E402
+from capsule_engine.report.result import Claim, DigestRef, DisclosureCarrier, build_result  # noqa: E402
 
 ACTION = "buy"
 AS_OF = "2026-11-01T12:00:00Z"
@@ -69,9 +69,12 @@ class Deal:
                            req.capsule_id, ledger=str(tmp_path / "seller-book"), extra_compute={"peer": "buyer-co"})
         monkeypatch.delenv("CAPSULE_SIGNING_KEY_PATH")
         self.buyer_half, self.seller_half = req.capsule, resp.capsule
-        evidence = referee._refs(self.buyer_half, self.seller_half)
-        self.doc = build_result([referee._terms_claim("item-agreed", "SATISFIED", evidence)],
-                                generated_at=AS_OF).to_dict()
+        evidence = (DigestRef(self.buyer_half["capsule_id"]), DigestRef(self.seller_half["capsule_id"]))
+        claim = Claim(id="deal-terms/item-agreed", contract_ref=referee.DEAL_TERMS_CONTRACT,
+                      requirement_ref="item-agreed", tier="recomputed", grade="self-attested",
+                      sufficiency="SATISFIED", verdict="met", evidence=evidence, proofs=(),
+                      presentation=DisclosureCarrier(status="SATISFIED", evidence=evidence))
+        self.doc = build_result([claim], generated_at=AS_OF).to_dict()
         self.octets = jcs(self.doc)
         self.result = referee.seal_result(self.doc, buyer_half=self.buyer_half, seller_half=self.seller_half,
                                           ledger=self.books[signer], operator="referee-co", developer="referee@test").capsule
