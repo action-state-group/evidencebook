@@ -74,7 +74,7 @@ HOLDER_KIND = "person"
 #: The record types of the node book.
 JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
 #: A referee's Result delivered into this book, and one refused on delivery
-#: (step 09, capsule-emit#393).
+#: (step 09, evidencebook#310).
 DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_refused"
 #: A model call the node sealed (``Node.seal_model_call``).
 MODEL_CALL = "goose_model_call"
@@ -199,7 +199,8 @@ def _referee() -> Any:
     try:
         from capsule_engine import referee
     except ImportError:
-        raise Refused("receiving a referee's Result needs capsule-engine installed beside this node") from None
+        raise Refused("receiving a referee's Result needs a capsule-engine that has capsule_engine.referee "
+                      "installed beside this node") from None
     return referee
 
 
@@ -546,7 +547,13 @@ class Node:
         referee = _referee()
         digest = hashlib.sha256(octets).hexdigest()
         try:
-            self._check_dispute_result(referee, capsule, octets, parties)
+            try:
+                self._check_dispute_result(referee, capsule, octets, parties)
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                if isinstance(exc, referee.RefereeError):
+                    raise
+                # A float in the octets, terms that are not an object: a delivery that is no Result.
+                raise referee.RefereeError("not_a_result", f"the delivery cannot be read: {exc}") from exc
         except referee.RefereeError as exc:
             if not self._noted(DISPUTE_REFUSED, digest, code=exc.code):
                 self.note(DISPUTE_REFUSED, {"result_digest": digest, "code": exc.code}, subject_ref=digest)

@@ -98,7 +98,8 @@ code, a Result that does not verify, that is not signed by the referee both halv
 names other halves, or about a deal this node's key sealed no half of. Both parties' books then hold
 the same `result_digest`, the SHA-256 of the Result's bytes. Fetching the Result is yours: poll the
 mailbox the terms name, or take the file the referee hands over. The tool needs `capsule-engine` installed
-beside the node (`pip install capsule-engine`, a release with `capsule_engine.referee`).
+beside the node: a release that has `capsule_engine.referee` (0.3.0 does not), or until one ships the commit CI uses,
+`pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`.
 
 `scripted_run.py` runs that whole table with two nodes, each a `loop_server.py` process spoken to
 over MCP stdio, as Goose speaks to it:

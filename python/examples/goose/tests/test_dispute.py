@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Step 09: a referee's Result delivered into each judged party's book (capsule-emit#393).
+"""Step 09: a referee's Result delivered into each judged party's book (evidencebook#310).
 
 Two Goose nodes (buyer, seller) and a referee, each with its own key. The
 parties' halves are signed with their node's key and open to terms that name
@@ -126,12 +126,38 @@ def test_a_result_not_signed_by_the_named_referee_is_refused_and_recorded(tmp_pa
         d.close()
 
 
-def test_terms_forged_to_name_the_signer_do_not_pass(deal, tmp_path, monkeypatch):
-    """The openings are bound to the signed halves, so a receiver cannot be handed
-    terms that name the impostor as the referee."""
-    forged = copy.deepcopy(deal.terms)
-    forged["referee"]["key_id"] = deal.result["key_id"][::-1]
-    _refused(deal.buyer, deal, "opening_mismatch", parties=deal.parties(forged))
+def test_terms_forged_to_name_the_signer_do_not_pass(tmp_path, monkeypatch):
+    """An impostor-signed Result with terms forged to name the impostor: verify_referee_result
+    alone would accept it, so the openings are bound to the signed halves first."""
+    d = Deal(tmp_path, monkeypatch, signer="impostor")
+    try:
+        forged = copy.deepcopy(d.terms)
+        forged["referee"]["key_id"] = d.result["key_id"]
+        _refused(d.buyer, d, "opening_mismatch", parties=d.parties(forged))
+    finally:
+        d.close()
+
+
+def test_a_half_that_does_not_verify_is_refused(deal):
+    parties = deal.parties()
+    parties["buyer"]["half"] = {**parties["buyer"]["half"], "action": "buy-more"}
+    _refused(deal.buyer, deal, "half_unverified", parties=parties)
+
+
+def test_halves_signed_by_one_key_are_refused(deal):
+    parties = deal.parties()
+    parties["seller"]["half"] = parties["buyer"]["half"]
+    _refused(deal.buyer, deal, "halves_unpaired", parties=parties)
+
+
+def test_a_float_in_the_octets_is_refused_and_recorded(deal):
+    _refused(deal.buyer, deal, "not_a_result", octets=b'{"x":1.5}')
+
+
+def test_terms_that_do_not_open_the_half_are_refused_and_recorded(deal):
+    parties = deal.parties()
+    parties["buyer"]["terms"] = ["not", "an", "object"]
+    _refused(deal.buyer, deal, "opening_mismatch", parties=parties)
 
 
 def test_a_node_that_sealed_neither_half_refuses(deal):
