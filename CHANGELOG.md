@@ -21,6 +21,12 @@
   (`rules_checker.roles`). Absent when the profile pins no roles, so every input valid before
   stays valid. PROFILE.md ("The external rules checker") documents it.
 
+### Changed: capsulectl-book `v0.1.0-rc30` pairs with capsulectl `v0.1.0-rc30`
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc30` (the capsule-viewer
+  `go/v0.10.0` pin) and `report/go.mod` requires the same; capsulectl-book
+  `v0.1.0-rc30` pairs with capsulectl `v0.1.0-rc30`.
+
 ### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
 
 - `--contract FILE` pins a compiled Evidence Contract v0 to `--contract-digest` (the lowercase hex
