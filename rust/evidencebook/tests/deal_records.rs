@@ -201,6 +201,7 @@ fn record_refusals() {
     let err = serde_json::to_vec(&Record {
         block: block(deal::TYPE_CLOSE),
         body: Body::Outcome(OutcomeBody::default()),
+        counterparty_class: None,
     })
     .unwrap_err();
     assert!(
@@ -275,7 +276,30 @@ fn record_refusals() {
     let rec = Record {
         block: block(deal::TYPE_CLOSE),
         body: Body::Close(CloseBody::default()),
+        counterparty_class: None,
     };
     let err = deal::encode(&serde_json::to_vec(&rec).unwrap(), &[]).unwrap_err();
     assert_eq!(err.stage().map(|s| s.stage), Some(deal::STAGE_SCHEMA));
+}
+
+/// A pay check may carry SH §7's `counterparty_class` at the top of its
+/// record: it reads back as a `Record` member, writes out again, and the
+/// record passes the checks; the three other cases the schema refuses are
+/// the shared negative fixtures'.
+#[test]
+fn a_pay_check_carries_the_counterparty_class() {
+    let raw = read(&fixtures_dir().join("positive/13-check-pay.json"));
+    let mut record = raw["record"].clone();
+    record["counterparty_class"] = Value::String("shop_preauth".into());
+    let text = serde_json::to_vec(&record).unwrap();
+    deal::check(&text, &[]).unwrap();
+    let rec: Record = deal::decode(&text).unwrap();
+    assert_eq!(rec.counterparty_class.as_deref(), Some("shop_preauth"));
+    let again: Value = serde_json::to_value(&rec).unwrap();
+    assert_eq!(again, record);
+
+    record.as_object_mut().unwrap().remove("counterparty_class");
+    let rec: Record = deal::decode(&serde_json::to_vec(&record).unwrap()).unwrap();
+    assert_eq!(rec.counterparty_class, None);
+    assert_eq!(serde_json::to_value(&rec).unwrap(), record);
 }

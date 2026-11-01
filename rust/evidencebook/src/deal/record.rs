@@ -132,6 +132,10 @@ impl Serialize for Body {
 pub struct Record {
     pub block: Block,
     pub body: Body,
+    /// SH §7's `counterparty_class`, a top-level member of the one record
+    /// that recorded how the deal was paid: only a pay check carries it
+    /// (PROFILE.md section 11). `None` is absent.
+    pub counterparty_class: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -139,6 +143,8 @@ struct RecordOut<'a> {
     #[serde(rename = "x-deal-v0")]
     block: &'a Block,
     body: &'a Body,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    counterparty_class: &'a Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -147,6 +153,8 @@ struct RecordIn {
     #[serde(rename = "x-deal-v0")]
     block: Block,
     body: Value,
+    #[serde(default)]
+    counterparty_class: Option<String>,
 }
 
 impl Serialize for Record {
@@ -161,6 +169,7 @@ impl Serialize for Record {
         RecordOut {
             block: &self.block,
             body: &self.body,
+            counterparty_class: &self.counterparty_class,
         }
         .serialize(s)
     }
@@ -173,6 +182,7 @@ impl<'de> Deserialize<'de> for Record {
         Ok(Record {
             block: r.block,
             body,
+            counterparty_class: r.counterparty_class,
         })
     }
 }

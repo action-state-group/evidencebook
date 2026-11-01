@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added: `counterparty_class` on a pay check, read by the History card (#273)
+
+- x-deal-v0: a `check` record whose `body.action` is `pay` may carry a
+  top-level `counterparty_class` (`person_agent`, `business_agent` or
+  `shop_preauth`, SH §7). The schema (Go, Rust, `check_profile.py`) allows it
+  on that record only and refuses another value or another record; three
+  negative fixtures. `dealprofile.Record` gains `CounterpartyClass`.
+  `StandardHistoryDeal` fills the deal entry's `counterparty_class` from it, so a
+  `shop_preauth` deal is no longer counted. A deal whose records carry it on
+  two records, on a record that is no pay check, or with another value, still
+  lacks it. Records without the member are unchanged.
+
 ### Fixed: shelf transactions take the write lock when they begin
 
 - Every transaction on a shelf's own handle begins `IMMEDIATE`. A

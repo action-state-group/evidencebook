@@ -5,6 +5,7 @@ package dealprofile
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -236,4 +237,35 @@ func TestRecordRefusals(t *testing.T) {
 	var se *StageError
 	require.ErrorAs(t, err, &se)
 	assert.Equal(t, StageSchema, se.Stage)
+}
+
+// A pay check may carry counterparty_class at the top of its record (SH §7);
+// it reads back as a Record member and the record is valid with it.
+func TestAPayCheckCarriesTheCounterpartyClass(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(fixturesDir, "positive", "13-check-pay.json"))
+	require.NoError(t, err)
+	var f struct {
+		Record map[string]any `json:"record"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &f))
+	f.Record["counterparty_class"] = "shop_preauth"
+	withClass, err := json.Marshal(f.Record)
+	require.NoError(t, err)
+	require.NoError(t, Check(withClass, nil))
+
+	var rec Record
+	require.NoError(t, Decode(withClass, &rec))
+	assert.Equal(t, "shop_preauth", rec.CounterpartyClass)
+	again, err := json.Marshal(rec)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(withClass), string(again))
+
+	delete(f.Record, "counterparty_class")
+	without, err := json.Marshal(f.Record)
+	require.NoError(t, err)
+	require.NoError(t, Decode(without, &rec))
+	assert.Empty(t, rec.CounterpartyClass)
+	again, err = json.Marshal(rec)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(without), string(again), "no member when absent")
 }

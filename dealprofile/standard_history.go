@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +34,12 @@ import (
 //     4217 minor units. The profile lets a check omit them, and SH gives an
 //     amount no unknown value, so a deal without one is ErrUnpriced: the
 //     host refuses the card, it never drops the deal.
-//   - counterparty_class is absent: the profile records no SH §7 class.
+//   - counterparty_class is the one member of that name a pay check carries
+//     at the top of its record (SH §7: the record that recorded how the deal
+//     was paid), when it is one of the three SH values. A deal whose
+//     records carry the member on two or more records, or on a record that
+//     is no pay check, or with another value, lacks it: absent, never
+//     guessed, and counted in class_missing.
 //   - outcome is the newest verified ec:deal-reconcile@1 Result's claims:
 //     at least one claim and every claim met is "held", any not_met is
 //     "did_not_hold", and anything else (no claim, met with undecided, no
@@ -93,6 +99,10 @@ type historyRecord struct {
 	dealID      string
 	refs        map[string][]string
 	body        map[string]json.RawMessage
+	// class is the record's top-level counterparty_class member, hasClass
+	// whether it has one at all (any value, including a non-string).
+	class    string
+	hasClass bool
 }
 
 // readHistoryRecord reads a step record of either kind. ok is false for a
@@ -105,6 +115,7 @@ func readHistoryRecord(r HistoryRecord) (h historyRecord, ok bool, err error) {
 			RecordType string   `json:"record_type"`
 			Refs       []RelRef `json:"refs"`
 		} `json:"x-deal-v0"`
+		Class   json.RawMessage            `json:"counterparty_class"`
 		Type    string                     `json:"type"`
 		ChainID string                     `json:"chain_id"`
 		Refs    []TypedRelRef              `json:"refs"`
@@ -114,6 +125,10 @@ func readHistoryRecord(r HistoryRecord) (h historyRecord, ok bool, err error) {
 		return historyRecord{}, false, fmt.Errorf("dealprofile: a deal record is not JSON: %w", err)
 	}
 	h = historyRecord{committedAt: r.CommittedAt, refs: map[string][]string{}, body: top.Body}
+	if top.Class != nil {
+		h.hasClass = true
+		_ = json.Unmarshal(top.Class, &h.class) // a non-string leaves "", which no class is
+	}
 	switch {
 	case top.Block != nil:
 		h.kind, h.dealID = top.Block.RecordType, top.Block.DealID
@@ -185,13 +200,14 @@ func StandardHistoryDeal(in HistoryInput) (deal standardhistory.Deal, ok bool, e
 		return standardhistory.Deal{}, false, fmt.Errorf("deal %s: %w", dealID, err)
 	}
 	return standardhistory.Deal{
-		Deal:     dealID,
-		AgreedAt: agreed.committedAt.UTC().Truncate(time.Minute).Format("2006-01-02T15:04:05Z"),
-		Role:     dealRole(records),
-		Amount:   amount,
-		Outcome:  reconcileOutcome(in.Results),
-		Happened: happened(records, byDigest, in.CounterpartyHalfVerified),
-		Disputes: []standardhistory.Dispute{},
+		Deal:              dealID,
+		AgreedAt:          agreed.committedAt.UTC().Truncate(time.Minute).Format("2006-01-02T15:04:05Z"),
+		Role:              dealRole(records),
+		Amount:            amount,
+		CounterpartyClass: counterpartyClass(records),
+		Outcome:           reconcileOutcome(in.Results),
+		Happened:          happened(records, byDigest, in.CounterpartyHalfVerified),
+		Disputes:          []standardhistory.Dispute{},
 	}, true, nil
 }
 
@@ -327,3 +343,24 @@ const twoDecimalCurrencies = " AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD B
 	" MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN QAR RON RSD RUB SAR SBD SCR SDG SEK" +
 	" SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TOP TRY TTD TWD TZS UAH USD USN UYU UZS VED VES WST XCD XCG" +
 	" YER ZAR ZMW ZWG "
+
+// counterpartyClass is SH §7 over the deal's records: the class of the one
+// record that carries the member, a pay check (x-deal-v0 PROFILE.md section
+// 11), when it is one of SH's three values. nil is absent.
+func counterpartyClass(records []historyRecord) *string {
+	var carrier *historyRecord
+	for i := range records {
+		if !records[i].hasClass {
+			continue
+		}
+		if carrier != nil {
+			return nil // two carriers read as none
+		}
+		carrier = &records[i]
+	}
+	if carrier == nil || carrier.kind != TypeCheck || carrier.str("action") != "pay" || !slices.Contains(standardhistory.CounterpartyClasses, carrier.class) {
+		return nil
+	}
+	class := carrier.class
+	return &class
+}

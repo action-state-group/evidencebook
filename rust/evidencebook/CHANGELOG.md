@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
+
+- `deal::Record` gains `counterparty_class: Option<String>`, the x-deal-v0
+  top-level member SH §7 reads from a pay check (PROFILE.md section 1). The
+  struct is public and not `#[non_exhaustive]`, so a struct literal that names
+  every field no longer compiles: add `counterparty_class: None`. The vendored
+  schema allows the member on a pay check only, and refuses another value or
+  another record.
+
 ## 0.0.12 (2026-10-31)
 
 ### Breaking: `deal::EvidenceBody` has a `preimage` field (evidencebook#260, evidencebook#269)

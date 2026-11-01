@@ -473,8 +473,8 @@ def stage_schema(rec):
             raise StageError("schema", f"{'/'.join(map(str, e.absolute_path)) or '$'}: {e.message[:200]}")
         return
     # Fallback: the parts of the schema the chain stage depends on.
-    if set(rec) != {"x-deal-v0", "body"}:
-        raise StageError("schema", "record members must be exactly x-deal-v0 and body")
+    if not {"x-deal-v0", "body"} <= set(rec) <= {"x-deal-v0", "body", "counterparty_class"}:
+        raise StageError("schema", "record members must be x-deal-v0 and body, and optionally counterparty_class")
     blk = rec["x-deal-v0"]
     for k in ("profile", "canonicalization", "deal_id", "record_type", "seq", "at"):
         if k not in blk:
