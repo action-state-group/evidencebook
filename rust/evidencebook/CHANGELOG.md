@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Breaking: `deal::EvidenceBody` has a `preimage` field (evidencebook#260, evidencebook#269)
+
+- `deal::EvidenceBody` gains `preimage: Option<String>`, the x-deal-v0
+  `body_evidence` member that carries the preimage of a Lightning payment the
+  user received (evidencebook#260, shipped in Go v0.12.1). The struct is public
+  and not `#[non_exhaustive]`, so a struct literal that names every field no
+  longer compiles. Migrate by adding `preimage: None` or ending the literal
+  with `..Default::default()`. An absent `preimage` stays absent when read and
+  written. A `body_evidence` that carries `preimage`, which `deny_unknown_fields`
+  made this crate reject before, now reads.
+- `#[non_exhaustive]` is deliberately not added. No type in this crate uses the
+  attribute, the deal types mirror the profile's schema one to one, and adding it now
+  would break every literal outside the crate a second time. A profile member
+  added later is a breaking change of the crate's pre-1.0 version, as here.
+- The crate has no counterpart of Go's `dealprofile.PreimageMatches`; the field
+  is carried and not checked. The Python package has no deal profile, so it has
+  no matching change.
+
 ### Added: `respond` answers `evidence-interop/1` requests (evidencebook#248)
 
 - `respond` answers a request naming `evidence-interop/1` with the same
