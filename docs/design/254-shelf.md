@@ -229,7 +229,7 @@ goes through `LegacyLog.Append`, which runs the host's own write under the shelf
 The contract generalizes it as a **host log**: a CLL log on the shelf whose records the host
 seals itself, in its own record format, never converted into book records. The shelf gives the
 host, under the shelf's lock, the log's CLL backend on the shelf's file and the shelf's artifact
-store (namespace = the log id), so the host's own log layer (for the Mesh plugin, capsule-emit's
+store (the shelf's one namespace, §2.5), so the host's own log layer (for the Mesh plugin, capsule-emit's
 `Ledger::open_stores_with_indexer` and `CheckpointState::load_log`) runs on the shelf's storage. A
 host log is either in the cadence (a legacy log, as Go's), or outside it, when its checkpoints and
 witness rows are the host's own on that backend (the Mesh plugin's `CheckpointState::load_log`,
@@ -298,8 +298,11 @@ subject, one artifact). Two things are **not** defined by what exists:
 - a single request or a single answer that carries both cards: ER -02 has no multi-subject request,
   and HF has no composed History;
 - any way to show together the cards of two **counterparties** (a Goose buyer and someone else's
-  Mesh node). Neither can truthfully sign any of the three binding claims, and a binding between
-  them would also make their two halves of a deal "redundant, not corroborating" (CB §2 item 1).
+  Mesh node). No binding claim states that two independent parties dealt with each other:
+  `same_controller_asserted` is false for them, `delegated_by` states a delegation, and
+  `same_organization_credentialed`, where true, joins their records only as one organization's
+  activity (CB §2 item 2). Any binding between them would also make their two halves of a deal
+  "redundant, not corroborating" (CB §2 item 1).
   Counterparties relate only through their records: each half of the deal cites the other by
   digest (ER "Exchange half").
 
@@ -411,7 +414,9 @@ propose it (§9, D5).
 On the shelf:
 
 - the file is `<data dir>/ledger/shelf.db`; the chain's CLL log and its records (capsule-emit's
-  artifact store, SQLite backend, namespace = `log_id`) live in it;
+  artifact store, SQLite backend, under the shelf's one namespace, which the plugin sets to
+  `chain` as #206's branch does, `chain_store.rs:62-64` at `cf7fe7d`) live in it, and the import
+  writes under it;
 - the plugin keeps its own lock (`data_dir.rs:262-361`: `capsules.lock`, the ledger's
   `.capsules-writer.lock`, the `/proc` scan) and hands the held lock to the shelf (§2.4), which
   takes none of its own;
@@ -505,7 +510,8 @@ be the many-books half of the reference it needs:
 capsule-evidencebook depends on `capsule_emit.artifact` (§6.3), so a capsule-emit example that
 depended on capsule-evidencebook would make capsule-emit's CI (`python/tests/test_goose.py`) need
 a downstream package. capsule-emit's seal-only Goose server (`examples/goose-capsule/server.py`)
-stays; its loop server (`loop_server.py`) is retired in favour of this one, so one Goose loop
+stays; its loop server (`loop_server.py`) is retired in favour of this one (C3, after G1; loop references
+neither file at `5907a93`), so one Goose loop
 reference remains, and its docs point here.
 
 **No import.** The retired loop server's ledgers are example stores, not a released product's
@@ -540,7 +546,8 @@ Each is filed separately on project 1; none is implemented in this note's lane.
 | C2 | capsule-emit | Python: capsule-emit on CLL 0.8, released | none |
 | E2 | evidencebook | Rust: the `shelf` feature (writing book, SQLite store, `Shelf`, `Cadence`, host log, lock or host-held lock, originals) on CLL 0.4.0, passing E1's vectors and interlock | E1, A2, C1 |
 | E3 | evidencebook | Python: `SqliteStore`, `Shelf`, `Cadence`, host log, lock, originals on CLL 0.8, and x-deal-v0 in Python at parity with `dealprofile`, passing E1's vectors and interlock; amend #191 (D6) | E1, C2 |
-| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8); with it, capsule-emit retires `examples/goose-capsule/loop_server.py` and points its docs there | E3, D3 |
+| G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8) | E3, D3 |
+| C3 | capsule-emit | retire `examples/goose-capsule/loop_server.py` and point `docs/adapters/goose.md` and the example README at `python/examples/goose/` | G1 |
 | E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a `same_controller_asserted` binding stapling a Mesh and a Goose History), with a worked example CI runs | E2, E3, G1 |
 | P1 | Mesh-LLM/capsules-plugin | the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
 | L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
