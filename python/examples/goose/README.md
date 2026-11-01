@@ -98,8 +98,8 @@ can answer, and never counts anything. It also writes the node's disclosure poli
 The files are `<node_id>.json` and `policies/<node_id>.json`, laid out as they go under `nodes/commitments/` in the loop
 repository (evidence-network/loop, `steps/03-advertise.md`), where you add them by pull request. The tool publishes nothing.
 `node_id` is your node's id in the loop's list; the default is your signing key. The commitment staples your node book's
-`history_card/1`. It does not staple a card for each deal: those would publish every deal id, and the number of cards
-would show how many deals you have had. By default it says a person approves each answer (`human_gated`) and that an
+`history_card/1`. It does not staple a card for each deal, since those would publish every deal id. The node book's card
+does show the book's size, which grows with every record it holds, deal openings included. By default it says a person approves each answer (`human_gated`) and that an
 asker waits `PT24H` before recording an absence. `endpoint`, `bindings`, `answers_within` and `human_gated` change that.
 `loop_join` returns the same commitment and policy, and writes them when you give it `commitment_dir`. The loop's
 `scripts/check_commitment.py` is the check: CI runs it on the scripted run's commitments, with the loop checked out at the

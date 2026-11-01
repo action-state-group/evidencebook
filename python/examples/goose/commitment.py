@@ -11,8 +11,8 @@ by adding the two files :func:`write` lays out under the loop repository's
 Both the commitment and its ``disclosure-policy/0`` are signed with the node's
 own key (its ``key_id``, the producer key) over their RFC 8785 (JCS) form
 without ``sig``. One ``history_card/1`` is stapled, the node book's: one card
-per deal book would publish each deal id and, through the list's length, how
-many deals the node has had.
+per deal book would publish each deal id. The node book's card shows the
+book's size, which grows with every record it holds, deal openings included.
 """
 from __future__ import annotations
 
@@ -80,13 +80,8 @@ def _dump(doc: dict) -> bytes:
     return (json.dumps(doc, indent=2, sort_keys=True) + "\n").encode()
 
 
-def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
-          now: datetime | None = None) -> tuple[dict, bytes]:
-    """The node's commitment and its policy file's bytes, both signed by the
-    node key. ``node_id`` is the node's id in the loop's list (its key id when
-    empty)."""
-    s = settings or Settings()
-    node_id = node_id or node.key_id
+def check(node_id: str, s: Settings) -> None:
+    """Refuse what the loop's checker would refuse of the members a caller sets."""
     if not HEX64.fullmatch(node_id):
         raise gn.Refused("node_id is the node's id in the loop's list: 64 lowercase hex")
     if not DURATION.fullmatch(s.answers_within):
@@ -96,6 +91,16 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
     for name, values in (("bindings", s.bindings), ("subjects", s.subjects), ("derivations", s.derivations)):
         if not values or not all(TOKEN.fullmatch(v) for v in values):
             raise gn.Refused(f"{name} are lowercase names, e.g. evidencebook/respond")
+
+
+def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
+          now: datetime | None = None) -> tuple[dict, bytes]:
+    """The node's commitment and its policy file's bytes, both signed by the
+    node key. ``node_id`` is the node's id in the loop's list (its key id when
+    empty)."""
+    s = settings or Settings()
+    node_id = node_id or node.key_id
+    check(node_id, s)
     policy_bytes = _dump(_signed(node, {"profile": POLICY_PROFILE, "key_id": node.key_id, "policy": s.policy}))
     card, statement = node.stapled_card(gn.NODE_BOOK)
     at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)

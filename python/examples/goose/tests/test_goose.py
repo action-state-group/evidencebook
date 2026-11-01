@@ -834,3 +834,7 @@ def test_join_includes_the_commitment_and_advertise_writes_it(server, tmp_path):
     assert call(ls.loop_advertise, out_dir=str(tmp_path / "bad"), answers_within="24")["ok"] is False
     assert call(ls.loop_advertise, out_dir=str(tmp_path / "bad"), node_id="../../escaped")["ok"] is False
     assert not (tmp_path / "bad").exists() and not (tmp_path.parent / "escaped.json").exists()
+    # A join refused for its node_id seals no join record.
+    before = len(ls.node().notes(gn.JOINED))
+    assert call(ls.loop_join, node_id="not-hex")["ok"] is False
+    assert len(ls.node().notes(gn.JOINED)) == before

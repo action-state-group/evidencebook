@@ -153,6 +153,7 @@ def loop_join(node_id: str = "", commitment_dir: str = "") -> str:
     takes) and policy. With ``commitment_dir``, both are also written there
     as ``loop_advertise`` writes them."""
     n = node()
+    cm.check(node_id or n.key_id, cm.Settings())  # a refusal seals no join record
     sealed = n.note(gn.JOINED, {"operator": n.operator, "key_id": n.key_id})
     doc, policy_bytes = cm.build(n, node_id)
     files = [str(p) for p in cm.write(commitment_dir, doc, policy_bytes)] if commitment_dir else []
