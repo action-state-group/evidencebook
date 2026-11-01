@@ -986,7 +986,8 @@ At every check, after the `check` record is sealed:
     member may be absent, never both. When `definition_digests` is present, the checker's
     `definition_digest` must be one of them; when it is absent, no ruleset is pinned. Only the
     acting role's pin is sent, never the other role's. Absent when the profile pins no roles, so
-    such a profile sends what it sent before.
+    such a profile sends what it sent before, and when that pin names nothing (the role has no
+    entry and the flat pin no digest), never sent empty.
   - `task_authority_record` (typed deals): the whole sealed task-authority record the check's
     `task_authority_ref` names, exactly as sealed: SHA-256 over its JCS bytes is the ref's digest,
     and its plan (`outcome_id`, `allowed_actions`, `preconditions`) is at `body`. It is the opening

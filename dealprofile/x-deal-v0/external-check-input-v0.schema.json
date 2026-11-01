@@ -20,7 +20,7 @@
       "enum": ["buyer", "seller"]
     },
     "rules_pin": {
-      "description": "Optional, on a profile that pins rules per role: the pin this check runs under, the profile's rules_checker.roles entry for party_role (with the flat digests when that entry names a pack alone), or the flat pin, with no pack, when the role has no entry. pack is the rules pack it names; when definition_digests is present, the checker's definition_digest must be one of them, and when it is absent no ruleset is pinned. Only the acting role's pin is sent, never the other role's. Absent when the profile pins no roles, so a profile without roles sends what it sent before; never null.",
+      "description": "Optional, on a profile that pins rules per role: the pin this check runs under, the profile's rules_checker.roles entry for party_role (with the flat digests when that entry names a pack alone), or the flat pin, with no pack, when the role has no entry. pack is the rules pack it names; when definition_digests is present, the checker's definition_digest must be one of them, and when it is absent no ruleset is pinned. Only the acting role's pin is sent, never the other role's. Absent when the profile pins no roles, so a profile without roles sends what it sent before, and when that pin names nothing (the role has no entry and the flat pin no digest); never empty, never null.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
