@@ -28,12 +28,20 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in BCP 14 (RFC 2119, RF
 ## 1. What a deal record is
 
 A deal is a sequence of sealed steps. Each step is one **deal record**: a JSON object with
-exactly two members.
+exactly two members, and one optional third on a pay check (below).
 
 ```json
 { "x-deal-v0": { ...the extension block, section 2... },
   "body":      { ...shaped by record_type, section 3... } }
 ```
+
+A `check` record whose `body.action` is `pay` MAY carry a third member,
+`counterparty_class`, one of `person_agent`, `business_agent` or `shop_preauth` (agent-action-capsule
+`spec/standard-history-v0.md` §7, SH): what kind of party the user dealt with, set by
+the record that recorded how the deal was paid, as the recording party's own statement.
+No other record carries it, and a producer sets it only when its caller states it, never
+from the rail or the payee. Section 11 says how the History card reads it. A record without it
+is unchanged: its digest is that of its own bytes.
 
 - Each record is the payload the skill seals into one Agent Action Capsule (AAC format 4,
   `canonicalization_id: "jcs"`). The Capsule commits to the record by its **record digest**
@@ -1253,7 +1261,7 @@ of that book that any tick up to the anchor carries, never one sealed after the 
 | `agreed_at` | the `committed_at` of the first such step, to the minute: a tick's anchor time is a minute floor, and a step sealed later in the same minute would sort after it and fall out of every count |
 | `role` | the baseline intent's `party_role`: `seller` is `provided`; `buyer` or absent is `bought` |
 | `amount` | the `amount_minor` and `currency` of the check the step rests on (`authorized_by` → `approval` → `approves` → `verdict` → `checks` → `check`; for a typed step, `evaluation_ref` → `action-evaluation/v0` → `proposed_action_digest` → `proposed-action/v0`), with `assetScale` the currency's ISO 4217 minor units |
-| `counterparty_class` | absent: this profile records no SH §7 class |
+| `counterparty_class` | the `counterparty_class` member of the deal's one pay check that carries it (section 1), when it is one of SH's three values. A deal whose records carry the member on two or more records, on a record that is no pay check, or with another value, lacks it: the entry has no `counterparty_class`, the deal is counted, and `class_missing.count` counts it (SH §5.2, §7) |
 | `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; any claim `not_met` is `did_not_hold`; anything else, no verified Result included, is `undecided` |
 | `happened` | (every input bounded by the anchor, as above) `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
 | `disputes` | empty: this profile seals no IP §11.2 `disputes` statement |

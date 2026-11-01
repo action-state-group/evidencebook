@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `counterparty_class` (evidencebook#273): the vendored x-deal-v0 schema allows the optional top-level
+  member on a pay check, and `standard_history_deal` fills the entry's `counterparty_class` from the
+  one record that carries it (a pay check, one of SH's three values); two carriers, a record that is
+  no pay check, or another value read as absent. Eleven history and four check cases join the
+  Go/Python parity vectors.
 - x-deal-v0 in Python: `evidencebook.deal`, at byte parity with Go's `dealprofile`
   (evidencebook#264, design evidencebook#254 §8), so a Python shelf can derive
   `standard_history/1` from deal books.

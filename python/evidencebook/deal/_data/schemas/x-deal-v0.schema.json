@@ -8,9 +8,12 @@
   "required": ["x-deal-v0", "body"],
   "properties": {
     "x-deal-v0": { "$ref": "#/$defs/block" },
-    "body": { "type": "object" }
+    "body": { "type": "object" },
+    "counterparty_class": { "enum": ["person_agent", "business_agent", "shop_preauth"] }
   },
   "allOf": [
+    { "if": { "required": ["counterparty_class"] },
+      "then": { "required": ["x-deal-v0", "body"], "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "check" } } }, "body": { "required": ["action"], "properties": { "action": { "const": "pay" } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "baseline" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_baseline" }, "x-deal-v0": { "required": ["channel"], "not": { "anyOf": [ { "required": ["baseline_ref"] }, { "required": ["prev"] } ] } } } },
       "else": { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "sale" } } } } },

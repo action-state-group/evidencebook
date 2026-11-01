@@ -114,6 +114,10 @@ func newBody(recordType string) Body {
 type Record struct {
 	Block Block
 	Body  Body
+	// CounterpartyClass is SH §7's counterparty_class, a top-level member of
+	// the one record that recorded how the deal was paid: only a pay check
+	// carries it (PROFILE.md section 11). Empty is absent.
+	CounterpartyClass string
 }
 
 // MarshalJSON is the record's JSON: {"x-deal-v0": block, "body": body}.
@@ -125,16 +129,18 @@ func (r Record) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("dealprofile: %s body on a %s record", t, r.Block.RecordType)
 	}
 	return json.Marshal(struct {
-		Block Block `json:"x-deal-v0"`
-		Body  Body  `json:"body"`
-	}{r.Block, r.Body})
+		Block             Block  `json:"x-deal-v0"`
+		Body              Body   `json:"body"`
+		CounterpartyClass string `json:"counterparty_class,omitempty"`
+	}{r.Block, r.Body, r.CounterpartyClass})
 }
 
 // UnmarshalJSON reads a step record, as Decode does.
 func (r *Record) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Block json.RawMessage `json:"x-deal-v0"`
-		Body  json.RawMessage `json:"body"`
+		Block             json.RawMessage `json:"x-deal-v0"`
+		Body              json.RawMessage `json:"body"`
+		CounterpartyClass string          `json:"counterparty_class"`
 	}
 	if err := strictUnmarshal(data, &raw); err != nil {
 		return err
@@ -150,7 +156,7 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 	if err := strictUnmarshal(raw.Body, body); err != nil {
 		return fmt.Errorf("dealprofile: a %s body: %w", blk.RecordType, err)
 	}
-	rec := Record{Block: blk, Body: body}
+	rec := Record{Block: blk, Body: body, CounterpartyClass: raw.CounterpartyClass}
 	if err := sameRecord(data, rec); err != nil {
 		return err
 	}

@@ -44,6 +44,8 @@ type classic struct {
 	t       *testing.T
 	records []HistoryRecord
 	digests map[string]string
+	// top is a record's extra top-level members, by the name add is given.
+	top map[string]map[string]any
 }
 
 func (c *classic) add(name, recordType string, refs map[string]string, body map[string]any) {
@@ -56,7 +58,11 @@ func (c *classic) add(name, recordType string, refs map[string]string, body map[
 	if rels != nil {
 		block["refs"] = rels
 	}
-	raw, err := json.Marshal(map[string]any{"x-deal-v0": block, "body": body})
+	rec := map[string]any{"x-deal-v0": block, "body": body}
+	for k, v := range c.top[name] {
+		rec[k] = v
+	}
+	raw, err := json.Marshal(rec)
 	require.NoError(c.t, err)
 	digest, err := Digest(json.RawMessage(raw))
 	require.NoError(c.t, err)
@@ -264,4 +270,45 @@ func TestMinorUnits(t *testing.T) {
 		_, ok := MinorUnits(code)
 		assert.False(t, ok, code)
 	}
+}
+
+// counterparty_class is read from the one pay check that carries it (SH §7):
+// anything else is absent and counted in class_missing, never guessed.
+func TestTheCounterpartyClassIsThePayChecksOnly(t *testing.T) {
+	pay := map[string]any{"action": "pay", "amount_minor": 1500, "currency": "USD"}
+	for name, tc := range map[string]struct {
+		check map[string]any
+		top   map[string]map[string]any
+		want  *string
+	}{
+		"no member":             {pay, nil, nil},
+		"person_agent":          {pay, map[string]map[string]any{"check": {"counterparty_class": "person_agent"}}, ptr("person_agent")},
+		"business_agent":        {pay, map[string]map[string]any{"check": {"counterparty_class": "business_agent"}}, ptr("business_agent")},
+		"shop_preauth":          {pay, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}}, ptr("shop_preauth")},
+		"an unknown value":      {pay, map[string]map[string]any{"check": {"counterparty_class": "shop"}}, nil},
+		"a non-string":          {pay, map[string]map[string]any{"check": {"counterparty_class": 1}}, nil},
+		"an empty string":       {pay, map[string]map[string]any{"check": {"counterparty_class": ""}}, nil},
+		"a commit check":        {map[string]any{"action": "commit", "amount_minor": 1500, "currency": "USD"}, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}}, nil},
+		"a record, not a check": {pay, map[string]map[string]any{"action": {"counterparty_class": "shop_preauth"}}, nil},
+		"two carriers":          {pay, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}, "action": {"counterparty_class": "shop_preauth"}}, nil},
+	} {
+		c := rebuildClassic(t, tc.check, tc.top)
+		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: c.records})
+		require.NoError(t, err, name)
+		require.True(t, ok, name)
+		assert.Equal(t, tc.want, deal.CounterpartyClass, name)
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+// rebuildClassic is classicDeal with extra top-level members on named records.
+func rebuildClassic(t *testing.T, check map[string]any, top map[string]map[string]any) *classic {
+	c := &classic{t: t, digests: map[string]string{}, top: top}
+	c.add("baseline", TypeBaseline, nil, map[string]any{"deal_type": "purchase", "intent": map[string]any{"verbatim_commitment": "00"}})
+	c.add("check", TypeCheck, nil, check)
+	c.add("verdict", TypeVerdict, map[string]string{"checks": "check"}, map[string]any{"result": "pass"})
+	c.add("approval", TypeApproval, map[string]string{"approves": "verdict"}, map[string]any{"choice": "proceed", "proceed": true})
+	c.add("action", TypeAction, map[string]string{"authorized_by": "approval"}, map[string]any{"action": "commit"})
+	return c
 }

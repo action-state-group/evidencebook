@@ -168,9 +168,28 @@ func parityChecks(t *testing.T) []parityCheck {
 	}
 	require.NoError(t, json.Unmarshal(fixture, &fx))
 	baseline := string(fx.Record)
+	payFixture, err := os.ReadFile("x-deal-v0/fixtures/positive/13-check-pay.json")
+	require.NoError(t, err)
+	var pfx struct {
+		Record map[string]any `json:"record"`
+	}
+	require.NoError(t, json.Unmarshal(payFixture, &pfx))
+	var baselineMap map[string]any
+	require.NoError(t, json.Unmarshal(fx.Record, &baselineMap))
+	withClass := func(rec map[string]any, class any) string {
+		c := maps.Clone(rec)
+		c["counterparty_class"] = class
+		out, err := json.Marshal(c)
+		require.NoError(t, err)
+		return string(out)
+	}
 
 	records := []struct{ name, text string }{
 		{"a positive fixture as written", baseline},
+		{"a pay check with a counterparty_class", withClass(pfx.Record, "shop_preauth")},
+		{"a counterparty_class not one of the three", withClass(pfx.Record, "shop")},
+		{"a counterparty_class that is not a string", withClass(pfx.Record, 1)},
+		{"a counterparty_class on a baseline", withClass(baselineMap, "shop_preauth")},
 		{"no block", `[1]`}, {"not an object", `"x"`}, {"a null block", `{"x-deal-v0":null,"body":{}}`},
 		{"another canonicalization", `{"x-deal-v0":{"canonicalization":"jcs-n"},"body":{}}`},
 		{"canonicalization is a number", `{"x-deal-v0":{"canonicalization":5},"body":{}}`},
@@ -308,6 +327,27 @@ func parityHistories(t *testing.T) []parityHistory {
 	}
 	pay := classicDeal(t, "", map[string]any{"action": "pay", "amount_minor": 100, "currency": "USD"})
 	add("classic pay", pay.records, nil, false)
+	payCheck := map[string]any{"action": "pay", "amount_minor": 100, "currency": "USD"}
+	classCases := map[string]struct {
+		check map[string]any
+		top   map[string]map[string]any
+	}{
+		"person_agent":         {payCheck, map[string]map[string]any{"check": {"counterparty_class": "person_agent"}}},
+		"business_agent":       {payCheck, map[string]map[string]any{"check": {"counterparty_class": "business_agent"}}},
+		"shop_preauth":         {payCheck, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}}},
+		"an unknown value":     {payCheck, map[string]map[string]any{"check": {"counterparty_class": "shop"}}},
+		"a number":             {payCheck, map[string]map[string]any{"check": {"counterparty_class": 1}}},
+		"a null":               {payCheck, map[string]map[string]any{"check": {"counterparty_class": nil}}},
+		"an empty string":      {payCheck, map[string]map[string]any{"check": {"counterparty_class": ""}}},
+		"on a commit check":    {commit, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}}},
+		"on an action record":  {payCheck, map[string]map[string]any{"action": {"counterparty_class": "shop_preauth"}}},
+		"on two records":       {payCheck, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}, "action": {"counterparty_class": "shop_preauth"}}},
+		"two records, one bad": {payCheck, map[string]map[string]any{"check": {"counterparty_class": "shop_preauth"}, "action": {"counterparty_class": 1}}},
+	}
+	for _, name := range slices.Sorted(maps.Keys(classCases)) {
+		tc := classCases[name]
+		add("counterparty_class: "+name, rebuildClassic(t, tc.check, tc.top).records, nil, false)
+	}
 	{
 		c := classicDeal(t, "", commit)
 		c.records[len(c.records)-1].CommittedAt = time.Date(2026, 10, 6, 12, 0, 30, 123456000, time.UTC)

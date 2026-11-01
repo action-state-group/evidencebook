@@ -19,9 +19,10 @@ never guessed:
   minor units. The profile lets a check omit them, and SH gives an amount no
   unknown value, so a deal without one raises :class:`Unpriced`: the host
   refuses the card, it never drops the deal.
-* ``counterparty_class`` is absent: the profile records no SH §7 class
-  (evidencebook#273 will name the record; the one place it lands is
-  :func:`_counterparty_class`).
+* ``counterparty_class`` is the member of that name a pay check carries at the
+  top of its record (SH §7), when it is one of SH's three values. A deal whose
+  records carry the member on two or more records, on a record that is no pay
+  check, or with another value, lacks it (:func:`_counterparty_class`).
 * ``outcome`` is the newest verified ec:deal-reconcile@1 Result's claims: at
   least one claim and every claim met is "held", any not_met is
   "did_not_hold", and anything else (no claim, met with undecided, no
@@ -106,6 +107,10 @@ class _Rec:
     deal_id: str
     refs: dict[str, list[str]]
     body: dict[str, Any]
+    # The record's top-level counterparty_class: has_class is whether it has
+    # one at all (any value, a null included), cls its value when a string.
+    has_class: bool = False
+    cls: str = ""
 
     def str(self, member: str) -> str:
         v = self.body.get(member)
@@ -181,13 +186,25 @@ def _read_record(r: HistoryRecord) -> _Rec | None:
     by_rel: dict[str, list[str]] = {}
     for rel, d in refs:
         by_rel.setdefault(rel, []).append(d)
-    return _Rec(digest(r.payload), r.committed_at, kind, deal_id, by_rel, body or {})
+    cls = top.get("counterparty_class")
+    return _Rec(digest(r.payload), r.committed_at, kind, deal_id, by_rel, body or {},
+                "counterparty_class" in top, cls if isinstance(cls, str) else "")
+
+
+_CLASSES = ("person_agent", "business_agent", "shop_preauth")
 
 
 def _counterparty_class(records: list[_Rec]) -> str | None:
-    """The SH §7 counterparty_class of the deal. The profile records none yet
-    (evidencebook#273), so the entry carries no member."""
-    return None
+    """The SH §7 counterparty_class of the deal: that of the one record that
+    carries the member, a pay check, when it is one of SH's three values.
+    Two carriers read as none."""
+    carriers = [r for r in records if r.has_class]
+    if len(carriers) != 1:
+        return None
+    c = carriers[0]
+    if c.kind != "check" or c.str("action") != "pay" or c.cls not in _CLASSES:
+        return None
+    return c.cls
 
 
 def standard_history_deal(inp: HistoryInput) -> dict[str, Any] | None:
