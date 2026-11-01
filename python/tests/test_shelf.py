@@ -743,3 +743,19 @@ def test_a_book_checkpoints_while_another_appends(fx):
         for t in threads:
             t.join()
         assert not errors
+
+
+def test_a_correlation_subject_is_answered_as_go_answers_it(fx):
+    from evidencebook.book import _View
+    from evidencebook.record import Correlation
+
+    v = json.loads((VECTORS / "correlation.json").read_text())
+    with fx.open() as shelf:
+        book = shelf.open("deal/a")
+        for r in v["records"]:
+            book.append(Entry("observation", OBSERVED_EVENT, subject_ref=r["subject_ref"],
+                              correlation=Correlation(**r.get("correlation", {})), payloads=(b"x",)))
+        view = _View(book)
+        assert len(v["answers"]) > 1
+        for key, want in v["answers"].items():
+            assert [view._header(i).subject_ref for i in view.correlated(key)] == [v["records"][p]["subject_ref"] for p in want], key

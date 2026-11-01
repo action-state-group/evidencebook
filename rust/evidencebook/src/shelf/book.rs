@@ -734,8 +734,8 @@ impl RecordSource for ShelfBook {
 
     fn correlation(&self, id: &str) -> Vec<u64> {
         // A record carrying the profile's first correlation member is held
-        // under it alone; only one carrying none is held under its
-        // subject_ref. Go's book holds a record under its schema's first
+        // under it alone; only one carrying no such member is held under
+        // its subject_ref. Go's book holds a record under its schema's first
         // correlation member, so a profile listing that member first answers
         // as Go does on the same file.
         let key = self

@@ -623,7 +623,7 @@ func (v *bookView) matching(match func(Header) bool) []uint64 {
 
 // Correlated is a correlation subject's records. A record that carries the
 // header's correlation identifier (correlation.exchange_id) is held under
-// that identifier and no other. Only a record that carries none is held
+// that identifier and no other. Only a record that carries no exchange_id is held
 // under its subject_ref, as before. A host can then keep subject_ref for
 // its own use, for example one value per step of a deal, and still answer
 // for the deal as a whole (Personal-Agent History Profile v0 §1).

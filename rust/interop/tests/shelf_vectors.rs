@@ -51,6 +51,7 @@ fn a_correlation_subject_is_answered_as_go_answers_it() {
     use evidencebook::record::EpistemicType;
     use evidencebook::shelf::BookEntry;
     use evidencebook::store::RecordSource;
+    let v: serde_json::Value = serde_json::from_str(&vector("correlation.json")).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let env = shelf::open(
         &shelf::file(dir.path()),
@@ -60,24 +61,25 @@ fn a_correlation_subject_is_answered_as_go_answers_it() {
     )
     .unwrap();
     let book = env.shelf.open("deal/a").unwrap();
-    let entry = |subject: &str, member: &str, value: &str| {
+    for r in v["records"].as_array().unwrap() {
         let mut e = BookEntry::new("observation", EpistemicType::ObservedEvent);
-        e.subject_ref = Some(subject.into());
-        e.correlation.insert(member.into(), value.into());
-        e
-    };
-    // Go's correlationOf: a record is held under exchange_id when it carries
-    // one, and under its subject_ref otherwise, whatever else it carries.
-    book.append(&entry("s-1", "request_digest", &"ab".repeat(32)))
-        .unwrap();
-    book.append(&entry("s-2", "exchange_id", "x-1")).unwrap();
-    book.append(&entry("s-3", "twin_bracket_id", "t-1"))
-        .unwrap();
-    assert_eq!(book.correlation("s-1"), [0]);
-    assert!(book.correlation(&"ab".repeat(32)).is_empty());
-    assert_eq!(book.correlation("x-1"), [1]);
-    assert!(book.correlation("s-2").is_empty());
-    assert_eq!(book.correlation("s-3"), [2]);
-    assert!(book.correlation("t-1").is_empty());
+        e.subject_ref = Some(r["subject_ref"].as_str().unwrap().into());
+        for (member, value) in r["correlation"].as_object().into_iter().flatten() {
+            e.correlation
+                .insert(member.clone(), value.as_str().unwrap().into());
+        }
+        book.append(&e).unwrap();
+    }
+    let answers = v["answers"].as_object().unwrap();
+    assert!(answers.len() > 1);
+    for (id, want) in answers {
+        let want: Vec<u64> = want
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p.as_u64().unwrap())
+            .collect();
+        assert_eq!(book.correlation(id), want, "correlation subject {id:?}");
+    }
     env.release().unwrap();
 }

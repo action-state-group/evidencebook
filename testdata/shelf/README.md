@@ -9,6 +9,7 @@ implementation and read by every other. Each file is regenerated only with
 | `cadence/` | the cadence tree and a witnessed chain written by capsule-cli's code at `7a6b101`, moved from `testdata/cadence` unchanged | capsule-cli |
 | `tree.json` | cadence leaves, fillers, derived fillers, empty roots, trees with every path, padding record ids, and draws from the shelf's random source | `shelf_vectors_test.go` |
 | `script.json` | the scripted shelf: its host parameters, keys and two phases of steps | `internal/shelfscript` |
+| `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
 | `after-write.json`, `after-continue.json` | the dump of the scripted shelf after each phase | `internal/shelfscript` |
 
 ## The random source
@@ -53,7 +54,8 @@ processes: Go's `test/interop/shelf`, Python's
 
 ## Readers
 
-- Python: `python/tests/test_shelf.py` reads every file here.
-- Rust: `rust/evidencebook/src/shelf/tree.rs` reads `tree.json`, and
-  `rust/interop/tests/shelf_vectors.rs` runs `script.json` and compares its
-  dumps with `after-write.json` and `after-continue.json`.
+- Python: `python/tests/test_shelf.py` reads every file here, `correlation.json` included.
+- Rust: `rust/evidencebook/src/shelf/tree.rs` reads `tree.json`.
+  `rust/interop/tests/shelf_vectors.rs` reads `correlation.json`, and runs
+  `script.json` and compares the script's dumps with `after-write.json` and
+  `after-continue.json`.

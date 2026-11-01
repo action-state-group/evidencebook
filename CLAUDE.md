@@ -39,7 +39,7 @@ WORK=$(mktemp -d) EB_DIR=$PWD test/cleanroom/run.sh
 
 # Shelf vectors (testdata/shelf) and the storage interlock (CI: shelf-interlock in ci.yml);
 # regenerate the vectors only for an intended change
-EB_WRITE_SHELF_VECTORS=1 go test -run 'TestShelfTreeVectors|TestShelfVectors' . ./internal/shelfscript
+EB_WRITE_SHELF_VECTORS=1 go test -run 'TestShelfTreeVectors|TestShelfVectors|TestShelfCorrelationVectors' . ./internal/shelfscript
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/interop/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
 # The Rust side (feature `shelf`): Go writes, Rust continues; the interlock job runs every pair of Go, Python and Rust
