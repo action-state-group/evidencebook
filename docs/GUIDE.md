@@ -44,7 +44,7 @@ go get github.com/action-state-group/evidencebook/report@v0.3.0
 | record | `Book.Append` seals an action as an Agent Action Capsule; `Book.Checkpoint` checkpoints the book |
 | request | `Book.Request` records that you are asking before you send, and returns the octets to send |
 | verify | `Book.RecordResponse` checks the reply under the responder's pinned keys (`ResponderKeys`) and records the outcome: an artifact, a signed refusal, or a reply that failed verification. `Book.RecordAbsence` records that no reply came in the window |
-| doctor --probe | `Book.Doctor` lists what your node would emit: what is self-attested, unwitnessed, `NOT_CHECKED` or unsupported. With `DoctorOptions.Probe` it asks your own responder as a stranger and compares the answers with the advertised policy. It seals nothing |
+| doctor --probe | `Book.Doctor` lists what your node would emit: what is self-attested, unwitnessed, `NOT_CHECKED` or unsupported. With `DoctorOptions.Probe` it asks your own responder as a stranger and compares the answers with the advertised policy; a book that serves `standard_history/1` also reports the card a signed requester receives (`probe_standard_history`, the card in `card`), built in-process. It seals nothing |
 
 Example: [`Example (JoinTheLoop)`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-package-JoinTheLoop)
 (`example_guide_test.go`). Bob asks Alice for the request draft's vector

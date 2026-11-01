@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -112,7 +113,7 @@ func TestDoctorHealthyNodeSealsNothing(t *testing.T) {
 	}
 	for _, f := range decoded {
 		for member := range f {
-			if !slices.Contains([]string{"check", "state", "detail", "records"}, member) {
+			if !slices.Contains([]string{"check", "state", "detail", "records", "card"}, member) {
 				t.Errorf("finding member %q", member)
 			}
 		}
@@ -411,5 +412,106 @@ func TestDoctorReportsStandardHistory(t *testing.T) {
 	}
 	if f := findingOf(t, findings, DoctorUnsupported); !strings.Contains(f.Detail, "other than history_card/1 is refused") {
 		t.Errorf("unsupported = %+v", f)
+	}
+}
+
+// The probe reports the standard_history/1 card a signed requester is
+// served, byte for byte what Respond answers, and seals nothing.
+func TestDoctorProbeRendersTheStandardCard(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	pin := anchorPin(t, book)
+	policy := DefaultSharePolicy()
+	size := book.Size()
+
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: strangerTransport(book, policy)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if book.Size() != size {
+		t.Fatalf("doctor --probe sealed records: %d -> %d", size, book.Size())
+	}
+	f := findingOf(t, findings, DoctorProbeStandardCard)
+	if f.State != DoctorStateMatch || !strings.Contains(f.Detail, "window 3 months, 2 deals counted") {
+		t.Fatalf("finding = %+v", f)
+	}
+	for _, tier := range []string{"off", "counterparties", "peers"} {
+		served := mustEnvelope(t, askStandardHistory(t, book, "carol", tier, pin))
+		if !bytes.Equal(f.Card, served.Artifact) {
+			t.Fatalf("the probe's card differs from the one served under %s:\n%s\n%s", tier, f.Card, served.Artifact)
+		}
+	}
+	if !slices.Equal(f.Records, []string{pin}) {
+		t.Errorf("records = %v, want the latest checkpoint %s", f.Records, pin)
+	}
+	// The unsigned probe still reports the history card alongside it.
+	if g := findingOf(t, findings, DoctorProbeHistoryCard); g.State != DoctorStateMatch {
+		t.Errorf("history card = %+v", g)
+	}
+}
+
+// Without a checkpoint doctor builds nothing and issues none; a book that
+// does not serve the card reports no such finding.
+func TestDoctorProbeStandardCardEdges(t *testing.T) {
+	ctx := context.Background()
+	policy := DefaultSharePolicy()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: policy, Probe: strangerTransport(book, policy)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateNotChecked || f.Card != nil {
+		t.Errorf("no checkpoint: %+v", f)
+	}
+	if cps, err := book.Checkpoints(ctx); err != nil || len(cps) != 0 {
+		t.Fatalf("doctor issued a checkpoint: %v %v", cps, err)
+	}
+	plain := checkpointedBook(t, "plain-card", 4)
+	if findings, err = plain.Doctor(ctx, DoctorOptions{Policy: policy, Probe: strangerTransport(plain, policy)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range findings {
+		if f.Check == DoctorProbeStandardCard {
+			t.Errorf("a book that does not serve the card reports %+v", f)
+		}
+	}
+	// Without Probe the card is not built.
+	book2 := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	anchorPin(t, book2)
+	if findings, err = book2.Doctor(ctx, DoctorOptions{Policy: policy}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range findings {
+		if f.Check == DoctorProbeStandardCard {
+			t.Errorf("no Probe, yet %+v", f)
+		}
+	}
+}
+
+// On a substrate that serves no anchors the card finding says so, not that
+// a checkpoint is missing.
+func TestDoctorProbeStandardCardUnanchoredSubstrate(t *testing.T) {
+	cfg := newFixture(t, "book-sh-scitt", 1).config(t)
+	if err := cfg.Substrate.Release(); err != nil {
+		t.Fatal(err)
+	}
+	substrate, err := NewSCITTReceiptSubstrate("ts.example", &fakeTransparencyService{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Substrate = substrate
+	cfg.StandardHistory = &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}
+	book, err := Open(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = book.Release() })
+	policy := DefaultSharePolicy()
+	findings, err := book.Doctor(context.Background(), DoctorOptions{Policy: policy, Probe: strangerTransport(book, policy)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateNotChecked || !strings.Contains(f.Detail, "not a Checkpointed Local Log") {
+		t.Errorf("finding = %+v", f)
 	}
 }

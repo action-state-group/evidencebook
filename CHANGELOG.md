@@ -22,6 +22,18 @@
   fixture and single-member mutations of the positive chains; CI regenerates it and
   fails on a difference, and the Rust crate is tested against the same file.
 
+### Added: `Doctor` with `Probe` renders the standard card a signed requester is served (#276)
+
+- A book that serves `standard_history/1` (`Config.StandardHistory`) gets a
+  `probe_standard_history` finding: the card as of the latest checkpoint, in the
+  new optional `DoctorFinding.Card`, byte for byte what `Respond` answers any
+  signed requester (the host policy's window, three months by default). It is
+  built by the serve path's own decision and builder, in-process, so doctor
+  still seals nothing and cuts no checkpoint; with no checkpoint the finding is
+  `NOT_CHECKED`. A book that does not serve the card reports no such finding.
+  capsulectl-book sets no `StandardHistorySource`, so it shows it only once a
+  host serves the card.
+
 ### Fixed: x-deal-v0 folds both cases of a Cherokee name to the capitals (#283)
 
 - `dealprofile`: `cases.Fold` swaps Cherokee case, so `Ꭰ` and `ꭰ` had different
