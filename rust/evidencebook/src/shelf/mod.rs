@@ -188,7 +188,11 @@ pub struct ShelfConfig {
     /// any other). [`ShelfBook::append`] refuses a key not listed. A book's
     /// [`crate::store::RecordSource::correlation`] holds a record carrying
     /// the first member under it alone, and any other record under its
-    /// `subject_ref`. The names are the profile's, never this crate's.
+    /// `subject_ref`. Go's book holds a record under the record header
+    /// schema's first correlation member, so a profile that lists the
+    /// schema's members in its order answers a correlation subject as Go
+    /// does on the same file. The names are the profile's, never this
+    /// crate's.
     pub correlation_members: Vec<String>,
 }
 

@@ -45,3 +45,39 @@ fn the_minted_receipts_are_the_vectors() {
         assert_eq!(shelf::mint_receipt(&statement).unwrap().to_json(), stored);
     }
 }
+
+#[test]
+fn a_correlation_subject_is_answered_as_go_answers_it() {
+    use evidencebook::record::EpistemicType;
+    use evidencebook::shelf::BookEntry;
+    use evidencebook::store::RecordSource;
+    let dir = tempfile::tempdir().unwrap();
+    let env = shelf::open(
+        &shelf::file(dir.path()),
+        "correlation",
+        shelf::start(),
+        None,
+    )
+    .unwrap();
+    let book = env.shelf.open("deal/a").unwrap();
+    let entry = |subject: &str, member: &str, value: &str| {
+        let mut e = BookEntry::new("observation", EpistemicType::ObservedEvent);
+        e.subject_ref = Some(subject.into());
+        e.correlation.insert(member.into(), value.into());
+        e
+    };
+    // Go's correlationOf: a record is held under exchange_id when it carries
+    // one, and under its subject_ref otherwise, whatever else it carries.
+    book.append(&entry("s-1", "request_digest", &"ab".repeat(32)))
+        .unwrap();
+    book.append(&entry("s-2", "exchange_id", "x-1")).unwrap();
+    book.append(&entry("s-3", "twin_bracket_id", "t-1"))
+        .unwrap();
+    assert_eq!(book.correlation("s-1"), [0]);
+    assert!(book.correlation(&"ab".repeat(32)).is_empty());
+    assert_eq!(book.correlation("x-1"), [1]);
+    assert!(book.correlation("s-2").is_empty());
+    assert_eq!(book.correlation("s-3"), [2]);
+    assert!(book.correlation("t-1").is_empty());
+    env.release().unwrap();
+}

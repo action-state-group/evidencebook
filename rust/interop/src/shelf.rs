@@ -29,6 +29,10 @@ use std::time::Duration;
 /// The script: `testdata/shelf/script.json`, as Go wrote it.
 pub const SCRIPT: &str = include_str!("../../../testdata/shelf/script.json");
 
+/// The record header schema's `correlation` members
+/// (`schemas/record-header.schema.json`), in its order.
+pub const CORRELATION_MEMBERS: [&str; 3] = ["exchange_id", "request_digest", "twin_bracket_id"];
+
 /// Why a script step failed.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -140,7 +144,10 @@ pub fn open(
         originals: Arc::new(originals),
         now: Some(Arc::new(move || now.now())),
         authenticated_indexes: None,
-        correlation_members: Vec::new(),
+        // The record header schema's correlation members, in its order, so a
+        // correlation subject is answered as Go's book answers it
+        // (`correlationOf`: exchange_id, else subject_ref).
+        correlation_members: CORRELATION_MEMBERS.iter().map(|m| m.to_string()).collect(),
     })?;
     let ended: Vec<String> = v
         .pointer(&hp("/cadence/ended"))
