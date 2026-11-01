@@ -483,9 +483,13 @@ jobs:
         run: cargo build --locked --manifest-path test/interop/goose-mesh-check/Cargo.toml
       - name: Install the package and the MCP SDK
         run: python -m pip install "./python[test]" "mcp==2.3.0"
+      - name: Install capsule-engine's referee (the Result's receive check, step 09)
+        # The merge of capsule-engine#272; a release that carries capsule_engine.referee replaces the pin.
+        run: python -m pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"
       - name: Test the reference, run it, and check its cards with Go and its halves as a Mesh node does
         env:
           GOOSE_GO_CHECK: "1"
+          GOOSE_REQUIRE_REFEREE: "1"
           GOOSE_MESH_CHECK: test/interop/goose-mesh-check/target/debug/goose-mesh-check
         run: python -m pytest -q python/examples/goose/tests
 
