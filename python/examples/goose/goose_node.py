@@ -84,6 +84,8 @@ DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_ref
 DISPUTE_HALF, DISPUTE_ASKED, DISPUTE_ABSENT = "goose_dispute_half", "goose_dispute_asked", "goose_dispute_absent"
 #: The media type of the mailbox events that carry a Result request and its delivery.
 MAILBOX_MEDIA = "application/json"
+#: The node-book record that stands for a deal this node opened: it cites the admission the deal rests on.
+DEAL_OPENED = "goose_deal_opened"
 #: A model call the node sealed (``Node.seal_model_call``).
 MODEL_CALL = "goose_model_call"
 
@@ -419,13 +421,13 @@ class Node:
 
     # -- the node book ---------------------------------------------------------------
 
-    def note(self, record_type: str, statement: dict, subject_ref: str = "", links: tuple[Link, ...] = (),
+    def note(self, record_type: str, statement: dict, subject_ref: str = "", cites: tuple[str, ...] = (),
              payloads: tuple[bytes, ...] = ()) -> SealedStep:
-        """Seal one record of the node book."""
+        """Seal one record of the node book, citing the records ``cites``."""
         with self._lock:
             record = self.shelf.open(NODE_BOOK).append(
-                Entry(record_type, PRODUCER_CLAIM, subject_ref=subject_ref, statement=statement, links=links,
-                      payloads=payloads))
+                Entry(record_type, PRODUCER_CLAIM, subject_ref=subject_ref, statement=statement,
+                      links=tuple(Link(CITES, c) for c in cites), payloads=payloads))
             return SealedStep(record.record_id, record.seq, record_type)
 
     def notes(self, record_type: str) -> list[tuple[Any, dict]]:
@@ -631,8 +633,10 @@ class Node:
             raise Refused(f"deal {deal_id} is already open on this node")
         return dr.DealChain(deal_id, role, self._deal_key(deal_id), peer, terms)
 
-    def seal(self, chain: dr.DealChain, steps: list[dr.Step]) -> list[SealedStep]:
-        """Seal ``steps`` of ``chain``, in order, on the deal's book."""
+    def seal(self, chain: dr.DealChain, steps: list[dr.Step], admission: str = "") -> list[SealedStep]:
+        """Seal ``steps`` of ``chain``, in order, on the deal's book. The
+        deal's first step cites ``admission``, the node-book record of the
+        GO the deal rests on, as well as the step before it."""
         sealed = []
         with self._lock:
             book = self.shelf.open(f"deal/{chain.deal_id}")
@@ -645,8 +649,9 @@ class Node:
                 capsule, header = deal.step_capsule(deal.StepInput(
                     chain.deal_id, len(records) + 1, self.operator, self.developer, step.at, parent, None,
                     step.decide, step.local, step.amount, step.currency))
+                cites = header.cites + ((admission,) if admission and not records else ())
                 entry = Entry(header.record_type, header.epistemic_type, subject_ref=header.subject_ref,
-                              links=tuple(Link(CITES, c) for c in header.cites), fields=dict(header.fields))
+                              links=tuple(Link(CITES, c) for c in cites), fields=dict(header.fields))
 
                 def seal(_header, header_json: bytes, capsule=capsule, step=step):
                     return produce.seal(produce.SealInput(
@@ -661,6 +666,54 @@ class Node:
                     self._inflight = None
                 sealed.append(SealedStep(record.record_id, record.seq, step.record_type))
         return sealed
+
+    def open_deal(self, chain: dr.DealChain, steps: list[dr.Step]) -> list[SealedStep]:
+        """Seal a deal's opening ``steps`` under this node's GO for the
+        chain's peer: the first step cites the admission record, and the node
+        book then seals :data:`DEAL_OPENED`, this node's record of the deal,
+        citing the same admission, so the admission and the deal are two
+        records of one book. A peer without a GO admission is refused and
+        nothing is sealed."""
+        with self._lock:
+            admission = self.admission(chain.peer)
+            if admission is None:
+                raise Refused(f"no admission sealed for {chain.peer}: call loop_admit first")
+            if admission["decision"] != "GO":
+                raise Refused(f"the sealed admission for {chain.peer} is {admission['decision']}: no deal")
+            if not steps:
+                raise Refused("a deal opens with at least one step")
+            sealed = self.seal(chain, steps, admission=admission["record_id"])
+            self.ensure_opening(chain.deal_id)
+            return sealed
+
+    def ensure_opening(self, deal_id: str) -> str:
+        """The node-book record of the deal's opening, sealed now if the
+        deal's first step is sealed but its opening is not (an open cut short
+        between the two). It cites what the first step cites: the admission."""
+        with self._lock:
+            for record, statement in self.notes(DEAL_OPENED):
+                if statement.get("deal_id") == deal_id:
+                    return record.record_id
+            if f"deal/{deal_id}" not in self.shelf.books():
+                raise Refused(f"this node holds no deal {deal_id}")
+            first = self.shelf.open(f"deal/{deal_id}").records()[0]
+            cited = first.header.links_to(CITES)
+            if len(cited) != 1:
+                raise Refused(f"deal {deal_id}'s first step cites no single admission")
+            admission = next((s for r, s in self.notes(ADMITTED) if r.record_id == cited[0]), None)
+            if admission is None or admission.get("decision") != "GO":
+                raise Refused(f"deal {deal_id}'s first step cites {cited[0]}, which is no GO admission of this node")
+            return self.note(DEAL_OPENED, {"deal_id": deal_id, "deal_book": f"deal/{deal_id}",
+                                           "first_step": first.record_id, "peer": admission["peer"],
+                                           "admission": cited[0]},
+                             subject_ref=deal_id, cites=(cited[0],)).record_id
+
+    def deal_opened(self, deal_id: str) -> str:
+        """The node-book record of the deal's opening."""
+        for record, statement in self.notes(DEAL_OPENED):
+            if statement.get("deal_id") == deal_id:
+                return record.record_id
+        raise Refused(f"this node sealed no opening of deal {deal_id}")
 
     def half(self, deal_id: str) -> dict:
         """This node's half of a deal, as a counterparty receives it: every
@@ -713,7 +766,7 @@ class Node:
             return self.note(DISPUTE_RECEIVED, {
                 "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
                 "buyer_half": held[0][0], "seller_half": held[1][0],
-            }, subject_ref=digest, links=tuple(Link(CITES, record_id) for _, record_id in held))
+            }, subject_ref=digest, cites=tuple(record_id for _, record_id in held))
 
     def _hold_half(self, role: str, half: dict) -> tuple[str, str]:
         """Seal a judged half into this book once (its Capsule is the payload) and return

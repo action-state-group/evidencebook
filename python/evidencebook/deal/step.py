@@ -81,7 +81,8 @@ class StepHeader:
     committed_at: str
     subject_ref: str
     #: The parent Capsule, which the header's one cites link targets, when the
-    #: step has one.
+    #: step has one. A producer may add the admission a first step rests on
+    #: (PROFILE.md §1); the step builder does not.
     cites: tuple[str, ...] = field(default_factory=tuple)
     fields: dict[str, str] = field(default_factory=dict)
 
