@@ -1,6 +1,6 @@
 # evidencebook SDK guide
 
-This guide walks the SDK as four paths, in the order a developer meets them.
+This guide walks the SDK as five paths, in the order a developer meets them.
 Each path names the functions it uses and the runnable Go `Example` that shows
 it. The API reference is the package documentation on pkg.go.dev:
 
@@ -8,11 +8,12 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
 Every Example below renders there with its output, from v0.9.0 for the root
-module and `report/v0.3.0` for the report module. To run them from a
+module and `report/v0.3.0` for the report module; path 4's from the first
+release after v0.12.2. To run them from a
 checkout:
 
 ```bash
-go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond' -v .
+go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple' -v .
 ```
 
 Every Example reads a corpus file from its module's `testdata/` by its path
@@ -137,6 +138,70 @@ only.
 
 To check these answers with a verifier you wrote yourself, follow
 [THIRD-PARTY-VERIFIER.md](THIRD-PARTY-VERIFIER.md).
+
+## Path 4: History cards that staple
+
+Each party keeps its own shelf and answers its own History. A relying party
+staples two parties' evidence of one deal by composing their answers and
+joining them on the deal id. Design note
+[#254](design/254-shelf.md) §3 gives the reasons.
+
+| Step | Function |
+|---|---|
+| a shelf | `OpenSQLiteShelf` opens one file for every log a key answers for; `Shelf.Open` opens a book in it, one per deal (`deal/<deal_id>`) and one for what the agent does outside any deal |
+| a deal step | `dealprofile.StepCapsule` gives the Capsule of an x-deal-v0 step, which carries the deal id as its `deal_id` member, and `Book.AppendCapsule` commits it as the book's record |
+| the cadence | `Shelf.Cadence` and `Cadence.Tick` commit every book's checkpoint in one checkpoint at each tick |
+| `history_card/1` per log | `Book.Respond`, as in path 3: each log answers for its own stream |
+| a History over books at a tick | `Cadence.StandardHistoryAnchor` gives the tick's anchor and how far each book is committed; `dealprofile.StandardHistoryDeal` gives one deal entry per deal book; `DeriveStandardHistory` derives the `standard_history/1` card, and agent-action-capsule's `standardhistory.Check` checks it |
+| each party's half | `Book.Bundle` gives an Evidence Bundle rooted at the party's record of the deal |
+| the staple | agent-action-capsule's `bundle.ComposedDigest` and `bundle.VerifyComposed` build and verify a `composed/v1` block (Evidence Bundle -02, "The composed/v1 Extension") whose members are the parties' Bundles |
+
+Example: [`Example (Staple)`](https://pkg.go.dev/github.com/action-state-group/evidencebook#example-package-Staple)
+(`example_staple_test.go`). A Goose agent buys inference from a Mesh node.
+
+- **The Goose agent** keeps a book for the deal, a node book and the
+  cadence. Each book answers `history_card/1`, and its `standard_history/1`
+  card is as of a tick, with every property passing.
+- **The Mesh node's** whole history is one stream, which answers
+  `history_card/1` at its own checkpoint.
+- **The relying party** composes the two halves and joins them with
+  `pre_agreed_identifier`. The join compares the SHA-256 of the `deal_id`
+  member of each half's root record. It derives `agree`, and because the
+  two halves come from different custody domains, `corroborating`.
+- **One operator's two keys.** The Mesh node's operator also runs a Goose
+  agent under a key of its own. The two keys are joined only by a
+  `controller_binding` join, through a binding record both keys signed with
+  the claim `same_controller_asserted` (controller-binding-v0). The join
+  derives `agree` but is reported `redundant`: one controller's keys
+  confirm nothing about each other. Without the binding record the join is
+  `not_derivable`. A controller binding never joins counterparties.
+
+`shared_artifact_digest` does not join the two halves of an exchange. It
+joins only records that cite the same third artifact, such as the agreed
+terms.
+
+The same reference in other languages:
+
+- **Goose, many books at a tick, in Python:**
+  [`python/examples/goose`](../python/examples/goose/README.md). CI checks
+  each card it writes with Go (`test/interop/goose-card`).
+- **Mesh, one stream, in Rust:** a capsules-plugin node keeps its chain on
+  its shelf from release v0.1.11
+  ([capsules-plugin#213](https://github.com/Mesh-LLM/capsules-plugin/pull/213)).
+
+### What is not defined yet
+
+- **A History answer as a `composed/v1` member.** A member is an Evidence
+  Bundle, a refusal or an absence, and a join reads the member's root
+  record. Whether a History answer can be a member, and what its root
+  record would be, is not stated (#254 D4). Until it is, the staple joins
+  the parties' halves of the deal, and each party's History is checked on
+  its own.
+- **The Mesh node's History, `inference-service-history/0`.** A
+  capsules-plugin node derives it over its one stream at a period boundary,
+  with that stream's `history_card/1` embedded unchanged. No library outside
+  the plugin derives or checks it yet, so the example stops at the
+  `history_card/1` the History embeds.
 
 ## Other languages
 

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: a guide path for History cards that staple (#266)
+
+- `docs/GUIDE.md` path 4 and `Example_staple`: a Goose agent's shelf (a book per deal, a node book,
+  the cadence) and a Mesh node's one stream each answer `history_card/1`; the agent's
+  `standard_history/1` card is derived as of a tick and checked; a relying party composes the two
+  parties' halves of the deal in `composed/v1`, joined with `pre_agreed_identifier` on the deal id,
+  and joins the Mesh node to its operator's own agent only through a `same_controller_asserted`
+  controller binding. It states what is not defined yet: a History answer as a `composed/v1`
+  member (#254 D4) and a library for `inference-service-history/0`.
+- agent-action-capsule's Go module moves to `go/v0.19.0`, which verifies `controller_binding` joins.
+
 ### Added: the Goose reference receives a referee's Result (step 09, #310)
 
 - `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
