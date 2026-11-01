@@ -216,7 +216,7 @@ impl Checkpoint {
         }
     }
 
-    fn from_log(cp: CheckpointRecord) -> Self {
+    pub(crate) fn from_log(cp: CheckpointRecord) -> Self {
         Self {
             v: cp.v,
             kind: cp.kind,

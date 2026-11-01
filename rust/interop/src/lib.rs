@@ -5,6 +5,11 @@
 //! exactly when the Go book does (evidencebook Go `book.go`,
 //! `checkpointAtLocked`), so a run's records, anchors and replies are Go's
 //! byte for byte. It is test code for those programs, not a store to reuse.
+//!
+//! [`shelf`] is the scripted shelf of the shelf storage interlock (bin
+//! `shelf`).
+
+pub mod shelf;
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
