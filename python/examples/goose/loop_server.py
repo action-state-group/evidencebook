@@ -42,6 +42,7 @@ files over the caller's own channel.
 """
 from __future__ import annotations
 
+import base64
 import functools
 import json
 import os
@@ -210,13 +211,32 @@ def loop_tick() -> str:
 def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a
     book to ``out_path``: the record, its position and inclusion proof, and
-    the book's checkpoint covering it. When a witnessed tick carries that
-    checkpoint, the witness's receipt travels in the ``x-cadence-witness/v0``
-    extension. ``capsulectl book verify --bundle`` reads it."""
-    built = node().book_bundle(book_id, record_id)
+    the book's checkpoint covering it. ``capsulectl verify --bundle`` reads
+    it. Beside it (``<out_path minus .json>.<name>``) go the book's checkpoint
+    (``checkpoint.cose``) and, when a witnessed tick carries that checkpoint,
+    the cadence checkpoint the witness signed (``cadence-checkpoint.cose``),
+    its receipt (``witness-receipt.json``) and the witness directory
+    (``witnesses.json``, from GOOSE_WITNESSES). The receipt is over the
+    cadence checkpoint, which commits the book's: the witness sees that one
+    only. The chain also travels in the bundle's ``x-cadence-witness/v0``
+    extension."""
+    n = node()
+    built = n.book_bundle(book_id, record_id)
+    stem = str(Path(out_path).expanduser().with_suffix(""))
     _write(out_path, json.dumps(built, sort_keys=True).encode())
+    files = {"checkpoint.cose": n.book_checkpoint(book_id)}
+    chain = built.get("extensions", {}).get(gn.CADENCE_EXTENSION)
+    if chain:
+        witness = chain["cadence"]["witnesses"][0]
+        cose = chain["cadence"]["checkpoint"]["cose"]
+        files["cadence-checkpoint.cose"] = base64.urlsafe_b64decode(cose + "=" * (-len(cose) % 4))
+        files["witness-receipt.json"] = json.dumps(witness, sort_keys=True).encode()
+        if os.environ.get("GOOSE_WITNESSES"):
+            files["witnesses.json"] = Path(os.environ["GOOSE_WITNESSES"]).expanduser().read_bytes()
+    for name, data in files.items():
+        _write(f"{stem}.{name}", data)
     return _out(ok=True, step="02", book_id=book_id, record_id=record_id, file=out_path,
-                witnessed=gn.CADENCE_EXTENSION in built.get("extensions", {}))
+                witnessed=chain is not None, beside=sorted(f"{stem}.{name}" for name in files))
 
 
 # -- 04 Admit -----------------------------------------------------------------------------

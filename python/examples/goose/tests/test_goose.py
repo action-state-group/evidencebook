@@ -551,3 +551,29 @@ def test_a_book_bundle_refuses_what_the_node_does_not_hold(nodes):
         buyer.book_bundle("deal/none", sealed.record_id)
     with pytest.raises(gn.Refused, match="holds no record"):
         buyer.book_bundle(gn.NODE_BOOK, "00" * 32)
+
+
+def test_the_bundle_tool_writes_the_checkpoint_and_the_witness_files_beside_it(tmp_path, clock, monkeypatch):
+    pytest.importorskip("mcp")
+    import loop_server
+
+    script = _witness_script()
+    directory = tmp_path / "witnesses.json"
+    directory.write_text(json.dumps(script.DIRECTORY))
+    monkeypatch.setenv("GOOSE_WITNESSES", str(directory))
+    with gn.Node.open(tmp_path / "w", operator="goose-w", now=clock, witnesses=script.DIRECTORY) as node:
+        monkeypatch.setattr(loop_server, "_node", node)
+        sealed, _ = node.seal_model_call("rehearsal", "rehearsal-model", "p", "c", clock.at)
+        out = tmp_path / "call.json"
+        bare = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert bare["ok"] and not bare["witnessed"] and (tmp_path / "call.checkpoint.cose").is_file()
+        assert not (tmp_path / "call.witness-receipt.json").exists()
+        assert node.tick().ticked
+        tick = node.cadence.last()
+        node.cadence.witnessed(tick.n, script.mint_receipt(tick.checkpoint))
+        done = json.loads(loop_server.loop_book_bundle(gn.NODE_BOOK, sealed.record_id, str(out)))
+        assert done["witnessed"]
+        assert (tmp_path / "call.cadence-checkpoint.cose").read_bytes() == tick.checkpoint
+        receipt = json.loads((tmp_path / "call.witness-receipt.json").read_text())
+        assert receipt["receipt_b64"] and (tmp_path / "call.witnesses.json").read_bytes() == directory.read_bytes()
+        assert (tmp_path / "call.checkpoint.cose").read_bytes() == node.book_checkpoint(gn.NODE_BOOK)

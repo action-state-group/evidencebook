@@ -428,6 +428,12 @@ class Node:
             capsule["signature"], capsule["key_id"] = bytes(held.producer_envelope).hex(), self.key_id
             return capsule
 
+    def book_checkpoint(self, book_id: str) -> bytes:
+        """The COSE statement of the checkpoint :meth:`book_bundle` builds
+        on: the book's newest."""
+        with self._lock:
+            return self.shelf.open(book_id).checkpoint().statement
+
     def book_bundle(self, book_id: str, record_id: str) -> dict:
         """An Evidence Bundle (``evidence-bundle/v2``) proving ``record_id``
         is in ``book_id`` at its position under the book's newest checkpoint
