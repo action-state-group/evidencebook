@@ -69,7 +69,8 @@ pub struct StepHeader {
     pub committed_at: String,
     pub subject_ref: String,
     /// The parent Capsule, which the header's one `cites` link targets, when
-    /// the step has one.
+    /// the step has one. A producer may add the admission a first step rests
+    /// on (PROFILE.md §1); the step builder does not.
     pub cites: Vec<String>,
     pub fields: BTreeMap<String, String>,
 }

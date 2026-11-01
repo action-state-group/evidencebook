@@ -71,7 +71,8 @@ here moves money: a payment reference is a value you observed.
 | 12 | `loop_join` | `loop_join` |
 | 01 | `loop_seal` (a model call you made: provider, model id, prompt, completion) | |
 | 04 | `loop_admit` (the seller's two keys from its `loop_join`, `GO`) | `loop_admit` (the buyer's two keys, `GO`) |
-| 05 | `loop_deal_open` (item, price, rail, the user's words), then `loop_deal_push` | |
+| 05 | `loop_deal_open` (item, price, rail, the user's words; its first step cites your GO), then `loop_deal_push` | |
+| 04 | `loop_deal_bundle` (your admission and your record of the deal, one bundle) | |
 | 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
 | 05 | `loop_deal_reconcile` (the seller's half: same terms?) | |
 | 06 | `loop_settle` (the payment reference you saw on the rail) | |
