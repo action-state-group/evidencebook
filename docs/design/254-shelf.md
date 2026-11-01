@@ -281,15 +281,17 @@ keys, never by being shown together".
 
 **The deal is the link.** Evidence Bundle -02's `composed/v1` block carries the answers of several
 responders, each to its own request, as members of one portable object, and declares the joins
-between them (EB -02 "The composed/v1 Extension", "Joins"). Two bases join counterparties on their
-deal, evaluated on each member's root record:
-
-- `shared_artifact_digest`: each party's half of the deal cites the other's by digest (ER
-  "Exchange half"), so the two root records carry the same digest;
-- `pre_agreed_identifier`: both root records carry the deal id, compared by its SHA-256.
+between them (EB -02 "The composed/v1 Extension", "Joins"), evaluated on each member's root
+record. The reference staple joins counterparties with `pre_agreed_identifier` on the deal id:
+both halves carry it as a correlation member (`subject_ref`, or the capsule's `external_ref` or
+`chain`), and the join compares its SHA-256. `shared_artifact_digest` does not join two exchange
+halves: the response half cites the request half's digest (ER -02 "Exchange half"), but the
+request half does not hold its own, so no pointer gives identical values and the join is
+`unjoined`. It applies only when both root records cite the same third artifact, such as the
+agreed terms.
 
 So a relying party staples the two parties' evidence of one deal by composing their answers on
-the deal digest. That exists today for Evidence Bundles of the two halves.
+the deal id. That exists today for Evidence Bundles of the two halves.
 
 **One operator, two keys.** When one operator holds both keys (a Mesh node and its owner's Goose
 agent), the `controller_binding` basis joins them, through a binding record with the claim
@@ -300,7 +302,7 @@ joins counterparties: no binding claim states that two independent parties dealt
 **What is not defined.** `composed/v1` members are Evidence Bundles, refusals or absences, and its
 joins read each member's root record; whether a History answer (a `standard_history/1` or
 `inference-service-history/0` envelope) can be a member, and what its root record is, is not
-stated. Sherlock2 recommends (Buzz, evidencebook channel, reply to bdaa01e7) keeping ER's one
+stated. Sherlock2 recommends (Buzz, evidencebook channel, thread bdaa01e7) keeping ER's one
 request, one subject, one artifact, with no multi-subject request: one request for two keys means
 one responder answering for another key. The possible gap is only that membership, and it is a
 door for Steven (§9, D4). The shelf needs no storage change either way: each card is derived from
@@ -313,8 +315,8 @@ A developer copying the reference gets, in their own language:
 - a shelf (§2) holding their agent's logs under one key;
 - `history_card/1` per log, and their ecosystem's History instance (a counting table and a
   wording pack under the frame, HF §5) over one log or over the books at a tick;
-- their half of each deal, citing the counterparty's half by digest, so a relying party can join
-  the two parties' answers in `composed/v1`;
+- their half of each deal, carrying the deal id, so a relying party can join the two parties'
+  answers in `composed/v1` (`pre_agreed_identifier`);
 - a controller binding only for two keys they hold themselves.
 
 Mesh shows the one-stream case in Rust (a host log that checkpoints and witnesses itself); Goose
@@ -456,6 +458,10 @@ Reuse it, rebased onto the shelf. Of `cf7fe7d`'s 36 source files (40 with docs, 
   log handle; `is_store_layout` and the `data_dir` markers key on `ledger/shelf.db`; `copy_flat`
   writes to the shelf's stores.
 
+Windows nodes migrate too, since a shelf on the plugin's held lock (`LockFileEx` there) takes no
+lock of its own (§2.4), so P1 runs condition 2's tests (import, killed-and-resumed import,
+refusing mismatch) on a Windows node as well as on unix.
+
 Option A for unmovable nodes (capsules-plugin#208, decided 2026-10-31) carries over unchanged: a
 node whose history holds an `approver: "owner"` record, which the artifact store refuses under
 Class 1 (`capsule-emit-artifact` `record.rs:255-257`), stays on the flat ledger until its owner
@@ -537,7 +543,7 @@ many-books case in Go (§1.1); the Python reference is what a Python developer c
 | D1 | The shelf's file as a cross-language contract: the shelf's tables and columns in §2.2 (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`), the no-row rule, and one artifact store namespace per shelf; CLL's and capsule-emit's tables stay theirs | engineering's, with Sherlock2's door confirmation | a storage format with no product meaning; every byte a peer sees is unchanged (§4) |
 | D2 | The Mesh node import into `ledger/shelf.db` and the move of the flat chain files to `archive/pre-store/` | engineering's under #206's three conditions | Sherlock2 agreed #206's door is engineering's under those conditions (Buzz 341813f1); only the destination changes, so it is re-confirmed, not re-decided |
 | D3 | Goose's deal halves become x-deal-v0 deal records on per-deal books | Steven, flagged in the DM with Steven; Sherlock2 recommends yes on two conditions: nothing sealed is re-signed or dropped, and a Mesh node on the current release still verifies Goose's halves (§8) | what a Goose counterparty receives changes |
-| D4 | Whether a History answer can be a `composed/v1` member, so a relying party joins two parties' Histories on their deal digest | Steven: public spec direction (EB -02, ER, HF); Sherlock2 recommends no multi-subject request, and at most this membership rule | `composed/v1` defines Evidence Bundle members only (§3.3); the reference staples the parties' answers on the deal today and needs no storage change either way |
+| D4 | Whether a History answer can be a `composed/v1` member, so a relying party joins two parties' Histories on their deal id | Steven: public spec direction (EB -02, ER, HF); Sherlock2 recommends no multi-subject request, and at most this membership rule | `composed/v1` defines Evidence Bundle members only (§3.3); the reference staples the parties' answers on the deal today and needs no storage change either way |
 | D5 | Splitting the Mesh node's deals into their own books | Steven, if ever proposed | changes the positions peers hold and the stream ISH counts; not proposed here |
 | D6 | Native Python gains the shelf's verbs, amending evidencebook#191 | Ethan's how (decided 2026-10-31); Steven told after | #191's "no new verbs in native Python" was Ethan's rescope of Steven's Rust-core ruling |
 
@@ -557,7 +563,7 @@ Each is filed separately on project 1, except P1, which is capsules-plugin#206 i
 | C4 | capsule-emit | Python: the ledger over a CLL entry store and an artifact store, at parity with Rust's `open_stores_with_indexer`, released | C2 |
 | G1 | evidencebook | the Goose loop reference on the Python shelf (`python/examples/goose/`, §8), importing an existing Goose ledger as a host log, with a two-node run against the current plugin release | E3, E5, C4, D3 |
 | C3 | capsule-emit | retire `examples/goose-capsule/loop_server.py` and point `docs/adapters/goose.md` and the example README at `python/examples/goose/` | G1 |
-| E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a Goose and a Mesh party's answers composed in `composed/v1` on their deal digest, and `controller_binding` for one operator's two keys), with a worked example CI runs | E2, E3, G1 |
-| P1 | Mesh-LLM/capsules-plugin | capsules-plugin#206, retargeted: the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
+| E4 | evidencebook | Guide: "History cards that staple" (§3: a shelf, `history_card/1` per log, an instance over one log or at a tick, a Goose and a Mesh party's answers composed in `composed/v1` with a `pre_agreed_identifier` join on the deal id, and `controller_binding` for one operator's two keys), with a worked example CI runs | E2, E3, G1 |
+| P1 | Mesh-LLM/capsules-plugin | capsules-plugin#206, retargeted: the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, condition 2's import tests on unix and Windows, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
 | L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
 | A1 | agent-action-capsule | only if Steven rules for D4: a History answer as a `composed/v1` member (its root record for joins) | D4 ruling |
