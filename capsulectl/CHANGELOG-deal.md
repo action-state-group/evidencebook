@@ -2,14 +2,23 @@
 
 ## Unreleased
 
-- Builds against capsulectl `v0.1.0-rc28`, evidencebook `v0.12.1`, capsule-viewer
-  `v0.8.0` (capsule-viewer#196, #197, #200, #201), agent-action-capsule `v0.18.0`
-  and checkpointed-local-log `v0.3.0`. The presentation goldens are rebuilt
-  (`build-fixtures.sh` with capsulectl-book `v0.1.0-rc28`, then the snapshots and
-  pages). The share test for the customer's name now leaves the viewer's runtime
-  scripts out of its check for the bare word "customer": that runtime says
+## v0.1.0-rc29
+
+This section also lists what `v0.1.0-rc28` carried: that tag was cut before this CHANGELOG
+was, and the History card's 3-month default and the Lightning payment (evidencebook-deal#90,
+#99) and the receipt's frame 8 record lines (#101) are new in rc29.
+
+- Builds against capsulectl `v0.1.0-rc29`, evidencebook `v0.12.1`, capsule-viewer `v0.9.0`
+  (capsule-viewer#196, #197, #200, #201 since rc27, and #205, #206, #207), agent-action-capsule `v0.18.0` and checkpointed-local-log
+  `v0.3.0`. The presentation goldens are rebuilt (`build-fixtures.sh` with capsulectl-book
+  `v0.1.0-rc29`, then the snapshots and pages). The share test for the customer's name leaves
+  the viewer's runtime scripts out of its check for the bare word "customer": that runtime says
   "customer" since viewer 0.8.0, whoever the customer is.
 
+- The receipt's stamps ladder draws 9b frame 8's lines from their records in the deal view
+  (`capsulectl.deal-view/v0`): ON THE RECEIPT, THE RECORD and the consumer words for approval, order,
+  settlement and close, and an `agreed` stamp needs the other party's record pointing at yours
+  (evidencebook-deal#94, #101). The Lightning preimage check and the witness check stay open on #94.
 - `deal note --kind payment_received` also seals a Lightning payment, from
   the payee's own wallet: `--ln-invoice` (the invoice the wallet issued) and
   `--ln-transaction` (its inbound transaction). The payee_observed leg names
@@ -40,7 +49,7 @@
   (the composed page of evidencebook-deal#86 checks it, the card does not).
   A card is as of a tick cut after the last change of declaration or policy:
   run `deal tick` after a change. The settings files must be owner-protected
-  regular files. Requires evidencebook `v0.11.0`.
+  regular files. Required evidencebook `v0.11.0` when it shipped; this build requires `v0.12.1`.
   rc28 shipped the card with a 12-month default. A holder who set no policy
   (the default is never written to the file) moves to the 3-month window and a
   new policy digest; `policy --months 12` keeps the old window. A card built

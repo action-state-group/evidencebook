@@ -19,7 +19,7 @@
   "evidence_ids": [
     "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
     "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b",
-    "8ddb8c83e60e76e35f4c5690f0136f1f39e9d1897882c59b6bacc1530b974a5d"
+    "92491a574ab05cbd3e4d3a1a75c202480f0391515b70b414009ce0c312f94852"
   ],
   "text": [
     "✗ This bundle did not verify: do not rely on it",
@@ -30,7 +30,7 @@
     "· 3 of 10 checks failed · 2 checks on this page failed · 1 record",
     "Verification",
     "bundle digest",
-    "\"8ddb8c83e60e76e35f4c5690f0136f1f39e9d1897882c59b6bacc1530b974a5d\"",
+    "\"92491a574ab05cbd3e4d3a1a75c202480f0391515b70b414009ce0c312f94852\"",
     "checkpoint root",
     "\"4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047\"",
     "checkpoint size",
