@@ -94,7 +94,7 @@ fn open_with(path: &Path, clock: &Clock, opts: Opts) -> Result<Shelf, ShelfError
         originals: Arc::new(originals),
         now: Some(Arc::new(move || *now.0.lock().unwrap())),
         authenticated_indexes: opts.indexes.map(|i| Arc::new(move |_: &str| i) as _),
-        correlation_key: Some("pair".into()),
+        correlation_members: vec!["request_digest".into()],
     })
 }
 
@@ -856,7 +856,9 @@ fn the_answer_path_runs_on_a_shelf_book_unchanged() {
     let shelf = open(&file(&dir), &clock);
     let book = shelf.open("deal/a").unwrap();
     let mut paired = observation("a", "one");
-    paired.correlation.insert("pair".into(), "p-1".into());
+    paired
+        .correlation
+        .insert("request_digest".into(), "p-1".into());
     let record = book.append(&paired).unwrap();
     book.append(&observation("b", "two")).unwrap();
     book.checkpoint().unwrap();
@@ -902,4 +904,122 @@ fn the_answer_path_runs_on_a_shelf_book_unchanged() {
     envelope
         .verify_for(&responder.verifying_key(), &bytes)
         .unwrap();
+}
+
+#[test]
+fn a_correlation_member_the_profile_does_not_write_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    let mut entry = observation("a", "one");
+    entry.correlation.insert("deal_id".into(), "x".into());
+    assert!(matches!(book.append(&entry), Err(ShelfError::Invalid(_))));
+    assert_eq!(book.size(), 0, "nothing is written");
+}
+
+#[test]
+fn a_failed_log_append_keeps_its_position_and_is_committed_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    book.append(&observation("a", "one")).unwrap();
+    let side = Connection::open(file(&dir)).unwrap();
+    side.busy_timeout(Duration::from_secs(5)).unwrap();
+    side.execute_batch(
+        "CREATE TRIGGER block BEFORE INSERT ON cll_entries BEGIN SELECT RAISE(ABORT, 'blocked'); END;",
+    )
+    .unwrap();
+    assert!(matches!(
+        book.append(&observation("a", "two")),
+        Err(ShelfError::Log(_))
+    ));
+    assert_eq!(
+        book.size(),
+        1,
+        "a stored record is not committed until its log append is"
+    );
+    assert_eq!(shelf.records(&[]).unwrap().pending.get("deal/a"), Some(&1));
+    side.execute_batch("DROP TRIGGER block;").unwrap();
+    let third = book.append(&observation("a", "three")).unwrap();
+    assert_eq!(
+        third.seq, 3,
+        "the pending record keeps seq 2 and is committed first"
+    );
+    assert_eq!(book.size(), 3);
+    assert_eq!(book.record_at(1).unwrap().leaf_index, 1);
+    assert!(shelf.records(&[]).unwrap().pending.is_empty());
+}
+
+#[test]
+fn records_fold_retention_through_lifecycle_records_and_live_holds() {
+    use evidencebook::record::{Link, LinkType};
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    let withheld = book.append(&observation("a", "1")).unwrap();
+    let mut lifecycle = BookEntry::new("lifecycle", EpistemicType::ObservedEvent);
+    lifecycle.links = vec![Link {
+        link_type: LinkType::Cites,
+        target: withheld.record_id.clone(),
+    }];
+    lifecycle.statement = json!({"retention_state": "WITHHELD"});
+    book.append(&lifecycle).unwrap();
+    let commit = |subject: serde_json::Value, until: &str| {
+        let mut entry = BookEntry::new("retention_commitment", EpistemicType::ProducerClaim);
+        entry.statement = json!({"subject": subject, "until": until});
+        book.append(&entry).unwrap();
+    };
+    let held = book.append(&observation("a", "2")).unwrap();
+    commit(json!({"record": held.record_id}), "2030-01-01T00:00:00Z");
+    let fraction = book.append(&observation("a", "3")).unwrap();
+    commit(
+        json!({"record": fraction.record_id}),
+        "2030-01-01T00:00:00.5Z",
+    );
+    let expired = book.append(&observation("a", "4")).unwrap();
+    commit(
+        json!({"range": [expired.seq - 1, expired.seq - 1]}),
+        "2020-01-01T00:00:00Z",
+    );
+    let in_range = book.append(&observation("a", "5")).unwrap();
+    commit(
+        json!({"range": [in_range.seq - 1, in_range.seq]}),
+        "2030-01-01T00:00:00Z",
+    );
+    let half = hex::encode(Sha256::digest(b"a requester's half"));
+    let mut citing = observation("a", "6");
+    citing.links = vec![Link {
+        link_type: LinkType::Cites,
+        target: half.clone(),
+    }];
+    let cites = book.append(&citing).unwrap();
+    commit(json!({"exchange": half}), "2030-01-01T00:00:00Z"); // vocabulary-gate: request-draft wire token, the "exchange" subject form
+
+    let listing = shelf.records(&[]).unwrap();
+    let state = |id: &str| {
+        listing
+            .records
+            .iter()
+            .find(|r| r.record_id == id)
+            .unwrap()
+            .retention
+            .clone()
+    };
+    assert_eq!(state(&withheld.record_id), "WITHHELD");
+    assert_eq!(state(&held.record_id), "LEGAL_HOLD");
+    assert_eq!(
+        state(&fraction.record_id),
+        "AVAILABLE",
+        "an until not in whole seconds holds nothing"
+    );
+    assert_eq!(
+        state(&expired.record_id),
+        "AVAILABLE",
+        "an expired hold holds nothing"
+    );
+    assert_eq!(state(&in_range.record_id), "LEGAL_HOLD");
+    assert_eq!(state(&cites.record_id), "LEGAL_HOLD");
 }

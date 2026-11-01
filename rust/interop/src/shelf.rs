@@ -140,7 +140,7 @@ pub fn open(
         originals: Arc::new(originals),
         now: Some(Arc::new(move || now.now())),
         authenticated_indexes: None,
-        correlation_key: None,
+        correlation_members: Vec::new(),
     })?;
     let ended: Vec<String> = v
         .pointer(&hp("/cadence/ended"))

@@ -183,13 +183,22 @@ fn retention_of(records: &[&Stored], at: usize, now: Time) -> Result<String, She
         {
             continue;
         }
-        state = later
-            .header
-            .get("statement")
-            .and_then(|s| s.get("retention_state"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| ShelfError::Corrupt(format!("lifecycle record {}", later.record_id)))?
-            .to_string();
+        // As Go decodes it: a missing statement, or one that is not an object
+        // or null, is corrupt; null, or an object without a state, is none.
+        state = match later.header.get("statement") {
+            Some(Value::Null) => String::new(),
+            Some(statement @ Value::Object(_)) => statement
+                .get("retention_state")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            _ => {
+                return Err(ShelfError::Corrupt(format!(
+                    "lifecycle record {}",
+                    later.record_id
+                )))
+            }
+        };
     }
     if state == "DELETED" {
         return Ok(state);
@@ -212,9 +221,11 @@ fn held_by(records: &[&Stored], record: &Stored, now: Time) -> bool {
         let Some(statement) = r.header.get("statement") else {
             return false;
         };
+        // The profile's whole-second form only (Go `ParseProfileTime`).
         let until = statement
             .get("until")
             .and_then(Value::as_str)
+            .filter(|t| evidence_request::envelope::is_profile_time(t))
             .and_then(Time::parse);
         let subject = statement.get("subject").map(subject_from_value);
         let (Some(until), Some(Ok(subject))) = (until, subject) else {

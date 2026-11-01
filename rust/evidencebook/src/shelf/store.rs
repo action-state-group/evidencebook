@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), ve
 CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
 ";
 
+/// A write transaction, begun IMMEDIATE: it takes the file's write lock
+/// first, so a transaction that reads before it writes waits on another
+/// writer (the busy timeout) rather than failing when its read snapshot is
+/// stale (`SQLITE_BUSY_SNAPSHOT` under WAL). Each book's CLL store, the
+/// artifact store and a host's backend write the file on connections of
+/// their own.
+pub(crate) fn write_tx(conn: &mut Connection) -> Result<Transaction<'_>, ShelfError> {
+    Ok(conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?)
+}
+
 /// The shelf file version this implementation writes and the only one it
 /// opens (`shelf_meta.version`).
 pub const SHELF_VERSION: i64 = 1;
@@ -64,7 +74,7 @@ pub(crate) const KIND_HOST: &str = "host";
 /// a host log. A version it does not know is refused before anything is
 /// written.
 pub(crate) fn init(conn: &mut Connection) -> Result<(), ShelfError> {
-    let tx = conn.transaction()?;
+    let tx = write_tx(conn)?;
     let has_table = |name: &str| -> Result<bool, ShelfError> {
         let n: i64 = tx.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -188,7 +198,7 @@ pub(crate) fn put_record(
         }
         return Ok(());
     }
-    let tx = conn.transaction()?;
+    let tx = write_tx(conn)?;
     tx.execute(
         "INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES (?, ?, ?, ?, ?, ?)",
         params![book_id, record.seq as i64, record.record_id, record.header, record.capsule, record.envelope],
@@ -246,7 +256,7 @@ pub(crate) fn put_checkpoint(
     checkpoint_id: &str,
     encoded: &[u8],
 ) -> Result<(), ShelfError> {
-    let tx = conn.transaction()?;
+    let tx = write_tx(conn)?;
     let held: i64 = tx.query_row(
         "SELECT COUNT(*) FROM book_checkpoints WHERE book_id = ? AND checkpoint_id = ?",
         params![book_id, checkpoint_id],

@@ -127,7 +127,7 @@ impl Cadence {
             );
         }
         let mut db = self.shelf.shared().db();
-        let tx = db.transaction()?;
+        let tx = store::write_tx(&mut db)?;
         let (mut last, mut last_entry): (i64, i64) = tx.query_row(
             "SELECT COALESCE(MAX(tick), 0), COALESCE(MAX(entry_seq), 0) FROM cadence_ticks",
             [],

@@ -561,7 +561,7 @@ impl Cadence {
             );
         }
         let mut db = self.shelf.shared().db();
-        let tx = db.transaction()?;
+        let tx = store::write_tx(&mut db)?;
         tx.execute(
             "UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
             params![receipt.to_json(), n as i64],

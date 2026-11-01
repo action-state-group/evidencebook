@@ -182,12 +182,14 @@ pub struct ShelfConfig {
     /// Each book's authenticated indexes; `None` gives every book the
     /// defaults.
     pub authenticated_indexes: Option<IndexChoice>,
-    /// The profile's correlation key: the `correlation` member under which
-    /// a book's [`crate::store::RecordSource::correlation`] holds a record
-    /// that carries it. A record that carries none, or every record when
-    /// this is `None`, is held under its `subject_ref`. The key's name is
-    /// the profile's, never this crate's.
-    pub correlation_key: Option<String>,
+    /// The header `correlation` members the profile writes, in join order,
+    /// each a member the record header schema defines (its `correlation` is
+    /// closed, and a Go shelf refuses to reopen a book whose header carries
+    /// any other). [`ShelfBook::append`] refuses a key not listed. A book's
+    /// [`crate::store::RecordSource::correlation`] holds a record carrying
+    /// the first member under it alone, and any other record under its
+    /// `subject_ref`. The names are the profile's, never this crate's.
+    pub correlation_members: Vec<String>,
 }
 
 /// What every book and host log of a shelf shares.
@@ -200,7 +202,7 @@ pub(crate) struct ShelfShared {
     pub(crate) originals: Arc<dyn ArtifactStore + Send + Sync>,
     now: Option<Clock>,
     authenticated: Option<IndexChoice>,
-    pub(crate) correlation_key: Option<String>,
+    pub(crate) correlation_members: Vec<String>,
     db: Mutex<Connection>,
 }
 
@@ -294,7 +296,7 @@ impl Shelf {
             originals: cfg.originals,
             now: cfg.now,
             authenticated: cfg.authenticated_indexes,
-            correlation_key: cfg.correlation_key,
+            correlation_members: cfg.correlation_members,
             db: Mutex::new(conn),
         });
         Ok(Shelf(Arc::new(ShelfInner {
@@ -438,7 +440,7 @@ impl Shelf {
         let log = Log::open(&shared.path, log_id, &shared.checkpoint_key, &[], provision)?;
         let claimed = (|| -> Result<(), ShelfError> {
             let mut db = shared.db();
-            let tx = db.transaction()?;
+            let tx = store::write_tx(&mut db)?;
             let held = store::log_kind(&tx, log_id)?;
             let known: i64 = tx.query_row(
                 "SELECT COUNT(*) FROM cadence_logs WHERE log_id = ?",
@@ -575,7 +577,7 @@ impl HostLog {
         }
         if self.core.in_cadence {
             let mut db = self.shelf.shared().db();
-            let tx = db.transaction().map_err(ShelfError::from)?;
+            let tx = store::write_tx(&mut db)?;
             store::mark_live(&tx, &self.core.id)?;
             tx.commit().map_err(ShelfError::from)?;
         }

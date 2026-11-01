@@ -483,6 +483,15 @@ impl BookCore {
         header.subject_ref = entry.subject_ref.clone().filter(|s| !s.is_empty());
         header.principal_ref = entry.principal_ref.clone().filter(|s| !s.is_empty());
         header.counterparty_ref = entry.counterparty_ref.clone().filter(|s| !s.is_empty());
+        if let Some(key) = entry
+            .correlation
+            .keys()
+            .find(|k| !self.shared.correlation_members.contains(k))
+        {
+            return Err(ShelfError::Invalid(format!(
+                "correlation member {key:?} is not one the profile writes"
+            )));
+        }
         header.correlation = entry
             .correlation
             .iter()
@@ -706,10 +715,15 @@ impl RecordSource for ShelfBook {
     }
 
     fn correlation(&self, id: &str) -> Vec<u64> {
-        // A record carrying the profile's correlation key is held under it
-        // alone; only one carrying none is held under its subject_ref (Go's
-        // correlation index, keyed by the profile).
-        let key = self.0.shared.correlation_key.as_deref();
+        // A record carrying the profile's first correlation member is held
+        // under it alone; only one carrying none is held under its
+        // subject_ref (Go's correlation index, keyed by the profile).
+        let key = self
+            .0
+            .shared
+            .correlation_members
+            .first()
+            .map(String::as_str);
         self.0
             .lock()
             .records
