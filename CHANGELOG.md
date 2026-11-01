@@ -14,6 +14,14 @@
   could fail that way. It now waits for the lock under the busy timeout. No
   stored byte changes.
 
+### Added: parity vectors for the Python x-deal-v0 profile (#264)
+
+- `dealprofile/testdata/parity-vectors.json`, written by `TestParityVectors`
+  (`EB_WRITE_DEAL_PARITY_VECTORS=1`): Go's answers for identifier normalization,
+  the record-level stages, the `standard_history/1` deal entry and the cards derived
+  from it, for inputs the fixtures do not reach. PROFILE.md §4 names the reference
+  behavior of "lowercase", "casefold" and "IDNA".
+
 ### Added: the shelf contract's Go additions and the shelf vectors (#261)
 
 - `Shelf.HostLog(ctx, logID, inCadence)` opens a host log: a log on the shelf

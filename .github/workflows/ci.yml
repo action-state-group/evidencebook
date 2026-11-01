@@ -519,10 +519,26 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
+      # jsonschema 4.23.0 is the reference checker's, whose wording the
+      # profile's negative fixtures quote (the deal-profile job pins it too).
       - name: Install the package and its pinned dependencies
-        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.14.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.14.0" "cbor2==6.1.5"
+        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.14.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.14.0" "cbor2==6.1.5" "jsonschema==4.23.0"
       - name: Unit tests and testdata/evidence-request
         run: python -m pytest -q evidencebook/python/tests
+      - name: Build the baseline deal chains in Python, check them with the reference checker, and match Go's byte for byte
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          mkdir "$work/go" "$work/py"
+          DEALPROFILE_BUILT_CHAINS="$work/go" go -C evidencebook test ./dealprofile -run TestBaselineSteps -count=1
+          EVIDENCEBOOK_DEAL_BUILT_CHAINS="$work/py" python -m pytest -q evidencebook/python/tests/test_deal.py -k baseline_steps
+          test "$(ls "$work/py" | wc -l)" -ge 10
+          (cd evidencebook/dealprofile/x-deal-v0 && python check_profile.py "$work"/py/*.json) | tee "$work/py.out"
+          tail -n 1 "$work/py.out" | grep -qx "ALL OK"
+          diff <(ls "$work/go") <(ls "$work/py")
+          for f in "$work"/go/*.json; do cmp "$f" "$work/py/$(basename "$f")"; done
       - name: Reproduce the History responder run byte for byte, and its -correlated run
         shell: bash
         run: |

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- x-deal-v0 in Python: `evidencebook.deal`, at byte parity with Go's `dealprofile`
+  (evidencebook#264, design evidencebook#254 §8), so a Python shelf can derive
+  `standard_history/1` from deal books.
+  - Names, `normalize`, `fingerprint`, `deal_key`, `profile_key` and `commit_text`
+    (fingerprints under Go's Unicode rules: `strings.ToLower`, `cases.Fold`, the White_Space
+    trim, x/net's `idna.Lookup` and its public suffix tables, vendored byte for byte), the
+    record-level stages (`check`, `encode`, `digest`, `check_digest`: canonicalization,
+    personal_data, wording, schema) over the profile's vendored schemas, `report_payload`,
+    `report_capsule`, `step_capsule` (plain Capsule members for the producer's sealer, as the
+    Rust crate's), `preimage_matches` (`body_evidence.preimage`) and
+    `standard_history_deal`, the SH §5.2 deal entry that `agent_action_capsule.standard_history`
+    derives a card from.
+  - A record is a `dict`, not Go's typed structs. The chain stage stays the reference
+    checker's (`check_profile.py`). A refusal matches Go's in its stage; its text is
+    `jsonschema`'s at the schema stage. The Unicode tables are Python's (`unicodedata`, and
+    `idna` for UTS 46), not Go 1.27's (Unicode 17), so a character newer than the running
+    Python's tables may normalize differently.
+  - Passes the profile's fixtures, `dealprofile/testdata/baseline-vectors.json` and
+    `dealprofile/testdata/parity-vectors.json` (Go's answers for Unicode, number and member-type
+    edges, the deal entries and the cards derived from them); the chains it builds are Go's
+    byte for byte and pass `check_profile.py` (CI job `python`).
+  - Domains were checked against Go's `idna.Lookup` with a differential fuzz of about 180,000
+    mixed-script, multi-label domains, and every code point alone: the differences left are
+    characters newer than the running Python's tables, and a ZERO WIDTH NON-JOINER between an
+    Arabic letter and a digit, which Go accepts.
+  - The package requires `jsonschema` 4.23 and `idna` 3.20.
+  - `counterparty_class` is absent from the deal entry, as in Go; evidencebook#273 names the
+    record that will carry it.
+
 - The shelf: one subject key's books in one SQLite file, the file Go's shelf writes
   (evidencebook#263, design evidencebook#254).
   - `Shelf.open_sqlite` takes an exclusive `flock` on `<file>.lock` or a lock the host holds,

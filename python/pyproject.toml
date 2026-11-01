@@ -32,6 +32,11 @@ dependencies = [
     # pinned to the minor version that list was taken from.
     "cbor2>=6.1.5,<6.2",
     "cryptography>=42",
+    # The x-deal-v0 profile (evidencebook.deal): jsonschema's wording is the
+    # reference checker's, which the profile's negative fixtures quote, and
+    # idna's UTS 46 tables are what Go's idna.Lookup maps a domain with.
+    "jsonschema>=4.23,<5",
+    "idna>=3.20,<4",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +46,11 @@ test = ["pytest>=8"]
 Homepage = "https://github.com/action-state-group/evidencebook"
 
 [tool.setuptools]
-packages = ["evidencebook"]
+packages = ["evidencebook", "evidencebook.deal"]
+
+# The profile's schemas and the public suffix tables ship with the package.
+[tool.setuptools.package-data]
+"evidencebook.deal" = ["_data/schemas/*.json", "_data/schemas/records/*.json", "_data/publicsuffix/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
