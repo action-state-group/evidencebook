@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added: `capsulectl book report build --contract` and `--contract-digest` (#258)
+
+- `--contract FILE` pins a compiled Evidence Contract v0 to `--contract-digest` (the lowercase hex
+  SHA-256 of its bytes), as `--wording` and `--wording-digest` do for a wording pack: both or neither,
+  and not with `--permalink`. The page is the SDK's page for `View.Contract`; the JSON result names
+  `contract_ref` and `contract_sha256`, and a refusal names `--contract`. capsulectl requires
+  `report` `v0.4.0`, the release that carries `View.Contract`.
+
+### Added: the Goose reference receives a referee's Result (step 09, #310)
+
+- `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
+  capsule-engine's `verify_referee_result`, after binding each party's terms to its signed half,
+  and seals it in the node book as `goose_dispute_received`; both parties' books hold the same
+  `result_digest`. A Result that fails any check is refused and sealed as `goose_dispute_refused`
+  with the refusal's code.
+
 ### Added: a receipt's referee is one both sides chose (x-deal-v0, #277)
 
 - x-deal-v0 section 1: an adjudicator's sealed report names its referee in `referee`, NFC and
@@ -13,14 +29,6 @@
   refused on the others, so a producer (the capsulectl deal plugin) must now name the referee
   `--to` names. `NormalizeReferee`, `ReportReferee` and `SharedReferee` (with `RefereeError`, its
   reasons and, when the names differ, both names) read it; `testdata/parity-vectors.json` gains the referee cases Python passes.
-
-### Added: the Goose reference receives a referee's Result (step 09, #310)
-
-- `python/examples/goose`: `loop_dispute_receive` verifies a referee's sealed Result with
-  capsule-engine's `verify_referee_result`, after binding each party's terms to its signed half,
-  and seals it in the node book as `goose_dispute_received`; both parties' books hold the same
-  `result_digest`. A Result that fails any check is refused and sealed as `goose_dispute_refused`
-  with the refusal's code.
 
 ### Added: `dealprofile.CheckChain`, the x-deal-v0 chain stage (§6) (#308)
 
