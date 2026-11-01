@@ -1246,8 +1246,10 @@ files: `deal terms-result --check RESULT --copy FILE --copy FILE --party-key SIG
   checked alone.
 - **A Result made without the other party's openings** names one half where the files give two,
   and "differs" on its evidence. That is never a finding that a claim is false.
-- **The referee.** The two files must name the same referee, as the next paragraph says; files
-  that name different referees, or a file that names none, are refused.
+- **The referee.** The check still runs when the two files do not name the same referee, as the
+  next paragraph says: it says which case it is, "not a referee you both chose: one side named
+  X, the other named Y", or that a file names no referee (one sealed before this rule). It never
+  says "a referee you both chose" then.
 
 **A referee both sides chose.** Each party chooses the referee when it hands over its own
 adjudicator's copy: the copy's sealed report names it in `referee` (section 1), under that party's
@@ -1258,7 +1260,9 @@ deal, two parties, each under its pinned keys), name the same `referee`, byte fo
 - A copy sealed before this rule names no referee, so it never counts as both sides' choice.
 - `SharedReferee` reads payloads its caller admitted: it checks no signature, and it compares
   the names as sealed, so a referee named in another case or with other characters is another
-  referee.
+  referee. When the names differ, its refusal carries both, so the parties can see the mismatch.
+- The match is on the name each side typed, not on a key: "both chose" means both sides named
+  the same referee, not that the referee is a verified party.
 
 ## 11. The History card's deal entries (`standard_history/1`)
 

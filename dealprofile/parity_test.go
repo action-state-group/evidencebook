@@ -125,6 +125,7 @@ type paritySharedReferee struct {
 	Copies  []parityCopy `json:"copies"`
 	Referee string       `json:"referee,omitempty"`
 	Reason  string       `json:"reason,omitempty"`
+	Named   []string     `json:"named,omitempty"`
 }
 
 // The referee names the parity file seals: white space Go's TrimSpace and
@@ -186,6 +187,9 @@ func parityReferees(t *testing.T, dealID string) ([]parityRefereePayload, []pari
 		{"a JSON array", []parityCopy{{sealed["the platform"], b}, {"[]", s}}},
 		{"JSON null", []parityCopy{{sealed["the platform"], b}, {"null", s}}},
 		{"trailing bytes", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"] + " {}", s}}},
+		{"a trailing brace", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"] + "}", s}}},
+		{"a trailing bracket", []parityCopy{{sealed["the platform"], b}, {sealed["the platform"] + " ]", s}}},
+		{"a 5000-digit number in the report", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"report":{`, `"report":{"x":`+strings.Repeat("1", 5000)+`,"y":1.5e999,`, 1), s}}},
 		{"a NaN in the report", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"report":{`, `"report":{"x":NaN,`, 1), s}}},
 		{"two lone surrogates", []parityCopy{{with(`"referee":"\ud800"`), b}, {with(`"referee":"\udbff"`), s}}},
 		{"not a deal report", []parityCopy{{sealed["the platform"], b}, {strings.Replace(sealed["the platform"], `"deal_report"`, `"deal_terms_result"`, 1), s}}},
@@ -204,7 +208,7 @@ func parityReferees(t *testing.T, dealID string) ([]parityRefereePayload, []pari
 		case err == nil:
 			v.Referee = got
 		case errors.As(err, &re):
-			v.Reason = re.Reason
+			v.Reason, v.Named = re.Reason, re.Named
 		default:
 			t.Fatalf("%s: %v", p.name, err)
 		}

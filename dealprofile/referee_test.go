@@ -82,6 +82,7 @@ func TestSharedReferee(t *testing.T) {
 		"a referee not a string":   {[]ReportCopy{buyer, {Payload: []byte(strings.Replace(string(before), `"profile"`, `"referee":7,"profile"`, 1)), Party: seller.Party}}, RefereeMalformed},
 		"a member in another case": {[]ReportCopy{buyer, {Payload: []byte(strings.Replace(string(before), `"profile"`, `"Referee":"the platform","profile"`, 1)), Party: seller.Party}}, RefereeNotNamed},
 		"not JSON":                 {[]ReportCopy{buyer, {Payload: []byte(`{`), Party: seller.Party}}, RefereeMalformed},
+		"a trailing brace":         {[]ReportCopy{buyer, {Payload: append(append([]byte{}, seller.Payload...), '}'), Party: seller.Party}}, RefereeMalformed},
 		"trailing bytes":           {[]ReportCopy{buyer, {Payload: append(append([]byte{}, seller.Payload...), []byte(` {}`)...), Party: seller.Party}}, RefereeMalformed},
 		"not a deal report":        {[]ReportCopy{buyer, {Payload: []byte(`{"type":"deal_terms_result","profile":"x-deal-v0","deal_id":"` + deal + `","audience":"adjudicator","referee":"the platform"}`), Party: seller.Party}}, RefereeMalformed},
 		"another profile":          {[]ReportCopy{buyer, {Payload: []byte(strings.Replace(string(seller.Payload), "x-deal-v0", "x-deal-v1", 1)), Party: seller.Party}}, RefereeMalformed},
@@ -95,6 +96,12 @@ func TestSharedReferee(t *testing.T) {
 			require.True(t, errors.As(err, &re), "%v", err)
 			assert.Equal(t, c.reason, re.Reason)
 			assert.Empty(t, got)
+			if c.reason == RefereeDifferent {
+				assert.Equal(t, []string{"the platform", "The Platform"}, re.Named, "both names, in order")
+				assert.ErrorContains(t, err, `one side named "the platform", the other "The Platform"`)
+			} else {
+				assert.Nil(t, re.Named)
+			}
 		})
 	}
 }

@@ -136,11 +136,13 @@ REFEREE_DIFFERENT = "different"
 
 class RefereeError(ValueError):
     """Why copies name no referee both sides chose; ``reason`` is one of the
-    ``REFEREE_*`` reasons (Go ``RefereeError``)."""
+    ``REFEREE_*`` reasons, and for ``REFEREE_DIFFERENT`` ``named`` holds each
+    copy's referee in the order given (Go ``RefereeError``)."""
 
-    def __init__(self, reason: str, detail: str):
+    def __init__(self, reason: str, detail: str, named: tuple[str, ...] = ()):
         super().__init__("dealprofile: no referee both sides chose: " + detail)
         self.reason = reason
+        self.named = named
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,14 @@ class ReportCopy:
 _SURROGATE = re.compile("[\ud800-\udfff]")
 
 
+class _Number:
+    """A JSON number's text, never a string member."""
+    __slots__ = ("text",)
+
+    def __init__(self, text: str):
+        self.text = text
+
+
 def _refuse_constant(name: str) -> Any:
     raise ValueError(f"{name} is not JSON")
 
@@ -165,7 +175,10 @@ def _read(payload: bytes) -> tuple[str, str, str | None]:
     encoding/json reads them, a null member is "" and a lone surrogate is
     U+FFFD."""
     try:
-        m = json.loads(payload.decode("utf-8"), parse_constant=_refuse_constant)
+        # Numbers are kept unconverted, as Go keeps the members it does not
+        # read: no digit limit, no float range.
+        m = json.loads(payload.decode("utf-8"), parse_constant=_refuse_constant, parse_int=_Number,
+                       parse_float=_Number)
     except (UnicodeDecodeError, ValueError):
         raise RefereeError(REFEREE_MALFORMED, "a copy's report is not a JSON object") from None
     if not isinstance(m, dict):
@@ -208,5 +221,6 @@ def shared_referee(*copies: ReportCopy) -> str:
     if got[0][0] != got[1][0]:
         raise RefereeError(REFEREE_TWO_DEALS, "the copies are of different deals")
     if got[0][1] != got[1][1]:
-        raise RefereeError(REFEREE_DIFFERENT, "the copies name different referees")
+        raise RefereeError(REFEREE_DIFFERENT, f"one side named {_go_quote(got[0][1])}, the other {_go_quote(got[1][1])}",
+                           (got[0][1], got[1][1]))
     return got[0][1]

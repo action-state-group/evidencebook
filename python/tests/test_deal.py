@@ -547,6 +547,7 @@ def test_parity_shared_referee(x):
         with pytest.raises(deal.RefereeError) as e:
             deal.shared_referee(*copies)
         assert e.value.reason == x["reason"]
+        assert list(e.value.named) == x.get("named", [])
         return
     assert deal.shared_referee(*copies) == x["referee"]
 

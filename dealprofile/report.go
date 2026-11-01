@@ -3,7 +3,6 @@
 package dealprofile
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -115,10 +114,12 @@ func NormalizeReferee(v string) string { return strings.TrimSpace(norm.NFC.Strin
 // same one. One copy names the referee that side chose, never both sides'.
 
 // RefereeError is why two copies name no referee both sides chose. Reason is
-// one of the Referee* reasons.
+// one of the Referee* reasons; for RefereeDifferent, Named holds each copy's
+// referee in the order given, so a reader can show the mismatch.
 type RefereeError struct {
 	Reason string
 	Detail string
+	Named  []string
 }
 
 func (e *RefereeError) Error() string {
@@ -174,14 +175,13 @@ func ReportReferee(payload []byte) (string, error) {
 func readReportReferee(payload []byte) (reportReferee, error) {
 	var r reportReferee
 	var m map[string]json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(payload))
 	// encoding/json would read invalid UTF-8 as U+FFFD; a sealed payload is
-	// JCS, which is valid UTF-8.
+	// JCS, which is valid UTF-8. Unmarshal refuses any bytes after the value.
 	if !utf8.Valid(payload) {
-		return r, &RefereeError{RefereeMalformed, "a copy's report is not UTF-8"}
+		return r, &RefereeError{Reason: RefereeMalformed, Detail: "a copy's report is not UTF-8"}
 	}
-	if err := dec.Decode(&m); err != nil || dec.More() || m == nil {
-		return r, &RefereeError{RefereeMalformed, "a copy's report is not a JSON object"}
+	if err := json.Unmarshal(payload, &m); err != nil || m == nil {
+		return r, &RefereeError{Reason: RefereeMalformed, Detail: "a copy's report is not a JSON object"}
 	}
 	str := func(k string) (*string, bool) {
 		raw, ok := m[k]
@@ -201,7 +201,7 @@ func readReportReferee(payload []byte) (reportReferee, error) {
 	referee, ok5 := str("referee")
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || typ == nil || *typ != ReportType || profile == nil || *profile != Profile ||
 		dealID == nil || *dealID == "" || audience == nil {
-		return r, &RefereeError{RefereeMalformed, "a copy's report is not a deal_report of " + Profile}
+		return r, &RefereeError{Reason: RefereeMalformed, Detail: "a copy's report is not a deal_report of " + Profile}
 	}
 	r.DealID, r.Audience, r.Referee = *dealID, *audience, referee
 	return r, nil
@@ -212,7 +212,7 @@ func readReportReferee(payload []byte) (reportReferee, error) {
 // same referee byte for byte. Anything else is a *RefereeError.
 func SharedReferee(copies ...ReportCopy) (string, error) {
 	if len(copies) != 2 {
-		return "", &RefereeError{RefereeOneCopy, fmt.Sprintf("%d copies: both sides' copies are needed, one each", len(copies))}
+		return "", &RefereeError{Reason: RefereeOneCopy, Detail: fmt.Sprintf("%d copies: both sides' copies are needed, one each", len(copies))}
 	}
 	var got [2]reportReferee
 	for i, c := range copies {
@@ -221,20 +221,20 @@ func SharedReferee(copies ...ReportCopy) (string, error) {
 			return "", err
 		}
 		if r.Audience != AudienceAdjudicator {
-			return "", &RefereeError{RefereeNotAdjudicator, fmt.Sprintf("a copy is cut for %q, not an adjudicator", r.Audience)}
+			return "", &RefereeError{Reason: RefereeNotAdjudicator, Detail: fmt.Sprintf("a copy is cut for %q, not an adjudicator", r.Audience)}
 		}
 		if r.Referee == nil || *r.Referee == "" {
-			return "", &RefereeError{RefereeNotNamed, "a copy names no referee"}
+			return "", &RefereeError{Reason: RefereeNotNamed, Detail: "a copy names no referee"}
 		}
 		got[i] = r
 	}
 	switch {
 	case copies[0].Party == "" || copies[1].Party == "" || copies[0].Party == copies[1].Party:
-		return "", &RefereeError{RefereeOneParty, "both copies are one party's"}
+		return "", &RefereeError{Reason: RefereeOneParty, Detail: "both copies are one party's"}
 	case got[0].DealID != got[1].DealID:
-		return "", &RefereeError{RefereeTwoDeals, "the copies are of different deals"}
+		return "", &RefereeError{Reason: RefereeTwoDeals, Detail: "the copies are of different deals"}
 	case *got[0].Referee != *got[1].Referee:
-		return "", &RefereeError{RefereeDifferent, "the copies name different referees"}
+		return "", &RefereeError{Reason: RefereeDifferent, Detail: fmt.Sprintf("one side named %q, the other %q", *got[0].Referee, *got[1].Referee), Named: []string{*got[0].Referee, *got[1].Referee}}
 	}
 	return *got[0].Referee, nil
 }

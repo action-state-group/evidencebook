@@ -7,11 +7,12 @@
 - x-deal-v0 section 1: an adjudicator's sealed report names its referee in `referee`, NFC and
   trimmed, and only that copy names one. Section 10, "A referee both sides chose": a referee is
   both sides' choice only when both parties' adjudicator's copies of one deal name it byte for
-  byte, and the adjudicator's check refuses files that name different referees or none.
+  byte; the adjudicator's check still runs otherwise and says which case it is (each side's
+  name, or a copy naming none).
 - `dealprofile.ReportPayload` takes `Report.Referee`: required on an adjudicator's report and
   refused on the others, so a producer (the capsulectl deal plugin) must now name the referee
-  `--to` names. `NormalizeReferee`, `ReportReferee` and `SharedReferee` (with `RefereeError` and
-  its reasons) read it; `testdata/parity-vectors.json` gains the referee cases Python passes.
+  `--to` names. `NormalizeReferee`, `ReportReferee` and `SharedReferee` (with `RefereeError`, its
+  reasons and, when the names differ, both names) read it; `testdata/parity-vectors.json` gains the referee cases Python passes.
 
 ### Added: the Goose reference receives a referee's Result (step 09, #310)
 
