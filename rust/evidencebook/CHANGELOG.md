@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Breaking: `deal::Error` has an `Unpriced` variant (evidencebook#284)
+
+- `deal::Error` gains `Unpriced(String)`, a deal with no recorded amount
+  (`standard_history_deal`). The enum is public and not `#[non_exhaustive]`, so
+  an exhaustive `match` on it no longer compiles: add an arm or a `_` arm.
+
+### `deal` reads Go's parity vectors (evidencebook#284)
+
+- New: `deal::standard_history_deal` (with `HistoryInput`, `HistoryRecord`,
+  `HistoryResult`) and `deal::minor_units`, the `standard_history/1` deal entry
+  and ISO 4217 minor units, at byte parity with Go's `dealprofile` and the
+  Python package.
+- Fixed: a domain with an `xn--` label whose part before the last hyphen holds
+  non-ASCII characters (`xn--zcaé-.com`) is read as Go reads it, not refused.
+- A name with Cherokee letters folds as CaseFolding.txt does here; Go's fold differs (evidencebook#283).
+
 ## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
