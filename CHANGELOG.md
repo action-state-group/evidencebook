@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-
 ### Changed: capsulectl-book and `report` build against capsule-cli v0.1.0-rc29 and capsule-viewer 0.9.0
 
 - `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc29`, evidencebook `v0.12.1`
