@@ -373,6 +373,8 @@ pub struct EvidenceBody {
     pub carrier_headers_commitment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub received_to: Option<EvidenceBodyReceivedTo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
 }
 
 /// DetailChangeBody is `body_detail_change` in the schema.

@@ -232,6 +232,7 @@ type EvidenceBody struct {
 	WrappedHeld              string                    `json:"wrapped_held,omitzero"`
 	CarrierHeadersCommitment string                    `json:"carrier_headers_commitment,omitzero"`
 	ReceivedTo               *EvidenceBodyReceivedTo   `json:"received_to,omitzero"`
+	Preimage                 string                    `json:"preimage,omitzero"`
 }
 
 // DetailChangeBody is body_detail_change in the schema.
