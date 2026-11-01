@@ -725,6 +725,10 @@ def test_the_first_deal_step_cites_the_admission_and_the_node_book_records_the_o
     record = buyer.shelf.open(gn.NODE_BOOK).get(opened)
     assert record.header.links_to("cites") == [admission] and record.seq > buyer.shelf.open(gn.NODE_BOOK).get(admission).seq
     assert record.header.statement["first_step"] == first.record_id
+    # Ordered by time as well as by seq: the admission, then the deal's first step, then the opening record.
+    node_book = buyer.shelf.open(gn.NODE_BOOK)
+    times = [node_book.get(admission).header.committed_at, first.header.committed_at, record.header.committed_at]
+    assert times == sorted(times) and times[0] <= times[1] <= times[2]
     # The half still verifies as a counterparty checks it.
     gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
 
