@@ -32,6 +32,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -59,7 +60,8 @@ from evidencebook.shelf import Shelf
 
 import deal_records as dr
 
-__all__ = ["Node", "verify_half", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
+__all__ = ["Node", "verify_half", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
+           "DISPUTE_ABSENT", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
 
 NODE_BOOK = "goose/node"
 LEDGER_LOG = "goose/ledger"
@@ -76,6 +78,11 @@ JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", 
 #: A referee's Result delivered into this book, and one refused on delivery
 #: (step 09, evidencebook#310).
 DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_refused"
+#: A judged half held in the node book (the received record cites it), the request for the
+#: Result sent over the mailbox, and the absence recorded when no Result came by its deadline.
+DISPUTE_HALF, DISPUTE_ASKED, DISPUTE_ABSENT = "goose_dispute_half", "goose_dispute_asked", "goose_dispute_absent"
+#: The media type of the mailbox events that carry a Result request and its delivery.
+MAILBOX_MEDIA = "application/json"
 #: A model call the node sealed (``Node.seal_model_call``).
 MODEL_CALL = "goose_model_call"
 
@@ -202,6 +209,25 @@ def _referee() -> Any:
         raise Refused("receiving a referee's Result needs a capsule-engine that has capsule_engine.referee "
                       "installed beside this node") from None
     return referee
+
+
+def _referee_route(terms: dict) -> dict:
+    """Where the deal terms say the referee is reached: ``referee.mailbox_key`` (64 lowercase
+    hex), ``referee.relays`` (websocket URLs) and ``referee.answers_within`` (seconds). Both
+    parties' terms must name the same route."""
+    routes = {role: (t.get("referee") if isinstance(t, dict) else None) for role, t in terms.items()}
+    route = routes["buyer"]
+    if not isinstance(route, dict) or jcs(route) != jcs(routes["seller"]):
+        raise Refused("both parties' terms must name one referee route")
+    key, relays, within = route.get("mailbox_key"), route.get("relays"), route.get("answers_within")
+    if not (isinstance(key, str) and len(key) == 64 and key == key.lower() and all(c in "0123456789abcdef" for c in key)):
+        raise Refused("the terms' referee names no mailbox_key (64 lowercase hex)")
+    if not (isinstance(relays, list) and relays and all(isinstance(u, str) and u.startswith(("ws://", "wss://"))
+                                                      for u in relays)):
+        raise Refused("the terms' referee names no relays")
+    if not (isinstance(within, int) and not isinstance(within, bool) and within > 0):
+        raise Refused("the terms' referee names no positive answers_within (seconds)")
+    return {"mailbox_key": key, "relays": relays, "answers_within": within}
 
 
 class Refused(ValueError):
@@ -349,11 +375,13 @@ class Node:
 
     # -- the node book ---------------------------------------------------------------
 
-    def note(self, record_type: str, statement: dict, subject_ref: str = "") -> SealedStep:
+    def note(self, record_type: str, statement: dict, subject_ref: str = "", links: tuple[Link, ...] = (),
+             payloads: tuple[bytes, ...] = ()) -> SealedStep:
         """Seal one record of the node book."""
         with self._lock:
             record = self.shelf.open(NODE_BOOK).append(
-                Entry(record_type, PRODUCER_CLAIM, subject_ref=subject_ref, statement=statement))
+                Entry(record_type, PRODUCER_CLAIM, subject_ref=subject_ref, statement=statement, links=links,
+                      payloads=payloads))
             return SealedStep(record.record_id, record.seq, record_type)
 
     def notes(self, record_type: str) -> list[tuple[Any, dict]]:
@@ -561,28 +589,38 @@ class Node:
                 raise Refused(str(exc)) from exc
             if self._noted(DISPUTE_RECEIVED, digest):
                 raise Refused("this Result is already received in this book")
-            halves = (parties["buyer"]["half"]["capsule_id"], parties["seller"]["half"]["capsule_id"])
+            held = [self._hold_half(role, parties[role]["half"]) for role in ("buyer", "seller")]
             return self.note(DISPUTE_RECEIVED, {
                 "result_digest": digest, "result_capsule_id": capsule["capsule_id"], "referee": capsule["key_id"],
-                "buyer_half": halves[0], "seller_half": halves[1],
-            }, subject_ref=digest)
+                "buyer_half": held[0][0], "seller_half": held[1][0],
+            }, subject_ref=digest, links=tuple(Link(CITES, record_id) for _, record_id in held))
+
+    def _hold_half(self, role: str, half: dict) -> tuple[str, str]:
+        """Seal a judged half into this book once (its Capsule is the payload) and return
+        its capsule id and record id, so the received Result can cite it."""
+        capsule_id = half["capsule_id"]
+        for record, statement in self.notes(DISPUTE_HALF):
+            if statement.get("capsule_id") == capsule_id:
+                return capsule_id, record.record_id
+        sealed = self.note(DISPUTE_HALF, {"role": role, "capsule_id": capsule_id, "key_id": half.get("key_id")},
+                           subject_ref=capsule_id, payloads=(jcs(half),))
+        return capsule_id, sealed.record_id
 
     def _noted(self, record_type: str, digest: str, **members: Any) -> bool:
         return any(st.get("result_digest") == digest and all(st.get(k) == v for k, v in members.items())
                    for _, st in self.notes(record_type))
 
-    def _check_dispute_result(self, referee: Any, capsule: Any, octets: bytes, parties: Any) -> None:
+    def _open_parties(self, referee: Any, parties: Any) -> tuple[dict, dict, dict]:
+        """The halves, terms and actions of ``parties``, each opening bound to its signed
+        half and the pair checked to be this node's deal; ``RefereeError`` otherwise."""
         err = referee.RefereeError
         try:
             roles = {role: parties[role] for role in ("buyer", "seller")}
-            doc = json.loads(octets)
             halves = {r: p["half"] for r, p in roles.items()}
             terms = {r: p["terms"] for r, p in roles.items()}
             actions = {r: p["action"] for r, p in roles.items()}
         except (KeyError, TypeError, ValueError):
             raise err("not_a_result", "the delivery is not a Result document with both parties' openings") from None
-        if jcs(doc) != octets:
-            raise err("result_mismatch", "the Result octets are not the referee's JCS bytes")
         for role in roles:
             # verify_referee_result takes the openings as given: bind each to
             # its signed half here, or a forged terms file could name its own referee.
@@ -596,8 +634,105 @@ class Node:
             raise err("not_a_party", "this node's key sealed neither half the Result judges")
         if halves["buyer"].get("key_id") == halves["seller"].get("key_id"):
             raise err("halves_unpaired", "both halves are signed by one key")
+        return halves, terms, actions
+
+    def _check_dispute_result(self, referee: Any, capsule: Any, octets: bytes, parties: Any) -> None:
+        err = referee.RefereeError
+        halves, terms, _ = self._open_parties(referee, parties)
+        try:
+            doc = json.loads(octets)
+        except ValueError:
+            raise err("not_a_result", "the delivery is not a Result document") from None
+        if jcs(doc) != octets:
+            raise err("result_mismatch", "the Result octets are not the referee's JCS bytes")
         referee.verify_referee_result(capsule, doc, buyer_half=halves["buyer"], seller_half=halves["seller"],
                                       buyer_terms=terms["buyer"], seller_terms=terms["seller"])
+
+    # -- 09 Dispute, over the mailbox ---------------------------------------------------
+
+    def ask_dispute_result(self, parties: Any, poll_interval: int, relay_factory: Any = None,
+                           now: Any = None) -> dict:
+        """Ask the referee the deal terms name for the Result, over the Nostr mailbox
+        (``nostr_mailbox``, binding nostr-mailbox-v0): publish a request event addressed to the
+        terms' ``referee.mailbox_key`` on its ``relays``, and seal the request in the node
+        book. The terms' ``referee.answers_within`` (seconds) sets the deadline, and must
+        be at least ``poll_interval``, the interval at which this node polls: a referee
+        cannot be expected to answer faster than its asker looks. Poll with
+        :meth:`poll_dispute_result`."""
+        import nostr_mailbox as mb  # this example's transport, imported on first use
+        referee = _referee()
+        try:
+            halves, terms, _ = self._open_parties(referee, parties)
+        except referee.RefereeError as exc:
+            raise Refused(str(exc)) from exc
+        route = _referee_route(terms)
+        if (not isinstance(poll_interval, int) or isinstance(poll_interval, bool) or poll_interval <= 0
+                or poll_interval > route["answers_within"]):
+            raise Refused(f"the poll interval ({poll_interval}s) must be a positive whole number of seconds and at most the terms' "
+                          f"answers_within ({route['answers_within']}s)")
+        clock = now or time.time
+        started = int(clock())
+        deadline = started + route["answers_within"]
+        octets = jcs({"ask": "referee_result", "buyer_half": halves["buyer"]["capsule_id"],
+                      "seller_half": halves["seller"]["capsule_id"], "nonce": os.urandom(16).hex(),
+                      "deadline": deadline})
+        event = mb.sign_event(mb.new_secret(), mb.REQUEST_KIND,
+                              [("p", route["mailbox_key"]), ("m", MAILBOX_MEDIA), ("expiration", str(deadline))],
+                              mb.encode(octets), started)
+        factory = relay_factory or mb.Relay
+        try:
+            published = mb.publish_all([factory(u) for u in route["relays"]], event)
+        except mb.MailboxError as exc:
+            raise Refused(str(exc)) from exc
+        sealed = self.note(DISPUTE_ASKED, {
+            "request_event_id": event.id, "request_digest": hashlib.sha256(octets).hexdigest(),
+            "mailbox_key": route["mailbox_key"], "relays": published, "deadline": deadline,
+            "poll_interval": poll_interval, "buyer_half": halves["buyer"]["capsule_id"],
+            "seller_half": halves["seller"]["capsule_id"]}, subject_ref=event.id)
+        return {"request_event_id": event.id, "deadline": deadline, "record_id": sealed.record_id}
+
+    def poll_dispute_result(self, request_event_id: str, parties: Any, relay_factory: Any = None,
+                            now: Any = None) -> dict:
+        """One poll for the Result asked for with :meth:`ask_dispute_result`. Returns
+        ``{"status": "received", "record_id"}`` once a reply that passes the mailbox checks
+        holds a Result the node accepts (sealed as received, cited halves and all);
+        ``{"status": "pending"}`` before the request's deadline; ``{"status": "absent"}``
+        once the deadline has passed with no reply, after sealing the absence once. A
+        reply that arrives and fails verification is refused, and the refusal sealed
+        (:meth:`receive_dispute_result`). A reply that arrives after the absence was
+        sealed is still taken, and the absence record stays as written (binding §5.3)."""
+        import nostr_mailbox as mb
+        asked = next((st for _, st in self.notes(DISPUTE_ASKED) if st["request_event_id"] == request_event_id), None)
+        if asked is None:
+            raise Refused("this node's book holds no such request")
+        factory = relay_factory or mb.Relay
+        relays = [factory(u) for u in asked["relays"]]
+        last: Refused | None = None
+        for reply in mb.poll_replies(relays, request_event_id, MAILBOX_MEDIA, asked["mailbox_key"]):
+            raw = mb.decode(reply.content) or b""
+            try:
+                delivered = json.loads(raw)
+                capsule, octets = delivered["capsule"], jcs(delivered["result"])
+            except (ValueError, TypeError, KeyError):
+                capsule, octets = None, raw
+            try:
+                sealed = self.receive_dispute_result(capsule, octets, parties)
+            except Refused as exc:
+                last = exc
+                continue
+            return {"status": "received", "record_id": sealed.record_id}
+        if last is not None:
+            raise last
+        deadline = asked["deadline"]
+        if int((now or time.time)()) < deadline:
+            return {"status": "pending", "deadline": deadline}
+        with self._lock:
+            if not any(st.get("request_event_id") == request_event_id for _, st in self.notes(DISPUTE_ABSENT)):
+                self.note(DISPUTE_ABSENT, {"request_event_id": request_event_id, "window_closed": deadline,
+                                           "request_digest": asked["request_digest"],
+                                           "route": mb.nprofile(asked["mailbox_key"], asked["relays"])},
+                          subject_ref=request_event_id)
+        return {"status": "absent", "deadline": deadline}
 
     # -- the imported ledger ---------------------------------------------------------
 

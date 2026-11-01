@@ -77,6 +77,7 @@ here moves money: a payment reference is a value you observed.
 | 06 | `loop_settle` (the payment reference you saw on the rail) | |
 | 06 | `loop_deal_close` (`received` or `not_received`) | `loop_deal_close` |
 | 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
+| 09 | `loop_dispute_ask`, then `loop_dispute_poll` until `received` (the referee's Result, over the mailbox) | the same |
 | 02 | `loop_tick` | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
 
@@ -90,16 +91,30 @@ The other tools are `loop_import` (your existing ledger), `loop_book` (a book's 
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`
 (an evidence request you send, and its verified answer).
 
-`loop_dispute_receive` is step 09, the receiving half: a referee named in the deal terms seals a
-Result (capsule-engine's `referee`), and each judged party seals it into its own book as received.
-It takes the Result document as the referee wrote it, the referee's sealed `referee.result` capsule, and
-each party's signed half with the opening of its commitment. It refuses, and seals the refusal with its
-code, a Result that does not verify, that is not signed by the referee both halves' terms name, that
-names other halves, or about a deal this node's key sealed no half of. Both parties' books then hold
-the same `result_digest`, the SHA-256 of the Result's bytes. Fetching the Result is yours: poll the
-mailbox the terms name, or take the file the referee hands over. The tool needs `capsule-engine` installed
-beside the node: a release that has `capsule_engine.referee` (0.3.0 does not), or until one ships the commit CI uses,
-`pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`.
+Step 09 is the dispute: the referee the deal terms name seals a Result (capsule-engine's `referee`), and
+that Result reaches each judged party's own book over the AAC Nostr mailbox
+(`nostr-mailbox-v0`, experimental). Goose has no inbound listener, so the party polls. The terms
+name the referee's `mailbox_key`, its `relays` and `answers_within` (seconds). `loop_dispute_ask`
+publishes a request to that mailbox, with a deadline of `answers_within`; its `poll_interval`
+may not be longer than `answers_within`. `loop_dispute_poll` fetches the replies once. It returns
+`received`, `pending` or, once the deadline has passed with no reply, `absent`, which it seals
+once as `goose_dispute_absent` (a reply that arrives later is still taken). Both tools take the
+deal file `{"buyer": {"half", "action", "terms"}, "seller": {...}}`: each party's signed half and the
+opening of its commitment.
+
+A Result is accepted only if capsule-engine's check passes, after the node binds each opening to
+its signed half. It refuses, and seals the refusal with its code as `goose_dispute_refused`, a Result
+that does not verify, that is not signed by the referee both halves' terms name, that names other
+halves, or about a deal this node's key sealed no half of. An accepted Result is sealed as
+`goose_dispute_received` and **cites** the two judged halves, which the book holds as
+`goose_dispute_half` records. The record holds the SHA-256 of the Result's bytes (`result_digest`),
+not the bytes, and both parties' books hold the same digest. The referee's side of the exchange
+(`nostr_mailbox.serve_round`) is the part of the referee node that answers a request with the Result.
+The tools need `capsule-engine` installed beside the node: a release that has `capsule_engine.referee`
+(0.3.0 does not), or until one ships the commit CI uses,
+`pip install "capsule-engine @ git+https://github.com/action-state-group/capsule-engine@f88a6e63ddca79fb0d3070be93fda59a4242cdba#subdirectory=python"`,
+and `pip install "websockets==17.4"` for the mailbox. The events are not encrypted (binding §8): a relay and
+anyone who reads it sees the request and the Result.
 
 `scripted_run.py` runs that table, except step 09 (which needs a referee node; `tests/test_dispute.py` runs it), with two nodes, each a `loop_server.py` process spoken to
 over MCP stdio, as Goose speaks to it:
