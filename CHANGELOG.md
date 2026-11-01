@@ -153,6 +153,17 @@
   into it is `ErrInvalid`, a checkpoint included (the Rust and Python mirrors read and write the marker but do not
   guard against mixing). The published `record-header.schema.json` accepts the member. Absent by default. Design: `docs/design/232-reproduced-scratch-book.md`.
 
+### Added: capsulectl-book reproduces a scratch book from `SOURCE_DATE_EPOCH` (#232)
+
+- With `SOURCE_DATE_EPOCH` (seconds since the Unix epoch) set, every book verb (`publish`,
+  `book result build`, `book close`, `cll checkpoint create`, ...) stamps that one time on each
+  record, Result and checkpoint, and the records carry the header's `reproduction` marker, so two
+  runs of one judge over one manifest give byte-identical bundles. Unset, nothing changes. A
+  reproduced book cannot be extended without the variable, a live book refuses it, a time earlier
+  than the book's last record is refused, and an unreadable value is an input error, never the
+  wall clock. Countersigning a marked bundle is the signer's to refuse (capsule-cli). Design:
+  `docs/design/232-reproduced-scratch-book.md`.
+
 ## v0.12.2 (2026-11-01)
 
 Go module only. The `report` and `capsulectl` entries above ship with their own tags.

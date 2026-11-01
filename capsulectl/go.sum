@@ -6,8 +6,8 @@ github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOEl
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/action-state-group/agent-action-capsule/go v0.18.0 h1:StNiP7yMpQ/lCJzz/tJ4VC4cTvXHOVg6daycJjMJRas=
-github.com/action-state-group/agent-action-capsule/go v0.18.0/go.mod h1:vlUl3rsHyR9DJaSqRSClVgmeuo2ORj7kCa54V25ZxuU=
+github.com/action-state-group/agent-action-capsule/go v0.19.0 h1:WXraJ8JM8BX8TF5glz4pJHTWnwE91N8Wy9NHVpr9kfQ=
+github.com/action-state-group/agent-action-capsule/go v0.19.0/go.mod h1:vlUl3rsHyR9DJaSqRSClVgmeuo2ORj7kCa54V25ZxuU=
 github.com/action-state-group/capsule-cli v0.1.0-rc30 h1:ps4SZcCYyJFGzKRcSHotSu3biwB61DOgPlYlPZ/Augo=
 github.com/action-state-group/capsule-cli v0.1.0-rc30/go.mod h1:pB0C8Hw9jcBw1u7h9MaSDQa6hpVXbItu45qW23GuSTc=
 github.com/action-state-group/capsule-emit/go v0.3.0 h1:DEFDSHktFQoUxWScjeIbMKfET/4Kjgm/ZQsWJp4AI+Y=
@@ -16,8 +16,8 @@ github.com/action-state-group/capsule-viewer/go v0.10.0 h1:G/uI+I8tCW8GT4k4BEHdH
 github.com/action-state-group/capsule-viewer/go v0.10.0/go.mod h1:ZbHGy5rg7ofNMPBU9qB8S6glMz8eLdMQU7ey0Uvu+iI=
 github.com/action-state-group/checkpointed-local-log/go v0.3.0 h1:vT7HEljD2jOm9CQqZPStSFe0+n9lS6EdtBC24wTdwkM=
 github.com/action-state-group/checkpointed-local-log/go v0.3.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
-github.com/action-state-group/evidencebook v0.12.1 h1:KR/q6+4AWA85Npxugl1gGpgWhyKUJQWm2WIxUr8tvy4=
-github.com/action-state-group/evidencebook v0.12.1/go.mod h1:UYdDd52SuDUZSMYC42K79a0k+l6Ed95jk/w1Sw8bubQ=
+github.com/action-state-group/evidencebook v0.12.3-0.20261101211724-1750db62130e h1:vBZ4IN+zJlOgy6BL3o68JwBk1pxf6EZt0CIr//xILjQ=
+github.com/action-state-group/evidencebook v0.12.3-0.20261101211724-1750db62130e/go.mod h1:aetmyRTXRZygDODS5rDhlijpwW/8NgonUNBzR831Sd8=
 github.com/action-state-group/evidencebook/report v0.4.0 h1:RaE97CVA2HvX4iXdMX32CFI5HyhUb8UEqFqXehiOKeo=
 github.com/action-state-group/evidencebook/report v0.4.0/go.mod h1:z/3GTqYSFky1CyKODYUt5p/Ho1XuYsHXVlZ9b8UXbLo=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=

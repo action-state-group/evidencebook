@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,28 @@ import (
 // bookNow is the clock the book verbs use for record commit times and for
 // deciding which period has ended. Tests replace it.
 var bookNow = time.Now
+
+// SourceDateEpochEnv is the reproducible-builds convention for a fixed build
+// time (seconds since the Unix epoch). Set, it makes every book this process
+// opens a reproduced scratch book (evidencebook#232): all record, Result and
+// checkpoint times are that one time, and every record carries the header's
+// reproduction marker. Unset, nothing changes.
+const SourceDateEpochEnv = "SOURCE_DATE_EPOCH"
+
+// reproductionAt is the caller-given time of a reproduced scratch book, when
+// SOURCE_DATE_EPOCH is set. An unreadable value is an input error, never the
+// wall clock: a run asked to reproduce must not silently go live.
+func reproductionAt() (time.Time, bool, error) {
+	raw, ok := os.LookupEnv(SourceDateEpochEnv)
+	if !ok {
+		return time.Time{}, false, nil
+	}
+	seconds, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || seconds < 0 {
+		return time.Time{}, false, cli.InputError(fmt.Sprintf("%s=%q is not a non-negative number of seconds since the Unix epoch", SourceDateEpochEnv, raw))
+	}
+	return time.Unix(seconds, 0).UTC(), true, nil
+}
 
 // openedBook is a book plus the record store it was opened over. The store
 // is kept only so `close --capsule-out` and `result build --capsule-out` can
@@ -47,6 +70,9 @@ type openedBook struct {
 // So closing (and reconciling) waits until this clock is past the book's
 // last record.
 func (o openedBook) refuseDisplacedClose() error {
+	if _, reproduced, _ := reproductionAt(); reproduced {
+		return nil // caller-timed: refuseIfAhead already holds the times in order
+	}
 	if now := bookNow().UTC(); o.lastCommit.After(now) {
 		return cli.Hint(cli.ErrInput, fmt.Sprintf("the book's last record is committed at %s, after this clock (%s): no period can be closed or reconciled until this clock passes %s; wait until then", o.lastCommit.Format(time.RFC3339), now.Format(time.RFC3339), o.lastCommit.Format(time.RFC3339)))
 	}
@@ -140,16 +166,29 @@ func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifact
 		return openedBook{}, errors.Join(err, store.Release(), substrate.Release())
 	}
 	clock := &monotonicClock{}
+	at, reproduced, err := reproductionAt()
+	if err != nil {
+		return openedBook{}, errors.Join(err, store.Release(), substrate.Release())
+	}
+	if reproduced {
+		clock.fixed = &at
+	}
 	book, err := evidencebook.Open(ctx, evidencebook.Config{
 		BookID: p.LogID, Operator: p.Operator,
 		Store: store, Substrate: substrate, Originals: artifacts, Signer: signer,
-		Now: clock.now,
+		Now: clock.now, Reproduction: reproduced,
 	})
 	if err != nil {
 		return openedBook{}, errors.Join(bookError(err), store.Release(), substrate.Release())
 	}
 	if err = clock.floorAtLastRecord(ctx, book); err != nil {
 		return openedBook{}, errors.Join(err, book.Release())
+	}
+	if size := book.Size(); size > 0 && !reproduced {
+		last, qerr := book.Query(ctx, evidencebook.Filter{FromSeq: size, ToSeq: size})
+		if qerr == nil && len(last) > 0 && last[0].Header.Reproduction != nil {
+			return openedBook{}, errors.Join(cli.Hint(cli.ErrInput, fmt.Sprintf("this book is a reproduced scratch book (its times were given by the caller): it can be read and compared, never extended as a live book or countersigned; a reproduction run keeps adding to it only with %s set to a time not before its last record", SourceDateEpochEnv)), book.Release())
+		}
 	}
 	if err = clock.refuseIfAhead(p); err != nil {
 		return openedBook{}, errors.Join(err, book.Release())
@@ -281,9 +320,15 @@ func syncFile(path string) error {
 // Close included, opens the book this way.
 type monotonicClock struct {
 	floor time.Time
+	// fixed is a reproduced scratch book's caller-given time. It is every
+	// stamp's time, and never an earlier one than the book's last record.
+	fixed *time.Time
 }
 
 func (c *monotonicClock) now() time.Time {
+	if c.fixed != nil {
+		return *c.fixed
+	}
 	t := bookNow().UTC()
 	if t.Before(c.floor) {
 		t = c.floor
@@ -293,6 +338,15 @@ func (c *monotonicClock) now() time.Time {
 }
 
 func (c *monotonicClock) refuseIfAhead(p cli.Profile) error {
+	if c.fixed != nil {
+		// Caller times are monotonic with seq: one earlier than the last
+		// record's is refused, not pinned up to it. The wall clock plays no
+		// part, so there is no tolerance to measure.
+		if c.fixed.Before(c.floor) {
+			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s is %s, earlier than the book's last record (%s): a reproduced book's times only move forward", SourceDateEpochEnv, c.fixed.Format(time.RFC3339), c.floor.Format(time.RFC3339)))
+		}
+		return nil
+	}
 	tolerance, err := p.ClockToleranceDuration()
 	if err != nil {
 		return err
@@ -666,7 +720,7 @@ func periodAndPeer(c *cobra.Command) (periodArgs, error) {
 	kind, _ := c.Flags().GetString("period")
 	date, _ := c.Flags().GetString("date")
 	var err error
-	if a.period, err = parsePeriod(kind, date, bookNow()); err != nil {
+	if a.period, err = parsePeriod(kind, date, clockNow()); err != nil {
 		return a, err
 	}
 	path, _ := c.Flags().GetString("peer")
@@ -1313,4 +1367,14 @@ func parseBookRequest(label string, raw []byte) (evidencebook.EvidenceRequest, e
 		}
 	}
 	return req, nil
+}
+
+// clockNow is the time the book verbs decide which period has ended by: the
+// reproduced book's caller-given time when SOURCE_DATE_EPOCH is set (an
+// unreadable value is refused when the book opens), else the wall clock.
+func clockNow() time.Time {
+	if at, reproduced, _ := reproductionAt(); reproduced {
+		return at
+	}
+	return bookNow()
 }
