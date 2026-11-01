@@ -200,8 +200,9 @@ The same reference in other languages:
 - **The Mesh node's History, `inference-service-history/0`.** A
   capsules-plugin node derives it over its one stream at a period boundary,
   with that stream's `history_card/1` embedded unchanged. No library outside
-  the plugin derives or checks it yet, so the example stops at the
-  `history_card/1` the History embeds.
+  the plugin derives or checks it yet
+  ([#322](https://github.com/action-state-group/evidencebook/issues/322)),
+  so the example stops at the `history_card/1` the History embeds.
 
 ## Other languages
 

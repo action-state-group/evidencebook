@@ -32,6 +32,7 @@ import (
 // party is one key's shelf: every log the key answers for, in one file
 // (docs/design/254-shelf.md §2.1).
 type party struct {
+	operator  string
 	shelf     *evidencebook.Shelf
 	db        *sql.DB
 	originals *artifactsqlite.Store
@@ -51,7 +52,7 @@ func openParty(ctx context.Context, dir, operator string, seed byte) *party {
 		}
 		return ed25519.NewKeyFromSeed(s)
 	}
-	p := &party{key: key(seed), now: time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)}
+	p := &party{operator: operator, key: key(seed), now: time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)}
 	checkpointKey := key(seed + 100)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		log.Fatal(err)
@@ -164,7 +165,7 @@ func (p *party) sealDeal(ctx context.Context, book *evidencebook.Book, dealID, p
 			log.Fatal(err)
 		}
 		digests = append(digests, digest)
-		in := dealprofile.StepInput{DealID: dealID, Seq: int64(i + 1), Operator: "staple-example", Developer: "staple-example",
+		in := dealprofile.StepInput{DealID: dealID, Seq: int64(i + 1), Operator: p.operator, Developer: "staple-example",
 			At: p.now, Decide: s.decide, Local: s.recordType}
 		if i > 0 {
 			in.Parent = &emit.Chain{ParentCapsuleID: sealed[i-1].RecordID, Relation: dealprofile.RelationFollows}
@@ -320,17 +321,20 @@ func Example_staple() {
 	// The Goose buyer: one book per deal, a node book, and the cadence that
 	// commits every book's checkpoint at each tick.
 	dealBook := goose.book(ctx, "deal/"+dealID)
-	// A commitment's nonce is drawn fresh for each text; a fixed one keeps
-	// this output stable.
-	commit, err := dealprofile.CommitText(digestOf("nonce"), "buy one inference call")
-	if err != nil {
-		log.Fatal(err)
+	// Each text is committed under its own nonce, drawn fresh by the party
+	// that wrote it; fixed nonces keep this output stable.
+	commit := func(nonce, text string) string {
+		c, err := dealprofile.CommitText(digestOf(nonce), text)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return c
 	}
 	seller := counterparty("the Goose agent's deal store secret", mesh.keys.Signer)
 	gooseHalf := goose.sealDeal(ctx, dealBook, dealID, mesh.keys.Signer, []dealStep{
 		{recordType: dealprofile.TypeBaseline, block: map[string]any{"channel": "app_chat", "counterparty": seller},
 			body: map[string]any{"deal_type": "purchase", "terms": terms, "recourse": recourse,
-				"intent": map[string]any{"verbatim_commitment": commit, "asked": map[string]any{"item": "inference"}, "allowed": []any{"pay"}}}},
+				"intent": map[string]any{"verbatim_commitment": commit("goose asked", "buy one inference call"), "asked": map[string]any{"item": "inference"}, "allowed": []any{"pay"}}}},
 		{recordType: dealprofile.TypeCheck, block: map[string]any{"counterparty": seller},
 			body: map[string]any{"action": "pay", "action_class": "money.purchase", "amount_minor": 1200, "authorized_max_minor": 1200,
 				"currency": "USD", "spend_minor": 1200, "spend_authorized_minor": 1200, "taxonomy_version": "6",
@@ -344,7 +348,7 @@ func Example_staple() {
 			decide: &dealprofile.Decide{Disposition: emit.Disposition{Decision: "accept", Approver: "policy", VerdictClass: "executed"},
 				EffectType: "send_payment", Irreversibility: "one_way_consequential"},
 			body: map[string]any{"action": "pay", "action_class": "money.purchase", "amount_minor": 1200, "currency": "USD",
-				"direction": "out", "rail": "lightning", "reference_commitment": commit, "spend_minor": 1200, "taxonomy_version": "6"}},
+				"direction": "out", "rail": "lightning", "reference_commitment": commit("goose reference", "the payment's reference"), "spend_minor": 1200, "taxonomy_version": "6"}},
 	})
 	nodeBook := goose.book(ctx, "goose/node")
 	if _, err := nodeBook.Append(ctx, evidencebook.Entry{RecordType: "observation", EpistemicType: evidencebook.ObservedEvent,
@@ -366,12 +370,15 @@ func Example_staple() {
 	// The Mesh seller: its whole history is one stream, which answers at its
 	// own checkpoint.
 	meshLog := mesh.book(ctx, "mesh/node")
-	sellerIntent := map[string]any{"verbatim_commitment": commit, "asked": map[string]any{"item": "inference"},
-		"allowed": []any{"offer", "commit"}, "party_role": "seller"}
+	sellerIntent := func(verbatim string) map[string]any {
+		return map[string]any{"verbatim_commitment": verbatim, "asked": map[string]any{"item": "inference"},
+			"allowed": []any{"offer", "commit"}, "party_role": "seller"}
+	}
 	meshHalf := mesh.sealDeal(ctx, meshLog, dealID, goose.keys.Signer, []dealStep{
 		{recordType: dealprofile.TypeBaseline, block: map[string]any{"channel": "app_chat",
 			"counterparty": counterparty("the Mesh node's deal store secret", goose.keys.Signer)},
-			body: map[string]any{"deal_type": "purchase", "terms": terms, "recourse": recourse, "intent": sellerIntent}},
+			body: map[string]any{"deal_type": "purchase", "terms": terms, "recourse": recourse,
+				"intent": sellerIntent(commit("mesh asked", "serve inference at the listed price"))}},
 	})
 	// The Mesh operator's own Goose agent recorded the same sale under its
 	// own key.
@@ -379,7 +386,8 @@ func Example_staple() {
 	ownerHalf := owner.sealDeal(ctx, ownerBook, dealID, goose.keys.Signer, []dealStep{
 		{recordType: dealprofile.TypeBaseline, block: map[string]any{"channel": "app_chat",
 			"counterparty": counterparty("the operator's agent's deal store secret", goose.keys.Signer)},
-			body: map[string]any{"deal_type": "purchase", "terms": terms, "recourse": recourse, "intent": sellerIntent}},
+			body: map[string]any{"deal_type": "purchase", "terms": terms, "recourse": recourse,
+				"intent": sellerIntent(commit("owner asked", "sell inference from my node"))}},
 	})
 
 	// history_card/1 per log: the relying party asks each log's holder and
