@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -813,3 +814,52 @@ def test_a_malformed_or_unknown_reproduction_marker_is_refused():
             Header.from_value({**base, "reproduction": marker})
     with pytest.raises(eb.InvalidError):
         Header.from_value({**base, "reproduction": {"clock": "wall"}}).validate()
+
+
+class _Stalling:
+    """A signer that stops the thread named ``stall`` inside its first
+    signature, as a slow answer is stopped partway."""
+
+    def __init__(self, inner: eb.Ed25519Signer):
+        self.inner = inner
+        self.stall = ""
+        self.stalled = threading.Event()
+        self.release = threading.Event()
+
+    def public_key(self) -> bytes:
+        return self.inner.public_key()
+
+    def sign(self, message: bytes) -> bytes:
+        if threading.current_thread().name == self.stall:
+            self.stalled.set()
+            assert self.release.wait(10)
+        return self.inner.sign(message)
+
+
+def test_an_answer_stopped_partway_blocks_no_writer(clock):
+    """evidencebook#217: respond answers from a snapshot, so an append and a
+    checkpoint run while an answer is stopped in the middle of signing it."""
+    signer = _Stalling(key("responder signer"))
+    b = eb.Book("responder", "responder-operator", signer=signer, log_id="responder-log",
+                log_key=key("responder log"), now=clock)
+    first = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    pin = b.checkpoint().anchor_digest
+    request = eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(expected_pin=pin))
+    message = eb.Book("asker", "asker-operator", signer=key("asker signer"), log_id="asker-log",
+                      log_key=key("asker log"), now=clock).request(request, "responder").message
+    signer.stall = "answerer"
+    answered: list = []
+    thread = threading.Thread(target=lambda: answered.append(b.respond(message, PEERS)), name="answerer")
+    thread.start()
+    try:
+        assert signer.stalled.wait(10)
+        before = b.size()
+        second = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-1"))
+        later = b.checkpoint()
+        assert second.seq == before + 1 and later.entries == b.size() > before
+    finally:
+        signer.release.set()
+        thread.join(10)
+    _, record = answered[0]
+    assert record is not None and record.header.record_type == eb.RECORD_TYPE_REQUEST_ANSWERED
+    assert record.seq == b.size()
