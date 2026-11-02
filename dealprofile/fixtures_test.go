@@ -163,6 +163,47 @@ func TestPositiveFixtures(t *testing.T) {
 	t.Logf("%d positive records pass every record-level stage", n)
 }
 
+// TestPositiveRuleInputs4 checks that a pay check sealed under rule inputs
+// version 4 passes every stage, as one sealed under 3 does: the version
+// field takes either, and a 5 is refused by the schema.
+func TestPositiveRuleInputs4(t *testing.T) {
+	store := localStoreValues(loadFingerprints(t))
+	var fx struct {
+		Record         json.RawMessage `json:"record"`
+		ChainPrefix    []string        `json:"chain_prefix"`
+		ExpectedDigest string          `json:"expected_digest"`
+	}
+	readJSON(t, filepath.Join(fixturesDir, "positive-rule-inputs-4", "13-check-pay.json"), &fx)
+	payload, digest, err := Encode([]byte(fx.Record), store)
+	require.NoError(t, err)
+	assert.Equal(t, fx.ExpectedDigest, digest)
+	chain := []any{}
+	for _, n := range fx.ChainPrefix {
+		var prev struct {
+			Record json.RawMessage `json:"record"`
+		}
+		readJSON(t, filepath.Join(fixturesDir, "positive", n), &prev)
+		chain = append(chain, []byte(prev.Record))
+	}
+	assert.NoError(t, CheckChain(append(chain, payload)))
+
+	for _, v := range []int{3, 5} {
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal(fx.Record, &rec))
+		rec["body"].(map[string]any)["rule_inputs_version"] = v
+		raw, err := json.Marshal(rec)
+		require.NoError(t, err)
+		err = Check(raw, store)
+		if v == 3 {
+			assert.NoError(t, err, "version 3")
+			continue
+		}
+		var se *StageError
+		require.ErrorAs(t, err, &se, "version 5")
+		assert.Equal(t, StageSchema, se.Stage)
+	}
+}
+
 // expectedDigests reads expected-digests.txt: "<digest>  <dir>/<file>".
 func expectedDigests(t *testing.T) map[string]string {
 	t.Helper()

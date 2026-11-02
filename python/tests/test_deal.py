@@ -186,6 +186,21 @@ def test_negative_fixtures(path):
     assert fx["expected_error_contains"] in str(err) + "\n" + "\n".join(err.causes), path.name
 
 
+def test_positive_rule_inputs_4():
+    fx = load(FIXTURES / "positive-rule-inputs-4" / "13-check-pay.json")
+    _, digest = deal.encode(json.dumps(fx["record"]), local_store_values())
+    assert digest == fx["expected_digest"]
+    for version, ok in ((3, True), (4, True), (5, False)):
+        rec = json.loads(json.dumps(fx["record"]))
+        rec["body"]["rule_inputs_version"] = version
+        if ok:
+            deal.check(json.dumps(rec), local_store_values())
+        else:
+            with pytest.raises(deal.StageError) as e:
+                deal.check(json.dumps(rec), local_store_values())
+            assert e.value.stage == "schema"
+
+
 def test_negative_corpus_size():
     assert len(NEGATIVE) >= 50
 

@@ -1515,6 +1515,21 @@ def run_fixtures() -> int:
               f"record types (not yet {sorted(UNFIXTURED_TYPES)}) and the sealed typed action records "
               f"({len(positives)} records)")
 
+    # Valid variants of one positive record: each extends the positive chain named by its
+    # chain_prefix and passes every stage.
+    for p in sorted((FIX / "positive-rule-inputs-4").glob("*.json")):
+        f = load(p)
+        prefix = [load(FIX / "positive" / n)["record"] for n in f["chain_prefix"]]
+        try:
+            check_record(f["record"], store)
+            if record_digest(f["record"]) != f["expected_digest"]:
+                raise StageError("digest", "recomputed digest differs from expected")
+            check_chain(prefix + [f["record"]])
+            print(f"ok   positive-rule-inputs-4/{p.name}")
+        except StageError as e:
+            bad += 1
+            print(f"FAIL positive-rule-inputs-4/{p.name}: {e}")
+
     for p in sorted((FIX / "negative").glob("*.json")):
         f = load(p)
         prefix = [load(FIX / f.get("chain_dir", "positive") / n)["record"] for n in f.get("chain_prefix", [])]
@@ -2383,6 +2398,18 @@ def regen():
     r = copy.deepcopy(records[12]); r["body"].update(rule_inputs_version=3, material_fields_changed=2)
     neg("neg-rule-inputs-version-without-basis", "chain", "states rule_inputs_version", r, 12,
         "The pay check states rule_inputs_version 3 and material_fields_changed, but not the field list's basis.")
+
+    # A check sealed under rule inputs version 4 (a rule's channel comes from the latest counterparty
+    # message only) is valid: positive-rule-inputs-4 holds it beside the positive chain it extends.
+    r = copy.deepcopy(records[12]); r["body"].update(rule_inputs_version=4, material_fields_changed=0, material_fields_basis=basis)
+    (FIX / "positive-rule-inputs-4").mkdir(parents=True, exist_ok=True)
+    d = record_digest(r)
+    dump(FIX / "positive-rule-inputs-4" / "13-check-pay.json", {
+        "fixture": "13-check-pay.json", "expect": "valid",
+        "story": "The pay check sealed under rule inputs version 4: it states the version, how many terms it changes "
+                 "and the field list's basis.",
+        "chain_prefix": names[:12],
+        "record": r, "expected_digest": d})
 
     # An answer given on a card other than the one the check rendered: its card_commitment, under
     # the verdict's card nonce, differs from the verdict's.
