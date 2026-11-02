@@ -56,10 +56,9 @@ from evidencebook import (
     CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Ed25519Signer, Entry,
     Link, NotFoundError, deal, staple,
 )
-from evidencebook.errors import InvalidError
 from evidencebook.request import (
     MEDIA_TYPE_JSON, PROFILE as ER_PROFILE, Coverage, EvidenceRequest, Message, Reply, Subject, encode_envelope,
-    encode_request, parse_reply,
+    encode_request,
 )
 from evidencebook.signer import EvidenceSigner
 from evidencebook.staple import DERIVATION_STANDARD_HISTORY, Staple, check_staple
@@ -148,7 +147,8 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     the signing key, the steps' records and the digest of the final close
     half (x-deal-v0 §10), plus the half's final record id, the digest of its
     checkpoint statement and the checkpoint digests its close cites. Each
-    step's ``cites`` links are checked (:func:`_step_cites`). Raises
+    step's ``cites`` links are checked (:func:`_step_cites`). A ``history_staple`` member is checked under
+    the half's key (:func:`verify_history_staple`) and returned as ``history`` (``None`` without one). Raises
     :class:`Refused` when anything does not check out."""
     from cll.checkpoint import core
 
@@ -842,10 +842,11 @@ class Node:
                 return record.record_id
         raise Refused(f"this node sealed no opening of deal {deal_id}")
 
-    def half(self, deal_id: str) -> dict:
+    def half(self, deal_id: str, staple: bool | None = None) -> dict:
         """This node's half of a deal, as a counterparty receives it: every
         step's Capsule (with its producer ``signature`` and ``key_id``) and
-        payload, in order, and the book's checkpoint covering them."""
+        payload, in order, and the book's checkpoint covering them. With ``staple`` true (by default
+        when :attr:`attach_history` is on) it also carries :meth:`history_staple`."""
         with self._lock:
             book = self.shelf.open(f"deal/{deal_id}")
             checkpoint = book.checkpoint()
@@ -857,7 +858,7 @@ class Node:
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
             out = {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
                    "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
-            if self.attach_history:
+            if self.attach_history if staple is None else staple:
                 out[HISTORY_STAPLE_MEMBER] = self.history_staple()
             return out
 
@@ -869,7 +870,7 @@ class Node:
         chain = self.deal(deal_id)
         if chain._has(deal.TYPE_CLOSE):
             raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id)["checkpoint"]["statement"])).hexdigest()
+        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id, staple=False)["checkpoint"]["statement"])).hexdigest()
         return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
                          subject_ref=deal_id)
 
@@ -1224,7 +1225,7 @@ class Node:
                 anchor = self.cadence.standard_history_anchor(tick)
             except NotFoundError as exc:
                 raise Refused(f"no history staple: {exc} (run loop_tick)") from None
-            card = jcs(json.loads(self.standard_history(anchor.tick.n)["card"]))
+            card = self.standard_history(anchor.tick.n)["card"].encode()
             subject = Subject("full_history")
             request = Message(encode_request(EvidenceRequest(
                 subject, Coverage(expected_pin=anchor.anchor), derivation=DERIVATION_STANDARD_HISTORY,

@@ -197,7 +197,7 @@ def loop_probe() -> str:
     for book_id in books:
         if book_id.startswith("deal/") and book_id.count("/") == 1:
             try:
-                gn.verify_half(n.half(book_id[len("deal/"):]), n.checkpoint_key_id)
+                gn.verify_half(n.half(book_id[len("deal/"):], staple=False), n.checkpoint_key_id)
             except gn.Refused as exc:
                 failures.append({"book": book_id, "error": str(exc)})
     return _out(ok=not failures, step="12", books=books, imported=len(n.ledger_capsules()), failures=failures)

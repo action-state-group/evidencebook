@@ -1086,6 +1086,7 @@ def test_a_half_carries_the_signed_standard_card_when_the_node_attaches_it(nodes
     buyer.attach_history = True
     with pytest.raises(gn.Refused, match="no history staple"):
         buyer.half(DEAL)  # no finished cadence tick to be as of
+    buyer.ask_half(DEAL)  # asking for a half needs no staple, so it works before the first tick
     assert buyer.tick().ticked
     half = buyer.half(DEAL)
     verified = gn.verify_half(half, buyer.checkpoint_key_id)
