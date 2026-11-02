@@ -288,7 +288,7 @@ the caller sets the card's state and checkpoint times as in the table above.
 The pack is `admission-node-baseline@1` (`testdata/admission-node-baseline/`).
 
 What the decision shows is per property, not a score: the node's served counts
-are labelled self-reported (a node's statement about itself), the card's
+are labelled self-reported (a node's statement about itself), the decision's
 coverage population is `NOT_CHECKED`, and exchanges the counterparty confirmed
 are a separate row (`confirmed-exchanges`) that is never added to served
 counts. The Example prints two deals against the node's one closed week (12
