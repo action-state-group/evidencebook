@@ -44,13 +44,13 @@ func (b *Book) Retention(_ context.Context, recordID string) (RetentionState, er
 // record (the record itself when there is none) and whether deletion is
 // blocked by a hold.
 func (b *Book) retentionLocked(recordID string) (state RetentionState, latest string, held bool, err error) {
-	return retentionOf(b.records, b.order, recordID, b.now())
+	return retentionOf(b.records, b.log, recordID, b.now())
 }
 
-// retentionOf is a record's retention among a book's records (order is
-// their ids in seq order) at now: retentionLocked over any such view, so a
+// retentionOf is a record's retention among a book's records (log is
+// them in seq order) at now: retentionLocked over any such view, so a
 // shelf can read it without opening the book (Shelf.Records).
-func retentionOf(records map[string]Record, order []string, recordID string, now time.Time) (state RetentionState, latest string, held bool, err error) {
+func retentionOf(records map[string]Record, log []Record, recordID string, now time.Time) (state RetentionState, latest string, held bool, err error) {
 	record, ok := records[recordID]
 	if !ok {
 		return "", "", false, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
@@ -59,8 +59,8 @@ func retentionOf(records map[string]Record, order []string, recordID string, now
 		return "", "", false, fmt.Errorf("%w: record %s commits no payload or field, so it has no retention state", ErrNotFound, recordID)
 	}
 	state, latest = record.Header.RetentionState, recordID
-	for _, id := range order[record.Seq:] {
-		h := records[id].Header
+	for _, r := range log[record.Seq:] {
+		id, h := r.RecordID, r.Header
 		if h.RecordType != RecordTypeLifecycle || !slices.Contains(h.LinksTo(Cites), recordID) {
 			continue
 		}
@@ -73,7 +73,7 @@ func retentionOf(records map[string]Record, order []string, recordID string, now
 	if state == Deleted {
 		return state, latest, false, nil
 	}
-	held = state == LegalHold || heldBy(records, order, record, now)
+	held = state == LegalHold || heldBy(log, record, now)
 	if held && (state == Available || state == Partial) {
 		state = LegalHold
 	}
@@ -83,9 +83,9 @@ func retentionOf(records map[string]Record, order []string, recordID string, now
 // heldBy reports whether a retention commitment covers record and has
 // not expired at now. A commitment covers a record it names by id, a range
 // of positions containing it, or an exchange it cites.
-func heldBy(records map[string]Record, order []string, record Record, now time.Time) bool {
-	for _, id := range order {
-		h := records[id].Header
+func heldBy(log []Record, record Record, now time.Time) bool {
+	for _, r := range log {
+		h := r.Header
 		if h.RecordType != RecordTypeRetentionCommitment {
 			continue
 		}

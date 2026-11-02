@@ -184,7 +184,7 @@ func TestAuthenticatedRootIsDeterministicFromTheLog(t *testing.T) {
 	if !slices.Equal(before, after) {
 		t.Fatalf("authenticated roots differ after rebuild from the log: %+v vs %+v", before, after)
 	}
-	record, err := reopened.Get(ctx, reopened.order[3])
+	record, err := reopened.Get(ctx, reopened.log[3].RecordID)
 	if err != nil {
 		t.Fatal(err)
 	}

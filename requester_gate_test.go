@@ -90,13 +90,13 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 		t.Fatalf("alice's request was not answered: %+v", statement)
 	}
 	var answered string
-	for _, id := range book.order {
-		if book.records[id].Header.RecordType == RecordTypeRequestAnswered {
-			answered = id
+	for _, r := range book.log {
+		if r.Header.RecordType == RecordTypeRequestAnswered {
+			answered = r.RecordID
 		}
 	}
 	// The floor makes bob's answer cover the record of alice's request.
-	covering := Coverage{MinFreshness: sizeFloor(uint64(len(book.order)))}
+	covering := Coverage{MinFreshness: sizeFloor(uint64(len(book.log)))}
 	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectExchange, Digest: records[0].RecordID}, Coverage: covering}),
 		RespondOptions{RequesterID: "bob", AuthenticatedRequester: "bob", Policy: peers})
 	e := mustEnvelope(t, reply)
@@ -121,9 +121,9 @@ func TestEarlierRequesterIDAbsentFromLaterAnswers(t *testing.T) {
 			t.Fatalf("bob's answer contains alice's id or her request (%s form)", name)
 		}
 	}
-	for _, id := range book.order {
-		if h := book.records[id].Header; h.RecordType == RecordTypeRequestAnswered && bytes.Contains(h.Statement, []byte(alice)) {
-			t.Fatalf("answered-request record %s carries a requester id", id)
+	for _, r := range book.log {
+		if h := r.Header; h.RecordType == RecordTypeRequestAnswered && bytes.Contains(h.Statement, []byte(alice)) {
+			t.Fatalf("answered-request record %s carries a requester id", r.RecordID)
 		}
 	}
 	// Named directly, the record of alice's request does not exist to bob.

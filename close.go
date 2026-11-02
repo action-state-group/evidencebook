@@ -126,7 +126,7 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 	if err := b.flushPendingLocked(ctx); err != nil {
 		return Record{}, err
 	}
-	size := uint64(len(b.order))
+	size := uint64(len(b.log))
 	if size == 0 {
 		return Record{}, fmt.Errorf("%w: a Close needs a record before it to name as its head", ErrInvalid)
 	}
@@ -161,10 +161,10 @@ func (b *Book) Close(ctx context.Context, in CloseInput) (Record, error) {
 		RecordVersion: CloseRecordVersion, EpistemicType: ProducerClaim,
 		Period:       ClosePeriod{Start: in.Period.Start.UTC(), End: in.Period.End.UTC()},
 		CountsByKind: map[string]int{},
-		Head:         EvidenceRef{Digest: b.order[to-1], DigestAlg: "SHA-256"},
+		Head:         EvidenceRef{Digest: b.log[to-1].RecordID, DigestAlg: "SHA-256"},
 	}
 	for seq := from; seq <= to; seq++ {
-		statement.CountsByKind[b.records[b.order[seq-1]].Header.RecordType]++
+		statement.CountsByKind[b.log[seq-1].Header.RecordType]++
 	}
 	if in.PeerClose != "" {
 		statement.Reconcile = &CloseReconcile{Tallies: recon.Tallies.result(), Status: Unilateral}

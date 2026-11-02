@@ -102,7 +102,8 @@ func TestDerivationVectors(t *testing.T) {
 	v.ResponderSeed = hex.EncodeToString(seededKey(1).Seed())
 	v.Book.EvidenceStream, v.Book.Statement, v.Book.Anchor = cp.LogID, hex.EncodeToString(cp.Statement), pin
 	v.Book.TreeSize, v.Book.Entries, v.Book.IssuedAt = cp.TreeSize, cp.Entries, cp.IssuedAt.UTC().Format("2006-01-02T15:04:05Z")
-	for leaf, id := range book.order[:cp.Entries] {
+	for leaf, r := range book.log[:cp.Entries] {
+		id := r.RecordID
 		stored, err := book.storedLocked(ctx, id)
 		if err != nil {
 			t.Fatal(err)

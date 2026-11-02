@@ -145,9 +145,7 @@ func TestStandardHistoryCountsRecomputeFromTheDeals(t *testing.T) {
 	anchor := checkpoints[len(checkpoints)-1]
 	asOf := standardhistory.AsOf{Anchor: pin, AnchorTime: evidencerequest.ProfileTime(anchor.IssuedAt), FirstCheckpointTime: evidencerequest.ProfileTime(checkpoints[0].IssuedAt)}
 	var records []Record
-	for _, id := range book.order {
-		records = append(records, book.records[id])
-	}
+	records = append(records, book.log...)
 	_, deals, err := dealsOf(nil)(context.Background(), anchor, records)
 	if err != nil {
 		t.Fatal(err)
@@ -270,8 +268,8 @@ func TestStandardHistoryIsAsOfItsAnchor(t *testing.T) {
 	// anchor covers it.
 	second := anchorPin(t, book)
 	covered := false
-	for _, id := range book.order {
-		covered = covered || book.records[id].Header.RecordType == RecordTypeRequestAnswered
+	for _, r := range book.log {
+		covered = covered || r.Header.RecordType == RecordTypeRequestAnswered
 	}
 	if !covered {
 		t.Fatal("the book holds no answered record for the new anchor to cover")

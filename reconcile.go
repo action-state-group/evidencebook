@@ -372,16 +372,15 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		out.PeerHead = fmt.Sprintf("%s:%d", in.Peer.Anchor.Root, in.Peer.Anchor.MMRSize)
 	}
 	own := HalfSet{Complete: haveHead && (in.ToSeq == 0 || head.Covers(in.ToSeq))}
-	for _, id := range b.order {
-		record := b.records[id]
+	for _, record := range b.log {
 		if !inWindow(record.Seq, in.FromSeq, in.ToSeq) || !isHalf(record.Header, in.RecordType) {
 			continue
 		}
 		own.Halves = append(own.Halves, OpenHalf(Half{
-			RecordID: id, Seq: record.Seq, Correlation: *record.Header.Correlation,
+			RecordID: record.RecordID, Seq: record.Seq, Correlation: *record.Header.Correlation,
 			PayloadCommitments: slices.Clone(record.Header.PayloadCommitments), FieldCommitments: maps.Clone(record.Header.FieldCommitments),
 			Covered: haveHead && head.Covers(record.Seq), Trusted: true,
-		}, in.OwnOpenings[id]))
+		}, in.OwnOpenings[record.RecordID]))
 	}
 	peer := HalfSet{Complete: in.Peer.AnchorAuthenticated && in.Peer.IntervalFirst <= max(in.PeerFromSeq, 1) &&
 		(in.PeerToSeq == 0 || in.Peer.IntervalLast >= in.PeerToSeq)}

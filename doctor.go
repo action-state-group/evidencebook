@@ -282,7 +282,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	signer := KeyID(b.signer)
 	findings := []DoctorFinding{{
 		Check: DoctorSelfAttested, State: DoctorStateSelfAttested,
-		Detail: fmt.Sprintf("each of the %d records is sealed by this book's own signer and by no other party; its content is this node's own statement", len(b.order)),
+		Detail: fmt.Sprintf("each of the %d records is sealed by this book's own signer and by no other party; its content is this node's own statement", len(b.log)),
 	}}
 	findings = append(findings, controllerBinding(signer, opts.ControllerBindings))
 
@@ -292,8 +292,8 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "this book's substrate is not a Checkpointed Local Log, so it has no checkpoint a responder can anchor an answer to"})
 	case latest == nil:
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStateMissing, Detail: "the book has no checkpoint, so a stranger's checkpoints and history_card/1 requests are refused: a stranger's request never issues one"})
-	case latest.Entries < uint64(len(b.order)):
-		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStatePresent, Detail: fmt.Sprintf("the latest checkpoint covers %d of %d records; the rest are under no checkpoint yet", latest.Entries, len(b.order)), Records: []string{anchorDigest(*latest)}})
+	case latest.Entries < uint64(len(b.log)):
+		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStatePresent, Detail: fmt.Sprintf("the latest checkpoint covers %d of %d records; the rest are under no checkpoint yet", latest.Entries, len(b.log)), Records: []string{anchorDigest(*latest)}})
 	default:
 		findings = append(findings, DoctorFinding{Check: DoctorCheckpoint, State: DoctorStatePresent, Detail: fmt.Sprintf("the latest checkpoint covers all %d records", latest.Entries), Records: []string{anchorDigest(*latest)}})
 	}
@@ -301,8 +301,8 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 
 	var notChecked []string
 	var properties []string
-	for _, id := range b.order {
-		h := b.records[id].Header
+	for _, r := range b.log {
+		id, h := r.RecordID, r.Header
 		if h.RecordType != RecordTypeResponse {
 			continue
 		}

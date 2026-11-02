@@ -109,7 +109,6 @@ func (s *Shelf) Records(ctx context.Context, bookIDs ...string) (ShelfRecords, e
 		book := all[i].book
 		committed := entries[book]
 		records := map[string]Record{}
-		var order []string
 		var listed []Record
 		for ; i < len(all) && all[i].book == book; i++ {
 			record := all[i].record
@@ -117,17 +116,16 @@ func (s *Shelf) Records(ctx context.Context, bookIDs ...string) (ShelfRecords, e
 				out.Pending[book]++
 				continue
 			}
-			if record.Seq != uint64(len(order))+1 {
-				return ShelfRecords{}, fmt.Errorf("%w: %s holds record %s at seq %d after %d records", ErrCorrupt, book, record.RecordID, record.Seq, len(order))
+			if record.Seq != uint64(len(listed))+1 {
+				return ShelfRecords{}, fmt.Errorf("%w: %s holds record %s at seq %d after %d records", ErrCorrupt, book, record.RecordID, record.Seq, len(listed))
 			}
 			records[record.RecordID] = record
-			order = append(order, record.RecordID)
 			listed = append(listed, record)
 		}
 		for _, record := range listed {
 			view := ShelfRecord{BookID: book, Seq: record.Seq, RecordID: record.RecordID, Header: record.Header}
 			if len(record.Header.PayloadCommitments) > 0 || len(record.Header.FieldCommitments) > 0 {
-				state, _, _, err := retentionOf(records, order, record.RecordID, now)
+				state, _, _, err := retentionOf(records, listed, record.RecordID, now)
 				if err != nil {
 					return ShelfRecords{}, err
 				}

@@ -201,14 +201,16 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		if snapshot, err = snapshotter.proofSnapshot(ctx, anchor); err != nil {
 			return Bundle{}, err
 		}
-		carried = append(carried, b.order[first-1:anchor.Entries]...)
+		for _, r := range b.log[first-1 : anchor.Entries] {
+			carried = append(carried, r.RecordID)
+		}
 	} else {
 		interval, err := b.commitments.ProveInterval(ctx, first, anchor)
 		switch {
 		case err == nil:
 			wire.Certificate, wire.Checkpoint = &interval.Certificate, &interval.Checkpoint
 			for seq := first; seq <= anchor.Entries; seq++ {
-				carried = append(carried, b.order[seq-1])
+				carried = append(carried, b.log[seq-1].RecordID)
 			}
 		case errors.Is(err, ErrUnsupported):
 			inclusion := make(map[string]InclusionEvidence)
