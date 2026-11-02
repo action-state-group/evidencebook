@@ -135,7 +135,7 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 		return nil, err
 	}
 	if hasPolicy {
-		opts.Policy = held.SharePolicy()
+		opts.Policy = held.overlay(opts.Policy)
 	}
 	if err := opts.Policy.Validate(); err != nil {
 		return nil, err
@@ -147,7 +147,7 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	findings, latest, err := b.doctorLocked(ctx, opts)
 	if err == nil && hasPolicy {
 		for _, row := range held.Rows() {
-			findings = append(findings, DoctorFinding{Check: DoctorSettingPrefix + row.Setting, State: row.Value, Detail: row.Sends})
+			findings = append(findings, DoctorFinding{Check: DoctorSettingPrefix + row.Setting, State: DoctorStateAnswered, Detail: row.Value + ": " + row.Sends})
 		}
 	}
 	b.mu.Unlock()
@@ -238,6 +238,14 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 	if err != nil {
 		f.Detail = fmt.Sprintf("the host cannot build the standard_history/1 card: %v", err)
 		return f, nil
+	}
+	if held, ok, err := policyInForce(log); err != nil {
+		return f, err
+	} else if ok {
+		if mismatch := cardDisagrees(built.artifact, held, b.standardHistory.HolderKind); mismatch != "" {
+			f.Detail = mismatch
+			return f, nil
+		}
 	}
 	f.State, f.Records, f.Card = DoctorStateMatch, []string{anchorDigest(anchor)}, built.artifact
 	f.Detail = "the standard_history/1 card a signed requester receives, whatever the tier, at the latest checkpoint; built in-process, not sent, so no record was sealed"
@@ -581,4 +589,33 @@ func (t probeTarget) probe(ctx context.Context, send DoctorTransport, check stri
 		f.Records = []string{st.Anchor}
 	}
 	return f, nil
+}
+
+// cardDisagrees reports how a standard_history/1 card differs from the
+// disclosure policy in force: its policy digest, its window, or its holder
+// kind. The host builds the card, so the policy is not true of it until
+// the card says so.
+func cardDisagrees(card []byte, held DisclosurePolicy, holderKind string) string {
+	var got struct {
+		Policy string `json:"policy"`
+		Window struct {
+			Months int  `json:"months"`
+			All    bool `json:"all"`
+		} `json:"window"`
+	}
+	if json.Unmarshal(card, &got) != nil {
+		return "the standard_history/1 card cannot be read"
+	}
+	want, err := held.StandardPolicy()
+	switch {
+	case err != nil:
+		return "the policy in force has no digest: " + err.Error()
+	case holderKind != held.Holder:
+		return fmt.Sprintf("the host serves standard_history/1 for a %s, but the policy in force is a %s's", holderKind, held.Holder)
+	case got.Policy != want.Digest:
+		return "the card names a policy other than the one in force (digest " + got.Policy + ", in force " + want.Digest + ")"
+	case got.Window.Months != want.Window.Months || got.Window.All != want.Window.All:
+		return "the card counts a window other than the one the policy sets (window " + held.Window + ")"
+	}
+	return ""
 }

@@ -171,15 +171,10 @@ func (p DisclosurePolicy) Digest() (string, error) {
 	return digestBytes(body), nil
 }
 
-// SharePolicy is the switches Respond reads under this policy.
-func (p DisclosurePolicy) SharePolicy() SharePolicy {
-	s := DefaultSharePolicy()
-	if p.Receipt == "off" {
-		s.RecordAtCompletion = "off"
-	}
-	s.StandardHistory = p.StandardHistory
-	return s
-}
+// SharePolicy is the switches Respond reads under this policy, the rest
+// at their defaults. A book that holds the policy applies it over whatever
+// SharePolicy its caller passes (Book.Respond, Book.Doctor).
+func (p DisclosurePolicy) SharePolicy() SharePolicy { return p.overlay(DefaultSharePolicy()) }
 
 // StandardPolicy is the two members of the policy a standard_history/1
 // card states: its digest and its window (SH §5.1).
@@ -196,21 +191,26 @@ func (p DisclosurePolicy) StandardPolicy() (standardhistory.Policy, error) {
 	return standardhistory.Policy{Digest: digest, Window: w}, nil
 }
 
-// UnsignedAskLimiter is the policy's rate limit on askers that do not
-// sign, as a Respond limiter: a signed requester is never limited. The
-// book's own request (Book.Staple) never reaches a limiter. Nil when the
-// policy sets no limit.
-func (p DisclosurePolicy) UnsignedAskLimiter() RequestLimiter {
-	if p.UnsignedAsksPerWeek == 0 {
-		return nil
+// overlay is base with the switches this policy governs: standard history
+// and record-at-completion. The others (history_segments, adjudications,
+// witness) stay the caller's.
+func (p DisclosurePolicy) overlay(base SharePolicy) SharePolicy {
+	base.StandardHistory = p.StandardHistory
+	base.RecordAtCompletion = "counterparty"
+	if p.Receipt == "off" {
+		base.RecordAtCompletion = "off"
 	}
-	return unsignedOnly{NewWindowLimiter(p.UnsignedAsksPerWeek, 7*24*time.Hour)}
+	return base
 }
 
-type unsignedOnly struct{ inner *WindowLimiter }
-
-func (u unsignedOnly) Allow(requester string, now time.Time) bool {
-	return requester != "" || u.inner.Allow(requester, now)
+// unsignedAllowLocked records an ask of an asker that does not sign and
+// reports whether it is within n a week. All such askers share one bucket,
+// since none has an identity.
+func (b *Book) unsignedAllowLocked(n int, now time.Time) bool {
+	if b.unsignedAsks.limiter == nil || b.unsignedAsks.n != n {
+		b.unsignedAsks.n, b.unsignedAsks.limiter = n, NewWindowLimiter(n, 7*24*time.Hour)
+	}
+	return b.unsignedAsks.limiter.Allow("", now)
 }
 
 // SettingRow is one line of the settings page, and of doctor's report:
@@ -249,7 +249,7 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 	}
 	unsigned := "no limit on askers that do not sign"
 	if p.UnsignedAsksPerWeek > 0 {
-		unsigned = fmt.Sprintf("an asker that does not sign is answered %d times a week, then refused policy_declined; signed askers and the staple are never limited", p.UnsignedAsksPerWeek)
+		unsigned = fmt.Sprintf("askers that do not sign share %d asks a week beyond the public checkpoints, then are refused policy_declined; signed askers and the staple are never limited", p.UnsignedAsksPerWeek)
 	}
 	contract := "no under_contract scope is granted"
 	if p.UnderContract == "named_by_contract" {
@@ -260,7 +260,7 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 		logs = fmt.Sprintf("the asked-of-you log is kept for the holder only, %d days", p.AskedLogRetentionDays)
 	}
 	return []SettingRow{
-		{"proof_of_records", "always", "checkpoints and history_card/1 are answered to anyone"},
+		{"proof_of_records", "always", "checkpoints and history_card/1 are answered to anyone, and are not counted against the unsigned-ask limit"},
 		{FieldStandardHistory, p.StandardHistory, std},
 		{FieldWindow, p.Window, "the standard card counts " + window},
 		{FieldStaple, p.Staple, staple},
@@ -368,9 +368,15 @@ func (p DisclosurePolicy) Apply(c PolicyChange) ([]PolicyStep, error) {
 		if !ok {
 			continue
 		}
+		if string(bytes.TrimSpace(raw)) == "null" {
+			return nil, fmt.Errorf("%w: %s must have a value", ErrInvalid, field)
+		}
 		from, to, err := next.set(field, raw)
 		if err != nil {
 			return nil, err
+		}
+		if from == to {
+			return nil, fmt.Errorf("%w: %s is already %s", ErrInvalid, field, to)
 		}
 		if err := next.Validate(); err != nil {
 			return nil, err
@@ -488,8 +494,9 @@ func (b *Book) AdoptPolicy(ctx context.Context, holder string) (DisclosurePolicy
 }
 
 // ApplyPolicyChange seals one policy record per changed field, in page
-// order, then returns the policy in force and the then[] steps for the
-// executor. The whole block is checked before anything is sealed, so a
+// order and returns the policy in force with the records. The then[] steps
+// are checked here and run by the executor, which reads them from the block.
+// The whole block is checked before anything is sealed, so a
 // stale round or a refused field seals nothing.
 func (b *Book) ApplyPolicyChange(ctx context.Context, c PolicyChange) (DisclosurePolicy, []Record, error) {
 	b.mu.Lock()

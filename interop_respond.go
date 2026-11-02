@@ -432,6 +432,16 @@ func (a *answer) run() (Reply, error) {
 	oversized := !a.own && len(a.request.Octets) > limit
 	limited := !a.own && !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)
+	// The book's own disclosure policy, when it holds one, decides the
+	// switches it governs, whatever the caller passed.
+	held, hasPolicy, err := policyInForce(log)
+	if err != nil {
+		b.mu.Unlock()
+		return Reply{}, err
+	}
+	if hasPolicy {
+		a.opts.Policy = held.overlay(a.opts.Policy)
+	}
 	b.mu.Unlock()
 	if oversized || limited {
 		return a.refuse(limitReason(requestProfile(a.request)), "")
@@ -443,6 +453,14 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints {
+		b.mu.Lock()
+		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
+		b.mu.Unlock()
+		if !allowed {
+			return a.refuse(ReasonPolicyDeclined, "")
+		}
+	}
 	view, err := b.view(a.ctx, log)
 	if err != nil {
 		return Reply{}, err
@@ -623,11 +641,13 @@ func (v *bookView) Servable(leaf uint64) bool {
 	if leaf >= uint64(len(v.log)) {
 		return false
 	}
-	switch v.log[leaf].Header.RecordType {
-	case RecordTypeRequestAnswered, RecordTypeDisclosure, RecordTypePolicy:
-		return false
-	}
-	return true
+	return !neverServed(v.log[leaf].Header.RecordType)
+}
+
+// neverServed reports the record types that are the holder's own
+// bookkeeping or rules: no subject form and no derivation serves them.
+func neverServed(recordType string) bool {
+	return recordType == RecordTypeRequestAnswered || recordType == RecordTypeDisclosure || recordType == RecordTypePolicy
 }
 
 func (v *bookView) matching(match func(Header) bool) []uint64 {

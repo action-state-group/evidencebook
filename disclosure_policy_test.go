@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
 )
@@ -81,6 +80,7 @@ func TestPolicyApplyRefusals(t *testing.T) {
 		"wrong type":          {changeOf(t, p, map[string]any{FieldUnsignedAsks: "many"}), ErrInvalid},
 		"negative limit":      {changeOf(t, p, map[string]any{FieldUnsignedAsks: -1}), ErrInvalid},
 		"no fields":           {changeOf(t, p, map[string]any{}), ErrInvalid},
+		"same value":          {changeOf(t, p, map[string]any{FieldWindow: "3"}), ErrInvalid},
 		"unknown then step":   {changeOf(t, p, map[string]any{FieldWindow: "12"}, "email_everyone"), ErrInvalid},
 	} {
 		if _, err := p.Apply(tc.c); !errors.Is(err, tc.want) {
@@ -88,6 +88,11 @@ func TestPolicyApplyRefusals(t *testing.T) {
 		}
 	}
 	// One bad field in a block refuses the block.
+	nullChange := changeOf(t, p, map[string]any{})
+	nullChange.Changes = map[string]json.RawMessage{FieldWindow: json.RawMessage("null")}
+	if _, err := p.Apply(nullChange); !errors.Is(err, ErrInvalid) {
+		t.Errorf("a null value: %v", err)
+	}
 	if _, err := p.Apply(changeOf(t, p, map[string]any{FieldWindow: "12", FieldStaple: "maybe"})); !errors.Is(err, ErrInvalid) {
 		t.Errorf("a block with one bad value: %v", err)
 	}
@@ -212,7 +217,7 @@ func TestDoctorProbeAgreesWithTheSettingsRows(t *testing.T) {
 		}
 		for _, row := range held.Rows() {
 			f := findingOf(t, findings, DoctorSettingPrefix+row.Setting)
-			if f.State != row.Value || f.Detail != row.Sends {
+			if f.State != DoctorStateAnswered || f.Detail != row.Value+": "+row.Sends {
 				t.Errorf("window %s: %s = %+v, row %+v", window, row.Setting, f, row)
 			}
 		}
@@ -233,14 +238,14 @@ func TestDoctorProbeAgreesWithTheSettingsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	held, _ := book.DisclosurePolicy()
-	findings, err := book.Doctor(ctx, DoctorOptions{Probe: strangerTransport(book, held.SharePolicy()), As: DoctorAsSigned})
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: DefaultSharePolicy(), Probe: strangerTransport(book, held.SharePolicy()), As: DoctorAsSigned})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateOff {
 		t.Errorf("probe with the card off = %+v", f)
 	}
-	if f := findingOf(t, findings, DoctorSettingPrefix+FieldStandardHistory); f.State != "off" || !strings.Contains(f.Detail, "derivation_unsupported") {
+	if f := findingOf(t, findings, DoctorSettingPrefix+FieldStandardHistory); !strings.HasPrefix(f.Detail, "off: ") || !strings.Contains(f.Detail, "derivation_unsupported") {
 		t.Errorf("row with the card off = %+v", f)
 	}
 	reply, _ := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}}),
@@ -249,39 +254,104 @@ func TestDoctorProbeAgreesWithTheSettingsRows(t *testing.T) {
 		t.Errorf("a signed asker with the card off: %+v", reply)
 	}
 	// A stranger's probe asks only the public questions.
-	findings, err = book.Doctor(ctx, DoctorOptions{Probe: strangerTransport(book, held.SharePolicy()), As: DoctorAsStranger})
+	findings, err = book.Doctor(ctx, DoctorOptions{Policy: DefaultSharePolicy(), Probe: strangerTransport(book, held.SharePolicy()), As: DoctorAsStranger})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.ContainsFunc(findings, func(f DoctorFinding) bool { return f.Check == DoctorProbeHistoryCard }) || slices.ContainsFunc(findings, func(f DoctorFinding) bool { return f.Check == DoctorProbeStandardCard }) {
 		t.Errorf("stranger probe findings = %+v", findings)
 	}
-	if _, err := book.Doctor(ctx, DoctorOptions{As: "friend"}); !errors.Is(err, ErrInvalid) {
+	if _, err := book.Doctor(ctx, DoctorOptions{Policy: DefaultSharePolicy(), As: "friend"}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("doctor --as friend: %v", err)
 	}
 }
 
-func TestUnsignedAskLimiter(t *testing.T) {
-	person, node := mustPolicy(t, HolderPerson), mustPolicy(t, HolderNode)
-	if node.UnsignedAskLimiter() != nil {
-		t.Error("the node default sets no limit")
+// A caller that passes the defaults gets the policy the book holds: the
+// card off, the receipt off and the unsigned-ask limit apply through
+// Respond, as doctor reports them.
+func TestRespondAppliesTheBooksPolicy(t *testing.T) {
+	ctx := context.Background()
+	book := policyBook(t)
+	pin := anchorPin(t, book)
+	ask := func(requester string, req EvidenceRequest) Reply {
+		reply, _ := respondWith(t, book, jsonRequest(t, req), RespondOptions{AuthenticatedRequester: requester, Policy: DefaultSharePolicy()})
+		return reply
 	}
-	l := person.UnsignedAskLimiter()
-	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	private := EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("x"))}, Coverage: Coverage{ExpectedPin: pin}}
+	public := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Coverage: Coverage{ExpectedPin: pin}}
+	card := EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{ExpectedPin: pin}}
+
+	if r := ask("carol", card); r.Envelope == nil {
+		t.Fatalf("the card is on: %+v", r)
+	}
+	// Three unsigned asks beyond the public ones are answered (refused
+	// not_authorized); the fourth is refused policy_declined. Checkpoints
+	// and signed askers are never counted.
 	for i := range 3 {
-		if !l.Allow("", now.Add(time.Duration(i)*time.Hour)) {
-			t.Fatalf("unsigned ask %d refused", i+1)
+		if r := ask("", private); r.Refusal == nil || r.Refusal.Reason != ReasonNotAuthorized {
+			t.Fatalf("unsigned ask %d: %+v", i+1, r)
 		}
 	}
-	if l.Allow("", now.Add(4*time.Hour)) {
-		t.Error("a fourth unsigned ask in the week was answered")
+	if r := ask("", private); r.Refusal == nil || r.Refusal.Reason != ReasonPolicyDeclined {
+		t.Fatalf("a fourth unsigned ask: %+v", r)
 	}
-	for range 10 {
-		if !l.Allow("carol", now.Add(4*time.Hour)) {
-			t.Fatal("a signed asker was limited")
+	for range 5 {
+		if r := ask("", public); r.Envelope == nil {
+			t.Fatalf("a public ask was limited: %+v", r)
+		}
+		if r := ask("carol", card); r.Envelope == nil {
+			t.Fatalf("a signed ask was limited: %+v", r)
 		}
 	}
-	if !l.Allow("", now.Add(8*24*time.Hour)) {
-		t.Error("the week did not roll")
+	// The limit follows the policy: raised, the next ask is answered.
+	p, _ := book.DisclosurePolicy()
+	if _, _, err := book.ApplyPolicyChange(ctx, changeOf(t, p, map[string]any{FieldUnsignedAsks: 10, FieldStandardHistory: "off"})); err != nil {
+		t.Fatal(err)
+	}
+	if r := ask("", private); r.Refusal == nil || r.Refusal.Reason != ReasonNotAuthorized {
+		t.Fatalf("an unsigned ask after the limit rose: %+v", r)
+	}
+	if r := ask("carol", card); r.Refusal == nil || r.Refusal.Reason != ReasonDerivationUnsupported {
+		t.Fatalf("the card is off: %+v", r)
+	}
+}
+
+// The probe checks the card against the policy in force, so a host whose
+// card states another window is a mismatch, not a match.
+func TestDoctorProbeCatchesACardThePolicyDoesNotDescribe(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil) // its own window and digest
+	anchorPin(t, book)
+	if _, _, err := book.AdoptPolicy(ctx, HolderPerson); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := book.Doctor(ctx, DoctorOptions{Policy: DefaultSharePolicy(), As: DoctorAsSigned, Probe: strangerTransport(book, DefaultSharePolicy())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateMismatch || !strings.Contains(f.Detail, "other than the one in force") {
+		t.Errorf("a card of another policy: %+v", f)
+	}
+	node := standardHistoryBook(t, &StandardHistorySource{HolderKind: "node", Inputs: dealsOf(nil)}, nil)
+	anchorPin(t, node)
+	if _, _, err := node.AdoptPolicy(ctx, HolderPerson); err != nil {
+		t.Fatal(err)
+	}
+	if findings, err = node.Doctor(ctx, DoctorOptions{Policy: DefaultSharePolicy(), As: DoctorAsSigned, Probe: strangerTransport(node, DefaultSharePolicy())}); err != nil {
+		t.Fatal(err)
+	}
+	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateMismatch || !strings.Contains(f.Detail, "for a node") {
+		t.Errorf("a node host with a person policy: %+v", f)
+	}
+}
+
+func TestPolicyRecordsAreNeverServedByAnyPath(t *testing.T) {
+	for _, recordType := range []string{RecordTypePolicy, RecordTypeRequestAnswered, RecordTypeDisclosure} {
+		if !neverServed(recordType) {
+			t.Errorf("%s is served", recordType)
+		}
+	}
+	if neverServed("observation") {
+		t.Error("an observation is never served")
 	}
 }
