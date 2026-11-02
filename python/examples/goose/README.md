@@ -96,8 +96,8 @@ your node book as the record's payload, so don't seal a prompt you would not dis
 kept by digest only.
 
 `loop_settlement_disclosure` is step 06's count. It writes the node's signed `settlement-disclosure/v1`: how many final
-settlements on a rail the node's own deal books hold (an opening naming the rail, closed `received`; a buyer's book also
-holds its `pay` act), as of the rail's ledger sequence you observed. It reads no rail and moves no money. The loop compares
+settlements on a rail the node's own deal books hold (a buyer's: its `pay` acts on the rail; a seller's: deals closed
+`received`), labelled with the rail's latest ledger sequence you observed. It reads no rail and moves no money. The loop compares
 it with the rail's own count. `loop_pay_opening` writes the opening of the buyer's `pay` record's committed local event: with the deal's half
 (`loop_deal_push`) a checker recomputes the record's payment-reference commitment and reads the reference you observed on
 the rail. It discloses that reference (a settlement id or payment hash, never a preimage), only when you call it.

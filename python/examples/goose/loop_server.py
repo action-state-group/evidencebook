@@ -441,8 +441,8 @@ def loop_settle(deal_id: str, payment_ref: str) -> str:
 @_tool
 def loop_settlement_disclosure(rail: str, through_sequence: int, out_path: str) -> str:
     """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many final settlements on ``rail``
-    its own deal books hold (an opening that names the rail, closed ``received``; a buyer's also holds its ``pay``
-    act), as of ``through_sequence``, the rail's ledger sequence the caller observed. Step 06 compares it with the
+    its own deal books hold (a buyer's: its ``pay`` acts on the rail; a seller's: deals closed ``received``),
+    labelled with ``through_sequence``, the rail's latest ledger sequence the caller observed. Step 06 compares it with the
     rail's own count. This tool reads no rail and moves no money."""
     n = node()
     doc = st.disclosure(n, rail, through_sequence)

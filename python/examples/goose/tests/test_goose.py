@@ -1006,8 +1006,8 @@ def test_a_node_discloses_its_own_count_of_final_settlements_on_a_rail(nodes, cl
 
     buyer, seller = nodes
     assert st.disclosure(buyer, "lightning", 0)["settlements"] == 0
-    paid(buyer, seller, clock)  # paid, not closed: not final
-    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 0
+    paid(buyer, seller, clock)  # paid, not closed: the buyer's rail object exists, the seller has not received
+    assert (st.disclosure(buyer, "lightning", 0)["settlements"], st.disclosure(seller, "lightning", 0)["settlements"]) == (1, 0)
     for me, peer in ((buyer, seller), (seller, buyer)):
         peer.ask_half(DEAL)
         half = me.half(DEAL)
@@ -1024,17 +1024,26 @@ def test_a_node_discloses_its_own_count_of_final_settlements_on_a_rail(nodes, cl
         assert st.disclosure(node, "mock", 1)["settlements"] == 0  # another rail: none
 
 
-def test_a_not_received_or_unpaid_deal_is_not_a_settlement(nodes, clock):
+def test_a_buyer_counts_what_it_paid_and_a_seller_what_it_received(nodes, clock):
     import settlement as st
 
     buyer, seller = nodes
-    deal_through(buyer, seller, clock, status="not_received")
-    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 0
+    paid(buyer, seller, clock)  # paid, not closed: the rail's object exists, the seller has not received
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 1
     assert st.disclosure(seller, "lightning", 0)["settlements"] == 0
     with pytest.raises(gn.Refused):
         st.disclosure(buyer, "", 0)
     with pytest.raises(gn.Refused):
         st.disclosure(buyer, "lightning", -1)
+
+
+def test_a_deal_closed_not_received_is_the_buyers_settlement_and_not_the_sellers(nodes, clock):
+    import settlement as st
+
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock, status="not_received")
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 1
+    assert st.disclosure(seller, "lightning", 0)["settlements"] == 0
 
 
 def test_the_pay_opening_opens_the_commitments_of_the_pay_record(nodes, clock):

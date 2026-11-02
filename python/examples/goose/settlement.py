@@ -5,9 +5,11 @@ The loop's step 06 (evidence-network/loop ``steps/06-settle``) compares each nod
 the rail's own count: ``settlement-disclosure/v1``, signed with the node's key (its ``key_id``, the producer key) over
 its RFC 8785 (JCS) form without ``sig``, exactly the members the step reads. The count here comes from the node's own
 deal books, never from the rail: a deal book counts once as a final settlement on ``rail`` when its opening names that
-rail (``recourse.rail``) and the node's own steps close it ``received``; a buyer's book must also hold its ``pay`` act.
-This tool reads no rail and moves no money; ``through_sequence`` is the rail's ledger sequence the caller observed
-the node's books against.
+rail (``recourse.rail``) and, for a buyer, its own book holds the ``pay`` act (the rail's object exists once it
+paid, whatever the outcome later says), for a seller, its own steps close it ``received`` (the only settlement
+evidence a seller's book holds). The count covers every book the node holds when it is called, so
+``through_sequence`` is a label, not a filter: the caller passes the rail's latest ledger sequence it observed.
+This tool reads no rail and moves no money.
 """
 from __future__ import annotations
 
@@ -37,13 +39,14 @@ def settled_deals(node: gn.Node, rail: str) -> list[str]:
             closed = any("unchecked_actions" in b for b in bodies)
             bought = bodies[0].get("intent", {}).get("party_role", "buyer") == "buyer"
             paid = any(b.get("action") == "pay" and "reference_commitment" in b for b in bodies)
-            if received and closed and (paid or not bought):
+            if paid if bought else received and closed:
                 out.append(book_id[len("deal/"):])
     return out
 
 
 def disclosure(node: gn.Node, rail: str, through_sequence: int) -> dict:
-    """The node's signed ``settlement-disclosure/v1`` for ``rail`` as of the rail's ledger ``through_sequence``."""
+    """The node's signed ``settlement-disclosure/v1`` for ``rail``, labelled with the rail's latest ledger
+    ``through_sequence`` the caller observed (the count itself covers all the node's books)."""
     if not rail or not isinstance(rail, str):
         raise gn.Refused("rail is the rail's name, e.g. lightning")
     if isinstance(through_sequence, bool) or not isinstance(through_sequence, int) or through_sequence < 0:
@@ -60,7 +63,8 @@ def pay_opening(node: gn.Node, deal_id: str) -> dict:
     (``body.reference_commitment``). Handing over ``{nonce, text}`` of that field lets a checker recompute both:
     ``sha256(JCS(opening))`` is the header's commitment, and the text's ``act.reference`` under the text's
     ``nonces.reference`` is the payload's ``reference_commitment``. The reference is what the caller observed on the
-    rail (a settlement id or payment hash); the node discloses it only by calling this tool.
+    rail (a settlement id or payment hash); the node discloses it only by calling this tool. Nothing here checks that it is not a preimage: pass the payment
+    hash or settlement id, never a preimage.
     """
     with node._lock:
         book_id = f"deal/{deal_id}"
@@ -71,7 +75,8 @@ def pay_opening(node: gn.Node, deal_id: str) -> dict:
             body = json.loads(payload).get("body", {})
             if body.get("action") == "pay" and "reference_commitment" in body:
                 held = node.originals.get(record.record_id)
-                opening = next((bytes(a.content) for a in held.artifacts if a.name == OPENING_PREFIX + LOCAL_FIELD), None)
+                opening = next((bytes(a.content) for a in getattr(held, "artifacts", ())
+                                if a.name == OPENING_PREFIX + LOCAL_FIELD), None)
                 if opening is None:
                     raise gn.Refused(f"the pay record of deal {deal_id} holds no opening of its local event")
                 return {"type": "pay-opening/v1", "deal_id": deal_id, "record_id": record.record_id,
