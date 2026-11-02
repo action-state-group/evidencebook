@@ -16,6 +16,12 @@ checkout:
 go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple' -v .
 ```
 
+Path 4's Mesh History runs in Rust, from `rust/`:
+
+```bash
+cargo test --locked -p evidencebook-interop --test mesh_history -- --nocapture
+```
+
 Every Example reads a corpus file from its module's `testdata/` by its path
 and runs under `go test` in CI, so the guide, the CI run and the vectors are
 the same files.
@@ -154,6 +160,7 @@ joining them on the deal id. Design note
 | `history_card/1` per log | `Book.Respond`, as in path 3: each log answers for its own stream |
 | `history_card/1` for the profile | `Cadence.HistoryCard` returns the cadence log's card up to a tick as a `Staple`, which `CheckStaple` accepts for the shelf signer |
 | a History over books at a tick | `Cadence.StandardHistoryAnchor` gives the tick's anchor and how far each book is committed; `dealprofile.StandardHistoryDeal` gives one deal entry per deal book; `DeriveStandardHistory` derives the `standard_history/1` card, and agent-action-capsule's `standardhistory.Check` checks it |
+| the Mesh node's History | agent-action-capsule's Rust `inference_history` (crate 0.9.0, feature `inference-history`): `Definition::from_document` checks the definition, `period_counts` and `artifact` derive an `inference-service-history/0` Standard History over the stream at a period-boundary checkpoint, with the stream's `history_card/1` embedded unchanged, and `check_artifact` checks it |
 | each party's half | `Book.Bundle` gives an Evidence Bundle rooted at the party's record of the deal |
 | the staple | agent-action-capsule's `bundle.ComposedDigest` and `bundle.VerifyComposed` build and verify a `composed/v1` block (Evidence Bundle -02, "The composed/v1 Extension") whose members are the parties' Bundles |
 
@@ -189,6 +196,28 @@ The same reference in other languages:
 - **Mesh, one stream, in Rust:** a capsules-plugin node keeps its chain on
   its shelf from release v0.1.11
   ([capsules-plugin#213](https://github.com/Mesh-LLM/capsules-plugin/pull/213)).
+  Its History, `inference-service-history/0`, is derived and checked outside
+  the plugin by the library a capsules-plugin node now calls
+  ([capsules-plugin#246](https://github.com/Mesh-LLM/capsules-plugin/pull/246)):
+  [`rust/interop/tests/mesh_history.rs`](../rust/interop/tests/mesh_history.rs)
+  (CI runs it). A node serves 12 exchanges in its first week (9 of
+  `model-a`, 3 of `model-b`) and 18 in its second (6 and 12), cuts a
+  checkpoint at each week's end, and answers `history_card/1` at the second.
+  The example derives the History under the definition a Mesh node serves
+  (`testdata/mesh-history/service-history-1.json`, named by
+  `cbc96d80…`) and checks it. The checked properties are `definition_form`
+  and `definition_binding` (the History names that definition), the members
+  and `history_card_digest`, the coverage declaration, `period_alignment`
+  (both closed weeks, none left out), `period_anchor` (the anchor is on a
+  Monday boundary) and `period_floor`. Under the floor of 5 the first week's
+  `model-b` is withheld, and its `model-a` with it, since either published
+  beside the total of 12 would give the other away; the second week
+  publishes 6, 12 and 18. The checker reads the checkpoints from the card the
+  History embeds. A History with its first week dropped fails
+  `period_alignment`; an anchor off a boundary is refused when deriving
+  (`policy_declined`) and fails `period_anchor` when a checker is handed it.
+  The embedded card's checkpoint signatures, consistency proofs and witness
+  receipts are checked as the `history_card/1` is, not by this library.
 
 ### What is not defined yet
 
@@ -199,12 +228,14 @@ The same reference in other languages:
   [D4](design/254-shelf.md#9-one-way-doors)). Until it is, the staple joins
   the parties' halves of the deal, and each party's History is checked on
   its own.
-- **The Mesh node's History, `inference-service-history/0`.** A
-  capsules-plugin node derives it over its one stream at a period boundary,
-  with that stream's `history_card/1` embedded unchanged. No library outside
-  the plugin derives or checks it yet
-  ([#322](https://github.com/action-state-group/evidencebook/issues/322)),
-  so the example stops at the `history_card/1` the History embeds.
+- **The Mesh node's History in the Go Example.** This module pins
+  agent-action-capsule go v0.19.0, which comes before the Go reader for
+  `inference-service-history/0` (v0.20.0,
+  [agent-action-capsule#557](https://github.com/action-state-group/agent-action-capsule/pull/557)),
+  so [`Example (Staple)`](#path-4-history-cards-that-staple) stops at the
+  `history_card/1` its Mesh node answers, and the History is derived and
+  checked in Rust, above. Checking it in the Go Example is
+  [#347](https://github.com/action-state-group/evidencebook/issues/347).
 
 ## Other languages
 

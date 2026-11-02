@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Docs: the Mesh node's History in the guide (#322)
+
+- Guide path 4 derives and checks the Mesh node's `inference-service-history/0` History in a CI-run Rust example (`rust/interop/tests/mesh_history.rs`) with agent-action-capsule's `inference_history`, under the definition a Mesh node serves. The Go Example still stops at the node's `history_card/1`: this module pins agent-action-capsule go v0.19.0, before the Go reader (v0.20.0); checking the History there is #347. No change to the Go module's API.
+
 ## v0.13.2 (2026-11-02)
 
 Go module only.
