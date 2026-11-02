@@ -77,7 +77,7 @@ func doctorCommand() *cobra.Command {
 		}
 		as, _ := c.Flags().GetString("as")
 		if probe, _ := c.Flags().GetBool("probe"); as != "" && !probe {
-			return cli.InputError("--as chooses who the probe answers for: it needs --probe")
+			return cli.InputError("--as needs --probe")
 		}
 		opts.As = as
 		// A book that holds a disclosure policy answers under it: Doctor and
@@ -91,10 +91,10 @@ func doctorCommand() *cobra.Command {
 		}
 		return cli.Output(c, map[string]any{"findings": findings})
 	}}
-	cmd.Flags().String("policy", "", "The share policy this node advertises and answers under, as `book respond --policy` reads it (default: the documented defaults); a disclosure policy the book holds overrides its standard-history and record-at-completion switches")
+	cmd.Flags().String("policy", "", "The share policy this node advertises and answers under, as `book respond --policy` reads it (default: the documented defaults); a disclosure policy the book holds (`book policy`) overrides its standard-history and record-at-completion switches")
 	cmd.Flags().StringArray("controller-binding", nil, "A controller binding record (controller-binding/0) this node holds; repeatable")
 	cmd.Flags().Bool("probe", false, "Also ask for checkpoints, then history_card/1, as a stranger through the in-process `book respond` path (no --requester, not a network endpoint), and verify both; a match shows what a stranger is served, not that the policy is verified")
-	cmd.Flags().String("as", "", "Who the probe answers for, with --probe: `stranger` asks only the public questions; `signed` also renders what a signed asker receives (default: signed)")
+	cmd.Flags().String("as", "", "With --probe, who the probe asks as: `stranger` asks only the public questions; `signed` (default) also shows what a signed asker receives")
 	return cmd
 }
 

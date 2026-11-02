@@ -56,6 +56,7 @@ func TestBookPolicyAdoptShowAgreeWithDoctor(t *testing.T) {
 	size := bookSize(t, p)
 	_, out, err := runPolicy(t, "", "--profile", "node", "adopt", "--holder", "node")
 	require.Error(t, err, "a book keeps the policy it holds: %s", out)
+	assert.Contains(t, err.Error()+out, "one time per book")
 	assert.Equal(t, size, bookSize(t, p), "a second adopt seals nothing")
 
 	shown, _, err := runPolicy(t, "", "--profile", "node", "show")

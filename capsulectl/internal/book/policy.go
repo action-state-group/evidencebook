@@ -43,7 +43,7 @@ func writablePolicyProfile(c *cobra.Command, verb string) (cli.Profile, error) {
 }
 
 func policyAdoptCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "adopt", Short: "Seal the shipped default disclosure policy for a holder kind, once (signs)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "adopt", Short: "Seal the shipped default disclosure policy for a holder kind (signs; one time per book)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, e := writablePolicyProfile(c, "book policy adopt")
 		if e != nil {
 			return e
@@ -54,6 +54,9 @@ func policyAdoptCommand() *cobra.Command {
 			return e
 		}
 		defer func() { err = errors.Join(err, opened.release()) }()
+		if held, e := opened.book.DisclosurePolicy(); e == nil {
+			return cli.InputError("this book already holds the policy " + held.Name + ": adopt runs one time per book; use `book policy change` to alter it")
+		}
 		adopted, record, e := opened.book.AdoptPolicy(c.Context(), holder)
 		if e != nil {
 			return policyError(e)
@@ -88,7 +91,7 @@ func policyShowCommand() *cobra.Command {
 }
 
 func policyChangeCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "change", Short: "Apply a policy-change/v1 block: one policy record per changed setting (signs); its then[] steps are returned for you to run, not run here", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "change", Short: "Apply a policy-change/v1 file: one policy record per changed setting (signs)", Long: "Apply a policy-change/v1 file, or - for stdin. The steps in its then[] are returned for you to run, not run here.", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, e := writablePolicyProfile(c, "book policy change")
 		if e != nil {
 			return e
