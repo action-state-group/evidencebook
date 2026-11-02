@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc32
+
+Pairs with capsulectl `v0.1.0-rc32`. This section also lists what `v0.1.0-rc31` carried: that tag
+was cut before this CHANGELOG had a section for it. New since rc31: evidencebook-deal#121 (r21's
+channel), #119 and #125 (witness `unverified`), and #128 (the sale close, fixes #127).
+
 - A buyer thread closed `received` (outcome completed or mismatch) now closes its sale too, so a completed
   sale leaves no open `sale-…` deal in the seller's store (evidencebook-deal#127); `deal close`
   prints `sale_closed` when it closed the sale, and a retried close finishes a sale a crash left open.
@@ -89,8 +95,8 @@
   checkpoint, its final close). A deal without one stays `receipt_only` or `no_record`.
   Run `deal terms-result` and then `deal tick` before the card.
 
-- Builds against capsulectl `v0.1.0-rc31` (its profile names the countersigner directory,
-  capsule-cli#522), which pins capsule-viewer `v0.10.0`.
+- Builds against capsulectl `v0.1.0-rc32` (its profile names the countersigner directory,
+  capsule-cli#522; rc32 changes nothing in this plugin's go.mod beyond the require), which pins capsule-viewer `v0.10.0`.
 
 - The owner's report states its grade, keeps countersignatures, and has a read that
   writes nothing (evidencebook-deal#64, actionstate-muse#311 §3.1, §3.3, §4):
