@@ -1,0 +1,4916 @@
+[
+  {
+    "view": "calendar",
+    "lanes": [
+      {
+        "id": "activity",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "bar",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 35
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-10",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-28",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "judgment",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "daily_run"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.judgment",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 26
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "not_met",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "adjudications",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "bar",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "adjudication"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 5
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "view": "by-period",
+    "count": {
+      "id": "not_met",
+      "chart": {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "data": {
+          "name": "dataset"
+        },
+        "mark": "rect",
+        "transform": [
+          {
+            "filter": {
+              "field": "event_time_claim",
+              "range": [
+                {
+                  "year": 2026,
+                  "month": 9,
+                  "date": 1,
+                  "utc": true
+                },
+                {
+                  "year": 2026,
+                  "month": 9,
+                  "date": 30,
+                  "utc": true
+                }
+              ],
+              "timeUnit": "utcyearmonthdate"
+            }
+          },
+          {
+            "filter": {
+              "field": "record_type",
+              "equal": "case_record"
+            }
+          },
+          {
+            "filter": {
+              "field": "statement.verdict",
+              "equal": "not_met"
+            }
+          }
+        ],
+        "encoding": {
+          "x": {
+            "field": "event_time_claim",
+            "type": "temporal",
+            "timeUnit": "utcyearmonthdate"
+          },
+          "y": {
+            "field": "statement.requirement",
+            "type": "nominal"
+          },
+          "color": {
+            "aggregate": "count",
+            "type": "quantitative"
+          }
+        },
+        "usermeta": {
+          "capsule": {
+            "population": {
+              "count": 15
+            },
+            "window": {
+              "field": "event_time_claim",
+              "from": "2026-09-01",
+              "to": "2026-09-30"
+            },
+            "runs": {
+              "filter": {
+                "field": "record_type",
+                "equal": "daily_run"
+              },
+              "field": "event_time_claim"
+            },
+            "values": [
+              {
+                "x": "2026-09-01",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-01",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-01",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-b",
+                "color": 1
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-a",
+                "color": 2
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-b",
+                "color": 1
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-c",
+                "not_run": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "columns": [
+      {
+        "id": "out_of_scope",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            },
+            {
+              "filter": {
+                "field": "statement.verdict",
+                "equal": "out_of_scope"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.requirement",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 4
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "req-b",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "req-c",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "req-a",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "req-a",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "req-c",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "not_yet_in_force",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            },
+            {
+              "filter": {
+                "field": "statement.verdict",
+                "equal": "not_yet_in_force"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.requirement",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 2
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "req-c",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "req-b",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "req-b",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "req-c",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "req-c",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "view": "calendar",
+    "lanes": [
+      {
+        "id": "cases",
+        "role": "activity",
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "bar",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 35
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-10",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-28",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "verdicts",
+        "role": "judgment",
+        "classes": {
+          "met": "good",
+          "not_met": "bad",
+          "out_of_scope": "open",
+          "not_yet_in_force": "open"
+        },
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.verdict",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 35
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "not_met",
+                  "color": 2
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "out_of_scope",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "not_yet_in_force",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "out_of_scope",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "not_yet_in_force",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "not_met",
+                  "color": 2
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "out_of_scope",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "not_met",
+                  "color": 2
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "out_of_scope",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "not_yet_in_force",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "not_met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "met",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "not_met",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "not_yet_in_force",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "out_of_scope",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "not_yet_in_force",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "out_of_scope",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "not_yet_in_force",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "out_of_scope",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "not_met",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "not_yet_in_force",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "out_of_scope",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "rulings",
+        "role": "adjudication",
+        "classes": {
+          "upheld": "good",
+          "overturned": "bad"
+        },
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "adjudication"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.ruling",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 5
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "upheld",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "overturned",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "upheld",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "overturned",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "upheld",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "view": "timeline",
+    "lanes": [
+      {
+        "id": "misses",
+        "mark": "tick",
+        "classes": {
+          "req-a": "bad",
+          "req-b": "bad",
+          "req-c": "bad"
+        },
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "bar",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "case_record"
+              }
+            },
+            {
+              "filter": {
+                "field": "statement.verdict",
+                "equal": "not_met"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "aggregate": "count",
+              "type": "quantitative"
+            },
+            "color": {
+              "field": "statement.requirement",
+              "type": "nominal"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 15
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "color": "req-c",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-03",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "color": "req-a",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-04",
+                  "color": "req-b",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-04",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "color": "req-a",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-06",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "color": "req-c",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-09",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "color": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "color": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "color": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "color": "req-a",
+                  "y": 2
+                },
+                {
+                  "x": "2026-09-12",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "color": "req-b",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-16",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "color": "req-a",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-18",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "color": "req-a",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-20",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "color": "req-c",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-21",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "color": "req-a",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "color": "req-c",
+                  "y": 1
+                },
+                {
+                  "x": "2026-09-27",
+                  "color": "req-a",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "color": "req-b",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "color": "req-c",
+                  "y": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "color": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "color": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "color": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "color": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "color": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "color": "req-c",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "color": "req-a",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "color": "req-b",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "color": "req-c",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "rulings",
+        "mark": "diamond",
+        "classes": {
+          "upheld": "good",
+          "overturned": "bad"
+        },
+        "chart": {
+          "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+          "data": {
+            "name": "dataset"
+          },
+          "mark": "rect",
+          "transform": [
+            {
+              "filter": {
+                "field": "event_time_claim",
+                "range": [
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 1,
+                    "utc": true
+                  },
+                  {
+                    "year": 2026,
+                    "month": 9,
+                    "date": 30,
+                    "utc": true
+                  }
+                ],
+                "timeUnit": "utcyearmonthdate"
+              }
+            },
+            {
+              "filter": {
+                "field": "record_type",
+                "equal": "adjudication"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "event_time_claim",
+              "type": "temporal",
+              "timeUnit": "utcyearmonthdate"
+            },
+            "y": {
+              "field": "statement.ruling",
+              "type": "nominal"
+            },
+            "color": {
+              "aggregate": "count",
+              "type": "quantitative"
+            }
+          },
+          "usermeta": {
+            "capsule": {
+              "population": {
+                "count": 5
+              },
+              "window": {
+                "field": "event_time_claim",
+                "from": "2026-09-01",
+                "to": "2026-09-30"
+              },
+              "runs": {
+                "filter": {
+                  "field": "record_type",
+                  "equal": "daily_run"
+                },
+                "field": "event_time_claim"
+              },
+              "values": [
+                {
+                  "x": "2026-09-01",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-01",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-02",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-03",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-04",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-05",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-06",
+                  "y": "upheld",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-07",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-08",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-09",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-10",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-11",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "overturned",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-12",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-13",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-14",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-15",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-16",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-17",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-18",
+                  "y": "upheld",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-19",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-20",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-21",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-22",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-23",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "overturned",
+                  "color": 1
+                },
+                {
+                  "x": "2026-09-24",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-25",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-26",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "overturned",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-27",
+                  "y": "upheld",
+                  "color": 0
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-28",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-29",
+                  "y": "upheld",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "overturned",
+                  "not_run": true
+                },
+                {
+                  "x": "2026-09-30",
+                  "y": "upheld",
+                  "not_run": true
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "view": "co-failure",
+    "count": {
+      "id": "not_met",
+      "chart": {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+        "data": {
+          "name": "dataset"
+        },
+        "mark": "rect",
+        "transform": [
+          {
+            "filter": {
+              "field": "event_time_claim",
+              "range": [
+                {
+                  "year": 2026,
+                  "month": 9,
+                  "date": 1,
+                  "utc": true
+                },
+                {
+                  "year": 2026,
+                  "month": 9,
+                  "date": 30,
+                  "utc": true
+                }
+              ],
+              "timeUnit": "utcyearmonthdate"
+            }
+          },
+          {
+            "filter": {
+              "field": "record_type",
+              "equal": "case_record"
+            }
+          },
+          {
+            "filter": {
+              "field": "statement.verdict",
+              "equal": "not_met"
+            }
+          }
+        ],
+        "encoding": {
+          "x": {
+            "field": "event_time_claim",
+            "type": "temporal",
+            "timeUnit": "utcyearmonthdate"
+          },
+          "y": {
+            "field": "statement.requirement",
+            "type": "nominal"
+          },
+          "color": {
+            "aggregate": "count",
+            "type": "quantitative"
+          }
+        },
+        "usermeta": {
+          "capsule": {
+            "population": {
+              "count": 15
+            },
+            "window": {
+              "field": "event_time_claim",
+              "from": "2026-09-01",
+              "to": "2026-09-30"
+            },
+            "runs": {
+              "filter": {
+                "field": "record_type",
+                "equal": "daily_run"
+              },
+              "field": "event_time_claim"
+            },
+            "values": [
+              {
+                "x": "2026-09-01",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-01",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-01",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-02",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-03",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-b",
+                "color": 1
+              },
+              {
+                "x": "2026-09-04",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-05",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-06",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-07",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-08",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-09",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-10",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-11",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-a",
+                "color": 2
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-12",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-13",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-14",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-15",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-b",
+                "color": 1
+              },
+              {
+                "x": "2026-09-16",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-17",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-18",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-19",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-20",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-21",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-22",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-23",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-a",
+                "color": 1
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-24",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-25",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-26",
+                "y": "req-c",
+                "color": 1
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-a",
+                "color": 0
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-b",
+                "color": 0
+              },
+              {
+                "x": "2026-09-27",
+                "y": "req-c",
+                "color": 0
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-28",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-29",
+                "y": "req-c",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-a",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-b",
+                "not_run": true
+              },
+              {
+                "x": "2026-09-30",
+                "y": "req-c",
+                "not_run": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "subject": "statement.session"
+  }
+]

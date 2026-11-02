@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/chartspec"
+	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -93,4 +95,69 @@ func TestFillChartsRefusals(t *testing.T) {
 	withheld.Rows[1].Header = nil
 	_, err = fillCharts(entry, withheld)
 	assert.ErrorContains(t, err, "withheld")
+}
+
+// viewsDir holds capsule-viewer's committed month bundle and the five view
+// entries its goldens draw (ts/test/testdata/views at go/v0.12.0). The bundle
+// is not a verifiable one, so the tests read its dataset and hand the filled
+// entries to the viewer's emitter; Build's own verification is covered by the
+// presentation fixtures.
+const viewsDir = "testdata/views"
+
+func viewFixtures(t *testing.T) (map[string]interface{}, []json.RawMessage) {
+	t.Helper()
+	bundle, err := cli.DecodeBundleJSON(mustRead(t, viewsDir+"/month.bundle.json"))
+	require.NoError(t, err)
+	var views []json.RawMessage
+	require.NoError(t, json.Unmarshal(mustRead(t, viewsDir+"/views.json"), &views))
+	require.Len(t, views, 5)
+	return bundle, views
+}
+
+// unfilled strips what the builder states: the window range filter and the
+// usermeta.capsule statement of every chart spec.
+func unfilled(t *testing.T, raw json.RawMessage) json.RawMessage {
+	t.Helper()
+	var entry map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &entry))
+	for _, spec := range chartSpecsOf(entry) {
+		delete(spec, "usermeta")
+		transform, _ := spec["transform"].([]interface{})
+		kept := []interface{}{}
+		for _, item := range transform {
+			filter, _ := item.(map[string]interface{})["filter"].(map[string]interface{})
+			if _, isRange := filter["range"]; !isRange {
+				kept = append(kept, item)
+			}
+		}
+		spec["transform"] = kept
+	}
+	out, err := json.Marshal(entry)
+	require.NoError(t, err)
+	return out
+}
+
+// The builder states what capsule-viewer's Go and TypeScript checks accept: a
+// view entry stripped of its statement is filled back to the committed
+// entry, and a Go-built page then carries the view for the runtime to draw
+// (capsule-viewer#156).
+func TestFillChartsRestoresTheViewerFixturesAndAGoPageCarriesThem(t *testing.T) {
+	bundle, views := viewFixtures(t)
+	dataset, err := chartspec.DatasetOf(bundle)
+	require.NoError(t, err)
+	require.NotNil(t, dataset)
+	stripped := make([]json.RawMessage, len(views))
+	for i, raw := range views {
+		stripped[i] = unfilled(t, raw)
+	}
+	filled, err := fillCharts(stripped, dataset)
+	require.NoError(t, err)
+	for i := range views {
+		assert.JSONEq(t, string(views[i]), string(filled[i]), "entry %d", i)
+	}
+	page, err := emitter.BuildOfflineHTML(bundle, []byte("/*IIFE_MARKER*/"), emitter.OfflineOptions{Audience: "*", Charts: filled})
+	require.NoError(t, err)
+	for _, kind := range []string{"calendar", "by-period", "timeline", "co-failure"} {
+		assert.Contains(t, page, `"view":"`+kind+`"`)
+	}
 }
