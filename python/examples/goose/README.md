@@ -124,6 +124,8 @@ Step 07 over the mailbox (binding `nostr-mailbox-v0`, experimental; the exchange
   node. A reply that arrives after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and
   never rewrites it (binding §5.3). Arrival is judged by your clock at the poll that first sees the reply, so poll at least
   as often as the asked node's `answers_within`.
+  `loop_book_bundle` with `disclose` writes the outcome's Evidence Bundle with the headers of the outcome and of the
+  request it cites revealed, and the reply bytes the response record keeps (`capsulectl verify --bundle` reads it).
 - The events are not encrypted (binding §8, N-3). Use a relay that authenticates its readers.
 
 The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and

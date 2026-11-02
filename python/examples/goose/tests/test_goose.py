@@ -838,3 +838,14 @@ def test_join_includes_the_commitment_and_advertise_writes_it(server, tmp_path):
     before = len(ls.node().notes(gn.JOINED))
     assert call(ls.loop_join, node_id="not-hex")["ok"] is False
     assert len(ls.node().notes(gn.JOINED)) == before
+
+
+def test_a_disclosing_bundle_of_a_deal_step_skips_the_admission_in_the_node_book(nodes, clock):
+    from agent_action_capsule import bundle as aac
+
+    buyer, seller = nodes
+    _admit(buyer, seller)
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    first = buyer.open_deal(chain, chain.open(clock.at, "buy"))[0].record_id
+    built = buyer.book_bundle(f"deal/{DEAL}", first, disclose=True)  # the step cites a record of the node book
+    assert aac.verify_bundle(built, strict=True).verdict == "VALID"

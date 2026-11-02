@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The Goose reference's `loop_book_bundle` takes `disclose` (capsule-emit#407): the bundle then reveals the header of the
+  record and of each record it cites, and carries their payloads under `evidencebook/payloads`, as Go's `capsulectl disclose`
+  writes them. An outcome bundle of a mailbox ask holds the outcome, the request it answers and the reply bytes.
 - The Goose reference answers evidence requests by polling the mailbox its commitment advertises, and asks the same
   way (step 07, capsule-emit#407): `loop_advertise` with `relays` writes `ask.nostr {mailbox_key, relays}` and refuses an
   `answers_within` shorter than the node's `poll_interval`; `loop_mailbox_poll` answers the requests addressed to the

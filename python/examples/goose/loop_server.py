@@ -222,7 +222,7 @@ def loop_tick() -> str:
 
 
 @_tool
-def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
+def loop_book_bundle(book_id: str, record_id: str, out_path: str, disclose: bool = False) -> str:
     """Write an Evidence Bundle (``evidence-bundle/v2``) for one record of a
     book to ``out_path``: the record, its position and inclusion proof, and
     the book's checkpoint covering it. ``capsulectl verify --bundle`` reads
@@ -233,9 +233,12 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
     witnessed cadence tick also carries the checkpoint, the cadence's
     checkpoint and receipt go as ``cadence-checkpoint.cose`` and
     ``cadence-witness-receipt.json`` and the chain travels in the bundle's
-    ``x-cadence-witness/v0`` extension."""
+    ``x-cadence-witness/v0`` extension.
+
+    With ``disclose`` it also reveals the headers of the record and of the records it cites, with
+    their payloads (an outcome of an evidence request, with the request it answers)."""
     n = node()
-    built = n.book_bundle(book_id, record_id)
+    built = n.book_bundle(book_id, record_id, disclose)
     stem = str(Path(out_path).expanduser().with_suffix(""))
     _write(out_path, json.dumps(built, sort_keys=True).encode())
     cose = built["checkpoint"]["cose"]  # the bundle's own, not a newer cut

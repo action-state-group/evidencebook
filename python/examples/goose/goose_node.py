@@ -86,6 +86,8 @@ DISPUTE_HALF, DISPUTE_ASKED, DISPUTE_ABSENT = "goose_dispute_half", "goose_dispu
 MAILBOX_MEDIA = "application/json"
 #: The node-book record that stands for a deal this node opened: it cites the admission the deal rests on.
 DEAL_OPENED = "goose_deal_opened"
+#: The bundle extension that carries the payloads of the records a bundle discloses (Go's ``ExtensionPayloads``).
+PAYLOADS_EXTENSION = "evidencebook/payloads"
 #: A model call the node sealed (``Node.seal_model_call``).
 MODEL_CALL = "goose_model_call"
 
@@ -535,7 +537,7 @@ class Node:
                        "tree_size": got.tree_size}
             return receipt
 
-    def book_bundle(self, book_id: str, record_id: str) -> dict:
+    def book_bundle(self, book_id: str, record_id: str, disclose: bool = False) -> dict:
         """An Evidence Bundle (``evidence-bundle/v2``) proving ``record_id``
         is in ``book_id`` at its position under the book's newest checkpoint
         (cut now if the book grew): the record, its inclusion proof and the
@@ -544,7 +546,13 @@ class Node:
         With a witness directory the witness's receipt for that checkpoint
         is on the bundle's ``checkpoint.witnesses`` and must verify under the
         directory. When a witnessed cadence tick also carries it, the cadence
-        chain travels as the ``x-cadence-witness/v0`` extension."""
+        chain travels as the ``x-cadence-witness/v0`` extension.
+
+        With ``disclose`` the bundle also reveals the header of ``record_id`` and of each record it
+        cites (``disclosures[id].agent_input``, which the record's capsule commits; a record its caller sealed
+        carries its header inline and is not disclosed twice; a citation into another book is skipped) and carries their
+        payloads under ``evidencebook/payloads`` (SHA-256 to unpadded base64url, as Go's
+        ``capsulectl disclose`` writes them): an outcome of a request, say, with the request it answers."""
         from agent_action_capsule import bundle as aac
 
         with self._lock:
@@ -555,6 +563,20 @@ class Node:
                 raise Refused(f"book {book_id} holds no record {record_id}")
             checkpoint = book.checkpoint()
             extensions = {}
+            disclosures: dict = {}
+            if disclose:
+                payloads = {}
+                held = {r.record_id for r in book.records()}  # a citation may name a record of another book
+                for rid in (record_id, *book.get(record_id).header.links_to(CITES)):
+                    if rid not in held:
+                        continue
+                    # A record its caller sealed carries its header inline (RECORD_HEADER_MEMBER) and
+                    # commits no agent_input: the bundle's record already shows it.
+                    if RECORD_HEADER_MEMBER not in book._stored[rid].capsule:
+                        disclosures[rid] = {"agent_input": book.get(rid).header.value()}
+                    for payload in book._payloads(rid):
+                        payloads[hashlib.sha256(payload).hexdigest()] = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
+                extensions[PAYLOADS_EXTENSION] = payloads
             try:
                 extensions[CADENCE_EXTENSION] = self.cadence.chain(checkpoint.statement)
             except NotFoundError:
@@ -562,7 +584,8 @@ class Node:
             try:
                 built = aac.build_evidence_bundle(
                     aac.proof_source_from_cll(book._substrate.backend, _BookRecords(book)),
-                    root=record_id, interval_from=1, extensions=extensions or None)
+                    root=record_id, interval_from=1, disclosures=disclosures or None,
+                    extensions=extensions or None)
             except aac.BundleBuildError as exc:
                 raise Refused(f"no bundle: {exc}") from None
             if self._witnesses is not None:

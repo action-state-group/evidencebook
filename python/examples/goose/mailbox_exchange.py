@@ -31,6 +31,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from agent_action_capsule.canonical import jcs
 from agent_action_capsule.evidence_request import verify_refusal_offline
+from evidencebook._time import from_nanos, parse_ns
 from evidencebook import (
     CITES, MINIMUM_ABSENCE_WINDOW, RECORD_TYPE_ABSENCE, RECORD_TYPE_RESPONSE, Coverage, EvidenceRequest, InvalidError,
     Message, ResponderKeys, Subject, parse_reply,
@@ -170,8 +171,12 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
         raise gn.Refused("this node's book holds no such request")
     clock = now or node._clock
     arrived = clock().astimezone(timezone.utc)
-    deadline = datetime.fromtimestamp(asked["deadline"], timezone.utc)
     request_record = asked["request_record_id"]
+    # The window closes at the request's deadline, but a book records no window shorter than
+    # MINIMUM_ABSENCE_WINDOW after the request it opened with; the request was sealed a moment before
+    # its deadline was counted from, so the later of the two closes it.
+    sealed = from_nanos(parse_ns(node.shelf.open(gn.NODE_BOOK).get(request_record).header.committed_at))
+    deadline = max(datetime.fromtimestamp(asked["deadline"], timezone.utc), sealed + MINIMUM_ABSENCE_WINDOW)
     factory = _factory(relay_factory)
     replies = mb.poll_replies([factory(u) for u in asked["relays"]], request_event_id, MEDIA, asked["mailbox_key"])
     book = node.shelf.open(gn.NODE_BOOK)
@@ -187,7 +192,7 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
             except InvalidError:
                 continue  # not a reply this responder signed for this request: a transport condition
             return {"status": "answered", "record_id": record.record_id, "outcome": record.header.statement["outcome"]}
-        return {"status": "pending", "deadline": asked["deadline"]}
+        return {"status": "pending", "deadline": int(deadline.timestamp())}
     if outcome is None:
         with node._lock:
             outcome = book.record_absence(request_record, deadline, mb.nprofile(asked["mailbox_key"], asked["relays"]))
@@ -199,11 +204,11 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
             continue
         late = node.note(LATE, {"request_event_id": request_event_id, "reply_event_id": reply.id,
                                 "request_digest": asked["request_digest"],
-                                "reply_digest": hashlib.sha256(octets).hexdigest(), "deadline": asked["deadline"],
+                                "reply_digest": hashlib.sha256(octets).hexdigest(), "deadline": int(deadline.timestamp()),
                                 "seen_at": int(arrived.timestamp())},
                          subject_ref=reply.id, cites=(outcome.record_id,), payloads=(octets,))
         break
-    result = {"status": "absent", "record_id": outcome.record_id, "deadline": asked["deadline"],
+    result = {"status": "absent", "record_id": outcome.record_id, "deadline": int(deadline.timestamp()),
               "late": late is not None or bool(seen)}
     if late is not None:
         result["late_record_id"] = late.record_id

@@ -265,3 +265,64 @@ def test_a_late_reply_to_one_request_does_not_mark_another_request_late(nodes, r
     clock.advance(hours=2)
     got = mx.poll(asker, second["request_event_id"], factory, clock)
     assert got["status"] == "absent" and got["late"] is False and "late_record_id" not in got
+
+
+def test_an_outcome_bundle_discloses_the_outcome_and_the_request_it_cites_with_the_reply(nodes, relay, factory, clock):
+    """What step 07 of the loop judges: the outcome's header and the request's, matched in the bundle,
+    and the reply bytes the response record keeps."""
+    import hashlib
+
+    from agent_action_capsule import bundle as aac
+
+    asker, asked = nodes
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    mx.answer_round(asked, [WSS], factory)
+    got = mx.poll(asker, sent["request_event_id"], factory, clock)
+    built = asker.book_bundle(gn.NODE_BOOK, got["record_id"], disclose=True)
+    result = aac.verify_bundle(built, strict=True)
+    assert result.verdict == "VALID"
+    matched = {d.capsule_id for d in result.disclosures if d.status == "disclosure_match"}
+    assert matched == {got["record_id"], sent["request_record_id"]}, "the rest of the interval stays withheld"
+    header = built["disclosures"][got["record_id"]]["agent_input"]
+    [kept] = header["payload_commitments"]
+    reply = next(e for e in relay.events if e["kind"] == mb.REPLY_KIND)
+    assert hashlib.sha256(mb.decode(reply["content"])).hexdigest() == kept
+    assert kept in built["extensions"][gn.PAYLOADS_EXTENSION]
+    assert "disclosures" not in asker.book_bundle(gn.NODE_BOOK, got["record_id"])
+
+
+def test_a_relay_map_points_an_advertised_relay_at_another_address(nodes, relay, clock, monkeypatch):
+    """A rehearsal advertises a wss:// relay and runs a local one; nothing but the connection moves."""
+    asker, asked = nodes
+    monkeypatch.setenv("GOOSE_RELAY_MAP", json.dumps({WSS: relay.url}))
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, now=clock)
+    assert mx.answer_round(asked, [WSS]) == [sent["request_event_id"]]
+    assert mx.poll(asker, sent["request_event_id"], now=clock)["status"] == "answered"
+    monkeypatch.setenv("GOOSE_RELAY_MAP", "[")
+    with pytest.raises(mb.MailboxError, match="GOOSE_RELAY_MAP"):
+        mb.Relay(WSS).query({})
+
+
+def test_a_disclosing_bundle_does_not_disclose_a_caller_sealed_record_twice(nodes):
+    """A caller-sealed record (a model call) carries its header inline, so the bundle shows it already."""
+    from agent_action_capsule import bundle as aac
+
+    asker, _ = nodes
+    call, _ = asker.seal_model_call("rehearsal", "rehearsal-model", "prompt", "completion")
+    built = asker.book_bundle(gn.NODE_BOOK, call.record_id, disclose=True)
+    assert "disclosures" not in built and aac.verify_bundle(built, strict=True).verdict == "VALID"
+
+
+def test_the_absence_window_closes_no_sooner_than_a_minute_after_the_request(nodes, relay, factory, clock):
+    """A request is sealed a moment before its deadline is counted from; the book records no window shorter
+    than MINIMUM_ABSENCE_WINDOW after the request, so the later of the two closes it."""
+    asker, asked = nodes
+    doc = advertise(asked)
+    doc_short = cm.build(asked, settings=cm.Settings(relays=(WSS,), endpoint="nostr:mailbox", answers_within="PT1M",
+                                                     poll_interval=30), now=AT)[0]
+    clock.at = AT + timedelta(milliseconds=900)  # the seal lands after the second the deadline is counted from
+    sent = mx.ask(asker, doc_short, "checkpoints", min_freshness=0, relay_factory=factory, now=lambda: AT)
+    clock.at = AT + timedelta(seconds=60, milliseconds=500)  # past the deadline, before a minute after the seal
+    assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "pending"
+    clock.at = AT + timedelta(seconds=61)
+    assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "absent"
