@@ -200,3 +200,35 @@
 
 - `Cadence.history_card(n=0)` returns the profile's `history_card/1` over the cadence log as a `Staple`, as Go's
   `Cadence.HistoryCard` does (evidencebook#341); `check_staple` accepts it for `key_id` of the shelf signer.
+
+- `Cadence.history_card` raises the new `OverLimitError` when the card would list more than `DEFAULT_MAX_ANSWER_ITEMS` (10,000) ticks, as Go's `Cadence.HistoryCard` does (evidencebook#354).
+
+- `evidence.evaluate(pack, inputs)` decides admission by running capsule-engine's `admission evaluate` command
+  (go/v0.3.0; `$CAPSULE_ENGINE` or `capsule-engine` on `PATH`) and returns a `Decision`; `EvaluateError` when the
+  engine makes none (evidencebook#332). This replaces the earlier line saying `evaluate` raises `NotYetAvailable`;
+  `find` and `serve` still do.
+
+- The Goose reference's close step cites the checkpoint of the counterparty's half its node holds, and each side requests
+  the other's half at the exchange's end and shares its own by default (`loop_deal_end_exchange`). `loop_deal_reconcile` now
+  holds any matching half, naming its final record id and checkpoint digest; `loop_deal_close` refuses without a held half
+  unless `uncited` is set; `verify_half` checks a step's `cites` links. x-deal-v0's header rule states both extra cites.
+  Mesh nodes accept this form beside the current one during the overlap window (capsules-plugin#220). Step 05 maps to
+  Goose's records in the example's README (evidencebook#303).
+
+- The Goose reference gains `loop_settlement_disclosure` (the node's signed `settlement-disclosure/v1`: its own count of final settlements on a rail, for step 06's `ledger_count`) and `loop_pay_opening` (the opening of the buyer's `pay` record's payment-reference commitment, so a checker reads the reference the record commits). Neither reads a rail or moves money (capsule-emit#408).
+
+- The Goose reference's commitment staples a `history_card/1` built as `Book.Staple` builds it, over `checkpoints` with a pinned anchor and a nonce, not over `full_history` (evidencebook#345). `evidence-commitment/1` has no member for the request, so the commitment carries the reply only.
+
+- `Book.respond` answers from a snapshot of the log and holds the book's lock only to read the clock, call the limiter, issue an anchor a freshness floor needs and seal `evidence_request_answered`, so a flood of requests no longer blocks appends and checkpoints, as Go's `Book.Respond` does (evidencebook#217).
+
+### Changed: deal records accept rule_inputs_version 4 (#363)
+
+- The x-deal-v0 schemas accept `rule_inputs_version` 3 or 4 (`enum [3, 4]`, was `const 3`); 4 is the rule inputs version in which a rule's `channel` comes from the latest counterparty message only. A positive fixture (`positive-rule-inputs-4`) seals a pay check under 4 (#363).
+
+- `Book` answers `standard_history/1` over `full_history` when given a `StandardHistorySource(holder_kind, inputs)`
+  (`Book(..., standard_history=...)`), byte for byte with Go's `StandardHistorySource` (evidencebook#328): to any
+  authenticated requester and never a stranger, without a source it is `derivation_unsupported`. `staple` builds a
+  `standard_history/1` staple from such a book. `derive_standard_history` is Go's `DeriveStandardHistory`.
+
+- `check_staple` refuses a `history_card/1` staple whose checkpoints are not one chain (signature under the first's key,
+  one log, signed `prev_size`/`prev_root`, consistency proofs), as Go's `CheckStaple` does (evidencebook#344).
