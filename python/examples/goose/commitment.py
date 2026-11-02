@@ -13,6 +13,11 @@ own key (its ``key_id``, the producer key) over their RFC 8785 (JCS) form
 without ``sig``. One ``history_card/1`` is stapled, the node book's: one card
 per deal book would publish each deal id. The node book's card shows the
 book's size, which grows with every record it holds, deal openings included.
+
+The card is built as ``Book.Staple`` builds it: the book's own request over ``checkpoints`` (the subject
+``history_card/1`` is the form of), pinned to its newest checkpoint, with a fresh nonce. Only the reply octets are
+stapled, because ``evidence-commitment/1`` has no member for the request: a verifier of the commitment sees
+``request_binding`` as NOT_PRESENT. Carrying the request and nonce would take a new member in the loop's schema.
 """
 from __future__ import annotations
 
