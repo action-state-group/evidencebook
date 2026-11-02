@@ -321,7 +321,8 @@ type citedJudge struct {
 
 // citedJudgeRecords reads each distinct record a calibration claim's
 // evidence cites. The body is the record's statement, as a Close's is; a
-// record with no statement has its payload withheld and so no kind to read.
+// record with no statement, or one that carries a published capsule, has its
+// payload withheld and so no kind to read.
 // A digest cited twice, or two digests naming one record, is one citation.
 func citedJudgeRecords(claim resultClaim, resolved map[string]evidencebook.Record) []citedJudge {
 	var cited []citedJudge
@@ -333,7 +334,11 @@ func citedJudgeRecords(claim resultClaim, resolved map[string]evidencebook.Recor
 		}
 		seen[record.RecordID] = true
 		judge := citedJudge{id: record.RecordID}
-		if statement := bytes.TrimSpace(record.Header.Statement); len(statement) > 0 && string(statement) != "null" {
+		// A record that carries a published capsule has its judge record in
+		// the capsule's payload, which is not read here; its statement (a
+		// backfill's provenance, say) is not the judge record.
+		_, carriesCapsule := capsuleIDOf(record)
+		if statement := bytes.TrimSpace(record.Header.Statement); !carriesCapsule && len(statement) > 0 && string(statement) != "null" {
 			judge.disclosed = true
 			var body struct {
 				RecordVersion string `json:"record_version"`

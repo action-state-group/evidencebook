@@ -1331,3 +1331,19 @@ func TestResultBuildChecksACalibrationClaimsEvidence(t *testing.T) {
 		})
 	}
 }
+
+// A record that carries a published capsule counts as withheld even when
+// its statement is not empty: a backfilled capsule's statement is migration
+// provenance, not the judge record.
+func TestCitedJudgeRecordsTreatsACapsuleCarrierAsWithheld(t *testing.T) {
+	claim := resultClaim{Evidence: []string{"s", "b"}}
+	resolved := map[string]evidencebook.Record{
+		"s": {RecordID: "s", Header: evidencebook.Header{RecordType: "judge_record", Statement: json.RawMessage(`{"record_version":"calibration-summary/v1"}`)}},
+		"b": {RecordID: "b", Header: evidencebook.Header{RecordType: recordTypeBackfilled, SubjectRef: "cap", Statement: json.RawMessage(`{"capsule":true}`)}},
+	}
+	cited := citedJudgeRecords(claim, resolved)
+	require.Len(t, cited, 2)
+	assert.True(t, cited[0].disclosed)
+	assert.False(t, cited[1].disclosed)
+	assert.NoError(t, checkCalibrationClaim(claim, cited))
+}
