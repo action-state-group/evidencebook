@@ -124,3 +124,13 @@ def test_the_loops_checker_refuses_a_commitment_signed_by_another_key(node, tmp_
     cm.write(tmp_path / "c", resign(doc, Ed25519PrivateKey.generate()), policy_bytes)
     r = check(tmp_path / "c")
     assert r.returncode == 1 and "signature does not verify" in r.stderr, r.stdout + r.stderr
+
+
+@needs_loop
+def test_the_loops_checker_accepts_a_commitment_that_names_the_mailbox(node, tmp_path):
+    doc, policy_bytes = cm.build(node, settings=cm.Settings(relays=("wss://relay.example",), endpoint="nostr:mailbox",
+                                                            answers_within="PT1H", poll_interval=60))
+    assert doc["ask"]["nostr"] == {"mailbox_key": node.mailbox_key, "relays": ["wss://relay.example"]}
+    cm.write(tmp_path / "commitments", doc, policy_bytes)
+    r = check(tmp_path / "commitments")
+    assert r.returncode == 0, r.stdout + r.stderr

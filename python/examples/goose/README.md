@@ -82,6 +82,7 @@ here moves money: a payment reference is a value you observed.
 | 02 | `loop_tick`, then `loop_book_bundle` (a record of a book, e.g. the one `loop_seal` returned) | `loop_tick` |
 | cards | `loop_standard_history`, `loop_history_card` | the same |
 | 03 | `loop_advertise` | `loop_advertise` |
+| 07 | `loop_ask_mailbox`, then `loop_ask_mailbox_poll` | `loop_mailbox_poll` (the node answers by polling its mailbox) |
 
 `loop_book_bundle` writes the record's Evidence Bundle (`go run ./test/interop/verify FILE` checks it); beside it go `checkpoint.cose` and, with `GOOSE_WITNESSES` (a directory of one witness), that witness's receipt for this very
 checkpoint (`witness-receipt.json`, also in the bundle's `checkpoint.witnesses`) and `witnesses.json`; a witnessed cadence
@@ -104,6 +105,26 @@ asker waits `PT24H` before recording an absence. `endpoint`, `bindings`, `answer
 `loop_join` returns the same commitment and policy, and writes them when you give it `commitment_dir`. The loop's
 `scripts/check_commitment.py` is the check: CI runs it on the scripted run's commitments, with the loop checked out at the
 commit the workflow pins.
+
+`loop_advertise` with `relays` (comma-separated `wss://` URLs, the relays the node reads) is what makes the node askable with no
+listener: the commitment then names `ask.nostr {mailbox_key, relays}` (the node's own secp256k1 mailbox key, `mailbox.key`,
+mode 0600), and `poll_interval` (seconds) is how often you promise to call `loop_mailbox_poll`. `answers_within` may not be
+shorter than `poll_interval`; the tool refuses it otherwise.
+
+Step 07 over the mailbox (binding `nostr-mailbox-v0`, experimental; the exchange is `evidence-interop/1`'s, carried unchanged):
+
+- **Answering.** `loop_mailbox_poll` reads the evidence requests addressed to the node's mailbox key on its relays and answers
+  each from the node book under the node key: `history_card/1` and `checkpoints` to anyone, and for anything else the node's
+  disclosure policy decides, with a signed refusal (never silence) for a request outside it. An answered request is sealed in
+  the node book (`goose_mailbox_answered`), so a restart does not answer it again. Call it at least as often as `poll_interval`.
+- **Asking.** `loop_ask_mailbox` takes the asked node's commitment file, verifies its signature, seals the request in your node
+  book, and publishes it to the mailbox the commitment names with a `deadline` of its `answers_within`. `loop_ask_mailbox_poll`
+  then returns `answered` (the reply verified under the asked node's listed keys and recorded: an artifact or a signed
+  refusal), `pending`, or `absent` once the deadline has passed with no recorded answer, which records the absence against the
+  node. A reply that arrives after the absence is kept beside it (`goose_mailbox_late`, signature-checked, `late: true`) and
+  never rewrites it (binding §5.3). Arrival is judged by your clock at the poll that first sees the reply, so poll at least
+  as often as the asked node's `answers_within`.
+- The events are not encrypted (binding §8, N-3). Use a relay that authenticates its readers.
 
 The other tools are `loop_import` (your existing ledger), `loop_book` (a book's size and
 checkpoint), `loop_probe` (re-check everything on the shelf), and `loop_ask` and `loop_ask_reply`

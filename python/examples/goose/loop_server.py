@@ -16,7 +16,9 @@ is imported once as a host log, nothing re-signed.
     04    loop_admit, loop_deal_bundle
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
     06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
-    07    loop_ask, loop_ask_reply (the asker's side)
+    07    loop_ask, loop_ask_reply (the asker's side, over a file you carry); loop_mailbox_poll (answer the requests
+          addressed to the node's mailbox), loop_ask_mailbox, loop_ask_mailbox_poll (ask a node through the mailbox
+          its commitment advertises)
     09    loop_dispute_ask, loop_dispute_poll (a referee's Result fetched over the Nostr mailbox and sealed as received; the check is capsule-engine's)
     12    loop_join, loop_probe, loop_import
     cards loop_history_card, loop_standard_history
@@ -66,8 +68,11 @@ from evidencebook import BookError, Coverage, EvidenceRequest, Message, Responde
 import commitment as cm
 import deal_records as dr
 import goose_node as gn
+import mailbox_exchange as mx
 
 HOME = os.environ.get("GOOSE_HOME", "~/.goose-evidence")
+#: The endpoint a commitment gives when the node is asked through its Nostr mailbox.
+MAILBOX_ENDPOINT = "nostr:mailbox"
 OPERATOR = os.environ.get("GOOSE_OPERATOR", "goose-user")
 DEVELOPER = os.environ.get("GOOSE_DEVELOPER", "goose-loop@v1")
 
@@ -255,7 +260,8 @@ def loop_book_bundle(book_id: str, record_id: str, out_path: str) -> str:
 
 @_tool
 def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings: str = "",
-                   answers_within: str = "", human_gated: bool = True) -> str:
+                   answers_within: str = "", human_gated: bool = True, relays: str = "",
+                   poll_interval: int = 30) -> str:
     """Write this node's signed ``evidence-commitment/1`` and its signed
     disclosure policy to ``out_dir`` as ``<node_id>.json`` and
     ``policies/<node_id>.json``: add both under the loop repository's
@@ -263,14 +269,23 @@ def loop_advertise(out_dir: str, node_id: str = "", endpoint: str = "", bindings
     the loop's list (its key id when empty). ``endpoint`` and ``bindings``
     (comma-separated) say how it is asked; ``answers_within`` (ISO 8601,
     default PT24H) is how long an asker waits before recording absence. It
-    staples the node book's ``history_card/1`` and carries no counts."""
+    staples the node book's ``history_card/1`` and carries no counts.
+
+    ``relays`` (comma-separated ``wss://`` URLs) are the relays the node reads its Nostr mailbox
+    on: the commitment then names ``ask.nostr`` and the node is askable with no listener, by
+    calling ``loop_mailbox_poll`` at least every ``poll_interval`` seconds. ``answers_within``
+    may not be shorter than ``poll_interval``."""
     defaults = cm.Settings()
+    mailbox = tuple(r.strip() for r in relays.split(",") if r.strip())
     settings = cm.Settings(
-        endpoint=endpoint or defaults.endpoint,
+        relays=mailbox, poll_interval=int(poll_interval),
+        endpoint=endpoint or (MAILBOX_ENDPOINT if mailbox else defaults.endpoint),
         bindings=tuple(b.strip() for b in bindings.split(",") if b.strip()) or defaults.bindings,
         answers_within=answers_within or defaults.answers_within, human_gated=human_gated)
     doc, policy_bytes = cm.build(node(), node_id, settings)
     files = cm.write(out_dir, doc, policy_bytes)
+    if mailbox:
+        _write(str(Path(HOME).expanduser() / "mailbox.json"), json.dumps({"relays": list(mailbox), "poll_interval": settings.poll_interval}).encode())
     return _out(ok=True, step="03", node_id=doc["node_id"], key_id=doc["key_id"], profile=doc["profile"],
                 streams=[c["stream"] for c in doc["history_cards"]], files=[str(p) for p in files])
 
@@ -461,6 +476,51 @@ def loop_ask_reply(request_record_id: str, reply_file: str, responder_key: str, 
                                  ResponderKeys(signer=responder_key, checkpoint=checkpoint_key))
     statement = record.header.statement
     return _out(ok=True, step="07", record_id=record.record_id, outcome=statement.get("outcome"))
+
+
+@_tool
+def loop_mailbox_poll(relays: str = "") -> str:
+    """Answer the evidence requests addressed to this node's mailbox, once.
+
+    Reads the requests addressed to the mailbox key on ``relays`` (comma-separated; by default
+    the ones ``loop_advertise`` named), answers each from this node's book under the node key
+    and posts the answer back, or a signed refusal for a request outside the disclosure policy.
+    Call it at least as often as the ``poll_interval`` you advertised."""
+    names = [r.strip() for r in relays.split(",") if r.strip()]
+    if not names:
+        try:
+            names = _read_json(str(Path(HOME).expanduser() / "mailbox.json"))["relays"]
+        except (OSError, KeyError, ValueError):
+            raise gn.Refused("no relays: pass relays, or advertise with relays first") from None
+    answered = mx.answer_round(node(), names)
+    return _out(ok=True, step="07", answered=answered)
+
+
+@_tool
+def loop_ask_mailbox(commitment_file: str, subject_form: str, subject_value: str = "", expected_pin: str = "",
+                     min_freshness: str = "", derivation: str = "") -> str:
+    """Ask a node through the mailbox its signed commitment advertises (``ask.nostr``).
+
+    The request is sealed in this node's book before it is published, with a deadline of the
+    commitment's ``answers_within``. Exactly one of ``expected_pin`` or ``min_freshness`` sets the
+    coverage. Poll with ``loop_ask_mailbox_poll``."""
+    content = json.loads(subject_value) if subject_value else None
+    floor: int | str | None = None
+    if min_freshness:
+        floor = int(min_freshness) if min_freshness.isdigit() else min_freshness
+    sent = mx.ask(node(), _read_json(commitment_file), subject_form, content, derivation, expected_pin, floor)
+    return _out(ok=True, step="07", **sent)
+
+
+@_tool
+def loop_ask_mailbox_poll(request_event_id: str) -> str:
+    """Poll once for the reply to a request sent with ``loop_ask_mailbox``.
+
+    ``status`` is ``answered`` (verified under the node's listed keys and recorded: an artifact or
+    a signed refusal), ``pending`` (before the deadline) or ``absent`` (the deadline passed with no
+    recorded answer; the absence is recorded against the node). ``late`` marks a reply that came
+    after the absence: it is kept beside it and the absence stays as written."""
+    return _out(ok=True, step="07", **mx.poll(node(), request_event_id))
 
 
 # -- 09 Dispute -----------------------------------------------------------------------------

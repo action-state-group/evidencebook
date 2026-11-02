@@ -416,6 +416,24 @@ class Node:
         return self.signer.public_key().hex()
 
     @property
+    def mailbox_secret(self) -> bytes:
+        """The secp256k1 key the node's Nostr mailbox is addressed to and replies are signed
+        with (binding nostr-mailbox-v0 §3), created with mode 0600 on first use. A route, not
+        an identity: what makes a reply evidence is the node key's signature inside it."""
+        import nostr_mailbox as mb  # this example's transport, imported on first use
+        path = self.home / "mailbox.key"
+        if not path.exists():
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(mb.new_secret())
+        return path.read_bytes()
+
+    @property
+    def mailbox_key(self) -> str:
+        import nostr_mailbox as mb
+        return mb.public_key(self.mailbox_secret)
+
+    @property
     def checkpoint_key_id(self) -> str:
         return self._checkpoint_key.public_key().hex()
 
