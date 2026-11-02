@@ -42,7 +42,9 @@ from .book import (
     RespondOptions,
     SentRequest,
     SharePolicy,
+    StandardHistorySource,
     WindowLimiter,
+    derive_standard_history,
     new_opening,
     verify_opening,
 )
@@ -101,7 +103,7 @@ __all__ = [
     "Book", "CapsuleSealer", "Opening", "new_opening", "verify_opening", "RECORD_HEADER_MEMBER", "OPENING_PREFIX",
     "COMMIT_ALG_NONCE256", "Checkpoint", "Entry", "Header", "Link", "Correlation", "Record",
     "EvidenceRequest", "Subject", "Coverage", "Message", "Reply", "SentRequest", "ResponderKeys",
-    "RespondOptions", "SharePolicy", "ResponderPolicy", "RequestLimiter", "WindowLimiter", "DerivationDefinition",
+    "RespondOptions", "StandardHistorySource", "derive_standard_history", "SharePolicy", "ResponderPolicy", "RequestLimiter", "WindowLimiter", "DerivationDefinition",
     "Signer", "Ed25519Signer", "Store", "MemoryStore", "FileStore", "StoredRecord",
     "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore", "SqliteSubstrate", "HostLog", "HostLogStores", "HeldLock",
     "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StandardHistoryAnchor", "TickResult", "WitnessCheck",

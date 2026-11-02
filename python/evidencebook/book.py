@@ -20,11 +20,12 @@ import json
 import os
 import re
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
+from agent_action_capsule import standard_history as sh
 from agent_action_capsule.canonical import compute_capsule_id, jcs
 from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
@@ -110,7 +111,11 @@ from .request import (
 from .signer import EvidenceSigner, Signer, key_id
 from .store import MemoryStore, Store, StoredRecord
 
+DERIVATION_STANDARD_HISTORY = sh.DERIVATION
+
 __all__ = [
+    "StandardHistorySource",
+    "derive_standard_history",
     "DEFAULT_DEVELOPER",
     "DEFAULT_MAX_REQUEST_BYTES",
     "DEFAULT_MAX_ANSWER_ITEMS",
@@ -393,6 +398,56 @@ class DerivationDefinition:
 
 
 @dataclass(frozen=True)
+class StandardHistorySource:
+    """What a host supplies for :meth:`Book.respond` to answer
+    ``standard_history/1`` over ``full_history`` (Go ``StandardHistorySource``).
+    With it set, the book answers the card to any authenticated requester,
+    whatever the share policy's tier; a stranger still has only the public
+    questions answered. Without it, ``standard_history/1`` is
+    ``derivation_unsupported``.
+
+    ``holder_kind`` is ``"person"`` or ``"node"``. ``inputs(anchor, records)``
+    returns the policy in force at the anchor (``{"digest", "window"}``, SH
+    §5.1) and one deal entry (SH §5.2) per deal the stream holds at the
+    anchor, read from ``records``: the book's servable records the anchor
+    covers, in log order. It is called under the book's lock, and its result
+    must depend on its arguments only, so the card does not depend on who
+    asks."""
+
+    holder_kind: str
+    inputs: Callable[[Checkpoint, list[Record]], tuple[Mapping[str, Any], Sequence[Mapping[str, Any]]]]
+
+    def validate(self) -> None:
+        if self.holder_kind not in sh.CONTROLLER_CLASSES:
+            raise InvalidError(f"standard history holder kind {self.holder_kind!r} is neither person nor node")
+        if not callable(self.inputs):
+            raise InvalidError("standard history needs its inputs")
+
+
+def derive_standard_history(holder_kind: str, *, anchor: str, anchor_time: str, first_checkpoint_time: str,
+                            policy: Mapping[str, Any], deals: Sequence[Mapping[str, Any]]) -> bytes:
+    """The ``standard_history/1`` card as of the anchor, in its JCS octets
+    (Go ``DeriveStandardHistory``). Before it returns, the card is checked
+    against the very inputs it was derived from (SH §6), so inputs that make
+    no standard card are :class:`InvalidError`, never a card."""
+    controller = sh.CONTROLLER_CLASSES.get(holder_kind)
+    if controller is None:
+        raise InvalidError(f"standard history holder kind {holder_kind!r} is neither person nor node")
+    as_of = {"anchor": anchor, "anchor_time": anchor_time, "first_checkpoint_time": first_checkpoint_time}
+    try:
+        card = jcs(sh.derive_card(holder_kind=holder_kind, controller_class=controller, anchor=anchor,
+                                  anchor_time=anchor_time, first_checkpoint_time=first_checkpoint_time,
+                                  policy=policy, deals=list(deals)))
+        properties = sh.check_card(json.loads(card), policy=policy, as_of=as_of, deals=list(deals))
+    except (ValueError, KeyError, TypeError) as err:
+        raise InvalidError(f"standard history: {err}") from None
+    for name in sh.PROPERTIES:
+        if properties[name] != "PASS":
+            raise InvalidError(f"standard history: the card fails {name} against its own inputs")
+    return card
+
+
+@dataclass(frozen=True)
 class SentRequest:
     """A request as transmitted: its octets (JCS JSON), their digest, and the
     id of the record of having asked."""
@@ -464,9 +519,13 @@ class Book:
         substrate: CLLSubstrate | None = None,
         originals: Any = None,
         indexes: Sequence[Any] | None = None,
+        standard_history: StandardHistorySource | None = None,
     ):
+        if standard_history is not None:
+            standard_history.validate()
         if not book_id or not operator.strip() or not (developer or DEFAULT_DEVELOPER).strip():
             raise InvalidError("book id, operator and developer must not be empty")
+        self._standard_history = standard_history
         self._responder = responder or ResponderPolicy()
         self._responder.validate()
         self._id, self._operator, self._developer = book_id, operator, developer or DEFAULT_DEVELOPER
@@ -1273,12 +1332,19 @@ class _Answer:
         derivations = book._derivations
 
         def derivation(name: str):
+            if name == DERIVATION_STANDARD_HISTORY:
+                return ("full_history",) if book._standard_history is not None else None
             entry = derivations.get(name)
             return None if entry is None else entry.forms
 
         def authorize(r: EvidenceRequest) -> bool:
             if r.subject.form == "checkpoints" and r.derivation is None or r.derivation == DERIVATION_HISTORY_CARD:
                 return True  # public: commitments only
+            if r.derivation == DERIVATION_STANDARD_HISTORY:
+                # Counts only, the same for every requester it is answered to
+                # (SH §3): any authenticated requester, whatever the tier;
+                # never a stranger.
+                return requester != ""
             entry = derivations.get(r.derivation) if r.derivation is not None else None
             if entry is not None and entry.recipient:
                 return requester == entry.recipient  # the holder's grant to the one requester it names
@@ -1304,6 +1370,12 @@ class _Answer:
         when the answer has more items than the cost policy allows, or
         ``None`` when it fails the disclosure scan."""
         book = self.book
+        if req.derivation == DERIVATION_STANDARD_HISTORY:
+            # A card of counts whatever the history's length: the item cap
+            # bounds record lists, and the card lists none. It carries no
+            # verification material (IP P-13) and no record body, so the
+            # disclosure scan has nothing to read.
+            return self._standard_history_card(view, anchor, leaves), []
         max_items = book._responder.max_answer_items or DEFAULT_MAX_ANSWER_ITEMS
         if len(leaves) > max_items:
             return _OVER_LIMIT
@@ -1340,6 +1412,15 @@ class _Answer:
         if not self._clean(artifact, declared):
             return None
         return artifact, []
+
+    def _standard_history_card(self, view: _View, anchor: Checkpoint, leaves: Sequence[int]) -> bytes:
+        book = self.book
+        source = book._standard_history
+        records = [_detached(book._records[book._order[leaf]]) for leaf in leaves]
+        policy, deals = source.inputs(anchor, records)
+        return derive_standard_history(
+            source.holder_kind, anchor=anchor.anchor_digest, anchor_time=profile_time_ns(anchor.issued_at_ns),
+            first_checkpoint_time=profile_time_ns(view.checkpoints[0].issued_at_ns), policy=policy, deals=deals)
 
     def _cll_material(self, seq: int, anchor: Checkpoint) -> list[tuple[str, bytes]]:
         """The §6.2.1 material for the record at ``seq``: the anchor, the

@@ -274,6 +274,7 @@ fn run(
         signer: &signer,
         derivations: &derivations,
         policy,
+        standard_history: None,
     };
     let opts = RespondOptions {
         authenticated_requester: who.requester,
@@ -643,6 +644,7 @@ fn a_malformed_request_is_refused_signed_and_leaves_no_record() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let (octets, sealed) = respond(
         &mut b,
@@ -935,6 +937,7 @@ fn an_invalid_share_policy_is_an_error_not_a_refusal() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let bad = SharePolicy {
         history_segments: "everyone".into(),
@@ -961,6 +964,7 @@ fn respond_raw(b: &mut Mem, policy: &ResponderPolicy, request: &[u8], who: Optio
         signer: &signer,
         derivations: &derivations,
         policy,
+        standard_history: None,
     };
     let opts = RespondOptions {
         authenticated_requester: who,
@@ -1046,6 +1050,7 @@ fn a_book_without_headers_is_an_error_not_a_leak() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
     let opts = RespondOptions {
@@ -1067,6 +1072,7 @@ fn an_unreadable_clock_is_an_error() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let opts = RespondOptions {
         authenticated_requester: None,
@@ -1086,6 +1092,7 @@ fn a_header_without_a_record_type_is_an_error_too() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
     let opts = RespondOptions {
@@ -1133,6 +1140,7 @@ fn a_history_card_staple_is_the_books_own_answer_and_grows_no_record() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let holder = hex::encode(signer.verifying_key().to_bytes());
     let first = staple_history_card(&mut b, &responder).unwrap();
@@ -1165,6 +1173,7 @@ fn a_history_card_staple_is_not_counted_by_the_limiter() {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let holder = hex::encode(signer.verifying_key().to_bytes());
     let s = staple_history_card(&mut b, &responder).unwrap();

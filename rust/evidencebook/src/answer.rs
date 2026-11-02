@@ -75,6 +75,9 @@ use sha2::{Digest, Sha256};
 /// The token of the one derivation -00 registers (§8.1).
 pub const DERIVATION_HISTORY_CARD: &str = "history_card/1";
 
+/// The registered token of the standard card ([`crate::standard_history`]).
+pub const DERIVATION_STANDARD_HISTORY: &str = crate::standard_history::DERIVATION;
+
 /// The most records (or checkpoints) one answer carries, whatever `limit` a
 /// caller passes: answer a larger subject with a `policy_declined` refusal.
 pub const MAX_RECORDS: u64 = 10_000;
@@ -149,6 +152,11 @@ pub struct Options<'a> {
     /// recipient only, whatever the caller decided before:
     /// [`AnswerError::NotAuthorized`] for anyone else.
     pub requester: Option<&'a str>,
+    /// The `standard_history/1` card, in its JCS octets, as the host's
+    /// inputs derived it ([`crate::standard_history`]); the artifact is the
+    /// card alone. Without it that derivation is
+    /// [`AnswerError::DerivationUnsupported`].
+    pub standard_card: Option<&'a [u8]>,
 }
 
 /// What an answer is served under and carries: the position of the serving
@@ -357,7 +365,9 @@ pub fn build(
 
     let registered = |id: &str| options.derivations.and_then(|d| d.get(id)).is_some();
     let derived = match (&request.derivation, options.derive) {
-        (Some(Derivation::Token(t)), Some(derive)) if t != DERIVATION_HISTORY_CARD => {
+        (Some(Derivation::Token(t)), Some(derive))
+            if t != DERIVATION_HISTORY_CARD && t != DERIVATION_STANDARD_HISTORY =>
+        {
             derive(t, &request.subject, at).map(|d| (t.clone(), d))
         }
         (Some(Derivation::Digest(id)), Some(derive)) if !registered(id) => {
@@ -389,6 +399,13 @@ pub fn build(
             head.insert("history".into(), Value::Array(history));
             jcs(head)?
         }
+        // The card is the whole artifact (SH §3) and carries no
+        // verification material (P-13): `anchor_inclusion` is NOT_CHECKED for
+        // a derivation.
+        (Some(Derivation::Token(t)), _) if t == DERIVATION_STANDARD_HISTORY => options
+            .standard_card
+            .ok_or(AnswerError::DerivationUnsupported)?
+            .to_vec(),
         (Some(Derivation::Digest(id)), subject) if derived.is_none() => {
             let registered = options
                 .derivations

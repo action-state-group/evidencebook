@@ -3,8 +3,8 @@
 //! `TestParityVectors`): identifier normalization and fingerprints, the
 //! record-level stages, the `standard_history/1` deal entry and ISO 4217
 //! minor units. The Python package reads the same file. The cards the file
-//! also holds are derived by agent-action-capsule's `derive_card`, which the
-//! crate does not carry, so they are checked by Go and Python only.
+//! also holds are derived by `standard_history::derive_card`
+//! (`tests/standard_history.rs`).
 
 #![cfg(feature = "deal")]
 

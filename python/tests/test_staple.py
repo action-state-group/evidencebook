@@ -55,8 +55,8 @@ def test_staple_is_capped_at_the_standard_card(derivation: str) -> None:
 
 
 def test_standard_history_needs_a_responder_that_serves_it() -> None:
-    # The Python responder does not answer standard_history/1 yet; the book
-    # refuses its own request rather than stapling something else.
+    # Without a StandardHistorySource the book refuses its own request
+    # rather than stapling something else.
     b = book(Clock(), "nostandard")
     b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
     with pytest.raises(eb.InvalidError, match="refused its own"):
