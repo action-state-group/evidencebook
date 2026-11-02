@@ -88,7 +88,7 @@ func (s *dealSession) dealSaleBundle(ctx context.Context, saleID, verify string)
 			if err != nil {
 				return nil, nil, err
 			}
-			tb, err := s.dealReportBundle(ctx, tevents, report, cli.DealAudienceKeep, verify, true)
+			tb, err := s.dealReportBundle(ctx, tevents, report, cli.DealAudienceKeep, verify, true, "")
 			if err != nil {
 				return nil, nil, err
 			}

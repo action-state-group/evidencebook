@@ -368,7 +368,7 @@ func (s *dealSession) dealHistoryMember(ctx context.Context, dealID, audience, v
 		}
 		if offLog {
 			var id string
-			if id, standalone, err = s.dealStandaloneReport(dealID, cli.DealAudienceKeep, ext, b); err != nil {
+			if id, standalone, err = s.dealStandaloneReport(dealID, cli.DealAudienceKeep, "", ext, b); err != nil {
 				return nil, 0, 0, err
 			}
 			ext = map[string]interface{}{dealprofile.ReportPointer: id}

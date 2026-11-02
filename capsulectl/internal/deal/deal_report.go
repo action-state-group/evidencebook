@@ -51,8 +51,18 @@ const dealSellerExtension = "x-deal-seller/v0"
 // discloses its own text and no other copy's. Without it (a report that
 // writes no file), nothing is put on the log and the section rides
 // unsealed.
-func (s *dealSession) dealReportBundle(ctx context.Context, events []sealedEvent, report dealReport, audience, verifyCommand string, sealReport bool) (map[string]interface{}, error) {
-	return s.dealReportBundleAt(ctx, events, report, audience, verifyCommand, sealReport, "")
+func (s *dealSession) dealReportBundle(ctx context.Context, events []sealedEvent, report dealReport, audience, verifyCommand string, sealReport bool, referee string) (map[string]interface{}, error) {
+	return s.dealReportBundleAt(ctx, events, report, audience, verifyCommand, sealReport, "", referee)
+}
+
+// dealRefereeOf is the referee a copy seals: for an adjudicator's copy, the
+// adjudicator it is handed to (--to), which dealprofile normalizes; no other
+// audience names one.
+func dealRefereeOf(audience, recipient string) string {
+	if audience == cli.DealAudienceAdjudicator {
+		return recipient
+	}
+	return ""
 }
 
 // dealReportBundleAt is dealReportBundle, or, with heldReport naming a report
@@ -60,7 +70,7 @@ func (s *dealSession) dealReportBundle(ctx context.Context, events []sealedEvent
 // is disclosed and pointed at, every other report is withheld, and nothing
 // new goes on the log, so the copy stays at the checkpoint that report was
 // cut under (an expected_pin answer, deal_evidence.go).
-func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEvent, report dealReport, audience, verifyCommand string, sealReport bool, heldReport string) (map[string]interface{}, error) {
+func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEvent, report dealReport, audience, verifyCommand string, sealReport bool, heldReport, referee string) (map[string]interface{}, error) {
 	if s.dp.Checkpoint.Signing == (cli.Secret{}) {
 		return nil, cli.InputError("a deal report needs the profile's checkpoint key (see `deal init`)")
 	}
@@ -112,14 +122,14 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 	}
 	if offLog && sealReport && heldReport == "" {
 		var id string
-		if id, standalone, err = s.dealStandaloneReport(dealID, audience, ext, b); err != nil {
+		if id, standalone, err = s.dealStandaloneReport(dealID, audience, referee, ext, b); err != nil {
 			return nil, err
 		}
 		ext = map[string]interface{}{dealprofile.ReportPointer: id}
 	} else if heldReport != "" {
 		ext = map[string]interface{}{dealprofile.ReportPointer: heldReport}
 	} else if sealReport {
-		id, err := s.dealSealReport(ctx, dealID, audience, ext)
+		id, err := s.dealSealReport(ctx, dealID, audience, referee, ext)
 		if err != nil {
 			return nil, err
 		}

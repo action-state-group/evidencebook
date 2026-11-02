@@ -22,9 +22,9 @@ import (
 // bundle carries with the record withheld, confirms no guess at the text.
 // Its index row is written before the log append, as a step's is; a row
 // whose capsule never reached the log is ignored.
-func (s *dealSession) dealSealReport(ctx context.Context, dealID, audience string, ext map[string]interface{}) (string, error) {
+func (s *dealSession) dealSealReport(ctx context.Context, dealID, audience, referee string, ext map[string]interface{}) (string, error) {
 	at := cli.DealClock().UTC().Truncate(time.Second)
-	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext}, at)
+	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext, Referee: referee}, at)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +120,7 @@ func dealReportOf(b map[string]interface{}) map[string]interface{} {
 // when or how often it was shared, and the copy carries this report only.
 // It returns the report's capsule id and the copy's x-deal-report/v0
 // section. Nothing is stored: a later copy seals its own.
-func (s *dealSession) dealStandaloneReport(dealID, audience string, ext, b map[string]interface{}) (string, map[string]interface{}, error) {
+func (s *dealSession) dealStandaloneReport(dealID, audience, referee string, ext, b map[string]interface{}) (string, map[string]interface{}, error) {
 	bound, err := dealBoundCheckpoint(b)
 	if err != nil {
 		return "", nil, err
@@ -133,7 +133,7 @@ func (s *dealSession) dealStandaloneReport(dealID, audience string, ext, b map[s
 	case last != hex.EncodeToString(s.key.Public().(ed25519.PublicKey)):
 		return "", nil, errDealKeyChanged
 	}
-	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext, Checkpoint: bound}, cli.DealClock())
+	request, err := s.reportRequest(dealprofile.Report{DealID: dealID, Audience: audience, Body: ext, Checkpoint: bound, Referee: referee}, cli.DealClock())
 	if err != nil {
 		return "", nil, err
 	}
