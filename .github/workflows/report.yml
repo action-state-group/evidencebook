@@ -60,7 +60,13 @@ jobs:
         with:
           go-version-file: report/go.mod
           cache-dependency-path: report/go.sum
+      # The informational-row test reads the page's derived lines in the
+      # runner's Chrome (contract_informational_test.go).
       - name: Tests and examples
+        env:
+          EVIDENCEBOOK_CHROME: /usr/bin/google-chrome
         run: go test -count=1 ./...
       - name: Tests under the race detector
+        env:
+          EVIDENCEBOOK_CHROME: /usr/bin/google-chrome
         run: go test -race -count=1 ./...
