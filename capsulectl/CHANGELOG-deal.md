@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The `4-monthly-outcome` and `5-monthly-compliance` presentation fixtures are refreshed from
+  evidencebook (#375): each monthly Result now cites its weeks' calibration summaries and human
+  ratings. capsule-viewer/go moves to v0.12.0, the version those pages embed
+  (evidencebook-deal#124).
+
 ## v0.1.0-rc32
 
 Pairs with capsulectl `v0.1.0-rc32`. This section also lists what `v0.1.0-rc31` carried: that tag
