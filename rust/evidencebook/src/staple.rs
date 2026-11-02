@@ -22,6 +22,7 @@ use crate::canonical::jcs;
 use crate::derivation::decode_strict;
 use crate::respond::{respond, RespondOptions, Responder, ResponderPolicy, SharePolicy};
 use crate::store::CheckpointedLog;
+use cll::checkpoint::DecodedCheckpointCose;
 use evidence_request::envelope::{parse_reply, Binding, Reply, PROFILE};
 use evidence_request::request::{self, Coverage, Derivation, Subject};
 use rand_core::{OsRng, RngCore};
@@ -141,6 +142,7 @@ pub fn check_staple(
     }
     if derivation == DERIVATION_HISTORY_CARD {
         history_card_form(&e.artifact, pin)?;
+        history_card_chain(&e.artifact)?;
     }
     if derivation == DERIVATION_STANDARD_HISTORY {
         let card = match decode_strict(&e.artifact) {
@@ -170,7 +172,7 @@ pub fn check_staple(
 /// evidence_stream, history and subject; each history entry exactly a
 /// checkpoint and the consistency proof from the one before (null for the
 /// first), as lowercase hex; the last checkpoint is the anchor. No signature
-/// or proof is checked: the checkpoint key is the reader's.
+/// or proof is checked here: `history_card_chain` does.
 fn history_card_form(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
     let bad = |why: &str| StapleError(format!("the stapled history_card/1 {why}"));
     let hex_text = |v: &Value| {
@@ -246,6 +248,143 @@ fn history_card_form(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
         return Err(bad("does not end at its anchor"));
     }
     Ok(())
+}
+
+/// The card's checkpoints form one chain, as Go's `historyCardChain`
+/// checks it: every checkpoint signed under the key of the first, one log,
+/// each entry's signed `prev_size` and `prev_root` the one before's size and
+/// root, the log growing, and each consistency proof (`[tree-size-1,
+/// tree-size-2, consistency-paths, right-peaks]`) reaching the next
+/// commitment. The checkpoint key is the reader's to judge, so the first
+/// checkpoint names it. The form is already checked.
+fn history_card_chain(artifact: &[u8]) -> Result<(), StapleError> {
+    let bad = |i: usize, why: &str| {
+        StapleError(format!(
+            "the stapled history_card/1's checkpoints are not one chain: entry {i} {why}"
+        ))
+    };
+    let card = decode_strict(artifact).map_err(|_| bad(0, "is unreadable"))?;
+    let history = card["history"].as_array().map_or(&[][..], Vec::as_slice);
+    let mut previous: Option<DecodedCheckpointCose> = None;
+    let mut key = String::new();
+    for (i, entry) in history.iter().enumerate() {
+        let statement = hex::decode(entry["checkpoint"].as_str().unwrap_or_default())
+            .map_err(|_| bad(i, "is not hex"))?;
+        // The strict signature check comes first (#108).
+        if !crate::ed25519::statement_verifies(&statement) {
+            return Err(bad(i, "has a checkpoint that does not verify"));
+        }
+        let verified = cll::checkpoint::verify_checkpoint_cose_offline(&statement);
+        let cp = match verified.decoded {
+            Some(cp) if verified.ok => cp,
+            _ => return Err(bad(i, "has a checkpoint that does not verify")),
+        };
+        if i == 0 {
+            key = cp.key_id.clone();
+        } else if cp.key_id != key {
+            return Err(bad(i, "is signed by another key than the first checkpoint"));
+        }
+        if let Some(prev) = &previous {
+            if cp.log_id != prev.log_id || cp.mmr_size <= prev.mmr_size {
+                return Err(bad(i, "does not extend the log"));
+            }
+            if cp.prev_size != prev.mmr_size || cp.prev_root != prev.root {
+                return Err(bad(
+                    i,
+                    "has a signed prev_size and prev_root that are not the previous checkpoint's",
+                ));
+            }
+            let proof = hex::decode(
+                entry["consistency_from_previous"]
+                    .as_str()
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| bad(i, "has a consistency proof that is not hex"))?;
+            if !consistency_holds(prev, &cp, &proof) {
+                return Err(bad(i, "has a consistency proof that does not verify"));
+            }
+        }
+        previous = Some(cp);
+    }
+    Ok(())
+}
+
+/// Whether `proof` (consistency-proof octets, deterministic CBOR) shows
+/// `next`'s commitment extends `prev`'s.
+fn consistency_holds(
+    prev: &DecodedCheckpointCose,
+    next: &DecodedCheckpointCose,
+    proof: &[u8],
+) -> bool {
+    use ciborium::value::Value as Cbor;
+    // One item and nothing after it, as Go's strict CBOR decoder reads it.
+    let mut rest = proof;
+    let Ok(Cbor::Array(parts)) = ciborium::from_reader::<Cbor, _>(&mut rest) else {
+        return false;
+    };
+    if !rest.is_empty() {
+        return false;
+    }
+    let hashes = |v: &Cbor| -> Option<Vec<Vec<u8>>> {
+        match v {
+            Cbor::Array(items) => items
+                .iter()
+                .map(|i| match i {
+                    Cbor::Bytes(b) => Some(b.clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => None,
+        }
+    };
+    let size = |v: &Cbor| match v {
+        Cbor::Integer(n) => u64::try_from(*n).ok(),
+        _ => None,
+    };
+    let [size1, size2, paths, right] = parts.as_slice() else {
+        return false;
+    };
+    let (Some(size1), Some(size2), Some(right), Cbor::Array(paths)) =
+        (size(size1), size(size2), hashes(right), paths)
+    else {
+        return false;
+    };
+    if size1 != prev.mmr_size || size2 != next.mmr_size {
+        return false;
+    }
+    let new_peaks = &next.new_peak_hashes;
+    if right.len() > new_peaks.len()
+        || !new_peaks[new_peaks.len() - right.len()..]
+            .iter()
+            .zip(&right)
+            .all(|(a, b)| a.as_slice() == b.as_slice())
+    {
+        return false;
+    }
+    let Some(witness) = paths
+        .iter()
+        .map(|p| hashes(p).map(|h| h.iter().map(hex::encode).collect::<Vec<_>>()))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    let (Ok(old_root), Ok(new_root)) = (hex_hash(&prev.root), hex_hash(&next.root)) else {
+        return false;
+    };
+    let proof = cll::mmr::ConsistencyProof {
+        v: 1,
+        kind: "consistency".to_owned(),
+        size_a: size1,
+        size_b: size2,
+        old_peaks: prev.new_peak_hashes.iter().map(hex::encode).collect(),
+        witness,
+        new_peaks: new_peaks.iter().map(hex::encode).collect(),
+    };
+    cll::mmr::verify_consistency(&old_root, size1, &new_root, size2, &proof)
+}
+
+fn hex_hash(s: &str) -> Result<cll::mmr::Hash, ()> {
+    hex::decode(s).map_err(|_| ())?.try_into().map_err(|_| ())
 }
 
 /// A staple as built: the holder's own request and the reply its book

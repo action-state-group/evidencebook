@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -116,7 +117,8 @@ type StapleCheck struct {
 // standard_history/1 over full_history, the anchor and profile are the
 // ones the request named, and a standard_history/1 card is of the standard
 // card's form, and a history_card/1 artifact has the card's members and
-// nothing else (historyCardForm). It does not check the anchor's
+// nothing else (historyCardForm) and its checkpoints form one chain
+// (historyCardChain). It does not check the anchor's
 // checkpoint, the card's own properties or the nonce's freshness: those
 // are the reader's verifier and policy.
 func CheckStaple(s Staple, holder string) (StapleCheck, error) {
@@ -164,6 +166,9 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 		if err := historyCardForm(e.Artifact, e.Anchor.Digest); err != nil {
 			return StapleCheck{}, err
 		}
+		if err := historyCardChain(*e); err != nil {
+			return StapleCheck{}, err
+		}
 	}
 	if req.Derivation == DerivationStandardHistory {
 		properties, err := standardhistory.Check(e.Artifact, nil, nil, nil)
@@ -184,7 +189,7 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 // history and subject, each history entry exactly a checkpoint and the
 // consistency proof from the one before (null for the first), as lowercase
 // hex, the last checkpoint being the anchor. It checks no signature or
-// proof: the checkpoint key is the reader's.
+// proof: historyCardChain does.
 func historyCardForm(artifact []byte, anchor string) error {
 	bad := func(why string) error { return fmt.Errorf("%w: the stapled history_card/1 %s", ErrInvalid, why) }
 	decoded, err := evidencerequest.DecodeJSON(artifact)
@@ -221,6 +226,35 @@ func historyCardForm(artifact []byte, anchor string) error {
 				return bad("does not end at its anchor")
 			}
 		}
+	}
+	return nil
+}
+
+// historyCardChain checks that a history_card/1 artifact's checkpoints form
+// one chain: every checkpoint signed under the key of the first, one log,
+// each entry's signed prev_size and prev_root the one before's size and root,
+// each consistency proof reaching the next commitment (verifyCheckpointChain).
+// The checkpoint key is the reader's to judge, so the first checkpoint's names
+// it; the form is already checked.
+func historyCardChain(e Envelope) error {
+	var card struct {
+		History []struct {
+			Checkpoint string `json:"checkpoint"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal(e.Artifact, &card); err != nil || len(card.History) == 0 {
+		return fmt.Errorf("%w: the stapled history_card/1 has no history", ErrInvalid)
+	}
+	first, err := hex.DecodeString(card.History[0].Checkpoint)
+	if err != nil {
+		return fmt.Errorf("%w: the stapled history_card/1's first checkpoint is not hex", ErrInvalid)
+	}
+	cp, err := checkpointFromStatement(first)
+	if err != nil {
+		return fmt.Errorf("%w: the stapled history_card/1's first checkpoint: %v", ErrInvalid, err)
+	}
+	if _, err := verifyCheckpointChain(e, cp.KeyID); err != nil {
+		return fmt.Errorf("the stapled history_card/1's checkpoints are not one chain: %w", err)
 	}
 	return nil
 }
