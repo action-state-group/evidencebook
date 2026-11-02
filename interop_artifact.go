@@ -178,6 +178,12 @@ func checkpointsThrough(history []Checkpoint, anchor Checkpoint) []Checkpoint {
 // no record content. This responder holds no witness receipts for its
 // checkpoints, so none are listed.
 func (b *Book) historyCard(ctx context.Context, chain []Checkpoint, anchor Checkpoint) ([]any, error) {
+	return historyEntries(ctx, b.commitments.(cllMaterialSource), chain, anchor)
+}
+
+// historyEntries is the history of a card over chain, whose proofs src
+// builds under anchor.
+func historyEntries(ctx context.Context, src cllMaterialSource, chain []Checkpoint, anchor Checkpoint) ([]any, error) {
 	var prover *cllProver
 	history := make([]any, len(chain))
 	for i, cp := range chain {
@@ -185,7 +191,7 @@ func (b *Book) historyCard(ctx context.Context, chain []Checkpoint, anchor Check
 		if i > 0 && chain[i-1].TreeSize < cp.TreeSize {
 			if prover == nil {
 				var err error
-				if prover, err = b.commitments.(cllMaterialSource).cllProver(ctx, anchor); err != nil {
+				if prover, err = src.cllProver(ctx, anchor); err != nil {
 					return nil, err
 				}
 			}

@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
@@ -32,7 +33,7 @@ from cll.checkpoint.cose_wire import verify_checkpoint_cose_offline
 from ._cll import read_checkpoint
 from ._gojson import Ordered, go_json
 from ._random import RandomSource
-from ._time import utc
+from ._time import profile_time, utc
 from .errors import CorruptError, InvalidError, NotFoundError
 
 __all__ = [
@@ -734,6 +735,62 @@ class Cadence:
             return StandardHistoryAnchor(tick, hashlib.sha256(tick.checkpoint).hexdigest(),
                                          _profile_time(at.issued_at_ns), _profile_time(first_at.issued_at_ns),
                                          self._extents_locked(n))
+
+    def history_card(self, n: int = 0) -> Any:
+        """The profile's ``history_card/1`` over the cadence log, as a staple
+        (Go ``Cadence.HistoryCard``): the cadence checkpoint of every finished
+        tick from the first through tick ``n`` (the newest finished tick when
+        ``n`` is 0), each with the consistency proof from the one before,
+        as of tick ``n``'s checkpoint and signed by the shelf's signer.
+        :func:`check_staple` accepts it for ``key_id(shelf signer)``.
+        :class:`NotFoundError` when there is no such finished tick."""
+        from agent_action_capsule.evidence_request import sign_envelope
+
+        from .request import (DERIVATION_HISTORY_CARD, MEDIA_TYPE_JSON, PROFILE, Coverage, EvidenceRequest, Message,
+                              Subject, encode_envelope, encode_request)
+        from .signer import EvidenceSigner
+        from .staple import Staple
+
+        if n < 0:
+            raise InvalidError(f"tick {n}")
+        shelf = self._shelf
+        with shelf._mu:
+            shelf._check_open()
+            with shelf._read() as db:
+                if n == 0:
+                    n = db.execute("SELECT COALESCE(MAX(tick), 0) FROM cadence_ticks WHERE checkpoint_size > 0"
+                                   ).fetchone()[0]
+                    if n == 0:
+                        raise NotFoundError("the cadence has no finished tick")
+            chain = []
+            for i in range(1, n + 1):
+                tick = self._tick_locked(i)
+                if tick.checkpoint_size == 0:
+                    if i == n:
+                        raise NotFoundError(f"tick {n} is not finished")
+                    raise CorruptError(f"tick {i} is unfinished before tick {n}")  # only the newest can be
+                try:
+                    chain.append(read_checkpoint(tick.checkpoint))
+                except InvalidError as exc:
+                    raise CorruptError(f"a cadence checkpoint: {exc}") from None
+            anchor = chain[-1]
+            history = []
+            for i, cp in enumerate(chain):
+                consistency = None
+                if i > 0 and chain[i - 1].tree_size < cp.tree_size:
+                    consistency = self._log.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
+                history.append({"checkpoint": cp.statement.hex(), "consistency_from_previous": consistency})
+            subject = Subject("checkpoints")
+            artifact = jcs({"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
+                            "subject": subject.to_wire(), "derivation": DERIVATION_HISTORY_CARD, "history": history})
+            request = Message(encode_request(EvidenceRequest(
+                subject, Coverage(expected_pin=anchor.anchor_digest), derivation=DERIVATION_HISTORY_CARD,
+                nonce=os.urandom(16).hex(), profile=PROFILE)), MEDIA_TYPE_JSON)
+            now = shelf._now() if shelf._now else datetime.now(timezone.utc)
+            envelope = sign_envelope(request.octets, subject, anchor.anchor_digest, artifact,
+                                     signer=EvidenceSigner(shelf._signer), issued_at=profile_time(now),
+                                     derivation=DERIVATION_HISTORY_CARD, profile=PROFILE)
+            return Staple(request, encode_envelope(envelope, MEDIA_TYPE_JSON))
 
     def _extents_locked(self, n: int) -> dict[str, int]:
         """Per log, the largest MMR size any finished tick up to ``n`` carries,

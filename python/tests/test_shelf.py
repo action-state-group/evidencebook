@@ -537,6 +537,46 @@ def test_the_standard_history_anchor(fx):
         assert anchor.extents == {"deal/a": 6, "deal/b": 3}
 
 
+def test_the_cadence_history_card_is_a_staple_over_the_ticks(fx):
+    from evidencebook.signer import key_id
+    from evidencebook.staple import check_staple
+
+    with fx.open() as shelf:
+        c = cadence(shelf)
+        with pytest.raises(NotFoundError):
+            c.history_card()
+        book = shelf.open("deal/a")
+        book.append(obs())
+        first = c.tick(START).tick
+        book.append(obs("2"))
+        second = c.tick(first.due_next).tick
+        third = c.tick(second.due_next).tick
+        holder = key_id(shelf._signer)
+        for n, entries, anchor in ((0, 3, third), (3, 3, third), (2, 2, second), (1, 1, first)):
+            got = check_staple(c.history_card(n), holder)
+            assert got.anchor == hashlib.sha256(anchor.checkpoint).hexdigest()
+            history = json.loads(got.artifact)["history"]
+            assert len(history) == entries and history[0]["consistency_from_previous"] is None
+            assert all(item["consistency_from_previous"] for item in history[1:])
+        with pytest.raises(NotFoundError):
+            c.history_card(4)
+        with pytest.raises(InvalidError):
+            check_staple(c.history_card(1), "00" * 32)
+        with pytest.raises(InvalidError):
+            c.history_card(-1)
+        # An unfinished newest tick is no anchor; n=0 takes the newest finished one.
+        with shelf._tx() as db:
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 3")
+        with pytest.raises(NotFoundError):
+            c.history_card(3)
+        assert check_staple(c.history_card(), holder).anchor == hashlib.sha256(second.checkpoint).hexdigest()
+        with shelf._tx() as db:
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 1")
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 7 WHERE tick = 3")
+        with pytest.raises(CorruptError):
+            c.history_card(3)
+
+
 def test_a_legacy_log_joins_the_cadence(fx):
     with fx.open() as shelf:
         shelf.host_log("legacy/x", False)
