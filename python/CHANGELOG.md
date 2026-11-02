@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The Goose reference answers evidence requests by polling the mailbox its commitment advertises, and asks the same
+  way (step 07, capsule-emit#407): `loop_advertise` with `relays` writes `ask.nostr {mailbox_key, relays}` and refuses an
+  `answers_within` shorter than the node's `poll_interval`; `loop_mailbox_poll` answers the requests addressed to the
+  node's mailbox from its node book (a signed refusal for a request outside its disclosure policy, never silence);
+  `loop_ask_mailbox` and `loop_ask_mailbox_poll` seal a request, publish it to the asked node's mailbox, and record
+  the verified answer, an absence at the deadline, or a late reply kept beside the absence.
 - The `evidencebook.evidence` facade, first part (evidencebook#332): `seal`, `ask` and `history` over
   `Book.append`, the request interaction (`Book.request`, `record_response`, `record_absence`) and
   `check_staple`. `ask` reads an outcome as a state, never a score: the evidence request's artifact, refusal (conforming or not),

@@ -23,6 +23,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from agent_action_capsule.canonical import jcs
 
@@ -53,12 +57,35 @@ class Settings:
 
     endpoint: str = f"book:{gn.NODE_BOOK}"
     bindings: tuple[str, ...] = ("evidencebook/respond",)
-    subjects: tuple[str, ...] = ("full_history",)
+    subjects: tuple[str, ...] = ("checkpoints", "full_history")
     derivations: tuple[str, ...] = ("history_card/1",)
     predicate_classes: tuple[str, ...] = ("performed:counterparty_half",)
     human_gated: bool = True
     answers_within: str = "PT24H"
     policy: dict = field(default_factory=lambda: dict(POLICY))
+    #: The relays the node reads its mailbox on (binding nostr-mailbox-v0 §4.3). Set, the commitment
+    #: names ``ask.nostr {mailbox_key, relays}`` and the node is askable with no listener of its own.
+    relays: tuple[str, ...] = ()
+    #: How often (seconds) the node polls those relays. Not a member of the commitment, which
+    #: carries no number: it bounds ``answers_within`` from below, since a node cannot be
+    #: expected to answer faster than it looks.
+    poll_interval: int = 30
+
+
+#: A relay URL in the one written form the loop's checker accepts (``scripts/check_commitment.py``
+#: ``RELAY``): wss, a lowercase host, no default port, no bare ``/`` path.
+RELAY = re.compile(r"^wss://(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+                   r"|\[[0-9a-f:.]+\])(?::(?P<port>[1-9][0-9]{0,4}))?(?P<path>/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$")
+_DURATION_PARTS = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
+
+
+def seconds(duration: str) -> int:
+    """The length in seconds of an ISO 8601 ``duration`` in days, hours, minutes and seconds."""
+    m = _DURATION_PARTS.fullmatch(duration)
+    if not m or not DURATION.fullmatch(duration):
+        raise gn.Refused(f"{duration!r} is not an ISO 8601 duration in days, hours, minutes or seconds")
+    d, h, mi, s = (int(x or 0) for x in m.groups())
+    return ((d * 24 + h) * 60 + mi) * 60 + s
 
 
 def _b64(raw: bytes) -> str:
@@ -76,6 +103,26 @@ def _signed(node: gn.Node, doc: dict) -> dict:
     return doc
 
 
+def verify(doc: Any) -> None:
+    """Refuse a commitment that is not a well-formed ``evidence-commitment/1`` signed by the key it
+    names (its ``key_id``, which its ``spki`` must carry), over its JCS form without ``sig``."""
+    try:
+        if doc["profile"] != PROFILE:
+            raise gn.Refused(f"not an {PROFILE}")
+        spki = base64.b64decode(doc["spki"], validate=True)
+        key = bytes.fromhex(doc["key_id"])
+        sig = doc["sig"]
+        if spki != ED25519_SPKI + key or sig["alg"] != "Ed25519" or sig["canon"] != "jcs":
+            raise gn.Refused("the commitment's key_id is not the key its spki names")
+        raw = base64.urlsafe_b64decode(sig["value"] + "=" * (-len(sig["value"]) % 4))
+        Ed25519PublicKey.from_public_bytes(key).verify(raw, jcs({k: v for k, v in doc.items() if k != "sig"}))
+        doc["ask"]["endpoint"], doc["answers_within"], doc["history_cards"]
+    except gn.Refused:
+        raise
+    except (KeyError, TypeError, ValueError, InvalidSignature):
+        raise gn.Refused("the commitment is malformed or its signature does not verify") from None
+
+
 def _dump(doc: dict) -> bytes:
     return (json.dumps(doc, indent=2, sort_keys=True) + "\n").encode()
 
@@ -91,6 +138,21 @@ def check(node_id: str, s: Settings) -> None:
     for name, values in (("bindings", s.bindings), ("subjects", s.subjects), ("derivations", s.derivations)):
         if not values or not all(TOKEN.fullmatch(v) for v in values):
             raise gn.Refused(f"{name} are lowercase names, e.g. evidencebook/respond")
+    if s.relays:
+        seen = set()
+        for url in s.relays:
+            m = RELAY.fullmatch(url)
+            if not m or m.group("port") == "443" or m.group("path") == "/":
+                raise gn.Refused(f"relay {url!r} is not wss://host[:port][/path] with a lowercase host, "
+                                 "no default port and no bare /")
+            if url in seen:
+                raise gn.Refused(f"relay {url!r} is listed twice")
+            seen.add(url)
+        if not isinstance(s.poll_interval, int) or isinstance(s.poll_interval, bool) or s.poll_interval <= 0:
+            raise gn.Refused("poll_interval is a positive whole number of seconds")
+        if seconds(s.answers_within) < s.poll_interval:
+            raise gn.Refused(f"answers_within ({s.answers_within}) is shorter than the poll interval "
+                             f"({s.poll_interval}s): a node cannot answer faster than it looks")
 
 
 def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
@@ -102,6 +164,9 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
     node_id = node_id or node.key_id
     check(node_id, s)
     policy_bytes = _dump(_signed(node, {"profile": POLICY_PROFILE, "key_id": node.key_id, "policy": s.policy}))
+    ask = {"endpoint": s.endpoint, "bindings": list(s.bindings)}
+    if s.relays:
+        ask["nostr"] = {"mailbox_key": node.mailbox_key, "relays": list(s.relays)}
     card, statement = node.stapled_card(gn.NODE_BOOK)
     at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     doc = {
@@ -110,7 +175,7 @@ def build(node: gn.Node, node_id: str = "", settings: Settings | None = None,
         "key_id": node.key_id,
         "spki": _b64(ED25519_SPKI + bytes.fromhex(node.key_id)),
         "issued_at": at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "ask": {"endpoint": s.endpoint, "bindings": list(s.bindings)},
+        "ask": ask,
         "answers": {"subjects": list(s.subjects), "derivations": list(s.derivations)},
         "lcap": {"policy_digest": hashlib.sha256(policy_bytes).hexdigest(),
                  "policy_uri": f"policies/{node_id}.json",

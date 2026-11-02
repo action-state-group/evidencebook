@@ -380,12 +380,13 @@ def _is_reply(ev: Event, request_id: str, media: str, mailbox_key: str) -> bool:
     return check_event(ev) and ev.pubkey == mailbox_key                 # 5 id, 6 signature, 7 author
 
 
-def serve_round(relays: Iterable[Relay], secret: bytes, answer: Callable[[bytes], bytes | None],
-                answered: set[str], now: Callable[[], float] = time.time) -> list[str]:
+def serve_round(relays: Iterable[Relay], secret: bytes, answer: Callable[..., bytes | None],
+                answered: set[str], now: Callable[[], float] = time.time, with_media: bool = False) -> list[str]:
     """The responder's side of one poll: read the requests addressed to this mailbox key,
     skip any whose ``id`` or signature fails (binding §4.1) or that this mailbox already
     answered, and publish ``answer(request octets)`` as a reply on the relay the request
     was read from. ``answer`` returning ``None`` publishes no reply (binding §5.2).
+    With ``with_media`` ``answer`` is called as ``answer(octets, media_type)``, the request's ``m`` tag.
     Returns the ids of the requests answered."""
     mailbox_key = public_key(secret)
     done = []
@@ -400,7 +401,7 @@ def serve_round(relays: Iterable[Relay], secret: bytes, answer: Callable[[bytes]
             octets = decode(req.content)
             if octets is None:
                 continue
-            reply = answer(octets)
+            reply = answer(octets, req.tag("m")[0][1]) if with_media else answer(octets)
             if reply is None:
                 answered.add(req.id)
                 continue
