@@ -156,7 +156,10 @@ impl Cadence {
                 if i == n {
                     return Err(ShelfError::NotFound(format!("tick {n} is not finished")));
                 }
-                continue;
+                // Only the newest tick can be unfinished.
+                return Err(ShelfError::Corrupt(format!(
+                    "tick {i} is unfinished before tick {n}"
+                )));
             }
             chain.push(Checkpoint::from_statement(&tick.checkpoint)?);
         }

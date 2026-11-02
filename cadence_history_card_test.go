@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/stretchr/testify/assert"
@@ -82,6 +83,27 @@ func TestCadenceHistoryCardRefusals(t *testing.T) {
 	require.NoError(t, err)
 	_, err = CheckStaple(staple, hex.EncodeToString(make([]byte, 32)))
 	assert.ErrorIs(t, err, ErrInvalid, "another holder's key")
+
+	// An unfinished newest tick is not an anchor; n=0 takes the newest finished one.
+	second := mustTick(t, c, tickTime.Add(10*time.Minute))
+	_, err = shelf.db.Exec(`UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = ?`, second.N)
+	require.NoError(t, err)
+	_, err = c.HistoryCard(ctx, 2)
+	assert.ErrorIs(t, err, ErrNotFound, "an unfinished tick")
+	staple, err = c.HistoryCard(ctx, 0)
+	require.NoError(t, err)
+	got, err := CheckStaple(staple, KeyID(fixture.cfg.Signer))
+	require.NoError(t, err)
+	first, err := c.Get(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, digestBytes(first.Checkpoint), got.Anchor, "n=0 skips the unfinished tick")
+	// A finished tick after an unfinished one is stored state that cannot arise.
+	_, err = shelf.db.Exec(`UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 1`)
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`UPDATE cadence_ticks SET checkpoint_size = 7 WHERE tick = 2`)
+	require.NoError(t, err)
+	_, err = c.HistoryCard(ctx, 2)
+	assert.ErrorIs(t, err, ErrCorrupt)
 
 	require.NoError(t, shelf.Release())
 	_, err = c.HistoryCard(ctx, 1)

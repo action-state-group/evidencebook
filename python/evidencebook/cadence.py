@@ -751,6 +751,8 @@ class Cadence:
         from .signer import EvidenceSigner
         from .staple import Staple
 
+        if n < 0:
+            raise InvalidError(f"tick {n}")
         shelf = self._shelf
         with shelf._mu:
             shelf._check_open()
@@ -766,7 +768,7 @@ class Cadence:
                 if tick.checkpoint_size == 0:
                     if i == n:
                         raise NotFoundError(f"tick {n} is not finished")
-                    continue
+                    raise CorruptError(f"tick {i} is unfinished before tick {n}")  # only the newest can be
                 try:
                     chain.append(read_checkpoint(tick.checkpoint))
                 except InvalidError as exc:

@@ -562,6 +562,19 @@ def test_the_cadence_history_card_is_a_staple_over_the_ticks(fx):
             c.history_card(4)
         with pytest.raises(InvalidError):
             check_staple(c.history_card(1), "00" * 32)
+        with pytest.raises(InvalidError):
+            c.history_card(-1)
+        # An unfinished newest tick is no anchor; n=0 takes the newest finished one.
+        with shelf._tx() as db:
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 3")
+        with pytest.raises(NotFoundError):
+            c.history_card(3)
+        assert check_staple(c.history_card(), holder).anchor == hashlib.sha256(second.checkpoint).hexdigest()
+        with shelf._tx() as db:
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 1")
+            db.execute("UPDATE cadence_ticks SET checkpoint_size = 7 WHERE tick = 3")
+        with pytest.raises(CorruptError):
+            c.history_card(3)
 
 
 def test_a_legacy_log_joins_the_cadence(fx):

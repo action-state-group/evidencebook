@@ -48,7 +48,8 @@ func (c *Cadence) HistoryCard(ctx context.Context, n uint64) (Staple, error) {
 			if i == n {
 				return Staple{}, fmt.Errorf("%w: tick %d is not finished", ErrNotFound, n)
 			}
-			continue
+			// Only the newest tick can be unfinished.
+			return Staple{}, fmt.Errorf("%w: tick %d is unfinished before tick %d", ErrCorrupt, i, n)
 		}
 		cp, err := checkpointFromStatement(tick.Checkpoint)
 		if err != nil {
@@ -57,24 +58,9 @@ func (c *Cadence) HistoryCard(ctx context.Context, n uint64) (Staple, error) {
 		chain = append(chain, cp)
 	}
 	anchor := chain[len(chain)-1]
-	history := make([]any, len(chain))
-	var prover *cllProver
-	for i, cp := range chain {
-		var consistency any
-		if i > 0 && chain[i-1].TreeSize < cp.TreeSize {
-			if prover == nil {
-				var err error
-				if prover, err = c.log.cllProver(ctx, anchor); err != nil {
-					return Staple{}, err
-				}
-			}
-			proof, err := prover.consistencyProof(chain[i-1].TreeSize, cp.TreeSize)
-			if err != nil {
-				return Staple{}, err
-			}
-			consistency = hex.EncodeToString(proof)
-		}
-		history[i] = map[string]any{"checkpoint": hex.EncodeToString(cp.Statement), "consistency_from_previous": consistency}
+	history, err := historyEntries(ctx, c.log, chain, anchor)
+	if err != nil {
+		return Staple{}, err
 	}
 	subject := Subject{Kind: SubjectCheckpoints}
 	artifact, err := evidencerequest.EncodeJCS(map[string]any{

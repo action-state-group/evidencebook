@@ -703,6 +703,36 @@ fn the_cadence_history_card_is_a_staple_over_the_ticks() {
     ));
     let staple = cadence.history_card(1).unwrap();
     assert!(check_staple(&staple.request, &staple.reply, &"00".repeat(32)).is_err());
+    // An unfinished newest tick is no anchor; n = 0 takes the newest finished one.
+    let conn = Connection::open(file(&dir)).unwrap();
+    conn.busy_timeout(Duration::from_secs(5)).unwrap();
+    conn.execute(
+        "UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 3",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        cadence.history_card(3),
+        Err(ShelfError::NotFound(_))
+    ));
+    let staple = cadence.history_card(0).unwrap();
+    let got = check_staple(&staple.request, &staple.reply, &holder).unwrap();
+    assert_eq!(got.anchor, hex::encode(Sha256::digest(&second.checkpoint)));
+    // A finished tick after an unfinished one is stored state that cannot arise.
+    conn.execute(
+        "UPDATE cadence_ticks SET checkpoint_size = 0 WHERE tick = 1",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE cadence_ticks SET checkpoint_size = 7 WHERE tick = 3",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        cadence.history_card(3),
+        Err(ShelfError::Corrupt(_))
+    ));
 }
 
 #[test]
