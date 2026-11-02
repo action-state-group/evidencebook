@@ -9,6 +9,9 @@ rail (``recourse.rail``) and, for a buyer, its own book holds the ``pay`` act (t
 paid, whatever the outcome later says), for a seller, its own steps close it ``received`` (the only settlement
 evidence a seller's book holds). The count covers every book the node holds when it is called, so
 ``through_sequence`` is a label, not a filter: the caller passes the rail's latest ledger sequence it observed.
+The count is scoped to the asked rail: deals on any other rail never enter it, so a disclosure never reveals the
+node's total payment volume across rails (Sherlock2's condition on capsule-emit#408; pinned by
+``test_a_disclosure_counts_only_the_asked_rail_never_the_whole_book``).
 This tool reads no rail and moves no money.
 """
 from __future__ import annotations
@@ -46,7 +49,7 @@ def settled_deals(node: gn.Node, rail: str) -> list[str]:
 
 def disclosure(node: gn.Node, rail: str, through_sequence: int) -> dict:
     """The node's signed ``settlement-disclosure/v1`` for ``rail``, labelled with the rail's latest ledger
-    ``through_sequence`` the caller observed (the count itself covers all the node's books)."""
+    ``through_sequence`` the caller observed (the count covers every book the node holds on ``rail``; ``through_sequence`` does not filter it)."""
     if not rail or not isinstance(rail, str):
         raise gn.Refused("rail is the rail's name, e.g. lightning")
     if isinstance(through_sequence, bool) or not isinstance(through_sequence, int) or through_sequence < 0:
