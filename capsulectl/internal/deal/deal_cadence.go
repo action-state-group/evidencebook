@@ -208,7 +208,8 @@ func tickAtSize(ctx context.Context, c *evidencebook.Cadence, size uint64) (uint
 // dealWitnessState says, for the deal checkpoint a report carries, where it
 // stands with the witness, truthfully: not_configured, scheduled (not yet in
 // a tick), pending (in a tick whose delivery has not completed) or witnessed
-// (with the whole chain a verifier needs).
+// (with the whole chain a verifier needs), or unverified (a receipt is held
+// but no longer verifies for the profile's witness).
 //
 // Witnessed comes in two extents (evidencebook's Cadence.Chain, which is
 // capsule-cli's cadenceChain member for member). "all": a witnessed tick
@@ -242,9 +243,12 @@ func (s *dealSession) dealWitnessState(ctx context.Context, dealID string, state
 	}
 	// The cadence recorded the receipt when it verified; the chain counts
 	// only if it still verifies for the witness this profile names now (a
-	// changed endpoint or key leaves the deal unwitnessed, as before).
-	if ok, err := chainVerifiesNow(ctx, p, service, chain); err != nil {
+	// changed endpoint or key leaves the witness unverified: a check that
+	// failed, which is not a check not yet made).
+	if ok, held, err := chainVerifiesNow(ctx, p, service, chain); err != nil {
 		return nil, err
+	} else if !ok && held {
+		return witnessUnverified(), nil
 	} else if !ok {
 		return s.notYetWitnessed(ctx, c, p, service, dealID, current)
 	}
@@ -271,34 +275,47 @@ func (s *dealSession) dealWitnessState(ctx context.Context, dealID string, state
 	return chain, nil
 }
 
+// witnessUnverified is the state of a deal checkpoint whose witness receipt
+// is held but does not verify under the profile's witness (a tampered
+// receipt, or one signed by a key other than the profile's): the check failed, so it is
+// neither not-yet-witnessed nor witnessed (actionstate-muse#311 §3.3,
+// "Unknown or failed": the check ran and failed).
+func witnessUnverified() map[string]interface{} {
+	return map[string]interface{}{"state": "unverified"}
+}
+
 // chainVerifiesNow reports whether the cadence checkpoint a chain names has
 // a receipt, on the cadence log, that verifies for the profile's current
-// witness service and key.
-func chainVerifiesNow(ctx context.Context, p cli.Profile, service string, chain map[string]interface{}) (ok bool, err error) {
+// witness service and key. held says a receipt is on the log at all: held and
+// not ok is a check that failed; not held is a check with nothing to run.
+func chainVerifiesNow(ctx context.Context, p cli.Profile, service string, chain map[string]interface{}) (ok, held bool, err error) {
 	cadence, _ := chain["cadence"].(map[string]interface{})
 	cp, _ := cadence["checkpoint"].(map[string]interface{})
 	cose, _ := cp["cose"].(string)
 	statement, err := base64.RawURLEncoding.DecodeString(cose)
 	if err != nil {
-		return false, nil
+		return false, false, nil
 	}
 	record, err := checkpoint.ParseRecord(statement)
 	if err != nil {
-		return false, nil
+		return false, false, nil
 	}
 	t, err := cli.OpenTarget(ctx, p, cli.UseCLLRead)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	defer func() { err = errors.Join(err, t.Close()) }()
 	state, err := t.Log.GetWitness(ctx, service, record.MMRSize)
 	if errors.Is(err, cll.ErrNotFound) {
-		return false, nil
+		return false, false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	return state.Receipt != nil && cli.VerifyWitness(p, state) == nil, nil
+	if state.Receipt == nil {
+		return false, false, nil
+	}
+	return cli.VerifyWitness(p, state) == nil, true, nil
 }
 
 // bundleValue is v as a bundle's members hold JSON: decoded objects, with
@@ -359,6 +376,11 @@ func (s *dealSession) notYetWitnessed(ctx context.Context, c *evidencebook.Caden
 	// witnessed (only sealed reports since) waits for the next tick.
 	if err == nil && state.Receipt != nil && cli.VerifyWitness(p, state) == nil {
 		return rest, nil
+	}
+	// A receipt that came back but does not verify is a failed check, not a
+	// delivery still pending.
+	if err == nil && state.Receipt != nil {
+		return witnessUnverified(), nil
 	}
 	reason, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
 	return map[string]interface{}{"state": "pending", "tick": cli.Integer(last.N), "reason": reason, "text": text, "cadence": s.cadenceWords()}, nil
