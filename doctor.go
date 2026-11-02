@@ -129,8 +129,9 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 	b.mu.Lock()
 	// A book that holds a disclosure policy answers under it: the record,
 	// not a separate file, is what each setting sends.
-	held, hasPolicy, err := policyInForce(b.logLocked())
+	log := b.logLocked()
 	b.mu.Unlock()
+	held, hasPolicy, err := policyInForce(log)
 	if err != nil {
 		return nil, err
 	}

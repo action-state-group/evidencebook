@@ -207,10 +207,10 @@ func (p DisclosurePolicy) overlay(base SharePolicy) SharePolicy {
 // reports whether it is within n a week. All such askers share one bucket,
 // since none has an identity.
 func (b *Book) unsignedAllowLocked(n int, now time.Time) bool {
-	if b.unsignedAsks.limiter == nil || b.unsignedAsks.n != n {
-		b.unsignedAsks.n, b.unsignedAsks.limiter = n, NewWindowLimiter(n, 7*24*time.Hour)
+	if b.unsignedAsks == nil {
+		b.unsignedAsks = NewWindowLimiter(n, 7*24*time.Hour)
 	}
-	return b.unsignedAsks.limiter.Allow("", now)
+	return b.unsignedAsks.allow("", now, n)
 }
 
 // SettingRow is one line of the settings page, and of doctor's report:

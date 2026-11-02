@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
 )
@@ -353,5 +354,24 @@ func TestPolicyRecordsAreNeverServedByAnyPath(t *testing.T) {
 	}
 	if neverServed("observation") {
 		t.Error("an observation is never served")
+	}
+}
+
+// Lowering the limit mid-week keeps the asks already counted.
+func TestLoweredUnsignedLimitKeepsTheCount(t *testing.T) {
+	var b Book
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for range 5 {
+		if !b.unsignedAllowLocked(5, now) {
+			t.Fatal("an ask within the limit was refused")
+		}
+	}
+	if b.unsignedAllowLocked(3, now.Add(time.Hour)) {
+		t.Error("an ask after the limit was lowered below the count was answered")
+	}
+	if !b.unsignedAllowLocked(3, now.Add(8*24*time.Hour)) {
+		t.Error("the week did not roll")
 	}
 }

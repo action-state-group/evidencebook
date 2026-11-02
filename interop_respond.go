@@ -83,10 +83,16 @@ func NewWindowLimiter(n int, window time.Duration) *WindowLimiter {
 
 // Allow records a request at now and reports whether it is within the limit.
 func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
+	return l.allow(requester, now, l.n)
+}
+
+// allow is Allow under a limit of n, which a caller may change between
+// asks without losing the asks already counted.
+func (l *WindowLimiter) allow(requester string, now time.Time, n int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	recent := slices.DeleteFunc(l.seen[requester], func(t time.Time) bool { return !t.After(now.Add(-l.window)) })
-	if len(recent) >= l.n {
+	if len(recent) >= n {
 		l.seen[requester] = recent
 		return false
 	}
@@ -434,15 +440,15 @@ func (a *answer) run() (Reply, error) {
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)
 	// The book's own disclosure policy, when it holds one, decides the
 	// switches it governs, whatever the caller passed.
+	b.mu.Unlock()
+	// log is a snapshot, so the scan for the policy holds no lock.
 	held, hasPolicy, err := policyInForce(log)
 	if err != nil {
-		b.mu.Unlock()
 		return Reply{}, err
 	}
 	if hasPolicy {
 		a.opts.Policy = held.overlay(a.opts.Policy)
 	}
-	b.mu.Unlock()
 	if oversized || limited {
 		return a.refuse(limitReason(requestProfile(a.request)), "")
 	}
