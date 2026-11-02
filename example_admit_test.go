@@ -116,7 +116,10 @@ func Example_admitAPeer() {
 	}
 
 	// 4. Seal a decision in the book. Block is the admission_decision block;
-	// it holds the pack by its digest and no counterparty text.
+	// it holds the pack by its digest and no counterparty text. Its reads
+	// cite the policy only: a caller that keeps the card appends its own
+	// commitment to the card to reads first. This Example seals the block as
+	// it comes, since its card is a fixture's.
 	block, err := canon.JCS(granted.Block())
 	if err != nil {
 		log.Fatal(err)

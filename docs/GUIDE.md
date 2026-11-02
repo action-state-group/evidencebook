@@ -8,8 +8,8 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
 Every Example below renders there with its output, from v0.9.0 for the root
-module and `report/v0.3.0` for the report module. Path 4's and Path 5's
-Examples render from the first release after v0.12.2. To run them from a
+module and `report/v0.3.0` for the report module. Path 4's Example renders
+from v0.13.0, and Path 5's from the first release after v0.13.2. To run them from a
 checkout:
 
 ```bash
@@ -244,19 +244,19 @@ reputation score.
 | Step | Function |
 |---|---|
 | receive and verify the staple | `CheckStaple` (presenter, request, card form), then the card's own properties with `standardhistory.Check` (agent-action-capsule) and, for a Mesh node's card, `inferencehistory.Evaluate`, as in path 4 |
-| the card as evaluator inputs | `admission.StandardHistoryCounts` reads a `standard_history/1` card's bands and disputes, `admission.InferenceServiceHistoryCounts` a Mesh node's served periods; the caller fills the rest of `admission.Inputs.Card` (freshness, witness, controller) from what it verified |
+| the card as evaluator inputs | `admission.StandardHistoryCounts` reads a `standard_history/1` card's bands and disputes, `admission.InferenceServiceHistoryCounts` a Mesh node's served periods; the caller fills the rest of `admission.Inputs.Card` (the first and latest checkpoint times, witness, controller) from what it verified |
 | the pack | `admission.Load`, or `admission.LoadPinned` to refuse any pack but the one named by id and digest |
 | evaluate | `admission.Evaluate(pack, inputs)` returns the `Decision` |
 | an ASK | each `Decision.Asks` entry names the derivation to ask for and a deadline; `Book.Request` records the request and returns its octets to send, and `Book.RecordResponse` or `Book.RecordAbsence` (after the deadline) records what comes back (the requesting side of path 3) |
-| seal the decision | `Decision.Block` is the `admission_decision` block; `Book.Append` commits it as the book's record and `Book.Checkpoint` cuts a checkpoint over it |
+| seal the decision | `Decision.Block` is the `admission_decision` block; its `reads` holds the policy only, so the caller appends the card it read, by a commitment of its own choosing, before `Book.Append` commits it as the book's record and `Book.Checkpoint` cuts a checkpoint over it |
 
 **What the builder writes.** The pack's rows and thresholds: which properties a
 deal of which value needs, the per-band ladder, the trust roots and the ask
 budget. `admission-baseline@1` is the baseline.
 
-**What the SDK computes.** The deal's value band and tier, whether the card is
-fresh as of the caller's clock, each row's count and denominator, and the
-asks. The evaluator reads nothing but its inputs: it fetches and verifies
+**What the evaluator computes.** `admission.Evaluate` gives the deal's value band
+and tier, whether the card is fresh as of the caller's clock, each row's count
+and denominator, and the asks. The evaluator reads nothing but its inputs: it fetches and verifies
 nothing, so a card that was not verified is passed as `unverifiable`, never
 guessed.
 
