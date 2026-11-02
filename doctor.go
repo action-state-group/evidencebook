@@ -97,7 +97,21 @@ type DoctorOptions struct {
 	// Keys are the responder keys this node advertises, which the probe
 	// verifies under. Either left empty is this book's own key.
 	Keys ResponderKeys
+	// As is who the probe answers for: DoctorAsStranger asks only the
+	// public questions, DoctorAsSigned also renders what a signed asker
+	// receives (the standard card, built in-process, sealing nothing).
+	// Empty is DoctorAsSigned, as before the option existed.
+	As string
 }
+
+// Who a doctor probe answers for.
+const (
+	DoctorAsStranger = "stranger"
+	DoctorAsSigned   = "signed"
+	// DoctorSettingPrefix starts the check of each settings row, the same
+	// rows (DisclosurePolicy.Rows) the settings page shows.
+	DoctorSettingPrefix = "setting_"
+)
 
 // Doctor inspects this book and returns a list of findings: what is
 // self-attested, unwitnessed, NOT_CHECKED or unsupported; whether the
@@ -112,11 +126,30 @@ type DoctorOptions struct {
 // is computed from the policy, not asked over the wire: Respond seals a
 // record for every authenticated requester.
 func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, error) {
+	b.mu.Lock()
+	// A book that holds a disclosure policy answers under it: the record,
+	// not a separate file, is what each setting sends.
+	held, hasPolicy, err := policyInForce(b.logLocked())
+	b.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if hasPolicy {
+		opts.Policy = held.SharePolicy()
+	}
 	if err := opts.Policy.Validate(); err != nil {
 		return nil, err
 	}
+	if opts.As != "" && opts.As != DoctorAsStranger && opts.As != DoctorAsSigned {
+		return nil, fmt.Errorf("%w: doctor --as is %q or %q, not %q", ErrInvalid, DoctorAsStranger, DoctorAsSigned, opts.As)
+	}
 	b.mu.Lock()
 	findings, latest, err := b.doctorLocked(ctx, opts)
+	if err == nil && hasPolicy {
+		for _, row := range held.Rows() {
+			findings = append(findings, DoctorFinding{Check: DoctorSettingPrefix + row.Setting, State: row.Value, Detail: row.Sends})
+		}
+	}
 	b.mu.Unlock()
 	if err != nil || opts.Probe == nil {
 		return findings, err
@@ -137,7 +170,7 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 		return nil, err
 	}
 	findings = append(findings, cards, card)
-	if b.standardHistory != nil {
+	if b.standardHistory != nil && opts.As != DoctorAsStranger {
 		std, err := b.doctorStandardCard(ctx, opts.Policy)
 		if err != nil {
 			return nil, err
@@ -154,6 +187,11 @@ func (b *Book) Doctor(ctx context.Context, opts DoctorOptions) ([]DoctorFinding,
 // evidence_request_answered record for the asker.
 func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (DoctorFinding, error) {
 	f := DoctorFinding{Check: DoctorProbeStandardCard, State: DoctorStateMismatch}
+	if !policy.servesStandardHistory(b.standardHistory) {
+		f.State = DoctorStateOff
+		f.Detail = "standard_history/1 is switched off by the policy: a signed requester is refused derivation_unsupported"
+		return f, nil
+	}
 	one := uint64(1)
 	req := EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory, Coverage: Coverage{MinFreshness: &Freshness{Size: &one}}}
 	nonce := make([]byte, 16)
@@ -204,13 +242,20 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 	f.State, f.Records, f.Card = DoctorStateMatch, []string{anchorDigest(anchor)}, built.artifact
 	f.Detail = "the standard_history/1 card a signed requester receives, whatever the tier, at the latest checkpoint; built in-process, not sent, so no record was sealed"
 	var card struct {
+		Window struct {
+			Months int  `json:"months"`
+			All    bool `json:"all"`
+		} `json:"window"`
 		InWindow struct {
-			Of      int `json:"of"`
 			Counted int `json:"counted"`
 		} `json:"in_window"`
 	}
-	if json.Unmarshal(built.artifact, &card) == nil && card.InWindow.Of > 0 {
-		f.Detail += fmt.Sprintf("; window %d months, %d deals counted", card.InWindow.Of, card.InWindow.Counted)
+	if json.Unmarshal(built.artifact, &card) == nil {
+		window := fmt.Sprintf("%d months", card.Window.Months)
+		if card.Window.All {
+			window = "all time"
+		}
+		f.Detail += fmt.Sprintf("; window %s, %d deals counted", window, card.InWindow.Counted)
 	}
 	return f, nil
 }
@@ -320,11 +365,11 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 	}
 
 	unsupported := "range and full_history are answered to no one except through a recipient-specific derivation"
-	if b.standardHistory != nil {
+	if p0 := opts.Policy; p0.servesStandardHistory(b.standardHistory) {
 		unsupported += " or, to an authenticated requester, standard_history/1"
 	}
 	served := []string{"history_card/1"}
-	if b.standardHistory != nil {
+	if opts.Policy.servesStandardHistory(b.standardHistory) {
 		served = append(served, "standard_history/1")
 	}
 	if registered := len(b.derivations); registered > 0 {
@@ -361,7 +406,7 @@ func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFi
 		stranger = "refusals only: checkpoints and history_card/1 are public, but there is no checkpoint to answer with; every other subject is refused not_authorized"
 	}
 	findings = append(findings, DoctorFinding{Check: DoctorStrangerView, State: DoctorStateAnswered, Detail: stranger})
-	identified := identifiedView(p, b.derivations, b.standardHistory != nil)
+	identified := identifiedView(p, b.derivations, p.servesStandardHistory(b.standardHistory))
 	if !isCLL {
 		identified = "refusals only: this book serves no anchors, so every request is refused"
 	}

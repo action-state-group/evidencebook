@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -114,6 +115,16 @@ type SharePolicy struct {
 	HistorySegments    string `json:"history_segments"`
 	Adjudications      string `json:"adjudications"`
 	Witness            string `json:"witness,omitempty"`
+	// StandardHistory is "on" (the default when empty) or "off": whether a
+	// host that serves standard_history/1 answers it. Off, it is
+	// derivation_unsupported, as for a host that does not serve it.
+	StandardHistory string `json:"standard_history,omitempty"`
+}
+
+// servesStandardHistory reports whether a book with source answers
+// standard_history/1 under this policy.
+func (p SharePolicy) servesStandardHistory(source *StandardHistorySource) bool {
+	return source != nil && p.StandardHistory != "off"
 }
 
 // DefaultSharePolicy returns the documented defaults.
@@ -130,6 +141,7 @@ func (p SharePolicy) Validate() error {
 		{"record_at_completion", p.RecordAtCompletion, []string{"counterparty", "off"}},
 		{"history_segments", p.HistorySegments, []string{"counterparties", "prospective", "peers", "off"}},
 		{"adjudications", p.Adjudications, []string{"deliver_to_subjects", "off"}},
+		{"standard_history", cmp.Or(p.StandardHistory, "on"), []string{"on", "off"}},
 	}
 	for _, check := range checks {
 		if !slices.Contains(check.allowed, check.value) {
@@ -438,7 +450,7 @@ func (a *answer) run() (Reply, error) {
 	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
 	a.seal = a.statement.Relationship != RelationshipStranger
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: a.opts.Policy.servesStandardHistory(b.standardHistory), refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
 		b.mu.Lock()
@@ -612,7 +624,7 @@ func (v *bookView) Servable(leaf uint64) bool {
 		return false
 	}
 	switch v.log[leaf].Header.RecordType {
-	case RecordTypeRequestAnswered, RecordTypeDisclosure:
+	case RecordTypeRequestAnswered, RecordTypeDisclosure, RecordTypePolicy:
 		return false
 	}
 	return true
