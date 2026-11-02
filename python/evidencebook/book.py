@@ -545,6 +545,7 @@ class Book:
         # Answers in flight: close waits for them, as Go's Release does (answering).
         self._idle = threading.Condition(self._lock)
         self._answers = 0
+        self._closing = False
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
         # Whether each stored header has a statement member (the retention
@@ -694,13 +695,20 @@ class Book:
     def close(self) -> None:
         """Release the store. Every later write raises :class:`ReleasedError`."""
         with self._idle:
-            self._idle.wait_for(lambda: self._answers == 0)
-            if not self._released:
-                self._released = True
-                try:
-                    self._store.close()
-                finally:
-                    self._substrate.close()
+            # New answers wait behind a close that is waiting, as Go's RWMutex
+            # holds back readers once a writer queues, so a flood cannot starve it.
+            self._closing = True
+            try:
+                self._idle.wait_for(lambda: self._answers == 0)
+                if not self._released:
+                    self._released = True
+                    try:
+                        self._store.close()
+                    finally:
+                        self._substrate.close()
+            finally:
+                self._closing = False
+                self._idle.notify_all()
 
     def append(self, entry: Entry) -> Record:
         """Seal ``entry`` as a record, store it with its payloads, and commit
@@ -1141,6 +1149,7 @@ class Book:
         # an append or checkpoint for longer than that (evidencebook#217,
         # as Go's Book.Respond, #215).
         with self._idle:
+            self._idle.wait_for(lambda: not self._closing)
             self._answers += 1
         try:
             answer = _Answer(self, request, options, own)
