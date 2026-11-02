@@ -40,7 +40,7 @@ host runs `deal check` from a pre-action hook. Without one:
 | `deal note --kind platform_approval --check ID --platform P --mechanism M --displayed-text TEXT [--user-text TEXT] [--observed-at T] [--amount-minor N --currency C]` | In a typed deal, records an observation of another platform's own approval interaction for the checked action: what it displayed and the user's text it returned (each by commitment), when, and the amount it stated. It authorizes nothing and never answers the deal check; the action lists it beside the user's authority, as a scope mismatch when it stated another amount. |
 | `deal note --kind acceptance --check ID --words TEXT [--channel C] [--observed-at T]` | In a typed deal where the user sells, records that the other party accepted the offer that check covered: the exact offer (its proposed action), when, on which channel, and their words by commitment. Only the latest offer, once made, can be accepted; a later offer supersedes it. It authorizes nothing by itself: a seller's `commit`, or giving out an address, needs an accepted latest offer with no change of details since. |
 | `deal note --kind act --input FILE` | Seals what the agent did and whether a passing check or approval covered it. |
-| `deal close --input FILE` | Compares what was delivered with what was agreed: `completed`, `mismatch` or `open`. Cuts a checkpoint. |
+| `deal close --input FILE` | Compares what was delivered with what was agreed: `completed`, `mismatch` or `open`. Cuts a checkpoint. A buyer's thread that ends `completed` or `mismatch` also closes its sale (printing `sale_closed`), since the sale holds one item. |
 | `deal note --kind intent --input FILE` | Seals a change to what the user asked. It may lower the limit or drop actions; a higher limit or a new action is only a proposal until the user confirms it. |
 | `deal note --kind evidence --email FILE [--key-record FILE]` | Seals a merchant's own email (raw RFC 822, headers intact) with the DKIM key records read from DNS at that moment, checks the signature, and cuts a checkpoint. See [The merchant's own email](#the-merchants-own-email). |
 | `deal note --kind evidence --input FILE` with `obligation` | Seals a cancel-by date (a trial that becomes paid, a renewal, the end of free cancellation, a payment on a date) with its source: the merchant's email (with `--email`) or a page snapshot. Cuts a checkpoint. |
@@ -217,7 +217,7 @@ cadence** (`cll checkpoint cadence`, scheduled) publishes on time alone:
   random position.
   - A deal stays live until it has finally closed and a witnessed tick holds
     its last checkpoint. A later write, such as evidence after the close,
-    makes it live again. A sale stays live until `deal sale close` and a
+    makes it live again. A sale stays live until `deal sale close` (or a sold thread's close) and a
     witnessed tick holding its last checkpoint; a later sale bundle's cut
     makes it live again.
   - The tree always holds as many leaves as there are logs the profile ever

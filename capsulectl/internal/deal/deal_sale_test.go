@@ -2,6 +2,7 @@ package deal
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -287,4 +288,82 @@ func TestTheProfileCheckerHoldsASalesLog(t *testing.T) {
 			assert.Contains(t, string(out), c.want)
 		})
 	}
+}
+
+// A completed sale leaves no open deal in the seller's store: the thread's
+// completed close takes the sale's own log with it (#127). A sale whose
+// thread did not complete stays open for the next buyer.
+func TestACompletedSaleLeavesNoOpenDeal(t *testing.T) {
+	dealFixture(t)
+	saleID, _ := newSale(t)
+	other := buyerThread(t, saleID, "buyer-b.example")
+	thread := buyerThread(t, saleID, "buyer-a.example")
+
+	openDeals := func() []string {
+		t.Helper()
+		out, err := invoke(t, "", "--profile", "deal", "deal", "list", "--json")
+		require.NoError(t, err, out)
+		var list []struct {
+			DealID string `json:"deal_id"`
+			State  string `json:"state"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(out), &list), out)
+		var open []string
+		for _, l := range list {
+			if l.State == "open" {
+				open = append(open, l.DealID)
+			}
+		}
+		return open
+	}
+
+	closed := dealRun(t, "close", "--deal", other, "--input", writeJSON(t, `{"status":"not_selected"}`))
+	assert.NotContains(t, closed, "sale_closed")
+	assert.Contains(t, openDeals(), saleID)
+
+	closed = dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, `{"status":"received"}`))
+	require.Equal(t, "completed", closed["outcome"], closed)
+	assert.Equal(t, saleID, closed["sale_closed"])
+	assert.Empty(t, openDeals())
+}
+
+// A thread closed received with differences (mismatch) still hands the item
+// over, so it closes the sale too; a sale closed by hand first is not
+// reported as closed again.
+func TestAHandedOverThreadClosesItsSaleOnce(t *testing.T) {
+	t.Run("mismatch", func(t *testing.T) {
+		dealFixture(t)
+		saleID, _ := newSale(t)
+		thread := buyerThread(t, saleID, "buyer-a.example")
+		closed := dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, `{"status":"received","delivered":{"item":"other thing"}}`))
+		require.Equal(t, "mismatch", closed["outcome"], closed)
+		assert.Equal(t, saleID, closed["sale_closed"])
+	})
+	t.Run("sale already closed", func(t *testing.T) {
+		dealFixture(t)
+		saleID, _ := newSale(t)
+		thread := buyerThread(t, saleID, "buyer-a.example")
+		dealRun(t, "sale", "close", "--sale", saleID)
+		closed := dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, received))
+		assert.NotContains(t, closed, "sale_closed")
+	})
+}
+
+// A crash between the thread's close and the sale's: the thread is closed
+// and the sale open; the retried close finishes the sale instead of
+// refusing, and a second retry is refused as before.
+func TestARetriedCloseFinishesTheSaleACrashLeftOpen(t *testing.T) {
+	dealFixture(t)
+	saleID, _ := newSale(t)
+	thread := buyerThread(t, saleID, "buyer-a.example")
+	saved := dealSaleCloseStops
+	dealSaleCloseStops = func() error { return errors.New("stopped before the sale close") }
+	_, err := invoke(t, "", "--profile", "deal", "deal", "close", "--deal", thread, "--input", writeJSON(t, received))
+	dealSaleCloseStops = saved
+	require.Error(t, err)
+
+	closed := dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, received))
+	assert.Equal(t, saleID, closed["sale_closed"])
+	_, err = invoke(t, "", "--profile", "deal", "deal", "close", "--deal", thread, "--input", writeJSON(t, received))
+	require.ErrorIs(t, err, cli.ErrInput)
 }
