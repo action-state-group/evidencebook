@@ -57,6 +57,7 @@ from .cadence import (
     WitnessReceipt,
     WitnessRejected,
 )
+from . import evidence
 from .errors import (BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, ReleasedError,
                      UnavailableError, UnsupportedError)
 from .record import (
@@ -96,6 +97,7 @@ from .shelf import HeldLock, HostLog, HostLogStores, Shelf, ShelfRecord, ShelfRe
 from .store import FileStore, MemoryStore, Store, StoredRecord
 
 __all__ = [
+    "evidence",
     "Book", "CapsuleSealer", "Opening", "new_opening", "verify_opening", "RECORD_HEADER_MEMBER", "OPENING_PREFIX",
     "COMMIT_ALG_NONCE256", "Checkpoint", "Entry", "Header", "Link", "Correlation", "Record",
     "EvidenceRequest", "Subject", "Coverage", "Message", "Reply", "SentRequest", "ResponderKeys",
