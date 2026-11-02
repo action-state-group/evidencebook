@@ -17,22 +17,23 @@ from typing import Any, Callable, Mapping
 from agent_action_capsule import standard_history as sh
 from agent_action_capsule.evidence_request import (REASON_CAPACITY_EXCEEDED, REASON_REQUEST_UNAUTHENTICATED)
 
-from .book import (OBSERVED_EVENT, OUTCOME_ARTIFACT, OUTCOME_ARTIFACT_FAILED, OUTCOME_REFUSAL, Book,
-                   ResponderKeys)
+from .book import (OBSERVED_EVENT, OUTCOME_ARTIFACT, OUTCOME_ARTIFACT_FAILED, OUTCOME_REFUSAL,
+                   OUTCOME_REFUSAL_NONCONFORMING, Book, ResponderKeys)
 from .errors import InvalidError
 from .record import Entry, Record
-from .request import DERIVATION_HISTORY_CARD, EvidenceRequest, Message, parse_reply, strict_json
+from .request import EvidenceRequest, Message, parse_reply, strict_json
 from .staple import DERIVATION_STANDARD_HISTORY, Staple, check_staple
 
 __all__ = ["seal", "serve", "find", "ask", "history", "evaluate", "Outcome", "History", "NotYetAvailable",
-           "ARTIFACT", "ARTIFACT_FAILED", "REFUSAL", "ABSENCE", "PENDING", "STATUS_UNKNOWN"]
+           "ARTIFACT", "ARTIFACT_FAILED", "REFUSAL", "REFUSAL_NONCONFORMANT", "ABSENCE", "PENDING", "STATUS_UNKNOWN"]
 
 # An outcome state. The first three are the evidence request's own (ER §4);
 # STATUS_UNKNOWN is a reading of a refusal or window that says nothing about
-# the responder's history (below); PENDING is a window still open.
+# the responder's history (below); PENDING is a window still open, resumed by passing the Outcome back to ask.
 ARTIFACT = "artifact"
 ARTIFACT_FAILED = "artifact_verification_failed"
 REFUSAL = "refusal"
+REFUSAL_NONCONFORMANT = "refusal_nonconformant"
 ABSENCE = "recorded_absence"
 PENDING = "pending"
 STATUS_UNKNOWN = "status_unknown"
@@ -81,15 +82,17 @@ class Outcome:
     """What asking came to. ``state`` is one of the module's state names;
     ``reason`` is a refusal's reason; ``artifact`` the verified artifact's
     octets (state ``ARTIFACT`` only); ``record`` the record the book sealed
-    for it (none while ``PENDING``)."""
+    for it (none while ``PENDING``); ``request_id`` the id of the request
+    record the book committed before sending."""
 
     state: str
     reason: str = ""
     artifact: bytes = b""
     record: Record | None = None
+    request_id: str = ""
 
 
-def ask(book: Book, request: EvidenceRequest, responder: str, keys: ResponderKeys,
+def ask(book: Book, request: EvidenceRequest | Outcome, responder: str, keys: ResponderKeys,
         send: Callable[[Message], Message | None], window_end: datetime | None = None) -> Outcome:
     """Ask ``responder`` and record what came back. Wraps
     :meth:`Book.request` (the request is committed before it is sent),
@@ -97,12 +100,22 @@ def ask(book: Book, request: EvidenceRequest, responder: str, keys: ResponderKey
     message, or ``None``/an ``OSError`` for no answer), :meth:`Book.record_response`
     and :meth:`Book.record_absence`.
 
-    A verified artifact is ``ARTIFACT``; a signed refusal ``REFUSAL``, except
-    ``capacity_exceeded`` and ``request_unauthenticated``, which are
-    ``STATUS_UNKNOWN`` (they say nothing about the responder's history); no
-    answer is ``PENDING`` until ``window_end`` is given, then a recorded
-    ``ABSENCE`` (refused with :class:`InvalidError` while the window is
-    shorter than ``MINIMUM_ABSENCE_WINDOW``)."""
+    A verified artifact is ``ARTIFACT``; a signed refusal ``REFUSAL`` (or
+    ``REFUSAL_NONCONFORMANT``), except ``capacity_exceeded`` and
+    ``request_unauthenticated``, which are ``STATUS_UNKNOWN`` (they say
+    nothing about the responder's history); no answer is ``PENDING`` until
+    ``window_end`` is given, then a recorded ``ABSENCE``; a window that is
+    still open or shorter than ``MINIMUM_ABSENCE_WINDOW`` stays ``PENDING``.
+    To close a ``PENDING`` request, pass its Outcome as ``request`` with a
+    ``window_end``: nothing is sent again, and :class:`InvalidError` is
+    raised while that window cannot be closed. A reply the book refuses
+    raises :class:`InvalidError` with ``request_id`` set to the request, which
+    stays open."""
+    if isinstance(request, Outcome):
+        if request.state != PENDING or window_end is None:
+            raise InvalidError("only a pending outcome with a window_end can be resumed")
+        return Outcome(ABSENCE, record=book.record_absence(request.request_id, window_end),
+                       request_id=request.request_id)
     sent = book.request(request, responder)
     try:
         reply = send(sent.message)
@@ -110,25 +123,37 @@ def ask(book: Book, request: EvidenceRequest, responder: str, keys: ResponderKey
         reply = None
     if reply is None:
         if window_end is None:
-            return Outcome(PENDING)
-        return Outcome(ABSENCE, record=book.record_absence(sent.record_id, window_end))
-    record = book.record_response(sent.record_id, reply, keys)
+            return Outcome(PENDING, request_id=sent.record_id)
+        try:
+            absence = book.record_absence(sent.record_id, window_end)
+        except InvalidError:  # a request just sent has no outcome, so the window is open or too short
+            return Outcome(PENDING, request_id=sent.record_id)
+        return Outcome(ABSENCE, record=absence, request_id=sent.record_id)
+    try:
+        record = book.record_response(sent.record_id, reply, keys)
+    except InvalidError as err:  # a refused reply leaves the request open; keep its id for the caller
+        err.request_id = sent.record_id
+        raise
     statement = record.header.statement
-    outcome = statement["outcome"]
+    outcome, reason = statement["outcome"], statement.get("reason", "")
     if outcome == OUTCOME_ARTIFACT:
-        return Outcome(ARTIFACT, artifact=parse_reply(reply).envelope.artifact, record=record)
+        return Outcome(ARTIFACT, artifact=parse_reply(reply).envelope.artifact, record=record, request_id=sent.record_id)
     if outcome == OUTCOME_ARTIFACT_FAILED:
-        return Outcome(ARTIFACT_FAILED, reason=statement.get("failure", ""), record=record)
-    reason = statement.get("reason", "")
-    state = STATUS_UNKNOWN if reason in _UNKNOWN_REASONS else REFUSAL
-    return Outcome(state, reason=reason, record=record)
+        return Outcome(ARTIFACT_FAILED, reason=statement.get("failure", ""), record=record, request_id=sent.record_id)
+    if outcome not in (OUTCOME_REFUSAL, OUTCOME_REFUSAL_NONCONFORMING):
+        raise InvalidError(f"unexpected recorded outcome {outcome!r}")
+    if reason in _UNKNOWN_REASONS:
+        state = STATUS_UNKNOWN
+    else:
+        state = REFUSAL if outcome == OUTCOME_REFUSAL else REFUSAL_NONCONFORMANT
+    return Outcome(state, reason=reason, record=record, request_id=sent.record_id)
 
 
 @dataclass(frozen=True)
 class History:
     """A holder's presented history, read. ``properties`` is the six card
     properties of Standard History §6 for a ``standard_history/1`` card
-    (``PASS``/``FAIL``/``NOT_CHECKED``, no score) and ``None`` for a
+    (``PASS`` or ``NOT_CHECKED``: a ``FAIL`` is refused, no score) and ``None`` for a
     ``history_card/1``, whose form is all :func:`history` checks."""
 
     derivation: str
@@ -145,14 +170,9 @@ def history(instance: Staple, holder: str) -> History:
     the card's form; :class:`InvalidError` on any failure) and, for a
     ``standard_history/1`` card, ``agent_action_capsule.standard_history.check_card``.
     The anchor's checkpoint and the nonce's freshness remain the reader's."""
-    checked = check_staple(instance, holder)
+    checked = check_staple(instance, holder)  # refuses any derivation but the two, and a card that FAILs
     properties = None
     if checked.derivation == DERIVATION_STANDARD_HISTORY:
-        try:
-            properties = sh.check_card(strict_json(checked.artifact))
-        except ValueError as err:
-            raise InvalidError(f"the stapled card: {err}") from None
-    elif checked.derivation != DERIVATION_HISTORY_CARD:
-        raise InvalidError(f"not a history: {checked.derivation}")
+        properties = sh.check_card(strict_json(checked.artifact))
     return History(checked.derivation, checked.anchor, checked.nonce, checked.issued_at, checked.artifact,
                    properties)
