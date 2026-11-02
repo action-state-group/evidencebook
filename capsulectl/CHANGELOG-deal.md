@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `deal standard-history staple --derivation history_card/1|standard_history/1 [--deal ID]`
+  (evidencebook-deal#115; needs evidencebook v0.13.2): prints the holder's request and its
+  signed reply as one JSON object, for the host to attach to its message; evidencebook's
+  `CheckStaple` accepts both unchanged. `history_card/1` is the cadence's history card and
+  seals nothing; `standard_history/1` needs a declared holder that answers the card and seals
+  one `evidence_request_answered` record naming `--deal`. No default: the caller decides when
+  to staple. Exit 2 for refused input, 1 for any other failure (for example no tick yet).
+
 - The rules checker is sent the acting role's pin (evidencebook-deal#66 part 2; needs
   evidencebook v0.13.1): on a profile whose `rules_checker.roles` is set, the
   `external-check-input/v0` gains `rules_pin` ({`pack`, `definition_digests`}), the acting

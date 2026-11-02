@@ -197,8 +197,8 @@ func writeSHPolicy(p cli.Profile, months int, all bool) error {
 }
 
 func dealStandardHistoryCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "standard-history", Short: "The History card: a count of your deals as of a checkpoint, that carries no deal's content (declare who holds it, set its window, write its bundle)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
-	cmd.AddCommand(shDeclareCommand(), shPolicyCommand(), shCardCommand())
+	cmd := &cobra.Command{Use: "standard-history", Short: "The History card: a count of your deals as of a checkpoint, that carries no deal's content (declare who holds it, set its window, write its bundle, staple it to a message)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
+	cmd.AddCommand(shDeclareCommand(), shPolicyCommand(), shCardCommand(), shStapleCommand())
 	return cmd
 }
 
