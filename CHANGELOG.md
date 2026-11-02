@@ -2,9 +2,67 @@
 
 ## Unreleased
 
+## v0.13.3 (2026-11-02)
+
+Go module only.
+
 ### Docs: the Mesh node's History in the guide (#322)
 
 - Guide path 4 derives and checks the Mesh node's `inference-service-history/0` History in a CI-run Rust example (`rust/interop/tests/mesh_history.rs`) with agent-action-capsule's `inference_history`, under the definition a Mesh node serves. The Go Example still stops at the node's `history_card/1`: this module pins agent-action-capsule go v0.19.0, before the Go reader (v0.20.0); checking the History there is #347. No change to the Go module's API.
+
+### Changed: Book derives record order from its log (#219)
+
+- `Book` no longer keeps a separate list of record ids beside its log of records; the log is the one source of record order. No behavior change.
+
+### Changed: `Cadence.HistoryCard` is bounded like a Book's card (#354)
+
+- `Cadence.HistoryCard` returns the new `ErrOverLimit` when the card would list more than `DefaultMaxAnswerItems` (10,000) ticks, about 35 days at the default 5-minute interval, the cap a Book's responder applies (a Book's own card over it is a refusal, `Book.Staple` reports `ErrInvalid`). Before, the card grew without bound at about 288 entries a day. A longer-lived cadence staples its `standard_history/1` card (`Cadence.StandardHistoryAnchor`), which counts and does not list ticks. The card's form and `CheckStaple` are unchanged.
+
+### Changed: capsulectl-book `v0.1.0-rc31` pairs with capsulectl `v0.1.0-rc31`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc31`; capsulectl-book
+  `v0.1.0-rc31` pairs with capsulectl `v0.1.0-rc31` and carries `book report check` without the signing
+  secret (#324, #349) and `SOURCE_DATE_EPOCH` for scratch books (#330).
+
+### Fixed: capsulectl-book `book report check` no longer needs the profile's signing secret (#324)
+
+- `book report check` no longer reads the profile's signing or checkpoint signing key, so a profile with no key file, a
+  missing one or a key no `trusted_keys` holds answers `match` or `mismatch`.
+
+### Added: `report.View.Charts` fills and passes a pack's chart views to the viewer (#319)
+
+- `report.Build` takes the view entries of a pack's `chart-views/v1` block (calendar, timeline, co-failure) in
+  `View.Charts`, adds to every chart in them the `range` filter on the sealed window and the `usermeta.capsule`
+  statement (population, window, runs, values, a not-run day as `not_run`) computed from the Result's dataset, checks
+  each with capsule-viewer's `chartspec.Check`, and hands them to the viewer as its `charts` setting. A Result with no
+  disclosed dataset, a plan without exactly one window, or a chart the filler cannot state refuses the build. A page
+  built with charts gets no permalink.
+- Raised the `report` module's capsule-viewer pin to go/v0.12.0, whose Go emitter accepts view entries (capsule-viewer#156), so a Go-built page draws the views and rewrote the committed presentation pages for its
+  page runtime.
+
+### Changed: the #206 answer doc cites the plugin's no-COMPLETE vectors
+
+- Row 7 is answered: Mesh-LLM/capsules-plugin#248 adds one vector per answer kind showing no producer-selected answer reads COMPLETE (Mesh-LLM/capsules-plugin#233).
+
+### Changed: rule_inputs_version accepts 4 (#363)
+
+- The x-deal-v0 schemas accept `rule_inputs_version` 3 or 4 (`enum [3, 4]`, was `const 3`); 4 is the rule inputs version in which a rule's `channel` comes from the latest counterparty message only. A positive fixture (`positive-rule-inputs-4`) seals a pay check under 4 (#363).
+
+### Changed: the shelf design note records its outcome
+
+- `docs/design/254-shelf.md` is marked accepted and gains §11, which lists the pull request that landed each work item and what is still open (#254).
+
+### Fixed: `CheckStaple` verifies that a `history_card/1`'s checkpoints form one chain (#344)
+
+- `CheckStaple` now refuses a `history_card/1` staple whose checkpoints are not one chain: each checkpoint signed under
+  the first's key, one log, each entry's signed `prev_size` and `prev_root` the one before's, and each consistency proof
+  reaching the next commitment. Before, a card of unrelated checkpoints with the right form passed. The shared staple
+  vectors pin two refusals (a skipped checkpoint, a consistency proof that does not verify).
+
+### Added: `Example (Staple)` checks the Mesh node's History with the Go reader (#347)
+
+- The Example derives the Mesh node's `inference-service-history/0` over its stream for the week closing 2026-11-02, embeds the stream's `history_card/1`, and checks it with agent-action-capsule's `inferencehistory.Evaluate` (go v0.20.1, which reads real COSE checkpoint cards). The module now requires agent-action-capsule go v0.20.1. This supersedes the note under #322 above that the Go Example still stops at the node's `history_card/1`.
+- Changed by that bump: `Book.Respond` now refuses a CBOR request that is not in core deterministic encoding (`request_malformed`, digested over the octets as received), per agent-action-capsule's profile §5.2 (go v0.20.0). Before, it answered one.
 
 ## v0.13.2 (2026-11-02)
 

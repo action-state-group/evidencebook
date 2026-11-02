@@ -51,6 +51,24 @@
 - `Cadence::history_card(n)` returns the profile's `history_card/1` over the cadence log as a `Staple`, as Go's
   `Cadence.HistoryCard` does (#341); `check_staple` accepts it for the shelf signer's key id.
 
+- `Cadence::history_card` returns the new `ShelfError::OverLimit` when the card would list more than `DEFAULT_MAX_ANSWER_ITEMS` (10,000) ticks, as Go's `Cadence.HistoryCard` does (evidencebook#354).
+
+### Changed: deal records accept rule_inputs_version 4 (#363)
+
+- The x-deal-v0 schemas accept `rule_inputs_version` 3 or 4 (`enum [3, 4]`, was `const 3`); 4 is the rule inputs version in which a rule's `channel` comes from the latest counterparty message only. A positive fixture (`positive-rule-inputs-4`) seals a pay check under 4 (#363).
+
+- `respond::respond` answers `standard_history/1` over `full_history` when `Responder::standard_history` holds a
+  `standard_history::StandardHistorySource` (holder kind and the host's inputs), byte for byte with Go's
+  `StandardHistorySource` (evidencebook#328): to any authenticated requester and never a stranger; without a source it is
+  `derivation_unsupported`. `standard_history::derive_card` ports SH §4's card derivation (the cards in
+  `dealprofile/testdata/parity-vectors.json` are derived byte for byte); the card is not checked against its own inputs
+  afterwards, as the crate has no card checker. `staple::staple_standard_history` builds a `standard_history/1` staple.
+- Breaking: `Responder` has a new field `standard_history` and `answer::Options` a new field `standard_card`; set them to
+  `None`.
+
+- `check_staple` refuses a `history_card/1` staple whose checkpoints are not one chain (signature under the first's key,
+  one log, signed `prev_size`/`prev_root`, consistency proofs), as Go's `CheckStaple` does (evidencebook#344).
+
 ## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
