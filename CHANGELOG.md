@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+## v0.13.4 (2026-11-02)
+
+Go module only.
+
+### Added: the disclosure policy, `policy-change/v1` and `Doctor` settings rows (#156)
+
+- The disclosure policy (#156): `DisclosurePolicy` is the `policy` member of loop's `disclosure-policy/0` file, shipped as "Action State default v1" for a person (Muse) or a node (Mesh), with the settings window, standard history, staple, more-than-standard, receipt, unsigned-ask rate limit, under-contract scope and asked-of-you log retention, and the never-list as fixed text. `Book.AdoptPolicy` and `Book.ApplyPolicyChange` seal it: a `policy-change/v1` block (base policy digest, round, changed fields, `then[]`) becomes one `disclosure_policy` record per field, a change composed against another round is refused `ErrStaleRound`, and one that names a never-list item is refused `ErrNeverList`. A policy record is never served, by any subject form or derivation. A book that holds a policy applies its standard-history, receipt and unsigned-ask switches in `Respond` whatever `SharePolicy` the caller passes; asks of askers that do not sign share the weekly limit, except the public checkpoints. `DisclosurePolicy.Rows` is the settings page, and `Doctor` reports the same rows (`setting_*`) for a book that holds a policy, answers under it, and takes `DoctorOptions.As` (`stranger` or `signed`). `SharePolicy.StandardHistory` switches `standard_history/1` off (`derivation_unsupported`). The probe's standard-card line now states the card's window instead of the deal total.
+
+### Changed: capsulectl-book `book result build` enforces a calibration claim's evidence rule (#376)
+
+- A `calibration` claim must cite exactly one distinct `calibration-summary/v1` record and otherwise only `human-rating/v1` records (evidence-result-v0 section 4.1), read from each cited record's `record_version`; a claim that cites no summary, two, or a record of another kind is refused. A cited record with no disclosed body is checked for presence only, and the one summary must be disclosed. `testdata/result` vendors the three negatives that need the cited records (`neg-calibration-without-summary`, `-two-summaries`, `-cites-other-record`, aac 09c8b866), and `TestResultVectors` runs them through the walk.
+
+### Changed: capsulectl-book `v0.1.0-rc32`, and the monthly fixtures cite their weeks' calibration records (#168)
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc32`, whose `evidence-result-v0` schema has the `calibration` claim type (agent-action-capsule#552); `capsulectl/go.mod` requires `report` at the main commit 976f311 and so capsule-viewer `v0.12.0`, which the committed pages are written with (the capsulectl workflow had not run since the pages were rewritten for it, #357, so `TestReportBuildGoldens` was failing on main); `report/go.mod` also requires evidencebook `v0.13.3`, so `report.Build` verifies the book-form Result root `book result build` seals. `capsulectl/internal/book/testdata/result` vendors the schema-visible calibration vectors from that commit (`pos-example-org-calibration-result`, `neg-calibration-with-close-body`, `neg-out-of-scope-on-calibration-claim`); the three negatives that need the cited records are vendored with the book's check of a calibration claim's evidence (#376).
+- `report/testdata/presentation/{4-monthly-outcome,5-monthly-compliance}` are regenerated through `capsulectl book result build` and `disclose` (a Result root of the book form, 36 and 19 claims): each Result carries a `calibration` claim per week with a blind sample, citing that week's `calibration-summary/v1` and the `human-rating/v1` records of reports its requirement claims cite, and the bundle discloses them. One week has a rating that differs from the judge and one a shortfall (drawn > rated); the last week has no sample and no claim. Pages and snapshots are rewritten.
+
+### Fixed: a disagreeing reconcile Result counts as undecided (#212)
+
+- x-deal-v0's `standard_history/1` deal entry (PROFILE.md section 11) counts a deal whose reconcile Result has a `not_met` claim as `undecided`, not `did_not_hold`: halves that disagree do not show which side failed (evidencebook#212). Go, Python and Rust change together.
+
+### Docs: admit a Mesh node on path 5 (capsule-engine#273)
+
+- docs/GUIDE.md path 5 gains "A Mesh node": `Example (Staple)` now reads the Mesh node's checked
+  `inference-service-history/0` answer with capsule-engine's `admission.InferenceServiceHistoryCounts` and evaluates
+  `admission-node-baseline@1` (`testdata/admission-node-baseline/`) for a GO and a LIMIT, showing per-property rows and
+  no score (capsule-engine#273).
+
+### Docs: Path 5, admit a peer (#189)
+
+- docs/GUIDE.md gains Path 5, admit a peer: verify the staple, evaluate the admission pack with capsule-engine's
+  `admission.Evaluate` (go/v0.3.0) and seal the decision's block with `Book.Append`. `Example (AdmitAPeer)` runs
+  `admission-baseline@1`'s fixtures (`testdata/admission-baseline/`, listed in VECTORS.md) for a GO, an ASK with its
+  recorded request and a LIMIT after a refusal. The root module requires capsule-engine/go v0.3.0, for that Example
+  only (evidencebook#189).
+
+### Changed: capsule-viewer `go/v0.13.0`, and the monthly pages are regenerated with it (evidencebook-skills#73)
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-viewer `go/v0.13.0` (capsule-viewer#238), whose release notes (https://github.com/action-state-group/capsule-viewer/releases/tag/go%2Fv0.13.0) list all the changes the pages pick up; the reason for this bump is #238, which no longer counts a calibration claim in the roll-up header. `report/testdata/presentation/{4-monthly-outcome,4b-monthly-outcome-informational,5-monthly-compliance}/page.html` are rewritten with it; the Results and snapshots are unchanged.
+
 ## v0.13.3 (2026-11-02)
 
 Go module only.

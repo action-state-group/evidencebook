@@ -1,1 +1,0 @@
-- x-deal-v0's `standard_history/1` deal entry (PROFILE.md section 11) counts a deal whose reconcile Result has a `not_met` claim as `undecided`, not `did_not_hold`: halves that disagree do not show which side failed (evidencebook#212). Go, Python and Rust change together.
