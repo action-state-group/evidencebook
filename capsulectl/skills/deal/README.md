@@ -266,7 +266,7 @@ and the receipt names the profile's own and the longest wait it allows, for
 example "within about 7m (every 5m, give or take 2m)". The states, as
 the receipt and `deal report` name them: **scheduled** (not yet in a tick),
 **pending** (in a tick, no receipt back yet; both read "Sealed, witness
-pending"), **witnessed** and **unverified** (a witness receipt is held but does not verify under the witness the profile names now, such as a tampered receipt or one signed by another key; the report says the receipt did not verify, and the rung stays self-attested).
+pending"), **witnessed** and **unverified** (a witness receipt is held but does not verify under the witness the profile names now, such as a tampered receipt, one signed by another key, or a witness key rotated since the receipt was verified (while the deal is still open it is witnessed again once the new witness signs a later tick; a closed deal stays unverified); the report says the receipt did not verify, and the rung stays self-attested).
 
 A step sealed after the last witnessed tick does not undo what the witness
 holds. The report then reads **witnessed in part**: "steps 1 to k of n" are

@@ -267,28 +267,37 @@ func TestDealReceiptUnderAnotherKeyIsUnverified(t *testing.T) {
 	assert.Equal(t, "unverified", asGrade(t, report["grade"]).Witness.State)
 }
 
-// A changed witness key or endpoint names another witness service, under
-// which no receipt is held: nothing was checked, so it is not unverified.
-func TestDealChangedWitnessKeyHoldsNoReceipt(t *testing.T) {
+// A deal witnessed and then re-keyed has a recorded chain the current witness
+// service no longer backs: a check that fails, so unverified, not "not yet".
+// It is witnessed again once the new witness signs a later tick.
+func TestDealChangedWitnessKeyIsUnverified(t *testing.T) {
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	other, _, err := ed25519.GenerateKey(rand.Reader)
+	other, otherKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	endpoint, _ := countingWitness(t)
 	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC))
 	dealID := retailDeal(t)
-	dealRun(t, "tick")
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
 	deliver(t, p, cadenceSize(t, p), key)
 	assert.Equal(t, "witnessed", dealRun(t, "report", "--deal", dealID)["grade"].(map[string]any)["witness"].(map[string]any)["state"])
 
 	p.Checkpoint.PublicKey = hex.EncodeToString(other)
 	require.NoError(t, cli.SaveProfile(p, true))
 	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
-	a := report["assurance"].(map[string]any)
-	assert.NotEqual(t, "unverified", a["witness_state"])
-	assert.NotContains(t, a["text"], "did not verify")
+	assert.Equal(t, "unverified", report["assurance"].(map[string]any)["witness_state"])
+	assert.Equal(t, "unverified", asGrade(t, report["grade"]).Witness.State)
 	status := dealRun(t, "checkpoint", "status", "--deal", dealID)
-	assert.NotEqual(t, "unverified", status["witness"].(map[string]any)["state"])
+	assert.Equal(t, "unverified", status["witness"].(map[string]any)["state"])
+
+	// The new witness signs a later tick: witnessed again.
+	*now = now.Add(10 * time.Minute)
+	dealRun(t, "note", "--deal", dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
+	*now = now.Add(2 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), otherKey)
+	assert.Equal(t, "witnessed", dealRun(t, "report", "--deal", dealID)["grade"].(map[string]any)["witness"].(map[string]any)["state"])
 }
 
 func TestDealTamperedReceiptIsUnverified(t *testing.T) {
