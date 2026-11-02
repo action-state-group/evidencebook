@@ -1,0 +1,1333 @@
+{
+ "pack": "asg/admission_baseline/1.0.0",
+ "source": "evidencebook-skills#51: admission-baseline@1's fixtures. Each case is an evaluator input (admission pack profile v0 \u00a75) and the decision expected, written by hand. capsule-engine#265's evaluator (Go and Rust) decides every case in its CI; evidencebook#189 reads them for guide Path 4.",
+ "cases": [
+  {
+   "case": "t0-go-on-platform-rows",
+   "why": "A micro deal needs no card: platform facts, the operator's lists and our own adjudicated history decide.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t0-attestation-invalid-is-no",
+   "why": "NO from a platform fact.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "invalid"
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "NO",
+    "source": "attestation",
+    "tier": null
+   }
+  },
+  {
+   "case": "t0-owner-unsigned-is-recorded",
+   "why": "Owner signing is recorded at T0 and decides nothing.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": false
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t0-deny-listed-is-no",
+   "why": "NO from the operator's config.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": true
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "NO",
+    "source": "deny-list",
+    "tier": null
+   }
+  },
+  {
+   "case": "t0-allow-list-unlisted-is-no",
+   "why": "NO from the operator's config.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false,
+     "allow_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "NO",
+    "source": "allow-list",
+    "tier": null
+   }
+  },
+  {
+   "case": "t0-adverse-adjudication-is-no",
+   "why": "NO from our own adjudicated history, inside the 180-day window.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": [
+      {
+       "at": "2026-06-01T00:00:00Z",
+       "adverse": true
+      }
+     ]
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "NO",
+    "source": "adverse-adjudication",
+    "tier": null
+   }
+  },
+  {
+   "case": "t0-adverse-outside-window-is-go",
+   "why": "An adjudication older than the window does not count.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": [
+      {
+       "at": "2026-03-01T00:00:00Z",
+       "adverse": true
+      }
+     ]
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t0-attestation-unknown-is-missing",
+   "why": "A missing platform fact gives the pack's missing default, LIMIT at T0, never a silent GO.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {},
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "attestation",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t0-own-book-not-read-is-missing",
+   "why": "Our own book not read is a missing input; a book read that holds no verdict yet is not.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": null,
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "adverse-adjudication",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-stranger-climbs-on-its-own-card",
+   "why": "A stranger with no history with us reaches T1 on its own fresh, witnessed card with claims held (design \u00a74).",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t1-no-card-asks",
+   "why": "The card is required from T1: one served_summary/1 ask answers every card row.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "ASK",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-card-refused-limits",
+   "why": "A refusal limits, never bans.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "refused"
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {
+     "served_summary/1": "refused"
+    },
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-stale-card-asks-again",
+   "why": "A stale card is asked for again.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-01T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "ASK",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-thin-card-limits",
+   "why": "Too few claims held, already asked: LIMIT to T0, with count and denominator.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 3,
+      "total": 3
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {
+     "served_summary/1": "answered"
+    },
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-unwitnessed-card-limits",
+   "why": "A witness outside the trust roots does not count.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "witness-z",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-no-controller-declared-limits",
+   "why": "A card whose key declares no controller stays at T0.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t1-conflicting-deal-limits",
+   "why": "A CONFLICTING deal with us limits.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "20000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 2,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 1,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T0"
+   }
+  },
+  {
+   "case": "t2-go",
+   "why": "A verified selection, a trusted controller and no unanswered dispute admit a standard deal.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T2"
+   }
+  },
+  {
+   "case": "t2-no-selection-asks",
+   "why": "The default first time at T2: ask for a bound selection.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "ASK",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t2-selection-unanswered-limits",
+   "why": "Without the selection, T1.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {
+     "selection": "unanswered"
+    },
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t2-untrusted-controller-limits",
+   "why": "A controller outside the trust roots holds the deal at T1.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "other-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t2-unanswered-dispute-limits",
+   "why": "An unanswered dispute with anyone in 90 days holds the deal at T1.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": [
+      "2026-09-15T00:00:00Z"
+     ]
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t2-judged-caps-at-t1",
+   "why": "A judged row caps the tier and never decides NO.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": false,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "t2-judge-outside-trust-roots-not-counted",
+   "why": "A judge outside the trust roots is reported, not counted.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": false,
+      "judge": "other-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T2"
+   }
+  },
+  {
+   "case": "t2-stake-is-recorded-only",
+   "why": "Stake is a row source only: recorded, deciding nothing.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "50",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0,
+    "stake": {
+     "amount": "60",
+     "currency": "USDC"
+    }
+   },
+   "expected": {
+    "verdict": "GO",
+    "source": "rows",
+    "tier": "T2"
+   }
+  },
+  {
+   "case": "above-t2-limits",
+   "why": "Nothing is offered above T2: LIMIT at T2 with above_tier, never NO.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "5000",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "above_tier",
+    "tier": "T2"
+   }
+  },
+  {
+   "case": "above-t2-lowered-by-a-row-limits-there",
+   "why": "Above the top tier, a row that lowers the tier decides as for any other deal.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "5000",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "other-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "rows",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "above-t2-deny-listed-is-no",
+   "why": "A NO row decides before above_tier.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "5000",
+    "currency": "USDC",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {
+     "state": "verified",
+     "unanswered_disputes": []
+    },
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": true
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {
+     "adjacent-domain": {
+      "met": true,
+      "judge": "placeholder-judge"
+     }
+    },
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "NO",
+    "source": "deny-list",
+    "tier": null
+   }
+  },
+  {
+   "case": "sat-above-t1-limits-at-t1",
+   "why": "T1 is the highest tier naming sat: a sat deal above it is held there.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "100000",
+    "currency": "sat",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {
+     "state": "verified",
+     "first_checkpoint_at": "2026-06-01T00:00:00Z",
+     "latest_checkpoint_at": "2026-10-28T00:00:00Z",
+     "witness": "placeholder-witness",
+     "controller": "placeholder-controller",
+     "claims": {
+      "held": 12,
+      "total": 14
+     }
+    },
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "above_tier",
+    "tier": "T1"
+   }
+  },
+  {
+   "case": "currency-not-accepted-is-missing",
+   "why": "A currency outside the mapping table is a missing input.",
+   "input": {
+    "now": "2026-10-30T12:00:00Z",
+    "amount": "500",
+    "currency": "EUR",
+    "platform": {
+     "release_attestation": "valid",
+     "owner_signed": true
+    },
+    "card": {},
+    "selection": {},
+    "own": {
+     "exchanges": 0,
+     "settled": 0,
+     "held_halves": 0,
+     "conflicting": 0,
+     "verdicts": []
+    },
+    "operator": {
+     "deny_listed": false
+    },
+    "vouches": [],
+    "subject": "",
+    "judged": {},
+    "asks": {},
+    "asks_made": 0
+   },
+   "expected": {
+    "verdict": "LIMIT",
+    "source": "missing",
+    "tier": "T0"
+   }
+  }
+ ]
+}
