@@ -2,6 +2,7 @@ package book
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
@@ -12,6 +13,7 @@ import (
 type policyOut struct {
 	Policy   evidencebook.DisclosurePolicy `json:"policy"`
 	Settings []evidencebook.SettingRow     `json:"settings"`
+	Record   evidencebook.Record           `json:"record"`
 	Records  []evidencebook.Record         `json:"records"`
 	Then     []string                      `json:"then"`
 }
@@ -50,9 +52,11 @@ func TestBookPolicyAdoptShowAgreeWithDoctor(t *testing.T) {
 	adopted, _, err := runPolicy(t, "", "--profile", "node", "adopt", "--holder", "node")
 	require.NoError(t, err)
 	assert.Equal(t, evidencebook.HolderNode, adopted.Policy.Holder)
-	assert.Len(t, adopted.Records, 0)
+	assert.NotEmpty(t, adopted.Record.RecordID)
+	size := bookSize(t, p)
 	_, out, err := runPolicy(t, "", "--profile", "node", "adopt", "--holder", "node")
 	require.Error(t, err, "a book keeps the policy it holds: %s", out)
+	assert.Equal(t, size, bookSize(t, p), "a second adopt seals nothing")
 
 	shown, _, err := runPolicy(t, "", "--profile", "node", "show")
 	require.NoError(t, err)
@@ -110,14 +114,25 @@ func TestBookPolicyChangeRefusesStaleAndSealsNothing(t *testing.T) {
 	assert.Contains(t, out+err.Error(), "stale")
 	assert.Equal(t, size, bookSize(t, p), "a stale change seals nothing")
 
-	// stdin works, and a refused field seals nothing either.
-	body, err := json.Marshal(map[string]any{"profile": evidencebook.PolicyChangeProfile, "base_policy": "x", "round": 0, "changes": map[string]any{"window": "3"}, "then": []string{}})
+	// stdin works; a never-list field at the current round is refused too.
+	current, _, err := runPolicy(t, "", "--profile", "node", "show")
+	require.NoError(t, err)
+	digest, err := current.Policy.Digest()
+	require.NoError(t, err)
+	body, err := json.Marshal(map[string]any{"profile": evidencebook.PolicyChangeProfile, "base_policy": digest, "round": current.Policy.Round, "changes": map[string]any{"name": "x"}, "then": []string{}})
 	require.NoError(t, err)
 	_, _, err = runPolicy(t, string(body), "--profile", "node", "change", "--change", "-")
 	require.Error(t, err)
 	assert.Equal(t, size, bookSize(t, p))
 	_, _, err = runPolicy(t, `{"profile":"nope"}`, "--profile", "node", "change", "--change", "-")
 	require.Error(t, err, "a wrong profile is refused")
+	assert.Equal(t, size, bookSize(t, p))
+
+	// the same block applies from stdin when it is current.
+	ok, out, err := runPolicy(t, `{"profile":"`+evidencebook.PolicyChangeProfile+`","base_policy":"`+digest+`","round":`+strconv.FormatUint(current.Policy.Round, 10)+`,"changes":{"window":"1"},"then":[]}`, "--profile", "node", "change", "--change", "-")
+	require.NoError(t, err, out)
+	assert.Equal(t, "1", ok.Policy.Window)
+	assert.Len(t, ok.Records, 1)
 }
 
 func TestBookDoctorAsFlag(t *testing.T) {
@@ -135,4 +150,21 @@ func TestBookDoctorAsFlag(t *testing.T) {
 		assert.Equal(t, evidencebook.DoctorStateMatch, findings[evidencebook.DoctorProbeCheckpoints].State, as)
 		assert.Equal(t, evidencebook.DoctorStateMatch, findings[evidencebook.DoctorProbeHistoryCard].State, as)
 	}
+}
+
+func TestBookPolicyNoPolicyAdopted(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bookClock(t, day0)
+	p, _ := bookProfile(t, "node")
+	appendHalves(t, p, half{"x1", "r1", "p1"})
+	size := bookSize(t, p)
+	body := `{"profile":"` + evidencebook.PolicyChangeProfile + `","base_policy":"x","round":0,"changes":{"window":"3"},"then":[]}`
+	_, out, err := runPolicy(t, body, "--profile", "node", "change", "--change", "-")
+	require.Error(t, err, out)
+	assert.Contains(t, err.Error(), "no disclosure policy")
+	_, _, err = runPolicy(t, "", "--profile", "node", "show")
+	require.Error(t, err)
+	assert.Equal(t, size, bookSize(t, p))
+	_, err = invoke(t, "", "doctor", "--profile", "node", "--as", "stranger")
+	require.Error(t, err, "--as needs --probe")
 }

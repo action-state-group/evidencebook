@@ -2,6 +2,7 @@ package book
 
 import (
 	"errors"
+	"io"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -73,7 +74,7 @@ func policyShowCommand() *cobra.Command {
 		if p.Type == "sqlite" {
 			return cli.InputError("this is a deal profile: book policy show reads an evidence book")
 		}
-		opened, e := openBook(c.Context(), p, false)
+		opened, e := openBookForReading(c.Context(), p)
 		if e != nil {
 			return e
 		}
@@ -87,14 +88,22 @@ func policyShowCommand() *cobra.Command {
 }
 
 func policyChangeCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "change", Short: "Apply a policy-change/v1 block: one policy record per changed setting (signs)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "change", Short: "Apply a policy-change/v1 block: one policy record per changed setting (signs); its then[] steps are returned for you to run, not run here", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, e := writablePolicyProfile(c, "book policy change")
 		if e != nil {
 			return e
 		}
 		path, _ := c.Flags().GetString("change")
-		raw, e := cli.ReadInput(path)
-		if e != nil {
+		var raw []byte
+		if path == "-" {
+			var e error
+			if raw, e = io.ReadAll(io.LimitReader(c.InOrStdin(), cli.MaxInput+1)); e != nil {
+				return e
+			}
+			if len(raw) > cli.MaxInput {
+				return cli.InputError("the policy change exceeds the input size limit")
+			}
+		} else if raw, e = cli.ReadInput(path); e != nil {
 			return e
 		}
 		change, e := evidencebook.ParsePolicyChange(raw)
