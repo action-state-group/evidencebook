@@ -109,3 +109,22 @@ func TestCadenceHistoryCardRefusals(t *testing.T) {
 	_, err = c.HistoryCard(ctx, 1)
 	assert.ErrorIs(t, err, ErrReleased)
 }
+
+// The cadence's card is bounded like a Book's: past DefaultMaxAnswerItems
+// ticks it is refused before any tick is read, and the cap itself passes the
+// check (evidencebook#354).
+func TestCadenceHistoryCardIsBounded(t *testing.T) {
+	ctx := context.Background()
+	fixture := newShelfFixture(t)
+	shelf := fixture.open(t)
+	c, _ := newCadence(t, shelf)
+	mustTick(t, c, tickTime)
+
+	_, err := c.HistoryCard(ctx, DefaultMaxAnswerItems+1)
+	require.ErrorIs(t, err, ErrOverLimit)
+	assert.NotErrorIs(t, err, ErrNotFound, "refused before any tick is read")
+
+	// At the cap the check passes; the ticks are simply not there yet.
+	_, err = c.HistoryCard(ctx, DefaultMaxAnswerItems)
+	assert.ErrorIs(t, err, ErrNotFound)
+}

@@ -30,4 +30,7 @@ var (
 	// ErrReleased reports a write to a book, or a call on a shelf, after it
 	// was released.
 	ErrReleased = errors.New("evidencebook: released")
+	// ErrOverLimit reports an answer that would carry more items than the
+	// cost policy allows (DefaultMaxAnswerItems).
+	ErrOverLimit = errors.New("evidencebook: over the item limit")
 )
