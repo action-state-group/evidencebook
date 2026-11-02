@@ -1,6 +1,8 @@
 package book
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -213,4 +215,35 @@ func TestReportCheckKeepsTheVerdictApartFromTheRowGate(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrPartial)
 	assert.Equal(t, 3, cli.ExitCode(err))
 	assert.Contains(t, cli.SafeError(err), "rows")
+}
+
+// A profile with no signing key, a signing key file that is gone, or a key
+// no trusted_keys holds still answers `report check`: it reads the book and
+// needs only trusted_keys and checkpoint.trusted_keys.
+func TestReportCheckNeedsNoSigningSecret(t *testing.T) {
+	p, bundle := sealedBookBundle(t)
+	_, page, err := runReportBuild(t, bundle, "--card", "outcome", "--profile", p.Name, "--seal")
+	require.NoError(t, err)
+	tampered := editedPage(t, page, "<title>", "<TITLE>")
+
+	_, throwaway, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+	missing := cli.Secret{File: filepath.Join(t.TempDir(), "node.seed")}
+	untrusted := cli.Secret{Value: hex.EncodeToString(throwaway.Seed())}
+	for name, secret := range map[string]cli.Secret{"none": {}, "missing file": missing, "untrusted": untrusted} {
+		t.Run(name, func(t *testing.T) {
+			reader := p
+			reader.Name, reader.Signing, reader.Checkpoint.Signing = "reader-"+strings.ReplaceAll(name, " ", "-"), secret, secret
+			require.NoError(t, cli.SaveProfile(reader, false))
+
+			result, err := checkPageFile(t, reader, page)
+			require.NoError(t, err)
+			assert.Equal(t, report.PageMatch, result.Page)
+			assert.Equal(t, "VALID", result.Verification)
+
+			result, err = checkPageFile(t, reader, tampered)
+			require.ErrorIs(t, err, cli.ErrConflict)
+			assert.Equal(t, report.PageMismatch, result.Page)
+		})
+	}
 }
