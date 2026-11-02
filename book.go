@@ -84,6 +84,10 @@ type Book struct {
 	originals   ArtifactStore
 	signer      Signer
 
+	// unsignedAsks counts the asks of askers that do not sign, against the
+	// disclosure policy's weekly limit; a changed limit keeps the count.
+	unsignedAsks *WindowLimiter
+
 	records map[string]Record
 	// log is the committed records in seq order, the one source of record
 	// order; it grows only in admitLocked and recover.

@@ -62,6 +62,14 @@ On the command line, `capsulectl book doctor --probe` runs the same check over
 a book profile. It is in capsulectl-book `capsulectl/v0.1.0-rc24` and later, a
 release candidate (pre-release).
 
+A book that holds a disclosure policy (`Book.AdoptPolicy`; "Action State default v1" for a
+person or a node) answers under it, and `Doctor` adds one `setting_*` finding per row of
+`DisclosurePolicy.Rows`, the rows the settings page shows, so the page and the probe cannot
+disagree on what a setting sends. `DoctorOptions.As` is `stranger` (public questions only) or
+`signed` (also the standard card a signed asker receives). A change is a `policy-change/v1`
+block, applied with `Book.ApplyPolicyChange` as one sealed record per field; a stale round or a
+never-list item is refused and seals nothing.
+
 `Doctor` reports a list of findings and never a score. `NOT_CHECKED` means the
 check was not run, never that it passed or failed.
 

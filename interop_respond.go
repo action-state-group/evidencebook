@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -82,10 +83,16 @@ func NewWindowLimiter(n int, window time.Duration) *WindowLimiter {
 
 // Allow records a request at now and reports whether it is within the limit.
 func (l *WindowLimiter) Allow(requester string, now time.Time) bool {
+	return l.allow(requester, now, l.n)
+}
+
+// allow is Allow under a limit of n, which a caller may change between
+// asks without losing the asks already counted.
+func (l *WindowLimiter) allow(requester string, now time.Time, n int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	recent := slices.DeleteFunc(l.seen[requester], func(t time.Time) bool { return !t.After(now.Add(-l.window)) })
-	if len(recent) >= l.n {
+	if len(recent) >= n {
 		l.seen[requester] = recent
 		return false
 	}
@@ -114,6 +121,16 @@ type SharePolicy struct {
 	HistorySegments    string `json:"history_segments"`
 	Adjudications      string `json:"adjudications"`
 	Witness            string `json:"witness,omitempty"`
+	// StandardHistory is "on" (the default when empty) or "off": whether a
+	// host that serves standard_history/1 answers it. Off, it is
+	// derivation_unsupported, as for a host that does not serve it.
+	StandardHistory string `json:"standard_history,omitempty"`
+}
+
+// servesStandardHistory reports whether a book with source answers
+// standard_history/1 under this policy.
+func (p SharePolicy) servesStandardHistory(source *StandardHistorySource) bool {
+	return source != nil && p.StandardHistory != "off"
 }
 
 // DefaultSharePolicy returns the documented defaults.
@@ -130,6 +147,7 @@ func (p SharePolicy) Validate() error {
 		{"record_at_completion", p.RecordAtCompletion, []string{"counterparty", "off"}},
 		{"history_segments", p.HistorySegments, []string{"counterparties", "prospective", "peers", "off"}},
 		{"adjudications", p.Adjudications, []string{"deliver_to_subjects", "off"}},
+		{"standard_history", cmp.Or(p.StandardHistory, "on"), []string{"on", "off"}},
 	}
 	for _, check := range checks {
 		if !slices.Contains(check.allowed, check.value) {
@@ -420,7 +438,17 @@ func (a *answer) run() (Reply, error) {
 	oversized := !a.own && len(a.request.Octets) > limit
 	limited := !a.own && !oversized && b.responder.Limiter != nil && !b.responder.Limiter.Allow(a.opts.AuthenticatedRequester, a.now)
 	log, derivations := b.logLocked(), maps.Clone(b.derivations)
+	// The book's own disclosure policy, when it holds one, decides the
+	// switches it governs, whatever the caller passed.
 	b.mu.Unlock()
+	// log is a snapshot, so the scan for the policy holds no lock.
+	held, hasPolicy, err := policyInForce(log)
+	if err != nil {
+		return Reply{}, err
+	}
+	if hasPolicy {
+		a.opts.Policy = held.overlay(a.opts.Policy)
+	}
 	if oversized || limited {
 		return a.refuse(limitReason(requestProfile(a.request)), "")
 	}
@@ -431,6 +459,14 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard {
+		b.mu.Lock()
+		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
+		b.mu.Unlock()
+		if !allowed {
+			return a.refuse(ReasonPolicyDeclined, "")
+		}
+	}
 	view, err := b.view(a.ctx, log)
 	if err != nil {
 		return Reply{}, err
@@ -438,7 +474,7 @@ func (a *answer) run() (Reply, error) {
 	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
 	a.seal = a.statement.Relationship != RelationshipStranger
 	_, isCLL := b.commitments.(cllMaterialSource)
-	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
+	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: a.opts.Policy.servesStandardHistory(b.standardHistory), refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)
 	if d.NeedAnchor {
 		b.mu.Lock()
@@ -611,11 +647,13 @@ func (v *bookView) Servable(leaf uint64) bool {
 	if leaf >= uint64(len(v.log)) {
 		return false
 	}
-	switch v.log[leaf].Header.RecordType {
-	case RecordTypeRequestAnswered, RecordTypeDisclosure:
-		return false
-	}
-	return true
+	return !neverServed(v.log[leaf].Header.RecordType)
+}
+
+// neverServed reports the record types that are the holder's own
+// bookkeeping or rules: no subject form and no derivation serves them.
+func neverServed(recordType string) bool {
+	return recordType == RecordTypeRequestAnswered || recordType == RecordTypeDisclosure || recordType == RecordTypePolicy
 }
 
 func (v *bookView) matching(match func(Header) bool) []uint64 {
