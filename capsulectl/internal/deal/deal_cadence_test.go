@@ -246,7 +246,10 @@ func TestDealWitnessStatesAreShownAsTheyAre(t *testing.T) {
 	}
 }
 
-func TestDealReceiptUnderAnotherKeyStaysPending(t *testing.T) {
+// A receipt that does not verify under the profile's witness is a witness
+// check that failed, which the report tells apart from one not yet made
+// (evidencebook-deal#113, actionstate-muse#311 §3.3).
+func TestDealReceiptUnderAnotherKeyIsUnverified(t *testing.T) {
 	public, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	_, stranger, err := ed25519.GenerateKey(rand.Reader)
@@ -257,7 +260,100 @@ func TestDealReceiptUnderAnotherKeyStaysPending(t *testing.T) {
 	dealRun(t, "tick")
 	deliver(t, p, cadenceSize(t, p), stranger)
 	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
-	assert.Equal(t, "pending", report["assurance"].(map[string]any)["witness_state"])
+	assurance := report["assurance"].(map[string]any)
+	assert.Equal(t, "unverified", assurance["witness_state"])
+	assert.Equal(t, "self_attested", assurance["rung"])
+	assert.Contains(t, assurance["text"], "Witness receipt did not verify")
+	assert.Equal(t, "unverified", asGrade(t, report["grade"]).Witness.State)
+}
+
+// A changed witness key or endpoint names another witness service, under
+// which no receipt is held: nothing was checked, so it is not unverified.
+func TestDealChangedWitnessKeyHoldsNoReceipt(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	dealID := retailDeal(t)
+	dealRun(t, "tick")
+	deliver(t, p, cadenceSize(t, p), key)
+	assert.Equal(t, "witnessed", dealRun(t, "report", "--deal", dealID)["grade"].(map[string]any)["witness"].(map[string]any)["state"])
+
+	p.Checkpoint.PublicKey = hex.EncodeToString(other)
+	require.NoError(t, cli.SaveProfile(p, true))
+	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
+	a := report["assurance"].(map[string]any)
+	assert.NotEqual(t, "unverified", a["witness_state"])
+	assert.NotContains(t, a["text"], "did not verify")
+	status := dealRun(t, "checkpoint", "status", "--deal", dealID)
+	assert.NotEqual(t, "unverified", status["witness"].(map[string]any)["state"])
+}
+
+func TestDealTamperedReceiptIsUnverified(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	dealID := retailDeal(t)
+	dealRun(t, "tick")
+	size := cadenceSize(t, p)
+	deliver(t, p, size, key)
+
+	target, err := openOwnedTarget(t.Context(), p, cli.UseCLL, &dealStoreLock{held: true})
+	require.NoError(t, err)
+	service, err := cli.ServiceID(p)
+	require.NoError(t, err)
+	state, err := target.Log.GetWitness(t.Context(), service, size)
+	require.NoError(t, err)
+	next := state
+	tampered := append([]byte(nil), state.Receipt.Bytes...)
+	tampered[len(tampered)-1] ^= 0xff
+	r := *state.Receipt
+	r.Bytes = tampered
+	next.Receipt = &r
+	require.NoError(t, target.Log.CommitWitness(t.Context(), state.Attempts, next))
+	require.NoError(t, target.Close())
+
+	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
+	assert.Equal(t, "unverified", report["assurance"].(map[string]any)["witness_state"])
+	assert.Equal(t, "unverified", asGrade(t, report["grade"]).Witness.State)
+}
+
+// Witnessed in part with a later tick whose receipt fails: the rest reads as
+// a failed check, never as pending.
+func TestDealWitnessedInPartWithAnUnverifiedRest(t *testing.T) {
+	public, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	_, stranger, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	now := clockAt(t, time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC))
+	dealID := retailDeal(t)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), key)
+	*now = now.Add(10 * time.Minute)
+	dealRun(t, "note", "--deal", dealID, "--kind", "message", "--input", writeJSON(t, `{"from":"counterparty","text":"Your order has shipped."}`))
+	*now = now.Add(2 * time.Hour)
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), stranger)
+	a := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))["assurance"].(map[string]any)
+	assert.Equal(t, "witnessed_in_part", a["rung"])
+	assert.Contains(t, a["text"], "The rest did not verify")
+	assert.NotContains(t, a["text"], "Witness pending for the rest")
+}
+
+// A deal never sent to the witness is not a failed check.
+func TestDealNeverSentToTheWitnessStaysScheduled(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	dealID := retailDeal(t)
+	report := dealRun(t, "report", "--deal", dealID, "--bundle", filepath.Join(t.TempDir(), "b.json"))
+	assert.Equal(t, "scheduled", report["assurance"].(map[string]any)["witness_state"])
 }
 
 // The tick times follow the clock and the jitter alone, and every tick adds

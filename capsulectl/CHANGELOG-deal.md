@@ -23,6 +23,15 @@
   the flat digests; a role with no entry sends the flat pin with no pack; a pin that names
   nothing sends no `rules_pin`. A profile without roles sends what it sent before.
 
+- A witness check that failed reads as such (evidencebook-deal#113,
+  actionstate-muse#311 §3.3): a held witness receipt that does not verify under the
+  profile's witness (a tampered receipt, one signed by another key) gives the witness state `unverified` in `assurance.witness_state`,
+  `grade.witness.state` and `deal checkpoint status`, with the assurance line saying
+  the receipt did not verify, instead of `scheduled` or `pending`. A deal
+  with no receipt held (never sent, or the profile now names another witness) still reads
+  scheduled/pending; the rung stays
+  `self_attested`.
+
 - An adjudicator's copy seals its referee (F8.3, evidencebook-deal#107; needs
   evidencebook v0.13.1): `disclose --deal ID --share adjudicator --to WHO` and
   `deal report --share adjudicator --to WHO` seal `WHO` as the report's `referee`

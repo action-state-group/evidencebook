@@ -46,8 +46,8 @@ type dealGrade struct {
 }
 
 // dealGradeWitness is where the deal's witnessing stands: State is
-// not_configured, scheduled, pending or witnessed (as the assurance line
-// says), or unchecked when a read that writes nothing found no checkpoint
+// not_configured, scheduled, pending, witnessed or unverified (a receipt is
+// held but fails the check, as the assurance line says), or unchecked when a read that writes nothing found no checkpoint
 // covering the deal's last step. A witnessed deal names its witness, At (the
 // time of the checkpoint the witness signed) and, witnessed in part, how many
 // of its steps the receipt covers.

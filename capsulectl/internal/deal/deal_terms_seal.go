@@ -319,8 +319,10 @@ func (s *dealSession) logWitnessState(ctx context.Context, logID string, stateme
 	if err != nil {
 		return nil, err
 	}
-	if ok, err := chainVerifiesNow(ctx, p, service, chain); err != nil {
+	if ok, held, err := chainVerifiesNow(ctx, p, service, chain); err != nil {
 		return nil, err
+	} else if !ok && held {
+		return witnessUnverified(), nil
 	} else if !ok {
 		return notYet()
 	}
@@ -346,6 +348,9 @@ func (s *dealSession) tickPending(ctx context.Context, p cli.Profile, service st
 	}
 	if err == nil && state.Receipt != nil && cli.VerifyWitness(p, state) == nil {
 		return nil, nil
+	}
+	if err == nil && state.Receipt != nil {
+		return witnessUnverified(), nil
 	}
 	reason, text := cli.WitnessPendingReason(state, p.Checkpoint.Endpoint)
 	return map[string]interface{}{"state": "pending", "tick": cli.Integer(tick), "reason": reason, "text": text, "cadence": s.cadenceWords()}, nil
