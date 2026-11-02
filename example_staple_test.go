@@ -401,8 +401,27 @@ func Example_staple() {
 	// (inferencehistory) under the node's pinned keys.
 	meshServes(ctx, meshLog, "model-a", 8)
 	meshServes(ctx, meshLog, "model-b", 4)
-	for _, line := range meshHistory(ctx, mesh, meshLog, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) {
+	boundary := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	lines, answer := meshHistory(ctx, mesh, meshLog, boundary)
+	for _, line := range lines {
 		fmt.Println(line)
+	}
+	// Path 5: the Goose agent reads that answer into an admission decision.
+	for _, line := range admitMeshNode(answer, boundary.Add(time.Hour)) {
+		fmt.Println(line)
+	}
+	// An answer the History check rejected, or whose pin is not the one the
+	// request sent, is unverifiable: card-verified fails and the 12 USD deal
+	// asks for a new card (ASK at T0); the 5 USD deal needs no card.
+	rejected, repinned := answer, answer
+	rejected.accepted = false
+	repinned.pin = strings.Repeat("0", 64)
+	for _, bad := range []meshAnswer{rejected, repinned} {
+		for _, line := range admitMeshNode(bad, boundary.Add(time.Hour)) {
+			if strings.HasPrefix(line, "mesh/node") || strings.Contains(line, "card-verified") {
+				fmt.Println(line)
+			}
+		}
 	}
 
 	// Goose's History: standard_history/1 as of a cadence tick, each book
@@ -539,6 +558,25 @@ func Example_staple() {
 	//   period_anchor PASS
 	//   period_floor PASS
 	//   units PASS
+	// pack: asg/admission_node_baseline/1.0.0
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	//   deny-list pass
+	//   confirmed-exchanges not_read
+	//   coverage stream_interval, population NOT_CHECKED
+	// mesh/node, a 12 USD deal: LIMIT at T0, decided by rows
+	//   deny-list pass
+	//   confirmed-exchanges not_read
+	//   card-verified pass
+	//   card-fresh pass
+	//   served-periods fail (1 of 4, self-reported)
+	//   witness-receipts not_read
+	//   coverage stream_interval, population NOT_CHECKED
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	// mesh/node, a 12 USD deal: ASK at T0, decided by rows
+	//   card-verified fail
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	// mesh/node, a 12 USD deal: ASK at T0, decided by rows
+	//   card-verified fail (anchor_match)
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass
