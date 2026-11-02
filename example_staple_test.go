@@ -396,6 +396,15 @@ func Example_staple() {
 	fmt.Println("history_card/1 goose goose/node: " + historyCard(ctx, relying.book, goose, nodeBook))
 	fmt.Println("history_card/1 mesh mesh/node: " + historyCard(ctx, relying.book, mesh, meshLog))
 
+	// The Mesh node's History, inference-service-history/0: the exchanges it
+	// served in the week that closes at 2026-11-02, checked with the Go reader
+	// (inferencehistory) under the node's pinned keys.
+	meshServes(ctx, meshLog, "model-a", 8)
+	meshServes(ctx, meshLog, "model-b", 4)
+	for _, line := range meshHistory(ctx, mesh, meshLog, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) {
+		fmt.Println(line)
+	}
+
 	// Goose's History: standard_history/1 as of a cadence tick, each book
 	// bounded by the checkpoint the tick carries, one deal entry per deal
 	// book. A relying party that holds the same inputs checks every SH
