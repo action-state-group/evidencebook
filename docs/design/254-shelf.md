@@ -591,7 +591,7 @@ As of 2026-11-02. Every item in §10 has merged except A1.
 | E3 | evidencebook#263 | evidencebook#271; #191 amended for D6 |
 | E5 | evidencebook#264 | evidencebook#281 |
 | C4 | capsule-emit#399 | capsule-emit#411 |
-| G1 | evidencebook#265 | evidencebook#289, evidencebook#290; the live Goose and Mesh two-node run is evidencebook#291, on capsules-plugin v0.1.12 |
+| G1 | evidencebook#265 | evidencebook#289, evidencebook#290; the Goose and Mesh half channel is Mesh-LLM/capsules-plugin#220 (v0.1.12), and the live two-node run is recorded on issue evidencebook#291 |
 | C3 | capsule-emit#400 | capsule-emit#419 |
 | E4 | evidencebook#266 | evidencebook#321 |
 | P1 | Mesh-LLM/capsules-plugin#206 | Mesh-LLM/capsules-plugin#213, first released in v0.1.11 |
