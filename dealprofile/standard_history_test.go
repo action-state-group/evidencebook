@@ -126,7 +126,7 @@ func TestATypedDealsEntry(t *testing.T) {
 // The reconcile outcome is the newest verified Result's: every claim met is
 // held, and anything else undecided: a not_met claim means the halves
 // disagree, which does not show which side failed, so the profile never
-// gives did_not_hold (Steven's ruling, evidencebook#212).
+// gives did_not_hold (evidencebook#212).
 func TestTheOutcomeIsTheNewestVerifiedResult(t *testing.T) {
 	records := fixtureHistory(t, "positive-typed")
 	for name, tc := range map[string]struct {

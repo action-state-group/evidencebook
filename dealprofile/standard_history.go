@@ -46,7 +46,7 @@ import (
 //     is "undecided". A not_met claim says the two halves disagree, which
 //     does not show which side failed, so it is never "did_not_hold"; the
 //     profile seals no record that says a side failed, so it never gives
-//     "did_not_hold" (Steven's ruling on evidencebook#212).
+//     "did_not_hold" (evidencebook#212).
 //   - happened is "stamped_by_both" only when the counterparty's half is
 //     received and verifies (the host's check, as the deal view's); else
 //     "receipt_only" when the holder's own final close observed a
