@@ -386,10 +386,13 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
 def loop_deal_reconcile(peer_file: str) -> str:
     """Check the counterparty's pushed half of a deal this node holds: it
     must verify, be signed by the peer the deal names and state the same
-    terms. A half that ends in a close is recorded as received (the
-    card's ``stamped_by_both``)."""
+    terms. A matching half is held and recorded as received: its bytes, its
+    final record id and the digest of the checkpoint it came under; this
+    node's close cites that digest. A half that ends in a close is also the
+    card's ``stamped_by_both``."""
     n = node()
-    verified = n.verify_peer_half(_read_json(peer_file))
+    half = _read_json(peer_file)
+    verified = n.verify_peer_half(half)
     deal_id = verified["deal_id"]
     chain = n.deal(deal_id)
     if verified["key_id"] != chain.peer:
@@ -399,13 +402,10 @@ def loop_deal_reconcile(peer_file: str) -> str:
     same = (theirs["terms"] == {"item": mine.item, "price_minor": mine.price_minor, "currency": mine.currency}
             and theirs["recourse"] == {"rail": mine.rail, "refundable": mine.refundable})
     state = "matched" if same else "contradicted"
-    recorded = None
-    if same and verified["close_half_digest"]:
-        recorded = n.note(gn.HALF_RECEIVED, {"deal_id": deal_id, "key_id": verified["key_id"],
-                                             "close_half_digest": verified["close_half_digest"]},
-                          subject_ref=deal_id).record_id
+    recorded = n.hold_half(verified, half).record_id if same else None
     return _out(ok=True, step="05", deal_id=deal_id, state=state, steps=len(verified["records"]),
-                closed=verified["close_half_digest"] is not None, recorded=recorded)
+                closed=verified["close_half_digest"] is not None, recorded=recorded,
+                checkpoint_digest=verified["checkpoint_digest"], close_cites=verified["counterparty_checkpoint_cites"])
 
 
 @_tool
@@ -438,12 +438,28 @@ def loop_settle(deal_id: str, payment_ref: str) -> str:
 
 
 @_tool
-def loop_deal_close(deal_id: str, status: str) -> str:
-    """End a deal: the outcome observed (``received`` or ``not_received``)
-    and the close. A received close commits the agreed price and currency."""
+def loop_deal_end_exchange(deal_id: str, out_path: str, share: bool = True) -> str:
+    """End the exchange of a deal, before its outcome and close: seal this
+    node's request for the counterparty's half and, by default, write this
+    node's own half to ``out_path`` for the counterparty (``share=false``
+    withholds it). Reconcile the half the counterparty sends back
+    (``loop_deal_reconcile``); the close then cites its checkpoint."""
     n = node()
-    chain = n.deal(deal_id)
-    sealed = n.seal(chain, chain.close(_now(), status))
+    asked = n.ask_half(deal_id)
+    if share:
+        _write(out_path, json.dumps(n.half(deal_id), sort_keys=True).encode())
+    return _out(ok=True, step="05", deal_id=deal_id, asked=asked.record_id, shared=out_path if share else None)
+
+
+@_tool
+def loop_deal_close(deal_id: str, status: str, uncited: bool = False) -> str:
+    """End a deal: the outcome observed (``received`` or ``not_received``)
+    and the close. A received close commits the agreed price and currency.
+    The close cites the checkpoint of the counterparty's half this node
+    holds; with none held it is refused unless ``uncited`` is true (the
+    counterparty never answered the request ``loop_deal_end_exchange`` sealed)."""
+    n = node()
+    sealed = n.close_deal(deal_id, status, uncited)
     return _out(ok=True, step="06", deal_id=deal_id, records=[s.record_id for s in sealed])
 
 

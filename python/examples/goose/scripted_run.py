@@ -89,6 +89,13 @@ async def run(out: Path) -> None:
             # 06: the buyer pays (the reference is the caller's; no rail is
             # driven), and both close as received.
             await buyer.call("loop_settle", deal_id=deal_id, payment_ref="ln:payment-hash-of-the-invoice")
+            # The exchange ends: each side asks for the other's half and shares its own;
+            # the close cites the checkpoint of the half each holds.
+            for me in (buyer, seller):
+                await me.call("loop_deal_end_exchange", deal_id=deal_id,
+                              out_path=str(out / f"{me.name}-exchange-half.json"))
+            for me, peer in ((buyer, seller), (seller, buyer)):
+                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
             await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
             await seller.call("loop_deal_close", deal_id=deal_id, status="received")
 

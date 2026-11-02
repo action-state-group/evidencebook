@@ -6,6 +6,7 @@ driven over stdio as Goose drives it (scripted_run.py)."""
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ sys.path.insert(0, str(HERE))
 import deal_records as dr  # noqa: E402
 import goose_node as gn  # noqa: E402
 from agent_action_capsule import standard_history as sh  # noqa: E402
+from agent_action_capsule.canonical import jcs as jcs_bytes  # noqa: E402
 
 from capsule_emit.store_backed_ledger import LedgerError  # noqa: E402
 
@@ -54,9 +56,8 @@ def nodes(tmp_path, clock):
     seller.close()
 
 
-def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "received") -> None:
-    """One deal, both sides, closed with ``status``; each side verifies the
-    other's final half."""
+def paid(buyer: gn.Node, seller: gn.Node, clock: Clock) -> None:
+    """One deal up to the buyer's payment and the seller's commit, not closed."""
     chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
     buyer.seal(chain, chain.open(clock.at, "buy 1k tokens"))
     opened = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
@@ -66,13 +67,22 @@ def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "r
     chain = buyer.deal(DEAL)
     buyer.seal(chain, chain.check_and_pay(clock.at, "ln:payment-hash"))
     clock.at += timedelta(seconds=10)
-    for node in (buyer, seller):
-        chain = node.deal(DEAL)
-        node.seal(chain, chain.close(clock.at, status))
+
+
+def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "received") -> None:
+    """One deal, both sides, closed with ``status``; each side verifies the
+    other's final half."""
+    paid(buyer, seller, clock)
+    # The exchange ends: each asks for the other's half, holds it, and closes citing its checkpoint.
     for me, peer in ((buyer, seller), (seller, buyer)):
-        verified = gn.verify_half(me.half(DEAL), me.checkpoint_key_id)
-        peer.note(gn.HALF_RECEIVED, {"deal_id": DEAL, "key_id": verified["key_id"],
-                                     "close_half_digest": verified["close_half_digest"]}, subject_ref=DEAL)
+        peer.ask_half(DEAL)
+        half = me.half(DEAL)
+        peer.hold_half(gn.verify_half(half, me.checkpoint_key_id), half)
+    for node in (buyer, seller):
+        node.close_deal(DEAL, status)
+    for me, peer in ((buyer, seller), (seller, buyer)):
+        half = me.half(DEAL)
+        peer.hold_half(gn.verify_half(half, me.checkpoint_key_id), half)
     clock.at += timedelta(minutes=1)
 
 
@@ -849,3 +859,140 @@ def test_a_disclosing_bundle_of_a_deal_step_skips_the_admission_in_the_node_book
     first = buyer.open_deal(chain, chain.open(clock.at, "buy"))[0].record_id
     built = buyer.book_bundle(f"deal/{DEAL}", first, disclose=True)  # the step cites a record of the node book
     assert aac.verify_bundle(built, strict=True).verdict == "VALID"
+
+
+def _cites(half: dict, n: int) -> list[str]:
+    return [link["target"] for link in half["steps"][n - 1]["capsule"][gn.RECORD_HEADER_MEMBER]["links"]]
+
+
+def test_a_close_cites_the_checkpoint_of_the_half_its_node_holds(nodes, clock):
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    seller_half = seller.half(DEAL)
+    pre_close = hashlib.sha256(bytes.fromhex(seller_half["checkpoint"]["statement"])).hexdigest()
+    buyer.ask_half(DEAL)
+    held = buyer.hold_half(gn.verify_half(seller_half, seller.checkpoint_key_id), seller_half)
+    buyer.close_deal(DEAL, "received")
+    half = buyer.half(DEAL)
+    verified = gn.verify_half(half, buyer.checkpoint_key_id)
+    close = len(half["steps"])
+    assert verified["counterparty_checkpoint_cites"] == [pre_close]
+    assert _cites(half, close) == [half["steps"][close - 2]["capsule"]["capsule_id"], pre_close]
+    for n in range(1, close):   # every other step cites its chain parent alone
+        assert len(_cites(half, n)) == (0 if n == 1 else 1)
+    # The received note names the half's final record id and its checkpoint, cites the request, holds the bytes.
+    note = next(s for r, s in buyer.notes(gn.HALF_RECEIVED) if r.record_id == held.record_id)
+    assert note["checkpoint_digest"] == pre_close
+    assert note["final_record_id"] == seller_half["steps"][-1]["capsule"]["capsule_id"]
+    record = buyer.shelf.open(gn.NODE_BOOK).get(held.record_id)
+    asked = next(r.record_id for r, _ in buyer.notes(gn.HALF_ASKED))
+    assert record.header.links_to(gn.CITES) == [asked]
+    assert hashlib.sha256(jcs_bytes(seller_half)).hexdigest() == note["half_digest"]
+    assert buyer.counterparty_checkpoint(DEAL) == pre_close
+
+
+def test_a_close_without_a_held_half_is_refused_unless_uncited(nodes, clock):
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    before = len(buyer.half(DEAL)["steps"])
+    with pytest.raises(gn.Refused, match="holds no counterparty half"):
+        buyer.close_deal(DEAL, "not_received")
+    assert len(buyer.half(DEAL)["steps"]) == before   # nothing was sealed
+    buyer.close_deal(DEAL, "not_received", uncited=True)
+    verified = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
+    assert verified["counterparty_checkpoint_cites"] == []
+
+
+def test_ending_the_exchange_asks_and_shares_by_default(server, tmp_path):
+    ls = server("seller")
+    seller = call(ls.loop_join)
+    ls = server("buyer")
+    buyer = call(ls.loop_join)
+    call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id=seller["checkpoint_key_id"], decision="GO")
+    deal_id = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                   rail="lightning", asked="buy")["deal_id"]
+    shared = tmp_path / "shared.json"
+    out = call(ls.loop_deal_end_exchange, deal_id=deal_id, out_path=str(shared))
+    assert out["ok"] and out["shared"] == str(shared)
+    assert json.loads(shared.read_text())["half"] == "goose-deal-half/1"
+    withheld = tmp_path / "withheld.json"
+    out = call(ls.loop_deal_end_exchange, deal_id=deal_id, out_path=str(withheld), share=False)
+    assert out["ok"] and out["shared"] is None and not withheld.exists()
+    assert len(ls.node().notes(gn.HALF_ASKED)) == 2
+    assert call(ls.loop_deal_close, deal_id=deal_id, status="received")["error"].startswith("this node holds no counterparty half")
+    assert call(ls.loop_deal_close, deal_id=deal_id, status="not_received", uncited=True)["ok"]
+    assert call(ls.loop_deal_end_exchange, deal_id=deal_id, out_path=str(withheld))["error"].endswith(
+        "before the close")
+    assert call(ls.loop_deal_end_exchange, deal_id="deal-ffffffffffffffff", out_path=str(withheld))["ok"] is False
+    assert buyer["key_id"]
+
+
+def test_the_close_cites_what_each_node_received_over_the_server(server, tmp_path):
+    ls = server("seller")
+    seller = call(ls.loop_join)
+    ls = server("buyer")
+    buyer = call(ls.loop_join)
+    call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id=seller["checkpoint_key_id"], decision="GO")
+    deal_id = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
+                   rail="lightning", asked="buy")["deal_id"]
+    opening = str(tmp_path / "opening.json")
+    call(ls.loop_deal_push, deal_id=deal_id, out_path=opening)
+    ls = server("seller")
+    call(ls.loop_admit, peer_key_id=buyer["key_id"], checkpoint_key_id=buyer["checkpoint_key_id"], decision="GO")
+    call(ls.loop_deal_respond, request_file=opening, asked="sell")
+    theirs = str(tmp_path / "seller-end.json")
+    call(ls.loop_deal_end_exchange, deal_id=deal_id, out_path=theirs)
+    ls = server("buyer")
+    call(ls.loop_settle, deal_id=deal_id, payment_ref="ln:x")
+    mine = str(tmp_path / "buyer-end.json")
+    call(ls.loop_deal_end_exchange, deal_id=deal_id, out_path=mine)
+    assert call(ls.loop_deal_reconcile, peer_file=theirs)["state"] == "matched"
+    assert call(ls.loop_deal_close, deal_id=deal_id, status="received")["ok"]
+    final = ls.node().half(deal_id)
+    expected = hashlib.sha256(bytes.fromhex(json.loads(Path(theirs).read_text())["checkpoint"]["statement"])).hexdigest()
+    assert gn.verify_half(final, ls.node().checkpoint_key_id)["counterparty_checkpoint_cites"] == [expected]
+    # A half held before the close is not the card's stamped_by_both: only a closed one is.
+    assert ls.node()._halves_received(10**6) == set()
+
+
+def test_halves_citing_what_a_step_may_not_cite_are_refused(nodes, clock):
+    buyer, seller = nodes
+    stray = "ab" * 32
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"))
+    chain = buyer.deal(DEAL)
+    steps = chain.check_and_pay(clock.at, "ref")
+    steps[0].cites = (stray,)   # a cite on a step that is not a close
+    buyer.seal(chain, steps)
+    with pytest.raises(gn.Refused, match="not a close and cites more than its chain parent"):
+        gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
+    parent = "cd" * 32
+    for n, links, is_close, message in (
+            (3, [], False, "does not cite its chain parent exactly once"),
+            (3, [{"type": "cites", "target": parent}] * 2, False, "does not cite its chain parent exactly once"),
+            (3, [{"type": "follows", "target": parent}], False, "is not a cites link"),
+            (1, [{"type": "cites", "target": stray}, {"type": "cites", "target": parent}], False, "at most its admission"),
+            (4, [{"type": "cites", "target": parent}, {"type": "cites", "target": "AB" * 32}], True, "no checkpoint digest"),
+            (4, [{"type": "cites", "target": parent}, {"type": "cites", "target": "abc"}], True, "no checkpoint digest")):
+        with pytest.raises(gn.Refused, match=message):
+            gn._step_cites(n, {"links": links}, None if n == 1 else parent, is_close)
+    assert gn._step_cites(1, {"links": [{"type": "cites", "target": stray}]}, None, False) == []
+
+
+def test_a_held_half_records_whether_its_close_cites_a_checkpoint_this_node_shared(nodes, clock):
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock)
+    final = [s for _, s in buyer.notes(gn.HALF_RECEIVED) if s["close_half_digest"]][-1]
+    assert final["cites_my_checkpoint"] is True and len(final["close_cites"]) == 1
+    assert final["close_cites"][0] == buyer.notes(gn.HALF_ASKED)[0][1]["shared_checkpoint_digest"]
+
+
+def test_an_uncited_or_foreign_close_is_held_but_not_marked_as_citing_this_node(nodes, clock):
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    buyer.ask_half(DEAL)
+    seller.close_deal(DEAL, "received", uncited=True)
+    half = seller.half(DEAL)
+    held = buyer.hold_half(gn.verify_half(half, seller.checkpoint_key_id), half)
+    note = next(s for r, s in buyer.notes(gn.HALF_RECEIVED) if r.record_id == held.record_id)
+    assert note["close_cites"] == [] and note["cites_my_checkpoint"] is False and note["close_half_digest"]

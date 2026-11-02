@@ -76,7 +76,8 @@ here moves money: a payment reference is a value you observed.
 | 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
 | 05 | `loop_deal_reconcile` (the seller's half: same terms?) | |
 | 06 | `loop_settle` (the payment reference you saw on the rail) | |
-| 06 | `loop_deal_close` (`received` or `not_received`) | `loop_deal_close` |
+| 05 | `loop_deal_end_exchange` (asks for the seller's half and writes yours), then `loop_deal_reconcile` on the half the seller sends | the same, for the buyer's half |
+| 06 | `loop_deal_close` (`received` or `not_received`; cites the checkpoint of the half you hold) | `loop_deal_close` |
 | 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
 | 09 | `loop_dispute_ask`, then `loop_dispute_poll` until `received` (the referee's Result, over the mailbox) | the same |
 | 02 | `loop_tick`, then `loop_book_bundle` (a record of a book, e.g. the one `loop_seal` returned) | `loop_tick` |
@@ -189,6 +190,26 @@ signed by the peer's checkpoint key. Each step must also chain to the one before
 deal-step header, and commit its record. The records must pass the profile's record checks and
 its chain rules, as checked by the reference checker `dealprofile/x-deal-v0/check_profile.py`. In
 a copy of the example outside this repository, point `GOOSE_CHECK_PROFILE` at that file.
+
+### Step 05: what each clause of the loop maps to
+
+The loop's step 05 asserts that the halves cite each other's checkpoints, that the halves are
+pushed at completion and the receiver holds the pushed bytes by record id, and that the receiver
+seals a record citing the counterparty half and the checkpoint it came under. Goose has no
+record-push; its own records answer each clause (evidencebook#303):
+
+| Clause | Goose record |
+|---|---|
+| each half cites the other's checkpoint | the **close** step's record header carries, beside its chain parent, one `cites` link to the SHA-256 of the checkpoint statement of the counterparty's half this node holds (x-deal-v0 §1) |
+| the halves are exchanged at completion | `loop_deal_end_exchange`, at the exchange's end and before the outcome and close: it seals this node's request for the counterparty's half (`goose_half_asked`) and, unless `share=false`, writes this node's own half |
+| the receiver holds the pushed bytes by record id | `loop_deal_reconcile` seals `goose_half_received`: the half's bytes are the note's payload, and its statement names the half's final record id (`final_record_id`), the half's digest and the checkpoint digest |
+| the receiver's record cites the counterparty half and its checkpoint | that note cites this node's request and states the checkpoint digest the close then cites |
+| verified | `verify_half` on the half, which also checks the half's links: the chain parent exactly once on every step after the baseline, the baseline's one extra cite (its admission) never read as a checkpoint, checkpoints only on a close |
+
+Each side's pre-close half is exchanged first because a close cannot cite a checkpoint that covers
+the other side's close. `loop_deal_close` refuses when this node holds no counterparty half;
+`uncited=true` closes anyway when the counterparty never answered. The final halves are still
+exchanged and reconciled afterwards: a held half that ends in a close is the card's `stamped_by_both`.
 
 A closed deal takes no more steps. If `loop_deal_respond` is cut short part-way, call it again
 with the same half: it seals only the steps the deal does not hold yet.

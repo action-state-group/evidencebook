@@ -62,8 +62,11 @@ is unchanged: its digest is that of its own bytes.
   - `epistemic_type` `producer_claim`;
   - `committed_at`, the record's own `at`;
   - `subject_ref` `<deal_id>/<seq>`;
-  - one `cites` link to the step's chain parent, when it has one (none for the baseline); the first step may also cite
-    the admission record it rests on;
+  - one `cites` link to the step's chain parent, when it has one (none for the baseline); two steps may carry further
+    `cites` links: the baseline may also cite the admission record it rests on, and a close may also cite the
+    counterparty's checkpoint, as the SHA-256 of the bytes of the signed checkpoint statement that the counterparty's
+    half carries. A verifier never counts the baseline's extra
+    cite as a checkpoint, and no other step carries a link beyond its chain parent;
   - the record digest as its one payload commitment;
   - three salted field commitments (`sha256-jcs-nonce256`). `deal_local` is the step's local
     event, whose opening never leaves the device. `amount` and `currency` carry a received final
