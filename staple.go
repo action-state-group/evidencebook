@@ -7,7 +7,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
@@ -57,6 +62,24 @@ var stapleSubjects = map[string]SubjectKind{
 // card it attached; history_card/1 is public and grows no record. The
 // book's own request is not counted by its limiter.
 func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
+	return b.StapleForDeal(ctx, derivation, "")
+}
+
+// StapleForDeal is Staple for a staple attached to one deal. For
+// standard_history/1 the sealed evidence_request_answered record carries
+// deal, so the holder can list the deals the standard card left the book
+// for (StandardCardDeals); a deal with no such record had history_card/1
+// only. deal is the host's opaque id (non-empty, at most 256 bytes of
+// printable UTF-8) and is refused for history_card/1, which seals no record.
+func (b *Book) StapleForDeal(ctx context.Context, derivation, deal string) (Staple, error) {
+	if deal != "" {
+		if derivation != DerivationStandardHistory {
+			return Staple{}, fmt.Errorf("%w: only a %s staple records its deal", ErrInvalid, DerivationStandardHistory)
+		}
+		if err := checkDealID(deal); err != nil {
+			return Staple{}, err
+		}
+	}
 	subject, ok := stapleSubjects[derivation]
 	if !ok {
 		return Staple{}, fmt.Errorf("%w: a staple carries %s or %s, not %q", ErrInvalid, DerivationHistoryCard, DerivationStandardHistory, derivation)
@@ -82,6 +105,7 @@ func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
 	opts := RespondOptions{Policy: DefaultSharePolicy()}
 	if derivation == DerivationStandardHistory {
 		opts.AuthenticatedRequester = KeyID(b.signer)
+		opts.stapleDeal = deal
 	}
 	reply, _, err := b.respond(ctx, request, opts, true)
 	if err != nil {
@@ -95,6 +119,38 @@ func (b *Book) Staple(ctx context.Context, derivation string) (Staple, error) {
 		return Staple{}, fmt.Errorf("%w: the book refused its own %s request (%s)", ErrInvalid, derivation, reason)
 	}
 	return Staple{Request: request, Reply: reply}, nil
+}
+
+// checkDealID bounds a deal id the host names: a record member, not a key.
+func checkDealID(deal string) error {
+	if len(deal) > 256 || !utf8.ValidString(deal) || strings.IndexFunc(deal, unicode.IsControl) >= 0 {
+		return fmt.Errorf("%w: a deal id is at most 256 bytes of printable UTF-8", ErrInvalid)
+	}
+	return nil
+}
+
+// StandardCardDeals lists, in order and without repeats, the deals this
+// book's standard_history/1 staples were attached for: the deals the
+// standard card left the book for through a staple. It reads the book's own
+// evidence_request_answered records and seals nothing. A history_card/1
+// staple leaves no record, so a deal absent from the list had that card only
+// (the default stapled to every deal); the list never guesses a deal's level.
+func (b *Book) StandardCardDeals(ctx context.Context) ([]string, error) {
+	records, err := b.Query(ctx, Filter{RecordType: RecordTypeRequestAnswered})
+	if err != nil {
+		return nil, err
+	}
+	var deals []string
+	for _, r := range records {
+		var st AnsweredStatement
+		if err := json.Unmarshal(r.Header.Statement, &st); err != nil {
+			return nil, fmt.Errorf("%w: record %s is not an answered-request statement: %v", ErrInvalid, r.RecordID, err)
+		}
+		if st.Deal != "" && st.Outcome == OutcomeArtifact && !slices.Contains(deals, st.Deal) {
+			deals = append(deals, st.Deal)
+		}
+	}
+	return deals, nil
 }
 
 // StapleCheck is what CheckStaple read from a staple that passed.

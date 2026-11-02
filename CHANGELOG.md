@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added: `Book.StapleForDeal` and `Book.StandardCardDeals`, which deals the standard card left the book for (#334)
+
+- `Book.StapleForDeal(ctx, derivation, deal)` is `Staple` for a staple attached to one deal. A
+  `standard_history/1` staple's `evidence_request_answered` record then carries the host's opaque
+  deal id in one optional, holder-local member (`deal`; these records are never served).
+  `history_card/1` seals no record, so it takes no deal. `Staple` is unchanged and names no deal.
+- `Book.StandardCardDeals(ctx)` lists the deals those records name, in order, and seals nothing.
+  `history_card/1` is stapled to every deal by default, so a deal not listed had that card only.
+  This is the per-deal level the holder's own History page shows (D0 or D0 + D1). Python and Rust
+  do not staple `standard_history/1` yet (#328), so they have nothing to change.
+
 ## v0.13.1 (2026-11-02)
 
 Go module only. The entry below was merged (#330) after v0.13.0 was tagged, so this is the first v-tag that carries it.

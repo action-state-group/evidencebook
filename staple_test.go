@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -390,4 +391,54 @@ func duplicateMember(t *testing.T, book *Book, s Staple, holder string) stapleVe
 		e.ArtifactDigest = digestBytes(e.Artifact)
 	})
 	return stapleVector{Name: "a history card with a duplicate member", Holder: holder, Request: string(s.Request.Octets), Reply: string(reply.Octets)}
+}
+
+// evidencebook#334: the holder reads which deals the standard card left the
+// book for, from the records its own D1 staples sealed.
+
+func TestStandardCardDealsListsTheDealsAStapleWasAttachedFor(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	got, err := book.StandardCardDeals(ctx)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("a book with no staple lists %v, %v", got, err)
+	}
+	holder := KeyID(book.signer)
+	for _, deal := range []string{"deal-b", "deal-a", "deal-b"} {
+		staple, err := book.StapleForDeal(ctx, DerivationStandardHistory, deal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CheckStaple(staple, holder); err != nil {
+			t.Fatalf("a staple for a deal is still a staple: %v", err)
+		}
+	}
+	// A staple with no deal, and a signed asker, name no deal.
+	if _, err := book.Staple(ctx, DerivationStandardHistory); err != nil {
+		t.Fatal(err)
+	}
+	askStandardHistory(t, book, "carol", "off", anchorPin(t, book))
+	got, err = book.StandardCardDeals(ctx)
+	if err != nil || !slices.Equal(got, []string{"deal-b", "deal-a"}) {
+		t.Fatalf("deals %v, %v", got, err)
+	}
+}
+
+func TestStapleForDealRefusesWhatItCannotRecord(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	before := book.Size()
+	for name, c := range map[string]struct{ derivation, deal string }{
+		"history card seals no record": {DerivationHistoryCard, "deal-a"},
+		"control character":            {DerivationStandardHistory, "deal\n1"},
+		"too long":                     {DerivationStandardHistory, strings.Repeat("d", 257)},
+		"invalid UTF-8":                {DerivationStandardHistory, "deal\xff"},
+	} {
+		if _, err := book.StapleForDeal(ctx, c.derivation, c.deal); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err %v, want ErrInvalid", name, err)
+		}
+	}
+	if book.Size() != before {
+		t.Fatal("a refused staple grew the log")
+	}
 }
