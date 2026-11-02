@@ -152,6 +152,7 @@ joining them on the deal id. Design note
 | a deal step | `dealprofile.StepCapsule` gives the Capsule of an x-deal-v0 step, which carries the deal id as its `deal_id` member, and `Book.AppendCapsule` commits it as the book's record |
 | the cadence | `Shelf.Cadence` and `Cadence.Tick` commit every book's checkpoint under one tick checkpoint at each tick |
 | `history_card/1` per log | `Book.Respond`, as in path 3: each log answers for its own stream |
+| `history_card/1` for the profile | `Cadence.HistoryCard` returns the cadence log's card up to a tick as a `Staple`, which `CheckStaple` accepts for the shelf signer |
 | a History over books at a tick | `Cadence.StandardHistoryAnchor` gives the tick's anchor and how far each book is committed; `dealprofile.StandardHistoryDeal` gives one deal entry per deal book; `DeriveStandardHistory` derives the `standard_history/1` card, and agent-action-capsule's `standardhistory.Check` checks it |
 | each party's half | `Book.Bundle` gives an Evidence Bundle rooted at the party's record of the deal |
 | the staple | agent-action-capsule's `bundle.ComposedDigest` and `bundle.VerifyComposed` build and verify a `composed/v1` block (Evidence Bundle -02, "The composed/v1 Extension") whose members are the parties' Bundles |

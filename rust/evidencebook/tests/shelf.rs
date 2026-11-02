@@ -658,6 +658,53 @@ fn tick(cadence: &Cadence, clock: &Clock) -> evidencebook::shelf::CadenceTick {
     result.tick.unwrap()
 }
 
+/// The cadence's History card is a staple `check_staple` accepts: one entry
+/// per finished tick through the anchor tick, linked by consistency proofs.
+#[test]
+fn the_cadence_history_card_is_a_staple_over_the_ticks() {
+    use evidencebook::staple::check_staple;
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let cadence = shelf.cadence(cadence_config(&[])).unwrap();
+    assert!(matches!(
+        cadence.history_card(0),
+        Err(ShelfError::NotFound(_))
+    ));
+    let book = shelf.open("deal/a").unwrap();
+    book.append(&observation("a", "1")).unwrap();
+    let first = tick(&cadence, &clock);
+    book.append(&observation("a", "2")).unwrap();
+    let second = tick(&cadence, &clock);
+    let third = tick(&cadence, &clock);
+    let holder = EnvelopeSigner::key_id(&key("signer"));
+    for (n, entries, anchor) in [
+        (0, 3, &third),
+        (3, 3, &third),
+        (2, 2, &second),
+        (1, 1, &first),
+    ] {
+        let staple = cadence.history_card(n).unwrap();
+        let got = check_staple(&staple.request, &staple.reply, &holder).unwrap();
+        assert_eq!(got.derivation, "history_card/1");
+        assert_eq!(got.anchor, hex::encode(Sha256::digest(&anchor.checkpoint)));
+        let card: serde_json::Value = serde_json::from_slice(&got.artifact).unwrap();
+        assert_eq!(card["evidence_stream"], "cadence/0123456789abcdef");
+        let history = card["history"].as_array().unwrap();
+        assert_eq!(history.len(), entries, "tick {n}");
+        assert!(history[0]["consistency_from_previous"].is_null());
+        assert!(history[1..]
+            .iter()
+            .all(|h| !h["consistency_from_previous"].as_str().unwrap().is_empty()));
+    }
+    assert!(matches!(
+        cadence.history_card(4),
+        Err(ShelfError::NotFound(_))
+    ));
+    let staple = cadence.history_card(1).unwrap();
+    assert!(check_staple(&staple.request, &staple.reply, &"00".repeat(32)).is_err());
+}
+
 #[test]
 fn ticks_carry_live_logs_pad_the_cadence_log_and_anchor_a_card() {
     let dir = tempfile::tempdir().unwrap();
