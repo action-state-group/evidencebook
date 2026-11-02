@@ -140,7 +140,7 @@ func TestTheOutcomeIsTheNewestVerifiedResult(t *testing.T) {
 		"no claim":                {[]HistoryResult{result(true)}, "undecided"},
 		"the newest counts":       {[]HistoryResult{result(true, "not_met"), result(true, "met")}, "held"},
 		"an unverified is none":   {[]HistoryResult{result(false, "met")}, "undecided"},
-		"skips the unverified":    {[]HistoryResult{result(true, "not_met"), result(false, "met")}, "undecided"},
+		"skips the unverified":    {[]HistoryResult{result(true, "met"), result(false, "not_met")}, "held"},
 		"an unreadable is undec.": {[]HistoryResult{{Result: []byte("{"), Verified: true}}, "undecided"},
 	} {
 		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: records, Results: tc.results})

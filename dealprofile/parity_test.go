@@ -395,7 +395,7 @@ func parityHistories(t *testing.T) []parityHistory {
 	resultsCases := map[string][]HistoryResult{
 		"held": {result(true, "met", "met")}, "a claim not met": {result(true, "met", "not_met")}, "met and undecided": {result(true, "met", "undecided")},
 		"no claim": {result(true)}, "the newest counts": {result(true, "not_met"), result(true, "met")}, "unverified": {result(false, "met")},
-		"skips the unverified": {result(true, "not_met"), result(false, "met")}, "unreadable": {{Result: []byte("{"), Verified: true}},
+		"skips the unverified": {result(true, "met"), result(false, "not_met")}, "unreadable": {{Result: []byte("{"), Verified: true}},
 		"claims is null": {{Result: []byte(`{"claims":null}`), Verified: true}}, "a claim of the wrong type": {{Result: []byte(`{"claims":[{"verdict":5}]}`), Verified: true}},
 		"a claim that is not an object": {{Result: []byte(`{"claims":[1]}`), Verified: true}}, "a null claim": {{Result: []byte(`{"claims":[null,{"verdict":"met"}]}`), Verified: true}},
 		"claims is an object": {{Result: []byte(`{"claims":{}}`), Verified: true}}, "not an object": {{Result: []byte(`[]`), Verified: true}},
