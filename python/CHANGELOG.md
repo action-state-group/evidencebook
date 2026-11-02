@@ -197,3 +197,6 @@
   cases), 20 of the 53 interop profile cases (the 8 A2A and MCP carriage
   cases are not in this package), and the Personal-Agent History responder
   run, which it reproduces byte for byte. Not yet published.
+
+- `Cadence.history_card(n=0)` returns the profile's `history_card/1` over the cadence log as a `Staple`, as Go's
+  `Cadence.HistoryCard` does (evidencebook#341); `check_staple` accepts it for `key_id` of the shelf signer.
