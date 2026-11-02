@@ -75,6 +75,16 @@ func doctorCommand() *cobra.Command {
 		for _, w := range deliveries {
 			opts.Witnesses = append(opts.Witnesses, evidencebook.DoctorWitness{Witness: w.WitnessID, TreeSize: w.CheckpointSize, Receipt: w.Receipt != nil})
 		}
+		as, _ := c.Flags().GetString("as")
+		opts.As = as
+		// A book that holds a disclosure policy answers the probe under it,
+		// so doctor and `book policy show` describe the same settings; an
+		// explicit --policy is the operator's own and stays.
+		if held, e := opened.book.DisclosurePolicy(); e == nil && !c.Flags().Changed("policy") {
+			opts.Policy = held.SharePolicy()
+		} else if e != nil && !errors.Is(e, evidencebook.ErrNoPolicy) {
+			return bookError(e)
+		}
 		if probe, _ := c.Flags().GetBool("probe"); probe {
 			opts.Probe = strangerPath(opened.book, opts.Policy)
 		}
@@ -87,6 +97,7 @@ func doctorCommand() *cobra.Command {
 	cmd.Flags().String("policy", "", "The share policy this node advertises and answers under, as `book respond --policy` reads it (default: the documented defaults)")
 	cmd.Flags().StringArray("controller-binding", nil, "A controller binding record (controller-binding/0) this node holds; repeatable")
 	cmd.Flags().Bool("probe", false, "Also ask for checkpoints, then history_card/1, as a stranger through the in-process `book respond` path (no --requester, not a network endpoint), and verify both; a match shows what a stranger is served, not that the policy is verified")
+	cmd.Flags().String("as", "", "Who the probe answers for: `stranger` asks only the public questions; `signed` also renders what a signed asker receives (default: signed)")
 	return cmd
 }
 
