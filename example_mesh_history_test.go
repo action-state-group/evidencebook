@@ -382,7 +382,3 @@ func hexSHA256(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
-
-var (
-	_ = slices.Sort[[]int]
-)
