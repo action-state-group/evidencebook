@@ -996,3 +996,71 @@ def test_an_uncited_or_foreign_close_is_held_but_not_marked_as_citing_this_node(
     held = buyer.hold_half(gn.verify_half(half, seller.checkpoint_key_id), half)
     note = next(s for r, s in buyer.notes(gn.HALF_RECEIVED) if r.record_id == held.record_id)
     assert note["close_cites"] == [] and note["cites_my_checkpoint"] is False and note["close_half_digest"]
+
+
+def test_a_node_discloses_its_own_count_of_final_settlements_on_a_rail(nodes, clock):
+    from agent_action_capsule.canonical import jcs
+    import base64
+    import settlement as st
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    buyer, seller = nodes
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 0
+    paid(buyer, seller, clock)  # paid, not closed: the buyer's rail object exists, the seller has not received
+    assert (st.disclosure(buyer, "lightning", 0)["settlements"], st.disclosure(seller, "lightning", 0)["settlements"]) == (1, 0)
+    for me, peer in ((buyer, seller), (seller, buyer)):
+        peer.ask_half(DEAL)
+        half = me.half(DEAL)
+        peer.hold_half(gn.verify_half(half, me.checkpoint_key_id), half)
+    for node in (buyer, seller):
+        node.close_deal(DEAL, "received")
+    for node in (buyer, seller):
+        doc = st.disclosure(node, "lightning", 1)
+        assert (doc["settlements"], doc["rail"], doc["through_sequence"], doc["key_id"]) == (1, "lightning", 1, node.key_id)
+        sig = doc["sig"]
+        raw = base64.urlsafe_b64decode(sig["value"] + "=" * (-len(sig["value"]) % 4))
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(node.key_id)).verify(
+            raw, jcs({k: v for k, v in doc.items() if k != "sig"}))
+        assert st.disclosure(node, "mock", 1)["settlements"] == 0  # another rail: none
+
+
+def test_a_buyer_counts_what_it_paid_and_a_seller_what_it_received(nodes, clock):
+    import settlement as st
+
+    buyer, seller = nodes
+    paid(buyer, seller, clock)  # paid, not closed: the rail's object exists, the seller has not received
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 1
+    assert st.disclosure(seller, "lightning", 0)["settlements"] == 0
+    with pytest.raises(gn.Refused):
+        st.disclosure(buyer, "", 0)
+    with pytest.raises(gn.Refused):
+        st.disclosure(buyer, "lightning", -1)
+
+
+def test_a_deal_closed_not_received_is_the_buyers_settlement_and_not_the_sellers(nodes, clock):
+    import settlement as st
+
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock, status="not_received")
+    assert st.disclosure(buyer, "lightning", 0)["settlements"] == 1
+    assert st.disclosure(seller, "lightning", 0)["settlements"] == 0
+
+
+def test_the_pay_opening_opens_the_commitments_of_the_pay_record(nodes, clock):
+    import settlement as st
+    from evidencebook.deal.names import LOCAL_FIELD
+
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    out = st.pay_opening(buyer, DEAL)
+    half = buyer.half(DEAL)
+    seq = buyer.shelf.open(f"deal/{DEAL}").get(out["record_id"]).header.seq
+    step = next(s for s in half["steps"] if s["capsule"]["evidence_record_header"]["seq"] == seq)
+    header = step["capsule"]["evidence_record_header"]
+    opening = out["opening"]
+    assert hashlib.sha256(jcs_bytes(opening)).hexdigest() == header["field_commitments"][LOCAL_FIELD]
+    local = json.loads(opening["text"])
+    assert local["act"]["reference"] == "ln:payment-hash"
+    assert step["payload"]["body"]["reference_commitment"] == deal.commit_text(local["nonces"]["reference"], "ln:payment-hash")
+    with pytest.raises(gn.Refused, match="has not paid"):
+        st.pay_opening(seller, DEAL)

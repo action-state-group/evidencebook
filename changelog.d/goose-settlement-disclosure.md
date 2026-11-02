@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- The Goose reference gains `loop_settlement_disclosure` (the node's signed `settlement-disclosure/v1`: its own count of final settlements on a rail, for step 06's `ledger_count`) and `loop_pay_opening` (the opening of the buyer's `pay` record's payment-reference commitment, so a checker reads the reference the record commits). Neither reads a rail or moves money (capsule-emit#408).

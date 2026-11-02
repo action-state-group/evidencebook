@@ -13,7 +13,8 @@ for its deal's book) and ``<node>.key`` (its signing key), ``commitments/<key_id
 ``commitments/policies/<key_id>.json`` (its signed commitment and policy,
 loop_advertise), ``buyer-model-call.json`` (a model call the buyer
 sealed, loop_seal) and ``buyer-model-call-bundle.json`` (that record proven in the node book,
-loop_book_bundle); ``buyer-opening-bundle.json`` is the buyer's admission and its record
+loop_book_bundle); ``buyer-pay-opening.json`` and ``<node>-settlement-disclosure.json`` (loop_pay_opening, loop_settlement_disclosure; step 06);
+``buyer-opening-bundle.json`` is the buyer's admission and its record
 of the deal, one bundle (loop_deal_bundle). Go's check of a
 card is ``go run ./test/interop/goose-card OUT/<node>/shelf.db
 OUT/<node>-card.json $(cat OUT/<node>.key)``.
@@ -98,6 +99,13 @@ async def run(out: Path) -> None:
                 await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
             await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
             await seller.call("loop_deal_close", deal_id=deal_id, status="received")
+
+            # 06: each node's signed count of its settlements on the rail (the rail's ledger sequence is the
+            # caller's), and the buyer's opening of its pay record's reference commitment.
+            await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(out / "buyer-pay-opening.json"))
+            for me in (buyer, seller):
+                await me.call("loop_settlement_disclosure", rail="lightning", through_sequence=1,
+                              out_path=str(out / f"{me.name}-settlement-disclosure.json"))
 
             # Each final half to the other side: a verified close is the
             # card's stamped_by_both.
