@@ -49,7 +49,7 @@ func pageText(t *testing.T, html []byte) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--enable-logging=stderr", "--v=0", "--virtual-time-budget=30000",
+		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--enable-logging=stderr", "--log-level=0", "--virtual-time-budget=30000",
 		"--dump-dom", "file://"+file)
 	cmd.Stdin = nil
 	var stderr bytes.Buffer
