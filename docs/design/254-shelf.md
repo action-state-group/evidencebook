@@ -1,6 +1,8 @@
 # evidencebook#254: one shelf in Go, Rust and Python, and History cards that staple
 
-Status: draft for review. Design note only; no code changes here. Written 2026-10-31. Code
+Status: accepted (merged in #255, `a755a54`, after converging with Kimi, one Claude stand-in and
+Sherlock2) and implemented; §11 lists what landed and what is still open. D3 and D4 were decided on
+#254 (issuecomment-6551224593 and the comment after it). Written 2026-10-31. Code
 references are to this repository at `132832c`, Mesh-LLM/capsules-plugin at `cef06f9` (and the
 held branch `ledger-step6-chain-store` at `cf7fe7d`), capsule-emit at `e233c51`,
 checkpointed-local-log (CLL) at `5de5897`, agent-action-capsule (AAC) at `5d6f5376`,
@@ -503,7 +505,7 @@ The loop-292 lane edits `steps/08-verify` and `08-verify.md` only; this touches 
 ### 7.6 Timing
 
 No plugin storage change lands before Devcon S08 (2026-11-03), so the S08 image's plugin is not
-destabilized. The evidencebook items (§10, E1 to E3) do not touch the plugin and can land before.
+destabilized. (Superseded: Ethan moved P1 and L1 before Devcon on 2026-11-01; §11.) The evidencebook items (§10, E1 to E3) do not touch the plugin and can land before.
 
 ## 8. Goose on the Python shelf
 
@@ -574,3 +576,32 @@ Each is filed separately on project 1, except P1, which is capsules-plugin#206 i
 | P1 | Mesh-LLM/capsules-plugin | capsules-plugin#206, retargeted: the node chain onto the Rust shelf as a host log: #206's branch rebased (§7.3), the import retargeted (§7.2), option A kept, the held lock handed to the shelf, condition 2's import tests on unix and Windows, `cll` and `evidence-request` pins bumped; after S08 | E2, C1, Devcon S08 |
 | L1 | evidence-network/loop | steps 04, 05, 06, 07, 09 and `ledger_proof.py` read `capsules chain-lines`, keeping copies named `capsules.jsonl` for 08, 10 and `loop-ledger-check`; merged in one batch with P1 | P1 |
 | A1 | agent-action-capsule | only if Steven rules for D4: a History answer as a `composed/v1` member (its root record for joins) | D4 ruling |
+
+## 11. Outcome
+
+As of 2026-11-02. Every item in §10 has merged except A1.
+
+| # | Issue | Landed in |
+|---|---|---|
+| E1 | evidencebook#261 | evidencebook#267 |
+| A2 | agent-action-capsule#536 | agent-action-capsule#538 |
+| C1 | capsule-emit#397 | capsule-emit#403 |
+| C2 | capsule-emit#398 | capsule-emit#401 |
+| E2 | evidencebook#262 | evidencebook#272 |
+| E3 | evidencebook#263 | evidencebook#271; #191 amended for D6 |
+| E5 | evidencebook#264 | evidencebook#281 |
+| C4 | capsule-emit#399 | capsule-emit#411 |
+| G1 | evidencebook#265 | evidencebook#289, evidencebook#290; the Goose and Mesh half channel is Mesh-LLM/capsules-plugin#220 (v0.1.12), and the live two-node run is recorded on issue evidencebook#291 |
+| C3 | capsule-emit#400 | capsule-emit#419 |
+| E4 | evidencebook#266 | evidencebook#321 |
+| P1 | Mesh-LLM/capsules-plugin#206 | Mesh-LLM/capsules-plugin#213, first released in v0.1.11 |
+| L1 | evidence-network/loop#296 | evidence-network/loop#318, merged in the same batch as P1 |
+| A1 | agent-action-capsule#537 | open: Steven's spec item for a History answer as a `composed/v1` member (D4) |
+
+The one change of plan was timing. Ethan moved P1 and L1 ahead of Devcon S08 on 2026-11-01 (P1's
+`Started` claim on capsules-plugin#206), which replaced §7.6.
+
+What is still open:
+
+- A1, which keeps the spec merge gate.
+- G1's acceptance check by Sherlock2 on #265.
