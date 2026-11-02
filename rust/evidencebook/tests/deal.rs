@@ -399,6 +399,42 @@ fn negative_fixtures() {
     assert_eq!(wording_only, SCHEMA_WORDING_ONLY.len());
 }
 
+/// A pay check sealed under rule inputs version 4 passes every
+/// record-level stage and the chain stage over the positive chain it
+/// extends; version 3 passes and 5 is refused by the schema.
+#[test]
+fn positive_rule_inputs_4() {
+    let store = local_store_values(&fingerprints());
+    let store: Vec<&str> = store.iter().map(String::as_str).collect();
+    let fx: Value = read_json(&fixtures_dir().join("positive-rule-inputs-4/13-check-pay.json"));
+    let raw = serde_json::to_vec(&fx["record"]).unwrap();
+    let (_, digest) = deal::encode(&raw, &store).unwrap();
+    assert_eq!(digest, fx["expected_digest"].as_str().unwrap());
+    let mut chain: Vec<Value> = fx["chain_prefix"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| {
+            let p: Value = read_json(&fixtures_dir().join("positive").join(n.as_str().unwrap()));
+            p["record"].clone()
+        })
+        .collect();
+    chain.push(fx["record"].clone());
+    deal::check_chain_values(&chain).unwrap();
+
+    for version in [3, 5] {
+        let mut rec = fx["record"].clone();
+        rec["body"]["rule_inputs_version"] = version.into();
+        let res = deal::check(&serde_json::to_vec(&rec).unwrap(), &store);
+        if version == 3 {
+            res.unwrap();
+        } else {
+            let err = res.unwrap_err();
+            assert_eq!(err.stage().unwrap().stage, deal::STAGE_SCHEMA, "{err}");
+        }
+    }
+}
+
 // --- refusals ---------------------------------------------------------------
 
 fn first_positive() -> Value {
