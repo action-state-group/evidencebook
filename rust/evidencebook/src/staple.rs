@@ -317,9 +317,14 @@ fn consistency_holds(
     proof: &[u8],
 ) -> bool {
     use ciborium::value::Value as Cbor;
-    let Ok(Cbor::Array(parts)) = ciborium::from_reader::<Cbor, _>(proof) else {
+    // One item and nothing after it, as Go's strict CBOR decoder reads it.
+    let mut rest = proof;
+    let Ok(Cbor::Array(parts)) = ciborium::from_reader::<Cbor, _>(&mut rest) else {
         return false;
     };
+    if !rest.is_empty() {
+        return false;
+    }
     let hashes = |v: &Cbor| -> Option<Vec<Vec<u8>>> {
         match v {
             Cbor::Array(items) => items

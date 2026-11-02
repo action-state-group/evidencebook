@@ -5,6 +5,7 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -286,6 +287,17 @@ func writeStapleVectors(t *testing.T) {
 		vector("a history card whose checkpoints skip one", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
 			h := c["history"].([]any)
 			c["history"] = append(h[:1:1], h[2:]...)
+		}), holder, false, cc),
+		vector("a history card with a checkpoint of another log", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			foreign, err := other.Checkpoint(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c["history"].([]any)[1].(map[string]any)["checkpoint"] = hex.EncodeToString(foreign.Statement)
+		}), holder, false, cc),
+		vector("a history card with a consistency proof followed by more octets", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			e := c["history"].([]any)[1].(map[string]any)
+			e["consistency_from_previous"] = e["consistency_from_previous"].(string) + "00"
 		}), holder, false, cc),
 		vector("a history card with a consistency proof that does not verify", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
 			e := c["history"].([]any)[1].(map[string]any)
