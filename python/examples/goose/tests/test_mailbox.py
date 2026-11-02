@@ -311,3 +311,18 @@ def test_a_disclosing_bundle_does_not_disclose_a_caller_sealed_record_twice(node
     call, _ = asker.seal_model_call("rehearsal", "rehearsal-model", "prompt", "completion")
     built = asker.book_bundle(gn.NODE_BOOK, call.record_id, disclose=True)
     assert "disclosures" not in built and aac.verify_bundle(built, strict=True).verdict == "VALID"
+
+
+def test_the_absence_window_closes_no_sooner_than_a_minute_after_the_request(nodes, relay, factory, clock):
+    """A request is sealed a moment before its deadline is counted from; the book records no window shorter
+    than MINIMUM_ABSENCE_WINDOW after the request, so the later of the two closes it."""
+    asker, asked = nodes
+    doc = advertise(asked)
+    doc_short = cm.build(asked, settings=cm.Settings(relays=(WSS,), endpoint="nostr:mailbox", answers_within="PT1M",
+                                                     poll_interval=30), now=AT)[0]
+    clock.at = AT + timedelta(milliseconds=900)  # the seal lands after the second the deadline is counted from
+    sent = mx.ask(asker, doc_short, "checkpoints", min_freshness=0, relay_factory=factory, now=lambda: AT)
+    clock.at = AT + timedelta(seconds=60, milliseconds=500)  # past the deadline, before a minute after the seal
+    assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "pending"
+    clock.at = AT + timedelta(seconds=61)
+    assert mx.poll(asker, sent["request_event_id"], factory, clock)["status"] == "absent"
