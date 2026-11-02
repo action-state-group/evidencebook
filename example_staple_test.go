@@ -549,13 +549,15 @@ func Example_staple() {
 	// mesh/node, a 5 USD deal: GO at T0, decided by rows
 	//   deny-list pass
 	//   confirmed-exchanges not_read
+	//   coverage stream_interval, population NOT_CHECKED
 	// mesh/node, a 12 USD deal: LIMIT at T0, decided by rows
 	//   deny-list pass
 	//   confirmed-exchanges not_read
 	//   card-verified pass
 	//   card-fresh pass
-	//   served-periods fail
+	//   served-periods fail (1 of 4, self-reported)
 	//   witness-receipts not_read
+	//   coverage stream_interval, population NOT_CHECKED
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass

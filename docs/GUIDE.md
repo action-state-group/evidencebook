@@ -296,8 +296,14 @@ exchanges served):
 
 - **GO.** A 5 USD deal passes the deny-list row and is admitted at T0.
 - **LIMIT.** A 12 USD deal needs served exchanges in at least 2 of the last 4
-  weeks (`served-periods`); one week fails it, so the deal is limited. The
-  `witness-receipts` row is `not_read`, because this caller counted none.
+  weeks (`served-periods`); the node has 1 of 4, so that row fails. The
+  `witness-receipts` row is `not_read`, because this caller counted no receipts,
+  and a `not_read` row limits the deal the same way: a node with enough weeks
+  would still be limited here until the caller supplies receipts.
+
+A card that the History check rejected, or that
+`InferenceServiceHistoryCounts` refuses, goes in as `CardUnverifiable` with the
+refused property as `Card.Reason`; the `Example` sets the state that way.
 
 ## Other languages
 

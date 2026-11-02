@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -212,8 +213,12 @@ func meshCells(byModel map[string]uint64, floor uint64) []any {
 // it has checked it: the inputs of admission.InferenceServiceHistoryCounts.
 type meshAnswer struct {
 	definition, artifact []byte
-	checkpoints          admission.CardCheckpoints
-	pin                  string
+	// checkpoints stand in for the card's: the example's relying party and
+	// node share a process, so they come from the node's book. A relying
+	// party reads them from the card it received.
+	checkpoints admission.CardCheckpoints
+	pin         string
+	accepted    bool // inferencehistory.Evaluate accepted the History
 }
 
 // meshHistory serves the Mesh node's History at a period boundary and
@@ -376,7 +381,7 @@ func meshHistory(ctx context.Context, mesh *party, book *evidencebook.Book, boun
 	for _, name := range names {
 		lines = append(lines, "  "+name+" "+result.Properties[name])
 	}
-	answer := meshAnswer{definition: jcs, artifact: history, pin: pin}
+	answer := meshAnswer{definition: jcs, artifact: history, pin: pin, accepted: result.Accepted}
 	for _, c := range chain {
 		answer.checkpoints.Checkpoints = append(answer.checkpoints.Checkpoints,
 			admission.CardCheckpoint{At: c.at, Records: int64(c.leaves)})
@@ -405,9 +410,21 @@ func hexSHA256(b []byte) string {
 // to pass in, so those rows are not_read, never guessed. It returns the
 // lines the example prints.
 func admitMeshNode(answer meshAnswer, now time.Time) []string {
-	served, err := admission.InferenceServiceHistoryCounts(answer.definition, answer.artifact, answer.checkpoints, answer.pin)
-	if err != nil {
-		log.Fatal(err)
+	// The card's state is what the caller verified: an answer the History
+	// check rejected, or that the counts reader refuses, is unverifiable
+	// (card-verified fails, naming the property) and never guessed.
+	card := admission.Card{State: admission.CardUnverifiable}
+	cps := answer.checkpoints.Checkpoints
+	if served, err := admission.InferenceServiceHistoryCounts(answer.definition, answer.artifact, answer.checkpoints, answer.pin); err != nil {
+		var refused *admission.InferenceServiceHistoryError
+		if errors.As(err, &refused) {
+			card.Reason = refused.Property
+		}
+	} else if answer.accepted {
+		card = admission.Card{
+			State: admission.CardVerified, Served: served,
+			FirstCheckpointAt: cps[0].At, LatestCheckpointAt: cps[len(cps)-1].At,
+		}
 	}
 	src, err := os.ReadFile("testdata/admission-node-baseline/pack-definition.json")
 	if err != nil {
@@ -417,19 +434,22 @@ func admitMeshNode(answer meshAnswer, now time.Time) []string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cps := answer.checkpoints.Checkpoints
 	lines := []string{"pack: " + pack.ID}
 	for _, amount := range []string{"5", "12"} {
 		d := admission.Evaluate(pack, admission.Inputs{
 			Now: now, Amount: amount, Currency: "USD",
-			Card: admission.Card{
-				State: admission.CardVerified, Served: served,
-				FirstCheckpointAt: cps[0].At, LatestCheckpointAt: cps[len(cps)-1].At,
-			},
+			Card: card,
 		})
 		lines = append(lines, fmt.Sprintf("mesh/node, a %s USD deal: %s at %s, decided by %s", amount, d.Verdict, d.Tier, d.Source))
 		for _, r := range d.Rows {
-			lines = append(lines, "  "+r.Row+" "+r.Result)
+			line := "  " + r.Row + " " + r.Result
+			if r.Row == "served-periods" && r.Count != nil && r.Denominator != nil {
+				line += fmt.Sprintf(" (%d of %d, self-reported)", *r.Count, *r.Denominator)
+			}
+			lines = append(lines, line)
+		}
+		if d.Coverage != nil {
+			lines = append(lines, "  coverage "+d.Coverage.Kind+", population "+d.Coverage.Population)
 		}
 	}
 	return lines
