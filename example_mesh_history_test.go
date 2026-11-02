@@ -12,7 +12,6 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
