@@ -69,7 +69,7 @@ from evidencebook.shelf import Shelf
 
 import deal_records as dr
 
-__all__ = ["Node", "verify_half", "verify_history_staple", "HISTORY_STAPLE_MEMBER", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
+__all__ = ["Node", "verify_half", "verify_history_staple", "HISTORY_STAPLE_MEMBER", "HISTORY_CARD_MEMBER", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
            "DISPUTE_ABSENT", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
 
 NODE_BOOK = "goose/node"
@@ -102,14 +102,19 @@ PAYLOADS_EXTENSION = "evidencebook/payloads"
 MODEL_CALL = "goose_model_call"
 
 
-#: The member of a ``goose-deal-half/1`` that carries the node's stapled ``standard_history/1`` card
-#: (evidencebook#329): ``{"request": <JSON text>, "reply": <JSON text>}``, the two messages of a
-#: :class:`~evidencebook.staple.Staple`. It sits outside the signed steps, so a half without it verifies as before.
+#: The members of a ``goose-deal-half/1`` that carry a stapled card (evidencebook#329):
+#: ``{"request": <JSON text>, "reply": <JSON text>}``, the two messages of a
+#: :class:`~evidencebook.staple.Staple`. They sit outside the signed steps, so a half without them verifies as before.
+#: ``history_card`` is the deal book's own ``history_card/1`` (D0): every half carries it.
+#: ``history_staple`` is the node's shelf-level ``standard_history/1`` (D1): a half carries it only when
+#: the counterparty asked for it and the user approved sending the node's standard card.
+HISTORY_CARD_MEMBER = "history_card"
 HISTORY_STAPLE_MEMBER = "history_staple"
 
 
-def verify_history_staple(doc: Any, key_id: str) -> dict:
-    """Check the stapled ``standard_history/1`` card of a half (:data:`HISTORY_STAPLE_MEMBER`)
+def verify_history_staple(doc: Any, key_id: str, derivation: str = DERIVATION_STANDARD_HISTORY) -> dict:
+    """Check a stapled card of a half (:data:`HISTORY_STAPLE_MEMBER`, a ``standard_history/1``, or with
+    ``derivation`` :data:`~evidencebook.staple.DERIVATION_HISTORY_CARD` :data:`HISTORY_CARD_MEMBER`)
     under ``key_id``, the Goose key the half's steps are signed by: the staple is presented by that
     key (:func:`~evidencebook.staple.check_staple`, which also holds it to the standard card and
     checks the card's form), and the card is as of the anchor the envelope is. Returns the anchor,
@@ -122,8 +127,8 @@ def verify_history_staple(doc: Any, key_id: str) -> dict:
         staple_ = Staple(Message(doc["request"].encode(), MEDIA_TYPE_JSON),
                          Reply(Message(doc["reply"].encode(), MEDIA_TYPE_JSON)))
         checked = check_staple(staple_, key_id)
-        if checked.derivation != DERIVATION_STANDARD_HISTORY:
-            raise Refused("the staple carries another derivation than standard_history/1")
+        if checked.derivation != derivation:
+            raise Refused(f"the staple carries another derivation than {derivation}")
         card = json.loads(checked.artifact)
         if card.get("anchor") != checked.anchor:
             raise Refused("the stapled card is as of another anchor than the envelope")
@@ -147,8 +152,9 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     the signing key, the steps' records and the digest of the final close
     half (x-deal-v0 §10), plus the half's final record id, the digest of its
     checkpoint statement and the checkpoint digests its close cites. Each
-    step's ``cites`` links are checked (:func:`_step_cites`). A ``history_staple`` member is checked under
-    the half's key (:func:`verify_history_staple`) and returned as ``history`` (``None`` without one). Raises
+    step's ``cites`` links are checked (:func:`_step_cites`). A ``history_card`` member is checked under
+    the half's key (:func:`verify_history_staple`) and returned as ``book_card``, a ``history_staple`` member as
+    ``history`` (``None`` without one). Raises
     :class:`Refused` when anything does not check out."""
     from cll.checkpoint import core
 
@@ -206,9 +212,11 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     except Exception as exc:  # a malformed half: any step or member that does not check out
         raise Refused(f"the half does not verify: {exc}") from None
     history = verify_history_staple(half[HISTORY_STAPLE_MEMBER], key_id) if HISTORY_STAPLE_MEMBER in half else None
+    book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD) \
+        if HISTORY_CARD_MEMBER in half else None
     closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
     final = closes[-1]["capsule"] if closes else None
-    return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history,
+    return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history, "book_card": book_card,
             "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None,
             "final_record_id": parent, "checkpoint_digest": hashlib.sha256(
                 bytes.fromhex(half["checkpoint"]["statement"])).hexdigest(),
@@ -419,11 +427,8 @@ class Node:
     a home at a time (the shelf's writer lock)."""
 
     def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None,
-                 attach_history: bool = False):
+                 ):
         self.home, self.operator, self.developer = home, operator, developer
-        #: The policy's "attach when I buy or sell" (evidencebook#329): when on, every half this node
-        #: gives carries its signed ``standard_history/1`` staple (:meth:`history_staple`).
-        self.attach_history = attach_history
         self._witnesses, self._witness_client = witnesses, witness_client
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._inflight: datetime | None = None
@@ -459,9 +464,8 @@ class Node:
 
     @classmethod
     def open(cls, home: str | os.PathLike, *, operator: str, developer: str = "goose-loop@v1", now=None,
-             witnesses: Any = None, witness_client: Any = None, attach_history: bool = False) -> Node:
-        """The node at ``home``, created on first use. ``attach_history`` turns on attaching the
-        node's stapled standard card to the halves it gives (:attr:`attach_history`). ``witnesses`` is the
+             witnesses: Any = None, witness_client: Any = None) -> Node:
+        """The node at ``home``, created on first use. ``witnesses`` is the
         witness directory receipts are checked under (a ``witnesses.json``
         mapping), or ``None``. With one witness in it, a book bundle carries
         that witness's receipt for the book's own checkpoint, asked of
@@ -471,7 +475,7 @@ class Node:
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not operator:
             raise Refused("an operator name is required")
-        return cls(path, operator, developer, now, witnesses, witness_client, attach_history)
+        return cls(path, operator, developer, now, witnesses, witness_client)
 
     def close(self) -> None:
         try:
@@ -842,11 +846,13 @@ class Node:
                 return record.record_id
         raise Refused(f"this node sealed no opening of deal {deal_id}")
 
-    def half(self, deal_id: str, staple: bool | None = None) -> dict:
+    def half(self, deal_id: str, standard_card: bool = False) -> dict:
         """This node's half of a deal, as a counterparty receives it: every
         step's Capsule (with its producer ``signature`` and ``key_id``) and
-        payload, in order, and the book's checkpoint covering them. With ``staple`` true (by default
-        when :attr:`attach_history` is on) it also carries :meth:`history_staple`."""
+        payload, in order, and the book's checkpoint covering them. It always carries the deal book's
+        ``history_card/1`` (:data:`HISTORY_CARD_MEMBER`); with ``standard_card`` true, which the caller sets only
+        when the counterparty asked and the user approved sending the node's standard card, it also carries
+        :meth:`history_staple` (:data:`HISTORY_STAPLE_MEMBER`)."""
         with self._lock:
             book = self.shelf.open(f"deal/{deal_id}")
             checkpoint = book.checkpoint()
@@ -858,7 +864,10 @@ class Node:
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
             out = {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
                    "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
-            if self.attach_history if staple is None else staple:
+            card = staple(book, DERIVATION_HISTORY_CARD)
+            out[HISTORY_CARD_MEMBER] = {"request": card.request.octets.decode(),
+                                        "reply": card.reply.message.octets.decode()}
+            if standard_card:
                 out[HISTORY_STAPLE_MEMBER] = self.history_staple()
             return out
 
@@ -870,7 +879,7 @@ class Node:
         chain = self.deal(deal_id)
         if chain._has(deal.TYPE_CLOSE):
             raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id, staple=False)["checkpoint"]["statement"])).hexdigest()
+        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id)["checkpoint"]["statement"])).hexdigest()
         return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
                          subject_ref=deal_id)
 
