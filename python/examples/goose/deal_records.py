@@ -81,6 +81,9 @@ class Step:
     local: str = ""
     amount: str = ""
     currency: str = ""
+    #: Extra ``cites`` targets of the step's record header beyond its chain
+    #: parent: on a close, the counterparty's checkpoint (x-deal-v0 §1).
+    cites: tuple[str, ...] = ()
 
 
 def _ref(digest: str, kind: str) -> dict:
@@ -154,13 +157,13 @@ class DealChain:
         return record
 
     def _step(self, record: dict, at: datetime, local: dict, decide: deal.Decide | None = None,
-              amount: str = "", currency: str = "") -> Step:
+              amount: str = "", currency: str = "", cites: tuple[str, ...] = ()) -> Step:
         payload, digest = deal.encode(record, [self.peer])
         kind = record["x-deal-v0"]["record_type"] if "x-deal-v0" in record else record["type"]
         self.records.append((digest, kind, record.get("body", {}).get("action", "")))
         local = {"deal_id": self.deal_id, "n": len(self.records), "kind": kind, "at": _at(at), **local}
         step = Step(kind, payload, digest, at, decide, json.dumps(local, separators=(",", ":"), ensure_ascii=False),
-                    amount, currency)
+                    amount, currency, cites)
         self._built.append(step)
         return step
 
@@ -327,9 +330,11 @@ class DealChain:
             at, {"act": {"action": "pay", "reference": reference}, "nonces": {"reference": nonce}}, decide)
         return self._since(n)
 
-    def close(self, at: datetime, status: str) -> list[Step]:
+    def close(self, at: datetime, status: str, counterparty_checkpoint: str = "") -> list[Step]:
         """The outcome (typed, on a seller's chain) and the close. A received
-        close commits the agreed price and currency (x-deal-v0 §10)."""
+        close commits the agreed price and currency (x-deal-v0 §10).
+        ``counterparty_checkpoint`` is the SHA-256 of the checkpoint statement
+        of the counterparty's half this party holds; the close cites it."""
         if status not in _STATUSES:
             raise ValueError(f"status must be one of {sorted(_STATUSES)}")
         self._open_for_more()
@@ -348,7 +353,7 @@ class DealChain:
             closing["differences"] = differences
         amount, currency = (str(t.price_minor), t.currency) if status == "received" else ("", "")
         self._step(self._untyped(deal.TYPE_CLOSE, at, closing, [("outcome", observed)]), at, {"close": status},
-                   amount=amount, currency=currency)
+                   amount=amount, currency=currency, cites=(counterparty_checkpoint,) if counterparty_checkpoint else ())
         return self._since(n)
 
     def _since(self, n: int) -> list[Step]:

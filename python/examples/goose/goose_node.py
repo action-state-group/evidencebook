@@ -76,6 +76,8 @@ POLICY = {"window": {"all": True}}
 HOLDER_KIND = "person"
 #: The record types of the node book.
 JOINED, ADMITTED, HALF_RECEIVED, ASKED_TYPE = "goose_joined", "goose_admitted", "goose_half_received", "goose_asked"
+#: This node's request, at an exchange's end, for the counterparty's half of a deal.
+HALF_ASKED = "goose_half_asked"
 #: A referee's Result delivered into this book, and one refused on delivery
 #: (step 09, evidencebook#310).
 DISPUTE_RECEIVED, DISPUTE_REFUSED = "goose_dispute_received", "goose_dispute_refused"
@@ -113,7 +115,7 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
         if half.get("half") != "goose-deal-half/1" or not isinstance(steps, list) or not steps:
             raise Refused("not a goose-deal-half/1 with steps")
         key_id = steps[0]["capsule"].get("key_id")
-        records, nodes, parent = [], _Nodes(), None
+        records, nodes, parent, counterparty_cites = [], _Nodes(), None, []
         for n, step in enumerate(steps, start=1):
             capsule, payload = dict(step["capsule"]), step["payload"]
             signature, signer = capsule.pop("signature", None), capsule.pop("key_id", None)
@@ -130,6 +132,10 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
             chained = (capsule.get("chain") or {}).get("parent_capsule_id")
             if chained != parent:
                 raise Refused(f"step {n} does not chain to the step before it")
+            is_close = payload.get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE
+            cited = _step_cites(n, header, parent, is_close)
+            if is_close:
+                counterparty_cites = cited
             digest = deal.digest(payload)
             if capsule["model_attestation"]["compute_attestation"].get("agent_input_digest") != digest \
                     or header.get("payload_commitments") != [digest]:
@@ -158,7 +164,37 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
     final = closes[-1]["capsule"] if closes else None
     return {"deal_id": deal_id, "key_id": key_id, "records": records,
-            "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None}
+            "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None,
+            "final_record_id": parent, "checkpoint_digest": hashlib.sha256(
+                bytes.fromhex(half["checkpoint"]["statement"])).hexdigest(),
+            "counterparty_checkpoint_cites": counterparty_cites}
+
+
+def _step_cites(n: int, header: dict, parent: str | None, is_close: bool) -> list[str]:
+    """The ``cites`` links of step ``n``'s record header (x-deal-v0 §1): the
+    chain parent exactly once on every step after the baseline; the baseline
+    may cite one admission, which is never read as a checkpoint; only a close
+    may cite checkpoints. Nothing else is a link. Returns the checkpoint
+    digests a close cites."""
+    links = header.get("links") or []
+    if any(not isinstance(link, dict) or link.get("type") != CITES for link in links):
+        raise Refused(f"step {n}'s record header carries a link that is not a cites link")
+    targets = [link.get("target") for link in links]
+    if parent is not None:
+        if targets.count(parent) != 1:
+            raise Refused(f"step {n} does not cite its chain parent exactly once")
+        targets.remove(parent)
+    if n == 1:
+        if len(targets) > 1:
+            raise Refused("the baseline cites at most its admission")
+        return []
+    if targets and not is_close:
+        raise Refused(f"step {n} is not a close and cites more than its chain parent")
+    for target in targets:
+        if not isinstance(target, str) or len(target) != 64 or target.lower() != target \
+                or any(c not in "0123456789abcdef" for c in target):
+            raise Refused(f"step {n} cites {target!r}, which is no checkpoint digest")
+    return targets
 
 
 def _profile_checker():
@@ -690,7 +726,7 @@ class Node:
                 capsule, header = deal.step_capsule(deal.StepInput(
                     chain.deal_id, len(records) + 1, self.operator, self.developer, step.at, parent, None,
                     step.decide, step.local, step.amount, step.currency))
-                cites = header.cites + ((admission,) if admission and not records else ())
+                cites = header.cites + ((admission,) if admission and not records else ()) + step.cites
                 entry = Entry(header.record_type, header.epistemic_type, subject_ref=header.subject_ref,
                               links=tuple(Link(CITES, c) for c in cites), fields=dict(header.fields))
 
@@ -771,6 +807,49 @@ class Node:
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
             return {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
                     "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
+
+    def ask_half(self, deal_id: str) -> SealedStep:
+        """End the exchange of a deal: seal this node's request for the
+        counterparty's half, before the outcome and the close, so the half it
+        sends back is held when the close cites its checkpoint. Asking again
+        seals another request; a received half cites the newest."""
+        chain = self.deal(deal_id)
+        if chain._has(deal.TYPE_CLOSE):
+            raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
+        return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer}, subject_ref=deal_id)
+
+    def hold_half(self, verified: dict, half: dict) -> SealedStep:
+        """Seal a counterparty's verified half into the node book (its bytes
+        are the note's payload, held by digest), naming the half's final
+        record id and the digest of the checkpoint it came under, citing the
+        request it answers when this node sent one."""
+        deal_id = verified["deal_id"]
+        asked = [r.record_id for r, s in self.notes(HALF_ASKED) if s["deal_id"] == deal_id]
+        statement = {"deal_id": deal_id, "key_id": verified["key_id"], "close_half_digest": verified["close_half_digest"],
+                     "final_record_id": verified["final_record_id"], "checkpoint_digest": verified["checkpoint_digest"],
+                     "half_digest": hashlib.sha256(jcs(half)).hexdigest(), "steps": len(verified["records"])}
+        return self.note(HALF_RECEIVED, statement, subject_ref=deal_id, cites=tuple(asked[-1:]), payloads=(jcs(half),))
+
+    def counterparty_checkpoint(self, deal_id: str) -> str | None:
+        """The digest of the checkpoint statement of the newest counterparty
+        half this node holds of the deal, or ``None``."""
+        held = [s["checkpoint_digest"] for _, s in self.notes(HALF_RECEIVED)
+                if s["deal_id"] == deal_id and "checkpoint_digest" in s]
+        return held[-1] if held else None
+
+    def close_deal(self, deal_id: str, status: str, uncited: bool = False) -> list[SealedStep]:
+        """End a deal: the outcome and the close, which cites the checkpoint of
+        the counterparty's half this node holds (x-deal-v0 §1). A node that
+        holds none refuses unless ``uncited`` says the counterparty never
+        answered its request."""
+        with self._lock:
+            chain = self.deal(deal_id)
+            held = self.counterparty_checkpoint(deal_id)
+            if held is None and not uncited:
+                raise Refused(f"this node holds no counterparty half of deal {deal_id}: end the exchange "
+                              "(loop_deal_end_exchange) and reconcile the counterparty's half first, or close "
+                              "with uncited=true when it never answered")
+            return self.seal(chain, chain.close(self._now(), status, held or ""))
 
     # -- 09 Dispute ------------------------------------------------------------------
 
@@ -1075,4 +1154,4 @@ class Node:
     def _halves_received(self, extent: int) -> set[str]:
         """The deals whose counterparty half this node verified, among the
         node book's first ``extent`` records."""
-        return {s["deal_id"] for r, s in self.notes(HALF_RECEIVED) if r.seq <= extent}
+        return {s["deal_id"] for r, s in self.notes(HALF_RECEIVED) if r.seq <= extent and s["close_half_digest"]}
