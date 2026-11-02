@@ -31,6 +31,7 @@ import (
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/disclosure"
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/capsule-viewer/go/chartspec"
 	"github.com/action-state-group/capsule-viewer/go/emitter"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
 	"github.com/action-state-group/capsule-viewer/go/presentation"
@@ -155,6 +156,16 @@ type View struct {
 	// bundle, so a page built with one gets no permalink. Without one, every
 	// row's tier is undecided.
 	Contract *Contract
+	// Charts are the view entries of a pack's chart-views/v1 block (a
+	// calendar, timeline or co-failure; capsule-viewer docs/design/
+	// report-views.md): declarations only. Build fills every chart in them
+	// from the dataset the Result seals -- the window range filter and the
+	// usermeta.capsule statement -- checks each with the viewer's own checker,
+	// and hands them to the viewer as its `charts` setting. A Result with no
+	// dataset, or an entry the filler cannot state, refuses the build. Like
+	// Wording, they live in the page, not in the bundle, so a page built with
+	// them gets no permalink. The pack's wording entries go into Wording.
+	Charts []json.RawMessage
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -220,7 +231,7 @@ type Page struct {
 	bundle map[string]interface{}
 	// worded is set when the page carries a wording layer; contracted when
 	// it carries a contract.
-	worded, contracted bool
+	worded, contracted, charted bool
 }
 
 // Build verifies bundle, a held and disclosed Evidence Bundle (JSON) whose
@@ -256,6 +267,16 @@ func Build(bundle []byte, view View) (*Page, error) {
 	value, err := cli.DecodeBundleJSON(bundle)
 	if err != nil {
 		return nil, refusedBy{err}
+	}
+	var charts []json.RawMessage
+	if len(view.Charts) > 0 {
+		dataset, err := chartspec.DatasetOf(value)
+		if err != nil {
+			return nil, refusal("charts: " + err.Error())
+		}
+		if charts, err = fillCharts(view.Charts, dataset); err != nil {
+			return nil, err
+		}
 	}
 	// Verify first, then gate the root, then decorate, then render: nothing
 	// is rendered until everything before it has passed.
@@ -316,7 +337,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	page := &Page{
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
-		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil,
+		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0,
 	}
 	if view.Contract != nil {
 		page.ContractRef, page.ContractSHA256, page.Tiers = contract.ref, view.Contract.SHA256, tiers
@@ -345,6 +366,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if view.Contract != nil {
 		options.Contract = &emitter.Contract{Text: view.Contract.Text, SHA256: view.Contract.SHA256}
 	}
+	options.Charts = charts
 	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, options)
 	if err != nil {
 		return nil, err
@@ -366,6 +388,9 @@ func (p *Page) Permalink(base string) (string, error) {
 	}
 	if p.worded {
 		return "", refusal("a page with a wording layer gets no permalink: the permalink carries the bundle alone, and the viewer would show its own words")
+	}
+	if p.charted {
+		return "", refusal("a page with charts gets no permalink: the permalink carries the bundle alone, and the viewer would draw none of them")
 	}
 	if p.contracted {
 		return "", refusal("a page with a contract gets no permalink: the permalink carries the bundle alone, and the viewer would draw every tier undecided")
