@@ -116,7 +116,6 @@ func TestTheReceiptStatesALightningSettlementAndItsBand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "page.html")
 	dealRun(t, "report", "--deal", id, "--html", path)
 	for edit, want := range map[string]string{
-		"preimage:FAIL":        "not checked",
 		"preimage:NOT_CHECKED": "not checked",
 		"preimage:NOT_PRESENT": "not checked",
 		"no-checks":            "not checked",
@@ -124,6 +123,10 @@ func TestTheReceiptStatesALightningSettlementAndItsBand(t *testing.T) {
 		line := stampLine(t, renderPageUnderNode(t, node, path, edit), "The payment is settled")
 		assert.Equal(t, "The payment is settled on its rail · "+want+" · Lightning; its proof is sealed here, and this page can't check it yet · size 0.000001 to under 0.00001 BTC", line, edit)
 	}
+
+	// A FAIL is a check that ran: it reads failed, never "can't check it yet".
+	failedLine := stampLine(t, renderPageUnderNode(t, node, path, "preimage:FAIL"), "The payment is settled")
+	assert.Equal(t, "The payment is settled on its rail · failed · Lightning; its proof did not verify · size 0.000001 to under 0.00001 BTC", failedLine)
 
 	other, _ := sellerDealWithDueDelivery(t)
 	terms2, _ := newBuyerSide(t).lnTerms()
@@ -205,9 +208,12 @@ func TestTheWitnessLineIsPassedOnlyFromTheRuntimesCheck(t *testing.T) {
 	assert.Regexp(t, `^An outside witness saw your book · passed · recorded by Acme Witness at .+$`, stub(false, "witness:PASS"))
 	assert.Regexp(t, `^An outside witness saw the holder's book · passed · recorded by Acme Witness at .+$`, stub(true, "witness:PASS"))
 	assert.Equal(t, own+" · missing", stub(false, "witness:NOT_PRESENT"), "no receipt is missing")
-	for _, edit := range []string{"witness:NOT_CHECKED", "witness:FAIL", "no-checks"} {
+	for _, edit := range []string{"witness:NOT_CHECKED", "no-checks"} {
 		assert.Equal(t, own+" · not checked · this page can't check the witness's signature", stub(false, edit), edit)
 	}
+	// A FAIL is a check that ran and did not verify.
+	assert.Equal(t, own+" · failed · the witness's signature did not verify", stub(false, "witness:FAIL"))
+	assert.Equal(t, shared+" · failed · the witness's signature did not verify", stub(true, "witness:FAIL"))
 }
 
 // The same line on the receipt with the other party's half, in its three
@@ -250,9 +256,10 @@ func TestTheComposedWitnessLineNamesWhatWasChecked(t *testing.T) {
 	both := page(keep, theirs)
 	assert.Regexp(t, `^`+label+` · passed · yours recorded by Acme Witness at .+; theirs recorded by Acme Witness at .+$`, line(both, "witness:PASS,PASS"))
 	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "the other side's is not checked"), line(both, "witness:PASS,NOT_CHECKED"))
-	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "the other side's is not checked"), line(both, "witness:PASS,FAIL"))
+	assert.Regexp(t, fmt.Sprintf(yours, "failed", "the other side's witness signature did not verify"), line(both, "witness:PASS,FAIL"))
+	assert.Equal(t, label+" · failed · the witness's signature did not verify", line(both, "witness:FAIL,PASS"), "yours failed: failed whatever theirs says")
 	assert.Regexp(t, fmt.Sprintf(yours, "missing", "the other side's has no witness receipt"), line(both, "witness:PASS,NOT_PRESENT"), "theirs has none: missing, not unchecked")
-	for _, edit := range []string{"witness:NOT_CHECKED,PASS", "witness:FAIL,PASS", "no-checks"} {
+	for _, edit := range []string{"witness:NOT_CHECKED,PASS", "no-checks"} {
 		assert.Equal(t, asIs, line(both, edit), "yours is not passed: "+edit+" leaves the line as it was")
 	}
 	for _, edit := range []string{"witness:NOT_PRESENT,PASS", "witness:NOT_PRESENT,NOT_PRESENT"} {
@@ -261,9 +268,10 @@ func TestTheComposedWitnessLineNamesWhatWasChecked(t *testing.T) {
 
 	only := page(keep, absent)
 	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "no record of the other side's is here"), line(only, "witness:PASS"), "an absence is never passed, and is not called unchecked")
-	for _, edit := range []string{"witness:NOT_CHECKED", "witness:FAIL", "no-checks"} {
+	for _, edit := range []string{"witness:NOT_CHECKED", "no-checks"} {
 		assert.Equal(t, asIs, line(only, edit), edit)
 	}
+	assert.Equal(t, label+" · failed · the witness's signature did not verify", line(only, "witness:FAIL"))
 	assert.Equal(t, label+" · missing", line(only, "witness:NOT_PRESENT"))
 
 	none := page(nil, theirs)
@@ -525,20 +533,20 @@ func TestTheSettlementIsReadFromItsLegs(t *testing.T) {
 	})
 	band := map[string]any{"currency": "USDC", "decade": float64(0)}
 	assert.Equal(t, []any{
-		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": "withheld", "proof": false, "band": band},
-		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false},
+		map[string]any{"rail": "x402", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": "withheld", "proof": false, "band": band},
+		map[string]any{"rail": "x402", "legs": true, "failed": false, "preimage": false, "proof": false},
 		map[string]any{"rail": "card", "legs": false},
 		nil,
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": true, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": true, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": "withheld", "proof": false, "band": band},
-		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": false, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": true, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": true, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": "withheld", "proof": false, "band": band},
+		map[string]any{"rail": "x402", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "failed": false, "preimage": false, "proof": false, "band": band},
 	}, got["settlement"])
 }

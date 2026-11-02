@@ -7,6 +7,12 @@
   ratings. capsule-viewer/go moves to v0.12.0, the version those pages embed
   (evidencebook-deal#124).
 
+- A runtime answer of `FAIL` from the settlement or witness check now reads **failed**, not
+  "can't check" (evidencebook-deal#130): the settlement line says "its proof did not verify" and
+  the witness line "the witness's signature did not verify" (on the receipt with the other
+  party's half, "the other side's witness signature did not verify" when only theirs fails).
+  `PASS`, no receipt, not checked and a runtime without the checks read as before.
+
 ## v0.1.0-rc32
 
 Pairs with capsulectl `v0.1.0-rc32`. This section also lists what `v0.1.0-rc31` carried: that tag
