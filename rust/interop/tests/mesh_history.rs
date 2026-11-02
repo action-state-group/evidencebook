@@ -118,6 +118,7 @@ fn history_card(node: &mut Node) -> Vec<u8> {
         signer: &signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let options = RespondOptions {
         authenticated_requester: Some("relying-party"),
