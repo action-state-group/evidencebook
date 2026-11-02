@@ -268,16 +268,6 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if err != nil {
 		return nil, refusedBy{err}
 	}
-	var charts []json.RawMessage
-	if len(view.Charts) > 0 {
-		dataset, err := chartspec.DatasetOf(value)
-		if err != nil {
-			return nil, refusal("charts: " + err.Error())
-		}
-		if charts, err = fillCharts(view.Charts, dataset); err != nil {
-			return nil, err
-		}
-	}
 	// Verify first, then gate the root, then decorate, then render: nothing
 	// is rendered until everything before it has passed.
 	verification, err := acceptHeldVerification(aacbundle.VerifyBundle(value))
@@ -327,6 +317,17 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	if view.ContractReport {
 		if err = setExtension(value, contractReportExtension, map[string]interface{}{}); err != nil {
+			return nil, err
+		}
+	}
+	// The charts are stated from the dataset of a verified, gated Result.
+	var charts []json.RawMessage
+	if len(view.Charts) > 0 {
+		dataset, err := chartspec.DatasetOf(value)
+		if err != nil {
+			return nil, refusal("charts: " + err.Error())
+		}
+		if charts, err = fillCharts(view.Charts, dataset); err != nil {
 			return nil, err
 		}
 	}

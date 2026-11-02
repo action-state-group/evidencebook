@@ -4,6 +4,7 @@ package report
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -33,13 +34,17 @@ func chartDataset(windows int) *chartspec.Dataset {
 	}}
 }
 
-const calendarEntry = `{"view":"calendar","lanes":[
+// calendarEntry has no "view" key, so only the per-chart fill and check run;
+// viewEntry is the same lanes as a calendar view, whose own rules apply too.
+const calendarEntry = `{"lanes":[
  {"id":"cases","role":"activity","chart":{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"dataset"},"mark":"bar",
   "transform":[{"filter":{"field":"record_type","equal":"case"}}],
   "encoding":{"x":{"field":"event_time_claim","type":"temporal","timeUnit":"utcyearmonthdate"},"y":{"aggregate":"count","type":"quantitative"}}}},
  {"id":"verdicts","role":"judgment","chart":{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","data":{"name":"dataset"},"mark":"rect",
   "transform":[{"filter":{"and":[{"field":"record_type","equal":"case"},{"field":"statement.verdict","oneOf":["resolved","missed"]}]}}],
   "encoding":{"x":{"field":"event_time_claim","type":"temporal","timeUnit":"utcyearmonthdate"},"y":{"field":"statement.verdict","type":"nominal"},"color":{"aggregate":"count","type":"quantitative"}}}}]}`
+
+var viewEntry = `{"view":"calendar",` + calendarEntry[1:]
 
 func TestFillChartsStatesWindowRunsAndValues(t *testing.T) {
 	out, err := fillCharts([]json.RawMessage{json.RawMessage(calendarEntry)}, chartDataset(1))
@@ -94,7 +99,55 @@ func TestFillChartsRefusals(t *testing.T) {
 	withheld := chartDataset(1)
 	withheld.Rows[1].Header = nil
 	_, err = fillCharts(entry, withheld)
+	assert.ErrorIs(t, err, ErrRefused)
 	assert.ErrorContains(t, err, "withheld")
+
+	// The view's own rules refuse as ErrRefused too: a calendar states a
+	// whole month, and this window is three days.
+	_, err = fillCharts([]json.RawMessage{json.RawMessage(viewEntry)}, chartDataset(1))
+	assert.ErrorIs(t, err, ErrRefused)
+	assert.ErrorContains(t, err, "the filled view is refused")
+
+	for name, mutate := range map[string]func(map[string]interface{}){
+		"missing from":      func(p map[string]interface{}) { delete(p, "from") },
+		"short date":        func(p map[string]interface{}) { p["from"] = "2026-9-1" },
+		"from after to":     func(p map[string]interface{}) { p["from"], p["to"] = "2026-09-05", "2026-09-01" },
+		"not a date at all": func(p map[string]interface{}) { p["to"] = "later" },
+	} {
+		malformed := chartDataset(1)
+		mutate(malformed.Plan["nodes"].([]interface{})[0].(map[string]interface{})["params"].(map[string]interface{}))
+		_, err = fillCharts(entry, malformed)
+		assert.ErrorIs(t, err, ErrRefused, name)
+		assert.ErrorContains(t, err, "not a YYYY-MM-DD range", name)
+	}
+
+	for name, edit := range map[string][2]string{
+		"sum aggregate":    {`"aggregate":"count"`, `"aggregate":"sum"`},
+		"wrong time unit":  {`"timeUnit":"utcyearmonthdate"`, `"timeUnit":"utcyearmonth"`},
+		"no count channel": {`"y":{"aggregate":"count","type":"quantitative"}`, `"y":{"field":"record_type","type":"nominal"}`},
+	} {
+		changed := strings.Replace(calendarEntry, edit[0], edit[1], 1)
+		require.NotEqual(t, calendarEntry, changed, name)
+		_, err = fillCharts([]json.RawMessage{json.RawMessage(changed)}, chartDataset(1))
+		assert.ErrorIs(t, err, ErrRefused, name)
+	}
+}
+
+// Build refuses a charted view whose Result discloses no dataset, and a page
+// built with charts carries no permalink.
+func TestBuildChartsRefusalAndNoPermalink(t *testing.T) {
+	raw := mustRead(t, presentationDir+"/4-monthly-outcome/bundle.json")
+	_, err := Build(raw, View{Card: "outcome", Charts: []json.RawMessage{json.RawMessage(calendarEntry)}})
+	assert.ErrorIs(t, err, ErrRefused)
+	assert.ErrorContains(t, err, "charts")
+
+	plain, err := Build(raw, View{Card: "outcome"})
+	require.NoError(t, err)
+	_, err = plain.Permalink("")
+	assert.NoError(t, err)
+	plain.charted = true
+	_, err = plain.Permalink("")
+	assert.ErrorIs(t, err, ErrRefused)
 }
 
 // viewsDir holds capsule-viewer's committed month bundle and the five view

@@ -61,6 +61,17 @@ func fillCharts(entries []json.RawMessage, dataset *chartspec.Dataset) ([]json.R
 		if out[i], err = json.Marshal(entry); err != nil {
 			return nil, err
 		}
+		// The view rules (a calendar's whole month, the lanes together)
+		// refuse here as ErrRefused, not later in the emitter.
+		var decoded interface{}
+		if err := json.Unmarshal(out[i], &decoded); err != nil {
+			return nil, err
+		}
+		if chartspec.IsView(decoded) {
+			if _, err := chartspec.CheckView(decoded, dataset); err != nil {
+				return nil, refusef("charts[%d]: the filled view is refused: %s", i, err)
+			}
+		}
 	}
 	return out, nil
 }
@@ -104,6 +115,11 @@ func sealedWindow(dataset *chartspec.Dataset) (chartspec.Window, error) {
 	}
 	if len(found) != 1 {
 		return chartspec.Window{}, refusef("charts: the dataset plan has %d window nodes; the chart statements need exactly one sealed window", len(found))
+	}
+	// The bundle is not verified yet: a malformed window is refused here, not
+	// sliced by dateTime.
+	if days, err := daysOf(found[0]); err != nil || len(days) == 0 {
+		return chartspec.Window{}, refusef("charts: the plan's window %q to %q is not a YYYY-MM-DD range from <= to", found[0].From, found[0].To)
 	}
 	return found[0], nil
 }
