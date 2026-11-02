@@ -1,0 +1,89 @@
+[
+  {
+    "clauses": [
+      {
+        "agreement": {
+          "k": 1,
+          "n": 1
+        },
+        "clause_ref": "req-claim-1",
+        "drift": {
+          "k": 0,
+          "n": 1
+        }
+      },
+      {
+        "agreement": {
+          "k": 1,
+          "n": 1
+        },
+        "clause_ref": "req-claim-2",
+        "drift": {
+          "k": 0,
+          "n": 1
+        }
+      }
+    ],
+    "computed_at": "2026-09-21T00:00:00Z",
+    "epistemic_type": "derived_metric",
+    "judge_pin": {
+      "citation_purpose": "calibrates",
+      "digest": "b9eeeb012d7ad5d816f006ce339abf63fa10c99e3b7c2f2338c7457657f73936",
+      "digest_alg": "SHA-256",
+      "type": "judge-pin"
+    },
+    "record_id": "cal-example-org-2026-W38",
+    "record_version": "calibration-summary/v1"
+  },
+  {
+    "clauses": [
+      {
+        "agreement": {
+          "k": 0,
+          "n": 1
+        },
+        "clause_ref": "req-claim-1",
+        "drift": {
+          "k": 0,
+          "n": 1
+        }
+      },
+      {
+        "agreement": {
+          "k": 1,
+          "n": 1
+        },
+        "clause_ref": "req-claim-2",
+        "drift": {
+          "k": 0,
+          "n": 1
+        }
+      }
+    ],
+    "computed_at": "2026-09-21T00:00:00Z",
+    "epistemic_type": "derived_metric",
+    "judge_pin": {
+      "citation_purpose": "calibrates",
+      "digest": "b9eeeb012d7ad5d816f006ce339abf63fa10c99e3b7c2f2338c7457657f73936",
+      "digest_alg": "SHA-256",
+      "type": "judge-pin"
+    },
+    "record_id": "cal-example-org-2026-W38-rerun",
+    "record_version": "calibration-summary/v1"
+  },
+  {
+    "blind": true,
+    "case": {
+      "citation_purpose": "rated_case",
+      "digest": "087f64cf513c5007850428f20b7cd483877c46d549e28972ffcff465492ecd14",
+      "digest_alg": "SHA-256",
+      "type": "rated-case"
+    },
+    "epistemic_type": "human_report",
+    "label": "met",
+    "rated_at": "2026-09-20T00:00:00Z",
+    "rater_ref": "principal:example-org-rater-1",
+    "record_id": "hr-example-org-1",
+    "record_version": "human-rating/v1"
+  }
+]

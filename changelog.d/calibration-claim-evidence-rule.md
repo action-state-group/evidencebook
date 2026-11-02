@@ -1,0 +1,3 @@
+### Changed: capsulectl-book `book result build` enforces a calibration claim's evidence rule (#376)
+
+- A `calibration` claim must cite exactly one distinct `calibration-summary/v1` record and otherwise only `human-rating/v1` records (evidence-result-v0 section 4.1), read from each cited record's `record_version`; a claim that cites no summary, two, or a record of another kind is refused. A cited record with no disclosed body is checked for presence only, and the one summary must be disclosed. `testdata/result` vendors the three negatives that need the cited records (`neg-calibration-without-summary`, `-two-summaries`, `-cites-other-record`, aac 09c8b866), and `TestResultVectors` runs them through the walk.

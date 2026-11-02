@@ -20,6 +20,12 @@ const (
 	claimTypeRequirement = cli.ClaimTypeRequirement
 	claimTypeReconcile   = cli.ClaimTypeReconcile
 	claimTypeClose       = cli.ClaimTypeClose
+	// claimTypeCalibration is the Result v0 type of a claim that reports one
+	// judge's calibration summary (section 4.1).
+	claimTypeCalibration = "calibration"
+
+	judgeSummaryVersion = "calibration-summary/v1"
+	judgeRatingVersion  = "human-rating/v1"
 )
 
 // resultClaim is one claim as the core's gate reads it.

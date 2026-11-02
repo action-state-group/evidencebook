@@ -1,0 +1,32 @@
+[
+  {
+    "blind": true,
+    "case": {
+      "citation_purpose": "rated_case",
+      "digest": "087f64cf513c5007850428f20b7cd483877c46d549e28972ffcff465492ecd14",
+      "digest_alg": "SHA-256",
+      "type": "rated-case"
+    },
+    "epistemic_type": "human_report",
+    "label": "met",
+    "rated_at": "2026-09-20T00:00:00Z",
+    "rater_ref": "principal:example-org-rater-1",
+    "record_id": "hr-example-org-1",
+    "record_version": "human-rating/v1"
+  },
+  {
+    "blind": true,
+    "case": {
+      "citation_purpose": "rated_case",
+      "digest": "cfd3f745cc8da13cfb750bafd6cbaf23413ee80eb8258f5b1e86115d04999b2c",
+      "digest_alg": "SHA-256",
+      "type": "rated-case"
+    },
+    "epistemic_type": "human_report",
+    "label": "not_met",
+    "rated_at": "2026-09-20T00:00:00Z",
+    "rater_ref": "principal:example-org-rater-1",
+    "record_id": "hr-example-org-2",
+    "record_version": "human-rating/v1"
+  }
+]
