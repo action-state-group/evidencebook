@@ -59,6 +59,7 @@ Back these files up. Optional settings:
 
 - `GOOSE_DEVELOPER`: the developer name your records carry. The default is `goose-loop@v1`.
 - `GOOSE_WITNESSES`: a `witnesses.json` file to check cadence receipts against.
+- `GOOSE_ATTACH_HISTORY`: set to `1` to attach the node's signed `standard_history/1` card to every half it gives (the policy's "attach when I buy or sell"). The node needs a finished tick first (`loop_tick`). The receiving side checks the staple under the key the half's steps are signed by.
 
 ## A deal, tool by tool
 

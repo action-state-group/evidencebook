@@ -76,6 +76,9 @@ HOME = os.environ.get("GOOSE_HOME", "~/.goose-evidence")
 MAILBOX_ENDPOINT = "nostr:mailbox"
 OPERATOR = os.environ.get("GOOSE_OPERATOR", "goose-user")
 DEVELOPER = os.environ.get("GOOSE_DEVELOPER", "goose-loop@v1")
+#: The policy's "attach when I buy or sell": with it set to 1, every half the node gives carries its signed
+#: ``standard_history/1`` staple (evidencebook#329), so the node needs a finished tick first (``loop_tick``).
+ATTACH_HISTORY = os.environ.get("GOOSE_ATTACH_HISTORY") == "1"
 
 server = FastMCP(
     "goose-loop",
@@ -97,7 +100,8 @@ def node() -> gn.Node:
     if _node is None:
         witnesses = os.environ.get("GOOSE_WITNESSES")
         _node = gn.Node.open(HOME, operator=OPERATOR, developer=DEVELOPER,
-                             witnesses=json.loads(Path(witnesses).read_text()) if witnesses else None)
+                             witnesses=json.loads(Path(witnesses).read_text()) if witnesses else None,
+                             attach_history=ATTACH_HISTORY)
     return _node
 
 

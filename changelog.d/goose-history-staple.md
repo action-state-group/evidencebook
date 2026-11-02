@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- The Goose reference node signs its shelf-level `standard_history/1` card as a staple under its producer key (`Node.history_staple`) and, when the node's attach setting is on (`Node.open(attach_history=True)`, `GOOSE_ATTACH_HISTORY=1` for the server), attaches it to the halves it gives as the `history_staple` member. `verify_half` checks a half's staple under the key the half's steps are signed by (`verify_history_staple`) and refuses one another key presents (evidencebook#329).
