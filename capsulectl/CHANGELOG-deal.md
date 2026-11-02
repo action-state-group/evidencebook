@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The rules checker's `channel` input comes from the latest counterparty message only
+  (evidencebook-deal#24; needs an evidencebook that accepts `rule_inputs_version` 4,
+  evidencebook#363): the user's and the agent's messages no longer move it, so r21 no longer
+  fires when the user notes their own route (for example "I'll sign in myself"). Rule inputs
+  version is now "4"; a check sealed under "3" or before re-derives as before.
+
 - `deal standard-history staple --derivation history_card/1|standard_history/1 [--deal ID]`
   (evidencebook-deal#115; needs evidencebook v0.13.2): prints the holder's request and its
   signed reply as one JSON object, for the host to attach to its message; evidencebook's

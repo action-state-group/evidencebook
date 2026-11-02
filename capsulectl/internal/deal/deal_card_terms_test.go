@@ -83,7 +83,7 @@ func TestAPassingShareAgreesToNoConditionItCarries(t *testing.T) {
 	bodies := checkBodies(t, id)
 	require.Len(t, bodies, 3)
 	for _, b := range bodies {
-		assert.Equal(t, float64(3), b["rule_inputs_version"], "each check states the rule its approval adopts by")
+		assert.Equal(t, float64(4), b["rule_inputs_version"], "each check states the rule its approval adopts by")
 	}
 }
 
@@ -93,31 +93,31 @@ func TestAPassingShareAgreesToNoConditionItCarries(t *testing.T) {
 // (none under "2"), through an exported profile check.
 func TestAnOldApprovalThenANewCheck(t *testing.T) {
 	dealRuleInputsVersion = "2"
-	t.Cleanup(func() { dealRuleInputsVersion = "3" })
+	t.Cleanup(func() { dealRuleInputsVersion = "4" })
 	id := knownShare(t, `{"rail":"card","refundable":true}`)
 	share := dealRun(t, "check", "--deal", id, "--input", writeJSON(t, freeShippingShare))
 	require.Equal(t, "pass", share["verdict"], share["card"])
-	dealRuleInputsVersion = "3"
+	dealRuleInputsVersion = "4"
 	assert.Equal(t, float64(0), payCount(t, id, freeShippingPay), "the old approval adopted the condition, as it did then")
 	bodies := checkBodies(t, id)
 	require.Len(t, bodies, 3)
 	assert.NotContains(t, bodies[0], "rule_inputs_version")
 	assert.NotContains(t, bodies[1], "rule_inputs_version")
-	assert.Equal(t, float64(3), bodies[2]["rule_inputs_version"])
+	assert.Equal(t, float64(4), bodies[2]["rule_inputs_version"])
 	assert.Equal(t, float64(1), bodies[1]["material_fields_changed"], "measured at the share")
 }
 
 // A first-share card checked under "2" names no terms.
 func TestACardCheckedBeforeNamesNoTerms(t *testing.T) {
 	dealRuleInputsVersion = "2"
-	t.Cleanup(func() { dealRuleInputsVersion = "3" })
+	t.Cleanup(func() { dealRuleInputsVersion = "4" })
 	id := stickerDeal(t, "card", false)
 	share := dealRun(t, "check", "--deal", id, "--input", writeJSON(t, freeShippingShare))
 	require.Equal(t, "pause", share["verdict"], share["card"])
 	assert.NotContains(t, share["card"], "agrees to")
 	_, err := answer(t, id, share["check_id"].(string), "yes", shownCard(t, share["card"].(string)))
 	require.NoError(t, err)
-	dealRuleInputsVersion = "3"
+	dealRuleInputsVersion = "4"
 	assert.Equal(t, float64(0), payCount(t, id, freeShippingPay), "an approval of an old check adopts as before")
 }
 
@@ -216,8 +216,8 @@ func TestARepresentApprovalAdoptsNothing(t *testing.T) {
 func TestATypedCheckStatesItsRuleInputsVersion(t *testing.T) {
 	id := stickerDeal(t, "card", true)
 	sealed, given, _ := ruleInputs(t, id, stickerPay)
-	assert.Equal(t, float64(3), sealed["rule_inputs_version"])
-	assert.Equal(t, float64(3), given["rule_inputs_version"])
+	assert.Equal(t, float64(4), sealed["rule_inputs_version"])
+	assert.Equal(t, float64(4), given["rule_inputs_version"])
 }
 
 // Three terms read as one list, each changed one with what it was.
