@@ -22,6 +22,7 @@ use crate::ask::{profile_time, Book, Entry, Sealed};
 use crate::derivation::{Derivations, Registered};
 use crate::record::{record_types, EpistemicType};
 use crate::request::SubjectKind;
+use crate::standard_history::{HeldRecord, StandardHistorySource};
 use crate::store::{CheckpointedLog, RecordSource};
 use crate::substrate::StatedCheckpoint;
 use ed25519_dalek::SigningKey;
@@ -287,10 +288,16 @@ pub enum RespondError {
 
 /// What a responder is configured with besides the book: who signs, the
 /// registered derivations and the cost policy.
+///
+/// With `standard_history` set, the responder answers `standard_history/1`
+/// over the `full_history` subject to any authenticated requester, whatever
+/// the share policy's tier (never to a stranger); without it that
+/// derivation is `derivation_unsupported` (Go's `Config.StandardHistory`).
 pub struct Responder<'a> {
     pub signer: &'a SigningKey,
     pub derivations: &'a Derivations,
     pub policy: &'a ResponderPolicy,
+    pub standard_history: Option<&'a StandardHistorySource>,
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -316,6 +323,11 @@ pub fn respond<B: Book + CheckpointedLog>(
     opts: &RespondOptions<'_>,
 ) -> Result<(Vec<u8>, Option<Sealed>), RespondError> {
     opts.policy.validate()?;
+    if let Some(source) = responder.standard_history {
+        source
+            .validate()
+            .map_err(|e| RespondError::Invalid(e.to_string()))?;
+    }
     let now_text = book.now();
     if parse_utc(&now_text).is_none() {
         return Err(RespondError::Invalid(format!(
@@ -411,6 +423,7 @@ impl Run<'_, '_> {
             relationship,
             share: &self.opts.policy,
             derivations: self.responder.derivations,
+            standard_history: self.responder.standard_history.is_some(),
             uniform: policy.refusal_policy == RefusalPolicy::Uniform,
         };
         let mut view = View::of(book)?;
@@ -452,9 +465,12 @@ impl Run<'_, '_> {
         };
         let anchor = &view.checkpoints[anchor_at];
         let chain = anchor_at + 1;
-        let over = leaves.len() > max_items
-            || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
-                && chain > max_items;
+        // A card of counts whatever the history's length: the item cap
+        // bounds record lists, and the card lists none.
+        let over = !is_standard_history(&req)
+            && (leaves.len() > max_items
+                || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
+                    && chain > max_items);
         if over {
             return self.refuse(limit_reason(self.octets, self.binding), None);
         }
@@ -470,6 +486,12 @@ impl Run<'_, '_> {
                 issued_at: anchor.checkpoint.timestamp.clone(),
             })
         };
+        let standard_card = match self.responder.standard_history {
+            Some(source) if is_standard_history(&req) => {
+                Some(standard_card(source, &view, anchor_at, &leaves)?)
+            }
+            _ => None,
+        };
         let book: &B = book;
         let envelope = match answer::build(
             book,
@@ -484,6 +506,7 @@ impl Run<'_, '_> {
             Options {
                 derivations: Some(self.responder.derivations),
                 requester,
+                standard_card: standard_card.as_deref(),
                 ..Options::default()
             },
             self.responder.signer,
@@ -508,6 +531,36 @@ impl Run<'_, '_> {
         self.statement.artifact_digest = envelope.artifact_digest.clone();
         Ok(encode_envelope(&envelope, self.binding))
     }
+}
+
+fn is_standard_history(req: &Request) -> bool {
+    matches!(&req.derivation, Some(Derivation::Token(t)) if t == answer::DERIVATION_STANDARD_HISTORY)
+}
+
+/// The `standard_history/1` card as of the serving anchor, from the host's
+/// inputs over the servable records it covers (Go `standardHistoryCard`).
+fn standard_card(
+    source: &StandardHistorySource,
+    view: &View<'_>,
+    anchor_at: usize,
+    leaves: &[u64],
+) -> Result<Vec<u8>, RespondError> {
+    let held = leaves
+        .iter()
+        .map(|&leaf| {
+            let record = view.src.record_at(leaf)?;
+            let header = view.src.header_of(&record)?;
+            Some(HeldRecord { record, header })
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| RespondError::Invalid("a record the anchor covers cannot be read".into()))?;
+    source
+        .card(
+            &view.checkpoints[anchor_at],
+            &view.checkpoints[0].checkpoint.timestamp,
+            &held,
+        )
+        .map_err(|e| RespondError::Invalid(e.to_string()))
 }
 
 fn is_history_card(req: &Request) -> bool {
@@ -821,6 +874,8 @@ struct Gate<'a> {
     relationship: Relationship,
     share: &'a SharePolicy,
     derivations: &'a Derivations,
+    /// The host serves `standard_history/1`.
+    standard_history: bool,
     uniform: bool,
 }
 
@@ -1075,6 +1130,11 @@ fn decide_inner(
                 return Refuse(Reason::NoSuchSubject);
             }
         }
+        Some(Derivation::Token(t)) if t == answer::DERIVATION_STANDARD_HISTORY => {
+            if !gate.standard_history {
+                return Refuse(Reason::DerivationUnsupported);
+            }
+        }
         Some(Derivation::Token(_)) => return Refuse(Reason::DerivationUnsupported),
         Some(Derivation::Digest(id)) => match gate.derivations.get(id) {
             Some(r) => registered = Some(r),
@@ -1092,6 +1152,9 @@ fn decide_inner(
         if !r.declares(form) {
             return Refuse(gate.disclose(Reason::NoSuchSubject));
         }
+    }
+    if is_standard_history(req) && !matches!(req.subject, Subject::FullHistory) {
+        return Refuse(gate.disclose(Reason::NoSuchSubject));
     }
     let (anchor, half_pin) = match resolve_coverage(view, req, now, may_issue) {
         Ok(chosen) => chosen,
@@ -1116,6 +1179,12 @@ fn authorized(
         || is_history_card(req);
     if public {
         return true; // commitments only
+    }
+    if is_standard_history(req) {
+        // Counts only, the same for every requester it is answered to (SH
+        // §3): any authenticated requester, whatever the tier; never a
+        // stranger.
+        return gate.requester.is_some();
     }
     if let Some(recipient) = registered.and_then(Registered::recipient) {
         // The holder's grant to the one requester it names.
@@ -1438,6 +1507,7 @@ mod vectors {
             relationship: Relationship::Identified,
             share: &share,
             derivations: &derivations,
+            standard_history: false,
             uniform,
         };
         match decide(view, &req, &gate, &|_, _| true, now, may_issue) {

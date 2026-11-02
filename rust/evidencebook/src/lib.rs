@@ -79,6 +79,7 @@ pub mod seal;
 pub mod served_summary;
 #[cfg(feature = "shelf")]
 pub mod shelf;
+pub mod standard_history;
 pub mod staple;
 pub mod store;
 pub mod substrate;

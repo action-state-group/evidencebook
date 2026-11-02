@@ -34,6 +34,13 @@ reply, answered = book.respond(eb.Message(request_octets, eb.MEDIA_TYPE_JSON),
                                eb.RespondOptions(authenticated_requester=peer))
 ```
 
+A book answers `standard_history/1` (the standard card over `full_history`) to any
+authenticated requester when it is opened with
+`standard_history=eb.StandardHistorySource("person", inputs)`, where
+`inputs(anchor, records)` returns the policy in force at the anchor (`{"digest", "window"}`)
+and one deal entry per deal in `records`; `eb.staple(book, eb.DERIVATION_STANDARD_HISTORY)`
+then staples it. Without a source the derivation is `derivation_unsupported`.
+
 The records it seals:
 
 | Record type | Sealed by | Statement |

@@ -211,6 +211,7 @@ fn main() {
                 signer: &signer,
                 derivations: &derivations,
                 policy,
+                standard_history: None,
             };
             let opts = RespondOptions {
                 authenticated_requester: Some(requester),

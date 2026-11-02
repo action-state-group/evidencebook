@@ -161,6 +161,7 @@ fn main() {
         signer: &responder_signer,
         derivations: &derivations,
         policy: &policy,
+        standard_history: None,
     };
     let mut exchanges = Vec::new();
     let mut ask = |name: &str, requester: &str, deal: &str, derivation: &str, pin: &str| {

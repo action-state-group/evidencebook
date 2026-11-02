@@ -25,6 +25,11 @@ plain reason; a responder under the uniform refusal policy maps it. The
 request protocol itself, and checking a received envelope and
 its material, is the `evidence-request` crate's.
 
+`standard_history` derives the `standard_history/1` card and holds the host's
+inputs (`StandardHistorySource`): set on `Responder::standard_history`, `respond`
+answers the card over `full_history` to any authenticated requester, as the Go
+book does; `staple::staple_standard_history` staples it.
+
 `seal` builds a record's header and seals it as the Go book's record
 capsule and Producer Envelope, byte for byte, for a caller's `ask::Book` to
 store. It does not seal headers with field commitments, which `Header` does

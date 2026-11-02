@@ -1,7 +1,7 @@
 //! A History card stapled to the holder's own message (evidencebook#275):
 //! the check a reader runs on a staple it received, as the Go
-//! `CheckStaple` and the Python `check_staple` do, and a `history_card/1`
-//! staple built from a book.
+//! `CheckStaple` and the Python `check_staple` do, and a `history_card/1` or
+//! `standard_history/1` staple built from a book.
 //!
 //! A staple is the holder's own evidence request (subject, derivation,
 //! coverage pinned to its newest checkpoint, a fresh nonce) and the signed
@@ -397,11 +397,30 @@ pub struct Staple {
 
 /// Build a `history_card/1` staple from `book`, as of its newest checkpoint
 /// (cut now if the book grew past it), as Go's `Book.Staple` does. A public
-/// card grows no record. `standard_history/1` is not stapled here: this
-/// crate's responder does not answer it yet.
+/// card grows no record.
 pub fn staple_history_card<B: Book + CheckpointedLog>(
     book: &mut B,
     responder: &Responder<'_>,
+) -> Result<Staple, StapleError> {
+    staple_of(book, responder, DERIVATION_HISTORY_CARD)
+}
+
+/// Build a `standard_history/1` staple from `book`, as Go's `Book.Staple`
+/// does: the holder asks its own book as its own authenticated requester, so
+/// the answer is sealed as an `evidence_request_answered` record and the
+/// responder needs a [`StandardHistorySource`](crate::standard_history::StandardHistorySource).
+/// A responder without one refuses its own request.
+pub fn staple_standard_history<B: Book + CheckpointedLog>(
+    book: &mut B,
+    responder: &Responder<'_>,
+) -> Result<Staple, StapleError> {
+    staple_of(book, responder, DERIVATION_STANDARD_HISTORY)
+}
+
+fn staple_of<B: Book + CheckpointedLog>(
+    book: &mut B,
+    responder: &Responder<'_>,
+    derivation: &str,
 ) -> Result<Staple, StapleError> {
     let fail = |e: &dyn std::fmt::Display| StapleError(e.to_string());
     let covered = answer::anchors(book)
@@ -417,16 +436,24 @@ pub fn staple_history_card<B: Book + CheckpointedLog>(
     };
     let mut nonce = [0u8; 16];
     OsRng.fill_bytes(&mut nonce);
+    let subject = if derivation == DERIVATION_STANDARD_HISTORY {
+        json!({"full_history": null})
+    } else {
+        json!({"checkpoints": null})
+    };
     let request = jcs(&json!({
         "coverage": {"expected_pin": answer::anchor_digest(&newest)},
-        "derivation": DERIVATION_HISTORY_CARD,
+        "derivation": derivation,
         "nonce": hex::encode(nonce),
         "profile": PROFILE,
-        "subject": {"checkpoints": null},
+        "subject": subject,
     }))
     .map_err(|e| fail(&e))?;
+    // The holder answers itself; standard_history/1 is answered only to an
+    // authenticated requester.
+    let holder = hex::encode(responder.signer.verifying_key().to_bytes());
     let opts = RespondOptions {
-        authenticated_requester: None,
+        authenticated_requester: (derivation == DERIVATION_STANDARD_HISTORY).then_some(&holder),
         policy: SharePolicy::default(),
     };
     // The holder's own request is not counted by the limiter, which is for
@@ -441,11 +468,12 @@ pub fn staple_history_card<B: Book + CheckpointedLog>(
         signer: responder.signer,
         derivations: responder.derivations,
         policy: &own,
+        standard_history: responder.standard_history,
     };
     let (reply, _) =
         respond(book, &responder, &request, Binding::Json, &opts).map_err(|e| fail(&e))?;
     if !matches!(parse_reply(&reply, Binding::Json), Ok(Reply::Envelope(_))) {
-        return refuse("the book refused its own history_card/1 request");
+        return refuse(format!("the book refused its own {derivation} request"));
     }
     Ok(Staple { request, reply })
 }
