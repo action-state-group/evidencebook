@@ -38,7 +38,8 @@ Every Result is sealed, before its file is written, as a record of the deal's
 results book, deal/<deal_id>/results: a book of its own, never the deal's, so
 no copy of the deal carries it. The output names the record and its state:
 sealed (signed and checkpointed, its time this device's own clock),
-pending_witness, or witnessed. A run equal to the newest sealed Result in all but its
+pending_witness, witnessed, or unverified (a witness receipt is held but did not
+verify). A run equal to the newest sealed Result in all but its
 generated_at is a retry and seals nothing new; any other run seals a new
 record, and the book keeps both.
 
