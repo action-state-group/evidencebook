@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -813,3 +814,164 @@ def test_a_malformed_or_unknown_reproduction_marker_is_refused():
             Header.from_value({**base, "reproduction": marker})
     with pytest.raises(eb.InvalidError):
         Header.from_value({**base, "reproduction": {"clock": "wall"}}).validate()
+
+
+class _Stalling:
+    """A signer that stops the thread named ``stall`` inside its first
+    signature, as a slow answer is stopped partway."""
+
+    def __init__(self, inner: eb.Ed25519Signer):
+        self.inner = inner
+        self.stall = ""
+        self.stalled = threading.Event()
+        self.release = threading.Event()
+
+    def public_key(self) -> bytes:
+        return self.inner.public_key()
+
+    def sign(self, message: bytes) -> bytes:
+        if threading.current_thread().name == self.stall:
+            self.stalled.set()
+            assert self.release.wait(10)
+        return self.inner.sign(message)
+
+
+def test_an_answer_stopped_partway_blocks_no_writer(clock):
+    """evidencebook#217: respond answers from a snapshot, so an append and a
+    checkpoint run while an answer is stopped in the middle of signing it."""
+    signer = _Stalling(key("responder signer"))
+    b = eb.Book("responder", "responder-operator", signer=signer, log_id="responder-log",
+                log_key=key("responder log"), now=clock)
+    first = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    pin = b.checkpoint().anchor_digest
+    request = eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(expected_pin=pin))
+    message = eb.Book("asker", "asker-operator", signer=key("asker signer"), log_id="asker-log",
+                      log_key=key("asker log"), now=clock).request(request, "responder").message
+    signer.stall = "answerer"
+    answered: list = []
+    thread = threading.Thread(target=lambda: answered.append(b.respond(message, PEERS)), name="answerer")
+    thread.start()
+    try:
+        assert signer.stalled.wait(10)
+        before = b.size()
+        second = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-1"))
+        later = b.checkpoint()
+        assert second.seq == before + 1 and later.entries == b.size() > before
+    finally:
+        signer.release.set()
+        thread.join(10)
+    _, record = answered[0]
+    assert record is not None and record.header.record_type == eb.RECORD_TYPE_REQUEST_ANSWERED
+    assert record.seq == b.size()
+
+
+def _stalled_setup(clock):
+    signer = _Stalling(key("responder signer"))
+    b = eb.Book("responder", "responder-operator", signer=signer, log_id="responder-log",
+                log_key=key("responder log"), now=clock)
+    first = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    pin = b.checkpoint().anchor_digest
+    request = eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(expected_pin=pin))
+    message = eb.Book("asker", "asker-operator", signer=key("asker signer"), log_id="asker-log",
+                      log_key=key("asker log"), now=clock).request(request, "responder").message
+    return b, signer, message
+
+
+def test_close_waits_for_an_answer_in_progress(clock):
+    """As Go's Release takes the answering lock exclusively: closing mid-answer
+    waits, and the answer seals its record before the book is released."""
+    b, signer, message = _stalled_setup(clock)
+    signer.stall = "answerer"
+    answered: list = []
+    thread = threading.Thread(target=lambda: answered.append(b.respond(message, PEERS)), name="answerer")
+    thread.start()
+    closer = threading.Thread(target=b.close)
+    try:
+        assert signer.stalled.wait(10)
+        closer.start()
+        closer.join(0.3)
+        assert closer.is_alive()
+    finally:
+        signer.release.set()
+        thread.join(10)
+        closer.join(10)
+    assert answered[0][1] is not None and not closer.is_alive()
+    with pytest.raises(eb.ReleasedError):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+
+
+def test_an_answer_reads_the_snapshot_not_the_live_log(clock, monkeypatch):
+    """A record naming the requester a counterparty, and a checkpoint, land
+    after the snapshot is taken: the answer keeps its pinned anchor and the
+    requester's relationship from the snapshot (identified)."""
+    import evidencebook.book as bookmod
+
+    b = book(clock, "responder")
+    first = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    pin = b.checkpoint().anchor_digest
+    asker = book(clock, "asker")
+    request = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=pin))
+    message = asker.request(request, "responder").message
+    real = bookmod.read_request
+
+    def grow(m):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-1", counterparty_ref="alice"))
+        b.checkpoint()
+        return real(m)
+
+    monkeypatch.setattr(bookmod, "read_request", grow)
+    reply, record = b.respond(message, eb.RespondOptions(authenticated_requester="alice"))
+    assert record.header.statement["relationship"] == "identified"
+    assert record.header.statement["anchor"] == pin and first.seq == 1
+
+
+def test_a_floor_met_by_another_answers_anchor_issues_none(clock, monkeypatch):
+    """The floor is unmet at the snapshot, but an anchor meeting it lands
+    before this answer issues one: it issues none, and recomputes the
+    relationship from the new snapshot (counterparty)."""
+    import evidencebook.book as bookmod
+
+    b = book(clock, "responder")
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    b.checkpoint()
+    for i in range(2):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref=f"extra-{i}"))
+    asker = book(clock, "asker")
+    request = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=5))
+    message = asker.request(request, "responder").message
+    real = bookmod.read_request
+    issued: list[int] = []
+
+    def grow(m):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-late", counterparty_ref="alice"))
+        issued.append(b.checkpoint().entries)
+        return real(m)
+
+    monkeypatch.setattr(bookmod, "read_request", grow)
+    count = len(b.checkpoints())
+    _, record = b.respond(message, eb.RespondOptions(authenticated_requester="alice"))
+    assert len(b.checkpoints()) == count + 1 and record.header.statement["relationship"] == "counterparty"
+
+
+def test_a_waiting_close_holds_back_new_answers(clock):
+    b, signer, message = _stalled_setup(clock)
+    signer.stall = "answerer"
+    first = threading.Thread(target=lambda: b.respond(message, PEERS), name="answerer")
+    first.start()
+    assert signer.stalled.wait(10)
+    closer = threading.Thread(target=b.close)
+    closer.start()
+    closer.join(0.2)
+    second_done = threading.Event()
+    def late() -> None:
+        with pytest.raises(eb.ReleasedError):
+            b.respond(message, PEERS)
+        second_done.set()
+
+    second = threading.Thread(target=late)
+    second.start()
+    assert not second_done.wait(0.3)
+    signer.release.set()
+    for th in (first, closer, second):
+        th.join(10)
+    assert not closer.is_alive() and not second.is_alive()

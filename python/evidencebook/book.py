@@ -542,6 +542,10 @@ class Book:
         self._originals = originals
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._lock = threading.Lock()
+        # Answers in flight: close waits for them, as Go's Release does (answering).
+        self._idle = threading.Condition(self._lock)
+        self._answers = 0
+        self._closing = False
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
         # Whether each stored header has a statement member (the retention
@@ -690,13 +694,21 @@ class Book:
 
     def close(self) -> None:
         """Release the store. Every later write raises :class:`ReleasedError`."""
-        with self._lock:
-            if not self._released:
-                self._released = True
-                try:
-                    self._store.close()
-                finally:
-                    self._substrate.close()
+        with self._idle:
+            # New answers wait behind a close that is waiting, as Go's RWMutex
+            # holds back readers once a writer queues, so a flood cannot starve it.
+            self._closing = True
+            try:
+                self._idle.wait_for(lambda: self._answers == 0)
+                if not self._released:
+                    self._released = True
+                    try:
+                        self._store.close()
+                    finally:
+                        self._substrate.close()
+            finally:
+                self._closing = False
+                self._idle.notify_all()
 
     def append(self, entry: Entry) -> Record:
         """Seal ``entry`` as a record, store it with its payloads, and commit
@@ -1130,13 +1142,48 @@ class Book:
         options.policy.validate()
         if request.media_type not in (MEDIA_TYPE_JSON, MEDIA_TYPE_CBOR):
             raise InvalidError(f"a request is carried as {MEDIA_TYPE_JSON} or {MEDIA_TYPE_CBOR}, not {request.media_type!r}")
-        with self._lock:
+        # The answer is built from a snapshot of the log taken under the lock;
+        # the lock is held again only to read the clock, call the limiter,
+        # issue an anchor a freshness floor needs and seal the
+        # evidence_request_answered record, so a flood of requests never holds
+        # an append or checkpoint for longer than that (evidencebook#217,
+        # as Go's Book.Respond, #215).
+        with self._idle:
+            self._idle.wait_for(lambda: not self._closing)
+            self._answers += 1
+        try:
             answer = _Answer(self, request, options, own)
             reply = answer.run()
             if not answer.seal:
                 return reply, None
-            record = self._append(Entry(RECORD_TYPE_REQUEST_ANSWERED, OBSERVED_EVENT, statement=answer.statement))
+            with self._lock:
+                record = self._append(Entry(RECORD_TYPE_REQUEST_ANSWERED, OBSERVED_EVENT, statement=answer.statement))
             return reply, record
+        finally:
+            with self._idle:
+                self._answers -= 1
+                self._idle.notify_all()
+
+
+class _Snapshot:
+    """The book's log as one answer reads it: taken under the book's lock, it
+    holds every record, the stored forms and the checkpoints as they were at
+    one moment, so the anchors it resolves and the proofs built at them are
+    about records it holds, however far the log has grown since. The log is
+    append-only and the substrate's proofs at an anchor read nothing past it."""
+
+    def __init__(self, book: Book, derivations: dict | None = None):
+        self._order = list(book._order)
+        self._records = dict(book._records)
+        self._stored = dict(book._stored)
+        self._checkpoints = list(book._checkpoints)
+        # Taken once per answer, as Go clones them once (a registration made
+        # mid-answer is not seen by it).
+        self._derivations = dict(book._derivations) if derivations is None else derivations
+        self._standard_history = book._standard_history
+        self._responder = book._responder
+        self._signer = book._signer
+        self._substrate = book._substrate
 
     def _relationship(self, authenticated: str) -> str:
         if not authenticated:
@@ -1159,7 +1206,7 @@ def _detached(record: Record) -> Record:
 
 
 class _View:
-    """The book as the decision reads it, under the book's lock."""
+    """The book as the decision reads it, from one snapshot of its log."""
 
     def __init__(self, book: Book):
         self.book = book
@@ -1264,41 +1311,50 @@ class _Answer:
         self.own = own
         self.request = request
         self.options = options
-        self.now = utc(book._now())
+        with book._lock:
+            self.now = utc(book._now())
+            self.log = _Snapshot(book)
         self.digest = _digest(request.octets)
         self.statement: dict[str, Any] = {}
         self.seal = False
 
     def refuse(self, reason: str, detail: str = "") -> Reply:
-        signer = EvidenceSigner(self.book._signer)
+        signer = EvidenceSigner(self.log._signer)
         refusal = sign_refusal(self.digest, reason, signer=signer, issued_at=profile_time(self.now))
         self.statement["outcome"], self.statement["reason"] = OUTCOME_REFUSAL, reason
         return encode_refusal(refusal, self.request.media_type, detail)
 
     def run(self) -> Reply:
-        book, policy = self.book, self.book._responder
+        book, policy = self.book, self.log._responder
         requester = self.options.authenticated_requester
         # Cost policy first: an oversized or over-limit request is declined
         # before it is resolved; it is read only to pick the reason
         # (request_profile).
         if not self.own and len(self.request.octets) > (policy.max_request_bytes or DEFAULT_MAX_REQUEST_BYTES):
             return self.refuse(_limit_reason(request_profile(self.request)))
-        if not self.own and policy.limiter is not None and not policy.limiter.allow(requester, self.now):
-            return self.refuse(_limit_reason(request_profile(self.request)))
+        if not self.own and policy.limiter is not None:
+            # The limiter has always been called under the book's lock.
+            with book._lock:
+                allowed = policy.limiter.allow(requester, self.now)
+            if not allowed:
+                return self.refuse(_limit_reason(request_profile(self.request)))
         # The book answers evidence-interop/0 and /1, and an unknown
         # profile's detail lists both (§3.3 step 4).
         check = read_request(self.request)
         if check.reason:
             return self.refuse(check.reason, check.detail)
         req = check.request
-        relationship = book._relationship(requester)
+        relationship = self.log._relationship(requester)
         self.statement = {"request_digest": self.digest, "subject_kind": req.subject.form, "relationship": relationship}
         self.seal = relationship != RELATIONSHIP_STRANGER
-        view = _View(book)
+        view = _View(self.log)
         d = self._decide(view, req, may_issue=self.seal)
         if d.need_anchor:
-            book._checkpoint()
-            view = _View(book)
+            self._issue_anchor(req)
+            view = _View(self.log)
+            # The new snapshot may hold records sealed since the first, among
+            # them one naming the requester as a counterparty.
+            self.statement["relationship"] = self.log._relationship(requester)
             d = self._decide(view, req, may_issue=False)
             if d.need_anchor:
                 d = replace(d, reason=self._policy(view, req, False).disclose(REASON_COVERAGE_UNSATISFIABLE))
@@ -1311,7 +1367,7 @@ class _Answer:
         if built is None:
             return self.refuse(REASON_POLICY_DECLINED)
         artifact, material = built
-        if req.deadline is not None and nanos(utc(book._now())) > parse_ns(req.deadline):
+        if req.deadline is not None and nanos(utc(self._clock())) > parse_ns(req.deadline):
             return self.refuse(REASON_DEADLINE_UNMET)
         freshness: int | str | None = None
         floor = req.coverage.min_freshness
@@ -1319,15 +1375,34 @@ class _Answer:
             freshness = anchor.tree_size if isinstance(floor, int) else profile_time_ns(anchor.issued_at_ns)
         envelope = sign_envelope(
             self.request.octets, req.subject, req.coverage.expected_pin if d.half_pin else anchor.anchor_digest,
-            artifact, signer=EvidenceSigner(book._signer), issued_at=profile_time(self.now),
+            artifact, signer=EvidenceSigner(self.log._signer), issued_at=profile_time(self.now),
             derivation=req.derivation, freshness=freshness, verification=material, profile=req.profile,
         )
         self.statement.update(outcome=OUTCOME_ARTIFACT, anchor=envelope.anchor_digest,
                               artifact_digest=_digest(envelope.artifact))
         return encode_envelope(envelope, self.request.media_type)
 
+    def _clock(self) -> datetime:
+        """The book's clock, read under its lock as it has only ever been called."""
+        with self.book._lock:
+            return self.book._now()
+
+    def _issue_anchor(self, req: EvidenceRequest) -> None:
+        """Issue an anchor meeting the request's freshness floor unless one
+        already does (answers decide from their own snapshots, so several may
+        find the floor unmet at once and only the first issues one), then
+        take a new snapshot."""
+        book, floor = self.book, req.coverage.min_freshness
+        floor_time = parse_ns(floor) or 0 if isinstance(floor, str) else 0
+        with book._lock:
+            latest = next((cp for cp in reversed(book._checkpoints) if cp.kind == "cll"), None)
+            if latest is None or not _decide.anchor_meets(
+                    _decide.AnchorView(latest.anchor_digest, latest.entries, latest.issued_at_ns), floor, floor_time):
+                book._checkpoint()
+            self.log = _Snapshot(book, self.log._derivations)
+
     def _policy(self, view: _View, req: EvidenceRequest, may_issue: bool) -> _decide.Policy:
-        book = self.book
+        book = self.log
         requester = self.options.authenticated_requester
         relationship = self.statement.get("relationship", RELATIONSHIP_STRANGER)
         derivations = book._derivations
@@ -1370,7 +1445,7 @@ class _Answer:
         """The canonical Artifact and the material proving it, ``_OVER_LIMIT``
         when the answer has more items than the cost policy allows, or
         ``None`` when it fails the disclosure scan."""
-        book = self.book
+        book = self.log
         if req.derivation == DERIVATION_STANDARD_HISTORY:
             # A card of counts whatever the history's length: the item cap
             # bounds record lists, and the card lists none. It carries no
@@ -1415,7 +1490,7 @@ class _Answer:
         return artifact, []
 
     def _standard_history_card(self, view: _View, anchor: Checkpoint, leaves: Sequence[int]) -> bytes:
-        book = self.book
+        book = self.log
         source = book._standard_history
         records = [_detached(book._records[book._order[leaf]]) for leaf in leaves]
         policy, deals = source.inputs(anchor, records)
@@ -1427,7 +1502,7 @@ class _Answer:
         """The §6.2.1 material for the record at ``seq``: the anchor, the
         record's inclusion proof, and, when the anchor extends an earlier
         checkpoint, the proof that it does."""
-        substrate = self.book._substrate
+        substrate = self.log._substrate
         material = [(KIND_CLL_CHECKPOINT, anchor.statement),
                     (KIND_CLL_INCLUSION_PROOF, substrate.inclusion_proof(seq, anchor))]
         if anchor.prev_size > 0:
@@ -1442,15 +1517,15 @@ class _Answer:
         for i, cp in enumerate(chain):
             consistency = None
             if i > 0 and chain[i - 1].tree_size < cp.tree_size:
-                consistency = self.book._substrate.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
+                consistency = self.log._substrate.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
             history.append({"checkpoint": cp.statement.hex(), "consistency_from_previous": consistency})
         return history
 
     def _project(self, leaves: Sequence[int], definition: DerivationDefinition) -> list[dict]:
         records = []
         for leaf in leaves:
-            record_id = self.book._order[leaf]
-            fields = json.loads(self.book._stored[record_id].header)
+            record_id = self.log._order[leaf]
+            fields = json.loads(self.log._stored[record_id].header)
             entry: dict[str, Any] = {"digest": record_id, "leaf_index": leaf}
             for name in definition.fields:
                 if name in fields:
@@ -1462,7 +1537,7 @@ class _Answer:
         """The disclosure scan run on every artifact before release: only
         declared members, no principal or counterparty reference this book
         holds in any record body, and no bookkeeping record as an entry."""
-        book = self.book
+        book = self.log
         identities = set()
         for record_id in book._order:
             h = book._records[record_id].header
