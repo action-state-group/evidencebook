@@ -158,8 +158,10 @@ const DEAL_VIEW_WORDS = {
   "page.detail.unapproved": "{act} was taken without {who} yes",
   "page.detail.withheld": "steps are withheld from this copy",
   "page.detail.witness_both": "yours {mine}; theirs {theirs}",
+  "page.detail.witness_failed": "the witness's signature did not verify",
   "page.detail.witness_mine_only": "your book is {mine}; {other}",
   "page.detail.witness_other_absent": "no record of the other side's is here",
+  "page.detail.witness_other_did_not_verify": "the other side's witness signature did not verify",
   "page.detail.witness_other_failed": "the other side's record did not check",
   "page.detail.witness_other_none": "the other side's has no witness receipt",
   "page.detail.witness_other_unchecked": "the other side's is not checked",
@@ -243,6 +245,7 @@ const DEAL_VIEW_WORDS = {
   "page.proves.steps": "Every step listed here is in this deal's log and unchanged since it was sealed.",
   "page.proves.theirs": "Their record of {same} is in this file, signed with their key and stamped into their book, and this page checked it.",
   "page.proves.title": "What this receipt proves",
+  "page.rail.lightning_failed": "Lightning; its proof did not verify",
   "page.rail.lightning_final": "Lightning; {whose} wallet reported it final",
   "page.rail.lightning_proof": "Lightning; the payment's proof matches its invoice",
   "page.rail.lightning_sealed": "Lightning; its proof is sealed here, and this page can't check it yet",
@@ -624,8 +627,8 @@ const dealAfterYes = (steps) => {
 // The page holds no check of a rail's proof (a preimage is a digest, which
 // only the runtime may compute): a Lightning leg's proof is passed only when
 // the runtime's paymentPreimageCheck (viewer 0.10.0, capsule-viewer#214)
-// answers PASS for every settled leg; any other answer, or a runtime without
-// the check, leaves the line as it was. The band is
+// answers PASS for every settled leg; a FAIL reads failed; any other answer, or a
+// runtime without the check, leaves the line as it was. The band is
 // lightning-v0's "Band": the side's settled amounts summed, as
 // (currency, decade), decade = digits - assetScale - 1, never converted.
 const dealSettlement = async (steps) => {
@@ -648,15 +651,18 @@ const dealSettlement = async (steps) => {
     band = { currency, decade: sum === 0n ? null : String(sum).length - scale - 1 };
   }
   let proof = false;
+  let failed = false;
   if (rail === "lightning" && preimage === true && typeof EvidenceGraph.paymentPreimageCheck === "function") {
     try {
       const answers = await Promise.all(legs.map((s) => EvidenceGraph.paymentPreimageCheck(s.settlement.payment_ref, s.body.preimage)));
       proof = answers.every((a) => a === "PASS");
+      // A FAIL is the runtime's answer that the check ran and the proof does not match.
+      failed = answers.some((a) => a === "FAIL");
     } catch (e) {
       proof = false;
     }
   }
-  return { rail, legs: true, preimage, proof, band };
+  return { rail, legs: true, preimage, proof, failed, band };
 };
 
 // The cadence witness (F8.1): the runtime walks the bundle's
@@ -679,6 +685,7 @@ const dealWitnessText = (w) => {
     ? W("page.detail.witness_recorded_at", { witness: w.witness, time: at.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) })
     : W("page.detail.witness_recorded", { witness: w.witness });
 };
+const dealWitnessFailed = (w) => w !== undefined && w.status === "FAIL";
 const dealWitnessPassed = (w) => w !== undefined && w.status === "PASS" && typeof w.witness === "string" && w.witness !== "";
 
 // The band's words, as the History card names a size (capsule-viewer
@@ -1435,24 +1442,28 @@ const dealViewRender = (model, regions) => {
   const anyWitness = model.witnessed || (composed && [composed.shown, ...composed.also].some((t) => t && t.witnessed));
   // The witness line (F8.1): passed only from the runtime's check of the
   // cadence chain (readerCadenceWitness); no receipt at all is missing; a
-  // receipt the page could not check, or no check in this runtime, is as it was.
+  // receipt the page could not check, or no check in this runtime, is as it was; a FAIL (the check ran) is failed.
   const theirWitness = theirArtifact && theirArtifact.state === "verified" ? theirArtifact.cadence : undefined;
   const witnessLine = (label, mineWitness, theirWitnessToo) => {
     const mineOk = dealWitnessPassed(mineWitness);
     // No receipt in your book means no outside witness recorded it, whoever's the other side is.
     if (mineWitness && mineWitness.status === "NOT_PRESENT") return ["missing", label, ""];
+    // A FAIL is a check that ran and did not verify, never "can't check".
+    if (dealWitnessFailed(mineWitness)) return ["failed", label, W("page.detail.witness_failed")];
     if (!theirWitnessToo) {
       if (mineOk) return ["passed", label, dealWitnessText(mineWitness)];
     } else if (mineOk) {
       if (dealWitnessPassed(theirWitness)) return ["passed", label, W("page.detail.witness_both", { mine: dealWitnessText(mineWitness), theirs: dealWitnessText(theirWitness) })];
-      const other = !theirArtifact
+      const other = dealWitnessFailed(theirWitness)
+        ? W("page.detail.witness_other_did_not_verify")
+        : !theirArtifact
         ? W("page.detail.witness_other_absent")
         : theirArtifact.state !== "verified"
           ? W("page.detail.witness_other_failed")
           : theirWitness && theirWitness.status === "NOT_PRESENT"
             ? W("page.detail.witness_other_none")
             : W("page.detail.witness_other_unchecked");
-      return [theirWitness && theirWitness.status === "NOT_PRESENT" ? "missing" : "not checked", label, W("page.detail.witness_mine_only", { mine: dealWitnessText(mineWitness), other })];
+      return [dealWitnessFailed(theirWitness) ? "failed" : theirWitness && theirWitness.status === "NOT_PRESENT" ? "missing" : "not checked", label, W("page.detail.witness_mine_only", { mine: dealWitnessText(mineWitness), other })];
     }
     return [anyWitness ? "not checked" : "missing", label, anyWitness ? W("page.detail.witness_unchecked") : ""];
   };
@@ -1504,6 +1515,8 @@ const dealViewRender = (model, regions) => {
     : settled.rail === "lightning"
       ? settled.preimage === "withheld"
         ? W("page.rail.lightning_withheld")
+        : settled.failed
+        ? W("page.rail.lightning_failed")
         : settled.proof
         ? W("page.rail.lightning_proof")
         : settled.preimage
@@ -1514,7 +1527,7 @@ const dealViewRender = (model, regions) => {
         : W("page.rail.none");
   if (mineLines || (composed && !composed.mine)) recordLines.push(
     settled
-      ? [settled.proof ? "passed" : "not checked", W("page.line.settled"), settledWhose + railText + (settled.band ? ` · ${W("page.settled.size", { band: dealBandLabel(settled.band) })}` : "")]
+      ? [settled.proof ? "passed" : settled.failed ? "failed" : "not checked", W("page.line.settled"), settledWhose + railText + (settled.band ? ` · ${W("page.settled.size", { band: dealBandLabel(settled.band) })}` : "")]
       : ["missing", W("page.line.settled"), !unsettled ? W("page.settle.none") : unsettled.rail === "card" ? W("page.settle.card") : W("page.settle.other", { rail: String(unsettled.rail).replace(/_/g, " ") })],
   );
   const closed = mineLines && mineLines.close;
