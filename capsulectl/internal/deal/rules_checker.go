@@ -585,6 +585,13 @@ func (s *dealSession) rulesInput(ctx context.Context, capsuleID string, events [
 	// explicit, so a checker selects its rules without inferring the side.
 	input := map[string]interface{}{"schema": cli.ExternalCheckInput, "party_role": dealRole(events), "record": record, "history": history,
 		"history_scope": map[string]interface{}{"days": scope.Days, "max_records": rulesHistoryMax, "complete": scope.Complete}}
+	// rules_pin: on a profile that pins rules per role, the acting role's pin
+	// alone (never the other role's), so the checker selects the pack and
+	// digests the profile means for this side. Absent without roles, so a
+	// profile without them sends what it sent before.
+	if pin := rulesPin(s.p.RulesChecker, dealRole(events)); pin != nil {
+		input["rules_pin"] = pin
+	}
 	if task := taskAuthorityAt(events, ""); task != "" {
 		for _, se := range events {
 			if se.Digest == task && (se.Event.Kind == "task_authority" || se.Event.Approval != nil) {
@@ -613,6 +620,28 @@ func (s *dealSession) rulesInput(ctx context.Context, capsuleID string, events [
 	}
 	raw, err := json.Marshal(input)
 	return raw, scope, err
+}
+
+// rulesPin is the external-check input's rules_pin for the role the check
+// acts as: the pack its pin names and the definition digests its ruleset must
+// report one of (cli.ProfileRulesChecker.ForRole). nil when the profile pins
+// no roles, and when that pin names neither.
+func rulesPin(r cli.ProfileRulesChecker, role string) map[string]interface{} {
+	if len(r.Roles) == 0 {
+		return nil
+	}
+	pin := r.ForRole(role)
+	m := map[string]interface{}{}
+	if pin.Pack != "" {
+		m["pack"] = pin.Pack
+	}
+	if digests := pin.PinnedDigests(); len(digests) > 0 {
+		m["definition_digests"] = digests
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // acceptedProposalAt is, for the check of a seller's commit, the sealed `at`

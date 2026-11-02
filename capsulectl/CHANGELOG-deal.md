@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The rules checker is sent the acting role's pin (evidencebook-deal#66 part 2; needs
+  evidencebook v0.13.1): on a profile whose `rules_checker.roles` is set, the
+  `external-check-input/v0` gains `rules_pin` ({`pack`, `definition_digests`}), the acting
+  role's pin alone, never the other role's. A role entry that names a pack alone keeps
+  the flat digests; a role with no entry sends the flat pin with no pack; a pin that names
+  nothing sends no `rules_pin`. A profile without roles sends what it sent before.
+
 - An adjudicator's copy seals its referee (F8.3, evidencebook-deal#107; needs
   evidencebook v0.13.1): `disclose --deal ID --share adjudicator --to WHO` and
   `deal report --share adjudicator --to WHO` seal `WHO` as the report's `referee`
