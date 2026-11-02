@@ -1,6 +1,6 @@
 # evidencebook SDK guide
 
-This guide walks the SDK as five paths, in the order a developer meets them.
+This guide walks the SDK as six paths, in the order a developer meets them.
 Each path names the functions it uses and the runnable Go `Example` that shows
 it. The API reference is the package documentation on pkg.go.dev:
 
@@ -8,12 +8,12 @@ it. The API reference is the package documentation on pkg.go.dev:
 - [`github.com/action-state-group/evidencebook/report`](https://pkg.go.dev/github.com/action-state-group/evidencebook/report)
 
 Every Example below renders there with its output, from v0.9.0 for the root
-module and `report/v0.3.0` for the report module. Path 4's Example renders
-from the first release after v0.12.2. To run them from a
+module and `report/v0.3.0` for the report module. Path 4's and Path 5's
+Examples render from the first release after v0.12.2. To run them from a
 checkout:
 
 ```bash
-go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple' -v .
+go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple|Example_admitAPeer' -v .
 ```
 
 Path 4's Mesh History also runs in Rust, from `rust/`:
@@ -229,6 +229,50 @@ The same reference in other languages:
   [D4](design/254-shelf.md#9-one-way-doors)). Until it is, the staple joins
   the parties' halves of the deal, and each party's History is checked on
   its own.
+
+## Path 5: admit a peer
+
+A relying party decides whether to deal with a counterparty from the
+counterparty's History, under a policy it holds: an admission pack. The
+evaluator is capsule-engine's `admission` package
+([`go/v0.3.0`](https://pkg.go.dev/github.com/action-state-group/capsule-engine/go/admission));
+this SDK supplies the verified card going in and the book that keeps the
+decision coming out. The result is a verdict (GO, ASK, LIMIT or NO) and the
+rows behind it, each row one property of the record checked, not a
+reputation score.
+
+| Step | Function |
+|---|---|
+| receive and verify the staple | `CheckStaple` (presenter, request, card form), then the card's own properties with `standardhistory.Check` (agent-action-capsule) and, for a Mesh node's card, `inferencehistory.Evaluate`, as in path 4 |
+| the card as evaluator inputs | `admission.StandardHistoryCounts` reads a `standard_history/1` card's bands and disputes, `admission.InferenceServiceHistoryCounts` a Mesh node's served periods; the caller fills the rest of `admission.Inputs.Card` (freshness, witness, controller) from what it verified |
+| the pack | `admission.Load`, or `admission.LoadPinned` to refuse any pack but the one named by id and digest |
+| evaluate | `admission.Evaluate(pack, inputs)` returns the `Decision` |
+| an ASK | each `Decision.Asks` entry names the derivation to ask for and a deadline; `Book.Request` records the request and returns its octets to send, and `Book.RecordResponse` or `Book.RecordAbsence` (after the deadline) records what comes back (the requesting side of path 3) |
+| seal the decision | `Decision.Block` is the `admission_decision` block; `Book.Append` commits it as the book's record and `Book.Checkpoint` cuts a checkpoint over it |
+
+**What the builder writes.** The pack's rows and thresholds: which properties a
+deal of which value needs, the per-band ladder, the trust roots and the ask
+budget. `admission-baseline@1` is the baseline.
+
+**What the SDK computes.** The deal's value band and tier, whether the card is
+fresh as of the caller's clock, each row's count and denominator, and the
+asks. The evaluator reads nothing but its inputs: it fetches and verifies
+nothing, so a card that was not verified is passed as `unverifiable`, never
+guessed.
+
+Example: `Example (AdmitAPeer)` (`example_admit_test.go`). It runs
+`admission-baseline@1`'s fixtures (`testdata/admission-baseline/`, from
+capsule-engine) for a deal of 20,000 sat:
+
+- **GO.** `t1-stranger-climbs-on-its-own-card`: a stranger with a fresh,
+  witnessed card whose claims held (12 of 14) is admitted at tier T1.
+- **ASK.** `t1-no-card-asks`: with no card the deal is held at T0 and the
+  decision derives one request for `served_summary/1` within 86,400 seconds.
+- **LIMIT.** `t1-card-refused-limits`: the counterparty refused that ask, so
+  the deal is limited at T0. A refusal limits and never bans.
+
+It seals the GO decision in a book. The staple it verifies first is the
+`standard_history/1` vector of `testdata/staple/staples.json`.
 
 ## Other languages
 

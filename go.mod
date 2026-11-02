@@ -4,7 +4,8 @@ go 1.27.0
 
 require (
 	github.com/action-state-group/agent-action-capsule/go v0.20.1
-	github.com/action-state-group/capsule-emit/go v0.3.0
+	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
+	github.com/action-state-group/capsule-engine/go v0.3.0
 	github.com/action-state-group/checkpointed-local-log/go v0.3.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.9.0
@@ -30,6 +31,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sys v0.48.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
