@@ -3,14 +3,12 @@
 package report
 
 import (
-	"bytes"
 	"context"
 	stdhtml "html"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,19 +48,11 @@ func pageText(t *testing.T, html []byte) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-sandbox",
-		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--enable-logging=stderr", "--log-level=0", "--window-size=1280,1000", "--virtual-time-budget=30000",
+		"--user-data-dir="+filepath.Join(dir, "profile"), "--disable-dev-shm-usage", "--window-size=1280,1000", "--virtual-time-budget=30000",
 		"--dump-dom", "file://"+file)
 	cmd.Stdin = nil
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	require.NoError(t, err, "headless Chrome")
-	t.Logf("chrome stderr: %s", stderr.String())
-	if i := strings.Index(string(out), "presentation for this bundle failed"); i >= 0 {
-		t.Logf("raw DOM around the failure: %s", out[max(0, i-1500):min(len(out), i+500)])
-		version, _ := exec.Command(chrome, "--version").CombinedOutput()
-		t.Logf("browser: %s", version)
-	}
 	return visibleText(string(out))
 }
 
