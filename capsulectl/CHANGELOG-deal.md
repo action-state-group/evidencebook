@@ -28,6 +28,10 @@
   the flat digests; a role with no entry sends the flat pin with no pack; a pin that names
   nothing sends no `rules_pin`. A profile without roles sends what it sent before.
 
+- A sealed terms Result whose witness receipt is held but did not verify reports the
+  state `unverified` from `deal terms-result`, not `pending_witness`
+  (evidencebook-deal#122): a failed check is not a witness still to come.
+
 - A witness check that failed reads as such (evidencebook-deal#113,
   actionstate-muse#311 §3.3): a held witness receipt that does not verify under the
   profile's witness (a tampered receipt, one signed by another key, a rotated witness key or a changed

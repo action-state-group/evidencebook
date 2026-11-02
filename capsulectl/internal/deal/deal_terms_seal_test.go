@@ -340,6 +340,42 @@ func TestASealedResultIsWitnessedThroughTheCadence(t *testing.T) {
 	assert.Equal(t, "pass", status, "results book checkpoint -> tree path -> cadence entry -> witnessed cadence checkpoint")
 }
 
+// A witness receipt held for a sealed Result's book that does not verify under
+// the profile's witness seals as unverified, never as pending_witness
+// (evidencebook-deal#122).
+func TestASealedResultWithAFailedReceiptIsUnverifiedNotPending(t *testing.T) {
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	_, stranger, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	endpoint, _ := countingWitness(t)
+	p := cadenceFixture(t, endpoint, public, "1h", "0s", 0)
+	id := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
+	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, received))
+	buyer := thisDealParty(t)
+	dealFixture(t)
+	dealRun(t, "open", "--records", "typed", "--deal-id", id, "--input", writeJSON(t, sellerTyped))
+	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, received))
+	seller := thisDealParty(t)
+	response := recordedCopy(t, buyer, seller, id)
+	party(t, seller.config)
+	sellerFile := discloseTo(t, id, "the buyer")
+	party(t, buyer.config)
+
+	summary, _, _, err := runTermsResult(t, id, response, "--openings", sellerFile)
+	require.NoError(t, err)
+	assert.Equal(t, termsPendingWitness, sealedOf(t, summary)["state"], "sealed, not yet in a witnessed tick")
+
+	require.Equal(t, "ticked", dealRun(t, "tick")["state"])
+	deliver(t, p, cadenceSize(t, p), stranger)
+	path := filepath.Join(t.TempDir(), "share.json")
+	out, err := invoke(t, "", "--profile", "deal", "deal", "terms-result", "--deal", id, "--share", "counterparty", "--recipient", "the seller", "--out", path)
+	require.NoError(t, err, out)
+	var shared map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &shared))
+	assert.Equal(t, termsUnverified, shared["state"], "a held receipt that did not verify is not pending")
+}
+
 // A run that seals and then fails to write its file still reports the
 // record, and its retry seals nothing new.
 func TestASealedResultSurvivesAFailedWrite(t *testing.T) {
@@ -464,4 +500,23 @@ func TestAShareOfNoResultLeavesNoBook(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, books, dealResultsLogID(pair.id))
 	})
+}
+
+// termsWitnessState reads a failed check, at the top or in the unwitnessed
+// rest of a partly witnessed book, as unverified (evidencebook-deal#122).
+func TestTermsWitnessStateNamesAFailedCheck(t *testing.T) {
+	for name, tc := range map[string]struct {
+		cadence map[string]interface{}
+		want    string
+	}{
+		"not configured":  {map[string]interface{}{"state": "not_configured"}, termsSealed},
+		"scheduled":       {map[string]interface{}{"state": "scheduled"}, termsPendingWitness},
+		"pending":         {map[string]interface{}{"state": "pending"}, termsPendingWitness},
+		"unverified":      {map[string]interface{}{"state": "unverified"}, termsUnverified},
+		"witnessed":       {map[string]interface{}{"state": "witnessed", "extent": "all"}, termsWitnessed},
+		"part, rest ok":   {map[string]interface{}{"state": "witnessed", "extent": "part", "rest": map[string]interface{}{"state": "scheduled"}}, termsPendingWitness},
+		"part, rest fail": {map[string]interface{}{"state": "witnessed", "extent": "part", "rest": map[string]interface{}{"state": "unverified"}}, termsUnverified},
+	} {
+		assert.Equal(t, tc.want, termsWitnessState(tc.cadence), name)
+	}
 }

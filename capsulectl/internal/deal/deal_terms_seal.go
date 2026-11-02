@@ -31,9 +31,12 @@ import (
 
 // Witness states of a sealed Result (7.2): signed and under the results
 // book's local checkpoint, its time the producer's own clock; in a tick the
-// witness has not yet answered for; or covered by a witnessed tick.
+// witness has not yet answered for; covered by a witnessed tick; or with a
+// witness receipt held that did not verify (a failed check, never reported as
+// pending).
 const (
 	termsSealed         = "sealed"
+	termsUnverified     = "unverified"
 	termsPendingWitness = "pending_witness"
 	termsWitnessed      = "witnessed"
 )
@@ -233,9 +236,12 @@ func (s *dealSession) sealTermsResult(ctx context.Context, dealID string, result
 // termsWitnessState names a results book checkpoint's witness state for a
 // sealed Result.
 func termsWitnessState(cadence map[string]interface{}) string {
+	rest, _ := cadence["rest"].(map[string]interface{})
 	switch {
 	case cadence["state"] == "not_configured":
 		return termsSealed
+	case cadence["state"] == "unverified", rest["state"] == "unverified":
+		return termsUnverified
 	case cadence["extent"] == "all":
 		return termsWitnessed
 	}
@@ -275,7 +281,8 @@ func (s *dealSession) resultsBundle(ctx context.Context, dealID, root string, wi
 // logWitnessState is where a checkpoint of one of the profile's logs stands
 // with the witness, through the cadence log: dealWitnessState for a log that
 // is not a deal, so with no step counts. not_configured, scheduled, pending,
-// or the cadence chain a verifier needs; a chain whose extent is "part"
+// unverified (a receipt is held but does not verify; it can also be the rest
+// of a partly witnessed chain), or the cadence chain a verifier needs; a chain whose extent is "part"
 // covers an earlier checkpoint, and carries what is not yet witnessed as
 // rest.
 func (s *dealSession) logWitnessState(ctx context.Context, logID string, statement []byte) (map[string]interface{}, error) {
