@@ -1106,6 +1106,14 @@ def test_a_half_always_carries_the_book_card_and_the_standard_card_only_on_reque
     full[gn.HISTORY_STAPLE_MEMBER] = full[gn.HISTORY_CARD_MEMBER]
     with pytest.raises(gn.Refused):
         gn.verify_half(full, buyer.checkpoint_key_id)
+    # a card of another book, or as of another checkpoint, is not this half's
+    other = "deal-" + "ab" * 8
+    chain2 = buyer.new_deal(other, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain2, chain2.open(clock.at, "buy"))
+    full = buyer.half(DEAL)
+    full[gn.HISTORY_CARD_MEMBER] = buyer.half(other)[gn.HISTORY_CARD_MEMBER]
+    with pytest.raises(gn.Refused, match="book card"):
+        gn.verify_half(full, buyer.checkpoint_key_id)
     full = buyer.half(DEAL)
     full[gn.HISTORY_CARD_MEMBER] = buyer.history_staple()
     with pytest.raises(gn.Refused):

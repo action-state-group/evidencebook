@@ -214,6 +214,12 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     history = verify_history_staple(half[HISTORY_STAPLE_MEMBER], key_id) if HISTORY_STAPLE_MEMBER in half else None
     book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD) \
         if HISTORY_CARD_MEMBER in half else None
+    if book_card is not None:
+        # check_staple leaves the anchor and the checkpoint key to the reader: the card is this half's book,
+        # as of the half's checkpoint, under the counterparty's pinned checkpoint key
+        if book_card["anchor"] != hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest() \
+                or read_checkpoint(bytes.fromhex(book_card["card"]["history"][0]["checkpoint"])).key_id != checkpoint_key_id:
+            raise Refused("the half's book card is not as of the half's checkpoint under the counterparty's checkpoint key")
     closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
     final = closes[-1]["capsule"] if closes else None
     return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history, "book_card": book_card,
@@ -426,8 +432,7 @@ class Node:
     """One Goose node's shelf. Open it with :meth:`open`; one process holds
     a home at a time (the shelf's writer lock)."""
 
-    def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None,
-                 ):
+    def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None):
         self.home, self.operator, self.developer = home, operator, developer
         self._witnesses, self._witness_client = witnesses, witness_client
         self._now = now or (lambda: datetime.now(timezone.utc))
@@ -879,7 +884,7 @@ class Node:
         chain = self.deal(deal_id)
         if chain._has(deal.TYPE_CLOSE):
             raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id)["checkpoint"]["statement"])).hexdigest()
+        shared = hashlib.sha256(self.book_checkpoint(f"deal/{deal_id}")).hexdigest()
         return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
                          subject_ref=deal_id)
 
