@@ -56,15 +56,15 @@ def nodes(tmp_path, clock):
     seller.close()
 
 
-def paid(buyer: gn.Node, seller: gn.Node, clock: Clock) -> None:
+def paid(buyer: gn.Node, seller: gn.Node, clock: Clock, deal_id: str = DEAL, terms: dr.Terms = TERMS) -> None:
     """One deal up to the buyer's payment and the seller's commit, not closed."""
-    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    chain = buyer.new_deal(deal_id, dr.ROLE_BUYER, seller.key_id, terms)
     buyer.seal(chain, chain.open(clock.at, "buy 1k tokens"))
-    opened = gn.verify_half(buyer.half(DEAL), buyer.checkpoint_key_id)
-    chain = seller.new_deal(DEAL, dr.ROLE_SELLER, buyer.key_id, TERMS)
+    opened = gn.verify_half(buyer.half(deal_id), buyer.checkpoint_key_id)
+    chain = seller.new_deal(deal_id, dr.ROLE_SELLER, buyer.key_id, terms)
     seller.seal(chain, chain.respond(clock.at, "sell 1k tokens", opened["records"][-1]["digest"]))
     clock.at += timedelta(seconds=10)
-    chain = buyer.deal(DEAL)
+    chain = buyer.deal(deal_id)
     buyer.seal(chain, chain.check_and_pay(clock.at, "ln:payment-hash"))
     clock.at += timedelta(seconds=10)
 
@@ -1022,6 +1022,18 @@ def test_a_node_discloses_its_own_count_of_final_settlements_on_a_rail(nodes, cl
         Ed25519PublicKey.from_public_bytes(bytes.fromhex(node.key_id)).verify(
             raw, jcs({k: v for k, v in doc.items() if k != "sig"}))
         assert st.disclosure(node, "mock", 1)["settlements"] == 0  # another rail: none
+
+
+def test_a_disclosure_counts_only_the_asked_rail_never_the_whole_book(nodes, clock):
+    """Sherlock2's condition on #408: a count for a rail must not disclose the node's total payment volume."""
+    import settlement as st
+
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    paid(buyer, seller, clock, "deal-fedcba9876543210", dr.Terms("inference: 1k tokens", 500, "USD", "mock", False))
+    assert st.settled_deals(buyer, "lightning") == [DEAL]
+    assert st.settled_deals(buyer, "mock") == ["deal-fedcba9876543210"]
+    assert [st.disclosure(buyer, r, 0)["settlements"] for r in ("lightning", "mock", "other")] == [1, 1, 0]
 
 
 def test_a_buyer_counts_what_it_paid_and_a_seller_what_it_received(nodes, clock):

@@ -9,6 +9,9 @@ rail (``recourse.rail``) and, for a buyer, its own book holds the ``pay`` act (t
 paid, whatever the outcome later says), for a seller, its own steps close it ``received`` (the only settlement
 evidence a seller's book holds). The count covers every book the node holds when it is called, so
 ``through_sequence`` is a label, not a filter: the caller passes the rail's latest ledger sequence it observed.
+The count is scoped to the asked rail: deals on any other rail never enter it, so a disclosure never reveals the
+node's total payment volume across rails (Sherlock2's condition on capsule-emit#408; pinned by
+``test_a_disclosure_counts_only_the_asked_rail_never_the_whole_book``).
 This tool reads no rail and moves no money.
 """
 from __future__ import annotations
