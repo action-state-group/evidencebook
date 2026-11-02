@@ -232,3 +232,9 @@ def test_evaluate_decides_every_shared_vector_with_the_released_engine() -> None
         d = evidence.evaluate(Path(vec) / c["pack"], c["input"])
         want = c["expected"]
         assert (d.verdict, d.source, d.tier, d.block_sha256) == (want["verdict"], want["source"], want["tier"], want["block_sha256"]), c["case"]
+
+
+def test_evaluate_unserializable_input_raises_evaluate_error(fake_engine) -> None:
+    with pytest.raises(evidence.EvaluateError, match="unusable"):
+        evidence.evaluate({}, {"now": object()}, engine=fake_engine)
+    assert evidence.evaluate({}, bytearray(b"{}"), engine=fake_engine).verdict == "GO"

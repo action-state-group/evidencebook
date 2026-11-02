@@ -104,7 +104,7 @@ class EvaluateError(Exception):
 ENGINE_ENV = "CAPSULE_ENGINE"
 
 
-def evaluate(pack: str | os.PathLike[str] | bytes | Mapping[str, Any], card: Mapping[str, Any] | bytes, *,
+def evaluate(pack: str | os.PathLike[str] | bytes | Mapping[str, Any], inputs: Mapping[str, Any] | bytes | bytearray, *,
              pack_id: str | None = None, digest: str | None = None, engine: str | None = None,
              timeout: float = 30.0) -> Decision:
     """Decide admission under an admission pack. Wraps the released
@@ -112,21 +112,24 @@ def evaluate(pack: str | os.PathLike[str] | bytes | Mapping[str, Any], card: Map
     capsule-engine#278); the evaluator is not reimplemented here.
 
     ``pack`` is a compiled ``pack-definition.json``: a path, its bytes or the
-    parsed object. ``card`` is the engine's input (the ``input`` of a
-    conformance vector, ``admission.DecodeInputs``): the parsed object or its
-    JSON bytes. With ``pack_id`` and ``digest`` the pack must be exactly that
+    parsed object. ``inputs`` is the engine's Inputs (the ``input`` of a
+    conformance vector, ``admission.DecodeInputs``), not a History or staple:
+    the parsed object or its JSON bytes. With ``pack_id`` and ``digest`` the pack must be exactly that
     pack. ``engine`` is the binary (default: ``$CAPSULE_ENGINE``, else
     ``capsule-engine`` on ``PATH``). A decision of any verdict is returned;
     :class:`EvaluateError` means none was made."""
     exe = engine or os.environ.get(ENGINE_ENV) or "capsule-engine"
-    data = card if isinstance(card, bytes) else json.dumps(card).encode()
     with tempfile.TemporaryDirectory() as d:
-        if isinstance(pack, (str, os.PathLike)):
-            path = os.fspath(pack)
-        else:
-            path = os.path.join(d, "pack-definition.json")
-            with open(path, "wb") as f:
-                f.write(pack if isinstance(pack, bytes) else json.dumps(pack).encode())
+        try:
+            data = bytes(inputs) if isinstance(inputs, (bytes, bytearray)) else json.dumps(inputs).encode()
+            if isinstance(pack, (str, os.PathLike)):
+                path = os.fspath(pack)
+            else:
+                path = os.path.join(d, "pack-definition.json")
+                with open(path, "wb") as f:
+                    f.write(pack if isinstance(pack, bytes) else json.dumps(pack).encode())
+        except (TypeError, ValueError) as e:
+            raise EvaluateError(f"unusable pack or inputs: {e}") from e
         cmd = [exe, "admission", "evaluate", "--pack", path]
         if pack_id is not None or digest is not None:
             cmd += ["--pack-id", pack_id or "", "--digest", digest or ""]
