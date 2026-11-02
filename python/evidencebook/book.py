@@ -1631,7 +1631,8 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
     """A checkpoints or history_card/1 artifact is its own material: every
     checkpoint signed under the pinned key for one log, sizes strictly
     growing, each consistency proof a history card carries reaching the next
-    commitment, and the last checkpoint the envelope's anchor, whose
+    commitment and each history entry's signed prev_size and prev_root naming
+    the entry before, and the last checkpoint the envelope's anchor, whose
     statement it returns."""
     fields = _json_object(e.artifact)
     card = isinstance(fields.get("history"), list)
@@ -1653,6 +1654,9 @@ def _verify_checkpoint_chain(e: Envelope, checkpoint_key: str) -> bytes:
         if previous is not None:
             if cp.log_id != previous.log_id or cp.tree_size <= previous.tree_size:
                 raise InvalidError(f"anchor_inclusion: checkpoint {i} does not extend the log")
+            if card and (cp.prev_size != previous.tree_size or cp.prev_peaks != previous.peaks):
+                raise InvalidError(
+                    f"anchor_inclusion: checkpoint {i}'s signed prev_size and prev_root are not checkpoint {i - 1}'s")
             if isinstance(proof, str) and proof:
                 octets = strict_hex(proof)
                 if octets is None:

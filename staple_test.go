@@ -226,6 +226,12 @@ func writeStapleVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A third checkpoint, so the card has a middle entry to leave out.
+	mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent})
+	if _, err := book.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent})
 	card, err := book.Staple(ctx, DerivationHistoryCard)
 	if err != nil {
 		t.Fatal(err)
@@ -277,6 +283,15 @@ func writeStapleVectors(t *testing.T) {
 			c["subject"] = map[string]any{"full_history": nil}
 		}), holder, false, cc),
 		duplicateMember(t, book, card, holder),
+		vector("a history card whose checkpoints skip one", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			h := c["history"].([]any)
+			c["history"] = append(h[:1:1], h[2:]...)
+		}), holder, false, cc),
+		vector("a history card with a consistency proof that does not verify", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
+			e := c["history"].([]any)[1].(map[string]any)
+			proof := e["consistency_from_previous"].(string)
+			e["consistency_from_previous"] = proof[:len(proof)-1] + string("0123456789abcdef"[(strings.IndexByte("0123456789abcdef", proof[len(proof)-1])+1)%16])
+		}), holder, false, cc),
 		vector("a history card entry with more than a checkpoint", card.Request, widened(t, book, card.Reply, func(c map[string]any) {
 			c["history"].([]any)[0].(map[string]any)["record"] = "a record body"
 		}), holder, false, cc),

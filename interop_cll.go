@@ -121,6 +121,7 @@ func cllMaterial(prover *cllProver, seq uint64) ([]VerificationEntry, [][]byte, 
 type signedCheckpoint struct {
 	Checkpoint
 	prevSize       uint64
+	prevRoot       string
 	commitment     [][]byte
 	prevCommitment [][]byte
 }
@@ -139,7 +140,7 @@ func readSignedCheckpoint(statement []byte, pinnedKey string) (signedCheckpoint,
 	if err != nil {
 		return signedCheckpoint{}, fmt.Errorf("%w: checkpoint: %v", ErrInvalid, err)
 	}
-	return signedCheckpoint{Checkpoint: cp, prevSize: record.PrevSize, commitment: record.NewPeaks, prevCommitment: record.PrevPeaks}, nil
+	return signedCheckpoint{Checkpoint: cp, prevSize: record.PrevSize, prevRoot: record.PrevRoot, commitment: record.NewPeaks, prevCommitment: record.PrevPeaks}, nil
 }
 
 // checkCLLInclusion runs the inclusion and consistency steps of the

@@ -456,7 +456,8 @@ func verifyRecordInclusion(e Envelope, checkpointKey string) ([]byte, error) {
 // verifyCheckpointChain checks a checkpoints or history_card/1 artifact,
 // which is its own verification material (ER §4.1): every checkpoint signed
 // under the pinned key for one log, sizes strictly growing, each consistency
-// proof present in a history card reaching the next commitment, and the
+// proof present in a history card reaching the next commitment and each
+// history entry's signed prev_size and prev_root naming the entry before, and the
 // last checkpoint the envelope's anchor, whose statement it returns.
 func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 	artifact, err := evidencerequest.DecodeJSON(e.Artifact)
@@ -496,6 +497,9 @@ func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 		if i > 0 {
 			if cp.LogID != previous.LogID || cp.TreeSize <= previous.TreeSize {
 				return nil, fmt.Errorf("%w: anchor_inclusion: checkpoint %d does not extend the log", ErrInvalid, i)
+			}
+			if _, isCard := fields["history"]; isCard && (cp.prevSize != previous.TreeSize || cp.prevRoot != previous.Root) {
+				return nil, fmt.Errorf("%w: anchor_inclusion: checkpoint %d's signed prev_size and prev_root are not checkpoint %d's", ErrInvalid, i, i-1)
 			}
 			if proofs[i] != "" {
 				proof, err := hex.DecodeString(proofs[i])

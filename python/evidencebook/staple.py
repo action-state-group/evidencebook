@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from agent_action_capsule import standard_history as sh
 from agent_action_capsule.evidence_request import VerificationError
 
+from ._cll import read_checkpoint
+from .book import _verify_checkpoint_chain
 from .errors import InvalidError
 from .request import (
     DERIVATION_HISTORY_CARD,
@@ -126,6 +128,7 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
         raise InvalidError("the staple's envelope names another profile")
     if req.derivation == DERIVATION_HISTORY_CARD:
         _history_card_form(e.artifact, e.anchor_digest)
+        _history_card_chain(e)
     if req.derivation == DERIVATION_STANDARD_HISTORY:
         try:
             card = strict_json(e.artifact)
@@ -137,6 +140,19 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     return StapleCheck(req.derivation, e.anchor_digest, req.nonce, e.issued_at, e.artifact)
 
 
+def _history_card_chain(e) -> None:
+    """The card's checkpoints form one chain, as Go's ``historyCardChain``
+    checks it: every checkpoint signed under the key of the first, one log,
+    each entry's signed prev_size and prev_root the one before's, each
+    consistency proof reaching the next commitment. The checkpoint key is the
+    reader's to judge, so the first checkpoint names it."""
+    first = read_checkpoint(bytes.fromhex(strict_json(e.artifact)["history"][0]["checkpoint"]))
+    try:
+        _verify_checkpoint_chain(e, first.key_id)
+    except InvalidError as exc:
+        raise InvalidError(f"the stapled history_card/1's checkpoints are not one chain: {exc}") from None
+
+
 _LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
 
 
@@ -146,7 +162,7 @@ def _history_card_form(artifact: bytes, anchor: str) -> None:
     evidence_stream, history and subject; each history entry exactly a
     checkpoint and the consistency proof from the one before (null for the
     first), as lowercase hex; the last checkpoint is the anchor. No
-    signature or proof is checked: the checkpoint key is the reader's."""
+    signature or proof is checked here: ``_history_card_chain`` does."""
     def bad(why: str) -> InvalidError:
         return InvalidError(f"the stapled history_card/1 {why}")
     try:
