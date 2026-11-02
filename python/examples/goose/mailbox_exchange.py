@@ -191,7 +191,7 @@ def poll(node: gn.Node, request_event_id: str, relay_factory: Any = None,
     if outcome is None:
         with node._lock:
             outcome = book.record_absence(request_record, deadline, mb.nprofile(asked["mailbox_key"], asked["relays"]))
-    seen = {st["reply_event_id"] for _, st in node.notes(LATE)}
+    seen = {st["reply_event_id"] for _, st in node.notes(LATE) if st["request_event_id"] == request_event_id}
     late = None
     for reply in replies:
         octets = mb.decode(reply.content) or b""

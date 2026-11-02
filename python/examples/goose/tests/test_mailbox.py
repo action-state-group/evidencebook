@@ -251,3 +251,17 @@ def test_the_tools_advertise_poll_and_ask_through_the_mailbox(tmp_path, monkeypa
         if ls._node is not None:
             ls._node.close()
             ls._node = None
+
+
+def test_a_late_reply_to_one_request_does_not_mark_another_request_late(nodes, relay, factory, clock):
+    asker, asked = nodes
+    doc = advertise(asked)
+    first = mx.ask(asker, doc, "checkpoints", min_freshness=0, relay_factory=factory, now=clock)
+    clock.advance(hours=2)
+    mx.answer_round(asked, [WSS], factory)
+    assert mx.poll(asker, first["request_event_id"], factory, clock)["late"] is True
+    second = mx.ask(asker, doc, "full_history", derivation="history_card/1", min_freshness=0, relay_factory=factory,
+                    now=clock)
+    clock.advance(hours=2)
+    got = mx.poll(asker, second["request_event_id"], factory, clock)
+    assert got["status"] == "absent" and got["late"] is False and "late_record_id" not in got
