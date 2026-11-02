@@ -301,9 +301,12 @@ exchanges served):
   and a `not_read` row limits the deal the same way: a node with enough weeks
   would still be limited here until the caller supplies receipts.
 
-A card that the History check rejected, or that
-`InferenceServiceHistoryCounts` refuses, goes in as `CardUnverifiable` with the
-refused property as `Card.Reason`; the `Example` sets the state that way.
+A card the History check rejected, or that `InferenceServiceHistoryCounts`
+refuses, goes in as `CardUnverifiable`, never guessed. When the counts reader
+refuses it, the refused property is `Card.Reason` (a wrong `expected_pin`
+gives `anchor_match`) and the `card-verified` row records it. The `Example`
+runs both: a 12 USD deal on such a card is asked for a new card (ASK at T0)
+and the 5 USD deal is unchanged.
 
 ## Other languages
 

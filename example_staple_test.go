@@ -410,6 +410,19 @@ func Example_staple() {
 	for _, line := range admitMeshNode(answer, boundary.Add(time.Hour)) {
 		fmt.Println(line)
 	}
+	// An answer the History check rejected, or whose pin is not the one the
+	// request sent, is unverifiable: card-verified fails and the 12 USD deal
+	// asks for a new card (ASK at T0); the 5 USD deal needs no card.
+	rejected, repinned := answer, answer
+	rejected.accepted = false
+	repinned.pin = strings.Repeat("0", 64)
+	for _, bad := range []meshAnswer{rejected, repinned} {
+		for _, line := range admitMeshNode(bad, boundary.Add(time.Hour)) {
+			if strings.HasPrefix(line, "mesh/node") || strings.Contains(line, "card-verified") {
+				fmt.Println(line)
+			}
+		}
+	}
 
 	// Goose's History: standard_history/1 as of a cadence tick, each book
 	// bounded by the checkpoint the tick carries, one deal entry per deal
@@ -558,6 +571,12 @@ func Example_staple() {
 	//   served-periods fail (1 of 4, self-reported)
 	//   witness-receipts not_read
 	//   coverage stream_interval, population NOT_CHECKED
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	// mesh/node, a 12 USD deal: ASK at T0, decided by rows
+	//   card-verified fail
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	// mesh/node, a 12 USD deal: ASK at T0, decided by rows
+	//   card-verified fail (anchor_match)
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass

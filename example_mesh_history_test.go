@@ -443,6 +443,9 @@ func admitMeshNode(answer meshAnswer, now time.Time) []string {
 		lines = append(lines, fmt.Sprintf("mesh/node, a %s USD deal: %s at %s, decided by %s", amount, d.Verdict, d.Tier, d.Source))
 		for _, r := range d.Rows {
 			line := "  " + r.Row + " " + r.Result
+			if r.Reason != "" {
+				line += " (" + r.Reason + ")"
+			}
 			if r.Row == "served-periods" && r.Count != nil && r.Denominator != nil {
 				line += fmt.Sprintf(" (%d of %d, self-reported)", *r.Count, *r.Denominator)
 			}
