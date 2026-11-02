@@ -675,6 +675,57 @@ fn a_cbor_request_is_answered_in_cbor() {
     assert_eq!(reason(&reply), Reason::RequestMalformed);
 }
 
+/// Profile §5.2 (agent-action-capsule go v0.20.0): a CBOR request is read only
+/// in core deterministic encoding, so a request with a non-minimal length head
+/// is refused as `request_malformed`, digested as received.
+#[test]
+fn a_non_deterministic_cbor_request_is_refused_over_its_octets() {
+    use ciborium::Value as C;
+    let (mut b, ids) = book();
+    let policy = ResponderPolicy::default();
+    let text = |s: &str| C::Text(s.into());
+    let mut deterministic = Vec::new();
+    ciborium::into_writer(
+        &C::Map(vec![
+            (text("nonce"), text("n")),
+            (
+                text("subject"),
+                C::Map(vec![(text("record"), text(&ids[0]))]),
+            ),
+            (
+                text("coverage"),
+                C::Map(vec![(text("expected_pin"), text(&b.pin(1)))]),
+            ),
+        ]),
+        &mut deterministic,
+    )
+    .unwrap();
+    let (reply, _) = run(
+        &mut b,
+        &policy,
+        &deterministic,
+        Binding::Cbor,
+        &ask(Some("alice")),
+    );
+    assert!(
+        matches!(reply, Reply::Envelope(_)),
+        "the deterministic form is answered"
+    );
+    // The same map with a non-minimal length head for its first key.
+    let loose = [
+        &[deterministic[0], 0x78, deterministic[1] - 0x60][..],
+        &deterministic[2..],
+    ]
+    .concat();
+    let (reply, sealed) = run(&mut b, &policy, &loose, Binding::Cbor, &ask(Some("alice")));
+    assert_eq!(reason(&reply), Reason::RequestMalformed);
+    let Reply::Refusal(r) = &reply else {
+        unreachable!()
+    };
+    assert_eq!(r["request_digest"], hex::encode(Sha256::digest(&loose)));
+    assert!(sealed.is_none());
+}
+
 #[test]
 fn the_cost_policy_declines_before_any_work() {
     let (mut b, ids) = book();

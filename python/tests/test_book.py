@@ -261,6 +261,23 @@ def test_the_artifact_does_not_depend_on_who_asks_or_how(clock, responder):
     assert replies[0] == replies[1]
 
 
+def test_a_non_deterministic_cbor_request_is_refused_over_its_octets(clock, responder):
+    # Profile §5.2 (agent-action-capsule go v0.20.0): a CBOR request is read only in core
+    # deterministic encoding; the refusal still digests the octets as received.
+    r, records = responder
+    options = eb.RespondOptions(authenticated_requester="alice", policy=eb.SharePolicy(history_segments="peers"))
+    deterministic = eb.encode_request(
+        eb.EvidenceRequest(eb.Subject("record", records[0].record_id),
+                           eb.Coverage(expected_pin=r.checkpoints()[-1].anchor_digest), nonce="n"),
+        eb.MEDIA_TYPE_CBOR)
+    assert r.respond(eb.Message(deterministic, eb.MEDIA_TYPE_CBOR), options)[0].refusal is None
+    # The same map with a non-minimal length head for its first key.
+    loose = bytes([deterministic[0], 0x78, deterministic[1] - 0x60]) + deterministic[2:]
+    reply, record = r.respond(eb.Message(loose, eb.MEDIA_TYPE_CBOR), options)
+    assert reply.refusal.reason == "request_malformed" and record is None
+    assert reply.refusal.request_digest == hashlib.sha256(loose).hexdigest()
+
+
 def test_a_stranger_is_refused_any_record(clock, responder):
     r, records = responder
     request = eb.encode_request(eb.EvidenceRequest(eb.Subject("record", records[0].record_id),
