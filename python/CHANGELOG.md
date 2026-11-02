@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The `evidencebook.evidence` facade, first part (evidencebook#332): `seal`, `ask` and `history` over
+  `Book.append`, the request interaction (`Book.request`, `record_response`, `record_absence`) and
+  `check_staple`. `ask` reads an outcome as a state, never a score: the evidence request's artifact, refusal
+  and recorded absence, plus `status_unknown` for `capacity_exceeded` and `request_unauthenticated`.
+  `serve`, `find` and `evaluate` raise `NotYetAvailable` naming the work they wait on (agent-action-capsule#554,
+  capsule-emit-mesh#237, capsule-cli#523, capsule-engine#276 and #278).
 - A History card stapled to the holder's own message (evidencebook#275): `staple(book, derivation)` builds the
   holder's own request (pinned to its newest checkpoint, with a fresh nonce) and the envelope its book answers,
   for `history_card/1` or `standard_history/1` only, so a staple never carries more than the standard card.
