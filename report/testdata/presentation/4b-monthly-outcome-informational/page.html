@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-2uSILcKX17QGdGn9UovsHgWmZWHlUyI2rYxZYuqxBfg=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-kfZ5/+njHJA5cViGKCuA9/anD189Kdx46c1tUaJC/hQ=' 'sha256-Fo+V2aX1ot8oEb4taQdjBfRjjHEDpDibKPfEBJVA0wI=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-fj4bjTRa3ql3b8+HSvh7EqwtYcLrrMc3EQH0QeECpJM=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-8koYeaXDNUxxa6yDcJW/Ca2t4EKY0Nj8IJxhA+GYtwM=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-kfZ5/+njHJA5cViGKCuA9/anD189Kdx46c1tUaJC/hQ=' 'sha256-Fo+V2aX1ot8oEb4taQdjBfRjjHEDpDibKPfEBJVA0wI=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-fj4bjTRa3ql3b8+HSvh7EqwtYcLrrMc3EQH0QeECpJM=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -2305,11 +2305,11 @@ var EvidenceGraph = (() => {
     if (Type.equals(token.type, Type.tag)) {
       if (options.tags && typeof options.tags[token.value] === "function") {
         const decodeControl = createTagDecodeControl(tokeniser, options);
-        const result2 = options.tags[token.value](decodeControl);
+        const result3 = options.tags[token.value](decodeControl);
         if (!decodeControl._called) {
           throw new Error(`${decodeErrPrefix} tag decoder must call decode() or entries()`);
         }
-        return result2;
+        return result3;
       }
       throw new Error(`${decodeErrPrefix} tag not supported (${token.value})`);
     }
@@ -2500,7 +2500,7 @@ var EvidenceGraph = (() => {
     return 2 * leaves - bits;
   }
   function peakPositions(size) {
-    const result2 = [];
+    const result3 = [];
     let remaining = size, offset = 0, prevHeight = Number.POSITIVE_INFINITY;
     while (remaining > 0) {
       let h = 0;
@@ -2508,11 +2508,11 @@ var EvidenceGraph = (() => {
       if (h >= prevHeight) break;
       const mountain = 2 ** (h + 1) - 1;
       offset += mountain;
-      result2.push(offset - 1);
+      result3.push(offset - 1);
       remaining -= mountain;
       prevHeight = h;
     }
-    return result2;
+    return result3;
   }
   function findContainingPeak(pos, peaks) {
     for (let i = 0; i < peaks.length; i += 1) {
@@ -3605,8 +3605,8 @@ var EvidenceGraph = (() => {
   function mod(a, b) {
     if (b <= _0n2)
       throw new Error("mod: expected positive modulus, got " + b);
-    const result2 = a % b;
-    return result2 >= _0n2 ? result2 : b + result2;
+    const result3 = a % b;
+    return result3 >= _0n2 ? result3 : b + result3;
   }
   function pow(num, power, modulo) {
     if (modulo <= _1n2)
@@ -5420,6 +5420,7 @@ var EvidenceGraph = (() => {
     readWordingPack: () => readWordingPack,
     readerAnchorWitness: () => readerAnchorWitness,
     readerCadenceWitness: () => readerCadenceWitness,
+    readerCardSignature: () => readerCardSignature,
     readerWitnessPolicy: () => readerWitnessPolicy,
     registerPresentation: () => registerPresentation,
     renderChecking: () => renderChecking,
@@ -5444,19 +5445,19 @@ var EvidenceGraph = (() => {
   var CONTENT_TYPE = "application/agent-action-capsule-id";
   var hex64 = /^[0-9a-f]{64}$/u;
   function concat(...parts) {
-    const result2 = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+    const result3 = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
     let offset = 0;
     for (const part of parts) {
-      result2.set(part, offset);
+      result3.set(part, offset);
       offset += part.length;
     }
-    return result2;
+    return result3;
   }
   function hexToBytes(value) {
-    const result2 = new Uint8Array(value.length / 2);
-    for (let i = 0; i < result2.length; i += 1)
-      result2[i] = Number.parseInt(value.slice(i * 2, i * 2 + 2), 16);
-    return result2;
+    const result3 = new Uint8Array(value.length / 2);
+    for (let i = 0; i < result3.length; i += 1)
+      result3[i] = Number.parseInt(value.slice(i * 2, i * 2 + 2), 16);
+    return result3;
   }
   function equalBytes(left, right) {
     return left.length === right.length && left.every((byte, index) => byte === right[index]);
@@ -6347,10 +6348,10 @@ var EvidenceGraph = (() => {
   var object2 = asJsonObject;
   function decodeCapsuleJson(data) {
     const value = decodeStrictJson(data);
-    const result2 = object2(value);
-    if (result2 === void 0)
+    const result3 = object2(value);
+    if (result3 === void 0)
       throw new TypeError("Capsule is not a JSON object");
-    return result2;
+    return result3;
   }
   async function computeCapsuleId(capsule) {
     if (capsule.format_version !== "4")
@@ -7306,11 +7307,11 @@ var EvidenceGraph = (() => {
     const members = [];
     for (const m of block.members) {
       byId.set(m.id, m);
-      const result2 = await verifyMember(m, missing.has(m.id), verifyMemberBundle);
-      members.push(result2.member);
-      closureFindings.push(...result2.closure);
-      failed2.push(...result2.failed);
-      withheld.push(...result2.withheld);
+      const result3 = await verifyMember(m, missing.has(m.id), verifyMemberBundle);
+      members.push(result3.member);
+      closureFindings.push(...result3.closure);
+      failed2.push(...result3.failed);
+      withheld.push(...result3.withheld);
     }
     let compositionClosure;
     const closureMissing = sortedUnique(block.missing);
@@ -7335,19 +7336,19 @@ var EvidenceGraph = (() => {
     const corroborations = [];
     for (const j of block.joins) {
       const { derived, differences } = await derivedState(j, byId, missing);
-      const result2 = derived === void 0 ? "not_derivable" : derived === j.state ? "derived_matches" : "join_state_mismatch";
+      const result3 = derived === void 0 ? "not_derivable" : derived === j.state ? "derived_matches" : "join_state_mismatch";
       joins.push({
         members: j.members,
         basis: j.basis,
         declared: j.state,
         ...derived === void 0 ? {} : { derived },
-        result: result2,
+        result: result3,
         differences
       });
       const pair = `${j.members[0]},${j.members[1]}`;
-      if (result2 === "join_state_mismatch")
+      if (result3 === "join_state_mismatch")
         failed2.push(`join_state_mismatch:${pair}`);
-      else if (result2 === "not_derivable")
+      else if (result3 === "not_derivable")
         withheld.push(`join_not_derivable:${pair}`);
       corroborations.push(corroboration(j, derived, byId, observers));
     }
@@ -7713,8 +7714,8 @@ var EvidenceGraph = (() => {
       };
     try {
       const signature2 = digitPairs(record.signature, "signature"), keyId = digitPairs(record.key_id, "key_id");
-      const result2 = await verifyProducerEnvelope(await recordCapsuleId(record), signature2);
-      if (result2.ok && result2.publicKey !== void 0 && equalBytes(result2.publicKey, keyId))
+      const result3 = await verifyProducerEnvelope(await recordCapsuleId(record), signature2);
+      if (result3.ok && result3.publicKey !== void 0 && equalBytes(result3.publicKey, keyId))
         return { verdict: "authored", messages: [] };
     } catch (error) {
       return {
@@ -7878,8 +7879,8 @@ var EvidenceGraph = (() => {
       category_coverage_consistency: consistency(member, recordIds, inputs.recordCategories)
     };
   }
-  function categoryCoverageFails(result2) {
-    return result2 !== null && CATEGORY_COVERAGE_GATING.some((name) => result2[name] === "FAIL");
+  function categoryCoverageFails(result3) {
+    return result3 !== null && CATEGORY_COVERAGE_GATING.some((name) => result3[name] === "FAIL");
   }
 
   // node_modules/@action-state-group/agent-action-capsule/dist/cose-receipt.js
@@ -8270,15 +8271,15 @@ var EvidenceGraph = (() => {
   var P = 2n ** 256n - 2n ** 224n + 2n ** 192n + 2n ** 96n - 1n;
   var B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn;
   function modPow(base, exponent) {
-    let result2 = 1n;
+    let result3 = 1n;
     base %= P;
     while (exponent > 0n) {
       if (exponent & 1n)
-        result2 = result2 * base % P;
+        result3 = result3 * base % P;
       base = base * base % P;
       exponent >>= 1n;
     }
-    return result2;
+    return result3;
   }
   function onP256(point) {
     const rhs = (x) => ((x * x * x - 3n * x + B) % P + P) % P;
@@ -8456,7 +8457,7 @@ var EvidenceGraph = (() => {
     reason: `not checked: ${reason}`,
     notChecked: true
   });
-  var fromCoseResult = (result2) => result2.unavailable ? notChecked(result2.reason) : failed(result2.reason);
+  var fromCoseResult = (result3) => result3.unavailable ? notChecked(result3.reason) : failed(result3.reason);
   function gradeOf(label) {
     return typeof label === "string" ? GRADES.get(label) ?? null : null;
   }
@@ -8487,15 +8488,15 @@ var EvidenceGraph = (() => {
     } catch {
       return failed("receipt_b64 is not canonical base64");
     }
-    const result2 = await verifyCoseReceipt(receipt, hexToBytes(expected), key);
-    if (!result2.ok)
-      return fromCoseResult(result2);
-    const label = result2.protectedHeaders.get(HDR_GRADE);
+    const result3 = await verifyCoseReceipt(receipt, hexToBytes(expected), key);
+    if (!result3.ok)
+      return fromCoseResult(result3);
+    const label = result3.protectedHeaders.get(HDR_GRADE);
     return {
       ok: true,
       reason: "ok",
       grade: gradeOf(label),
-      ...registrationTimeOf(result2.protectedHeaders)
+      ...registrationTimeOf(result3.protectedHeaders)
     };
   }
   async function verifyScrapiReceipt(receipt, options) {
@@ -8503,15 +8504,15 @@ var EvidenceGraph = (() => {
       return notChecked("no key pinned for this service");
     try {
       const leaf = hexToBytes(await sha256Hex(options.checkpointCose));
-      const result2 = await verifyCoseReceipt(receipt, leaf, options.servicePublicKeySpki);
-      if (!result2.ok)
-        return fromCoseResult(result2);
-      const label = result2.protectedHeaders.get(HDR_GRADE);
+      const result3 = await verifyCoseReceipt(receipt, leaf, options.servicePublicKeySpki);
+      if (!result3.ok)
+        return fromCoseResult(result3);
+      const label = result3.protectedHeaders.get(HDR_GRADE);
       return {
         ok: true,
         reason: "ok",
         grade: gradeOf(label) ?? GRADE_OBSERVED_ONLY,
-        ...registrationTimeOf(result2.protectedHeaders)
+        ...registrationTimeOf(result3.protectedHeaders)
       };
     } catch (error) {
       return failed(`unreadable receipt: ${String(error)}`);
@@ -8756,7 +8757,7 @@ ${body}
         });
       }
     }
-    const statuses = new Set(results.map((result2) => result2.status));
+    const statuses = new Set(results.map((result3) => result3.status));
     return {
       status: malformed || statuses.has("fail") ? "fail" : statuses.has("pass") ? "pass" : "withheld",
       findings,
@@ -8882,10 +8883,10 @@ ${body}
     const leaf = hexToBytes(anchorDigest);
     let unavailable = false;
     for (const { name, spki } of keys) {
-      const result2 = await verifyCoseReceipt(receipt, leaf, spki);
-      if (result2.ok)
+      const result3 = await verifyCoseReceipt(receipt, leaf, spki);
+      if (result3.ok)
         return report("PASS", name, parsed.time);
-      if (result2.unavailable)
+      if (result3.unavailable)
         unavailable = true;
     }
     return report(unavailable ? "NOT_CHECKED" : "FAIL");
@@ -9079,11 +9080,11 @@ ${body}
         continue;
       const id = capsuleIdOf(record);
       const { verdict: verdict2, messages } = await verifyRecordSignature(record);
-      const result2 = !seen.has(id) && Object.hasOwn(plain2.capsuleResults, id) ? plain2.capsuleResults[id] : void 0;
+      const result3 = !seen.has(id) && Object.hasOwn(plain2.capsuleResults, id) ? plain2.capsuleResults[id] : void 0;
       seen.add(id);
       records.push({
         capsuleId: id,
-        identityOk: result2?.ok === true && result2.capsuleId === id,
+        identityOk: result3?.ok === true && result3.capsuleId === id,
         signature: verdict2,
         keyId: typeof record.key_id === "string" ? record.key_id : null,
         seq: seqs.get(id) ?? null,
@@ -9289,9 +9290,9 @@ ${body}
         findings.push(`record_duplicate:${id}`);
         continue;
       }
-      const result2 = await verifyClass1(record);
-      results[id] = result2;
-      if (!result2.ok || result2.capsuleId !== id) {
+      const result3 = await verifyClass1(record);
+      results[id] = result3;
+      if (!result3.ok || result3.capsuleId !== id) {
         findings.push(`record_identity_invalid:${id}`);
         continue;
       }
@@ -9801,8 +9802,8 @@ ${body}
       perRecordMembership: { status: "fail", findings: [] }
     } : plain2;
   }
-  function isProducerSelection(result2) {
-    return result2.intervalCoverage.status === "withheld" && result2.intervalCoverage.findings.includes(SELECTION_NOT_CHECKABLE);
+  function isProducerSelection(result3) {
+    return result3.intervalCoverage.status === "withheld" && result3.intervalCoverage.findings.includes(SELECTION_NOT_CHECKABLE);
   }
   function isVerifiedBundleContext(value) {
     return object8(value) && contexts.has(value);
@@ -9867,8 +9868,8 @@ ${body}
   }
   function resolveFromVerification(bundle, results, index) {
     const status2 = /* @__PURE__ */ new Map();
-    for (const result2 of results)
-      status2.set(`${result2.capsuleId}\0${result2.member}`, result2.status);
+    for (const result3 of results)
+      status2.set(`${result3.capsuleId}\0${result3.member}`, result3.status);
     const overlay = object8(bundle) && object8(bundle.disclosures) ? bundle.disclosures : {};
     const resolved = /* @__PURE__ */ new Map();
     const one = (id, field) => {
@@ -11362,12 +11363,12 @@ ${body}
     }
     return { withheld, mismatched, unreadable, invalid: invalid2, total };
   }
-  function caseRecord(result2, claims, sourceCapsuleId) {
+  function caseRecord(result3, claims, sourceCapsuleId) {
     if (sourceCapsuleId === void 0)
       return void 0;
     for (const claim of claims)
       for (const ref of claim.evidence) {
-        const record = result2.records.get(ref.digest);
+        const record = result3.records.get(ref.digest);
         if (record === void 0 || record.stated === void 0)
           continue;
         if (record.carriedCapsuleId === sourceCapsuleId || record.carriedCapsuleId === void 0 && record.bookRecordId === void 0 && record.capsuleId === sourceCapsuleId)
@@ -11457,7 +11458,7 @@ ${body}
       ];
     });
   }
-  function findTranscript(result2, conversationId, claims, sourceCapsuleId, caseFrom = "reports") {
+  function findTranscript(result3, conversationId, claims, sourceCapsuleId, caseFrom = "reports") {
     const records = [];
     const seen = /* @__PURE__ */ new Set();
     for (const claim of claims)
@@ -11465,7 +11466,7 @@ ${body}
         if (seen.has(ref.digest))
           continue;
         seen.add(ref.digest);
-        const record = result2.records.get(ref.digest);
+        const record = result3.records.get(ref.digest);
         if (record !== void 0)
           records.push(record);
       }
@@ -11523,10 +11524,10 @@ ${body}
       reason: "a cited transcript does not commit to the same input as the case record the judge read"
     };
   }
-  function groupClaims(result2, terms) {
+  function groupClaims(result3, terms) {
     const order = checksById(terms);
     const byConversation = /* @__PURE__ */ new Map();
-    for (const claim of result2.claims) {
+    for (const claim of result3.claims) {
       if (claim.type !== REQUIREMENT_CLAIM)
         continue;
       const grouping = parseClaimGrouping(claim);
@@ -11537,8 +11538,8 @@ ${body}
       byConversation.set(grouping.conversationId, list2);
     }
     const contractRef = packRef(terms);
-    const cited = new Set(result2.claims.map((claim) => JSON.stringify([claim.contractRef, claim.requirementRef])));
-    const reserved = (result2.requirementsCovered ?? []).filter((ref) => !cited.has(JSON.stringify([ref.contractRef, ref.requirementRef])) && (ref.contractRef !== contractRef || criterionRef(ref.requirementRef) === void 0)).length;
+    const cited = new Set(result3.claims.map((claim) => JSON.stringify([claim.contractRef, claim.requirementRef])));
+    const reserved = (result3.requirementsCovered ?? []).filter((ref) => !cited.has(JSON.stringify([ref.contractRef, ref.requirementRef])) && (ref.contractRef !== contractRef || criterionRef(ref.requirementRef) === void 0)).length;
     const allLater2 = /* @__PURE__ */ new Set();
     for (const [conversationId, claims] of byConversation) {
       const drawn = terms.checks.flatMap((check) => check.criteria.flatMap((criterion2) => {
@@ -11556,7 +11557,7 @@ ${body}
             if (!claims.some((candidate) => candidate.requirementRef === `${check.id}.${criterion2.id}`))
               missing += 1;
       }
-    const missingVerdict = missing <= result2.coverage.excludedNotApplicable - reserved ? "not_applicable" : "no_claim";
+    const missingVerdict = missing <= result3.coverage.excludedNotApplicable - reserved ? "not_applicable" : "no_claim";
     const conversations = [];
     const notYetInForce = [];
     const byDay = /* @__PURE__ */ new Map();
@@ -11577,7 +11578,7 @@ ${body}
             continue;
           }
           const target = claim.later && !claim.failed ? laterCriteria : criteria;
-          const judgment = reportPayload(result2.records, claim);
+          const judgment = reportPayload(result3.records, claim);
           const rationale = judgment ? asString2(judgment.rationale) : void 0;
           const reasonCode = judgment ? asString2(judgment.reason_code) : void 0;
           const sourceCapsuleId = judgment ? asString2(judgment.source_capsule_id) : void 0;
@@ -11585,7 +11586,7 @@ ${body}
           const clauseClaim = judgment !== void 0 && asString2(judgment.clause_id) === `${check.id}.${criterion2.id}` ? asString2(judgment.clause_claim) : void 0;
           const { probabilities, confidence } = parseJudgeProbabilities(rationale);
           const cited2 = claim.evidence[0]?.digest;
-          const record = cited2 === void 0 ? void 0 : result2.records.get(cited2);
+          const record = cited2 === void 0 ? void 0 : result3.records.get(cited2);
           target.push({
             checkId: check.id,
             criterionId: criterion2.id,
@@ -11599,13 +11600,13 @@ ${body}
             ...record?.bookRecordId === void 0 ? {} : { reportRecordId: record.bookRecordId },
             ...sourceCapsuleId === void 0 ? {} : { sourceCapsuleId },
             ...judgePinDigest === void 0 ? {} : { judgePinDigest },
-            reportState: reportState(result2.records, claim),
+            reportState: reportState(result3.records, claim),
             ...clauseClaim === void 0 || clauseClaim.trim() === "" ? {} : { clauseClaim }
           });
         }
       }
       const firstClaim = [...criteria, ...laterCriteria].find((c) => c.claim !== void 0)?.claim;
-      const judgedDay = (firstClaim === void 0 ? void 0 : reportSealedDay(result2.records, firstClaim)) ?? dayOf(void 0);
+      const judgedDay = (firstClaim === void 0 ? void 0 : reportSealedDay(result3.records, firstClaim)) ?? dayOf(void 0);
       const checkVerdicts = /* @__PURE__ */ new Map();
       for (const check of terms.checks) {
         const forCheck = criteria.filter((c) => c.checkId === check.id);
@@ -11614,17 +11615,17 @@ ${body}
       const sources = new Set([...criteria, ...laterCriteria].flatMap((c) => c.sourceCapsuleId === void 0 ? [] : [c.sourceCapsuleId]));
       let caseFrom = "reports";
       if (sources.size === 0) {
-        const cited2 = claimsCitedCase(result2.records, conversationId, claims, result2.claims);
+        const cited2 = claimsCitedCase(result3.records, conversationId, claims, result3.claims);
         if (cited2 !== void 0) {
           sources.add(cited2);
           caseFrom = "claims";
         }
       }
-      const dated = conversationDate(caseRecord(result2, claims, sources.size === 1 ? [...sources][0] : void 0), judgedDay);
+      const dated = conversationDate(caseRecord(result3, claims, sources.size === 1 ? [...sources][0] : void 0), judgedDay);
       const date = dated.date;
       const conversation = {
         conversationId,
-        transcript: findTranscript(result2, conversationId, claims, sources.size === 1 ? [...sources][0] : void 0, caseFrom),
+        transcript: findTranscript(result3, conversationId, claims, sources.size === 1 ? [...sources][0] : void 0, caseFrom),
         ...sources.size === 1 ? { sourceCapsuleId: [...sources][0], caseFrom } : {},
         day: date,
         dated,
@@ -11689,7 +11690,7 @@ ${body}
       axes_digest: pin.axesDigest
     };
   }
-  function buildRunInfo(result2, conversations) {
+  function buildRunInfo(result3, conversations) {
     const claimContracts = /* @__PURE__ */ new Set();
     const reportContracts = /* @__PURE__ */ new Set();
     const pins = /* @__PURE__ */ new Set();
@@ -11700,7 +11701,7 @@ ${body}
         if (claim === void 0)
           continue;
         claimContracts.add(claim.contractRef);
-        const payload = reportPayload(result2.records, claim);
+        const payload = reportPayload(result3.records, claim);
         const contract = asString2(payload?.contract_ref) ?? asString2(payload?.contract);
         if (contract !== void 0)
           reportContracts.add(contract);
@@ -11714,7 +11715,7 @@ ${body}
     }
     const contracts = claimContracts.size > 0 ? claimContracts : reportContracts;
     const pinned = contracts.size <= 1 && pins.size <= 1 && components.size <= 1;
-    const counted2 = withheldReports(result2.records, conversations.flatMap((c) => c.criteria.flatMap((cr) => cr.claim === void 0 ? [] : [cr.claim])));
+    const counted2 = withheldReports(result3.records, conversations.flatMap((c) => c.criteria.flatMap((cr) => cr.claim === void 0 ? [] : [cr.claim])));
     return {
       ...counted2.withheld > 0 ? { reportsWithheld: counted2.withheld } : {},
       ...counted2.mismatched > 0 ? { reportsMismatched: counted2.mismatched } : {},
@@ -11738,8 +11739,8 @@ ${body}
     }
     return { ...runInfo, judgePinRecomputes: recomputes };
   }
-  function judgedCase(result2, caseDigest) {
-    const citing = result2.claims.filter((claim) => claim.type === REQUIREMENT_CLAIM && !claim.failed && claim.evidence.some((ref) => ref.digest === caseDigest));
+  function judgedCase(result3, caseDigest) {
+    const citing = result3.claims.filter((claim) => claim.type === REQUIREMENT_CLAIM && !claim.failed && claim.evidence.some((ref) => ref.digest === caseDigest));
     const first = citing[0];
     if (first === void 0)
       return void 0;
@@ -11751,16 +11752,16 @@ ${body}
     } : void 0;
   }
   var COUNTED_LABELS = /* @__PURE__ */ new Set(["met", "not_met"]);
-  function buildCalibration(result2) {
+  function buildCalibration(result3) {
     const readings2 = [];
-    for (const claim of result2.claims) {
+    for (const claim of result3.claims) {
       if (claim.type !== "calibration")
         continue;
       const summaries = [];
       const ratings = [];
       let ratingsNotMatching = 0;
       for (const digest of new Set(claim.evidence.map((ref) => ref.digest))) {
-        const payload = citedPayload(result2.records, digest);
+        const payload = citedPayload(result3.records, digest);
         if (payload === void 0)
           continue;
         if (payload.record_version === CALIBRATION_SUMMARY_V1)
@@ -11771,7 +11772,7 @@ ${body}
             ratingsNotMatching += 1;
             continue;
           }
-          const judged = judgedCase(result2, rating.ratedCase.digest);
+          const judged = judgedCase(result3, rating.ratedCase.digest);
           ratings.push({
             digest,
             rating,
@@ -11903,8 +11904,8 @@ ${body}
     }
     return out;
   }
-  function citedContract(result2, contractRef) {
-    for (const record of result2.records.values()) {
+  function citedContract(result3, contractRef) {
+    for (const record of result3.records.values()) {
       const input = record.carriedInput ?? record.agentInput;
       if (input.state !== "disclosed" || !isObject2(input.payload))
         continue;
@@ -11916,10 +11917,10 @@ ${body}
     }
     return void 0;
   }
-  function readOutcomeReportTerms(result2) {
+  function readOutcomeReportTerms(result3) {
     const checks = /* @__PURE__ */ new Map();
     const contracts = /* @__PURE__ */ new Set();
-    for (const claim of result2.claims) {
+    for (const claim of result3.claims) {
       if (claim.type !== REQUIREMENT_CLAIM)
         continue;
       const grouping = parseClaimGrouping(claim);
@@ -11932,8 +11933,8 @@ ${body}
       checks.set(grouping.checkId, criteria);
     }
     const contractRef = contracts.size === 1 ? [...contracts][0] : void 0;
-    const contract = contractRef === void 0 ? void 0 : citedContract(result2, contractRef);
-    const coveredRefs = result2.requirementsCovered === void 0 ? contractCriteria(contract) : result2.requirementsCovered.filter((covered) => covered.contractRef === contractRef).map((covered) => covered.requirementRef);
+    const contract = contractRef === void 0 ? void 0 : citedContract(result3, contractRef);
+    const coveredRefs = result3.requirementsCovered === void 0 ? contractCriteria(contract) : result3.requirementsCovered.filter((covered) => covered.contractRef === contractRef).map((covered) => covered.requirementRef);
     for (const ref of coveredRefs) {
       const split2 = criterionRef(ref);
       if (split2 === void 0)
@@ -11968,13 +11969,13 @@ ${body}
       reasonCodes: {}
     };
   }
-  function notRunCriteria(result2, terms) {
-    const covered = result2.requirementsCovered;
+  function notRunCriteria(result3, terms) {
+    const covered = result3.requirementsCovered;
     const contractRef = packRef(terms);
     if (covered === void 0 || contractRef === void 0)
       return [];
     const listed = new Set(covered.filter((ref) => ref.contractRef === contractRef).map((ref) => ref.requirementRef));
-    return contractCriteria(citedContract(result2, contractRef)).filter((id) => !listed.has(id));
+    return contractCriteria(citedContract(result3, contractRef)).filter((id) => !listed.has(id));
   }
   function contractCriteria(contract) {
     const ids = [];
@@ -12000,9 +12001,9 @@ ${body}
       zoneNotStated: conversations.filter((c) => c.dated.zone === "not-stated").length
     };
   }
-  function buildOutcomeReportModel(result2, options) {
-    const terms = readOutcomeReportTerms(result2);
-    const { conversations, days, notYetInForce } = groupClaims(result2, terms);
+  function buildOutcomeReportModel(result3, options) {
+    const terms = readOutcomeReportTerms(result3);
+    const { conversations, days, notYetInForce } = groupClaims(result3, terms);
     const dayList = [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, convos]) => ({
       date,
       // No evaluation-report/v1 record carries a day-level policy-change
@@ -12014,7 +12015,7 @@ ${body}
       resolvedCount: convos.filter((c) => c.verdict === "met").length,
       judgedDays: [...new Set(convos.map((c) => c.judgedDay))].sort()
     }));
-    const calibration = buildCalibration(result2);
+    const calibration = buildCalibration(result3);
     const { held: held2, added } = heldAndAdded(calibration);
     const checkPassCounts = /* @__PURE__ */ new Map();
     for (const check of terms.checks)
@@ -12031,7 +12032,7 @@ ${body}
       dating: buildDating(conversations),
       conversations,
       notYetInForce,
-      runInfo: buildRunInfo(result2, conversations),
+      runInfo: buildRunInfo(result3, conversations),
       calibration,
       checkPassCounts,
       missedReasons: missedReasonGroups(terms, conversations),
@@ -12045,8 +12046,8 @@ ${body}
       notApplicableCount,
       outOfScopeCount,
       noClaimCount,
-      notRun: notRunCriteria(result2, terms),
-      capsuleId: result2.capsuleId
+      notRun: notRunCriteria(result3, terms),
+      capsuleId: result3.capsuleId
     };
   }
 
@@ -12163,12 +12164,12 @@ ${body}
       return invalid2.has(id) ? [] : [id];
     });
   }
-  function membershipProvenOrUnbound(result2) {
-    return result2.perRecordMembership.status === "pass" || result2.perRecordMembership.status === "fail" && result2.perRecordMembership.findings.length > 0 && result2.perRecordMembership.findings.length === unboundRecordIds(result2).length;
+  function membershipProvenOrUnbound(result3) {
+    return result3.perRecordMembership.status === "pass" || result3.perRecordMembership.status === "fail" && result3.perRecordMembership.findings.length > 0 && result3.perRecordMembership.findings.length === unboundRecordIds(result3).length;
   }
-  function bundleVerified(result2) {
-    const selected = isProducerSelection(result2);
-    return result2.graphClosure.status === "pass" && (selected || result2.intervalCoverage.status === "pass") && membershipProvenOrUnbound(result2) && Object.values(result2.capsuleResults).every((capsule) => capsule.ok) && result2.disclosures.every((disclosure) => disclosure.status === "disclosure_match" || disclosure.status === "withheld");
+  function bundleVerified(result3) {
+    const selected = isProducerSelection(result3);
+    return result3.graphClosure.status === "pass" && (selected || result3.intervalCoverage.status === "pass") && membershipProvenOrUnbound(result3) && Object.values(result3.capsuleResults).every((capsule) => capsule.ok) && result3.disclosures.every((disclosure) => disclosure.status === "disclosure_match" || disclosure.status === "withheld");
   }
   function nonUnboundFindings(verified) {
     const names2 = [];
@@ -12547,7 +12548,7 @@ ${body}
     const results = Object.values(capsuleResults);
     if (results.length === 0)
       return "not_checked";
-    const failed2 = results.some((result2) => result2.findings.some((finding) => finding.severity === "error" && finding.check !== void 0 && checks.includes(finding.check)));
+    const failed2 = results.some((result3) => result3.findings.some((finding) => finding.severity === "error" && finding.check !== void 0 && checks.includes(finding.check)));
     return failed2 ? "fail" : "pass";
   }
   function receiptGradeWord(value) {
@@ -13974,10 +13975,10 @@ ${body}
       return invalid(`${what} is not {digest_alg: "SHA-256", digest: <64-hex>}`);
     return value.digest;
   }
-  function resultDocument2(context, result2) {
-    const member = disclosureOf(context, result2.capsuleId, result2.member);
+  function resultDocument2(context, result3) {
+    const member = disclosureOf(context, result3.capsuleId, result3.member);
     if (member.state !== "disclosed" || !isObj3(member.payload)) return void 0;
-    const document2 = result2.form === "book" ? member.payload.statement : member.payload;
+    const document2 = result3.form === "book" ? member.payload.statement : member.payload;
     return isObj3(document2) ? document2 : void 0;
   }
   async function digestOf(value) {
@@ -14029,8 +14030,8 @@ ${body}
     }
     return found;
   }
-  async function chartDatasetOf(context, result2) {
-    const document2 = resultDocument2(context, result2);
+  async function chartDatasetOf(context, result3) {
+    const document2 = resultDocument2(context, result3);
     if (document2 === void 0) return void 0;
     const planRef = digestRef(document2.plan_ref, "the Result's plan_ref");
     const datasetRef = digestRef(
@@ -14426,7 +14427,7 @@ ${s} [data-src="producer"]:not(.cv-src){font-style:italic}
     const found = globalThis.CapsuleViewerShowEvidence;
     return typeof found?.resolve === "function" && typeof found.render === "function" ? found : void 0;
   }
-  function evidenceAction(key, name, counted2, result2, w, summary = w.t("evidence.show")) {
+  function evidenceAction(key, name, counted2, result3, w, summary = w.t("evidence.show")) {
     if (counted2.length === 0) return void 0;
     const claims = counted2.filter((c) => c !== void 0);
     const cited = /* @__PURE__ */ new Set();
@@ -14492,7 +14493,7 @@ ${s} [data-src="producer"]:not(.cv-src){font-style:italic}
       for (const claim of new Set(claims))
         sides.append(
           component.render(
-            component.resolve(result2, claim),
+            component.resolve(result3, claim),
             details.ownerDocument
           )
         );
@@ -15807,11 +15808,11 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
 
   // src/record-dating.ts
   var STATED_DAY2 = /^(\d{4}-\d{2}-\d{2})/u;
-  function caseRecord2(result2, claims, sourceCapsuleId) {
+  function caseRecord2(result3, claims, sourceCapsuleId) {
     if (sourceCapsuleId === void 0) return void 0;
     for (const claim of claims)
       for (const ref of claim.evidence) {
-        const record = result2.records.get(ref.digest);
+        const record = result3.records.get(ref.digest);
         if (record === void 0 || record.stated === void 0) continue;
         if (record.carriedCapsuleId === sourceCapsuleId || record.carriedCapsuleId === void 0 && record.bookRecordId === void 0 && record.capsuleId === sourceCapsuleId)
           return record;
@@ -15905,8 +15906,8 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       obligationKey: claim.requirementRef.slice(0, dot)
     };
   }
-  function countedClaims(result2, presentation) {
-    const parsed = result2.claims.flatMap((c) => {
+  function countedClaims(result3, presentation) {
+    const parsed = result3.claims.flatMap((c) => {
       const p = parseClaim(c);
       return p === void 0 ? [] : [p];
     });
@@ -15930,7 +15931,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       pack: { id: NOT_STATED, version: NOT_STATED }
     };
   }
-  function buildSessions(result2, claims, testIds) {
+  function buildSessions(result3, claims, testIds) {
     const byConversation = /* @__PURE__ */ new Map();
     for (const p of claims) {
       const list2 = byConversation.get(p.conversationId) ?? [];
@@ -15960,18 +15961,18 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
             verdict: "not_yet_in_force",
             tier: "not stated",
             claim,
-            reportState: reportState(result2.records, claim)
+            reportState: reportState(result3.records, claim)
           });
           continue;
         }
-        const payload = reportPayload2(result2.records, claim);
+        const payload = reportPayload2(result3.records, claim);
         const rationale = asString2(payload?.rationale);
         const contract = claim.contractRef || asString2(payload?.contract_ref) || asString2(payload?.contract);
         const judgePinDigest = asString2(payload?.judge_pin_digest);
         const source = asString2(payload?.source_capsule_id);
         if (source !== void 0) sources.add(source);
         if (judgedDay === NOT_STATED)
-          judgedDay = reportSealedDay(result2.records, claim) ?? dayOf2(payload);
+          judgedDay = reportSealedDay(result3.records, claim) ?? dayOf2(payload);
         const reportDigest = claim.evidence[0]?.digest;
         tests.push({
           criterionId,
@@ -15984,16 +15985,16 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
           ...rationale === void 0 ? {} : { rationale },
           ...contract === void 0 ? {} : { contract },
           ...judgePinDigest === void 0 ? {} : { judgePinDigest },
-          reportState: reportState(result2.records, claim)
+          reportState: reportState(result3.records, claim)
         });
       }
       let caseFrom = "reports";
       if (sources.size === 0) {
         const cited = claimsCitedCase(
-          result2.records,
+          result3.records,
           conversationId,
           conversationClaims,
-          result2.claims
+          result3.claims
         );
         if (cited !== void 0) {
           sources.add(cited);
@@ -16002,7 +16003,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       }
       const sourceCapsuleId = sources.size === 1 ? [...sources][0] : void 0;
       const dated = conversationDate2(
-        caseRecord2(result2, conversationClaims, sourceCapsuleId),
+        caseRecord2(result3, conversationClaims, sourceCapsuleId),
         judgedDay
       );
       sessions.push({
@@ -16013,7 +16014,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
         tests,
         ...sourceCapsuleId === void 0 ? {} : { sourceCapsuleId, caseFrom },
         transcript: findTranscript(
-          result2,
+          result3,
           conversationId,
           conversationClaims,
           sourceCapsuleId,
@@ -16026,11 +16027,11 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
     );
     return sessions;
   }
-  function sealedWording(result2, claims, criterionId) {
+  function sealedWording(result3, claims, criterionId) {
     const texts = /* @__PURE__ */ new Set();
     for (const p of claims) {
       if (p.claim.requirementRef !== criterionId) continue;
-      const text2 = asString2(reportPayload2(result2.records, p.claim)?.clause_claim);
+      const text2 = asString2(reportPayload2(result3.records, p.claim)?.clause_claim);
       if (text2 !== void 0) texts.add(text2);
     }
     if (texts.size === 1) return { text: [...texts][0], source: "sealed" };
@@ -16099,7 +16100,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       rows
     };
   }
-  function buildRunInfo2(result2, sessions) {
+  function buildRunInfo2(result3, sessions) {
     const contracts = /* @__PURE__ */ new Set();
     const pins = /* @__PURE__ */ new Set();
     for (const session of sessions)
@@ -16111,12 +16112,12 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       ...contracts.size === 1 ? { contract: [...contracts][0] } : {},
       ...pins.size === 1 ? { judgePinDigest: [...pins][0] } : {},
       pinned: contracts.size <= 1 && pins.size <= 1,
-      ...withheldOf(result2, sessions)
+      ...withheldOf(result3, sessions)
     };
   }
-  function withheldOf(result2, sessions) {
+  function withheldOf(result3, sessions) {
     const counted2 = withheldReports(
-      result2.records,
+      result3.records,
       sessions.flatMap(
         (s) => s.tests.flatMap((t) => t.claim === void 0 ? [] : [t.claim])
       )
@@ -16155,8 +16156,8 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       ...days.length === 0 ? {} : { from: days[0], to: days[days.length - 1] }
     };
   }
-  function buildComplianceModel(result2, presentation) {
-    const { claims, pack } = countedClaims(result2, presentation);
+  function buildComplianceModel(result3, presentation) {
+    const { claims, pack } = countedClaims(result3, presentation);
     const tests = /* @__PURE__ */ new Map();
     for (const p of claims) {
       const list2 = tests.get(p.obligationKey) ?? [];
@@ -16165,7 +16166,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       tests.set(p.obligationKey, list2);
     }
     const testIds = [...tests.values()].flat();
-    const sessions = buildSessions(result2, claims, testIds);
+    const sessions = buildSessions(result3, claims, testIds);
     const mappings = new Map(presentation.obligations.map((o) => [o.key, o]));
     const obligations = [...tests.entries()].map(([key, ids]) => {
       const mapping = mappings.get(key);
@@ -16179,7 +16180,7 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
           (id) => buildRow(
             id,
             rowMappings.get(id),
-            sealedWording(result2, claims, id),
+            sealedWording(result3, claims, id),
             sessions
           )
         )
@@ -16193,9 +16194,9 @@ path.cv-tl-good{fill:var(--person)}path.cv-tl-bad{fill:var(--bad)}path.cv-tl-ope
       findings: buildFindings(obligations),
       totalSessions: sessions.length,
       dating: complianceDating(sessions),
-      runInfo: buildRunInfo2(result2, sessions),
+      runInfo: buildRunInfo2(result3, sessions),
       qualityProtocol: presentation.qualityProtocol,
-      capsuleId: result2.capsuleId
+      capsuleId: result3.capsuleId
     };
   }
 
@@ -16948,13 +16949,13 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("ba539fe78e33f83d44db1c1352e0c49cb1eee51b");
+    return commitPrefix("60fb05dda0f3c2be341a9d5cccbb991bed45f0b9");
   }
   var commit = builtCommit();
   var unreleased = false;
   var VIEWER_BUILD = {
     viewer: "@action-state-group/capsule-viewer",
-    viewerVersion: "0.10.0",
+    viewerVersion: "0.11.0",
     verifier: "@action-state-group/agent-action-capsule",
     verifierVersion: "0.13.0",
     cllVersion: "0.3.0",
@@ -21065,7 +21066,7 @@ ${key}`);
     }
     host.append(section);
   }
-  function renderRules(host, model, runInfo, result2, w) {
+  function renderRules(host, model, runInfo, result3, w) {
     const tierOf = model.gating?.tierOf;
     const section = el8("section", "sec");
     section.dataset.section = "rules";
@@ -21171,7 +21172,7 @@ ${key}`);
                   (cr) => cr.checkId === check.id && cr.criterionId === criterion2.id && pick(cr.verdict)
                 )?.claim
               ),
-              result2,
+              result3,
               w
             );
             if (action !== void 0) cell4.append(action);
@@ -21660,13 +21661,13 @@ ${key}`);
     section.append(toggle);
     host.append(section);
   }
-  async function resultDocument3(result2, bundle) {
+  async function resultDocument3(result3, bundle) {
     try {
       const context = await verifiedBundleContext(bundle);
-      const member = disclosureOf(context, result2.capsuleId, result2.member);
+      const member = disclosureOf(context, result3.capsuleId, result3.member);
       if (member.state !== "disclosed") return void 0;
       const payload = member.payload;
-      return result2.form === "book" && payload !== null && typeof payload === "object" ? payload.statement : payload;
+      return result3.form === "book" && payload !== null && typeof payload === "object" ? payload.statement : payload;
     } catch {
       return void 0;
     }
@@ -21712,8 +21713,8 @@ ${key}`);
     page: "outcome-report",
     css: OUTCOME_REPORT_CSS
   };
-  async function drawLines(levels, result2, options, bundle, verified, w, tierOf) {
-    const built = buildOutcomeReportModel(result2, options);
+  async function drawLines(levels, result3, options, bundle, verified, w, tierOf) {
+    const built = buildOutcomeReportModel(result3, options);
     const model = tierOf === void 0 ? built : { ...built, gating: gating(built.conversations, tierOf) };
     const runInfo = await verifyJudgePin(model.runInfo);
     const claims = model.conversations.flatMap(
@@ -21729,7 +21730,7 @@ ${key}`);
     if (notes.childElementCount > 0) pad.append(notes);
     sheet.append(pad);
     levels.L0.append(sheet);
-    const slice2 = readSubjectHistory(await resultDocument3(result2, bundle));
+    const slice2 = readSubjectHistory(await resultDocument3(result3, bundle));
     if (slice2 !== void 0) {
       const subject = renderSubjectHistory(
         subjectConversations(model, w),
@@ -21739,12 +21740,12 @@ ${key}`);
       );
       if (subject !== void 0) levels.L0.append(subject);
     }
-    renderRules(levels.L1, model, runInfo, result2, w);
+    renderRules(levels.L1, model, runInfo, result3, w);
     leadWithProvenance(
       levels.L1,
       levels.L1.querySelector('[data-section="rules"]'),
       renderProvenance(
-        await provenanceLines(result2.records, claims, bundle, verified, w)
+        await provenanceLines(result3.records, claims, bundle, verified, w)
       )
     );
     levels.L2.append(renderCheckYourself(bundle, w));
@@ -22031,7 +22032,7 @@ ${key}`);
       ...undecided
     };
   }
-  function rowResult(row2, model, result2, w) {
+  function rowResult(row2, model, result3, w) {
     const cell2 = document.createElement("td");
     const status2 = rowStatus(row2, w);
     cell2.append(statusPill(status2.cls, status2.text));
@@ -22061,7 +22062,7 @@ ${key}`);
         `test:${row2.criterionId}:${bucket}`,
         `${row2.name} \xB7 ${word}: ${fmt4(ids.length)}`,
         ids.map((id) => claimOf(model, id, row2.criterionId)),
-        result2,
+        result3,
         w,
         w.t("evidence.show.for", { what: word })
       );
@@ -22079,7 +22080,7 @@ ${key}`);
     ]);
     return model.sessions.filter((s) => !outside.has(s.conversationId)).map((s) => s.tests.find((t) => t.criterionId === row2.criterionId)?.claim);
   }
-  function renderSummary(host, model, presentation, result2, w, tierOf) {
+  function renderSummary(host, model, presentation, result3, w, tierOf) {
     const section = el9("section", "");
     section.dataset.section = "summary";
     const regulation = maybeProducer(w, "p", "kicker", model.regulation, true);
@@ -22224,11 +22225,11 @@ ${key}`);
             `test:${test.criterionId}:checked-in`,
             `${test.name} \xB7 ${w.t("groups.summary.col.checked-in")}: ${count(w, "session", counted2)}`,
             populationClaims(test, model),
-            result2,
+            result3,
             w
           );
           if (action !== void 0) checkedIn.append(action);
-          tr.append(nameCell, checkedIn, rowResult(test, model, result2, w));
+          tr.append(nameCell, checkedIn, rowResult(test, model, result3, w));
           tbody.append(tr);
           if (sessionIds.length > 0) {
             const drillRow = el9("tr", "drill-row");
@@ -22688,8 +22689,8 @@ ${key}`);
     page: "compliance",
     css: COMPLIANCE_CSS
   };
-  async function drawGroups(levels, result2, presentation, bundle, verified, w, tierOf) {
-    const model = buildComplianceModel(result2, presentation);
+  async function drawGroups(levels, result3, presentation, bundle, verified, w, tierOf) {
+    const model = buildComplianceModel(result3, presentation);
     const claims = model.sessions.flatMap(
       (s) => s.tests.flatMap((t) => t.claim === void 0 ? [] : [t.claim])
     );
@@ -22697,12 +22698,12 @@ ${key}`);
     const sheet = el9("div", "l0-card");
     renderHeader(sheet, model, w, tierOf);
     levels.L0.append(sheet);
-    renderSummary(levels.L1, model, presentation, result2, w, tierOf);
+    renderSummary(levels.L1, model, presentation, result3, w, tierOf);
     leadWithProvenance(
       levels.L1,
       levels.L1.querySelector('[data-section="summary"]'),
       renderProvenance(
-        await provenanceLines(result2.records, claims, bundle, verified, w)
+        await provenanceLines(result3.records, claims, bundle, verified, w)
       )
     );
     renderFindings(levels.L1, model, w);
@@ -22712,18 +22713,18 @@ ${key}`);
 
   // src/contract-report.ts
   var FRAMES = { lines: LINES_FRAME, groups: GROUPS_FRAME };
-  function tierReader(result2, contract) {
+  function tierReader(result3, contract) {
     if (contract === void 0) return void 0;
-    const single = citesOneContract(result2) ? result2.claims[0]?.contractRef : void 0;
+    const single = citesOneContract(result3) ? result3.claims[0]?.contractRef : void 0;
     return (contractRef, requirementRef) => rowTier(contract, contractRef ?? single ?? "", requirementRef);
   }
-  function citesOneContract(result2) {
-    return new Set(result2.claims.map((claim) => claim.contractRef)).size <= 1;
+  function citesOneContract(result3) {
+    return new Set(result3.claims.map((claim) => claim.contractRef)).size <= 1;
   }
-  async function renderContractReport(result2, input, bundle, verified, host, wording, contract) {
-    const tierOf = tierReader(result2, contract);
+  async function renderContractReport(result3, input, bundle, verified, host, wording, contract) {
+    const tierOf = tierReader(result3, contract);
     const w = await contractReportWords(input.grouping, wording, {
-      singleContract: citesOneContract(result2)
+      singleContract: citesOneContract(result3)
     });
     const frame2 = FRAMES[input.grouping];
     const regions = (
@@ -22745,7 +22746,7 @@ ${key}`);
     levels.L0.append(style);
     const refused = refusedWordingNotice(w);
     if (refused !== void 0) levels.L0.append(refused);
-    if (tierOf !== void 0 && result2.claims.some(
+    if (tierOf !== void 0 && result3.claims.some(
       (claim) => tierOf(claim.contractRef, claim.requirementRef) === "informational"
     )) {
       const note = document.createElement("p");
@@ -22755,11 +22756,11 @@ ${key}`);
       levels.L0.append(note);
     }
     if (input.grouping === "lines")
-      await drawLines(levels, result2, input.options, bundle, verified, w, tierOf);
+      await drawLines(levels, result3, input.options, bundle, verified, w, tierOf);
     else
       await drawGroups(
         levels,
-        result2,
+        result3,
         input.presentation,
         bundle,
         verified,
@@ -22771,18 +22772,18 @@ ${key}`);
     regions.L2.append(levels.L2);
     applyDepth({ ...levels, depth: regions.depth });
   }
-  function renderOutcomeReportPage(result2, options, bundle, verified, root) {
+  function renderOutcomeReportPage(result3, options, bundle, verified, root) {
     return renderContractReport(
-      result2,
+      result3,
       { grouping: "lines", options },
       bundle,
       verified,
       root
     );
   }
-  function renderCompliancePage(result2, presentation, bundle, verified, root) {
+  function renderCompliancePage(result3, presentation, bundle, verified, root) {
     return renderContractReport(
-      result2,
+      result3,
       { grouping: "groups", presentation },
       bundle,
       verified,
@@ -22909,7 +22910,7 @@ ${key}`);
     }
   }
   function renderComposed(model, host, services) {
-    const result2 = model.result;
+    const result3 = model.result;
     const section = element5("section");
     section.dataset.section = "composition";
     section.dataset.module = BUILTIN_MANIFEST_COMPOSED.id;
@@ -22917,11 +22918,11 @@ ${key}`);
     style.textContent = COMPOSED_CSS;
     section.append(style);
     section.append(element5("h2", "Composition"));
-    const status2 = element5("p", `composed/v1 check: ${result2.status}`);
-    status2.dataset.compositionStatus = result2.status;
+    const status2 = element5("p", `composed/v1 check: ${result3.status}`);
+    status2.dataset.compositionStatus = result3.status;
     section.append(status2);
-    if (result2.findings.length > 0)
-      section.append(element5("p", `findings: ${result2.findings.join(", ")}`));
+    if (result3.findings.length > 0)
+      section.append(element5("p", `findings: ${result3.findings.join(", ")}`));
     section.append(
       element5(
         "p",
@@ -22930,15 +22931,15 @@ ${key}`);
     );
     section.append(element5("h3", "Composed digest"));
     const digest = element5("dl");
-    digest.dataset.composedDigest = result2.composedDigest.declared;
-    digest.dataset.matches = String(result2.composedDigest.matches);
+    digest.dataset.composedDigest = result3.composedDigest.declared;
+    digest.dataset.matches = String(result3.composedDigest.matches);
     digest.append(
       element5("dt", "declared"),
-      element5("dd", result2.composedDigest.declared),
+      element5("dd", result3.composedDigest.declared),
       element5("dt", "recomputed"),
-      element5("dd", result2.composedDigest.recomputed || "uncomputable"),
+      element5("dd", result3.composedDigest.recomputed || "uncomputable"),
       element5("dt", "matches"),
-      element5("dd", result2.composedDigest.matches ? "yes" : "no")
+      element5("dd", result3.composedDigest.matches ? "yes" : "no")
     );
     section.append(digest);
     section.append(element5("h3", "Members"));
@@ -22957,7 +22958,7 @@ ${key}`);
           "refusal signature",
           "findings"
         ],
-        result2.members.map((m) => {
+        result3.members.map((m) => {
           const tr = row([
             m.id,
             m.observer,
@@ -22982,7 +22983,7 @@ ${key}`);
       table2(
         "composition-observers",
         ["observer", "role", "custody domain"],
-        result2.observers.map((o) => {
+        result3.observers.map((o) => {
           const tr = row([o.id, o.role, o.custodyDomain]);
           tr.dataset.observerId = o.id;
           return tr;
@@ -22998,18 +22999,18 @@ ${key}`);
     section.append(element5("h3", "Composition closure"));
     const closure = element5(
       "p",
-      `${result2.compositionClosure.status}; missing: ${result2.compositionClosure.missing.length === 0 ? "none" : result2.compositionClosure.missing.join(", ")}; findings: ${findingsText(result2.compositionClosure.findings)}`
+      `${result3.compositionClosure.status}; missing: ${result3.compositionClosure.missing.length === 0 ? "none" : result3.compositionClosure.missing.join(", ")}; findings: ${findingsText(result3.compositionClosure.findings)}`
     );
-    closure.dataset.closureStatus = result2.compositionClosure.status;
+    closure.dataset.closureStatus = result3.compositionClosure.status;
     section.append(closure);
     section.append(element5("h3", "Joins"));
-    if (result2.joins.length === 0) section.append(element5("p", "No joins."));
+    if (result3.joins.length === 0) section.append(element5("p", "No joins."));
     else {
       section.append(
         table2(
           "composition-joins",
           ["members", "basis", "declared", "derived", "result"],
-          result2.joins.map((j) => {
+          result3.joins.map((j) => {
             const tr = row([
               pairText(j.members),
               j.basis,
@@ -23025,7 +23026,7 @@ ${key}`);
           })
         )
       );
-      for (const j of result2.joins) {
+      for (const j of result3.joins) {
         if (j.differences.length === 0) continue;
         const details = services.details(
           `Differing values: ${pairText(j.members)}`
@@ -23040,7 +23041,7 @@ ${key}`);
         table2(
           "composition-agreement",
           ["members", "result"],
-          result2.corroboration.map((c) => {
+          result3.corroboration.map((c) => {
             const tr = row([pairText(c.members), corroborationText(c)]);
             tr.dataset.agreementMembers = c.members.join(",");
             tr.dataset.corroboration = c.result;
@@ -23057,12 +23058,12 @@ ${key}`);
     manifest: BUILTIN_MANIFEST_COMPOSED,
     canRender: (context) => composedResult(context) !== void 0,
     buildModel: (context) => {
-      const result2 = composedResult(context);
-      if (result2 === void 0)
+      const result3 = composedResult(context);
+      if (result3 === void 0)
         throw new Error(
           `${BUILTIN_MANIFEST_COMPOSED.id}: buildModel called although canRender was false`
         );
-      return { result: result2 };
+      return { result: result3 };
     },
     render: renderComposed
   };
@@ -23344,11 +23345,11 @@ ${key}`);
       refs.length === 0 ? void 0 : t("record.rung.9.count", { n: here, of: refs.length }),
       t("record.rung.9.sub")
     );
-    const result2 = input.result;
-    const citing = result2 === void 0 ? 0 : result2.claims.filter(
+    const result3 = input.result;
+    const citing = result3 === void 0 ? 0 : result3.claims.filter(
       (c) => c.evidence.some((e) => e.digest === capsuleId)
     ).length;
-    const isResult = result2?.capsuleId === capsuleId;
+    const isResult = result3?.capsuleId === capsuleId;
     add2(
       10,
       "judgment",
@@ -23634,8 +23635,8 @@ ${key}`);
     return node;
   }
   var fmt5 = (n) => n.toLocaleString("en-US");
-  function mismatchMarker(result2, field, w) {
-    const mismatch = result2.countMismatches.find(
+  function mismatchMarker(result3, field, w) {
+    const mismatch = result3.countMismatches.find(
       (entry) => entry.field === field
     );
     if (mismatch === void 0) return void 0;
@@ -23649,18 +23650,18 @@ ${key}`);
     marker.dataset.recomputed = String(mismatch.recomputed);
     return marker;
   }
-  function renderAggregate(result2, w) {
+  function renderAggregate(result3, w) {
     const out = document.createDocumentFragment();
-    const stated = result2.statedCoverage;
+    const stated = result3.statedCoverage;
     const requirements = new Set(
-      result2.claims.filter((claim) => !claim.later).map(
+      result3.claims.filter((claim) => !claim.later).map(
         (claim) => JSON.stringify([claim.contractRef, claim.requirementRef])
       )
     ).size;
     const line = el11("p", "agg-line");
     const marked = (text2, field) => {
       line.append(text2);
-      const marker = mismatchMarker(result2, field, w);
+      const marker = mismatchMarker(result3, field, w);
       if (marker !== void 0) line.append(" ", marker);
     };
     marked(
@@ -23688,7 +23689,7 @@ ${key}`);
       "unknown_count"
     );
     const later = stated.notYetInForce;
-    if (later !== void 0 || result2.countMismatches.some((m) => m.field === "not_yet_in_force")) {
+    if (later !== void 0 || result3.countMismatches.some((m) => m.field === "not_yet_in_force")) {
       line.append(" \xB7 ");
       marked(
         w.p("front.agg.later", later ?? 0, { n: fmt5(later ?? 0) }),
@@ -23704,10 +23705,10 @@ ${key}`);
     const buckets = el11("div", "agg-buckets");
     const of = w.t("front.agg.of", { n: fmt5(stated.evaluatedPopulation) });
     const entries = [
-      ["met", result2.buckets.met, "buckets.met"],
-      ["not_met", result2.buckets.notMet, "buckets.not_met"],
-      ["not_evaluable", result2.buckets.notEvaluable, "buckets.not_evaluable"],
-      ["out_of_scope", result2.buckets.outOfScope, "buckets.out_of_scope"]
+      ["met", result3.buckets.met, "buckets.met"],
+      ["not_met", result3.buckets.notMet, "buckets.not_met"],
+      ["not_evaluable", result3.buckets.notEvaluable, "buckets.not_evaluable"],
+      ["out_of_scope", result3.buckets.outOfScope, "buckets.out_of_scope"]
     ];
     for (const [verdict2, ids, field] of entries) {
       if (ids === void 0) continue;
@@ -23723,17 +23724,17 @@ ${key}`);
         el11("span", "agg-of", of)
       );
       box.append(caption);
-      const marker = mismatchMarker(result2, field, w);
+      const marker = mismatchMarker(result3, field, w);
       if (marker !== void 0) box.append(marker);
       buckets.append(box);
     }
     out.append(buckets);
-    const dated = result2.claims.some((claim) => claim.appliesFrom !== void 0);
-    const switched = result2.buckets.outOfScope !== void 0;
+    const dated = result3.claims.some((claim) => claim.appliesFrom !== void 0);
+    const switched = result3.buckets.outOfScope !== void 0;
     if (dated || switched) {
       const copied = el11("p", "agg-note");
       if (dated) {
-        const date = utcDateOf(result2.generatedAt) ?? result2.generatedAt;
+        const date = utcDateOf(result3.generatedAt) ?? result3.generatedAt;
         copied.append(w.t("front.agg.as-of", { date }), " ");
         copied.dataset.asOf = date;
       }
@@ -23749,9 +23750,9 @@ ${key}`);
   }
   var shortDigest = (digest) => digest.length > 12 ? `${digest.slice(0, 4)}\u2026${digest.slice(-4)}` : digest;
   function renderCoreIdentity(model) {
-    const { result: result2, words: w } = model;
+    const { result: result3, words: w } = model;
     const refs = [
-      ...new Set(result2.claims.filter((c) => !c.later).map((c) => c.contractRef))
+      ...new Set(result3.claims.filter((c) => !c.later).map((c) => c.contractRef))
     ];
     const kicker = [w.t("front.core.label")];
     if (refs.length === 1) {
@@ -23764,11 +23765,11 @@ ${key}`);
       );
     } else if (refs.length > 1)
       kicker.push(w.t("front.core.packs", { n: fmt5(refs.length) }));
-    const generated = utcDateOf(result2.generatedAt) === void 0 ? void 0 : result2.generatedAt;
+    const generated = utcDateOf(result3.generatedAt) === void 0 ? void 0 : result3.generatedAt;
     if (generated !== void 0)
       kicker.push(w.t("front.core.generated", { time: generated }));
     const facts = [
-      w.t("front.core.result", { digest: shortDigest(result2.capsuleId) })
+      w.t("front.core.result", { digest: shortDigest(result3.capsuleId) })
     ];
     if (model.pins.length === 1)
       facts.push(w.t("front.core.pin", { digest: shortDigest(model.pins[0]) }));
@@ -23789,10 +23790,10 @@ ${key}`);
     block.append(top, rest);
     return block;
   }
-  async function coreStripModel(result2, words) {
-    const tally = await tallyJudges(result2.records, result2.claims);
+  async function coreStripModel(result3, words) {
+    const tally = await tallyJudges(result3.records, result3.claims);
     return {
-      result: result2,
+      result: result3,
       words,
       mock: judgedByMock(tally),
       pins: tally.pins.map((pin) => pin.digest)
@@ -24761,9 +24762,9 @@ ${pad.repeat(depth)}`;
     details.append(list2);
     return details;
   }
-  async function recordEntries(context, result2) {
+  async function recordEntries(context, result3) {
     const read = /* @__PURE__ */ new Map();
-    for (const record of result2?.records.values() ?? []) {
+    for (const record of result3?.records.values() ?? []) {
       const id = record.bookRecordId ?? record.capsuleId;
       if (!read.has(id)) read.set(id, record);
     }
@@ -25008,13 +25009,13 @@ ${pad.repeat(depth)}`;
     const recordPageStyle = element6("style");
     recordPageStyle.textContent = RECORD_PAGE_CSS;
     page.append(recordPageStyle);
-    let result2;
+    let result3;
     try {
-      result2 = bundleVerified(verified) ? await resultRootOf(context) : void 0;
+      result3 = bundleVerified(verified) ? await resultRootOf(context) : void 0;
     } catch {
-      result2 = void 0;
+      result3 = void 0;
     }
-    const read = bundleVerified(verified) ? await recordEntries(context, result2) : /* @__PURE__ */ new Map();
+    const read = bundleVerified(verified) ? await recordEntries(context, result3) : /* @__PURE__ */ new Map();
     const rawRecords = /* @__PURE__ */ new Map();
     for (const raw of Array.isArray(object13(bundle).records) ? object13(bundle).records : [])
       if (typeof object13(raw).capsule_id === "string")
@@ -25033,7 +25034,7 @@ ${pad.repeat(depth)}`;
           if (l3 !== void 0 && context.recordIndex.has(id))
             body.append(
               renderRecordPage(
-                { context, capsuleId: id, stamps, result: result2, voice: l3.voice },
+                { context, capsuleId: id, stamps, result: result3, voice: l3.voice },
                 l3.words
               )
             );
@@ -25402,8 +25403,8 @@ ${pad.repeat(depth)}`;
     return list2;
   }
   var CLAIM_TYPE_LABEL = (claim) => claim.recognized ? claim.type : `unrecognized (${claim.type})`;
-  function countMismatchMarker(result2, field) {
-    const mismatch = result2.countMismatches.find(
+  function countMismatchMarker(result3, field) {
+    const mismatch = result3.countMismatches.find(
       (entry) => entry.field === field
     );
     if (mismatch === void 0) return void 0;
@@ -25437,7 +25438,7 @@ ${pad.repeat(depth)}`;
     parent2.append(cell2);
     return cell2;
   }
-  function renderClose(close, result2, host) {
+  function renderClose(close, result3, host) {
     host.append(element6("h4", "Close"));
     const details = element6("dl");
     if (close.period !== void 0)
@@ -25468,10 +25469,10 @@ ${pad.repeat(depth)}`;
     }
     host.append(details);
     host.append(element6("h5", "Cited Close"));
-    renderCitationList([close.closeRef], result2.records, host);
+    renderCitationList([close.closeRef], result3.records, host);
     if (close.peerCloseRef !== void 0) {
       host.append(element6("h5", "Peer record"));
-      renderCitationList([close.peerCloseRef], result2.records, host);
+      renderCitationList([close.peerCloseRef], result3.records, host);
     }
     if (close.links.length > 0) {
       host.append(element6("h5", "Links to the cited Close"));
@@ -25533,7 +25534,7 @@ ${pad.repeat(depth)}`;
     parent2.append(cell2);
     return cell2;
   }
-  function renderClaim(claim, result2, host) {
+  function renderClaim(claim, result3, host) {
     host.replaceChildren();
     host.append(element6("h3", `Claim ${claim.id}`));
     const details = element6("dl");
@@ -25559,7 +25560,7 @@ ${pad.repeat(depth)}`;
       note.dataset.claimFailed = claim.failedOn ?? "close_state";
       host.append(note);
     }
-    if (claim.close !== void 0) renderClose(claim.close, result2, host);
+    if (claim.close !== void 0) renderClose(claim.close, result3, host);
     if (claim.support === "unsupported") {
       const note = element6(
         "p",
@@ -25581,7 +25582,7 @@ ${pad.repeat(depth)}`;
       host.append(element6("h5", "Carrier evidence"));
       const list2 = renderCitationList(
         claim.presentation.evidence,
-        result2.records,
+        result3.records,
         host
       );
       list2.dataset.carrierEvidence = String(claim.presentation.evidence.length);
@@ -25599,13 +25600,13 @@ ${pad.repeat(depth)}`;
     }
     host.append(element6("h4", "Evidence"));
     for (const ref of claim.evidence) {
-      const record = result2.records.get(ref.digest);
+      const record = result3.records.get(ref.digest);
       if (record === void 0) {
         const missing = element6("p", `${ref.digest} \xB7 not in this bundle`);
         missing.dataset.evidence = "missing";
         host.append(missing);
       } else {
-        renderCitedRecord(record, result2.records, host);
+        renderCitedRecord(record, result3.records, host);
       }
     }
   }
@@ -25618,23 +25619,23 @@ ${pad.repeat(depth)}`;
   ];
   var RESULT_COUNT_MARKS = `[${CORE_STRIP_ATTRIBUTE}], .cv-strip, [data-bucket], [data-bucket-count], [data-count-mismatch]`;
   var CARD_UNFIT_NOTE = "This Result's claims don't fit the report layout, so every claim is listed below instead.";
-  function renderResultPage(result2, root) {
+  function renderResultPage(result3, root) {
     const section = element6("section");
     section.dataset.page = "result";
     section.append(element6("h1", "Evidence result"));
-    const later = result2.claims.filter((claim) => claim.later);
-    const byId = new Map(result2.claims.map((claim) => [claim.id, claim]));
+    const later = result3.claims.filter((claim) => claim.later);
+    const byId = new Map(result3.claims.map((claim) => [claim.id, claim]));
     const buckets = element6("section");
     buckets.dataset.buckets = "verdict";
     buckets.append(element6("h2", "Claims by verdict"));
     for (const [key, label, field] of BUCKETS) {
-      const ids = result2.buckets[key];
+      const ids = result3.buckets[key];
       if (ids === void 0) continue;
-      const count2 = result2.bucketCounts[key] ?? 0;
+      const count2 = result3.bucketCounts[key] ?? 0;
       const heading = element6("h3", `${label}: ${count2 === 0 ? "none" : count2}`);
       heading.dataset.bucketCount = String(count2);
       heading.dataset.bucketOf = key;
-      const marker = countMismatchMarker(result2, field);
+      const marker = countMismatchMarker(result3, field);
       if (marker !== void 0) heading.append(" ", marker);
       buckets.append(heading);
       if (ids.length === 0) {
@@ -25659,12 +25660,12 @@ ${pad.repeat(depth)}`;
     }
     const failedHeading = element6(
       "h3",
-      `failed: ${result2.bucketCounts.failed === 0 ? "none" : result2.bucketCounts.failed}`
+      `failed: ${result3.bucketCounts.failed === 0 ? "none" : result3.bucketCounts.failed}`
     );
-    failedHeading.dataset.bucketCount = String(result2.bucketCounts.failed);
+    failedHeading.dataset.bucketCount = String(result3.bucketCounts.failed);
     failedHeading.dataset.bucketOf = "failed";
     buckets.append(failedHeading);
-    const failedIds = result2.claims.filter((claim) => claim.failed).map((claim) => claim.id);
+    const failedIds = result3.claims.filter((claim) => claim.failed).map((claim) => claim.id);
     if (failedIds.length === 0) buckets.append(element6("p", "none"));
     else {
       const list2 = element6("ul");
@@ -25701,7 +25702,7 @@ ${pad.repeat(depth)}`;
     const table3 = document.createElement("table");
     table3.dataset.claims = "rows";
     const detail = element6("section");
-    for (const claim of result2.claims) {
+    for (const claim of result3.claims) {
       const tr = document.createElement("tr");
       tr.dataset.claimRow = claim.id;
       tr.dataset.support = claim.support;
@@ -25714,7 +25715,7 @@ ${pad.repeat(depth)}`;
       const button = element6("button", claim.id);
       button.setAttribute("type", "button");
       button.dataset.claimId = claim.id;
-      button.addEventListener("click", () => renderClaim(claim, result2, detail));
+      button.addEventListener("click", () => renderClaim(claim, result3, detail));
       idCell.append(button);
       tr.append(idCell, element6("td", claim.requirementRef));
       appendSufficiency(tr, claim);
@@ -25736,7 +25737,7 @@ ${pad.repeat(depth)}`;
     section.append(
       table3,
       detail,
-      renderProvenance2(result2.capsuleId, result2.logCoordinates, result2)
+      renderProvenance2(result3.capsuleId, result3.logCoordinates, result3)
     );
     root.append(section);
   }
@@ -25871,15 +25872,15 @@ ${pad.repeat(depth)}`;
     if (presentation !== void 0) return { grouping: "groups", presentation };
     return void 0;
   }
-  function claimsFitCard(result2, grouping) {
-    if (new Set(result2.claims.map((c) => c.contractRef)).size > 1) return false;
+  function claimsFitCard(result3, grouping) {
+    if (new Set(result3.claims.map((c) => c.contractRef)).size > 1) return false;
     const placed = grouping === "lines" ? new Set(
-      readOutcomeReportTerms(result2).checks.flatMap(
+      readOutcomeReportTerms(result3).checks.flatMap(
         (check) => check.criteria.map((criterion2) => `${check.id}.${criterion2.id}`)
       )
     ) : void 0;
     const seen = /* @__PURE__ */ new Set();
-    for (const claim of result2.claims) {
+    for (const claim of result3.claims) {
       if (claim.type !== REQUIREMENT_CLAIM) return false;
       const sep = claim.id.indexOf("::");
       if (sep <= 0) return false;
@@ -25899,16 +25900,16 @@ ${pad.repeat(depth)}`;
     manifest: CONTRACT_REPORT_MANIFEST,
     canRender: (context) => isResultRoot(context),
     buildModel: async (context) => {
-      const result2 = defined(
+      const result3 = defined(
         await resultRootOf(context),
         CONTRACT_REPORT_MANIFEST.id
       );
       const supported = contractReportInput(context.bundle);
-      const input = supported !== void 0 && claimsFitCard(result2, supported.grouping) ? supported : void 0;
+      const input = supported !== void 0 && claimsFitCard(result3, supported.grouping) ? supported : void 0;
       if (typeof context.bundle === "object" && context.bundle !== null)
         contractReportDrawn.set(context.bundle, input ?? null);
       return {
-        result: result2,
+        result: result3,
         ...input === void 0 ? {} : { input },
         ...supported !== void 0 && input === void 0 ? { unfit: true } : {},
         bundle: context.bundle,
@@ -26051,11 +26052,11 @@ ${pad.repeat(depth)}`;
     }
     return out;
   }
-  async function drawCharts(context, result2, charts, digests, words) {
+  async function drawCharts(context, result3, charts, digests, words) {
     let dataset;
     let invalid2;
     try {
-      dataset = result2 === void 0 ? void 0 : await chartDatasetOf(context, result2);
+      dataset = result3 === void 0 ? void 0 : await chartDatasetOf(context, result3);
     } catch (err) {
       if (!(err instanceof ChartRefusal)) throw err;
       invalid2 = err;
@@ -26412,16 +26413,16 @@ ${pad.repeat(depth)}`;
     const contract = await pageContract(options.contract);
     const charted = options.charts !== void 0 && options.charts.length > 0;
     if (verified) {
-      const result2 = await resultRootOf(context);
+      const result3 = await resultRootOf(context);
       const grouping = contractReportGroupingOf(bundle) ?? "lines";
-      const words = result2 === void 0 && !charted ? void 0 : await contractReportWords(grouping, options.wording, {
-        singleContract: result2 !== void 0 && citesOneContract(result2)
+      const words = result3 === void 0 && !charted ? void 0 : await contractReportWords(grouping, options.wording, {
+        singleContract: result3 !== void 0 && citesOneContract(result3)
       });
-      if (result2 !== void 0) strip = await coreStripModel(result2, words);
+      if (result3 !== void 0) strip = await coreStripModel(result3, words);
       if (charted)
         chartsNode = await drawCharts(
           context,
-          result2,
+          result3,
           options.charts,
           chartDigests,
           words
@@ -27142,6 +27143,25 @@ ${pad.repeat(depth)}`;
     } catch {
       return result("NOT_CHECKED", "check_unavailable");
     }
+  }
+
+  // src/card-signature.ts
+  var result2 = (status2, keyId = null) => ({ status: status2, key_id: keyId });
+  async function readerCardSignature(context) {
+    if (!isVerifiedBundleContext(context)) return result2("NOT_CHECKED");
+    const record = context.strict?.records.find(
+      (r) => r.capsuleId === context.root
+    );
+    if (record === void 0) return result2("NOT_CHECKED");
+    switch (record.signature) {
+      case "authored":
+        return record.keyId === null ? result2("NOT_CHECKED") : result2("PASS", record.keyId);
+      case "invalid":
+        return result2("FAIL");
+      case "unclaimed":
+        return result2("NOT_PRESENT");
+    }
+    return result2("NOT_CHECKED");
   }
   return __toCommonJS(browser_exports2);
 })();
