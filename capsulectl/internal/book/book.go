@@ -119,8 +119,7 @@ func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifact
 // (`report check`). It needs neither signing key: the book is given throwaway
 // keys that exist only in memory, so the profile's secrets are never read
 // and a verb that reached a write would sign with a key no trusted_keys
-// holds. Trust comes from trusted_keys and checkpoint.trusted_keys alone,
-// which the artifact store and the checks apply as for every verb.
+// holds. The artifact store still checks originals against trusted_keys.
 func openBookForReading(ctx context.Context, p cli.Profile) (openedBook, error) {
 	opened, err := openBookKeyed(ctx, p, false, nil, true)
 	if err != nil {
