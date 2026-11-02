@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = ["BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError",
-           "UnsupportedError", "UnavailableError"]
+           "UnsupportedError", "UnavailableError", "OverLimitError"]
 
 
 class BookError(Exception):
@@ -37,3 +37,8 @@ class UnsupportedError(BookError):
 class UnavailableError(BookError):
     """A record's originals are not available: its retention state is
     WITHHELD or DELETED (Go ``UnavailableError``)."""
+
+
+class OverLimitError(BookError):
+    """An answer would carry more items than the cost policy allows
+    (Go ``ErrOverLimit``)."""

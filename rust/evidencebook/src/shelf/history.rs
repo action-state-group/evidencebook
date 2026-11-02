@@ -7,6 +7,7 @@ use super::cadence::{Cadence, CadenceTick};
 use super::log::Checkpoint;
 use super::ShelfError;
 use crate::answer::DERIVATION_HISTORY_CARD;
+use crate::respond::DEFAULT_MAX_ANSWER_ITEMS;
 use crate::staple::Staple;
 use evidence_request::cll_material::encode_consistency_proof;
 use evidence_request::envelope::{sign_with_profile, Anchor, Binding, EnvelopeParts, PROFILE};
@@ -128,7 +129,8 @@ impl Cadence {
     /// 0), each with the consistency proof from the one before, as of tick
     /// `n`'s checkpoint and signed by the shelf's signer. `check_staple`
     /// accepts it for the signer's key id. `NotFound` when the cadence has no
-    /// such finished tick.
+    /// such finished tick; `OverLimit` when the card would list more than
+    /// `DEFAULT_MAX_ANSWER_ITEMS` ticks, as Go does (evidencebook#354).
     pub fn history_card(&self, n: u64) -> Result<Staple, ShelfError> {
         let state = self.shelf.lock();
         if state.released {
@@ -149,6 +151,11 @@ impl Cadence {
         } else {
             n
         };
+        if n > DEFAULT_MAX_ANSWER_ITEMS as u64 {
+            return Err(ShelfError::OverLimit(format!(
+                "the card would list {n} ticks, over {DEFAULT_MAX_ANSWER_ITEMS}"
+            )));
+        }
         let mut chain = Vec::new();
         for i in 1..=n {
             let tick = self.tick_locked(i)?;

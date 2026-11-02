@@ -799,3 +799,16 @@ def test_a_correlation_subject_is_answered_as_go_answers_it(fx):
         assert len(v["answers"]) > 1
         for key, want in v["answers"].items():
             assert [view._header(i).subject_ref for i in view.correlated(key)] == [v["records"][p]["subject_ref"] for p in want], key
+
+
+def test_the_cadence_history_card_is_bounded(fx):
+    from evidencebook import OverLimitError
+    from evidencebook.book import DEFAULT_MAX_ANSWER_ITEMS
+
+    with fx.open() as shelf:
+        c = cadence(shelf)
+        c.tick(START)
+        with pytest.raises(OverLimitError):
+            c.history_card(DEFAULT_MAX_ANSWER_ITEMS + 1)
+        with pytest.raises(NotFoundError):  # at the cap the check passes; the ticks are not there
+            c.history_card(DEFAULT_MAX_ANSWER_ITEMS)

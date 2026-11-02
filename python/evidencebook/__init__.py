@@ -60,8 +60,8 @@ from .cadence import (
     WitnessRejected,
 )
 from . import evidence
-from .errors import (BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, ReleasedError,
-                     UnavailableError, UnsupportedError)
+from .errors import (BookError, CorruptError, InvalidError, NotCoveredError, NotFoundError, OverLimitError,
+                     ReleasedError, UnavailableError, UnsupportedError)
 from .record import (
     CITES,
     COMMIT_ALG_NONCE256,
@@ -116,5 +116,5 @@ __all__ = [
     "RELATIONSHIP_STRANGER", "RELATIONSHIP_IDENTIFIED", "RELATIONSHIP_COUNTERPARTY",
     "CITES", "EPISTEMIC_TYPES", "LINK_TYPES", "OBSERVED_EVENT", "PRODUCER_CLAIM",
     "RECORD_TYPE_REQUEST", "RECORD_TYPE_RESPONSE", "RECORD_TYPE_ABSENCE", "RECORD_TYPE_REQUEST_ANSWERED",
-    "BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError", "UnsupportedError", "UnavailableError",
+    "BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError", "UnsupportedError", "UnavailableError", "OverLimitError",
 ]
