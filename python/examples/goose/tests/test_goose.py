@@ -977,3 +977,22 @@ def test_halves_citing_what_a_step_may_not_cite_are_refused(nodes, clock):
         with pytest.raises(gn.Refused, match=message):
             gn._step_cites(n, {"links": links}, None if n == 1 else parent, is_close)
     assert gn._step_cites(1, {"links": [{"type": "cites", "target": stray}]}, None, False) == []
+
+
+def test_a_held_half_records_whether_its_close_cites_a_checkpoint_this_node_shared(nodes, clock):
+    buyer, seller = nodes
+    deal_through(buyer, seller, clock)
+    final = [s for _, s in buyer.notes(gn.HALF_RECEIVED) if s["close_half_digest"]][-1]
+    assert final["cites_my_checkpoint"] is True and len(final["close_cites"]) == 1
+    assert final["close_cites"][0] == buyer.notes(gn.HALF_ASKED)[0][1]["shared_checkpoint_digest"]
+
+
+def test_an_uncited_or_foreign_close_is_held_but_not_marked_as_citing_this_node(nodes, clock):
+    buyer, seller = nodes
+    paid(buyer, seller, clock)
+    buyer.ask_half(DEAL)
+    seller.close_deal(DEAL, "received", uncited=True)
+    half = seller.half(DEAL)
+    held = buyer.hold_half(gn.verify_half(half, seller.checkpoint_key_id), half)
+    note = next(s for r, s in buyer.notes(gn.HALF_RECEIVED) if r.record_id == held.record_id)
+    assert note["close_cites"] == [] and note["cites_my_checkpoint"] is False and note["close_half_digest"]

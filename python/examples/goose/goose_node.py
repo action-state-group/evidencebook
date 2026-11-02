@@ -105,7 +105,10 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     pinned (x-deal-v0 §10, "Admission"), and commits exactly these steps (the
     MMR over their ids has its peaks). Returns the deal id,
     the signing key, the steps' records and the digest of the final close
-    half (x-deal-v0 §10), or raises :class:`Refused`."""
+    half (x-deal-v0 §10), plus the half's final record id, the digest of its
+    checkpoint statement and the checkpoint digests its close cites. Each
+    step's ``cites`` links are checked (:func:`_step_cites`). Raises
+    :class:`Refused` when anything does not check out."""
     from cll.checkpoint import core
 
     from evidencebook._cll import read_checkpoint
@@ -816,7 +819,9 @@ class Node:
         chain = self.deal(deal_id)
         if chain._has(deal.TYPE_CLOSE):
             raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer}, subject_ref=deal_id)
+        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id)["checkpoint"]["statement"])).hexdigest()
+        return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
+                         subject_ref=deal_id)
 
     def hold_half(self, verified: dict, half: dict) -> SealedStep:
         """Seal a counterparty's verified half into the node book (its bytes
@@ -824,10 +829,16 @@ class Node:
         record id and the digest of the checkpoint it came under, citing the
         request it answers when this node sent one."""
         deal_id = verified["deal_id"]
-        asked = [r.record_id for r, s in self.notes(HALF_ASKED) if s["deal_id"] == deal_id]
+        asked_notes = [(r.record_id, s) for r, s in self.notes(HALF_ASKED) if s["deal_id"] == deal_id]
+        asked = [record_id for record_id, _ in asked_notes]
+        mine = {s["shared_checkpoint_digest"] for _, s in asked_notes}
+        cited = verified["counterparty_checkpoint_cites"]
         statement = {"deal_id": deal_id, "key_id": verified["key_id"], "close_half_digest": verified["close_half_digest"],
                      "final_record_id": verified["final_record_id"], "checkpoint_digest": verified["checkpoint_digest"],
-                     "half_digest": hashlib.sha256(jcs(half)).hexdigest(), "steps": len(verified["records"])}
+                     "half_digest": hashlib.sha256(jcs(half)).hexdigest(), "steps": len(verified["records"]),
+                     # What the half's close cites, and whether it is a checkpoint this node shared: an
+                     # uncited close is legitimate, so this records the fact and refuses nothing.
+                     "close_cites": cited, "cites_my_checkpoint": bool(mine & set(cited))}
         return self.note(HALF_RECEIVED, statement, subject_ref=deal_id, cites=tuple(asked[-1:]), payloads=(jcs(half),))
 
     def counterparty_checkpoint(self, deal_id: str) -> str | None:

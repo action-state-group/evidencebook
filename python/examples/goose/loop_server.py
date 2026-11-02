@@ -405,7 +405,7 @@ def loop_deal_reconcile(peer_file: str) -> str:
     recorded = n.hold_half(verified, half).record_id if same else None
     return _out(ok=True, step="05", deal_id=deal_id, state=state, steps=len(verified["records"]),
                 closed=verified["close_half_digest"] is not None, recorded=recorded,
-                checkpoint_digest=verified["checkpoint_digest"])
+                checkpoint_digest=verified["checkpoint_digest"], close_cites=verified["counterparty_checkpoint_cites"])
 
 
 @_tool
