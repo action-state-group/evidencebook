@@ -189,6 +189,10 @@ var walkNegatives = map[string]string{
 	"neg-close-agreed-bookless-close.json":       "the Close names no book, so nothing can be its counterparty",
 	"neg-close-ref-not-in-evidence.json":         "close.close_ref",
 	"neg-close-peer-ref-not-in-evidence.json":    "close.peer_close_ref",
+
+	"neg-calibration-without-summary.json":    "evidence cites 0 distinct calibration-summary/v1 records",
+	"neg-calibration-two-summaries.json":      "evidence cites 2 distinct calibration-summary/v1 records",
+	"neg-calibration-cites-other-record.json": `record_version ""`,
 }
 
 // The committed upstream vectors: every positive passes the schema, the
@@ -299,15 +303,15 @@ func TestResultSchemaAdmitsExtensionMembers(t *testing.T) {
 // book tests below, not here.
 func walkVector(t *testing.T, name string, doc resultDocument) error {
 	t.Helper()
-	var hasClose bool
+	var walked bool
 	for _, claim := range doc.claims {
-		hasClose = hasClose || claim.Type == claimTypeClose
+		walked = walked || claim.Type == claimTypeClose || claim.Type == claimTypeCalibration
 	}
-	if !hasClose {
+	if !walked {
 		return nil
 	}
 	raw, err := os.ReadFile(filepath.Join("testdata", "result", strings.TrimSuffix(name, ".json")+".records.json"))
-	require.NoError(t, err, "a close vector ships its records sidecar")
+	require.NoError(t, err, "a close or calibration vector ships its records sidecar")
 	var records []map[string]interface{}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.UseNumber()
@@ -321,6 +325,24 @@ func walkVector(t *testing.T, name string, doc resultDocument) error {
 		digests = append(digests, digest)
 	}
 	for _, claim := range doc.claims {
+		if claim.Type == claimTypeCalibration {
+			var cited []citedJudge
+			seen := make(map[string]bool)
+			for _, digest := range claim.Evidence {
+				record, ok := byDigest[digest]
+				require.True(t, ok, "%s: %s resolves in the sidecar", claim.Label(), digest)
+				if seen[digest] {
+					continue
+				}
+				seen[digest] = true
+				version, _ := record["record_version"].(string)
+				cited = append(cited, citedJudge{id: digest, version: version, disclosed: true})
+			}
+			if err := checkCalibrationClaim(claim, cited); err != nil {
+				return err
+			}
+			continue
+		}
 		if claim.Type != claimTypeClose {
 			continue
 		}
@@ -1256,4 +1278,72 @@ func TestResultBuildRefusesASealedIDWithTheRecordID(t *testing.T) {
 	assert.Contains(t, cli.SafeError(err), "cite "+again.CapsuleID)
 	_, _, err = runResultBuild(t, b.profile, resultDoc(testClaim("claim-1", "met", again.CapsuleID)))
 	require.NoError(t, err)
+}
+
+// A calibration claim's evidence is checked against the records the book
+// holds (Result v0 section 4.1): exactly one distinct calibration-summary/v1,
+// otherwise only human-rating/v1 records; a record with no disclosed body is
+// checked for presence only.
+func TestResultBuildChecksACalibrationClaimsEvidence(t *testing.T) {
+	b := newResultBook(t)
+	appendJudge := func(statement string) string {
+		var id string
+		withBook(t, b.profile, func(book *evidencebook.Book) {
+			entry := evidencebook.Entry{RecordType: "judge_record", EpistemicType: evidencebook.DerivedMetric, Links: []evidencebook.Link{}}
+			if statement != "" {
+				entry.Statement = json.RawMessage(statement)
+			}
+			record, err := book.Append(t.Context(), entry)
+			require.NoError(t, err)
+			id = record.RecordID
+		})
+		return id
+	}
+	summary1 := appendJudge(`{"record_version":"calibration-summary/v1","record_id":"cal-1"}`)
+	summary2 := appendJudge(`{"record_version":"calibration-summary/v1","record_id":"cal-2"}`)
+	rating := appendJudge(`{"record_version":"human-rating/v1","record_id":"hr-1"}`)
+	withheld := appendJudge("")
+	other := appendJudge(`{"note":"not a judge record"}`)
+	build := func(digests ...string) error {
+		claim := testClaim("cal-1", "met", digests...)
+		claim["type"] = "calibration"
+		_, _, err := runResultBuild(t, b.profile, resultDoc(claim))
+		return err
+	}
+	require.NoError(t, build(summary1, rating))
+	require.NoError(t, build(summary1), "zero ratings")
+	require.NoError(t, build(summary1, summary1, rating), "a digest cited twice is one citation")
+	require.NoError(t, build(summary1, withheld), "a withheld record is checked for presence only")
+
+	for name, c := range map[string]struct {
+		digests []string
+		want    string
+	}{
+		"no summary":     {[]string{rating}, "cites 0 distinct calibration-summary/v1 records"},
+		"two summaries":  {[]string{summary1, summary2, rating}, "cites 2 distinct calibration-summary/v1 records"},
+		"only withheld":  {[]string{withheld}, "cites 0 distinct calibration-summary/v1 records"},
+		"another record": {[]string{summary1, other}, `record_version ""`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := build(c.digests...)
+			require.ErrorIs(t, err, cli.ErrInput)
+			assert.Contains(t, cli.SafeError(err), c.want)
+		})
+	}
+}
+
+// A record that carries a published capsule counts as withheld even when
+// its statement is not empty: a backfilled capsule's statement is migration
+// provenance, not the judge record.
+func TestCitedJudgeRecordsTreatsACapsuleCarrierAsWithheld(t *testing.T) {
+	claim := resultClaim{Evidence: []string{"s", "b"}}
+	resolved := map[string]evidencebook.Record{
+		"s": {RecordID: "s", Header: evidencebook.Header{RecordType: "judge_record", Statement: json.RawMessage(`{"record_version":"calibration-summary/v1"}`)}},
+		"b": {RecordID: "b", Header: evidencebook.Header{RecordType: recordTypeBackfilled, SubjectRef: "cap", Statement: json.RawMessage(`{"capsule":true}`)}},
+	}
+	cited := citedJudgeRecords(claim, resolved)
+	require.Len(t, cited, 2)
+	assert.True(t, cited[0].disclosed)
+	assert.False(t, cited[1].disclosed)
+	assert.NoError(t, checkCalibrationClaim(claim, cited))
 }

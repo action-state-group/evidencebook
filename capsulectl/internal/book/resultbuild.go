@@ -29,7 +29,9 @@ import (
 // a record this book holds; a close claim's close_ref must be in its
 // evidence and its close_state must be what the counterparty's links to that
 // Close read (checkCloseClaim); a reconcile claim's tallies must be what
-// the Close it cites recorded. The record's header carries the document as
+// the Close it cites recorded; a calibration claim must cite exactly one
+// calibration-summary/v1 record and otherwise only human-rating/v1 records
+// (checkCalibrationClaim). The record's header carries the document as
 // its statement -- the member the book seals as the record capsule's
 // agent_input_digest -- and a `cites` link to every resolved record, which
 // is what the book's closure walk follows when a bundle is built on it.
@@ -300,9 +302,76 @@ func resolveResultCitations(ctx context.Context, book *evidencebook.Book, store 
 			if err := checkReconcileClaim(claim, resolved); err != nil {
 				return nil, err
 			}
+		case claimTypeCalibration:
+			if err := checkCalibrationClaim(claim, citedJudgeRecords(claim, resolved)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return links, nil
+}
+
+// citedJudge is one distinct record a calibration claim cites: its
+// record_version, and whether the book discloses a body to read it from.
+type citedJudge struct {
+	id        string
+	version   string
+	disclosed bool
+}
+
+// citedJudgeRecords reads each distinct record a calibration claim's
+// evidence cites. The body is the record's statement, as a Close's is; a
+// record with no statement, or one that carries a published capsule, has its
+// payload withheld and so no kind to read.
+// A digest cited twice, or two digests naming one record, is one citation.
+func citedJudgeRecords(claim resultClaim, resolved map[string]evidencebook.Record) []citedJudge {
+	var cited []citedJudge
+	seen := make(map[string]bool)
+	for _, digest := range claim.Evidence {
+		record, ok := resolved[digest]
+		if !ok || seen[record.RecordID] {
+			continue
+		}
+		seen[record.RecordID] = true
+		judge := citedJudge{id: record.RecordID}
+		// A record that carries a published capsule has its judge record in
+		// the capsule's payload, which is not read here; its statement (a
+		// backfill's provenance, say) is not the judge record.
+		_, carriesCapsule := capsuleIDOf(record)
+		if statement := bytes.TrimSpace(record.Header.Statement); !carriesCapsule && len(statement) > 0 && string(statement) != "null" {
+			judge.disclosed = true
+			var body struct {
+				RecordVersion string `json:"record_version"`
+			}
+			if json.Unmarshal(statement, &body) == nil {
+				judge.version = body.RecordVersion
+			}
+		}
+		cited = append(cited, judge)
+	}
+	return cited
+}
+
+// checkCalibrationClaim applies Result v0 section 4.1's evidence rule to a
+// calibration claim: every disclosed cited record is a calibration-summary/v1
+// or a human-rating/v1, and exactly one distinct cited record is a summary.
+// A record whose payload is withheld is checked only for presence, which the
+// resolution already did; the one summary must be disclosed.
+func checkCalibrationClaim(claim resultClaim, cited []citedJudge) error {
+	summaries := 0
+	for _, judge := range cited {
+		switch {
+		case !judge.disclosed || judge.version == judgeRatingVersion:
+		case judge.version == judgeSummaryVersion:
+			summaries++
+		default:
+			return cli.Hint(cli.ErrInput, fmt.Sprintf("%s is a calibration claim, but cites record %s with record_version %q; a calibration claim cites one %s and otherwise only %s records", claim.Label(), judge.id, judge.version, judgeSummaryVersion, judgeRatingVersion))
+		}
+	}
+	if summaries != 1 {
+		return cli.Hint(cli.ErrInput, fmt.Sprintf("%s is a calibration claim, but its evidence cites %d distinct %s records; it reports exactly one", claim.Label(), summaries, judgeSummaryVersion))
+	}
+	return nil
 }
 
 // checkCloseClaim applies #140's walk rules (section 4.1) to a close claim:
