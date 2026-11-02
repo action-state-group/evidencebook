@@ -48,6 +48,9 @@
 - A name with Cherokee letters folds as CaseFolding.txt does, which Go's `dealprofile` now matches
   (evidencebook#283); the parity vectors pin it.
 
+- `Cadence::history_card(n)` returns the profile's `history_card/1` over the cadence log as a `Staple`, as Go's
+  `Cadence.HistoryCard` does (#341); `check_staple` accepts it for the shelf signer's key id.
+
 ## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
