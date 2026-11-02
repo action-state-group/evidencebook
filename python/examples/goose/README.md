@@ -75,7 +75,7 @@ here moves money: a payment reference is a value you observed.
 | 04 | `loop_deal_bundle` (your admission and your record of the deal, one bundle) | |
 | 05 | | `loop_deal_respond` (the buyer's half: offer, acceptance, commit), then `loop_deal_push` |
 | 05 | `loop_deal_reconcile` (the seller's half: same terms?) | |
-| 06 | `loop_settle` (the payment reference you saw on the rail) | |
+| 06 | `loop_settle` (the payment reference you saw on the rail), then `loop_pay_opening` (opens the pay record's reference commitment, for a checker), `loop_settlement_disclosure` (your signed count of the settlements on that rail) | `loop_settlement_disclosure` |
 | 05 | `loop_deal_end_exchange` (asks for the seller's half and writes yours), then `loop_deal_reconcile` on the half the seller sends | the same, for the buyer's half |
 | 06 | `loop_deal_close` (`received` or `not_received`; cites the checkpoint of the half you hold) | `loop_deal_close` |
 | 05 | each side runs `loop_deal_push` and the other `loop_deal_reconcile` on its final half | |
@@ -94,6 +94,13 @@ tick adds `cadence-checkpoint.cose`, `cadence-witness-receipt.json` and the `x-c
 `runtime_claimed` is the node's own claim that the call happened, not the provider attesting it. The prompt is stored in
 your node book as the record's payload, so don't seal a prompt you would not disclose with the book; the completion is
 kept by digest only.
+
+`loop_settlement_disclosure` is step 06's count. It writes the node's signed `settlement-disclosure/v1`: how many final
+settlements on a rail the node's own deal books hold (an opening naming the rail, closed `received`; a buyer's book also
+holds its `pay` act), as of the rail's ledger sequence you observed. It reads no rail and moves no money. The loop compares
+it with the rail's own count. `loop_pay_opening` writes the opening of the buyer's `pay` record's committed local event: with the deal's half
+(`loop_deal_push`) a checker recomputes the record's payment-reference commitment and reads the reference you observed on
+the rail. It discloses that reference (a settlement id or payment hash, never a preimage), only when you call it.
 
 `loop_advertise` is step 03. It writes the node's `evidence-commitment/1`, which says how the node can be asked and what it
 can answer, and never counts anything. It also writes the node's disclosure policy. Both are signed with your signing key.

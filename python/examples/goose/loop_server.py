@@ -15,7 +15,7 @@ is imported once as a host log, nothing re-signed.
     03    loop_advertise (the node's signed evidence-commitment/1, for the loop's nodes/commitments/)
     04    loop_admit, loop_deal_bundle
     05    loop_deal_open, loop_deal_respond, loop_deal_push, loop_deal_reconcile
-    06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close
+    06    loop_settle (the buyer's pay step; no rail is driven), loop_deal_close, loop_settlement_disclosure, loop_pay_opening
     07    loop_ask, loop_ask_reply (the asker's side, over a file you carry); loop_mailbox_poll (answer the requests
           addressed to the node's mailbox), loop_ask_mailbox, loop_ask_mailbox_poll (ask a node through the mailbox
           its commitment advertises)
@@ -69,6 +69,7 @@ import commitment as cm
 import deal_records as dr
 import goose_node as gn
 import mailbox_exchange as mx
+import settlement as st
 
 HOME = os.environ.get("GOOSE_HOME", "~/.goose-evidence")
 #: The endpoint a commitment gives when the node is asked through its Nostr mailbox.
@@ -435,6 +436,29 @@ def loop_settle(deal_id: str, payment_ref: str) -> str:
     chain = n.deal(deal_id)
     sealed = n.seal(chain, chain.check_and_pay(_now(), payment_ref))
     return _out(ok=True, step="06", deal_id=deal_id, records=[s.record_id for s in sealed])
+
+
+@_tool
+def loop_settlement_disclosure(rail: str, through_sequence: int, out_path: str) -> str:
+    """Write this node's signed ``settlement-disclosure/v1`` to ``out_path``: how many final settlements on ``rail``
+    its own deal books hold (an opening that names the rail, closed ``received``; a buyer's also holds its ``pay``
+    act), as of ``through_sequence``, the rail's ledger sequence the caller observed. Step 06 compares it with the
+    rail's own count. This tool reads no rail and moves no money."""
+    n = node()
+    doc = st.disclosure(n, rail, through_sequence)
+    _write(out_path, json.dumps(doc, sort_keys=True, indent=2).encode())
+    return _out(ok=True, step="06", rail=rail, settlements=doc["settlements"], file=out_path)
+
+
+@_tool
+def loop_pay_opening(deal_id: str, out_path: str) -> str:
+    """Write the opening of this buyer's ``pay`` record's committed local event to ``out_path``: with the deal's
+    half (``loop_deal_push``) a checker recomputes the record's payment-reference commitment and finds the
+    reference the caller observed on the rail (a settlement id or payment hash, never a preimage). Calling it
+    discloses that reference."""
+    doc = st.pay_opening(node(), deal_id)
+    _write(out_path, json.dumps(doc, sort_keys=True, indent=2).encode())
+    return _out(ok=True, step="06", deal_id=deal_id, record_id=doc["record_id"], file=out_path)
 
 
 @_tool
