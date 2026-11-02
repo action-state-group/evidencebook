@@ -111,8 +111,11 @@ Use their canonicalization and verification rather than reimplementing them.
 - Commits use conventional commit messages and a DCO sign-off
   (`git commit -s`). Do not add AI attribution trailers.
 - New behavior needs tests in the same change, including error paths.
-- A user-visible change adds an entry under Unreleased in `CHANGELOG.md` (Go),
-  `rust/evidencebook/CHANGELOG.md` (Rust) or `python/CHANGELOG.md` (Python).
+- A user-visible change adds a fragment `changelog.d/<short-name>.md`, not an edit to a
+  changelog, so parallel pull requests never conflict there. It holds the entry for
+  `CHANGELOG.md` (Go); start it with `<!-- changelog: rust/evidencebook/CHANGELOG.md -->` (Rust) or
+  `<!-- changelog: python/CHANGELOG.md -->` (Python) for those. See
+  [changelog.d/README.md](changelog.d/README.md).
 
 ## Releases
 

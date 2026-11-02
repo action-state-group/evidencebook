@@ -27,7 +27,8 @@ on the Git tag; the crates.io version stays plain (`0.0.6`).
 2. **Review.** Open the pull request from the link in the run summary. Open it
    yourself: a pull request opened by the workflow would not start CI. Move
    the crate CHANGELOG's Unreleased entries under the new version on the same
-   branch.
+   branch, after `python3 .github/changelog_fragments.py fold` has folded the
+   pending `changelog.d/` fragments into it.
 3. **Merge.** [Release · Tag](https://github.com/action-state-group/evidencebook/actions/workflows/tag-release.yml)
    runs on the merge. If the crate's version changed, it creates the tag and
    GitHub Release on the merge commit and dispatches `publish-rust.yml` on
@@ -62,7 +63,10 @@ manifest version and no publisher workflow; a Go release is the pushed tag
 itself.
 
 1. Merge a `chore(release): v<version>` pull request that moves the
-   CHANGELOG's Unreleased entries under `## v<version> (<date>)`.
+   CHANGELOG's Unreleased entries under `## v<version> (<date>)`. In that
+   branch, first run `python3 .github/changelog_fragments.py fold`: it appends
+   every pending `changelog.d/` fragment to its changelog's Unreleased section
+   and deletes the fragments.
 2. An admin pushes `v<version>` on that merge commit. Only an admin pushes
    `v*` tags, and no workflow creates them.
 
