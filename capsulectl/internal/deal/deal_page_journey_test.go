@@ -62,6 +62,30 @@ if (edit === "withhold-approval") {
     if ((((d || {}).agent_input || {})["x-deal-v0"] || {}).record_type === "approval") delete bundle.disclosures[id];
   }
 }
+// "witness:S1,S2": the runtime's cadence check answers S1 for the first context
+// it is asked about, S2 for the next (the last repeats); "preimage:S": its
+// preimage check answers S for every leg; "no-checks": the runtime has neither
+// (a page built on a viewer before 0.10.0). The checks themselves are the
+// viewer's to test (capsule-viewer#214); the page's draw of each answer is ours.
+// The runtime object is frozen: the module reads the global, so the global is
+// replaced by a copy with the stubbed checks.
+const patched = { ...EG };
+if (edit && edit.startsWith("witness:")) {
+  const answers = edit.slice(8).split(",");
+  let asked = 0;
+  patched.readerCadenceWitness = async () => {
+    const status = answers[Math.min(asked++, answers.length - 1)];
+    return status === "PASS"
+      ? { status, finding: null, witness: "Acme Witness", witnessed_time: 1790000000 }
+      : { status, finding: status === "NOT_PRESENT" ? null : "stub", witness: null, witnessed_time: null };
+  };
+}
+if (edit && edit.startsWith("preimage:")) patched.paymentPreimageCheck = async () => edit.slice(9);
+if (edit === "no-checks") {
+  delete patched.readerCadenceWitness;
+  delete patched.paymentPreimageCheck;
+}
+context.EvidenceGraph = patched;
 (async () => {
   const ctx = await verifiedContext(context, EG, bundle);
   const resolution = await EG.resolvePresentation(ctx);
@@ -164,8 +188,8 @@ func TestTheReceiptFaceSaysOnlyWhatWasChecked(t *testing.T) {
 	require.Empty(t, own["refusal"])
 	assert.Equal(t, "yes", own["banner"])
 	assert.Equal(t, "Your copy only · checked", own["bannerText"])
-	assert.Equal(t, []any{"passed", "passed", "missing", "passed", "missing", "not checked", "not checked", "missing", "not checked"}, own["stamps"],
-		"no record is signed with the person's key, card settlement is not in the file, the deal is open, the page cannot check the witness, and the other side is not in the file")
+	assert.Equal(t, []any{"passed", "passed", "missing", "passed", "missing", "not checked", "missing", "missing", "not checked"}, own["stamps"],
+		"no record is signed with the person's key, card settlement is not in the file, the deal is open, the book names no witness's receipt, and the other side is not in the file")
 	assert.Equal(t, "3 passed · 6 not checkable here", own["pill"], "no failure to name, and the unchecked ones are said")
 	assert.EqualValues(t, 1, own["restsNote"], "what the words rest on is on the face")
 

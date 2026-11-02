@@ -129,6 +129,17 @@
   switch to turn the SHA-256 fallback off, so the "unable to verify in this
   viewer" page is not covered end to end here.
 
+- The receipt's settlement and witness lines are drawn from the viewer runtime's checks
+  (`capsulectl.deal-view/v0`; evidencebook-deal#94, #104). The settlement line reads
+  **passed**, "the payment's proof matches its invoice", only when the runtime's
+  `paymentPreimageCheck` answers `PASS` for every settled Lightning leg. The witness line
+  reads **passed**, "recorded by <witness> at <time>", only when `readerCadenceWitness`
+  answers `PASS` for your book (on the receipt with the other party's half, for both books);
+  an answer of no receipt reads **missing**. Any other answer, and a page whose runtime
+  predates the checks, leaves the lines as they were. Builds against capsule-viewer `v0.10.0`
+  (capsule-viewer#215); the presentation goldens are rebuilt (the two monthly-report pages, which capsulectl-book writes, are rebuilt with the book at `v0.12.2` on viewer `v0.10.0`, since evidencebook still pins `v0.9.0`; their bundles are unchanged): a book whose cadence witness is
+  `not_configured` now reads **missing** on the witness line, where it said "not checked".
+
 ## v0.1.0-rc29
 
 This section also lists what `v0.1.0-rc28` carried: that tag was cut before this CHANGELOG
