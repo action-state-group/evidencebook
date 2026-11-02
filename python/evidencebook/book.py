@@ -542,6 +542,9 @@ class Book:
         self._originals = originals
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._lock = threading.Lock()
+        # Answers in flight: close waits for them, as Go's Release does (answering).
+        self._idle = threading.Condition(self._lock)
+        self._answers = 0
         self._records: dict[str, Record] = {}
         self._stored: dict[str, StoredRecord] = {}
         # Whether each stored header has a statement member (the retention
@@ -690,7 +693,8 @@ class Book:
 
     def close(self) -> None:
         """Release the store. Every later write raises :class:`ReleasedError`."""
-        with self._lock:
+        with self._idle:
+            self._idle.wait_for(lambda: self._answers == 0)
             if not self._released:
                 self._released = True
                 try:
@@ -1136,20 +1140,20 @@ class Book:
         # evidence_request_answered record, so a flood of requests never holds
         # an append or checkpoint for longer than that (evidencebook#217,
         # as Go's Book.Respond, #215).
-        answer = _Answer(self, request, options, own)
-        reply = answer.run()
-        if not answer.seal:
-            return reply, None
-        with self._lock:
-            record = self._append(Entry(RECORD_TYPE_REQUEST_ANSWERED, OBSERVED_EVENT, statement=answer.statement))
-        return reply, record
-
-    def _relationship(self, authenticated: str) -> str:
-        if not authenticated:
-            return RELATIONSHIP_STRANGER
-        if any(self._records[i].header.counterparty_ref == authenticated for i in self._order):
-            return RELATIONSHIP_COUNTERPARTY
-        return RELATIONSHIP_IDENTIFIED
+        with self._idle:
+            self._answers += 1
+        try:
+            answer = _Answer(self, request, options, own)
+            reply = answer.run()
+            if not answer.seal:
+                return reply, None
+            with self._lock:
+                record = self._append(Entry(RECORD_TYPE_REQUEST_ANSWERED, OBSERVED_EVENT, statement=answer.statement))
+            return reply, record
+        finally:
+            with self._idle:
+                self._answers -= 1
+                self._idle.notify_all()
 
 
 class _Snapshot:
@@ -1159,12 +1163,14 @@ class _Snapshot:
     about records it holds, however far the log has grown since. The log is
     append-only and the substrate's proofs at an anchor read nothing past it."""
 
-    def __init__(self, book: Book):
+    def __init__(self, book: Book, derivations: dict | None = None):
         self._order = list(book._order)
         self._records = dict(book._records)
         self._stored = dict(book._stored)
         self._checkpoints = list(book._checkpoints)
-        self._derivations = dict(book._derivations)
+        # Taken once per answer, as Go clones them once (a registration made
+        # mid-answer is not seen by it).
+        self._derivations = dict(book._derivations) if derivations is None else derivations
         self._standard_history = book._standard_history
         self._responder = book._responder
         self._signer = book._signer
@@ -1191,7 +1197,7 @@ def _detached(record: Record) -> Record:
 
 
 class _View:
-    """The book as the decision reads it, under the book's lock."""
+    """The book as the decision reads it, from one snapshot of its log."""
 
     def __init__(self, book: Book):
         self.book = book
@@ -1384,7 +1390,7 @@ class _Answer:
             if latest is None or not _decide.anchor_meets(
                     _decide.AnchorView(latest.anchor_digest, latest.entries, latest.issued_at_ns), floor, floor_time):
                 book._checkpoint()
-            self.log = _Snapshot(book)
+            self.log = _Snapshot(book, self.log._derivations)
 
     def _policy(self, view: _View, req: EvidenceRequest, may_issue: bool) -> _decide.Policy:
         book = self.log

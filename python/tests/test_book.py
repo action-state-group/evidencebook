@@ -863,3 +863,55 @@ def test_an_answer_stopped_partway_blocks_no_writer(clock):
     _, record = answered[0]
     assert record is not None and record.header.record_type == eb.RECORD_TYPE_REQUEST_ANSWERED
     assert record.seq == b.size()
+
+
+def _stalled_setup(clock):
+    signer = _Stalling(key("responder signer"))
+    b = eb.Book("responder", "responder-operator", signer=signer, log_id="responder-log",
+                log_key=key("responder log"), now=clock)
+    first = b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    pin = b.checkpoint().anchor_digest
+    request = eb.EvidenceRequest(eb.Subject("record", first.record_id), eb.Coverage(expected_pin=pin))
+    message = eb.Book("asker", "asker-operator", signer=key("asker signer"), log_id="asker-log",
+                      log_key=key("asker log"), now=clock).request(request, "responder").message
+    return b, signer, message
+
+
+def test_close_waits_for_an_answer_in_progress(clock):
+    """As Go's Release takes the answering lock exclusively: closing mid-answer
+    waits, and the answer seals its record before the book is released."""
+    b, signer, message = _stalled_setup(clock)
+    signer.stall = "answerer"
+    answered: list = []
+    thread = threading.Thread(target=lambda: answered.append(b.respond(message, PEERS)), name="answerer")
+    thread.start()
+    closer = threading.Thread(target=b.close)
+    try:
+        assert signer.stalled.wait(10)
+        closer.start()
+        closer.join(0.3)
+        assert closer.is_alive()
+    finally:
+        signer.release.set()
+        thread.join(10)
+        closer.join(10)
+    assert answered[0][1] is not None and not closer.is_alive()
+    with pytest.raises(eb.ReleasedError):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+
+
+def test_concurrent_freshness_floors_issue_one_anchor(clock):
+    """Answers decide from their own snapshots; one that finds the floor
+    already met by an anchor another issued issues none."""
+    b = book(clock, "responder")
+    b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref="order-0"))
+    b.checkpoint()
+    for i in range(3):
+        b.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref=f"order-{i + 1}"))
+    asker = book(clock, "asker")
+    floor = b.size()
+    request = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(min_freshness=floor))
+    before = len(b.checkpoints())
+    for _ in range(3):
+        reply, _ = b.respond(asker.request(request, "responder").message, PEERS)
+    assert len(b.checkpoints()) == before + 1
