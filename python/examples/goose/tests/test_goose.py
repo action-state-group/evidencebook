@@ -1025,7 +1025,7 @@ def test_a_node_discloses_its_own_count_of_final_settlements_on_a_rail(nodes, cl
 
 
 def test_a_disclosure_counts_only_the_asked_rail_never_the_whole_book(nodes, clock):
-    """Sherlock2's condition on #408: a count for a rail must not disclose the node's total payment volume."""
+    """Sherlock2's condition on capsule-emit#408: a count for a rail must not disclose the node's total payment volume."""
     import settlement as st
 
     buyer, seller = nodes

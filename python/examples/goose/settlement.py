@@ -49,7 +49,7 @@ def settled_deals(node: gn.Node, rail: str) -> list[str]:
 
 def disclosure(node: gn.Node, rail: str, through_sequence: int) -> dict:
     """The node's signed ``settlement-disclosure/v1`` for ``rail``, labelled with the rail's latest ledger
-    ``through_sequence`` the caller observed (the count itself covers all the node's books)."""
+    ``through_sequence`` the caller observed (the count covers every book the node holds on ``rail``; ``through_sequence`` does not filter it)."""
     if not rail or not isinstance(rail, str):
         raise gn.Refused("rail is the rail's name, e.g. lightning")
     if isinstance(through_sequence, bool) or not isinstance(through_sequence, int) or through_sequence < 0:
