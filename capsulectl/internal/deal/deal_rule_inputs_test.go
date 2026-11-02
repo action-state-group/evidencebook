@@ -139,6 +139,60 @@ func TestTheRuleInputsFollowTheDeal(t *testing.T) {
 	assert.Equal(t, offerFieldsBasis, sealed["offer_fields_basis"])
 }
 
+// Under rule inputs version 4, channel follows the latest counterparty
+// message only (evidencebook-deal#24): the user's and the agent's messages
+// do not move it; under "3" any latest message does.
+func TestTheChannelFollowsTheLatestCounterpartyMessage(t *testing.T) {
+	const pay = stickerPay
+	open := func(t *testing.T) string {
+		dealFixture(t)
+		return dealRun(t, "open", "--input", writeJSON(t, `{"type":"purchase","channel":"marketplace",
+			"intent":{"verbatim":"buy me a funny otter sticker for 4.54","asked":{"item":"otter sticker","price_minor":454},"max_total_minor":500,"allowed":["pay"]},
+			"who":{"name":"Sticker Marketplace","domain":"stickers.example"},
+			"terms":{"item":"otter sticker","price_minor":454,"currency":"USD"},
+			"recourse":{"rail":"card","refundable":true}}`))["deal_id"].(string)
+	}
+	say := func(t *testing.T, id, from, channel string) {
+		dealRun(t, "note", "--deal", id, "--kind", "message", "--input", writeJSON(t, `{"from":"`+from+`","channel":"`+channel+`","text":"hello"}`))
+	}
+	t.Run("a user message does not move it", func(t *testing.T) {
+		id := open(t)
+		say(t, id, "counterparty", "whatsapp")
+		say(t, id, "user", "email")
+		sealed, given, _ := ruleInputs(t, id, pay)
+		assert.Equal(t, "whatsapp", sealed["channel"])
+		assert.Equal(t, "whatsapp", given["channel"])
+	})
+	t.Run("a user message alone leaves the opening channel", func(t *testing.T) {
+		id := open(t)
+		say(t, id, "user", "email")
+		sealed, _, _ := ruleInputs(t, id, pay)
+		assert.Equal(t, "marketplace", sealed["channel"])
+	})
+	t.Run("a later counterparty message moves it", func(t *testing.T) {
+		id := open(t)
+		say(t, id, "counterparty", "whatsapp")
+		say(t, id, "user", "email")
+		say(t, id, "counterparty", "sms")
+		sealed, _, _ := ruleInputs(t, id, pay)
+		assert.Equal(t, "sms", sealed["channel"])
+	})
+	t.Run("under version 3 any latest message moves it", func(t *testing.T) {
+		dealRuleInputsVersion = "3"
+		t.Cleanup(func() { dealRuleInputsVersion = "4" })
+		id := open(t)
+		say(t, id, "counterparty", "whatsapp")
+		say(t, id, "user", "email")
+		sealed, _, _ := ruleInputs(t, id, pay)
+		assert.Equal(t, "email", sealed["channel"])
+		assert.Equal(t, float64(3), sealed["rule_inputs_version"])
+		// Re-derived by a build at "4": the sealed version still governs.
+		dealRuleInputsVersion = "4"
+		_, export := exportRecords(t, id)
+		checkProfile(t, export)
+	})
+}
+
 // A share says who receives it, by role.
 func TestAShareCarriesTheRecipientRole(t *testing.T) {
 	for check, role := range map[string]string{

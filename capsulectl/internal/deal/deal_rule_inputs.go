@@ -3,6 +3,7 @@ package deal
 import (
 	"bytes"
 	"maps"
+	"strconv"
 	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -40,10 +41,14 @@ import (
 // (capsule-cli#380) counts the same way against an agreement that an
 // approval changes only by the terms its card named (adoptsNamedTermsOnly);
 // a step sealed under "2" or before re-derives with the agreement it had.
+// Version "4" (evidencebook-deal#24) takes channel from the latest
+// counterparty message only (r21 is about the counterparty's channel); a
+// step sealed under "3" or before re-derives with the latest message's
+// channel, whoever sent it.
 // A check sealed under "3" or later says so in its record
 // (rule_inputs_version), so a verifier knows which rule its approval
 // adopts by. A var only so that a test can seal a deal across versions.
-var dealRuleInputsVersion = "3"
+var dealRuleInputsVersion = "4"
 
 // The field lists the two counts read, in this order, keyed as the check
 // body names them. terms.conditions counts as one key, so a count is never
@@ -158,6 +163,12 @@ func payeeOf(w dealWho) string {
 	return w.Name
 }
 
+// counterpartyChannelOnly is whether a check sealed under rule inputs
+// version takes channel from counterparty messages only (version "4").
+func counterpartyChannelOnly(version string) bool {
+	return adoptsNamedTermsOnly(version) && version != "3"
+}
+
 // sealRuleInputs adds the rule inputs to a check body, from the steps sealed
 // before it and the check's own snapshot.
 func sealRuleInputs(body map[string]interface{}, events []sealedEvent, sn *dealSnapshot, version string) {
@@ -199,7 +210,8 @@ func sealRuleInputs(body map[string]interface{}, events []sealedEvent, sn *dealS
 	}
 	channel := open.Channel
 	for i := len(events) - 1; i >= 0; i-- {
-		if m := events[i].Event.Message; m != nil && m.Channel != "" {
+		m := events[i].Event.Message
+		if m != nil && m.Channel != "" && (m.From == "counterparty" || !counterpartyChannelOnly(version)) {
 			channel = m.Channel
 			break
 		}
@@ -223,7 +235,9 @@ func sealRuleInputs(body map[string]interface{}, events []sealedEvent, sn *dealS
 	body["material_fields_basis"] = materialFieldsBasis
 	if adoptsNamedTermsOnly(version) {
 		// Which rule an approval of this check adopts by (foldDeal).
-		body["rule_inputs_version"] = 3
+		// Versions are numeric constants, so the parse cannot fail.
+		n, _ := strconv.Atoi(version)
+		body["rule_inputs_version"] = n
 	}
 	// Against the user's own words (intent.asked), only over the offer keys
 	// those words state: a key they never state (refundability, which they
