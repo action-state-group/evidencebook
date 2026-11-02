@@ -400,7 +400,7 @@ func TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen(t *testing.T) {
 		"depth":    {Octets: append(bytes.TrimSuffix(bytes.Clone(honest.Message.Octets), []byte("}")), []byte(`,"x":`+deep+`}`)...), MediaType: MediaTypeJSON},
 		"receipts": withMember(t, honest.Message, WitnessReceiptsMember, receipts),
 	} {
-		before := len(requester.order)
+		before := len(requester.log)
 		start := time.Now()
 		_, err := requester.RecordResponse(ctx, sent.RecordID, hostile, keys)
 		if took := time.Since(start); took > 2*time.Second {
@@ -409,7 +409,7 @@ func TestAReplyOverAnOctetLimitIsRefusedAndTheRequestStaysOpen(t *testing.T) {
 		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "limit: ") {
 			t.Fatalf("%s: got %v, want a refusal naming the limit", name, err)
 		}
-		if len(requester.order) != before {
+		if len(requester.log) != before {
 			t.Fatalf("%s: a refused reply was recorded", name)
 		}
 	}
@@ -562,7 +562,7 @@ func TestBundleWitnessStanding(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := newReceiptCase(t)
 			c.keys.Witnesses = directory
-			bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.order[len(c.holder.order)-1]})
+			bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.log[len(c.holder.log)-1].RecordID})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -601,7 +601,7 @@ func TestBundleWitnessStanding(t *testing.T) {
 // runs.
 func TestBundleLimits(t *testing.T) {
 	c := newReceiptCase(t)
-	bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.order[len(c.holder.order)-1]})
+	bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.log[len(c.holder.log)-1].RecordID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,11 +660,11 @@ func TestARefusalOverTheReceiptLimitIsRefusedUnrecorded(t *testing.T) {
 	for i := range receipts {
 		receipts[i] = map[string]any{}
 	}
-	before := len(requester.order)
+	before := len(requester.log)
 	if _, err := requester.RecordResponse(ctx, sent.RecordID, withMember(t, honest.Message, WitnessReceiptsMember, receipts), keys); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "limit: witness receipts") {
 		t.Fatalf("got %v", err)
 	}
-	if len(requester.order) != before {
+	if len(requester.log) != before {
 		t.Fatal("a refused reply was recorded")
 	}
 	if _, err := requester.RecordResponse(ctx, sent.RecordID, honest.Message, keys); err != nil {

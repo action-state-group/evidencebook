@@ -85,9 +85,8 @@ type Book struct {
 	signer      Signer
 
 	records map[string]Record
-	order   []string
-	// log is the committed records in seq order: log[i].RecordID is
-	// order[i], and both grow only in admitLocked and Open.
+	// log is the committed records in seq order, the one source of record
+	// order; it grows only in admitLocked and recover.
 	// It is append-only and its elements are never changed, so a prefix
 	// taken under mu (logLocked) stays a consistent view of the log after mu
 	// is released: Respond answers from one without holding the lock.
@@ -183,15 +182,14 @@ func (b *Book) recover(ctx context.Context) error {
 			return fmt.Errorf("%w: record %s belongs to book %q", ErrCorrupt, record.RecordID, record.Header.BookID)
 		}
 		b.records[record.RecordID] = record
-		b.order = append(b.order, record.RecordID)
 		b.log = append(b.log, record)
 	}
 	committed, err := b.commitments.Size(ctx)
 	if err != nil {
 		return err
 	}
-	if committed > uint64(len(b.order)) {
-		return fmt.Errorf("%w: substrate holds %d identities, store holds %d records", ErrCorrupt, committed, len(b.order))
+	if committed > uint64(len(b.log)) {
+		return fmt.Errorf("%w: substrate holds %d identities, store holds %d records", ErrCorrupt, committed, len(b.log))
 	}
 	for after := uint64(0); after < committed; {
 		entries, err := b.commitments.Entries(ctx, after, 0)
@@ -202,22 +200,22 @@ func (b *Book) recover(ctx context.Context) error {
 			return fmt.Errorf("%w: substrate scan stopped at %d of %d", ErrCorrupt, after, committed)
 		}
 		for _, entry := range entries {
-			if entry.Seq > committed || b.order[entry.Seq-1] != entry.RecordID {
-				return fmt.Errorf("%w: substrate seq %d is not stored record %s", ErrCorrupt, entry.Seq, b.order[entry.Seq-1])
+			if entry.Seq > committed || b.log[entry.Seq-1].RecordID != entry.RecordID {
+				return fmt.Errorf("%w: substrate seq %d is not stored record %s", ErrCorrupt, entry.Seq, b.log[entry.Seq-1].RecordID)
 			}
 			after = entry.Seq
 		}
 	}
-	for _, id := range b.order[committed:] {
-		if err := b.commitLocked(ctx, b.records[id]); err != nil {
+	for _, record := range b.log[committed:] {
+		if err := b.commitLocked(ctx, record); err != nil {
 			return err
 		}
 	}
-	for _, id := range b.order {
-		if h := b.records[id].Header; h.RecordType == RecordTypeIndexRoot {
+	for _, record := range b.log {
+		if h := record.Header; h.RecordType == RecordTypeIndexRoot {
 			var root IndexRoot
 			if err := json.Unmarshal(h.Statement, &root); err != nil {
-				return fmt.Errorf("%w: index_root record %s: %v", ErrCorrupt, id, err)
+				return fmt.Errorf("%w: index_root record %s: %v", ErrCorrupt, record.RecordID, err)
 			}
 			b.roots[root.Index] = root
 		}
@@ -256,10 +254,9 @@ func (b *Book) flushPendingLocked(ctx context.Context) error {
 	return b.admitLocked(ctx, record)
 }
 
-// admitLocked makes a committed record visible: cache, order and indexes.
+// admitLocked makes a committed record visible: cache, log and indexes.
 func (b *Book) admitLocked(ctx context.Context, record Record) error {
 	b.records[record.RecordID] = record
-	b.order = append(b.order, record.RecordID)
 	b.log = append(b.log, record)
 	if err := errors.Join(b.operational.Add(ctx, record), b.discovery.Add(ctx, record), b.addAuthenticated(record)); err != nil {
 		return fmt.Errorf("index record %s: %w", record.RecordID, err)
@@ -361,11 +358,11 @@ func checkCapsuleCommitsHeader(recordID string, capsule, header []byte) error {
 
 func (b *Book) source() RecordSource {
 	return func(ctx context.Context, yield func(Record) error) error {
-		for _, id := range b.order {
+		for _, record := range b.log {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := yield(b.records[id]); err != nil {
+			if err := yield(record); err != nil {
 				return err
 			}
 		}
@@ -486,7 +483,7 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	if err := b.refuseOtherClockKind(); err != nil {
 		return Record{}, err
 	}
-	seq := uint64(len(b.order)) + 1
+	seq := uint64(len(b.log)) + 1
 	committedAt := b.now().UTC().Truncate(time.Microsecond)
 	header := Header{
 		Version: HeaderVersion, BookID: b.id, Seq: seq,
@@ -684,7 +681,7 @@ func (b *Book) Info() (string, SubstrateInfo) {
 func (b *Book) Size() uint64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return uint64(len(b.order))
+	return uint64(len(b.log))
 }
 
 // Checkpoint commits any changed authenticated-index roots as records, then
@@ -731,7 +728,7 @@ func (b *Book) checkpointAtLocked(ctx context.Context, at *time.Time) (Checkpoin
 		statement, err := json.Marshal(struct {
 			IndexRoot
 			AsOfSeq uint64 `json:"as_of_seq"`
-		}{root, uint64(len(b.order))})
+		}{root, uint64(len(b.log))})
 		if err != nil {
 			return Checkpoint{}, err
 		}

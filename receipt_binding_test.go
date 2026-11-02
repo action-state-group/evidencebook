@@ -94,7 +94,7 @@ type receiptOutcome struct {
 // the result.
 func (c receiptCase) answer(t *testing.T, change func(checkpoint map[string]any, statement []byte)) receiptOutcome {
 	t.Helper()
-	bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.order[len(c.holder.order)-1]})
+	bundle, err := c.holder.Bundle(c.ctx, BundleRequest{Root: c.holder.log[len(c.holder.log)-1].RecordID})
 	if err != nil {
 		t.Fatal(err)
 	}

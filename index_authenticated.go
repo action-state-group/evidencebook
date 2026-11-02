@@ -367,14 +367,14 @@ func (b *Book) ProveKeyRange(ctx context.Context, index, lo, hi string) (KeyRang
 	}
 	root := target.Root()
 	answer := KeyRangeAnswer{Root: root, Anchor: anchor}
-	for i := len(b.order) - 1; i >= 0; i-- {
-		h := b.records[b.order[i]].Header
+	for i := len(b.log) - 1; i >= 0; i-- {
+		h := b.log[i].Header
 		if h.RecordType != RecordTypeIndexRoot {
 			continue
 		}
 		var committed IndexRoot
 		if err := json.Unmarshal(h.Statement, &committed); err == nil && committed == root {
-			answer.RootRecordID = b.order[i]
+			answer.RootRecordID = b.log[i].RecordID
 			break
 		}
 	}

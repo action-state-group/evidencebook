@@ -112,8 +112,9 @@ func (b *Book) recordRequest(ctx context.Context, statement RequestStatement, no
 	// A unique nonce gives every request unique bytes and so a unique digest;
 	// a response to an earlier identical request can never be replayed onto it.
 	// A sent request without a nonce has nothing to compare.
-	for _, id := range b.order {
-		if nonce == "" || b.records[id].Header.RecordType != RecordTypeRequest {
+	for _, r := range b.log {
+		id := r.RecordID
+		if nonce == "" || r.Header.RecordType != RecordTypeRequest {
 			continue
 		}
 		if prior, err := b.sentLocked(id); err == nil && prior.request.Nonce == nonce {
@@ -523,8 +524,8 @@ func verifyCheckpointChain(e Envelope, checkpointKey string) ([]byte, error) {
 }
 
 func (b *Book) outcomeRecordedLocked(requestRecordID string) bool {
-	for _, id := range b.order {
-		h := b.records[id].Header
+	for _, r := range b.log {
+		h := r.Header
 		if (h.RecordType == RecordTypeResponse || h.RecordType == RecordTypeAbsence) && slices.Contains(h.LinksTo(Cites), requestRecordID) {
 			return true
 		}
