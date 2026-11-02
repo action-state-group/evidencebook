@@ -2,6 +2,7 @@ package deal
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,9 +88,11 @@ func TestAReceiptWithNoActDrawsNoApprovalLine(t *testing.T) {
 	assert.NotContains(t, stampLine(t, shared, "Their agreement"), "not closed")
 }
 
-// A Lightning payment the seller received: its rail and band, and no passed
-// stamp, since the page cannot check the preimage itself (a digest is the
-// runtime's to compute). Synthetic preimage (deal_settlement_lightning_test.go).
+// A Lightning payment the seller received: its rail and band, and a passed
+// stamp only when the runtime's own preimage check (capsule-viewer#214, the
+// page cannot compute a digest) answers PASS; any other answer, or a runtime
+// without the check, leaves the line as it was. Synthetic preimage
+// (deal_settlement_lightning_test.go).
 func TestTheReceiptStatesALightningSettlementAndItsBand(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -105,8 +108,22 @@ func TestTheReceiptStatesALightningSettlementAndItsBand(t *testing.T) {
 	require.NoError(t, noteLightningReceived(t, id, terms, lnInvoice, lnTransaction("succeeded")))
 	got := page(id)
 	require.Empty(t, got["refusal"])
-	assert.Equal(t, "The payment is settled on its rail · not checked · Lightning; its proof is sealed here, and this page can't check it yet · size 0.000001 to under 0.00001 BTC",
-		stampLine(t, got, "The payment is settled"), "495,000 msat credited plus the 5,000 msat fee is one 500 sat band, in BTC")
+	assert.Equal(t, "The payment is settled on its rail · passed · Lightning; the payment's proof matches its invoice · size 0.000001 to under 0.00001 BTC",
+		stampLine(t, got, "The payment is settled"), "495,000 msat credited plus the 5,000 msat fee is one 500 sat band, in BTC; the runtime's check passes the sealed preimage")
+
+	// The preimage that does not match, a check the page cannot run, and a
+	// runtime that predates the check: none passes.
+	path := filepath.Join(t.TempDir(), "page.html")
+	dealRun(t, "report", "--deal", id, "--html", path)
+	for edit, want := range map[string]string{
+		"preimage:FAIL":        "not checked",
+		"preimage:NOT_CHECKED": "not checked",
+		"preimage:NOT_PRESENT": "not checked",
+		"no-checks":            "not checked",
+	} {
+		line := stampLine(t, renderPageUnderNode(t, node, path, edit), "The payment is settled")
+		assert.Equal(t, "The payment is settled on its rail · "+want+" · Lightning; its proof is sealed here, and this page can't check it yet · size 0.000001 to under 0.00001 BTC", line, edit)
+	}
 
 	other, _ := sellerDealWithDueDelivery(t)
 	terms2, _ := newBuyerSide(t).lnTerms()
@@ -168,6 +185,145 @@ func TestTheComposedReceiptReadsTheCloseFromTheirRecord(t *testing.T) {
 	assert.Equal(t, "The payment is settled on its rail · missing · no settlement record is in this file", stampLine(t, none, "The payment is settled"))
 }
 
+// The witness line is passed only from the runtime's check of the cadence
+// chain (capsule-viewer#214): PASS names the witness and the time; no receipt
+// is missing; a receipt the page could not check, a failed chain and a runtime
+// without the check leave the line as it was. The check itself is the
+// viewer's; the stub answers for it.
+func TestTheWitnessLineIsPassedOnlyFromTheRuntimesCheck(t *testing.T) {
+	dealFixture(t)
+	id, _, _ := fawnDeal(t)
+	const own, shared = "An outside witness saw your book", "An outside witness saw the holder's book"
+	stub := func(share bool, edit string) string {
+		line := shared
+		if !share {
+			line = own
+		}
+		return stampLine(t, renderJourney(t, id, share, edit), line)
+	}
+
+	assert.Regexp(t, `^An outside witness saw your book · passed · recorded by Acme Witness at .+$`, stub(false, "witness:PASS"))
+	assert.Regexp(t, `^An outside witness saw the holder's book · passed · recorded by Acme Witness at .+$`, stub(true, "witness:PASS"))
+	assert.Equal(t, own+" · missing", stub(false, "witness:NOT_PRESENT"), "no receipt is missing")
+	for _, edit := range []string{"witness:NOT_CHECKED", "witness:FAIL", "no-checks"} {
+		assert.Equal(t, own+" · not checked · this page can't check the witness's signature", stub(false, edit), edit)
+	}
+}
+
+// The same line on the receipt with the other party's half, in its three
+// cases: stamped by both (both books' chains check), your receipt only (an
+// absence recorded) and no record of yours.
+func TestTheComposedWitnessLineNamesWhatWasChecked(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	pair := closedPair(t, received, received)
+	party(t, pair.buyer.config)
+	keepPath := filepath.Join(t.TempDir(), "keep.json")
+	dealRun(t, "report", "--deal", pair.id, "--bundle", keepPath)
+	keep := exactBundle(t, string(mustRead(t, keepPath)))
+	own := askFor(t, pair.buyer, pair.buyer, pair.id, map[string]any{"min_freshness": map[string]any{"size": 1}})
+	theirs := askFor(t, pair.buyer, pair.seller, pair.id, map[string]any{"min_freshness": map[string]any{"size": 1}})
+	require.Equal(t, "artifact", theirs.outcome)
+	absent := recordedAbsence(t, pair.buyer, pair.id)
+	page := func(withKeep map[string]interface{}, member askedCopy) string {
+		party(t, pair.buyer.config)
+		out := filepath.Join(t.TempDir(), "composed.json")
+		text, err := dealInvoke(t, "", "--profile", "deal", "deal", "compose", "--deal", pair.id, "--output", out, "--member", own.recordID, "--member", member.recordID)
+		require.NoError(t, err, text)
+		html, err := composedPage(exactBundle(t, string(mustRead(t, out))), withKeep, dealVerifyCommand("page.html"), cli.BuiltinWording())
+		require.NoError(t, err)
+		path := filepath.Join(t.TempDir(), "page.html")
+		require.NoError(t, os.WriteFile(path, []byte(html), 0o600))
+		return path
+	}
+	line := func(path, edit string) string {
+		got := renderPageUnderNode(t, node, path, edit)
+		require.Empty(t, got["refusal"])
+		return stampLine(t, got, "An outside witness recorded both books")
+	}
+	const label = "An outside witness recorded both books' snapshots"
+
+	asIs := label + " · not checked · this page can't check the witness's signature"
+	yours := `^` + label + ` · %s · your book is recorded by Acme Witness at .+; %s$`
+	both := page(keep, theirs)
+	assert.Regexp(t, `^`+label+` · passed · yours recorded by Acme Witness at .+; theirs recorded by Acme Witness at .+$`, line(both, "witness:PASS,PASS"))
+	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "the other side's is not checked"), line(both, "witness:PASS,NOT_CHECKED"))
+	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "the other side's is not checked"), line(both, "witness:PASS,FAIL"))
+	assert.Regexp(t, fmt.Sprintf(yours, "missing", "the other side's has no witness receipt"), line(both, "witness:PASS,NOT_PRESENT"), "theirs has none: missing, not unchecked")
+	for _, edit := range []string{"witness:NOT_CHECKED,PASS", "witness:FAIL,PASS", "no-checks"} {
+		assert.Equal(t, asIs, line(both, edit), "yours is not passed: "+edit+" leaves the line as it was")
+	}
+	for _, edit := range []string{"witness:NOT_PRESENT,PASS", "witness:NOT_PRESENT,NOT_PRESENT"} {
+		assert.Equal(t, label+" · missing", line(both, edit), "no receipt in your book is missing, whatever theirs says: "+edit)
+	}
+
+	only := page(keep, absent)
+	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "no record of the other side's is here"), line(only, "witness:PASS"), "an absence is never passed, and is not called unchecked")
+	for _, edit := range []string{"witness:NOT_CHECKED", "witness:FAIL", "no-checks"} {
+		assert.Equal(t, asIs, line(only, edit), edit)
+	}
+	assert.Equal(t, label+" · missing", line(only, "witness:NOT_PRESENT"))
+
+	none := page(nil, theirs)
+	for _, edit := range []string{"witness:PASS,PASS", "witness:NOT_CHECKED,PASS", "witness:FAIL,FAIL", "no-checks"} {
+		assert.Equal(t, asIs, line(none, edit), "without your record there is no side of yours to pass: "+edit)
+	}
+}
+
+// On the receipt with the other party's half, the payment is read from their
+// copy (their wallet's leg), and the copy shared with you withholds the
+// preimage: the page has no proof to hand the runtime's check, so no answer
+// passes it, in any of the three cases. (Your own copy's payment passes by the
+// check, as the single-book receipt shows.) Synthetic preimage
+// (deal_settlement_lightning_test.go).
+func TestTheComposedSettlementLineNeverPassesAProofTheirCopyWithholds(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	pair := closedPair(t, received, received, func(id string) {
+		terms, _ := newBuyerSide(t).lnTerms()
+		require.NoError(t, noteLightningReceived(t, id, terms, lnInvoice, lnTransaction("succeeded")))
+	})
+	party(t, pair.buyer.config)
+	keepPath := filepath.Join(t.TempDir(), "keep.json")
+	dealRun(t, "report", "--deal", pair.id, "--bundle", keepPath)
+	keep := exactBundle(t, string(mustRead(t, keepPath)))
+	own := askFor(t, pair.buyer, pair.buyer, pair.id, map[string]any{"min_freshness": map[string]any{"size": 1}})
+	theirs := askFor(t, pair.buyer, pair.seller, pair.id, map[string]any{"min_freshness": map[string]any{"size": 1}})
+	require.Equal(t, "artifact", theirs.outcome)
+	absent := recordedAbsence(t, pair.buyer, pair.id)
+	page := func(withKeep map[string]interface{}, member askedCopy) string {
+		party(t, pair.buyer.config)
+		out := filepath.Join(t.TempDir(), "composed.json")
+		text, err := dealInvoke(t, "", "--profile", "deal", "deal", "compose", "--deal", pair.id, "--output", out, "--member", own.recordID, "--member", member.recordID)
+		require.NoError(t, err, text)
+		html, err := composedPage(exactBundle(t, string(mustRead(t, out))), withKeep, dealVerifyCommand("page.html"), cli.BuiltinWording())
+		require.NoError(t, err)
+		path := filepath.Join(t.TempDir(), "page.html")
+		require.NoError(t, os.WriteFile(path, []byte(html), 0o600))
+		return path
+	}
+	line := func(path, edit string) string {
+		got := renderPageUnderNode(t, node, path, edit)
+		require.Empty(t, got["refusal"])
+		return stampLine(t, got, "The payment is settled")
+	}
+	const prefix = "The payment is settled on its rail · "
+	const withheld = "in their record; Lightning; this copy does not show its proof"
+
+	both := page(keep, theirs)
+	for _, edit := range []string{"preimage:PASS", "preimage:FAIL", "preimage:NOT_CHECKED", "no-checks"} {
+		assert.Regexp(t, `^`+prefix+`not checked · `+withheld+` · size .+$`, line(both, edit), edit)
+	}
+	// Your receipt only: no copy of theirs, so no settlement to read.
+	assert.Equal(t, prefix+"missing · no settlement record is in this file", line(page(keep, absent), "preimage:PASS"))
+	// No record of yours: their copy's payment is still theirs, and still unproven here.
+	assert.Regexp(t, `^`+prefix+`not checked · `+withheld+` · size .+$`, line(page(nil, theirs), "preimage:PASS"))
+}
+
 // dealViewFunctionsDriver loads the deal view's script under node with a
 // stub runtime and runs the cases on stdin through its own functions:
 // the derivations the receipt's lines are drawn from.
@@ -179,12 +335,23 @@ const context = vm.createContext({ console, EvidenceGraph: { registerPresentatio
 vm.runInContext(fs.readFileSync(scriptPath, "utf8"), context);
 const cases = JSON.parse(fs.readFileSync(0, "utf8"));
 context.cases = cases;
+(async () => {
+// A settlement case may name the answer the runtime's preimage check gives
+// every leg ("none": a runtime without the check).
+context.EvidenceGraph.paymentPreimageCheck = undefined;
+const settled = [];
+for (const c of cases.settlement) {
+  context.EvidenceGraph.paymentPreimageCheck = c.check === undefined ? undefined : async () => { if (c.check === "throw") throw new Error("stub"); return c.check; };
+  settled.push(await vm.runInContext("dealSettlement", context)(c.steps));
+}
+context.settled = settled;
 process.stdout.write(JSON.stringify(vm.runInContext(` + "`" + `({
   close: cases.close.map((c) => dealCloseStatus(c.close, c.records, c.book)),
   band: cases.band.map((b) => dealBandLabel(b)),
   afterYes: cases.afterYes.map((steps) => { const r = dealAfterYes(steps); return r.state + (r.why ? ":" + r.why : "") + (r.act ? ":" + r.act.id : "") + (r.approvers && r.approvers.length ? " by " + r.approvers.join(",") : ""); }),
-  settlement: cases.settlement.map((steps) => dealSettlement(steps)),
+  settlement: settled,
 })` + "`" + `, context)));
+})();
 `
 
 func runDealViewFunctions(t *testing.T, cases map[string]any) map[string]any {
@@ -328,24 +495,50 @@ func TestTheSettlementIsReadFromItsLegs(t *testing.T) {
 		return s
 	}
 	usdc := amount("USDC", 6, "0")
+	ln := leg("ln.payment_hash", "USDC", usdc, map[string]any{"preimage": "ab"}, false)
+	// The runtime's preimage check: PASS on every settled leg is the only
+	// proof; FAIL, NOT_CHECKED, NOT_PRESENT, one failing leg, a check that
+	// throws, a withheld leg and a rail with no preimage are not.
+	one := func(steps ...any) map[string]any { return map[string]any{"steps": append([]any{}, steps...)} }
+	checked := func(check string, steps ...any) map[string]any {
+		return map[string]any{"steps": append([]any{}, steps...), "check": check}
+	}
 	got := runDealViewFunctions(t, map[string]any{
 		"close": []any{}, "band": []any{}, "afterYes": []any{},
 		"settlement": []any{
-			[]any{leg("x402.transaction", "USDC", usdc, map[string]any{}, false)},
-			[]any{leg("ln.payment_hash", "USDC", usdc, map[string]any{"preimage": "ab"}, false)},
-			[]any{leg("ln.payment_hash", "USDC", usdc, map[string]any{}, true)},
-			[]any{leg("x402.transaction", "USDC", amount("EUR", 2, "1"), map[string]any{}, false)},
-			[]any{map[string]any{"id": "p", "seq": 2, "deal": map[string]any{"record_type": "action"}, "body": map[string]any{"rail": "card"}}},
-			[]any{},
+			one(leg("x402.transaction", "USDC", usdc, map[string]any{}, false)),
+			one(ln),
+			one(leg("ln.payment_hash", "USDC", usdc, map[string]any{}, true)),
+			one(leg("x402.transaction", "USDC", amount("EUR", 2, "1"), map[string]any{}, false)),
+			one(map[string]any{"id": "p", "seq": 2, "deal": map[string]any{"record_type": "action"}, "body": map[string]any{"rail": "card"}}),
+			one(),
+			checked("PASS", ln),
+			checked("PASS", ln, ln),
+			checked("FAIL", ln),
+			checked("NOT_CHECKED", ln),
+			checked("NOT_PRESENT", ln),
+			checked("throw", ln),
+			checked("PASS", leg("ln.payment_hash", "USDC", usdc, map[string]any{}, true)),
+			checked("PASS", leg("x402.transaction", "USDC", usdc, map[string]any{}, false)),
+			checked("PASS", ln, leg("ln.payment_hash", "USDC", usdc, map[string]any{}, false)),
 		},
 	})
 	band := map[string]any{"currency": "USDC", "decade": float64(0)}
 	assert.Equal(t, []any{
-		map[string]any{"rail": "x402", "legs": true, "preimage": false, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "band": band},
-		map[string]any{"rail": "lightning", "legs": true, "preimage": "withheld", "band": band},
-		map[string]any{"rail": "x402", "legs": true, "preimage": false},
+		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": "withheld", "proof": false, "band": band},
+		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false},
 		map[string]any{"rail": "card", "legs": false},
 		nil,
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": true, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": true, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": true, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": "withheld", "proof": false, "band": band},
+		map[string]any{"rail": "x402", "legs": true, "preimage": false, "proof": false, "band": band},
+		map[string]any{"rail": "lightning", "legs": true, "preimage": false, "proof": false, "band": band},
 	}, got["settlement"])
 }
