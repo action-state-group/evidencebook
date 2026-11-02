@@ -3,7 +3,6 @@
 package evidencebook
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,8 +31,11 @@ func TestCBORRequestIsAnsweredInCBORAndDigestedAsReceived(t *testing.T) {
 	// The same map with a non-minimal length head for its first key.
 	loose := append([]byte{deterministic.Octets[0], 0x78, deterministic.Octets[1] - 0x60}, deterministic.Octets[2:]...)
 	looseReply := respondAs(t, book, Message{Octets: loose, MediaType: MediaTypeCBOR}, "peer-1")
-	if got := mustEnvelope(t, looseReply); got.RequestDigest != digestBytes(loose) || got.RequestDigest == e.RequestDigest || !bytes.Equal(got.Artifact, e.Artifact) {
-		t.Fatal("a non-deterministic request is digested as received and answered with the same artifact")
+	// Profile §5.2 (agent-action-capsule go v0.20.0): a CBOR request is read only
+	// in core deterministic encoding, so this one is refused, still digested as
+	// received.
+	if got := mustRefusal(t, looseReply, ReasonRequestMalformed); got.RequestDigest != digestBytes(loose) {
+		t.Fatal("a non-deterministic request is refused over the digest of its octets")
 	}
 	for name, octets := range map[string][]byte{
 		"trailing byte":   append(append([]byte{}, deterministic.Octets...), 0x00),

@@ -529,6 +529,16 @@ func Example_staple() {
 	// history_card/1 goose deal/deal-7a41c09e5b2d8f36: artifact
 	// history_card/1 goose goose/node: artifact
 	// history_card/1 mesh mesh/node: artifact
+	// inference-service-history/0 mesh/node at 2026-11-02T00:00:00Z: accepted true
+	//   artifact_form PASS
+	//   definition_binding PASS
+	//   definition_form PASS
+	//   history_card_content PASS
+	//   labels PASS
+	//   period_alignment PASS
+	//   period_anchor PASS
+	//   period_floor PASS
+	//   units PASS
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass
