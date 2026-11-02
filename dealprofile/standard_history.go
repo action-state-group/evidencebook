@@ -41,9 +41,12 @@ import (
 //     is no pay check, or with another value, lacks it: absent, never
 //     guessed, and counted in class_missing.
 //   - outcome is the newest verified ec:deal-reconcile@1 Result's claims:
-//     at least one claim and every claim met is "held", any not_met is
-//     "did_not_hold", and anything else (no claim, met with undecided, no
-//     verified Result) is "undecided".
+//     at least one claim and every claim met is "held", and anything else
+//     (a not_met claim, no claim, met with undecided, no verified Result)
+//     is "undecided". A not_met claim says the two halves disagree, which
+//     does not show which side failed, so it is never "did_not_hold"; the
+//     profile seals no record that says a side failed, so it never gives
+//     "did_not_hold" (Steven's ruling on evidencebook#212).
 //   - happened is "stamped_by_both" only when the counterparty's half is
 //     received and verifies (the host's check, as the deal view's); else
 //     "receipt_only" when the holder's own final close observed a
@@ -283,10 +286,7 @@ func reconcileOutcome(results []HistoryResult) string {
 		}
 		met := 0
 		for _, c := range doc.Claims {
-			switch c.Verdict {
-			case "not_met":
-				return "did_not_hold"
-			case "met":
+			if c.Verdict == "met" {
 				met++
 			}
 		}

@@ -393,7 +393,7 @@ func parityHistories(t *testing.T) []parityHistory {
 	add("a typed deal", typed, nil, false)
 	add("a typed deal stamped by both", typed, nil, true)
 	resultsCases := map[string][]HistoryResult{
-		"held": {result(true, "met", "met")}, "did not hold": {result(true, "met", "not_met")}, "met and undecided": {result(true, "met", "undecided")},
+		"held": {result(true, "met", "met")}, "a claim not met": {result(true, "met", "not_met")}, "met and undecided": {result(true, "met", "undecided")},
 		"no claim": {result(true)}, "the newest counts": {result(true, "not_met"), result(true, "met")}, "unverified": {result(false, "met")},
 		"skips the unverified": {result(true, "not_met"), result(false, "met")}, "unreadable": {{Result: []byte("{"), Verified: true}},
 		"claims is null": {{Result: []byte(`{"claims":null}`), Verified: true}}, "a claim of the wrong type": {{Result: []byte(`{"claims":[{"verdict":5}]}`), Verified: true}},
