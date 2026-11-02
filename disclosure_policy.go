@@ -249,7 +249,7 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 	}
 	unsigned := "no limit on askers that do not sign"
 	if p.UnsignedAsksPerWeek > 0 {
-		unsigned = fmt.Sprintf("askers that do not sign share %d asks a week beyond the public checkpoints, then are refused policy_declined; signed askers and the staple are never limited", p.UnsignedAsksPerWeek)
+		unsigned = fmt.Sprintf("askers that do not sign share %d asks in any 7 days beyond the public checkpoints, then are refused policy_declined; signed askers and the staple are never limited", p.UnsignedAsksPerWeek)
 	}
 	contract := "no under_contract scope is granted"
 	if p.UnderContract == "named_by_contract" {
@@ -266,9 +266,9 @@ func (p DisclosurePolicy) Rows() []SettingRow {
 		{FieldStaple, p.Staple, staple},
 		{FieldMoreThanStd, p.MoreThanStandard, more},
 		{FieldReceipt, p.Receipt, receipt},
-		{FieldUnsignedAsks, strconv.Itoa(p.UnsignedAsksPerWeek), unsigned},
+		{FieldUnsignedAsks, zeroAs(p.UnsignedAsksPerWeek, "no limit"), unsigned},
 		{FieldUnderContract, p.UnderContract, contract},
-		{FieldAskedLogDays, strconv.Itoa(p.AskedLogRetentionDays), logs},
+		{FieldAskedLogDays, zeroAs(p.AskedLogRetentionDays, "until deleted"), logs},
 		{"never", "fixed", "no matter who asks: " + joinList(p.Never)},
 	}
 }
@@ -537,4 +537,13 @@ func (b *Book) appendPolicyLocked(ctx context.Context, st policyStatement) (Reco
 		return Record{}, err
 	}
 	return b.appendLocked(ctx, Entry{RecordType: RecordTypePolicy, EpistemicType: ProducerClaim, Links: []Link{}, Statement: json.RawMessage(body)})
+}
+
+// zeroAs is n as text, or words when n is 0, which these settings never
+// show as a number.
+func zeroAs(n int, words string) string {
+	if n == 0 {
+		return words
+	}
+	return strconv.Itoa(n)
 }

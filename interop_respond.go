@@ -459,7 +459,7 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
-	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints {
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard {
 		b.mu.Lock()
 		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
 		b.mu.Unlock()

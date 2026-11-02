@@ -296,7 +296,11 @@ func TestRespondAppliesTheBooksPolicy(t *testing.T) {
 	if r := ask("", private); r.Refusal == nil || r.Refusal.Reason != ReasonPolicyDeclined {
 		t.Fatalf("a fourth unsigned ask: %+v", r)
 	}
+	historyCard := EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationHistoryCard, Coverage: Coverage{ExpectedPin: pin}}
 	for range 5 {
+		if r := ask("", historyCard); r.Envelope == nil {
+			t.Fatalf("an unsigned history_card/1 ask was limited: %+v", r)
+		}
 		if r := ask("", public); r.Envelope == nil {
 			t.Fatalf("a public ask was limited: %+v", r)
 		}
@@ -343,6 +347,15 @@ func TestDoctorProbeCatchesACardThePolicyDoesNotDescribe(t *testing.T) {
 	}
 	if f := findingOf(t, findings, DoctorProbeStandardCard); f.State != DoctorStateMismatch || !strings.Contains(f.Detail, "for a node") {
 		t.Errorf("a node host with a person policy: %+v", f)
+	}
+}
+
+func TestZeroSettingsReadInWords(t *testing.T) {
+	node := mustPolicy(t, HolderNode)
+	for _, row := range node.Rows() {
+		if (row.Setting == FieldUnsignedAsks && row.Value != "no limit") || (row.Setting == FieldAskedLogDays && row.Value != "until deleted") {
+			t.Errorf("row %+v shows a bare 0", row)
+		}
 	}
 }
 
