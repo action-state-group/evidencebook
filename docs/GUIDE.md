@@ -16,7 +16,7 @@ checkout:
 go test -run 'Example_joinTheLoop|ExampleBook_SealResult|ExampleBook_Respond|Example_staple' -v .
 ```
 
-Path 4's Mesh History runs in Rust, from `rust/`:
+Path 4's Mesh History also runs in Rust, from `rust/`:
 
 ```bash
 cargo test --locked -p evidencebook-interop --test mesh_history -- --nocapture
@@ -160,7 +160,8 @@ joining them on the deal id. Design note
 | `history_card/1` per log | `Book.Respond`, as in path 3: each log answers for its own stream |
 | `history_card/1` for the profile | `Cadence.HistoryCard` returns the cadence log's card up to a tick as a `Staple`, which `CheckStaple` accepts for the shelf signer; it lists every tick, so past `DefaultMaxAnswerItems` ticks (about 35 days at 5 minutes) it returns `ErrOverLimit` and a long-lived cadence staples the `standard_history/1` card below |
 | a History over books at a tick | `Cadence.StandardHistoryAnchor` gives the tick's anchor and how far each book is committed; `dealprofile.StandardHistoryDeal` gives one deal entry per deal book; `DeriveStandardHistory` derives the `standard_history/1` card, and agent-action-capsule's `standardhistory.Check` checks it |
-| the Mesh node's History | agent-action-capsule's Rust `inference_history` (crate 0.9.0, feature `inference-history`): `Definition::from_document` checks the definition, `period_counts` and `artifact` derive an `inference-service-history/0` Standard History over the stream at a period-boundary checkpoint, with the stream's `history_card/1` embedded unchanged, and `check_artifact` checks it |
+| the Mesh node's History, in Go | `Example (Staple)` derives the period counts over the Mesh stream, embeds the stream's `history_card/1`, signs the envelope under the node's key and checks it with agent-action-capsule's `inferencehistory.Evaluate` (go v0.20.1, which reads the COSE checkpoints of a real card); the Example prints each property's verdict |
+| the Mesh node's History, in Rust | agent-action-capsule's Rust `inference_history` (crate 0.9.0, feature `inference-history`): `Definition::from_document` checks the definition, `period_counts` and `artifact` derive an `inference-service-history/0` Standard History over the stream at a period-boundary checkpoint, with the stream's `history_card/1` embedded unchanged, and `check_artifact` checks it |
 | each party's half | `Book.Bundle` gives an Evidence Bundle rooted at the party's record of the deal |
 | the staple | agent-action-capsule's `bundle.ComposedDigest` and `bundle.VerifyComposed` build and verify a `composed/v1` block (Evidence Bundle -02, "The composed/v1 Extension") whose members are the parties' Bundles |
 
@@ -228,14 +229,6 @@ The same reference in other languages:
   [D4](design/254-shelf.md#9-one-way-doors)). Until it is, the staple joins
   the parties' halves of the deal, and each party's History is checked on
   its own.
-- **The Mesh node's History in the Go Example.** This module pins
-  agent-action-capsule go v0.19.0, which comes before the Go reader for
-  `inference-service-history/0` (v0.20.0,
-  [agent-action-capsule#557](https://github.com/action-state-group/agent-action-capsule/pull/557)),
-  so [`Example (Staple)`](#path-4-history-cards-that-staple) stops at the
-  `history_card/1` its Mesh node answers, and the History is derived and
-  checked in Rust, above. Checking it in the Go Example is
-  [#347](https://github.com/action-state-group/evidencebook/issues/347).
 
 ## Other languages
 

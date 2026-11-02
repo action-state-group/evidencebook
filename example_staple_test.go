@@ -396,6 +396,15 @@ func Example_staple() {
 	fmt.Println("history_card/1 goose goose/node: " + historyCard(ctx, relying.book, goose, nodeBook))
 	fmt.Println("history_card/1 mesh mesh/node: " + historyCard(ctx, relying.book, mesh, meshLog))
 
+	// The Mesh node's History, inference-service-history/0: the exchanges it
+	// served in the week that closes at 2026-11-02, checked with the Go reader
+	// (inferencehistory) under the node's pinned keys.
+	meshServes(ctx, meshLog, "model-a", 8)
+	meshServes(ctx, meshLog, "model-b", 4)
+	for _, line := range meshHistory(ctx, mesh, meshLog, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) {
+		fmt.Println(line)
+	}
+
 	// Goose's History: standard_history/1 as of a cadence tick, each book
 	// bounded by the checkpoint the tick carries, one deal entry per deal
 	// book. A relying party that holds the same inputs checks every SH
@@ -520,6 +529,16 @@ func Example_staple() {
 	// history_card/1 goose deal/deal-7a41c09e5b2d8f36: artifact
 	// history_card/1 goose goose/node: artifact
 	// history_card/1 mesh mesh/node: artifact
+	// inference-service-history/0 mesh/node at 2026-11-02T00:00:00Z: accepted true
+	//   artifact_form PASS
+	//   definition_binding PASS
+	//   definition_form PASS
+	//   history_card_content PASS
+	//   labels PASS
+	//   period_alignment PASS
+	//   period_anchor PASS
+	//   period_floor PASS
+	//   units PASS
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass
