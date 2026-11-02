@@ -194,6 +194,9 @@ type RespondOptions struct {
 	// it; set AuthenticatedRequester from the transport's authentication.
 	RequesterID string
 	Policy      SharePolicy
+	// stapleDeal is the deal a standard_history/1 staple is attached for
+	// (Book.StapleForDeal); the answered record carries it.
+	stapleDeal string
 }
 
 // AnsweredStatement is the body of the record a responder seals for a
@@ -208,6 +211,11 @@ type AnsweredStatement struct {
 	Relationship   string      `json:"relationship"`
 	Anchor         string      `json:"anchor,omitempty"`
 	ArtifactDigest string      `json:"artifact_digest,omitempty"`
+	// Deal is set only on the record of the book's own standard_history/1
+	// staple (Book.StapleForDeal): the deal the card was attached for, as the
+	// host named it. It is how the holder reads which deals the standard card
+	// left the book for (Book.StandardCardDeals).
+	Deal string `json:"deal,omitempty"`
 }
 
 // Respond answers one request, received as request (octets and media type),
@@ -437,6 +445,7 @@ func (a *answer) run() (Reply, error) {
 	}
 	a.statement = AnsweredStatement{RequestDigest: a.digest, SubjectKind: req.Subject.Kind, Relationship: view.relationship(a.opts.AuthenticatedRequester)}
 	a.seal = a.statement.Relationship != RelationshipStranger
+	a.statement.Deal = a.opts.stapleDeal
 	_, isCLL := b.commitments.(cllMaterialSource)
 	g := gate{requester: a.opts.AuthenticatedRequester, relationship: a.statement.Relationship, policy: a.opts.Policy, derivations: derivations, standardHistory: b.standardHistory != nil, refusalPolicy: b.responder.RefusalPolicy, cll: isCLL, named: view.named}
 	d := decide(view, check, g, a.now, a.seal)

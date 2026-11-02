@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -390,4 +391,74 @@ func duplicateMember(t *testing.T, book *Book, s Staple, holder string) stapleVe
 		e.ArtifactDigest = digestBytes(e.Artifact)
 	})
 	return stapleVector{Name: "a history card with a duplicate member", Holder: holder, Request: string(s.Request.Octets), Reply: string(reply.Octets)}
+}
+
+// evidencebook#334: the holder reads which deals the standard card left the
+// book for, from the records its own D1 staples sealed.
+
+func TestStandardCardDealsListsTheDealsAStapleWasAttachedFor(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	got, err := book.StandardCardDeals(ctx)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("a book with no staple lists %v, %v", got, err)
+	}
+	holder := KeyID(book.signer)
+	for _, deal := range []string{"deal-b", "deal-a", "deal-b"} {
+		staple, err := book.StapleForDeal(ctx, DerivationStandardHistory, deal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CheckStaple(staple, holder); err != nil {
+			t.Fatalf("a staple for a deal is still a staple: %v", err)
+		}
+	}
+	// A staple with no deal names no deal.
+	if _, err := book.Staple(ctx, DerivationStandardHistory); err != nil {
+		t.Fatal(err)
+	}
+	got, err = book.StandardCardDeals(ctx)
+	if err != nil || !slices.Equal(got, []string{"deal-b", "deal-a"}) {
+		t.Fatalf("deals %v, %v", got, err)
+	}
+}
+
+func TestStapleForDealRefusesWhatItCannotRecord(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	before := book.Size()
+	for name, c := range map[string]struct{ derivation, deal string }{
+		"history card seals no record": {DerivationHistoryCard, "deal-a"},
+		"control character":            {DerivationStandardHistory, "deal\n1"},
+		"too long":                     {DerivationStandardHistory, strings.Repeat("d", 257)},
+		"invalid UTF-8":                {DerivationStandardHistory, "deal\xff"},
+		"bidi override":                {DerivationStandardHistory, "deal\u202e1"},
+	} {
+		if _, err := book.StapleForDeal(ctx, c.derivation, c.deal); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err %v, want ErrInvalid", name, err)
+		}
+	}
+	if book.Size() != before {
+		t.Fatal("a refused staple grew the log")
+	}
+}
+
+// A refused request still seals its record, with the deal; it must not read
+// as a standard card that left the book.
+func TestStandardCardDealsSkipsARefusedStaple(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	request := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory,
+		Coverage: Coverage{ExpectedPin: strings.Repeat("0", 64)}})
+	reply, record, err := book.respond(ctx, request, RespondOptions{AuthenticatedRequester: KeyID(book.signer), Policy: DefaultSharePolicy(), stapleDeal: "deal-x"}, true)
+	if err != nil || reply.Refusal == nil || record.RecordID == "" {
+		t.Fatalf("reply %+v, record %+v, err %v: want a sealed refusal", reply, record, err)
+	}
+	var st AnsweredStatement
+	if err := json.Unmarshal(record.Header.Statement, &st); err != nil || st.Deal != "deal-x" || st.Outcome != OutcomeRefusal {
+		t.Fatalf("statement %+v, err %v", st, err)
+	}
+	if got, err := book.StandardCardDeals(ctx); err != nil || len(got) != 0 {
+		t.Fatalf("a refused staple lists %v, %v", got, err)
+	}
 }
