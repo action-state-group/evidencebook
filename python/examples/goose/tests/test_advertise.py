@@ -76,6 +76,15 @@ def test_the_commitment_staples_the_node_books_card_and_carries_no_count(node):
     assert numbers(doc) == []
 
 
+def test_the_stapled_card_answers_a_checkpoints_request(node):
+    from evidencebook import MEDIA_TYPE_JSON, Message, parse_reply
+
+    # history_card/1 is the form of the checkpoints subject (ER section 8.1), so that is what the card answers.
+    card, _ = node.stapled_card(gn.NODE_BOOK)
+    envelope = parse_reply(Message(card, MEDIA_TYPE_JSON)).envelope
+    assert envelope.derivation == "history_card/1" and envelope.subject.form == "checkpoints"
+
+
 def test_a_node_with_a_listed_id_names_it_and_its_policy(node):
     listed = "ab" * 32
     doc, _ = cm.build(node, listed)

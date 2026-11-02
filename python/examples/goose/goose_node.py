@@ -53,8 +53,8 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from evidencebook import (
-    CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Coverage, Ed25519Signer, Entry,
-    EvidenceRequest, Link, Message, NotFoundError, Subject, deal, encode_request,
+    CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Ed25519Signer, Entry,
+    Link, NotFoundError, deal, staple,
 )
 from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
 from evidencebook.shelf import Shelf
@@ -1026,16 +1026,19 @@ class Node:
 
     def stapled_card(self, book_id: str) -> tuple[bytes, bytes]:
         """``history_card/1`` for one book and the signed statement of the
-        checkpoint it is anchored on (the card's anchor is its SHA-256)."""
+        checkpoint it is anchored on (the card's anchor is its SHA-256).
+        Built as Go's ``Book.Staple`` builds it: the book's own request over
+        ``checkpoints``, pinned to its newest checkpoint, with a fresh nonce.
+        The returned octets are the reply only; the request and nonce stay
+        with the :class:`Staple`, since ``evidence-commitment/1`` has no
+        member to carry them."""
         with self._lock:
             book = self.shelf.open(book_id)
+            stapled = staple(book, DERIVATION_HISTORY_CARD)
             checkpoint = book.checkpoint()
-            request = EvidenceRequest(Subject("full_history"), Coverage(expected_pin=checkpoint.anchor_digest),
-                                      derivation=DERIVATION_HISTORY_CARD)
-            reply, _ = book.respond(Message(encode_request(request)))
-            if reply.envelope is None:
-                raise Refused(f"the book refused its own history_card/1 request: {reply.message.octets[:200]!r}")
-            return reply.message.octets, checkpoint.statement
+            if stapled.reply.envelope.anchor_digest != checkpoint.anchor_digest:
+                raise Refused("the book's newest checkpoint moved while its card was built")
+            return stapled.reply.message.octets, checkpoint.statement
 
     def standard_history(self, tick: int = 0) -> dict:
         """``standard_history/1`` as of a cadence tick (the newest when 0):
