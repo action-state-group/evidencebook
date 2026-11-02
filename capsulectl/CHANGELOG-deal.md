@@ -6,7 +6,8 @@
 
 Pairs with capsulectl `v0.1.0-rc32`. This section also lists what `v0.1.0-rc31` carried: that tag
 was cut before this CHANGELOG had a section for it. New since rc31: evidencebook-deal#121 (r21's
-channel), #119 and #125 (witness `unverified`), and #128 (the sale close, fixes #127).
+channel), #119, #125 and #123 (witness `unverified`), #105 (the receipt's settlement and witness lines)
+and #128 (the sale close, fixes #127).
 
 - A buyer thread closed `received` (outcome completed or mismatch) now closes its sale too, so a completed
   sale leaves no open `sale-…` deal in the seller's store (evidencebook-deal#127); `deal close`
