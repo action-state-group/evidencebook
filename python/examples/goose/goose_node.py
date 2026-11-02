@@ -56,12 +56,20 @@ from evidencebook import (
     CITES, DERIVATION_HISTORY_CARD, PRODUCER_CLAIM, RECORD_HEADER_MEMBER, Ed25519Signer, Entry,
     Link, NotFoundError, deal, staple,
 )
+from evidencebook.request import (
+    MEDIA_TYPE_JSON, PROFILE as ER_PROFILE, Coverage, EvidenceRequest, Message, Reply, Subject, encode_envelope,
+    encode_request,
+)
+from evidencebook.signer import EvidenceSigner
+from evidencebook.staple import DERIVATION_STANDARD_HISTORY, Staple, check_staple
+from evidencebook._time import profile_time
+from agent_action_capsule.evidence_request import sign_envelope
 from evidencebook.cadence import CADENCE_EXTENSION, CadenceConfig
 from evidencebook.shelf import Shelf
 
 import deal_records as dr
 
-__all__ = ["Node", "verify_half", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
+__all__ = ["Node", "verify_half", "verify_history_staple", "HISTORY_STAPLE_MEMBER", "HISTORY_CARD_MEMBER", "DISPUTE_RECEIVED", "DISPUTE_REFUSED", "DISPUTE_HALF", "DISPUTE_ASKED",
            "DISPUTE_ABSENT", "NODE_BOOK", "LEDGER_LOG", "CADENCE_LOG", "NAMESPACE", "POLICY", "Refused"]
 
 NODE_BOOK = "goose/node"
@@ -94,6 +102,43 @@ PAYLOADS_EXTENSION = "evidencebook/payloads"
 MODEL_CALL = "goose_model_call"
 
 
+#: The members of a ``goose-deal-half/1`` that carry a stapled card (evidencebook#329):
+#: ``{"request": <JSON text>, "reply": <JSON text>}``, the two messages of a
+#: :class:`~evidencebook.staple.Staple`. They sit outside the signed steps, so a half without them verifies as before.
+#: ``history_card`` is the deal book's own ``history_card/1`` (D0): every half carries it.
+#: ``history_staple`` is the node's shelf-level ``standard_history/1`` (D1): a half carries it only when
+#: the counterparty asked for it and the user approved sending the node's standard card.
+HISTORY_CARD_MEMBER = "history_card"
+HISTORY_STAPLE_MEMBER = "history_staple"
+
+
+def verify_history_staple(doc: Any, key_id: str, derivation: str = DERIVATION_STANDARD_HISTORY) -> dict:
+    """Check a stapled card of a half (:data:`HISTORY_STAPLE_MEMBER`, a ``standard_history/1``, or with
+    ``derivation`` :data:`~evidencebook.staple.DERIVATION_HISTORY_CARD` :data:`HISTORY_CARD_MEMBER`)
+    under ``key_id``, the Goose key the half's steps are signed by: the staple is presented by that
+    key (:func:`~evidencebook.staple.check_staple`, which also holds it to the standard card and
+    checks the card's form), and the card is as of the anchor the envelope is. Returns the anchor,
+    the holder's nonce (for the reader's replay check), the time the card was issued and the card. Raises
+    :class:`Refused` for anything else."""
+    try:
+        if not isinstance(doc, dict) or set(doc) != {"request", "reply"} \
+                or not all(isinstance(doc[k], str) for k in doc):
+            raise Refused("a history staple is a request and a reply, both JSON text")
+        staple_ = Staple(Message(doc["request"].encode(), MEDIA_TYPE_JSON),
+                         Reply(Message(doc["reply"].encode(), MEDIA_TYPE_JSON)))
+        checked = check_staple(staple_, key_id)
+        if checked.derivation != derivation:
+            raise Refused(f"the staple carries another derivation than {derivation}")
+        card = json.loads(checked.artifact)
+        if card.get("anchor") != checked.anchor:
+            raise Refused("the stapled card is as of another anchor than the envelope")
+    except Refused:
+        raise
+    except Exception as exc:  # InvalidError from the staple checker, or a malformed member
+        raise Refused(f"the history staple does not verify: {exc}") from None
+    return {"anchor": checked.anchor, "nonce": checked.nonce, "issued_at": checked.issued_at, "card": card}
+
+
 def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     """Check a counterparty's half (:meth:`Node.half`) on its own bytes:
     each step's Capsule passes Class 1 and its producer envelope verifies
@@ -107,7 +152,9 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     the signing key, the steps' records and the digest of the final close
     half (x-deal-v0 §10), plus the half's final record id, the digest of its
     checkpoint statement and the checkpoint digests its close cites. Each
-    step's ``cites`` links are checked (:func:`_step_cites`). Raises
+    step's ``cites`` links are checked (:func:`_step_cites`). The ``history_card`` member every half carries is checked under
+    the half's key (:func:`verify_history_staple`) and returned as ``book_card`` (a half without it is refused),
+    a ``history_staple`` member as ``history`` (``None`` without one). Raises
     :class:`Refused` when anything does not check out."""
     from cll.checkpoint import core
 
@@ -164,9 +211,18 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
         raise
     except Exception as exc:  # a malformed half: any step or member that does not check out
         raise Refused(f"the half does not verify: {exc}") from None
+    history = verify_history_staple(half[HISTORY_STAPLE_MEMBER], key_id) if HISTORY_STAPLE_MEMBER in half else None
+    if HISTORY_CARD_MEMBER not in half:
+        raise Refused("the half carries no history_card: every half carries its deal book's card")
+    book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD)
+    # check_staple leaves the anchor and the checkpoint key to the reader: the card is this half's book,
+    # as of the half's checkpoint, under the counterparty's pinned checkpoint key
+    if book_card["anchor"] != hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest() \
+            or read_checkpoint(bytes.fromhex(book_card["card"]["history"][0]["checkpoint"])).key_id != checkpoint_key_id:
+        raise Refused("the half's book card is not as of the half's checkpoint under the counterparty's checkpoint key")
     closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
     final = closes[-1]["capsule"] if closes else None
-    return {"deal_id": deal_id, "key_id": key_id, "records": records,
+    return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history, "book_card": book_card,
             "close_half_digest": hashlib.sha256(jcs(final)).hexdigest() if final else None,
             "final_record_id": parent, "checkpoint_digest": hashlib.sha256(
                 bytes.fromhex(half["checkpoint"]["statement"])).hexdigest(),
@@ -795,10 +851,13 @@ class Node:
                 return record.record_id
         raise Refused(f"this node sealed no opening of deal {deal_id}")
 
-    def half(self, deal_id: str) -> dict:
+    def half(self, deal_id: str, standard_card: bool = False) -> dict:
         """This node's half of a deal, as a counterparty receives it: every
         step's Capsule (with its producer ``signature`` and ``key_id``) and
-        payload, in order, and the book's checkpoint covering them."""
+        payload, in order, and the book's checkpoint covering them. It always carries the deal book's
+        ``history_card/1`` (:data:`HISTORY_CARD_MEMBER`); with ``standard_card`` true, which the caller sets only
+        when the counterparty asked and the user approved sending the node's standard card, it also carries
+        :meth:`history_staple` (:data:`HISTORY_STAPLE_MEMBER`)."""
         with self._lock:
             book = self.shelf.open(f"deal/{deal_id}")
             checkpoint = book.checkpoint()
@@ -808,8 +867,14 @@ class Node:
                 capsule = self.capsule(record.record_id)
                 payload = next(bytes(a.content) for a in held.artifacts if a.name == "payload")
                 steps.append({"capsule": capsule, "payload": json.loads(payload)})
-            return {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
-                    "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
+            out = {"half": "goose-deal-half/1", "deal_id": deal_id, "book_id": book.book_id, "steps": steps,
+                   "checkpoint": {"key_id": self.checkpoint_key_id, "statement": checkpoint.statement.hex()}}
+            card = staple(book, DERIVATION_HISTORY_CARD)
+            out[HISTORY_CARD_MEMBER] = {"request": card.request.octets.decode(),
+                                        "reply": card.reply.message.octets.decode()}
+            if standard_card:
+                out[HISTORY_STAPLE_MEMBER] = self.history_staple()
+            return out
 
     def ask_half(self, deal_id: str) -> SealedStep:
         """End the exchange of a deal: seal this node's request for the
@@ -819,7 +884,7 @@ class Node:
         chain = self.deal(deal_id)
         if chain._has(deal.TYPE_CLOSE):
             raise Refused(f"deal {deal_id} is closed: ask for the counterparty's half before the close")
-        shared = hashlib.sha256(bytes.fromhex(self.half(deal_id)["checkpoint"]["statement"])).hexdigest()
+        shared = hashlib.sha256(self.book_checkpoint(f"deal/{deal_id}")).hexdigest()
         return self.note(HALF_ASKED, {"deal_id": deal_id, "peer": chain.peer, "shared_checkpoint_digest": shared},
                          subject_ref=deal_id)
 
@@ -1161,6 +1226,29 @@ class Node:
                 raise Refused(f"the card fails its own inputs: {properties}")
             return {"card": jcs(card).decode(), "tick": anchor.tick.n, "as_of": as_of, "policy": policy,
                     "deals": deals, "properties": properties}
+
+    def history_staple(self, tick: int = 0) -> dict:
+        """The shelf-level ``standard_history/1`` card as of a cadence tick (the newest when 0),
+        signed by this node as a staple (evidencebook#329): the node's own request over
+        ``full_history`` pinned to the tick's anchor, with a fresh nonce, and the envelope its
+        producer key (:attr:`key_id`, the key its steps are signed by) signs over the card's JCS.
+        Returns :data:`HISTORY_STAPLE_MEMBER`'s value; :func:`verify_history_staple` checks it.
+        :class:`Refused` when the cadence has no finished tick to be as of."""
+        with self._lock:
+            try:
+                anchor = self.cadence.standard_history_anchor(tick)
+            except NotFoundError as exc:
+                raise Refused(f"no history staple: {exc} (run loop_tick)") from None
+            card = self.standard_history(anchor.tick.n)["card"].encode()
+            subject = Subject("full_history")
+            request = Message(encode_request(EvidenceRequest(
+                subject, Coverage(expected_pin=anchor.anchor), derivation=DERIVATION_STANDARD_HISTORY,
+                nonce=os.urandom(16).hex(), profile=ER_PROFILE)), MEDIA_TYPE_JSON)
+            envelope = sign_envelope(request.octets, subject, anchor.anchor, card, signer=EvidenceSigner(self.signer),
+                                     issued_at=profile_time(self._now()), derivation=DERIVATION_STANDARD_HISTORY,
+                                     profile=ER_PROFILE)
+            return {"request": request.octets.decode(),
+                    "reply": encode_envelope(envelope, MEDIA_TYPE_JSON).message.octets.decode()}
 
     def _halves_received(self, extent: int) -> set[str]:
         """The deals whose counterparty half this node verified, among the

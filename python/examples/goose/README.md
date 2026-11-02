@@ -60,6 +60,8 @@ Back these files up. Optional settings:
 - `GOOSE_DEVELOPER`: the developer name your records carry. The default is `goose-loop@v1`.
 - `GOOSE_WITNESSES`: a `witnesses.json` file to check cadence receipts against.
 
+Every half you give carries the deal book's `history_card/1` as a signed staple (the `history_card` member). It carries your shelf-level `standard_history/1` card (the `history_staple` member, under your producer key; it needs a finished `loop_tick`) only when the counterparty asks for it and you approve: `loop_deal_push` and `loop_deal_end_exchange` take `standard_card=true`, and setting it sends your standard card. The receiving side checks both staples under the key the half's steps are signed by.
+
 ## A deal, tool by tool
 
 Every tool returns one JSON object. A refusal is `{"ok": false, "error": ...}` and seals nothing.

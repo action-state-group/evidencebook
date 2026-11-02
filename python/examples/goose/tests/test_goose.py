@@ -1076,3 +1076,80 @@ def test_the_pay_opening_opens_the_commitments_of_the_pay_record(nodes, clock):
     assert step["payload"]["body"]["reference_commitment"] == deal.commit_text(local["nonces"]["reference"], "ln:payment-hash")
     with pytest.raises(gn.Refused, match="has not paid"):
         st.pay_opening(seller, DEAL)
+
+
+def test_a_half_always_carries_the_book_card_and_the_standard_card_only_on_request(nodes, clock):
+    buyer, seller = nodes
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"))
+    half = buyer.half(DEAL)  # D0 only, and it needs no finished tick
+    assert gn.HISTORY_CARD_MEMBER in half and gn.HISTORY_STAPLE_MEMBER not in half
+    verified = gn.verify_half(half, buyer.checkpoint_key_id)
+    assert verified["history"] is None
+    assert verified["book_card"]["anchor"] == hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest()
+    with pytest.raises(gn.Refused, match="no history staple"):
+        buyer.half(DEAL, standard_card=True)  # no finished cadence tick to be as of
+    buyer.ask_half(DEAL)  # asking for a half needs no standard card, so it works before the first tick
+    assert buyer.tick().ticked
+    half = buyer.half(DEAL, standard_card=True)  # D1: the counterparty asked and the user approved
+    verified = gn.verify_half(half, buyer.checkpoint_key_id)
+    anchor = buyer.cadence.standard_history_anchor()
+    assert verified["history"]["anchor"] == anchor.anchor
+    assert verified["history"]["card"] == json.loads(buyer.standard_history()["card"])
+    assert gn.verify_history_staple(half[gn.HISTORY_STAPLE_MEMBER], buyer.key_id)["nonce"] == verified["history"]["nonce"]
+    # a half without the standard card verifies with no history; one without the book card is refused
+    del half[gn.HISTORY_STAPLE_MEMBER]
+    assert gn.verify_half(half, buyer.checkpoint_key_id)["history"] is None
+    del half[gn.HISTORY_CARD_MEMBER]
+    with pytest.raises(gn.Refused, match="no history_card"):
+        gn.verify_half(half, buyer.checkpoint_key_id)
+    # a book card is not a standard card, and the other way round
+    full = buyer.half(DEAL, standard_card=True)
+    full[gn.HISTORY_STAPLE_MEMBER] = full[gn.HISTORY_CARD_MEMBER]
+    with pytest.raises(gn.Refused):
+        gn.verify_half(full, buyer.checkpoint_key_id)
+    # a card of another book, or as of another checkpoint, is not this half's
+    other = "deal-" + "ab" * 8
+    chain2 = buyer.new_deal(other, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain2, chain2.open(clock.at, "buy"))
+    full = buyer.half(DEAL)
+    full[gn.HISTORY_CARD_MEMBER] = buyer.half(other)[gn.HISTORY_CARD_MEMBER]
+    with pytest.raises(gn.Refused, match="book card"):
+        gn.verify_half(full, buyer.checkpoint_key_id)
+    full = buyer.half(DEAL)
+    full[gn.HISTORY_CARD_MEMBER] = buyer.history_staple()
+    with pytest.raises(gn.Refused):
+        gn.verify_half(full, buyer.checkpoint_key_id)
+
+
+def test_a_history_staple_is_refused_unless_the_goose_key_presents_it(nodes, clock):
+    buyer, seller = nodes
+    chain = buyer.new_deal(DEAL, dr.ROLE_BUYER, seller.key_id, TERMS)
+    buyer.seal(chain, chain.open(clock.at, "buy"))
+    assert buyer.tick().ticked
+    half = buyer.half(DEAL, standard_card=True)
+    staple_ = half[gn.HISTORY_STAPLE_MEMBER]
+    with pytest.raises(gn.Refused, match="not presented by its holder"):
+        gn.verify_history_staple(staple_, seller.key_id)  # the seller's key is not the staple's signer
+    assert seller.tick().ticked
+    other = seller.history_staple()
+    swapped = copy.deepcopy(half)
+    swapped[gn.HISTORY_STAPLE_MEMBER] = other  # another node's staple on this node's half
+    with pytest.raises(gn.Refused, match="not presented by its holder"):
+        gn.verify_half(swapped, buyer.checkpoint_key_id)
+
+    def broken(change) -> None:
+        bad = copy.deepcopy(half)
+        change(bad[gn.HISTORY_STAPLE_MEMBER])
+        with pytest.raises(gn.Refused):
+            gn.verify_half(bad, buyer.checkpoint_key_id)
+
+    broken(lambda s: s.update(request=s["request"].replace("full_history", "checkpoints")))  # another request
+    broken(lambda s: s.update(reply=s["reply"].replace('"standard_history/1"', '"history_card/1"', 1)))
+    broken(lambda s: s.update(extra="x"))
+    broken(lambda s: s.pop("reply"))
+    broken(lambda s: s.update(reply="not json"))
+    bad = copy.deepcopy(half)
+    bad[gn.HISTORY_STAPLE_MEMBER] = "a string"
+    with pytest.raises(gn.Refused, match="request and a reply"):
+        gn.verify_half(bad, buyer.checkpoint_key_id)

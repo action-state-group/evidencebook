@@ -340,10 +340,13 @@ def loop_deal_open(peer_key_id: str, item: str, price_minor: int, currency: str,
 
 
 @_tool
-def loop_deal_push(deal_id: str, out_path: str) -> str:
-    """Write this node's half of a deal (every step's Capsule and record, and
-    the book's checkpoint) to a file for the counterparty."""
-    half = node().half(deal_id)
+def loop_deal_push(deal_id: str, out_path: str, standard_card: bool = False) -> str:
+    """Write this node's half of a deal (every step's Capsule and record, the
+    book's checkpoint and the deal book's ``history_card/1``) to a file for the
+    counterparty. ``standard_card=true`` also staples this node's signed
+    ``standard_history/1`` card (it needs a finished tick, ``loop_tick``). Set it only when
+    the counterparty asks and the user approves; this sends your standard card."""
+    half = node().half(deal_id, standard_card)
     _write(out_path, json.dumps(half, sort_keys=True).encode())
     return _out(ok=True, step="05", deal_id=deal_id, steps=len(half["steps"]), file=out_path)
 
@@ -462,16 +465,17 @@ def loop_pay_opening(deal_id: str, out_path: str) -> str:
 
 
 @_tool
-def loop_deal_end_exchange(deal_id: str, out_path: str, share: bool = True) -> str:
+def loop_deal_end_exchange(deal_id: str, out_path: str, share: bool = True, standard_card: bool = False) -> str:
     """End the exchange of a deal, before its outcome and close: seal this
     node's request for the counterparty's half and, by default, write this
     node's own half to ``out_path`` for the counterparty (``share=false``
-    withholds it). Reconcile the half the counterparty sends back
+    withholds it). ``standard_card`` is as for ``loop_deal_push``, and is ignored when ``share=false``.
+    Set it only when the counterparty asks and the user approves; this sends your standard card. Reconcile the half the counterparty sends back
     (``loop_deal_reconcile``); the close then cites its checkpoint."""
     n = node()
     asked = n.ask_half(deal_id)
     if share:
-        _write(out_path, json.dumps(n.half(deal_id), sort_keys=True).encode())
+        _write(out_path, json.dumps(n.half(deal_id, standard_card), sort_keys=True).encode())
     return _out(ok=True, step="05", deal_id=deal_id, asked=asked.record_id, shared=out_path if share else None)
 
 
