@@ -123,7 +123,7 @@ func (b *Book) StapleForDeal(ctx context.Context, derivation, deal string) (Stap
 
 // checkDealID bounds a deal id the host names: a record member, not a key.
 func checkDealID(deal string) error {
-	if len(deal) > 256 || !utf8.ValidString(deal) || strings.IndexFunc(deal, unicode.IsControl) >= 0 {
+	if len(deal) > 256 || !utf8.ValidString(deal) || strings.IndexFunc(deal, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
 		return fmt.Errorf("%w: a deal id is at most 256 bytes of printable UTF-8", ErrInvalid)
 	}
 	return nil

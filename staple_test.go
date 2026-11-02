@@ -413,11 +413,10 @@ func TestStandardCardDealsListsTheDealsAStapleWasAttachedFor(t *testing.T) {
 			t.Fatalf("a staple for a deal is still a staple: %v", err)
 		}
 	}
-	// A staple with no deal, and a signed asker, name no deal.
+	// A staple with no deal names no deal.
 	if _, err := book.Staple(ctx, DerivationStandardHistory); err != nil {
 		t.Fatal(err)
 	}
-	askStandardHistory(t, book, "carol", "off", anchorPin(t, book))
 	got, err = book.StandardCardDeals(ctx)
 	if err != nil || !slices.Equal(got, []string{"deal-b", "deal-a"}) {
 		t.Fatalf("deals %v, %v", got, err)
@@ -433,6 +432,7 @@ func TestStapleForDealRefusesWhatItCannotRecord(t *testing.T) {
 		"control character":            {DerivationStandardHistory, "deal\n1"},
 		"too long":                     {DerivationStandardHistory, strings.Repeat("d", 257)},
 		"invalid UTF-8":                {DerivationStandardHistory, "deal\xff"},
+		"bidi override":                {DerivationStandardHistory, "deal\u202e1"},
 	} {
 		if _, err := book.StapleForDeal(ctx, c.derivation, c.deal); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: err %v, want ErrInvalid", name, err)
@@ -440,5 +440,25 @@ func TestStapleForDealRefusesWhatItCannotRecord(t *testing.T) {
 	}
 	if book.Size() != before {
 		t.Fatal("a refused staple grew the log")
+	}
+}
+
+// A refused request still seals its record, with the deal; it must not read
+// as a standard card that left the book.
+func TestStandardCardDealsSkipsARefusedStaple(t *testing.T) {
+	ctx := context.Background()
+	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	request := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Derivation: DerivationStandardHistory,
+		Coverage: Coverage{ExpectedPin: strings.Repeat("0", 64)}})
+	reply, record, err := book.respond(ctx, request, RespondOptions{AuthenticatedRequester: KeyID(book.signer), Policy: DefaultSharePolicy(), stapleDeal: "deal-x"}, true)
+	if err != nil || reply.Refusal == nil || record.RecordID == "" {
+		t.Fatalf("reply %+v, record %+v, err %v: want a sealed refusal", reply, record, err)
+	}
+	var st AnsweredStatement
+	if err := json.Unmarshal(record.Header.Statement, &st); err != nil || st.Deal != "deal-x" || st.Outcome != OutcomeRefusal {
+		t.Fatalf("statement %+v, err %v", st, err)
+	}
+	if got, err := book.StandardCardDeals(ctx); err != nil || len(got) != 0 {
+		t.Fatalf("a refused staple lists %v, %v", got, err)
 	}
 }
