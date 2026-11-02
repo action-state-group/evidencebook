@@ -31,6 +31,7 @@ type reconcilePair struct {
 }
 
 const received = `{"status":"received"}`
+const notSelected = `{"status":"not_selected"}`
 
 // closedPair opens one deal on both sides, closes each with its own input,
 // has the buyer ask for and record the seller's copy, and has the seller

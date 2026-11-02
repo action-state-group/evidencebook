@@ -74,7 +74,7 @@ func TestASaleCloseSealsAnOpeningACrashLeftOut(t *testing.T) {
 	saleID, _ := newSale(t)
 	openThreadStoppingAt(t, saleID, "authority")
 	require.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread"}, saleRecordTypes(exportedSale(t, saleID)))
-	dealRun(t, "close", "--deal", chainSteps(t, saleID)[2].Event.Thread.ThreadID, "--input", writeJSON(t, received))
+	dealRun(t, "close", "--deal", chainSteps(t, saleID)[2].Event.Thread.ThreadID, "--input", writeJSON(t, notSelected))
 	dealRun(t, "sale", "close", "--sale", saleID)
 	assert.Equal(t, []string{"sale", dealprofile.TypeTaskAuthority, "thread", "thread_opened", "sale_close"}, saleRecordTypes(exportedSale(t, saleID)))
 	_, res := saleBundle(t, saleID)
@@ -139,7 +139,7 @@ func TestAClosedSaleLeavesTheTick(t *testing.T) {
 			saleID, _ := newSale(t)
 			log := cli.DealLogID(saleID)
 			thread := buyerThread(t, saleID, "buyer-a.example")
-			dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, received))
+			dealRun(t, "close", "--deal", thread, "--input", writeJSON(t, notSelected))
 			deliver(t, p, tick(), witnessKey)
 			require.Contains(t, liveLogs(t, p), log, "an open sale stays in the tick")
 
@@ -206,8 +206,7 @@ func TestASaleCloseSaysHowManyNegotiationsAreStillOpen(t *testing.T) {
 				threads = append(threads, buyerThread(t, saleID, fmt.Sprintf("buyer-%d.example", i)))
 			}
 			for _, th := range threads[:c.close] {
-				dealRun(t, "check", "--deal", th, "--input", writeJSON(t, offerInput))
-				dealRun(t, "close", "--deal", th, "--input", writeJSON(t, received))
+				dealRun(t, "close", "--deal", th, "--input", writeJSON(t, notSelected))
 			}
 			closed := dealRun(t, "sale", "close", "--sale", saleID)
 			assert.Equal(t, c.want, closed["status"])
