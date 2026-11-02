@@ -323,6 +323,11 @@ pub fn respond<B: Book + CheckpointedLog>(
     opts: &RespondOptions<'_>,
 ) -> Result<(Vec<u8>, Option<Sealed>), RespondError> {
     opts.policy.validate()?;
+    if let Some(source) = responder.standard_history {
+        source
+            .validate()
+            .map_err(|e| RespondError::Invalid(e.to_string()))?;
+    }
     let now_text = book.now();
     if parse_utc(&now_text).is_none() {
         return Err(RespondError::Invalid(format!(

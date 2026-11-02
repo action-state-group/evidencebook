@@ -221,6 +221,33 @@ fn inputs_that_make_no_standard_card_are_an_error_never_a_card() {
 }
 
 #[test]
+fn a_responder_with_an_invalid_holder_kind_answers_nothing() {
+    let v = vectors();
+    let mut b = book(&v);
+    let signer = b.signer().clone();
+    let host = source(&v, "agent");
+    let derivations = Derivations::new();
+    let policy = ResponderPolicy::default();
+    let responder = Responder {
+        signer: &signer,
+        derivations: &derivations,
+        policy: &policy,
+        standard_history: Some(&host),
+    };
+    let opts = RespondOptions {
+        authenticated_requester: Some("carol"),
+        policy: SharePolicy::default(),
+    };
+    let pin = anchor_digest(&b.cut().unwrap());
+    let request = format!(
+        r#"{{"coverage":{{"expected_pin":"{pin}"}},"derivation":"standard_history/1","profile":"evidence-interop/0","subject":{{"full_history":null}}}}"#
+    );
+    let err = respond(&mut b, &responder, request.as_bytes(), Binding::Json, &opts).unwrap_err();
+    assert!(err.to_string().contains("neither person nor node"), "{err}");
+    assert!(staple_standard_history(&mut b, &responder).is_err());
+}
+
+#[test]
 fn a_source_needs_a_holder_kind() {
     let v = vectors();
     assert!(source(&v, "person").validate().is_ok());

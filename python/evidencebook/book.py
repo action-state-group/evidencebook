@@ -410,7 +410,8 @@ class StandardHistorySource:
     returns the policy in force at the anchor (``{"digest", "window"}``, SH
     §5.1) and one deal entry (SH §5.2) per deal the stream holds at the
     anchor, read from ``records``: the book's servable records the anchor
-    covers, in log order. It is called under the book's lock, and its result
+    covers, in log order. It is called under the book's lock, so it must not
+    call back into the book (the records are its argument), and its result
     must depend on its arguments only, so the card does not depend on who
     asks."""
 
@@ -439,7 +440,7 @@ def derive_standard_history(holder_kind: str, *, anchor: str, anchor_time: str, 
                                   anchor_time=anchor_time, first_checkpoint_time=first_checkpoint_time,
                                   policy=policy, deals=list(deals)))
         properties = sh.check_card(json.loads(card), policy=policy, as_of=as_of, deals=list(deals))
-    except (ValueError, KeyError, TypeError) as err:
+    except (ValueError, KeyError, TypeError, AttributeError) as err:
         raise InvalidError(f"standard history: {err}") from None
     for name in sh.PROPERTIES:
         if properties[name] != "PASS":

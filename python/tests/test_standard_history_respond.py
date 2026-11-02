@@ -107,6 +107,17 @@ def test_inputs_that_make_no_standard_card_are_invalid() -> None:
         b.respond(request, eb.RespondOptions(authenticated_requester="carol"))
 
 
+@pytest.mark.parametrize("policy", ["policy", ["window"], None])
+def test_a_host_policy_that_is_no_mapping_is_invalid(policy: Any) -> None:
+    b = _book("person", True)
+    b._standard_history = eb.StandardHistorySource("person", lambda anchor, records: (policy, []))
+    pin = b.checkpoint().anchor_digest
+    request = eb.Message(eb.encode_request(eb.EvidenceRequest(
+        eb.Subject("full_history"), eb.Coverage(expected_pin=pin), derivation=eb.DERIVATION_STANDARD_HISTORY)))
+    with pytest.raises(eb.InvalidError, match="standard history"):
+        b.respond(request, eb.RespondOptions(authenticated_requester="carol"))
+
+
 @pytest.mark.parametrize("kind", ["agent", ""])
 def test_a_source_needs_a_holder_kind_and_inputs(kind: str) -> None:
     with pytest.raises(eb.InvalidError):
