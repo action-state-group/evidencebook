@@ -289,3 +289,25 @@ def test_an_outcome_bundle_discloses_the_outcome_and_the_request_it_cites_with_t
     assert hashlib.sha256(mb.decode(reply["content"])).hexdigest() == kept
     assert kept in built["extensions"][gn.PAYLOADS_EXTENSION]
     assert "disclosures" not in asker.book_bundle(gn.NODE_BOOK, got["record_id"])
+
+
+def test_a_relay_map_points_an_advertised_relay_at_another_address(nodes, relay, clock, monkeypatch):
+    """A rehearsal advertises a wss:// relay and runs a local one; nothing but the connection moves."""
+    asker, asked = nodes
+    monkeypatch.setenv("GOOSE_RELAY_MAP", json.dumps({WSS: relay.url}))
+    sent = mx.ask(asker, advertise(asked), "checkpoints", min_freshness=0, now=clock)
+    assert mx.answer_round(asked, [WSS]) == [sent["request_event_id"]]
+    assert mx.poll(asker, sent["request_event_id"], now=clock)["status"] == "answered"
+    monkeypatch.setenv("GOOSE_RELAY_MAP", "[")
+    with pytest.raises(mb.MailboxError, match="GOOSE_RELAY_MAP"):
+        mb.Relay(WSS).query({})
+
+
+def test_a_disclosing_bundle_does_not_disclose_a_caller_sealed_record_twice(nodes):
+    """A caller-sealed record (a model call) carries its header inline, so the bundle shows it already."""
+    from agent_action_capsule import bundle as aac
+
+    asker, _ = nodes
+    call, _ = asker.seal_model_call("rehearsal", "rehearsal-model", "prompt", "completion")
+    built = asker.book_bundle(gn.NODE_BOOK, call.record_id, disclose=True)
+    assert "disclosures" not in built and aac.verify_bundle(built, strict=True).verdict == "VALID"

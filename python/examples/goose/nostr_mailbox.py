@@ -266,13 +266,23 @@ class Relay:
     def __init__(self, url: str, timeout: float = 10.0) -> None:
         self.url, self.timeout = url, timeout
 
+    def _address(self) -> str:
+        """Where to connect: ``url``, unless ``GOOSE_RELAY_MAP`` (a JSON object, advertised URL to
+        address) maps it. A rehearsal advertises the ``wss://`` relay a commitment must name and
+        points both nodes at a local one; the commitment and the events keep the advertised URL."""
+        try:
+            mapped = json.loads(os.environ.get("GOOSE_RELAY_MAP") or "{}").get(self.url)
+        except ValueError:
+            raise MailboxError("GOOSE_RELAY_MAP is not a JSON object") from None
+        return mapped if isinstance(mapped, str) else self.url
+
     def _connect(self):
         try:
             from websockets.sync.client import connect
         except ImportError:
             raise MailboxError("the mailbox transport needs the websockets package installed") from None
         try:
-            return connect(self.url, open_timeout=self.timeout, close_timeout=1)
+            return connect(self._address(), open_timeout=self.timeout, close_timeout=1)
         except Exception as exc:  # unreachable relay, refused handshake: all one transport condition
             raise MailboxError(f"relay {self.url} could not be reached: {exc}") from None
 

@@ -549,7 +549,8 @@ class Node:
         chain travels as the ``x-cadence-witness/v0`` extension.
 
         With ``disclose`` the bundle also reveals the header of ``record_id`` and of each record it
-        cites (``disclosures[id].agent_input``, which the record's capsule commits) and carries their
+        cites (``disclosures[id].agent_input``, which the record's capsule commits; a record its caller sealed
+        carries its header inline and is not disclosed twice; a citation into another book is skipped) and carries their
         payloads under ``evidencebook/payloads`` (SHA-256 to unpadded base64url, as Go's
         ``capsulectl disclose`` writes them): an outcome of a request, say, with the request it answers."""
         from agent_action_capsule import bundle as aac
@@ -565,8 +566,14 @@ class Node:
             disclosures: dict = {}
             if disclose:
                 payloads = {}
+                held = {r.record_id for r in book.records()}  # a citation may name a record of another book
                 for rid in (record_id, *book.get(record_id).header.links_to(CITES)):
-                    disclosures[rid] = {"agent_input": book.get(rid).header.value()}
+                    if rid not in held:
+                        continue
+                    # A record its caller sealed carries its header inline (RECORD_HEADER_MEMBER) and
+                    # commits no agent_input: the bundle's record already shows it.
+                    if RECORD_HEADER_MEMBER not in book._stored[rid].capsule:
+                        disclosures[rid] = {"agent_input": book.get(rid).header.value()}
                     for payload in book._payloads(rid):
                         payloads[hashlib.sha256(payload).hexdigest()] = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
                 extensions[PAYLOADS_EXTENSION] = payloads
