@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -29,23 +30,33 @@ import (
 // coverage_unsatisfiable. The coverage is a cadence anchor: a tick's
 // checkpoint. None is issued here, since `deal tick` cuts them.
 func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencerequest.RequestCheck, raw []byte, requester, path string, signer evidencebook.Signer) error {
-	ctx := c.Context()
+	octets, answered, err := s.answerStandardHistory(c.Context(), check, raw, requester, signer)
+	if err != nil {
+		return err
+	}
+	return s.writeAnswerBytes(c, "", answered, octets, path)
+}
+
+// answerStandardHistory is the reply's octets and the holder's answered
+// record, not yet sealed or written: `respond` writes both, and `staple`
+// (deal_standard_history_staple.go) seals the record for the deal it names.
+func (s *dealSession) answerStandardHistory(ctx context.Context, check evidencerequest.RequestCheck, raw []byte, requester string, signer evidencebook.Signer) ([]byte, map[string]interface{}, error) {
 	req := check.Request
 	digest := evidencerequest.Digest(raw)
 	now := cli.DealClock().UTC()
 	answered := map[string]interface{}{"request_digest": digest, "requester": requester, "subject_kind": string(req.Subject.Kind)}
-	refuse := func(reason string) error {
+	refuse := func(reason string) ([]byte, map[string]interface{}, error) {
 		refusal := evidencebook.Refusal{RequestDigest: digest, Reason: reason, IssuedAt: evidencerequest.ProfileTime(now), KeyID: evidencebook.KeyID(signer)}
 		refusal, err := refusal.Sign(ctx, signer)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		reply, err := evidencerequest.EncodeReply(evidencerequest.MediaTypeJSON, nil, &refusal)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		answered["outcome"], answered["reason"] = evidencebook.OutcomeRefusal, reason
-		return s.writeAnswerBytes(c, "", answered, reply.Octets, path)
+		return reply.Octets, answered, nil
 	}
 	if check.Reason != "" {
 		// The request reader's own refusal (profile §6.1), in the interop
@@ -63,7 +74,7 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 	}
 	settings, declared, err := readSHSettings(s.p)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !declared {
 		return refuse(evidencebook.ReasonDerivationUnsupported)
@@ -79,11 +90,11 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 	}
 	cadence, _, err := s.cadenceOf(ctx)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	last, ok, err := cadence.Last(ctx)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !ok {
 		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
@@ -104,7 +115,7 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 			if errors.Is(err, evidencebook.ErrNotFound) {
 				continue
 			}
-			return err
+			return nil, nil, err
 		}
 		if t.CheckpointSize == 0 {
 			continue
@@ -129,7 +140,7 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
 	}
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	envelope := evidencebook.Envelope{
 		Profile: req.Profile, RequestDigest: digest, Subject: req.Subject, Derivation: req.Derivation,
@@ -145,12 +156,12 @@ func (s *dealSession) respondStandardHistory(c *cobra.Command, check evidencereq
 		}
 	}
 	if envelope, err = envelope.Sign(ctx, signer); err != nil {
-		return err
+		return nil, nil, err
 	}
 	reply, err := evidencerequest.EncodeReply(evidencerequest.MediaTypeJSON, &envelope, nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	answered["outcome"], answered["anchor"], answered["artifact_digest"] = evidencebook.OutcomeArtifact, envelope.Anchor.Digest, envelope.ArtifactDigest
-	return s.writeAnswerBytes(c, "", answered, reply.Octets, path)
+	return reply.Octets, answered, nil
 }
