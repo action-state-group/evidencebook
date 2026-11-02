@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -157,8 +158,83 @@ def test_history_reads_a_standard_card_from_the_vectors() -> None:
     assert "FAIL" not in h.properties.values()
 
 
-@pytest.mark.parametrize("call", [lambda: evidence.serve(None, None), lambda: evidence.find("u"),
-                                  lambda: evidence.evaluate(None, None)])
+@pytest.mark.parametrize("call", [lambda: evidence.serve(None, None), lambda: evidence.find("u")])
 def test_unavailable_calls_name_what_they_wait_on(call) -> None:
     with pytest.raises(evidence.NotYetAvailable, match="#"):
         call()
+
+
+_FAKE_ENGINE = """#!/usr/bin/env python3
+import json, sys
+a = sys.argv[1:]
+if "--fail" in open(a[a.index("--pack") + 1]).read():
+    sys.stderr.write("capsule-engine: pack refused\\n"); sys.exit(2)
+stdin = json.load(sys.stdin)
+print(json.dumps({"verdict": "GO", "source": "rows", "tier": None, "band": None, "rows": [], "asks": [],
+                  "pack": {"id": "p", "digest": "d"}, "block": "{}", "block_sha256": "00", "args": a, "stdin": stdin}))
+"""
+
+
+@pytest.fixture
+def fake_engine(tmp_path) -> str:
+    p = tmp_path / "capsule-engine"
+    p.write_text(_FAKE_ENGINE)
+    p.chmod(0o755)
+    return str(p)
+
+
+def test_evaluate_runs_the_engine_and_reads_its_decision(fake_engine) -> None:
+    d = evidence.evaluate({"pack": 1}, {"now": "x"}, pack_id="p", digest="d", engine=fake_engine)
+    assert (d.verdict, d.source, d.tier, d.pack) == ("GO", "rows", None, {"id": "p", "digest": "d"})
+    assert d.raw["stdin"] == {"now": "x"}
+    args = d.raw["args"]
+    assert args[:2] == ["admission", "evaluate"] and args[args.index("--pack-id") + 1] == "p"
+    assert args[args.index("--digest") + 1] == "d"
+
+
+def test_evaluate_without_a_pin_passes_no_pin(fake_engine) -> None:
+    d = evidence.evaluate(b'{"pack": 1}', b'{"now": "x"}', engine=fake_engine)
+    assert "--pack-id" not in d.raw["args"]
+
+
+def test_evaluate_uses_the_engine_env(fake_engine, monkeypatch) -> None:
+    monkeypatch.setenv(evidence.ENGINE_ENV, fake_engine)
+    assert evidence.evaluate({}, {}).verdict == "GO"
+
+
+def test_evaluate_refused_pack_raises_with_the_engines_reason(fake_engine) -> None:
+    with pytest.raises(evidence.EvaluateError, match="pack refused"):
+        evidence.evaluate({"x": "--fail"}, {}, engine=fake_engine)
+
+
+def test_evaluate_missing_engine_raises(tmp_path) -> None:
+    with pytest.raises(evidence.EvaluateError, match="cannot run"):
+        evidence.evaluate({}, {}, engine=str(tmp_path / "nope"))
+
+
+def test_evaluate_unreadable_output_raises(tmp_path) -> None:
+    p = tmp_path / "e"
+    p.write_text("#!/bin/sh\necho '{\"verdict\": 1}'\n")
+    p.chmod(0o755)
+    with pytest.raises(evidence.EvaluateError, match="unreadable"):
+        evidence.evaluate({}, {}, engine=str(p))
+
+
+def test_evaluate_decides_every_shared_vector_with_the_released_engine() -> None:
+    """capsule-engine's admission vectors, through the real go/v0.3.0 command.
+    CI sets CAPSULE_ENGINE and CAPSULE_ENGINE_VECTORS; elsewhere it skips."""
+    exe, vec = os.environ.get(evidence.ENGINE_ENV), os.environ.get("CAPSULE_ENGINE_VECTORS")
+    if not exe or not vec:
+        pytest.skip("CAPSULE_ENGINE and CAPSULE_ENGINE_VECTORS are not set")
+    cases = json.loads((Path(vec) / "cases.json").read_text())["cases"]
+    assert cases
+    for c in cases:
+        d = evidence.evaluate(Path(vec) / c["pack"], c["input"])
+        want = c["expected"]
+        assert (d.verdict, d.source, d.tier, d.block_sha256) == (want["verdict"], want["source"], want["tier"], want["block_sha256"]), c["case"]
+
+
+def test_evaluate_unserializable_input_raises_evaluate_error(fake_engine) -> None:
+    with pytest.raises(evidence.EvaluateError, match="unusable"):
+        evidence.evaluate({}, {"now": object()}, engine=fake_engine)
+    assert evidence.evaluate({}, bytearray(b"{}"), engine=fake_engine).verdict == "GO"

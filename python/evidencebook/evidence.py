@@ -4,12 +4,16 @@ uses to admit a stranger from that stranger's history without reading the
 specs. Each call is glue over a function that already exists and cites it;
 none adds a rule. There is no score: an outcome is a state.
 
-``seal``, ``ask`` and ``history`` are available. ``serve``, ``find`` and
-``evaluate`` wait on the work they wrap and raise :class:`NotYetAvailable`
-naming it (see each docstring).
+``seal``, ``ask``, ``history`` and ``evaluate`` are available. ``serve`` and
+``find`` wait on the work they wrap and raise :class:`NotYetAvailable` naming
+it (see each docstring).
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Mapping
@@ -24,7 +28,7 @@ from .record import Entry, Record
 from .request import EvidenceRequest, Message, parse_reply, strict_json
 from .staple import DERIVATION_STANDARD_HISTORY, Staple, check_staple
 
-__all__ = ["seal", "serve", "find", "ask", "history", "evaluate", "Outcome", "History", "NotYetAvailable",
+__all__ = ["seal", "serve", "find", "ask", "history", "evaluate", "Outcome", "History", "Decision", "EvaluateError", "NotYetAvailable",
            "ARTIFACT", "ARTIFACT_FAILED", "REFUSAL", "REFUSAL_NONCONFORMANT", "ABSENCE", "PENDING", "STATUS_UNKNOWN"]
 
 # An outcome state. The first three are the evidence request's own (ER §4);
@@ -70,11 +74,77 @@ def find(target: Any) -> Any:
     raise NotYetAvailable("find waits on agent-action-capsule#554 and capsule-cli#523 (evidencebook#332)")
 
 
-def evaluate(pack: Any, card: Any) -> Any:
-    """Decide admission under an admission pack. Not yet available: the
-    pack evaluator is Go-only (capsule-engine ``go/admission``); the binding
-    is capsule-engine#278, over the node pack of capsule-engine#276."""
-    raise NotYetAvailable("evaluate waits on capsule-engine#278 and #276 (evidencebook#332)")
+@dataclass(frozen=True)
+class Decision:
+    """An admission decision, as ``capsule-engine admission evaluate`` prints
+    it. ``verdict`` and ``source`` are the engine's; ``tier`` is ``None`` when
+    none applies; ``band`` is ``{"currency", "decade"}`` or ``None``; ``rows``
+    and ``asks`` are the engine's lists; ``pack`` is ``{"id", "digest"}``;
+    ``block`` is the admission_decision block as JCS text and ``block_sha256``
+    its SHA-256. ``raw`` is the whole object."""
+
+    verdict: str
+    source: str
+    tier: str | None
+    band: Mapping[str, Any] | None
+    rows: tuple[Mapping[str, Any], ...]
+    asks: tuple[Mapping[str, Any], ...]
+    pack: Mapping[str, str]
+    block: str
+    block_sha256: str
+    raw: Mapping[str, Any]
+
+
+class EvaluateError(Exception):
+    """The engine could not make a decision (exit status 2: usage, an
+    unreadable or refused pack, a pin that does not match, unusable input), or
+    could not be run."""
+
+
+ENGINE_ENV = "CAPSULE_ENGINE"
+
+
+def evaluate(pack: str | os.PathLike[str] | bytes | Mapping[str, Any], inputs: Mapping[str, Any] | bytes | bytearray, *,
+             pack_id: str | None = None, digest: str | None = None, engine: str | None = None,
+             timeout: float = 30.0) -> Decision:
+    """Decide admission under an admission pack. Wraps the released
+    ``capsule-engine admission evaluate`` command (capsule-engine go/v0.3.0,
+    capsule-engine#278); the evaluator is not reimplemented here.
+
+    ``pack`` is a compiled ``pack-definition.json``: a path, its bytes or the
+    parsed object. ``inputs`` is the engine's Inputs (the ``input`` of a
+    conformance vector, ``admission.DecodeInputs``), not a History or staple:
+    the parsed object or its JSON bytes. With ``pack_id`` and ``digest`` the pack must be exactly that
+    pack. ``engine`` is the binary (default: ``$CAPSULE_ENGINE``, else
+    ``capsule-engine`` on ``PATH``). A decision of any verdict is returned;
+    :class:`EvaluateError` means none was made."""
+    exe = engine or os.environ.get(ENGINE_ENV) or "capsule-engine"
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            data = bytes(inputs) if isinstance(inputs, (bytes, bytearray)) else json.dumps(inputs).encode()
+            if isinstance(pack, (str, os.PathLike)):
+                path = os.fspath(pack)
+            else:
+                path = os.path.join(d, "pack-definition.json")
+                with open(path, "wb") as f:
+                    f.write(pack if isinstance(pack, bytes) else json.dumps(pack).encode())
+        except (TypeError, ValueError) as e:
+            raise EvaluateError(f"unusable pack or inputs: {e}") from e
+        cmd = [exe, "admission", "evaluate", "--pack", path]
+        if pack_id is not None or digest is not None:
+            cmd += ["--pack-id", pack_id or "", "--digest", digest or ""]
+        try:
+            r = subprocess.run(cmd, input=data, capture_output=True, timeout=timeout, check=False)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise EvaluateError(f"cannot run {exe}: {e}") from e
+    if r.returncode != 0:
+        raise EvaluateError(r.stderr.decode(errors="replace").strip() or f"{exe} exited {r.returncode}")
+    try:
+        o = json.loads(r.stdout)
+        return Decision(o["verdict"], o["source"], o["tier"], o["band"], tuple(o["rows"]), tuple(o["asks"]),
+                        o["pack"], o["block"], o["block_sha256"], o)
+    except (ValueError, KeyError, TypeError) as e:
+        raise EvaluateError(f"unreadable engine output: {e}") from e
 
 
 @dataclass(frozen=True)
