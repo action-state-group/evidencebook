@@ -275,6 +275,30 @@ It seals the GO decision in a book. The staple it verifies first is the
 `standard_history/1` vector of `testdata/staple/staples.json`; the three
 decisions read the cases' inputs, not that staple's counts.
 
+### A Mesh node
+
+The same path admits a Mesh node from its `inference-service-history/0`
+answer. `Example (Staple)` (path 4) continues into it: after `inferencehistory.Evaluate`
+accepts the node's History, the Goose agent passes the definition, the
+artifact, the node's checkpoints and the `expected_pin` it sent to
+`admission.InferenceServiceHistoryCounts`, which reads the node's own weekly
+served counts (no record text, no LLM) and refuses the answer with the History
+property named if one does not hold. The result goes in `Inputs.Card.Served`;
+the caller sets the card's state and checkpoint times as in the table above.
+The pack is `admission-node-baseline@1` (`testdata/admission-node-baseline/`).
+
+What the decision shows is per property, not a score: the node's served counts
+are labelled self-reported (a node's statement about itself), the card's
+coverage population is `NOT_CHECKED`, and exchanges the counterparty confirmed
+are a separate row (`confirmed-exchanges`) that is never added to served
+counts. The Example prints two deals against the node's one closed week (12
+exchanges served):
+
+- **GO.** A 5 USD deal passes the deny-list row and is admitted at T0.
+- **LIMIT.** A 12 USD deal needs served exchanges in at least 2 of the last 4
+  weeks (`served-periods`); one week fails it, so the deal is limited. The
+  `witness-receipts` row is `not_read`, because this caller counted none.
+
 ## Other languages
 
 The Rust crate (`rust/evidencebook`) and the Python package

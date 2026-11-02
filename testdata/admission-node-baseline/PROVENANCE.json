@@ -1,0 +1,8 @@
+{
+ "source": "action-state-group/evidencebook-skills packs/admission-node-baseline: compiled/pack-definition.json (admission pack profile v0, capsule-engine#276)",
+ "commit": "9195d9e37bac117af048fae45a9e465c1b8db5d4",
+ "files": {
+  "pack-definition.json": "e7bc80bb49038774a90d91a037ab7ea3479f78ee8e9fbbd589ba2339a7884526"
+ },
+ "note": "Copied byte for byte; refreshed by copying the file from a later evidencebook-skills commit and updating this file. The cases are in ../cases.json (node-baseline-*)."
+}

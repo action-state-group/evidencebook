@@ -401,7 +401,13 @@ func Example_staple() {
 	// (inferencehistory) under the node's pinned keys.
 	meshServes(ctx, meshLog, "model-a", 8)
 	meshServes(ctx, meshLog, "model-b", 4)
-	for _, line := range meshHistory(ctx, mesh, meshLog, time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)) {
+	boundary := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+	lines, answer := meshHistory(ctx, mesh, meshLog, boundary)
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+	// Path 5: the Goose agent reads that answer into an admission decision.
+	for _, line := range admitMeshNode(answer, boundary.Add(time.Hour)) {
 		fmt.Println(line)
 	}
 
@@ -539,6 +545,17 @@ func Example_staple() {
 	//   period_anchor PASS
 	//   period_floor PASS
 	//   units PASS
+	// pack: asg/admission_node_baseline/1.0.0
+	// mesh/node, a 5 USD deal: GO at T0, decided by rows
+	//   deny-list pass
+	//   confirmed-exchanges not_read
+	// mesh/node, a 12 USD deal: LIMIT at T0, decided by rows
+	//   deny-list pass
+	//   confirmed-exchanges not_read
+	//   card-verified pass
+	//   card-fresh pass
+	//   served-periods fail
+	//   witness-receipts not_read
 	// standard_history/1 goose at tick 1: 1 deal, 6 of 6 properties PASS
 	// composed/v1: pass
 	// member goose-half: digest reproduced, graph closure pass, membership pass
