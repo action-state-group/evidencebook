@@ -112,6 +112,28 @@ func openBookWith(ctx context.Context, p cli.Profile, create bool, artifacts cli
 // openBookUnguarded is openBook without the retired-log check; only
 // `book migrate`, which is what satisfies that check, calls it directly.
 func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore) (openedBook, error) {
+	return openBookKeyed(ctx, p, create, artifacts, false)
+}
+
+// openBookForReading opens the profile's book for a verb that only reads it
+// (`report check`). It needs neither signing key: the book is given throwaway
+// keys that exist only in memory, so the profile's secrets are never read
+// and a verb that reached a write would sign with a key no trusted_keys
+// holds. The artifact store still checks originals against trusted_keys.
+func openBookForReading(ctx context.Context, p cli.Profile) (openedBook, error) {
+	opened, err := openBookKeyed(ctx, p, false, nil, true)
+	if err != nil {
+		return opened, err
+	}
+	if err = requireNoRetiredEntries(ctx, p, opened.book); err != nil {
+		return openedBook{}, errors.Join(err, opened.release())
+	}
+	return opened, nil
+}
+
+// openBookKeyed is openBookUnguarded; ephemeral replaces the profile's
+// signing and checkpoint signing keys with throwaway ones.
+func openBookKeyed(ctx context.Context, p cli.Profile, create bool, artifacts cli.ArtifactStore, ephemeral bool) (openedBook, error) {
 	if !isBook(p) {
 		return openedBook{}, cli.InputError("book verbs need a jsonl profile with log_id and operator set, and `log: book` (the log is not this plugin's otherwise)")
 	}
@@ -119,19 +141,28 @@ func openBookUnguarded(ctx context.Context, p cli.Profile, create bool, artifact
 		// A profile saved by an earlier capsulectl, which did not require one.
 		return openedBook{}, cli.InputError(fmt.Sprintf("profile %s has no operator, and the operator names who signs every record the book seals: set it with `capsulectl profile update --profile %s --operator <name>`", p.Name, p.Name))
 	}
-	recordKey, err := cli.PrivateKey(p.Signing)
-	if err != nil {
-		return openedBook{}, err
-	}
-	if err = cli.RequirePublisherKey(p, recordKey); err != nil {
-		return openedBook{}, err
-	}
-	checkpointKey, err := cli.PrivateKey(p.Checkpoint.Signing)
-	if err != nil {
-		return openedBook{}, err
-	}
-	if !cli.CheckpointSignerTrusted(p, hex.EncodeToString(checkpointKey.Public().(ed25519.PublicKey))) {
-		return openedBook{}, cli.InputError("the checkpoint signing key is not in checkpoint.trusted_keys: add its public key with `capsulectl profile update --profile " + p.Name + " --checkpoint-trusted-key <64-hex key>`")
+	var recordKey, checkpointKey ed25519.PrivateKey
+	var err error
+	if ephemeral {
+		if _, recordKey, err = ed25519.GenerateKey(nil); err != nil {
+			return openedBook{}, err
+		}
+		if _, checkpointKey, err = ed25519.GenerateKey(nil); err != nil {
+			return openedBook{}, err
+		}
+	} else {
+		if recordKey, err = cli.PrivateKey(p.Signing); err != nil {
+			return openedBook{}, err
+		}
+		if err = cli.RequirePublisherKey(p, recordKey); err != nil {
+			return openedBook{}, err
+		}
+		if checkpointKey, err = cli.PrivateKey(p.Checkpoint.Signing); err != nil {
+			return openedBook{}, err
+		}
+		if !cli.CheckpointSignerTrusted(p, hex.EncodeToString(checkpointKey.Public().(ed25519.PublicKey))) {
+			return openedBook{}, cli.InputError("the checkpoint signing key is not in checkpoint.trusted_keys: add its public key with `capsulectl profile update --profile " + p.Name + " --checkpoint-trusted-key <64-hex key>`")
+		}
 	}
 	signer, err := evidencebook.NewEd25519Signer(recordKey)
 	if err != nil {

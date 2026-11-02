@@ -43,7 +43,7 @@ func reportCheckCommand() *cobra.Command {
 		if _, e = report.InspectPage(page); e != nil {
 			return refused(e)
 		}
-		opened, e := openBook(c.Context(), p, false)
+		opened, e := openBookForReading(c.Context(), p)
 		if e != nil {
 			return e
 		}
