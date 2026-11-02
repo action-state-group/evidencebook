@@ -1222,3 +1222,22 @@ fn a_record_its_caller_sealed_with_its_header_inline_is_read() {
     let shelf = open(&file(&other), &clock);
     assert!(matches!(shelf.open("deal/a"), Err(ShelfError::Corrupt(_))));
 }
+
+#[test]
+fn the_cadence_history_card_is_bounded() {
+    use evidencebook::respond::DEFAULT_MAX_ANSWER_ITEMS;
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let cadence = shelf.cadence(cadence_config(&[])).unwrap();
+    tick(&cadence, &clock);
+    assert!(matches!(
+        cadence.history_card(DEFAULT_MAX_ANSWER_ITEMS as u64 + 1),
+        Err(ShelfError::OverLimit(_))
+    ));
+    // At the cap the check passes; the ticks are not there.
+    assert!(matches!(
+        cadence.history_card(DEFAULT_MAX_ANSWER_ITEMS as u64),
+        Err(ShelfError::NotFound(_))
+    ));
+}

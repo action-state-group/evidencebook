@@ -30,4 +30,8 @@ var (
 	// ErrReleased reports a write to a book, or a call on a shelf, after it
 	// was released.
 	ErrReleased = errors.New("evidencebook: released")
+	// ErrOverLimit reports a Cadence.HistoryCard that would list more ticks
+	// than DefaultMaxAnswerItems. A Book's card over its limit is a refusal
+	// (Book.Staple reports ErrInvalid), not this error.
+	ErrOverLimit = errors.New("evidencebook: over the item limit")
 )

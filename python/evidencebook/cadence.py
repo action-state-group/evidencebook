@@ -34,7 +34,7 @@ from ._cll import read_checkpoint
 from ._gojson import Ordered, go_json
 from ._random import RandomSource
 from ._time import profile_time, utc
-from .errors import CorruptError, InvalidError, NotFoundError
+from .errors import CorruptError, InvalidError, NotFoundError, OverLimitError
 
 __all__ = [
     "CADENCE_DEPTH", "CADENCE_EXTENSION", "WITNESS_VERIFIED", "WITNESS_NOT_CHECKED", "WITNESS_INVALID",
@@ -743,11 +743,14 @@ class Cadence:
         ``n`` is 0), each with the consistency proof from the one before,
         as of tick ``n``'s checkpoint and signed by the shelf's signer.
         :func:`check_staple` accepts it for ``key_id(shelf signer)``.
-        :class:`NotFoundError` when there is no such finished tick."""
+        :class:`NotFoundError` when there is no such finished tick;
+        :class:`OverLimitError` when the card would list more than
+        ``DEFAULT_MAX_ANSWER_ITEMS`` ticks, as Go does (evidencebook#354)."""
         from agent_action_capsule.evidence_request import sign_envelope
 
         from .request import (DERIVATION_HISTORY_CARD, MEDIA_TYPE_JSON, PROFILE, Coverage, EvidenceRequest, Message,
                               Subject, encode_envelope, encode_request)
+        from .book import DEFAULT_MAX_ANSWER_ITEMS
         from .signer import EvidenceSigner
         from .staple import Staple
 
@@ -762,6 +765,8 @@ class Cadence:
                                    ).fetchone()[0]
                     if n == 0:
                         raise NotFoundError("the cadence has no finished tick")
+            if n > DEFAULT_MAX_ANSWER_ITEMS:
+                raise OverLimitError(f"the card would list {n} ticks, over {DEFAULT_MAX_ANSWER_ITEMS}")
             chain = []
             for i in range(1, n + 1):
                 tick = self._tick_locked(i)

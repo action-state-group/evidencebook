@@ -100,6 +100,10 @@ pub enum ShelfError {
     /// The file's version, or the platform, is not one this build supports.
     #[error("unsupported: {0}")]
     Unsupported(String),
+    /// An answer would carry more items than the cost policy allows
+    /// ([`crate::respond::DEFAULT_MAX_ANSWER_ITEMS`]).
+    #[error("over the item limit: {0}")]
+    OverLimit(String),
     /// The shelf was released.
     #[error("the shelf is released")]
     Released,

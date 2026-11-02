@@ -21,7 +21,11 @@ import (
 // Signer signs the reply. It is the same staple Book.Staple gives a book,
 // so CheckStaple accepts it for holder KeyID(the shelf's Signer), and the
 // card holds no record content. ErrNotFound when the cadence has no such
-// finished tick.
+// finished tick. ErrOverLimit when the card would list more than
+// DefaultMaxAnswerItems ticks (about 35 days at the default interval), the
+// bound a Book's card has: history_card/1 is linear in checkpoints, so a
+// longer cadence staples its standard_history/1 (StandardHistoryAnchor)
+// instead (evidencebook#354).
 func (c *Cadence) HistoryCard(ctx context.Context, n uint64) (Staple, error) {
 	s := c.shelf
 	s.mu.Lock()
@@ -37,6 +41,9 @@ func (c *Cadence) HistoryCard(ctx context.Context, n uint64) (Staple, error) {
 		if n == 0 {
 			return Staple{}, fmt.Errorf("%w: the cadence has no finished tick", ErrNotFound)
 		}
+	}
+	if n > DefaultMaxAnswerItems {
+		return Staple{}, fmt.Errorf("%w: the card would list %d ticks, over %d", ErrOverLimit, n, DefaultMaxAnswerItems)
 	}
 	var chain []Checkpoint
 	for i := uint64(1); i <= n; i++ {
