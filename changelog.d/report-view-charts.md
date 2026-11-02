@@ -6,5 +6,5 @@
   each with capsule-viewer's `chartspec.Check`, and hands them to the viewer as its `charts` setting. A Result with no
   disclosed dataset, a plan without exactly one window, or a chart the filler cannot state refuses the build. A page
   built with charts gets no permalink.
-- Raised the `report` module's capsule-viewer pin to go/v0.11.0 and rewrote the committed presentation pages for its
+- Raised the `report` module's capsule-viewer pin to go/v0.12.0, whose Go emitter accepts view entries (capsule-viewer#156), so a Go-built page draws the views and rewrote the committed presentation pages for its
   page runtime.
