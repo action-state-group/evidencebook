@@ -449,9 +449,6 @@ fn reconcile_outcome(results: &[HistoryResult]) -> &'static str {
     if verdicts.is_empty() {
         return "undecided";
     }
-    if verdicts.contains(&"not_met") {
-        return "did_not_hold";
-    }
     if verdicts.iter().all(|v| *v == "met") {
         "held"
     } else {

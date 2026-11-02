@@ -124,7 +124,9 @@ func TestATypedDealsEntry(t *testing.T) {
 }
 
 // The reconcile outcome is the newest verified Result's: every claim met is
-// held, any not_met did_not_hold, and anything else undecided.
+// held, and anything else undecided: a not_met claim means the halves
+// disagree, which does not show which side failed, so the profile never
+// gives did_not_hold (evidencebook#212).
 func TestTheOutcomeIsTheNewestVerifiedResult(t *testing.T) {
 	records := fixtureHistory(t, "positive-typed")
 	for name, tc := range map[string]struct {
@@ -133,12 +135,12 @@ func TestTheOutcomeIsTheNewestVerifiedResult(t *testing.T) {
 	}{
 		"no Result":               {nil, "undecided"},
 		"every claim met":         {[]HistoryResult{result(true, "met", "met")}, "held"},
-		"one claim not met":       {[]HistoryResult{result(true, "met", "not_met")}, "did_not_hold"},
+		"one claim not met":       {[]HistoryResult{result(true, "met", "not_met")}, "undecided"},
 		"met and undecided":       {[]HistoryResult{result(true, "met", "undecided")}, "undecided"},
 		"no claim":                {[]HistoryResult{result(true)}, "undecided"},
 		"the newest counts":       {[]HistoryResult{result(true, "not_met"), result(true, "met")}, "held"},
 		"an unverified is none":   {[]HistoryResult{result(false, "met")}, "undecided"},
-		"skips the unverified":    {[]HistoryResult{result(true, "not_met"), result(false, "met")}, "did_not_hold"},
+		"skips the unverified":    {[]HistoryResult{result(true, "met"), result(false, "not_met")}, "held"},
 		"an unreadable is undec.": {[]HistoryResult{{Result: []byte("{"), Verified: true}}, "undecided"},
 	} {
 		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: records, Results: tc.results})
@@ -157,7 +159,7 @@ func TestAResultSealedAfterTheAnchorIsNotPassed(t *testing.T) {
 	const underAnchor = 1 // the results book's extent under the anchor, in records
 	at, _, err := StandardHistoryDeal(HistoryInput{Records: records, Results: sealed[:underAnchor]})
 	require.NoError(t, err)
-	assert.Equal(t, "did_not_hold", at.Outcome)
+	assert.Equal(t, "undecided", at.Outcome)
 	later, _, err := StandardHistoryDeal(HistoryInput{Records: records, Results: sealed})
 	require.NoError(t, err)
 	assert.Equal(t, "held", later.Outcome, "unbounded, the later Result changes the card")

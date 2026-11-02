@@ -24,9 +24,10 @@ never guessed:
   records carry the member on two or more records, on a record that is no pay
   check, or with another value, lacks it (:func:`_counterparty_class`).
 * ``outcome`` is the newest verified ec:deal-reconcile@1 Result's claims: at
-  least one claim and every claim met is "held", any not_met is
-  "did_not_hold", and anything else (no claim, met with undecided, no
-  verified Result) is "undecided".
+  least one claim and every claim met is "held", and anything else (a not_met
+  claim, no claim, met with undecided, no verified Result) is "undecided": a
+  not_met claim says the halves disagree, which does not show which side
+  failed, so the profile never gives "did_not_hold".
 * ``happened`` is "stamped_by_both" only when the counterparty's half is
   received and verifies (the host's check, as the deal view's); else
   "receipt_only" when the holder's own final close observed a "received"
@@ -331,8 +332,6 @@ def _reconcile_outcome(results: tuple[HistoryResult, ...]) -> str:
             return "undecided"
         met = 0
         for v in verdicts:
-            if v == "not_met":
-                return "did_not_hold"
             if v == "met":
                 met += 1
         return "held" if met == len(verdicts) else "undecided"
