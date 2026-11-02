@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,6 +58,11 @@ func pageText(t *testing.T, html []byte) string {
 	out, err := cmd.Output()
 	require.NoError(t, err, "headless Chrome")
 	t.Logf("chrome stderr: %s", stderr.String())
+	if i := strings.Index(string(out), "presentation for this bundle failed"); i >= 0 {
+		t.Logf("raw DOM around the failure: %s", out[max(0, i-1500):min(len(out), i+500)])
+		version, _ := exec.Command(chrome, "--version").CombinedOutput()
+		t.Logf("browser: %s", version)
+	}
 	return visibleText(string(out))
 }
 
