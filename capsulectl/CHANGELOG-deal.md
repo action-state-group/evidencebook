@@ -21,6 +21,14 @@
   referee this side named: X", and its "What it doesn't" box says only a check of both
   copies compares names and a match is not any particular person.
 
+- The receipt checks that their half points at yours (F4.15b, capsule-viewer#222): on a
+  receipt that holds the other side's verified deal half, a new stamp line "Their record
+  points at yours" passes when a record of their half, in their book, links to one of your
+  records, and names the link: "acknowledges", "disputes" (a `rebuts` link; the grade says
+  the deal took place, not that they agree) or any other. No such link reads "missing", never
+  failed; an exchange half reads "not checked". The same-deal lines no longer say "neither
+  points at the other". Sherlock2's ruling: Buzz 3224c6af.
+
 - The deal view's words are a wording pack (F8.10, evidencebook-deal#97): the English
   `deal-view.js` hardcoded is now the `page.*` entries of
   `assets/wording/capsulectl-deal-en.json`. The module holds them built in (a table the

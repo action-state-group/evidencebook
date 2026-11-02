@@ -144,9 +144,14 @@ const DEAL_VIEW_WORDS = {
   "page.detail.nobody": "no one else has checked it",
   "page.detail.not_in_file": "it is not in this file",
   "page.detail.order": "{act} does not follow its approval in this log",
+  "page.detail.points_acknowledges": "their record acknowledges yours",
+  "page.detail.points_exchange": "their record is of the exchange, not a deal record that can point at yours",
+  "page.detail.points_none": "no record in their half links to yours",
+  "page.detail.points_other": "their record links to yours",
+  "page.detail.points_rebuts": "their record disputes yours",
   "page.detail.recomputed": "recomputed from the order of this log",
-  "page.detail.same_deal": "both records name the same deal; neither points at the other",
-  "page.detail.same_request": "both records name the same request; neither points at the other",
+  "page.detail.same_deal": "both records name the same deal",
+  "page.detail.same_request": "both records name the same request",
   "page.detail.sealed_before_book": "this copy's steps were sealed before they had a place in a book",
   "page.detail.see_more": "see More on this deal",
   "page.detail.theirs_missing": "their record is not in this file",
@@ -280,6 +285,7 @@ const DEAL_VIEW_WORDS = {
   "page.stamp_line.happened": "\"It happened\" rests on what the agent reported",
   "page.stamp_line.no_steps": "No step is listed in this copy",
   "page.stamp_line.nothing_back": "Nothing points back from the other side's book",
+  "page.stamp_line.points_at": "Their record points at yours",
   "page.stamp_line.same": "Their record and yours are about {same}",
   "page.stamp_line.sealed": "Your words are sealed exactly as you said them",
   "page.stamp_line.sealed_unchecked": "Your words could not be checked against their sealed record",
@@ -675,6 +681,24 @@ const dealCloseStatus = (closeId, theirRecords, theirBook) => {
     if (to("acknowledges")) status = "agreed";
   }
   return status;
+};
+
+// Whether their half points at yours (F4.15b, evidencebook-deal: Sherlock2's
+// ruling on capsule-viewer#222): a record of their verified half, in their
+// book, whose header link targets one of the holder's records. Any link type
+// counts, since the grade says the deal took place, not that they agree;
+// the type is returned so the line can name it and never read a dispute as
+// agreement.
+const dealPointerTo = (ownIds, theirRecords, theirBook) => {
+  const own = new Set(ownIds);
+  const found = [];
+  for (const r of theirRecords || []) {
+    const h = r && r.evidence_record_header;
+    if (!h || h.book_id !== theirBook || !Array.isArray(h.links)) continue;
+    for (const l of h.links) if (l && own.has(l.target) && !found.includes(l.type)) found.push(l.type);
+  }
+  if (found.length === 0) return undefined;
+  return found.includes("acknowledges") ? "acknowledges" : found.includes("rebuts") ? "rebuts" : "other";
 };
 
 const dealViewModel = async (context) => {
@@ -1460,6 +1484,20 @@ const dealViewRender = (model, regions) => {
       : theirArtifact.state === "verified"
         ? ["passed", W("page.stamp_line.same", { same: sameWhat }), theirArtifact.mesh ? W("page.detail.same_request") : W("page.detail.same_deal")]
         : ["failed", W("page.stamp_line.same", { same: sameWhat }), W("page.close.unchecked")],
+    !composed.mine
+      ? ["missing", W("page.stamp_line.points_at"), W("page.detail.no_own_record")]
+      : !theirArtifact
+      ? ["missing", W("page.stamp_line.points_at"), W("page.detail.theirs_missing")]
+      : theirArtifact.state !== "verified"
+      ? ["not checked", W("page.stamp_line.points_at"), W("page.close.unchecked")]
+      : theirArtifact.mesh
+        ? ["not checked", W("page.stamp_line.points_at"), W("page.detail.points_exchange")]
+        : (() => {
+            const pointer = dealPointerTo(stepsAll.filter((st) => matched.has(st.capsule_id) || (shared && st.withheld && recordOk(st.capsule_id))).map((st) => st.capsule_id), theirArtifact.records, theirArtifact.book);
+            return pointer
+              ? ["passed", W("page.stamp_line.points_at"), pointer === "acknowledges" ? W("page.detail.points_acknowledges") : pointer === "rebuts" ? W("page.detail.points_rebuts") : W("page.detail.points_other")]
+              : ["missing", W("page.stamp_line.points_at"), W("page.detail.points_none")];
+          })(),
     ...recordLines,
     [anyWitness ? "not checked" : "missing", W("page.stamp_line.witness_both"), anyWitness ? W("page.detail.witness_unchecked") : ""],
   ] : [
