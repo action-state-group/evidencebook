@@ -214,3 +214,16 @@ func TestFillChartsRestoresTheViewerFixturesAndAGoPageCarriesThem(t *testing.T) 
 		assert.Contains(t, page, `"view":"`+kind+`"`)
 	}
 }
+
+// Charts are stated only from a verified Result: a tampered bundle with
+// charts fails verification, not the chart fill.
+func TestBuildChartsAreFilledAfterVerification(t *testing.T) {
+	raw := mustRead(t, bookFormBundle)
+	tampered := edited(t, raw, func(v map[string]interface{}) {
+		v["records"] = v["records"].([]interface{})[1:]
+	})
+	_, err := Build(tampered, View{Card: "outcome", Charts: []json.RawMessage{json.RawMessage(calendarEntry)}})
+	require.ErrorIs(t, err, ErrRefused)
+	assert.ErrorContains(t, err, "does not verify")
+	assert.NotContains(t, err.Error(), "charts")
+}
