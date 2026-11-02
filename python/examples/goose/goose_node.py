@@ -152,9 +152,9 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     the signing key, the steps' records and the digest of the final close
     half (x-deal-v0 §10), plus the half's final record id, the digest of its
     checkpoint statement and the checkpoint digests its close cites. Each
-    step's ``cites`` links are checked (:func:`_step_cites`). A ``history_card`` member is checked under
-    the half's key (:func:`verify_history_staple`) and returned as ``book_card``, a ``history_staple`` member as
-    ``history`` (``None`` without one). Raises
+    step's ``cites`` links are checked (:func:`_step_cites`). The ``history_card`` member every half carries is checked under
+    the half's key (:func:`verify_history_staple`) and returned as ``book_card`` (a half without it is refused),
+    a ``history_staple`` member as ``history`` (``None`` without one). Raises
     :class:`Refused` when anything does not check out."""
     from cll.checkpoint import core
 
@@ -212,14 +212,14 @@ def verify_half(half: Any, checkpoint_key_id: str) -> dict:
     except Exception as exc:  # a malformed half: any step or member that does not check out
         raise Refused(f"the half does not verify: {exc}") from None
     history = verify_history_staple(half[HISTORY_STAPLE_MEMBER], key_id) if HISTORY_STAPLE_MEMBER in half else None
-    book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD) \
-        if HISTORY_CARD_MEMBER in half else None
-    if book_card is not None:
-        # check_staple leaves the anchor and the checkpoint key to the reader: the card is this half's book,
-        # as of the half's checkpoint, under the counterparty's pinned checkpoint key
-        if book_card["anchor"] != hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest() \
-                or read_checkpoint(bytes.fromhex(book_card["card"]["history"][0]["checkpoint"])).key_id != checkpoint_key_id:
-            raise Refused("the half's book card is not as of the half's checkpoint under the counterparty's checkpoint key")
+    if HISTORY_CARD_MEMBER not in half:
+        raise Refused("the half carries no history_card: every half carries its deal book's card")
+    book_card = verify_history_staple(half[HISTORY_CARD_MEMBER], key_id, DERIVATION_HISTORY_CARD)
+    # check_staple leaves the anchor and the checkpoint key to the reader: the card is this half's book,
+    # as of the half's checkpoint, under the counterparty's pinned checkpoint key
+    if book_card["anchor"] != hashlib.sha256(bytes.fromhex(half["checkpoint"]["statement"])).hexdigest() \
+            or read_checkpoint(bytes.fromhex(book_card["card"]["history"][0]["checkpoint"])).key_id != checkpoint_key_id:
+        raise Refused("the half's book card is not as of the half's checkpoint under the counterparty's checkpoint key")
     closes = [r for r in records if r["payload"].get("x-deal-v0", {}).get("record_type") == deal.TYPE_CLOSE]
     final = closes[-1]["capsule"] if closes else None
     return {"deal_id": deal_id, "key_id": key_id, "records": records, "history": history, "book_card": book_card,

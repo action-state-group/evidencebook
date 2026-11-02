@@ -1097,10 +1097,12 @@ def test_a_half_always_carries_the_book_card_and_the_standard_card_only_on_reque
     assert verified["history"]["anchor"] == anchor.anchor
     assert verified["history"]["card"] == json.loads(buyer.standard_history()["card"])
     assert gn.verify_history_staple(half[gn.HISTORY_STAPLE_MEMBER], buyer.key_id)["nonce"] == verified["history"]["nonce"]
-    # a half without the staples verifies as before, with no history
-    del half[gn.HISTORY_STAPLE_MEMBER], half[gn.HISTORY_CARD_MEMBER]
-    verified = gn.verify_half(half, buyer.checkpoint_key_id)
-    assert verified["history"] is None and verified["book_card"] is None
+    # a half without the standard card verifies with no history; one without the book card is refused
+    del half[gn.HISTORY_STAPLE_MEMBER]
+    assert gn.verify_half(half, buyer.checkpoint_key_id)["history"] is None
+    del half[gn.HISTORY_CARD_MEMBER]
+    with pytest.raises(gn.Refused, match="no history_card"):
+        gn.verify_half(half, buyer.checkpoint_key_id)
     # a book card is not a standard card, and the other way round
     full = buyer.half(DEAL, standard_card=True)
     full[gn.HISTORY_STAPLE_MEMBER] = full[gn.HISTORY_CARD_MEMBER]

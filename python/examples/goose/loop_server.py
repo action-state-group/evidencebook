@@ -345,7 +345,7 @@ def loop_deal_push(deal_id: str, out_path: str, standard_card: bool = False) -> 
     book's checkpoint and the deal book's ``history_card/1``) to a file for the
     counterparty. ``standard_card=true`` also staples this node's signed
     ``standard_history/1`` card (it needs a finished tick, ``loop_tick``). Set it only when
-    the counterparty asks, after the user approves: this sends your standard card."""
+    the counterparty asks and the user approves; this sends your standard card."""
     half = node().half(deal_id, standard_card)
     _write(out_path, json.dumps(half, sort_keys=True).encode())
     return _out(ok=True, step="05", deal_id=deal_id, steps=len(half["steps"]), file=out_path)
@@ -469,8 +469,8 @@ def loop_deal_end_exchange(deal_id: str, out_path: str, share: bool = True, stan
     """End the exchange of a deal, before its outcome and close: seal this
     node's request for the counterparty's half and, by default, write this
     node's own half to ``out_path`` for the counterparty (``share=false``
-    withholds it). ``standard_card`` is as for ``loop_deal_push``: set it only when the
-    counterparty asks, after the user approves: this sends your standard card. Reconcile the half the counterparty sends back
+    withholds it). ``standard_card`` is as for ``loop_deal_push``, and is ignored when ``share=false``.
+    Set it only when the counterparty asks and the user approves; this sends your standard card. Reconcile the half the counterparty sends back
     (``loop_deal_reconcile``); the close then cites its checkpoint."""
     n = node()
     asked = n.ask_half(deal_id)
