@@ -196,7 +196,7 @@ a copy of the example outside this repository, point `GOOSE_CHECK_PROFILE` at th
 The loop's step 05 asserts that the halves cite each other's checkpoints, that the halves are
 pushed at completion and the receiver holds the pushed bytes by record id, and that the receiver
 seals a record citing the counterparty half and the checkpoint it came under. Goose has no
-record-push; its own records answer each clause (Steven's ruling on evidencebook#303, option (a)):
+record-push; its own records answer each clause (evidencebook#303):
 
 | Clause | Goose record |
 |---|---|
