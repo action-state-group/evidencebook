@@ -40,8 +40,8 @@ func ExampleBuild() {
 	fmt.Println("same bytes as the committed page:", bytes.Equal(page.HTML, committed))
 	// Output:
 	// verdict: VALID
-	// form: payload agent_input
-	// claims: 32 unsupported: 0
+	// form: book agent_input
+	// claims: 36 unsupported: 0
 	// same bytes as the committed page: true
 }
 

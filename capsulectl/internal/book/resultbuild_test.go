@@ -160,12 +160,13 @@ func TestResultSchemaIsPinned(t *testing.T) {
 	assert.Equal(t, cli.ResultSchemaDigest, hex.EncodeToString(sum[:]), "cli/schemas/evidence-result-v0.json changed: update ResultSchemaDigest and ResultSchemaSource together")
 	// The schema and the vectors in testdata/result come from the aac
 	// commits testdata/result/UPSTREAM names: every vector from the first,
-	// and from the second only the plan_ref/dataset_ref vectors, as the
-	// schema takes only that hunk from it.
+	// from the second only the plan_ref/dataset_ref vectors, and from the
+	// third only the calibration vectors, as the schema takes only those
+	// hunks from them.
 	upstream, err := os.ReadFile(filepath.Join("testdata", "result", "UPSTREAM"))
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(string(upstream)), "\n")
-	require.Len(t, lines, 2)
+	require.Len(t, lines, 3)
 	commit := func(line string) (string, string) {
 		fields := strings.Fields(line)
 		require.GreaterOrEqual(t, len(fields), 3)
@@ -173,7 +174,8 @@ func TestResultSchemaIsPinned(t *testing.T) {
 	}
 	repo, base := commit(lines[0])
 	_, hunk := commit(lines[1])
-	assert.Equal(t, repo+" "+base+" schemas/evidence-result-v0.json, with "+hunk+"'s plan_ref and dataset_ref", cli.ResultSchemaSource, "ResultSchemaSource must name the commits the vectors were vendored from")
+	_, calibration := commit(lines[2])
+	assert.Equal(t, repo+" "+base+" schemas/evidence-result-v0.json, with "+hunk+"'s plan_ref and dataset_ref and "+calibration+"'s calibration claim type (aac #552)", cli.ResultSchemaSource, "ResultSchemaSource must name the commits the vectors were vendored from")
 }
 
 // walkNegatives are the upstream close vectors that SATISFY the schema by

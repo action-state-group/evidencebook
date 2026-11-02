@@ -1,2 +1,3 @@
 agent-action-capsule main@4b24505b67f406cb7109c4fb7a2ebdc99137b500 vectors/evidence-result
 agent-action-capsule main@8c673d1aaf6e1418f8bb708c215362712f471e50 vectors/evidence-result pos-example-org-dataset-result.json neg-dataset-ref-without-plan-ref.json neg-plan-ref-inline-plan.json
+agent-action-capsule main@09c8b8668b59affa1e0e26275b5a4c1d1b4a849f vectors/evidence-result neg-calibration-with-close-body.json neg-out-of-scope-on-calibration-claim.json pos-example-org-calibration-result.json pos-example-org-calibration-result.records.json
