@@ -79,6 +79,7 @@ if (edit === "withhold-approval") {
     pill: (L0.all((n) => /\bdeal-pill\b/.test(n.className))[0] || { textContent: "" }).textContent,
     restsNote: L0.all((n) => n.dataset.sealed !== undefined || n.dataset.unchecked !== undefined).length,
     refusal: model.refusal || "",
+    pageText: L0.textContent,
     shown: rows.length > 0,
     labels: rows.map((n) => n.dataset.journey),
     rows: rows.map((n) => n.textContent),
@@ -298,4 +299,26 @@ func TestTheJourneyWordsAnOtherReasonByItsDetail(t *testing.T) {
 	}
 	assert.Contains(t, labels, "")
 	assert.Equal(t, labels, renderJourney(t, id, false)["labels"])
+}
+
+// One adjudicator copy shows the referee its side named, never "both chose",
+// and says what "both chose" would not prove (evidencebook-deal#107).
+func TestAnAdjudicatorCopyShowsTheRefereeThisSideNamed(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	dealFixture(t)
+	id, _, _ := fawnDeal(t)
+	page := filepath.Join(t.TempDir(), "page.html")
+	dealRun(t, "report", "--deal", id, "--html", page, "--share", cli.DealAudienceAdjudicator, "--to", "the platform")
+	got := renderPageUnderNode(t, node, page)
+	require.Empty(t, got["refusal"])
+	text, _ := got["pageText"].(string)
+	assert.Contains(t, text, "The referee this side named: the platform")
+	assert.Contains(t, text, "a match means the same name as written, not the same person.")
+	assert.NotContains(t, text, "a referee you both chose")
+
+	counterparty := renderJourney(t, id, true)
+	assert.NotContains(t, counterparty["pageText"], "The referee this side named")
 }

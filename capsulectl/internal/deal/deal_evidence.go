@@ -722,7 +722,7 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 	if e != nil {
 		return e
 	}
-	b, e := s.dealReportBundleAt(ctx, events, report, dealCopyAudience, dealVerifyCommand("bundle.json"), held == "", held)
+	b, e := s.dealReportBundleAt(ctx, events, report, dealCopyAudience, dealVerifyCommand("bundle.json"), held == "", held, "")
 	if errors.Is(e, errDealKeyChanged) {
 		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
 	}

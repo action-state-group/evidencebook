@@ -159,6 +159,7 @@ const DEAL_VIEW_WORDS = {
   "page.did.unchecked": "The summary lines below, and each step's line, are written by capsulectl on this device and are not checked by this page. Open an item to see the steps it was read from; each step's sealed record is checked, not its line.",
   "page.doesnt.merchant": "That the merchant shipped, delivered or refunded anything.",
   "page.doesnt.other_side": "Who the other side is. The key shown as theirs is the one the composer of this file named.",
+  "page.doesnt.referee": "That the other side named the same referee, or that the name belongs to any particular person. Only a check of both copies compares names, and a match means the same name as written, not the same person.",
   "page.doesnt.title": "What it doesn't",
   "page.doesnt.true": "That what the agent reported is true. It records what the agent reported.",
   "page.doesnt.who": "Who made the records. It shows a change after they were sealed would show.",
@@ -234,6 +235,7 @@ const DEAL_VIEW_WORDS = {
   "page.rail.lightning_withheld": "Lightning; this copy does not show its proof",
   "page.rail.none": "this page checks no settlement",
   "page.rail.x402": "x402; the chain lookup is not checked on this page",
+  "page.referee.named": "The referee this side named: {referee}",
   "page.refuse.composed": "⚠️ {why} Do not rely on it; run capsulectl verify on the file.",
   "page.refuse.composition_holds": "This file's composition does not hold up.",
   "page.refuse.composition_record": "This file's composition record could not be checked.",
@@ -459,7 +461,7 @@ const dealStandaloneReport = async (context, bundle, x, sealedId) => {
   if (!report || typeof report !== "object") return refused;
   const asOf = Date.parse((report.lifecycle || {}).as_of);
   if (!Number.isFinite(asOf) || asOf !== Date.parse(cp.timestamp)) return refused;
-  return { report };
+  return { report, referee: typeof input.referee === "string" ? input.referee : "" };
 };
 
 // lifecycleText is the lifecycle's sentence with the close date in the
@@ -705,6 +707,7 @@ const dealViewModel = async (context) => {
   // under the "not checked" label.
   const reportRecords = context.records.filter((r) => r && r.action_id === "capsulectl-deal-report");
   let report = dealExt;
+  let referee = "";
   // The deal a sealed report names: on a deal's own log the log says it; on
   // a node's one ledger (a Mesh payer's receipt) the report's payload does.
   let reportDealId = "";
@@ -720,12 +723,14 @@ const dealViewModel = async (context) => {
     const checked = await dealStandaloneReport(context, bundle, standalone, sealedId);
     if (checked.refusal) return checked;
     report = checked.report;
+    referee = checked.referee;
   } else if (sealedId !== undefined || otherReports.length > 0 || reportRecords.length > 0) {
     const input = sealedId !== undefined ? payload(sealedId) : undefined;
     if (otherReports.length > 0 || !input || input.type !== "deal_report" || typeof input.report !== "object" || input.report === null) {
       return { refusal: WR("page.refuse.record") };
     }
     report = input.report;
+    if (typeof input.referee === "string") referee = input.referee;
     if (typeof input.deal_id === "string") reportDealId = input.deal_id;
   } else if (bookSteps) {
     return { refusal: WR("page.refuse.report") };
@@ -777,6 +782,7 @@ const dealViewModel = async (context) => {
     releaseNotes,
     buildNote,
     claimClasses,
+    referee,
     dealId: logId.startsWith("deal/") ? logId.slice(5) : reportDealId,
     witnessed: (bundle.extensions || {})["x-cadence-witness/v0"] !== undefined,
     // Steps sealed before the deal store was a book (capsule-cli#242) have
@@ -1249,6 +1255,10 @@ const dealViewRender = (model, regions) => {
   }
   if (report.money && typeof report.money.text === "string") card.append(el("div", report.money.text));
   card.append(el("div", shared ? (report.audience === "counterparty" ? W("page.card.copy_counterparty") : W("page.card.copy_adjudicator")) : W("page.card.copy_own"), "deal-small"));
+  // One adjudicator copy names the referee its side handed it to; whether
+  // both sides chose the same one is the adjudicator's check of two copies.
+  const namedReferee = shared && report.audience === "adjudicator" && typeof model.referee === "string" && model.referee !== "" ? model.referee : "";
+  if (namedReferee) card.append(el("div", W("page.referee.named", { referee: namedReferee }), "deal-small"));
   if (!composed || composed.mine) col.append(card);
 
   // Your side, in your book: the errand's moves in order, a time on every row
@@ -1506,6 +1516,7 @@ const dealViewRender = (model, regions) => {
   ];
   if (typeof report.scope === "string" && report.scope) doesntLines.push(report.scope);
   if (shared) doesntLines.push(W("page.doesnt.withheld"));
+  if (namedReferee) doesntLines.push(W("page.doesnt.referee"));
   if (composed) doesntLines.push(W("page.doesnt.other_side"));
   doesnt.append(bullets(doesntLines, false));
   col.append(doesnt);

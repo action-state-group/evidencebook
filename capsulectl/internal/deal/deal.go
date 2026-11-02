@@ -2556,7 +2556,7 @@ func dealReportCommand() *cobra.Command {
 					out["grade"] = grade
 					return cli.Output(c, reportSay(out, s.p, events, ""))
 				}
-				b, err := s.dealReportBundle(ctx, events, report, cli.DealAudienceKeep, "", false)
+				b, err := s.dealReportBundle(ctx, events, report, cli.DealAudienceKeep, "", false, "")
 				// A read that writes nothing cuts no checkpoint: with none
 				// covering the deal's last step, its witness is unchecked.
 				if errors.Is(err, errNotCovered) {
@@ -2583,7 +2583,7 @@ func dealReportCommand() *cobra.Command {
 			if fromBundle != "" {
 				b, err = s.dealBundleOf(fromBundle, dealID, events)
 			} else {
-				b, err = s.dealReportBundle(ctx, events, report, audience, dealVerifyCommand(htmlPath), true)
+				b, err = s.dealReportBundle(ctx, events, report, audience, dealVerifyCommand(htmlPath), true, dealRefereeOf(audience, recipient))
 			}
 			if err != nil {
 				return err

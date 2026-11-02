@@ -65,7 +65,7 @@ func dealBundleRun(c *cobra.Command, use string) error {
 		if err != nil {
 			return err
 		}
-		b, err := s.dealReportBundle(ctx, events, report, audience, verify, true)
+		b, err := s.dealReportBundle(ctx, events, report, audience, verify, true, dealRefereeOf(audience, recipient))
 		if err != nil {
 			return err
 		}

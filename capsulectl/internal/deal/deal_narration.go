@@ -448,7 +448,7 @@ func (s *dealSession) writeReceiptPage(ctx context.Context, events []sealedEvent
 	if err != nil {
 		return err
 	}
-	b, err := s.dealReportBundle(ctx, events, rep, cli.DealAudienceKeep, dealVerifyCommand(htmlPath), true)
+	b, err := s.dealReportBundle(ctx, events, rep, cli.DealAudienceKeep, dealVerifyCommand(htmlPath), true, "")
 	if err != nil {
 		return err
 	}

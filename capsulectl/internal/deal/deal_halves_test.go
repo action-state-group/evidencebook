@@ -715,8 +715,15 @@ func TestTermsResultCheckIsAgainstTheInputsGiven(t *testing.T) {
 
 func adjudicatorFile(t *testing.T, id string) string {
 	t.Helper()
+	return adjudicatorFileTo(t, id, "the platform")
+}
+
+// adjudicatorFileTo is a party's adjudicator file handed to the named
+// referee.
+func adjudicatorFileTo(t *testing.T, id, referee string) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "adjudicator.json")
-	out, err := invoke(t, "", "--profile", "deal", "disclose", "--deal", id, "--share", "adjudicator", "--to", "the platform", "--out", path)
+	out, err := invoke(t, "", "--profile", "deal", "disclose", "--deal", id, "--share", "adjudicator", "--to", referee, "--out", path)
 	require.NoError(t, err, out)
 	return path
 }
