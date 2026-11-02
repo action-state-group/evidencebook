@@ -12,9 +12,9 @@ name: Rust CI
 on:
   push:
     branches: [main]
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
   pull_request:
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
