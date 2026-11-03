@@ -36,6 +36,7 @@
       "maximum": 9007199254740991
     },
     "currency": {
+      "description": "Currency code. For currency BTC, amount_minor counts millisatoshi (10^-11 BTC), shown as \"N msat\".",
       "type": "string",
       "pattern": "^[A-Z]{3}$"
     },

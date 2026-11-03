@@ -240,6 +240,8 @@ func TestADealWithNoAmountIsRefused(t *testing.T) {
 		"no currency":      {"action": "commit", "amount_minor": 100},
 		"unknown currency": {"action": "commit", "amount_minor": 100, "currency": "ZZZ"},
 		"a metal":          {"action": "commit", "amount_minor": 100, "currency": "XAU"},
+		// amount_minor of a BTC deal counts msat (PROFILE.md section 3); no ISO 4217 scale fits it.
+		"msat": {"action": "commit", "amount_minor": 500, "currency": "BTC"},
 	} {
 		_, _, err := StandardHistoryDeal(HistoryInput{Records: classicDeal(t, "", check).records})
 		require.ErrorIs(t, err, ErrUnpriced, name)

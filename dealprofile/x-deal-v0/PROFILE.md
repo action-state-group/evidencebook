@@ -289,7 +289,9 @@ Field details:
 
 - **Money** is integer minor units (`price_minor`, `deposit_minor`, `amount_minor`,
   `max_total_minor`) plus an ISO 4217 `currency`. There are no floats anywhere in a record, and
-  integers stay within ±(2^53 − 1).
+  integers stay within ±(2^53 − 1). For currency `BTC`, `amount_minor` counts millisatoshi
+  (10^-11 BTC), not ISO 4217 minor units: a reader shows it as "N msat" (500 is "500 msat"), never as
+  sats or BTC decimals, or refuses to format it.
 - **terms**: `item`, `quantity`, `price_minor`, `deposit_minor`, `currency`, `when`, `place`,
   `conditions` (token → string), `handover`. `place` is a locality ("lakeside marina"), never a
   street address. `handover` is how a sold item reaches the buyer: `in_person` (handed over at a
@@ -1311,5 +1313,5 @@ of that book that any tick up to the anchor carries, never one sealed after the 
 
 **No amount.** A check may omit `amount_minor` and `currency` (section 3), and SH gives an amount
 no unknown value. A deal whose step rests on a check without them, or on a currency with no ISO
-4217 minor units, is never left off the card, which would undercount without saying so: the card
+4217 minor units (`BTC` among them: its `amount_minor` counts millisatoshi), is never left off the card, which would undercount without saying so: the card
 is refused (agent-action-capsule#516 asks for an "unpriced" count).
