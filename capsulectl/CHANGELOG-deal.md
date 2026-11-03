@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A Lightning deal is priced and reported in msat (evidencebook-deal#133): terms currency `BTC`
+  with `amount_minor` counting millisatoshi (10^-11 BTC, the scale of the settlement legs' asset).
+  The receipt's money line reads "Paid 500 msat, returned 0 msat: net 500 msat." and a payee's
+  report states its sealed settlement leg ("Received 400 msat, receive fee 100 msat."); the
+  payment-received line reads in msat. Fiat wording is unchanged.
+
 - The `4-monthly-outcome` and `5-monthly-compliance` presentation fixtures are refreshed from
   evidencebook (#375): each monthly Result now cites its weeks' calibration summaries and human
   ratings. capsule-viewer/go moves to v0.12.0, the version those pages embed

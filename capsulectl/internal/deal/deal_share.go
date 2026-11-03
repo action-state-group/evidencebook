@@ -728,7 +728,9 @@ var shareKept = regexp.MustCompile(`(?i)\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}(?:[T ]\d
 	`|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b` +
 	`|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+\d{4}\b` +
 	`|\b\d{1,2}:\d{2}(?::\d{2})?\b` +
-	`|[$€£¥]\s?\d[\d,]*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b`)
+	`|[$€£¥]\s?\d[\d,]*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b` +
+	// A Lightning amount (formatMoney of currency BTC): "40000 msat".
+	`|\b\d+ msat\b`)
 
 func isDigits(s string) bool {
 	for _, c := range s {
