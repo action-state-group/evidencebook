@@ -12,7 +12,7 @@ capsulectl-book only; no library tag.
 
 ### Changed: capsulectl-book `v0.1.0-rc33`, on capsule-viewer `v0.18.1`
 
-- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc33` (the version this release pairs with) and capsule-viewer `v0.18.1`, which reads a BTC amount as "N msat". The committed monthly pages under `report/testdata/presentation` are rewritten through `book report build` with `CAPSULECTL_UPDATE_PRESENTATION_PAGES=1`, so evidencebook-deal's copy of these pages matches (the release ships with capsulectl-deal `v0.1.0-rc33`).
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc33` (the version this release pairs with) and capsule-viewer `v0.18.1`. The committed monthly pages under `report/testdata/presentation` are rewritten with the v0.18.1 runtime through `book report build` (`CAPSULECTL_UPDATE_PRESENTATION_PAGES=1`; bundles unchanged), so evidencebook-deal's copy of these pages matches; the release ships with capsulectl-deal `v0.1.0-rc33`.
 
 ## v0.13.4 (2026-11-02)
 
