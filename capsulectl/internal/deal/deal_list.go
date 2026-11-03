@@ -164,7 +164,7 @@ func dealSummaryOf(events []sealedEvent) dealSummary {
 			sum.Amount = &dealSummaryAmount{AmountMinor: *open.Terms.PriceMinor, Currency: strings.ToUpper(currency), Basis: "opening_terms"}
 		}
 	}
-	if m := buildDealMoney(events, currency); m != nil {
+	if m := buildDealMoney(events, currency); m != nil && !m.payeeOnly {
 		sum.Amount = &dealSummaryAmount{AmountMinor: m.NetMinor, Currency: m.Currency, Basis: "paid", OtherCurrencyActs: m.Other}
 	}
 	for _, se := range events {

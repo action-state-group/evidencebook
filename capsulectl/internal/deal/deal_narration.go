@@ -4,13 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
-	"github.com/action-state-group/capsule-cli/settlement"
 	"github.com/spf13/cobra"
 )
 
@@ -549,31 +547,17 @@ func countersignerName(v dealCountersignView) string {
 // own units ("450.00 USDC"), or "" when the leg does not say.
 func receivedAmount(leg json.RawMessage) string {
 	var m struct {
-		Received struct {
-			Value      string      `json:"value"`
-			AssetCode  string      `json:"assetCode"`
-			AssetScale json.Number `json:"assetScale"`
-		} `json:"received"`
+		Received settlementAmount `json:"received"`
 	}
-	var name string
-	if json.Unmarshal(leg, &m) != nil || m.Received.Value == "" {
+	if json.Unmarshal(leg, &m) != nil {
 		return ""
 	}
-	if name = settlement.AssetName(m.Received.AssetCode); name == "" {
-		// An asset id is not something to read out.
+	v, ok := m.Received.units()
+	if !ok {
 		return ""
 	}
-	value, ok := new(big.Int).SetString(m.Received.Value, 10)
-	scale, err := m.Received.AssetScale.Int64()
-	if !ok || err != nil || scale < 0 || scale > 30 {
-		return ""
-	}
-	amount := new(big.Rat).SetFrac(value, new(big.Int).Exp(big.NewInt(10), big.NewInt(scale), nil))
-	places := int(scale)
-	if places > 2 {
-		places = 2
-	}
-	return amount.FloatString(places) + " " + name
+	text, _ := m.Received.text(v)
+	return text
 }
 
 // capitalize starts a sentence with a capital letter.
@@ -631,6 +615,9 @@ func spokenMoney(minor int64, currency string) string {
 		sign, minor = "-", -minor
 	}
 	whole, cents := minor/100, minor%100
+	if cur == msatCurrency {
+		whole, cents = minor, 0
+	}
 	if cur == "JPY" {
 		whole, cents = minor, 0
 	}
@@ -643,6 +630,9 @@ func spokenMoney(minor int64, currency string) string {
 	}
 	if cur == "JPY" {
 		return sign + "¥" + digits
+	}
+	if cur == msatCurrency {
+		return sign + digits + " msat"
 	}
 	if sym, ok := currencySymbols[cur]; ok {
 		return sign + sym + digits
