@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Docs: for currency BTC, `amount_minor` counts millisatoshi (#385)
+
+- x-deal-v0 (PROFILE.md sections 3 and 11 and the `currency` descriptions in the schemas, Go, Python and Rust copies): for currency `BTC`, `amount_minor` counts millisatoshi (10^-11 BTC), shown as "N msat". `dealprofile.MinorUnits("BTC")` stays unpriced, and a BTC deal is refused as unpriced by `StandardHistoryDeal` (a test pins it). Description-only; validation is unchanged.
+
+## capsulectl/v0.1.0-rc33 (2026-11-03)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc33`, on capsule-viewer `v0.18.1`
+
+- `capsulectl/go.mod` requires capsule-cli `v0.1.0-rc33` (the version this release pairs with) and capsule-viewer `v0.18.1`, which reads a BTC amount as "N msat". The committed monthly pages under `report/testdata/presentation` are rewritten through `book report build` with `CAPSULECTL_UPDATE_PRESENTATION_PAGES=1`, so evidencebook-deal's copy of these pages matches (the release ships with capsulectl-deal `v0.1.0-rc33`).
+
 ## v0.13.4 (2026-11-02)
 
 Go module only.
