@@ -176,6 +176,9 @@ func (b *Book) produceLocked(ctx context.Context, snapshot *proofSnapshot, req B
 		checks[i] = check
 	}
 	depth := req.ClosureDepth
+	if req.handover {
+		depth = 0
+	}
 	built, err := aacbundle.BuildEvidenceBundle(ctx, bookProofSource{snapshot: snapshot, store: b.store}, aacbundle.BuildOptions{
 		Root: req.Root, IntervalFrom: first, ClosureDepth: &depth, Include: req.Include,
 		Disclosures: disclosures, SuppressedFields: req.Suppress, PayloadsMode: string(req.Payloads),

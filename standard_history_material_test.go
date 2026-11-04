@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -357,6 +358,9 @@ func TestACitationOutsideTheLogDoesNotHoldBackTheCounts(t *testing.T) {
 		mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent,
 			Links: []Link{{Type: Cites, Target: digestBytes([]byte("a record of another log"))}}})
 	})
+	if verified, err := VerifyBundle(h.m.Bundles[0]); err != nil || verified.Claims.GraphClosure != "pass" {
+		t.Fatalf("a handover's graph closure is %q (%v)", verified.Claims.GraphClosure, err)
+	}
 	if check := recompute(t, h.m); check.Properties["counts_recompute"] != standardhistory.Pass {
 		t.Fatalf("%v (%s)", check.Properties, check.Why)
 	}
@@ -501,5 +505,101 @@ func TestAFailedSetAppendsNothing(t *testing.T) {
 	}
 	if len(a.log) != before {
 		t.Fatalf("deal/a grew from %d to %d records for a set that failed", before, len(a.log))
+	}
+}
+
+// A carried record the bundle also lists as missing is no coverage, and a
+// checkpoint whose statement is gone is no authenticated anchor. Each is
+// reported for its own reason, and the mapping never runs.
+func TestAHandedBundleTamperedAtTheEdges(t *testing.T) {
+	for name, tc := range map[string]struct {
+		edit func(map[string]any, string)
+		why  string
+	}{
+		"a carried record listed as missing": {func(b map[string]any, id string) {
+			b["completeness"].(map[string]any)["missing"] = []any{id}
+			b["completeness"].(map[string]any)["records_mode"] = "declared_incomplete"
+		}, "as missing"},
+		"a leaf listed as missing": {func(b map[string]any, _ string) {
+			digests := b["completeness_certificate"].(map[string]any)["body_digests"].([]any)
+			b["completeness"].(map[string]any)["missing"] = []any{digests[len(digests)-1]}
+			b["completeness"].(map[string]any)["records_mode"] = "declared_incomplete"
+		}, "as missing"},
+		"a non-padding leaf in place of a record": {func(b map[string]any, id string) {
+			records := b["records"].([]any)
+			var kept []any
+			for _, r := range records {
+				if r.(map[string]any)["capsule_id"] != id {
+					kept = append(kept, r)
+				}
+			}
+			b["records"] = kept
+			certificate := b["completeness_certificate"].(map[string]any)
+			seq := certificate["memberships"].(map[string]any)[id].(map[string]any)["log_coordinates"].(map[string]any)["seq"]
+			delete(certificate["memberships"].(map[string]any), id)
+			delete(b["disclosures"].(map[string]any), id)
+			certificate["non_record_leaves"] = []any{map[string]any{"seq": seq, "content": map[string]any{"record_type": "deal_terms"}}}
+		}, "not established"},
+		"no checkpoint statement": {func(b map[string]any, _ string) { delete(b["checkpoint"].(map[string]any), "cose") }, "does not verify"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newMaterial(t, nil)
+			var bundle map[string]any
+			if err := json.Unmarshal(h.m.Bundles[0], &bundle); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(bundle, h.book.log[0].RecordID)
+			edited, err := json.Marshal(bundle)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.m.Bundles = [][]byte{edited}
+			h.m.Deals = func([]MaterialRecord) ([]standardhistory.Deal, error) { t.Fatal("the mapping ran"); return nil, nil }
+			check := recompute(t, h.m)
+			if check.Properties["counts_recompute"] != standardhistory.NotChecked || !strings.Contains(check.Why, tc.why) {
+				t.Fatalf("%s: counts_recompute %s (%q)", name, check.Properties["counts_recompute"], check.Why)
+			}
+		})
+	}
+}
+
+// One refused book in a set leaves every other book as it was, whichever
+// order the books are built in and whatever the refusal is.
+func TestAShareGateThatRefusesOneBookAppendsNothingToTheOthers(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	good := []*Book{mustOpenBook(t, shelf, "deal/a"), mustOpenBook(t, shelf, "deal/c"), mustOpenBook(t, shelf, "deal/d")}
+	for _, book := range good {
+		mustAppend(t, book, observation("x", "1"))
+	}
+	bad := mustOpenBook(t, shelf, "deal/b")
+	sealed, err := bad.AppendCapsule(ctx, Entry{RecordType: "published_capsule", EpistemicType: ProducerClaim, SubjectRef: "p"}, boundPayload(`{"o":1}`), citingSealerAs(t, 7, `{"o":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustTick(t, c, tickTime)
+	anchor, err := c.StandardHistoryAnchor(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, gate := range map[string]func(Record) bool{
+		"a sealed record refused":          func(r Record) bool { return r.RecordID != sealed.RecordID },
+		"every record of one book refused": func(r Record) bool { return r.Header.BookID != "deal/a" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var before []int
+			for _, book := range append(slices.Clone(good), bad) {
+				before = append(before, len(book.log))
+			}
+			if _, err := c.StandardHistoryBundles(ctx, anchor, StandardHistoryBundleRequest{Disclose: gate}); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("err %v", err)
+			}
+			for i, book := range append(slices.Clone(good), bad) {
+				if len(book.log) != before[i] {
+					t.Fatalf("%s went from %d to %d records for a set that failed", book.id, before[i], len(book.log))
+				}
+			}
+		})
 	}
 }
