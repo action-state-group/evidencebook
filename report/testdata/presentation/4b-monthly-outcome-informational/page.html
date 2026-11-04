@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-NyU/VCeFHvJlov4e+vMHGUzQSJVPIUE5Wr/uEcUGrNw=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-S9jbkF2tzK0AFU8k2GJhosnvr0s0Oi/l2nWCLcQ9pro=' 'sha256-AFG9jl8n4fyrxkOkQg8ZaLKsLTDLPtEL+voR1wspDE4='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Evidence Graph</title>
     <style>
@@ -17812,13 +17812,13 @@ ${s} .check .steps{margin:12px 0 0;padding-left:20px;font-size:14px;line-height:
   }
   function builtCommit() {
     if (false) return void 0;
-    return commitPrefix("d24cf262f91e002ee6bb9341a383aba9b89248fa");
+    return commitPrefix("99da5596517c25d1fce5b9b2d03d09ec7913d114");
   }
   var commit = builtCommit();
   var unreleased = false;
   var VIEWER_BUILD = {
     viewer: "@action-state-group/capsule-viewer",
-    viewerVersion: "0.18.1",
+    viewerVersion: "0.18.2",
     verifier: "@action-state-group/agent-action-capsule",
     verifierVersion: "0.13.1",
     cllVersion: "0.3.0",
@@ -29061,6 +29061,7 @@ ${pad.repeat(depth)}`;
       "periods.cell.withheld": "{what}: fewer than 5",
       "callout.heading": "What this does not show",
       "callout.checkpoints": "These checkpoints show when this node's log was cut and how much it holds. They don't show what any exchange said or how it went, and this is not a judgment of the node.",
+      "callout.checkpoints.time": "The exact time of each exchange. Checkpoint times are rounded to the minute, and each side of an exchange gets its own checkpoint, so two can share a time.",
       "callout.deals": "\u201CSteps recorded\u201D is this side's record of each deal, not a confirmed outcome.",
       "callout.deals.picked": "{name} picked these; it isn't every deal. \u201CSteps recorded\u201D is {name}'s side's record, not a confirmed outcome.",
       "shares.heading": "What this node shares",
@@ -29262,7 +29263,7 @@ ${pad.repeat(depth)}`;
       s
     );
     if (!m) return void 0;
-    const [, y, mo, d, h, mi, se, frac = "", zone = "Z"] = m;
+    const [, y, mo, d, h, mi, se, , zone = "Z"] = m;
     const month = Number(mo);
     const day = Number(d);
     if (month < 1 || month > 12 || day < 1 || day > 31 || Number(h) > 23 || Number(mi) > 59 || Number(se) > 59)
@@ -29280,7 +29281,7 @@ ${pad.repeat(depth)}`;
       const sign = zone.startsWith("-") ? -1 : 1;
       ms -= sign * (Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6))) * 6e4;
     }
-    return { ms, fraction: frac };
+    return { ms };
   }
   var MONTHS = [
     "Jan",
@@ -29308,11 +29309,6 @@ ${pad.repeat(depth)}`;
   function shortMinuteOf(t) {
     const d = new Date(t.ms);
     return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} UTC`;
-  }
-  function secondOf(t, withFraction) {
-    const d = new Date(t.ms);
-    const frac = withFraction && t.fraction ? `.${t.fraction}` : "";
-    return `${dateOf(t)}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}${frac} UTC`;
   }
   var PLACEHOLDER2 = /\{([a-z_]+)\}/gu;
   function placeholders2(text2) {
@@ -29366,7 +29362,7 @@ ${pad.repeat(depth)}`;
     }
     return { state, by, at, through };
   }
-  var EPOCH = { ms: 0, fraction: "" };
+  var EPOCH = { ms: 0 };
   function readRow2(r, v, path2, kind) {
     if (kind === "checkpoint") {
       const o2 = r.object(
@@ -29923,23 +29919,15 @@ ${pad.repeat(depth)}`;
     );
     let rowList = null;
     if (drawRows) {
-      const seconds = /* @__PURE__ */ new Map();
-      if (kind === "checkpoint")
-        for (const x of rows)
-          seconds.set(
-            Math.floor(x.cut.ms / 1e3),
-            (seconds.get(Math.floor(x.cut.ms / 1e3)) ?? 0) + 1
-          );
       const items = rows.map((x) => {
         if (x.kind === "checkpoint") {
-          const tie = (seconds.get(Math.floor(x.cut.ms / 1e3)) ?? 0) > 1;
           return el13(
             "li",
             { class: "cvh-row", "data-history": "row" },
             el13(
               "p",
               { class: "cvh-row-title" },
-              say("row.cut", { at: secondOf(x.cut, tie) })
+              say("row.cut", { at: minuteOf(x.cut) })
             ),
             el13(
               "p",
@@ -30040,7 +30028,8 @@ ${pad.repeat(depth)}`;
         "p",
         null,
         kind === "checkpoint" ? say("callout.checkpoints") : picked ? say("callout.deals.picked", { name: name ?? "" }) : say("callout.deals")
-      )
+      ),
+      kind === "checkpoint" && rows.length > 0 ? el13("p", null, say("callout.checkpoints.time")) : null
     ) : null;
     let shares = null;
     if (sharing) {
