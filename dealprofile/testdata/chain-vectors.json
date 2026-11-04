@@ -382,6 +382,11 @@
       "error": "seq position 13: a check that states rule_inputs_version carries material_fields_changed and material_fields_basis"
     },
     {
+      "name": "negative/neg-rules-kind-empty.json",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "negative/neg-sale-close-with-body.json",
       "stage": "",
       "error": ""
