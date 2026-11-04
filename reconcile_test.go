@@ -419,3 +419,58 @@ func TestBookReconcileReadsFailedRecordsFromTheInput(t *testing.T) {
 		t.Fatalf("tallies %+v, want %+v; pairs %+v", recon.Tallies, want, recon.Pairs)
 	}
 }
+
+// Pairing must not depend on the order of either side, including when a
+// failed attempt and a served retry share one exchange id and the sides hold
+// different numbers of halves.
+func TestReconcilePairingIsIndependentOfInputOrder(t *testing.T) {
+	failed := func(id string) Half {
+		return Half{RecordID: id, Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true}
+	}
+	served := func(id, digest string) Half {
+		return half(id, Correlation{ExchangeID: "x1", RequestDigest: digest}, "same")
+	}
+	var permutations func(halves []Half) [][]Half
+	permutations = func(halves []Half) [][]Half {
+		if len(halves) == 1 {
+			return [][]Half{halves}
+		}
+		var all [][]Half
+		for i := range halves {
+			rest := append(append([]Half{}, halves[:i]...), halves[i+1:]...)
+			for _, p := range permutations(rest) {
+				all = append(all, append([]Half{halves[i]}, p...))
+			}
+		}
+		return all
+	}
+	for name, c := range map[string]struct {
+		a, b []Half
+		want Tallies
+	}{
+		"failed and served against served":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{served("b-s", "d1")}, Tallies{Matched: 1, AOnly: 1}},
+		"served against failed and served":       {[]Half{served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 1, BOnly: 1}},
+		"both hold a failed attempt and a retry": {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 2}},
+		"retries disagree on the request digest": {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d2")}, Tallies{Matched: 1, Conflicting: 1}},
+		"timeout against a finished provider":    {[]Half{failed("a-f")}, []Half{served("b-s", "d1")}, Tallies{Conflicting: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, pa := range permutations(c.a) {
+				for _, pb := range permutations(c.b) {
+					_, tallies := ReconcileHalves(HalfSet{Complete: true, Halves: pa}, HalfSet{Complete: true, Halves: pb}, SamePayloadCommitments)
+					if tallies != c.want {
+						t.Fatalf("a=%v b=%v: tallies %+v, want %+v", ids(pa), ids(pb), tallies, c.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func ids(halves []Half) []string {
+	out := make([]string, len(halves))
+	for i, h := range halves {
+		out[i] = h.RecordID
+	}
+	return out
+}

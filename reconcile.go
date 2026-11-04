@@ -235,22 +235,31 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 		}
 		return found
 	}
-	for i, own := range a.Halves {
-		c := own.Correlation
-		if c.ExchangeID == "" {
-			continue
-		}
-		j := pick(func(h Half) bool { return h.Correlation.ExchangeID == c.ExchangeID },
-			func(h Half) bool {
-				// A failed half carries no request digest, so the digest test
-				// alone would rank it with a served half; the same outcome
-				// comes first, keeping a failed attempt and a served retry
-				// of one exchange id apart whatever the input order.
-				return h.Failed == own.Failed &&
-					(h.Correlation.RequestDigest == "" || c.RequestDigest == "" || h.Correlation.RequestDigest == c.RequestDigest)
-			})
-		if j >= 0 {
-			partner[i], keys[i], used[j] = j, JoinExchangeID, true
+	// The exchange_id join runs in tiers over all of side A before the next
+	// tier starts, so an earlier half's fallback never takes the partner a
+	// later half matches better: the same outcome with a compatible request
+	// digest, then the same outcome (a digest disagreement is then reported
+	// as the key conflict), then any outcome (a requester that timed out
+	// against a provider that finished). A failed half carries no request
+	// digest, so without the outcome tiers it would rank with a served half.
+	digestsAgree := func(x, y Correlation) bool {
+		return x.RequestDigest == "" || y.RequestDigest == "" || x.RequestDigest == y.RequestDigest
+	}
+	for _, tier := range []func(own, h Half) bool{
+		func(own, h Half) bool { return h.Failed == own.Failed && digestsAgree(own.Correlation, h.Correlation) },
+		func(own, h Half) bool { return h.Failed == own.Failed },
+		func(own, h Half) bool { return digestsAgree(own.Correlation, h.Correlation) },
+		func(Half, Half) bool { return true },
+	} {
+		for i, own := range a.Halves {
+			c := own.Correlation
+			if partner[i] >= 0 || c.ExchangeID == "" {
+				continue
+			}
+			j := pick(func(h Half) bool { return h.Correlation.ExchangeID == c.ExchangeID && tier(own, h) }, func(Half) bool { return true })
+			if j >= 0 {
+				partner[i], keys[i], used[j] = j, JoinExchangeID, true
+			}
 		}
 	}
 	for i, own := range a.Halves {
