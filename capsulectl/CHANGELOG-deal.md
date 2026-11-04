@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc34
+
+This release pairs with capsulectl `v0.1.0-rc34` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc33`: the History card errors that say why (#140), and the evidencebook `v0.13.5` pin, whose standard-history entry prices a Lightning (BTC) deal in msat at `assetScale` 11 instead of refusing the card as unpriced (evidencebook#388). A Lightning deal can now make a `deal standard-history card`.
+
 - `deal standard-history card` and `staple` say why a deal cannot be on the History card (a deal with no recorded amount or a currency the card can't count, no finished checkpoint, a declaration or policy changed after the last checkpoint, a deal recorded in an older format) instead of the generic masked "operation failed". The line reads "the History card was not built: <reason>" and names the deal id and nothing else from the records; every other failure stays masked. Exit codes are unchanged (#139).
 
 ## v0.1.0-rc33
