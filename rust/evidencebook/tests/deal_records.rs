@@ -307,3 +307,34 @@ fn a_pay_check_carries_the_counterparty_class() {
     record["counterparty_class"] = Value::String(String::new());
     assert!(deal::decode::<Record>(&serde_json::to_vec(&record).unwrap()).is_err());
 }
+
+/// A verdict's `rules` body may carry the pinned pack's kind, an open string:
+/// it round-trips, a later kind is as valid as a known one, and an empty one
+/// is refused.
+#[test]
+fn a_verdict_rules_body_carries_the_pack_kind() {
+    let raw = read(&fixtures_dir().join("positive/14-verdict-pause.json"));
+    let mut record = raw["record"].clone();
+    let rules = |kind: Option<&str>| {
+        let mut r = serde_json::json!({
+            "status": "evaluated", "ruleset_id": "asg/seller", "definition_digest": "b".repeat(64),
+            "checker_sha256": "a".repeat(64), "verdict": "allow", "findings": [],
+            "history": {"days": 1, "acts": 0, "complete": true}
+        });
+        if let Some(k) = kind {
+            r["kind"] = Value::String(k.to_string());
+        }
+        r
+    };
+    for kind in ["deal", "conduct", "a_later_kind"] {
+        record["body"]["rules"] = rules(Some(kind));
+        let text = serde_json::to_vec(&record).unwrap();
+        deal::check(&text, &[]).unwrap();
+        let rec: Record = deal::decode(&text).unwrap();
+        assert_eq!(serde_json::to_value(&rec).unwrap(), record, "{kind}");
+    }
+    record["body"]["rules"] = rules(None);
+    deal::check(&serde_json::to_vec(&record).unwrap(), &[]).unwrap();
+    record["body"]["rules"] = rules(Some(""));
+    assert!(deal::check(&serde_json::to_vec(&record).unwrap(), &[]).is_err());
+}

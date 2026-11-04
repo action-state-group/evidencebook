@@ -1039,7 +1039,10 @@ At every check, after the `check` record is sealed:
     (under `roles`, not one of the acting role's digests, when it has any) adds a `rules_not_checked` difference naming why, and the check pauses.
 
 The verdict's `rules` seals the outcome as data:
-- `status: evaluated`, with `ruleset_id`, `definition_digest`, `checker_sha256`, `verdict`,
+- `status: evaluated`, with `ruleset_id`, optional `kind` (the pinned pack's kind as the profile's pin
+  stated it when the check ran, an open string such as `deal` or `conduct`; absent when the pin stated
+  none and on checks sealed before it was recorded; a reader shares the pack with a counterparty only
+  for the exact kind `deal`), `definition_digest`, `checker_sha256`, `verdict`,
   `tier` (as reported, or `not_stated`), `grade` (as reported, or absent; both recorded and
   shown in the approval text, changing nothing), `findings` (each `{id, check, verdict, disposition, limit, value}`), and `history` (`{days, acts, complete}`:
   what the checker was given beside the record);

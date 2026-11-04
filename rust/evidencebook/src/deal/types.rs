@@ -530,6 +530,8 @@ pub struct VerdictBodyRules {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ruleset_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definition_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checker_sha256: Option<String>,

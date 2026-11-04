@@ -2509,6 +2509,12 @@ def regen():
     r = copy.deepcopy(records[13]); r["body"]["differences"][2]["rule"] = "likely_scam"
     neg("neg-wording-label", "wording", "prohibited word", r, 13, "A difference rule that labels the counterparty.")
 
+    r = copy.deepcopy(records[13])
+    r["body"]["rules"] = {"status": "evaluated", "ruleset_id": "asg/seller", "kind": "", "definition_digest": "b" * 64,
+                          "checker_sha256": "a" * 64, "verdict": "allow", "findings": [],
+                          "history": {"days": 1, "acts": 0, "complete": True}}
+    neg("neg-rules-kind-empty", "schema", "kind", r, 13, "A verdict's rules body carries an empty pack kind.")
+
     r = copy.deepcopy(records[2]); r["body"]["text"] = "seller rating 4.9 on the marketplace"
     neg("neg-wording-grade", "wording", "prohibited word", r, 2, "A claim that carries a grade of the counterparty.")
 
