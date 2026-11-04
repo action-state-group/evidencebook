@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v0.13.6 (2026-11-04)
+
+Go module only.
+
+### Added: the verdict's `rules` body records the pinned pack's kind (#394)
+
+- The verdict record's `rules` body gains an optional `kind` (an open string, schema `x-deal-v0`): the kind of the pinned pack (`deal`, `conduct`, or a later one) as the profile's pin stated it when the check ran. A reader shares a pack with a counterparty only for the exact kind `deal`; a record without `kind` names none. Go `VerdictBodyRules.Kind`, the Rust `VerdictBodyRules.kind` and the vendored Python and Rust schemas follow (evidencebook-deal#146).
+
+
 ## capsulectl/v0.1.0-rc35 (2026-11-04)
 
 capsulectl-book only; no library tag.
