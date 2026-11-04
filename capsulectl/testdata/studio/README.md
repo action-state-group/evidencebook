@@ -47,19 +47,29 @@ buyer's own store has `action-record/v0` with `action: "pay"` and `amount_minor`
 
 ## Trade 7
 
-The price change is sealed in the amounts. The seller's commit check pauses (`terms_changed`:
-"Price changed since it was agreed ($1.50 to $1.75)"); the commit is attempted anyway, so there is
-no `action-record/v0` commit. Instead:
+The seller raises the price after the buyer accepted and the seller committed. (The deal itself
+refuses a commit at a changed price, `changed_after_acceptance`, so the raise comes after the
+commit.) The miss is in the sealed amounts: the offer `action-record/v0` and the commit
+`action-record/v0` are both 150, then a `detail_change` record follows the commit:
 
 ```json
-{"type": "action-outcome/v0", "body": {"status": "unchecked_action", "outcome": "mismatch",
-  "attempted": {"action": "commit", "amount_minor": 175, "currency": "USD"},
-  "findings": [{"rule": "changed_after_acceptance", "question": "asked"}]}}
+{"body": {"changed": ["price"], "source": "seller_message", "terms": {"price_minor": 175}},
+ "x-deal-v0": {"record_type": "detail_change", "at": "…", "seq": …}}
 ```
 
+and the buyer's half pays 175 (`action-record/v0` `action: "pay"`, `amount_minor: 175`). Trade 7
+has a commit record like the other nine, so it counts as a provided deal on the History card.
+
 So a "price as offered" fold is: the last offer's `amount_minor` equals the sealed commit's
-`amount_minor`, and a deal with no `action-record/v0` commit (only the unchecked attempt) misses.
-The buyer's half of trade 7 pays 175.
+`amount_minor`, and no `detail_change` record has `"price"` in `body.changed`.
+
+## History card
+
+`deal standard-history declare --holder-kind person`, two `deal tick`s, then `deal standard-history
+card --out FILE` on a replayed store gives (checked on the replay): the seller's card counts 10
+provided and 0 bought, the buyer's 10 bought and 0 provided; every deal reads `undecided` (no
+deal reads `held` or `did_not_hold`: that needs a reconcile Result, which these x-deal-v0 deals
+do not carry) and `happened` is `receipt_only` for all ten.
 
 ## Times
 
