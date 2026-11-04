@@ -80,7 +80,7 @@ type BundleRequest struct {
 	// Witnesses are witness receipts for the anchor, as checkpoint.witnesses
 	// entries (ts_url, entry_hash, receipt_b64, leaf_index, tree_size): the
 	// bundle carries them in checkpoint.witnesses. The anchor must therefore
-	// be known when the receipts are made, so pin it with At. Each is
+	// be known when the receipts are made: At is required with them. Each is
 	// checked against the anchor's signed checkpoint under WitnessDirectory
 	// before the bundle is built; one that does not verify, or any receipt
 	// without a directory, is ErrInvalid. At most MaxReplyReceipts.
@@ -130,6 +130,14 @@ type producerReport struct {
 	Checks   []string `json:"checks"`
 }
 
+// bundleWireCheckpoint is BundleCheckpoint with the receipts the bundle
+// carries; the public type stays the checkpoint a verifier read, whose
+// receipts are VerifiedBundle.Witnesses.
+type bundleWireCheckpoint struct {
+	BundleCheckpoint
+	Witnesses []json.RawMessage `json:"witnesses,omitempty"`
+}
+
 type bundleWire struct {
 	BundleVersion string                                `json:"bundle_version"`
 	BundleKind    string                                `json:"bundle_kind"`
@@ -137,7 +145,7 @@ type bundleWire struct {
 	Records       []json.RawMessage                     `json:"records"`
 	Completeness  completenessClaim                     `json:"completeness"`
 	Certificate   *CompletenessCertificate              `json:"completeness_certificate,omitempty"`
-	Checkpoint    *BundleCheckpoint                     `json:"checkpoint,omitempty"`
+	Checkpoint    *bundleWireCheckpoint                 `json:"checkpoint,omitempty"`
 	Disclosures   map[string]map[string]json.RawMessage `json:"disclosures"`
 	Extensions    map[string]json.RawMessage            `json:"extensions,omitempty"`
 	Verification  producerReport                        `json:"verification"`
@@ -184,9 +192,6 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
-	if len(req.Witnesses) > MaxReplyReceipts {
-		return Bundle{}, fmt.Errorf("%w: limit: witness receipts: %d over %d", ErrInvalid, len(req.Witnesses), MaxReplyReceipts)
-	}
 	if err := verifyCarriedReceipts(anchor.Statement, req.Witnesses, req.WitnessDirectory); err != nil {
 		return Bundle{}, err
 	}
@@ -225,14 +230,15 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		interval, err := b.commitments.ProveInterval(ctx, first, anchor)
 		switch {
 		case err == nil:
-			wire.Certificate, wire.Checkpoint = &interval.Certificate, &interval.Checkpoint
-			if len(req.Witnesses) > 0 {
-				wire.Checkpoint.Witnesses = req.Witnesses
-			}
+			wire.Certificate = &interval.Certificate
+			wire.Checkpoint = &bundleWireCheckpoint{BundleCheckpoint: interval.Checkpoint, Witnesses: req.Witnesses}
 			for seq := first; seq <= anchor.Entries; seq++ {
 				carried = append(carried, b.log[seq-1].RecordID)
 			}
 		case errors.Is(err, ErrUnsupported):
+			if len(req.Witnesses) > 0 {
+				return Bundle{}, fmt.Errorf("%w: this substrate's bundle has no checkpoint to carry witness receipts", ErrInvalid)
+			}
 			inclusion := make(map[string]InclusionEvidence)
 			for id := range selected {
 				if inclusion[id], err = b.commitments.ProveInclusion(ctx, b.records[id].Seq, anchor); err != nil {
@@ -364,6 +370,14 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		}
 		if data, err = canonicalJSON(wire); err != nil {
 			return Bundle{}, err
+		}
+	}
+	if len(req.Witnesses) > 0 {
+		// The receipts joined the bundle after the producer's own check, so
+		// the final bytes are read once more as a reader reads them; a
+		// refusal leaves the book unchanged.
+		if _, err := VerifyBundle(data); err != nil {
+			return Bundle{}, fmt.Errorf("%w: the bundle with its witness receipts does not verify: %v", ErrInvalid, err)
 		}
 	}
 	statement.BundleDigest = digestBytes(data)

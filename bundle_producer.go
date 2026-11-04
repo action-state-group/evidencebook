@@ -33,6 +33,22 @@ func checkBundleRequest(req *BundleRequest) (map[string]any, error) {
 	if req.ProducerKey != nil && len(req.ProducerKey) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("%w: producer key must be a raw %d-byte Ed25519 public key", ErrInvalid, ed25519.PublicKeySize)
 	}
+	if len(req.Witnesses) > 0 && req.At == nil {
+		return nil, fmt.Errorf("%w: witness receipts are for one checkpoint: pin it with BundleRequest.At", ErrInvalid)
+	}
+	if len(req.Witnesses) > MaxReplyReceipts {
+		return nil, fmt.Errorf("%w: limit: witness receipts: %d over %d", ErrInvalid, len(req.Witnesses), MaxReplyReceipts)
+	}
+	witnesses := make([]json.RawMessage, len(req.Witnesses))
+	for i, raw := range req.Witnesses {
+		var err error
+		if witnesses[i], err = exactBundleReceipt(raw); err != nil {
+			return nil, fmt.Errorf("receipt %d: %w", i, err)
+		}
+	}
+	if len(witnesses) > 0 {
+		req.Witnesses = witnesses
+	}
 	suppress := make([]string, 0, len(req.Suppress))
 	for _, member := range req.Suppress {
 		if _, eligible := registries.DisclosureEligibleFields[member]; !eligible {

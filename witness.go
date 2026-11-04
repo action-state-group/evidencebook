@@ -206,3 +206,45 @@ func receiptInt(raw json.RawMessage) (int64, error) {
 	}
 	return strconv.ParseInt(text, 10, 64)
 }
+
+// exactBundleReceipt is a receipt a caller gave for checkpoint.witnesses,
+// rebuilt from exactly its five members: the three texts as texts (the
+// receipt as canonical standard base64) and the two positions as numbers or
+// texts. A member besides those, a differently-cased name or a text that
+// another reader would take differently is ErrInvalid, so what the book
+// emits is what every reader reads. The result is verified by
+// verifyCarriedReceipts like any carried receipt.
+func exactBundleReceipt(raw json.RawMessage) (json.RawMessage, error) {
+	value, err := decodeJSON(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%w: witness receipt: %v", ErrInvalid, err)
+	}
+	fields, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: witness receipt is not an object", ErrInvalid)
+	}
+	exact := make(map[string]any, 5)
+	for _, name := range []string{"ts_url", "entry_hash", "receipt_b64"} {
+		text, ok := fields[name].(string)
+		if !ok || text == "" {
+			return nil, fmt.Errorf("%w: witness receipt: %s must be a non-empty text", ErrInvalid, name)
+		}
+		exact[name] = text
+	}
+	decoded, err := base64.StdEncoding.DecodeString(exact["receipt_b64"].(string))
+	if err != nil || base64.StdEncoding.EncodeToString(decoded) != exact["receipt_b64"] {
+		return nil, fmt.Errorf("%w: witness receipt: receipt_b64 is not canonical standard base64", ErrInvalid)
+	}
+	for _, name := range []string{"leaf_index", "tree_size"} {
+		switch fields[name].(type) {
+		case json.Number, string:
+			exact[name] = fields[name]
+		default:
+			return nil, fmt.Errorf("%w: witness receipt: %s must be a number or a text", ErrInvalid, name)
+		}
+	}
+	if len(fields) != len(exact) {
+		return nil, fmt.Errorf("%w: witness receipt has a member besides ts_url, entry_hash, receipt_b64, leaf_index and tree_size", ErrInvalid)
+	}
+	return json.Marshal(exact)
+}

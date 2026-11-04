@@ -44,7 +44,7 @@ func TestBundleCarriesWitnessReceipts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wire struct {
-		Checkpoint BundleCheckpoint `json:"checkpoint"`
+		Checkpoint bundleWireCheckpoint `json:"checkpoint"`
 	}
 	if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
 		t.Fatal(err)
@@ -128,6 +128,9 @@ func TestBundleRefusesBadWitnessReceipts(t *testing.T) {
 		"a witness the directory omits":    {Witnesses: []json.RawMessage{good}, WitnessDirectory: unlisted},
 		"not a receipt":                    {Witnesses: []json.RawMessage{json.RawMessage(`{"ts_url":"x"}`)}, WitnessDirectory: directory},
 		"over the limit":                   {Witnesses: tooMany, WitnessDirectory: directory},
+		"a member besides the five":        {Witnesses: []json.RawMessage{receiptWith(t, good, "extra", "x")}, WitnessDirectory: directory},
+		"a differently-cased member name":  {Witnesses: []json.RawMessage{receiptWith(t, good, "TS_URL", "https://wrong.test")}, WitnessDirectory: directory},
+		"non-canonical base64":             {Witnesses: []json.RawMessage{receiptWith(t, good, "receipt_b64", "!")}, WitnessDirectory: directory},
 	} {
 		t.Run(name, func(t *testing.T) {
 			req.Root, req.At = record.RecordID, &anchor
@@ -136,7 +139,83 @@ func TestBundleRefusesBadWitnessReceipts(t *testing.T) {
 			}
 		})
 	}
+	t.Run("no pinned anchor", func(t *testing.T) {
+		checkpoints, err := responder.Checkpoints(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := responder.Bundle(ctx, BundleRequest{Root: record.RecordID, Witnesses: []json.RawMessage{good}, WitnessDirectory: directory}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("got %v, want ErrInvalid", err)
+		}
+		if again, _ := responder.Checkpoints(ctx); len(again) != len(checkpoints) {
+			t.Fatal("a refused request issued a checkpoint")
+		}
+	})
 	if after := len(responder.log); after != before {
 		t.Fatalf("a refused bundle appended %d records", after-before)
+	}
+}
+
+// receiptWith is receipt with one member set.
+func receiptWith(t *testing.T, receipt json.RawMessage, name, value string) json.RawMessage {
+	t.Helper()
+	var fields map[string]any
+	if err := json.Unmarshal(receipt, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields[name] = value
+	return rawReceipt(t, fields)
+}
+
+// The interval path (a substrate whose bundle the producer does not build)
+// carries the receipts in the bundle's checkpoint too.
+func TestBundleCarriesWitnessReceiptsOnTheIntervalPath(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "responder", 31)
+	cfg := f.config(t)
+	cfg.Substrate = &flakySubstrate{Substrate: cfg.Substrate}
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witnessKey, directory := testWitness()
+	record, err := book.SealUnavailableWindow(ctx, f.clock.t.Add(-time.Hour), f.clock.t.Add(time.Hour), "outage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := rawReceipt(t, mintReceiptAt(t, anchor.Statement, witnessKey, f.clock.t))
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: record.RecordID, At: &anchor, Witnesses: []json.RawMessage{receipt}, WitnessDirectory: directory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := VerifyBundle(bundle.JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(verified.Witnesses) != 1 {
+		t.Fatalf("witnesses: %d", len(verified.Witnesses))
+	}
+}
+
+// A SCITT book's statement is a transparency receipt, not a signed checkpoint,
+// so no receipt verifies against it: the request is refused, never dropped.
+func TestBundleRefusesWitnessReceiptsOnASCITTBook(t *testing.T) {
+	ctx := context.Background()
+	book := scittBook(t)
+	record, err := book.Append(ctx, Entry{RecordType: "note", EpistemicType: ProducerClaim, Statement: []byte(`{"n":1}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = book.Bundle(ctx, BundleRequest{Root: record.RecordID, At: &anchor, Witnesses: []json.RawMessage{json.RawMessage(`{"ts_url":"https://w.test","entry_hash":"x","receipt_b64":"AAAA","leaf_index":0,"tree_size":1}`)}, WitnessDirectory: []WitnessRow{{Name: "w", Endpoint: testWitnessURL}}})
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }
