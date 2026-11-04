@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The sealed check now records the terms pack's `kind` (evidencebook-deal#146). A counterparty's or adjudicator's
+  copy names the pack only when the kind sealed with the check is exactly `deal` and the profile still pins that
+  pack for the party's role. Sharing follows the sealed kind, never the profile's current pin. Checks sealed
+  before this release carry no `kind` and never name their pack on those copies. The user's own copy is unchanged.
+  Requires evidencebook `v0.13.6`.
+
 ## v0.1.0-rc35
 
 This release pairs with capsulectl `v0.1.0-rc35` (go.mod requires it).
