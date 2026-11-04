@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -69,7 +70,15 @@ type material struct {
 
 func newMaterial(t *testing.T, disclose func(Record) bool) material {
 	t.Helper()
+	return newMaterialWith(t, disclose, nil)
+}
+
+func newMaterialWith(t *testing.T, disclose func(Record) bool, prepare func(*Book)) material {
+	t.Helper()
 	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, nil)
+	if prepare != nil {
+		prepare(book)
+	}
 	cp, err := book.Checkpoint(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -316,5 +325,181 @@ func TestACadenceHoldsOneBundlePerCommittedLog(t *testing.T) {
 	delete(anchor.Extents, "deal/b")
 	if _, err := c.StandardHistoryBundles(ctx, anchor, StandardHistoryBundleRequest{}); err == nil {
 		t.Fatal("a log with no record was handed")
+	}
+}
+
+// The interval starts at seq 1 even when the share gate refuses the first
+// records: they ride along digest-only, which is what coverage needs.
+func TestTheIntervalStartsAtSeq1WhateverTheGateRefuses(t *testing.T) {
+	h := newMaterial(t, func(r Record) bool { return r.Seq > 2 })
+	verified, err := VerifyBundleAnswer(h.m.Bundles[0], h.m.Keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.IntervalFirst != 1 || verified.IntervalLast != h.cp.Entries || uint64(len(verified.Records)) != h.cp.Entries {
+		t.Fatalf("seq %d to %d with %d records", verified.IntervalFirst, verified.IntervalLast, len(verified.Records))
+	}
+	for _, r := range verified.Records {
+		if (r.Seq <= 2) != (r.Header == nil) {
+			t.Fatalf("record at seq %d: header %v", r.Seq, r.Header)
+		}
+	}
+	// Coverage is shown, and the withheld headers keep the check NOT_CHECKED.
+	if check := recompute(t, h.m); check.Properties["counts_recompute"] != standardhistory.NotChecked {
+		t.Fatalf("%v", check.Properties)
+	}
+}
+
+// A record that cites a record outside the log leaves the bundle's citation
+// closure incomplete, which SH-3 does not read: coverage still shows.
+func TestACitationOutsideTheLogDoesNotHoldBackTheCounts(t *testing.T) {
+	h := newMaterialWith(t, nil, func(book *Book) {
+		mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent,
+			Links: []Link{{Type: Cites, Target: digestBytes([]byte("a record of another log"))}}})
+	})
+	if check := recompute(t, h.m); check.Properties["counts_recompute"] != standardhistory.Pass {
+		t.Fatalf("%v (%s)", check.Properties, check.Why)
+	}
+}
+
+// A card whose counts differ is FAIL only over shown coverage: a mapping
+// that skips a record whose header is withheld (as it might for any record
+// it cannot read) must not turn a partial handover into one.
+func TestAWithheldHeaderIsNotLeftToTheMapping(t *testing.T) {
+	h := newMaterial(t, func(r Record) bool { return r.Header.RecordType != "deal_terms" || r.Seq != 1 })
+	h.m.Deals = func(records []MaterialRecord) ([]standardhistory.Deal, error) {
+		var kept []MaterialRecord
+		for _, r := range records {
+			if r.Header != nil {
+				kept = append(kept, r)
+			}
+		}
+		return dealsOfMaterial(kept)
+	}
+	check := recompute(t, h.m)
+	if got := check.Properties["counts_recompute"]; got != standardhistory.NotChecked {
+		t.Fatalf("counts_recompute %s (%s), want NOT_CHECKED", got, check.Why)
+	}
+}
+
+// The anchor's time is not bound by the card's as_of, but the window is
+// read against it: material handed with another time is not recomputed.
+func TestTheAnchorTimeIsTheCheckpointsOwn(t *testing.T) {
+	h := newMaterial(t, nil)
+	h.m.AsOf.AnchorTime = "2025-01-01T00:00:00Z"
+	check := recompute(t, h.m)
+	if got := check.Properties["counts_recompute"]; got != standardhistory.NotChecked || check.Why == "" {
+		t.Fatalf("counts_recompute %s (%q)", got, check.Why)
+	}
+}
+
+func TestTwoBundlesForOneLogAreNotCoverage(t *testing.T) {
+	h := newMaterial(t, nil)
+	h.m.Bundles = append(h.m.Bundles, h.m.Bundles[0])
+	if got := recompute(t, h.m).Properties["counts_recompute"]; got != standardhistory.NotChecked {
+		t.Fatalf("counts_recompute %s", got)
+	}
+}
+
+// Another committed log with no record has nothing to show (SH-3 (b)).
+func TestAnEmptyCommittedLogNeedsNoBundle(t *testing.T) {
+	h := newMaterial(t, nil)
+	h.m.Committed["empty"] = CommittedLog{Checkpoint: "33"}
+	if check := recompute(t, h.m); check.Properties["counts_recompute"] != standardhistory.Pass {
+		t.Fatalf("%v (%s)", check.Properties, check.Why)
+	}
+}
+
+// A caller-sealed record holds its header in its capsule, which travels
+// with the interval, so a share gate cannot refuse it; and a bundle another
+// producer declares incomplete for a citation outside the log (graph closure
+// "withheld") still shows coverage.
+func TestACapsuleSealedLog(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-sealed", 1).open(t)
+	absent := strings.Repeat("ab", 32)
+	payload := `{"order":17}`
+	mustAppend(t, book, observation("first", `{"n":1}`))
+	sealed, err := book.AppendCapsule(ctx, Entry{RecordType: "published_capsule", EpistemicType: ProducerClaim, SubjectRef: "p", Links: []Link{{Type: Cites, Target: absent}}}, boundPayload(payload), citingSealer(t, payload, absent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{Disclose: func(r Record) bool { return r.RecordID != sealed.RecordID }}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("refusing a capsule-sealed record: %v", err)
+	}
+	// The same log, handed as a bundle rooted at the record citing outside.
+	var all []string
+	for _, r := range book.log[:cp.Entries] {
+		all = append(all, r.RecordID)
+	}
+	foreign, err := book.Bundle(ctx, BundleRequest{Root: sealed.RecordID, Include: all, At: &cp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified, err := VerifyBundle(foreign.JSON); err != nil || verified.Claims.GraphClosure == "pass" {
+		t.Fatalf("the foreign bundle's graph closure is %q (%v), want a closure that is not pass", verified.Claims.GraphClosure, err)
+	}
+	card, asOf := cardOf(t, book, cp)
+	policy := testPolicy
+	check := recompute(t, StandardHistoryMaterial{
+		Card: card, AsOf: asOf, Policy: &policy, Keys: responderKeys(book, 1),
+		Committed: map[string]CommittedLog{cp.LogID: {Checkpoint: anchorDigest(cp), Leaves: cp.Entries}},
+		Bundles:   [][]byte{foreign.JSON}, Deals: dealsOfMaterial,
+	})
+	if check.Properties["counts_recompute"] != standardhistory.Pass {
+		t.Fatalf("%v (%s)", check.Properties, check.Why)
+	}
+}
+
+// The root of a handover brings no link targets with it: a refused record
+// a disclosed one cites stays digest-only.
+func TestTheRootOfAHandoverDisclosesNoLinkTarget(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "book-root", 1).open(t)
+	hidden := mustAppend(t, book, observation("hidden", `{"n":1}`))
+	mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, Links: []Link{{Type: Cites, Target: hidden.RecordID}}})
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{Disclose: func(r Record) bool { return r.RecordID != hidden.RecordID }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := VerifyBundle(bundle.JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range verified.Records {
+		if (r.RecordID == hidden.RecordID) != (r.Header == nil) {
+			t.Fatalf("record %s: header %v", r.RecordID, r.Header)
+		}
+	}
+}
+
+// A set that cannot be handed in full builds no bundle: none of its books
+// gets a disclosure record for it.
+func TestAFailedSetAppendsNothing(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("a", "1"))
+	mustTick(t, c, tickTime)
+	anchor, err := c.StandardHistoryAnchor(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(a.log)
+	anchor.Extents["deal/none"] = 1
+	if _, err := c.StandardHistoryBundles(ctx, anchor, StandardHistoryBundleRequest{}); err == nil {
+		t.Fatal("a log the shelf does not hold was handed")
+	}
+	if len(a.log) != before {
+		t.Fatalf("deal/a grew from %d to %d records for a set that failed", before, len(a.log))
 	}
 }

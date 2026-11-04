@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
 	"github.com/action-state-group/agent-action-capsule/go/standardhistory"
 )
 
@@ -28,6 +29,9 @@ type StandardHistoryBundleRequest struct {
 	// that is not disclosed still travels as a digest-only capsule, which
 	// is what shows coverage without showing the record. The policy behind
 	// it is the host's (SH §6): the recipient learns nothing it may not see.
+	// A record its caller sealed (AppendCapsule) carries its header inside
+	// its capsule, and every record of the interval travels as a capsule, so
+	// that header cannot be withheld: refusing such a record is ErrInvalid.
 	Disclose func(Record) bool
 	// Witnesses and WitnessDirectory are BundleRequest's: witness receipts
 	// for the anchor, checked against the directory before the bundle is
@@ -56,6 +60,19 @@ func (b *Book) StandardHistoryBundle(ctx context.Context, at Checkpoint, req Sta
 	for _, r := range b.log[:anchor.Entries] {
 		if req.Disclose == nil || req.Disclose(r.detached()) {
 			include = append(include, r.RecordID)
+			continue
+		}
+		// Every record of the interval travels as a capsule, and a record
+		// its caller sealed holds its header in the capsule: refusing it
+		// would hide nothing, so it is refused outright.
+		stored, err := b.storedLocked(ctx, r.RecordID)
+		if err != nil {
+			return Bundle{}, err
+		}
+		if _, inline, err := inlineHeader(stored.Capsule); err != nil {
+			return Bundle{}, fmt.Errorf("%w: capsule %s: %v", ErrCorrupt, r.RecordID, err)
+		} else if inline {
+			return Bundle{}, fmt.Errorf("%w: record %s carries its header in its capsule, which travels with the interval; the share gate cannot withhold it", ErrInvalid, r.RecordID)
 		}
 	}
 	if len(include) == 0 {
@@ -63,7 +80,7 @@ func (b *Book) StandardHistoryBundle(ctx context.Context, at Checkpoint, req Sta
 	}
 	return b.bundleLocked(ctx, BundleRequest{
 		Root: include[len(include)-1], Include: include, Payloads: PayloadsSelected, At: &anchor,
-		Witnesses: req.Witnesses, WitnessDirectory: req.WitnessDirectory, rootOnly: true,
+		Witnesses: req.Witnesses, WitnessDirectory: req.WitnessDirectory, handover: true,
 	})
 }
 
@@ -78,7 +95,14 @@ func (c *Cadence) StandardHistoryBundles(ctx context.Context, anchor StandardHis
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]Bundle, len(anchor.Extents))
+	// Every log is resolved before any bundle is built: a bundle appends a
+	// disclosure record to its book, which must not happen for a set that
+	// then fails.
+	type target struct {
+		book *Book
+		at   Checkpoint
+	}
+	targets := make(map[string]target, len(anchor.Extents))
 	for id, extent := range anchor.Extents {
 		if !slices.Contains(books, id) {
 			return nil, fmt.Errorf("%w: the shelf holds no book %s", ErrNotFound, id)
@@ -95,9 +119,15 @@ func (c *Cadence) StandardHistoryBundles(ctx context.Context, anchor StandardHis
 		if i < 0 {
 			return nil, fmt.Errorf("%w: %s has no checkpoint at %d entries", ErrNotFound, id, extent)
 		}
-		if out[id], err = book.StandardHistoryBundle(ctx, checkpoints[i], req); err != nil {
+		targets[id] = target{book, checkpoints[i]}
+	}
+	out := make(map[string]Bundle, len(targets))
+	for id, t := range targets {
+		bundle, err := t.book.StandardHistoryBundle(ctx, t.at, req)
+		if err != nil {
 			return nil, err
 		}
+		out[id] = bundle
 	}
 	return out, nil
 }
@@ -228,10 +258,10 @@ func coveredRecords(m StandardHistoryMaterial) ([]MaterialRecord, string) {
 	}
 	anchorLogs := 0
 	for _, log := range m.Committed {
-		if log.Leaves == 0 {
-			return nil, "a committed log is empty, so there is nothing to show coverage of"
-		}
 		if log.Checkpoint == m.AsOf.Anchor {
+			if log.Leaves == 0 {
+				return nil, "the anchor's own log is empty, so there is nothing to show coverage of"
+			}
 			anchorLogs++
 		}
 	}
@@ -240,7 +270,7 @@ func coveredRecords(m StandardHistoryMaterial) ([]MaterialRecord, string) {
 	}
 	bundles := make(map[string]VerifiedBundle, len(m.Committed))
 	for i, data := range m.Bundles {
-		verified, err := VerifyBundleAnswer(data, m.Keys)
+		verified, err := verifyHandedBundle(data, m.Keys)
 		if err != nil {
 			return nil, fmt.Sprintf("bundle %d does not verify: %v", i, err)
 		}
@@ -268,6 +298,9 @@ func coveredRecords(m StandardHistoryMaterial) ([]MaterialRecord, string) {
 	var records []MaterialRecord
 	for _, id := range sortedKeys(m.Committed) {
 		committed, v := m.Committed[id], bundles[id]
+		if committed.Leaves == 0 {
+			continue // (b) over no leaf is vacuous, and no bundle can exist for it
+		}
 		switch {
 		case v.LogID == "":
 			return nil, fmt.Sprintf("no bundle for %s", id)
@@ -278,9 +311,23 @@ func coveredRecords(m StandardHistoryMaterial) ([]MaterialRecord, string) {
 		case digestBytes(v.AnchorStatement) != committed.Checkpoint:
 			return nil, fmt.Sprintf("%s: the bundle is not anchored to the checkpoint the anchor commits", id)
 		}
+		if committed.Checkpoint == m.AsOf.Anchor {
+			// The window is read against the anchor's time, which the card's
+			// as_of does not bind: it must be the checkpoint's own.
+			at, err := checkpointFromStatement(v.AnchorStatement)
+			if err != nil || evidencerequest.ProfileTime(at.IssuedAt) != m.AsOf.AnchorTime {
+				return nil, fmt.Sprintf("%s: the anchor's time is not the checkpoint's", id)
+			}
+		}
 		for _, r := range slices.SortedFunc(slices.Values(v.Records), func(a, b PeerRecord) int { return cmp.Compare(a.Seq, b.Seq) }) {
 			if !r.CapsuleOK {
 				return nil, fmt.Sprintf("%s: record %s does not verify as a capsule", id, r.RecordID)
+			}
+			if r.Header == nil || !r.HeaderVerified {
+				// Without its header no mapping can tell this record from a
+				// deal's, and a count that differs would blame the holder
+				// for what it was not shown.
+				return nil, fmt.Sprintf("%s: the header of record %s is withheld", id, r.RecordID)
 			}
 			records = append(records, MaterialRecord{PeerRecord: r, LogID: id, payloads: v.Payloads})
 		}
@@ -295,4 +342,26 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// verifyHandedBundle is VerifyBundleAnswer without its graph-closure
+// requirement: SH-3 shows coverage, and a Bundle's root and records_mode
+// mean nothing there, so a bundle another producer declares incomplete for
+// citations outside the log is still a handover. Everything else is kept:
+// the bundle verifies, its anchor is signed by the pinned key, and its
+// witness receipts verify under the recipient's directory. Interval
+// coverage, per-record membership and every capsule are checked by the
+// caller.
+func verifyHandedBundle(data []byte, keys ResponderKeys) (VerifiedBundle, error) {
+	if keys.Checkpoint == "" {
+		return VerifiedBundle{}, fmt.Errorf("%w: a pinned checkpoint key is required", ErrInvalid)
+	}
+	verified, err := VerifyBundle(data)
+	if err != nil {
+		return verified, err
+	}
+	if !verified.AnchorAuthenticated || verified.AnchorKeyID != keys.Checkpoint {
+		return verified, fmt.Errorf("%w: bundle is not anchored to a checkpoint signed by the pinned key", ErrInvalid)
+	}
+	return verified, verifyCarriedReceipts(verified.AnchorStatement, verified.Witnesses, keys.Witnesses)
 }
