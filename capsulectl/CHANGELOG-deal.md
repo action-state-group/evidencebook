@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc35
+
+This release pairs with capsulectl `v0.1.0-rc35` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc34`: the pack digest on the receipt (#138, #145) and the Terms Pack Studio replay fixture (#136).
+
 - The receipt names the pack that judged a check (evidencebook-deal#138): the user's own copy reads
   "Checked before paying: no differences, under <ruleset id>, pack <12 hex>". A counterparty's copy reads
   "..., under the seller's terms, pack <12 hex>" (the buyer's terms on a buyer's deal) only when the profile's
