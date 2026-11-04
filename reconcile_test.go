@@ -366,3 +366,56 @@ func TestReconcileFailedHalvesKeepCoverageAndTrustGates(t *testing.T) {
 		t.Fatalf("tallies %+v, want %+v", tallies, want)
 	}
 }
+
+// A failed attempt and a served retry can share an exchange id on one side;
+// each pairs with the same-outcome half whatever the input order.
+func TestReconcileFailedAttemptAndServedRetryPairByOutcome(t *testing.T) {
+	failed := func(id string) Half {
+		return Half{RecordID: id, Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true}
+	}
+	served := func(id string) Half {
+		return half(id, Correlation{ExchangeID: "x1", RequestDigest: "d1"}, "same")
+	}
+	for name, b := range map[string][]Half{
+		"failed first": {failed("b-failed"), served("b-served")},
+		"served first": {served("b-served"), failed("b-failed")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := HalfSet{Complete: true, Halves: []Half{served("a-served"), failed("a-failed")}}
+			results, tallies := ReconcileHalves(a, HalfSet{Complete: true, Halves: b}, SamePayloadCommitments)
+			if want := (Tallies{Matched: 2}); tallies != want {
+				t.Fatalf("tallies %+v, want %+v; results %+v", tallies, want, results)
+			}
+		})
+	}
+}
+
+// Book.Reconcile reads the failed records from the input, since a header
+// carries no outcome.
+func TestBookReconcileReadsFailedRecordsFromTheInput(t *testing.T) {
+	ctx := context.Background()
+	a := newFixture(t, "party-a", 1).open(t)
+	b := newFixture(t, "party-b", 50).open(t)
+	failedA := mustAppend(t, a, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "party-b", Correlation: Correlation{ExchangeID: "x1"}})
+	failedB := mustAppend(t, b, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "party-a", Correlation: Correlation{ExchangeID: "x1"}})
+	if _, err := a.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	input := ReconcileInput{Peer: peerBundle(t, b), RecordType: "exchange", Compare: SamePayloadCommitments}
+	recon, err := a.Reconcile(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recon.Tallies.Conflicting != 1 {
+		t.Fatalf("without the outcome both records are served halves with nothing to compare: %+v", recon.Tallies)
+	}
+	input.OwnFailed = map[string]bool{failedA.RecordID: true}
+	input.PeerFailed = map[string]bool{failedB.RecordID: true}
+	recon, err = a.Reconcile(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Tallies{Matched: 1}); recon.Tallies != want {
+		t.Fatalf("tallies %+v, want %+v; pairs %+v", recon.Tallies, want, recon.Pairs)
+	}
+}

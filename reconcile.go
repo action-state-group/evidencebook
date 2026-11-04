@@ -190,8 +190,8 @@ func (t *Tallies) add(state ExchangeState) {
 // on either side into exactly one of six states.
 //
 // Correlation runs in two passes over all halves, so the result does not
-// depend on input order: first exchange_id (preferring a counterpart whose
-// request_digest also agrees), then request_digest for halves still
+// depend on input order: first exchange_id (preferring a counterpart of the
+// same outcome whose request_digest also agrees), then request_digest for halves still
 // unpaired. An agreeing exchange_id with disagreeing request digests is
 // CONFLICTING and is never re-paired on the weaker key. twin_bracket_id is
 // recorded when both halves carry the same value and is never a join key.
@@ -242,7 +242,12 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 		}
 		j := pick(func(h Half) bool { return h.Correlation.ExchangeID == c.ExchangeID },
 			func(h Half) bool {
-				return h.Correlation.RequestDigest == "" || c.RequestDigest == "" || h.Correlation.RequestDigest == c.RequestDigest
+				// A failed half carries no request digest, so the digest test
+				// alone would rank it with a served half; the same outcome
+				// comes first, keeping a failed attempt and a served retry
+				// of one exchange id apart whatever the input order.
+				return h.Failed == own.Failed &&
+					(h.Correlation.RequestDigest == "" || c.RequestDigest == "" || h.Correlation.RequestDigest == c.RequestDigest)
 			})
 		if j >= 0 {
 			partner[i], keys[i], used[j] = j, JoinExchangeID, true
@@ -333,6 +338,11 @@ type ReconcileInput struct {
 	// OwnOpenings and PeerOpenings are field openings by record id, checked
 	// against each half's own commitments (OpenHalf) before comparison.
 	OwnOpenings, PeerOpenings map[string]map[string]Opening
+	// OwnFailed and PeerFailed are the ids of the records that record an
+	// exchange that did not complete, as the profile reader reads them from
+	// its records (a header carries no outcome). A record not named is
+	// served. See Half.Failed.
+	OwnFailed, PeerFailed map[string]bool
 }
 
 // Reconciliation is the result of comparing this book (side A) with a peer's
@@ -394,7 +404,7 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		own.Halves = append(own.Halves, OpenHalf(Half{
 			RecordID: record.RecordID, Seq: record.Seq, Correlation: *record.Header.Correlation,
 			PayloadCommitments: slices.Clone(record.Header.PayloadCommitments), FieldCommitments: maps.Clone(record.Header.FieldCommitments),
-			Covered: haveHead && head.Covers(record.Seq), Trusted: true,
+			Covered: haveHead && head.Covers(record.Seq), Trusted: true, Failed: in.OwnFailed[record.RecordID],
 		}, in.OwnOpenings[record.RecordID]))
 	}
 	peer := HalfSet{Complete: in.Peer.AnchorAuthenticated && in.Peer.IntervalFirst <= max(in.PeerFromSeq, 1) &&
@@ -416,7 +426,7 @@ func (b *Book) reconcileLocked(ctx context.Context, in ReconcileInput) (Reconcil
 		peer.Halves = append(peer.Halves, OpenHalf(Half{
 			RecordID: record.RecordID, Seq: record.Seq, Correlation: *record.Header.Correlation,
 			PayloadCommitments: record.Header.PayloadCommitments, FieldCommitments: record.Header.FieldCommitments,
-			Covered: in.Peer.Covers(record.Seq), Trusted: record.CapsuleOK && record.HeaderVerified,
+			Covered: in.Peer.Covers(record.Seq), Trusted: record.CapsuleOK && record.HeaderVerified, Failed: in.PeerFailed[record.RecordID],
 		}, in.PeerOpenings[record.RecordID]))
 	}
 	out.PeerComplete = peer.Complete
