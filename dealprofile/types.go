@@ -320,6 +320,7 @@ type VerdictBodyRules struct {
 	Status           string                         `json:"status"`
 	Cause            string                         `json:"cause,omitzero"`
 	RulesetID        string                         `json:"ruleset_id,omitzero"`
+	Kind             string                         `json:"kind,omitzero"`
 	DefinitionDigest string                         `json:"definition_digest,omitzero"`
 	CheckerSHA256    string                         `json:"checker_sha256,omitzero"`
 	Verdict          string                         `json:"verdict,omitzero"`

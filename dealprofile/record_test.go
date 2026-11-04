@@ -269,3 +269,39 @@ func TestAPayCheckCarriesTheCounterpartyClass(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, string(without), string(again), "no member when absent")
 }
+
+// A verdict's rules body may carry the pinned pack's kind, an open string:
+// it reads back as a Record member, a later kind is as valid as a known one,
+// and an empty one is refused.
+func TestAVerdictRulesBodyCarriesThePackKind(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(fixturesDir, "positive", "14-verdict-pause.json"))
+	require.NoError(t, err)
+	var f struct {
+		Record map[string]any `json:"record"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &f))
+	body := f.Record["body"].(map[string]any)
+	rules := func(kind any) []byte {
+		r := map[string]any{"status": "evaluated", "ruleset_id": "asg/seller", "checker_sha256": strings.Repeat("a", 64),
+			"definition_digest": strings.Repeat("b", 64), "verdict": "allow", "findings": []any{},
+			"history": map[string]any{"days": 1, "acts": 0, "complete": true}}
+		if kind != nil {
+			r["kind"] = kind
+		}
+		body["rules"] = r
+		out, err := json.Marshal(f.Record)
+		require.NoError(t, err)
+		return out
+	}
+	for _, kind := range []string{"deal", "conduct", "a_later_kind"} {
+		rec := rules(kind)
+		require.NoError(t, Check(rec, nil), kind)
+		var got Record
+		require.NoError(t, Decode(rec, &got))
+		again, err := json.Marshal(got)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(rec), string(again), kind)
+	}
+	require.NoError(t, Check(rules(nil), nil), "kind is optional")
+	assert.Error(t, Check(rules(""), nil), "an empty kind is refused")
+}

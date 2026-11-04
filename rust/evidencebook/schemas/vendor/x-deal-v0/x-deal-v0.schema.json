@@ -529,6 +529,7 @@
             "status": { "enum": ["evaluated", "not_evaluated", "not_configured", "not_applicable"], "description": "not_configured: no checker is pinned. not_applicable: no checker runs on this check, pinned or not (a sale's post, which always asks)." },
             "cause": { "enum": ["checker_unavailable", "checker_changed", "refused", "timeout", "unreadable", "ruleset_changed"], "description": "Why a configured checker's answer was not evaluated. The checker's own words are not sealed in the clear; the card that showed them is committed to." },
             "ruleset_id": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "kind": { "type": "string", "minLength": 1, "maxLength": 64, "description": "The kind of the pinned pack (admission, live, after_the_fact, deal, conduct, or a later kind), as the profile's pin stated it when this check ran; a reader shares the pack with a counterparty only for the exact kind deal. Absent when the pin stated none and on checks sealed before it was recorded." },
             "definition_digest": { "$ref": "#/$defs/hex64" },
             "checker_sha256": { "$ref": "#/$defs/hex64" },
             "verdict": { "enum": ["allow", "deny", "escalate", "not_evaluable"] },
