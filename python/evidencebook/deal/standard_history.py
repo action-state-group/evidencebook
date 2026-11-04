@@ -16,7 +16,7 @@ never guessed:
   absent "bought".
 * ``amount`` is the amount_minor and currency of the check (typed
   proposed-action/v0) the step rests on, scaled by the currency's ISO 4217
-  minor units. The profile lets a check omit them, and SH gives an amount no
+  minor units (BTC: 11, msat). The profile lets a check omit them, and SH gives an amount no
   unknown value, so a deal without one raises :class:`Unpriced`: the host
   refuses the card, it never drops the deal.
 * ``counterparty_class`` is the member of that name a pay check carries at the
@@ -285,7 +285,7 @@ def _agreed_amount(step: _Rec, by_digest: dict[str, _Rec]) -> dict[str, Any]:
     if (isinstance(minor, bool) or not isinstance(minor, int) or not -2 ** 63 <= minor < 2 ** 63
             or minor < 0 or not currency):
         raise Unpriced(f"{_UNPRICED}: its check states no amount and currency")
-    scale = minor_units(currency)
+    scale = _history_asset_scale(currency)
     if scale is None:
         raise Unpriced(f'{_UNPRICED}: currency {_go_quote(currency)} has no ISO 4217 minor units')
     return {"value": str(minor), "assetCode": currency, "assetScale": scale}
@@ -373,6 +373,19 @@ _TWO_DECIMAL_CURRENCIES = (
     " SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TOP TRY TTD TWD TZS UAH USD USN UYU UZS VED VES WST XCD XCG"
     " YER ZAR ZMW ZWG "
 )
+
+
+#: assetScale of a non-ISO 4217 asset whose amount_minor the profile defines (PROFILE.md
+#: section 3): BTC counts millisatoshi, 10^-11 BTC. A card keeps it as its own currency row.
+_HISTORY_ASSET_SCALES = {"BTC": 11}
+
+
+def _history_asset_scale(currency: str) -> int | None:
+    """The assetScale of a deal's amount_minor in ``currency``: the explicit table
+    above, else the ISO 4217 minor units."""
+    if currency in _HISTORY_ASSET_SCALES:
+        return _HISTORY_ASSET_SCALES[currency]
+    return minor_units(currency)
 
 
 def minor_units(currency: str) -> int | None:

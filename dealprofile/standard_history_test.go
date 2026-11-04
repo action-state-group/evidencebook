@@ -240,8 +240,6 @@ func TestADealWithNoAmountIsRefused(t *testing.T) {
 		"no currency":      {"action": "commit", "amount_minor": 100},
 		"unknown currency": {"action": "commit", "amount_minor": 100, "currency": "ZZZ"},
 		"a metal":          {"action": "commit", "amount_minor": 100, "currency": "XAU"},
-		// amount_minor of a BTC deal counts msat (PROFILE.md section 3); no ISO 4217 scale fits it.
-		"msat": {"action": "commit", "amount_minor": 500, "currency": "BTC"},
 	} {
 		_, _, err := StandardHistoryDeal(HistoryInput{Records: classicDeal(t, "", check).records})
 		require.ErrorIs(t, err, ErrUnpriced, name)
@@ -315,4 +313,48 @@ func rebuildClassic(t *testing.T, check map[string]any, top map[string]map[strin
 	c.add("approval", TypeApproval, map[string]string{"approves": "verdict"}, map[string]any{"choice": "proceed", "proceed": true})
 	c.add("action", TypeAction, map[string]string{"authorized_by": "approval"}, map[string]any{"action": "commit"})
 	return c
+}
+
+// A BTC deal's amount_minor counts msat (PROFILE.md section 3): its entry is
+// a BTC amount at scale 11, not a refusal, and MinorUnits stays unpriced.
+func TestABTCDealIsPricedInMsat(t *testing.T) {
+	c := classicDeal(t, "", map[string]any{"action": "commit", "amount_minor": 500, "currency": "BTC"})
+	deal, ok, err := StandardHistoryDeal(HistoryInput{Records: c.records})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, standardhistory.Amount{Value: "500", AssetCode: "BTC", AssetScale: 11}, deal.Amount)
+	_, ok = MinorUnits("BTC")
+	assert.False(t, ok)
+}
+
+// A card keeps a BTC deal as its own currency row beside a fiat one: nothing
+// is summed across assetCodes.
+func TestABTCAndAFiatDealMakeSeparateCurrencyRows(t *testing.T) {
+	var deals []standardhistory.Deal
+	for _, check := range []map[string]any{
+		{"action": "commit", "amount_minor": 55880, "currency": "USD"},
+		{"action": "commit", "amount_minor": 500, "currency": "BTC"},
+	} {
+		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: classicDeal(t, "", check).records})
+		require.NoError(t, err)
+		require.True(t, ok)
+		deals = append(deals, deal)
+	}
+	card, err := standardhistory.Derive("person", "holder", standardhistory.AsOf{
+		Anchor: "ab", AnchorTime: "2026-10-31T00:00:00Z", FirstCheckpointTime: "2026-09-30T08:00:00Z",
+	}, standardhistory.Policy{Digest: "cd", Window: standardhistory.Window{All: true}}, deals)
+	require.NoError(t, err)
+	var doc struct {
+		Bands []struct {
+			Currency string `json:"currency"`
+			Of       int    `json:"of"`
+		} `json:"bands"`
+	}
+	require.NoError(t, json.Unmarshal(card, &doc))
+	got := map[string]int{}
+	for _, b := range doc.Bands {
+		got[b.Currency] += b.Of
+	}
+	assert.Equal(t, map[string]int{"USD": 1, "BTC": 1}, got)
+	assert.Len(t, doc.Bands, 2)
 }

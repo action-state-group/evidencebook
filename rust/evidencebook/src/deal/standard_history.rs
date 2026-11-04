@@ -14,7 +14,7 @@
 //!   buyer or absent `bought`.
 //! * `amount` is the `amount_minor` and currency of the check (typed
 //!   `proposed-action/v0`) the step rests on, scaled by the currency's ISO
-//!   4217 minor units. A deal without one is [`Error::Unpriced`]: the host
+//!   4217 minor units (BTC: 11, msat). A deal without one is [`Error::Unpriced`]: the host
 //!   refuses the card, it never drops the deal.
 //! * `counterparty_class` is the member of that name a pay check carries at
 //!   the top of its record (SH §7), when it is one of SH's three values; a
@@ -398,7 +398,7 @@ fn agreed_amount(
     let Some(minor) = minor.filter(|_| !currency.is_empty()) else {
         return Err(unpriced("its check states no amount and currency".into()));
     };
-    let Some(scale) = minor_units(currency) else {
+    let Some(scale) = history_asset_scale(currency) else {
         return Err(unpriced(format!(
             "currency {currency:?} has no ISO 4217 minor units"
         )));
@@ -520,6 +520,21 @@ const TWO_DECIMAL_CURRENCIES: &str = " AED AFN ALL AMD ANG AOA ARS AUD AWG AZN B
  MUR MVR MWK MXN MXV MYR MZN NAD NGN NIO NOK NPR NZD PAB PEN PGK PHP PKR PLN QAR RON RSD RUB SAR SBD SCR SDG SEK \
  SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TOP TRY TTD TWD TZS UAH USD USN UYU UZS VED VES WST XCD XCG \
  YER ZAR ZMW ZWG ";
+
+/// The `assetScale` of a non-ISO 4217 asset whose `amount_minor` the profile
+/// defines (PROFILE.md section 3): BTC counts millisatoshi, 10^-11 BTC. A card
+/// keeps it as its own currency row.
+const HISTORY_ASSET_SCALES: &[(&str, u8)] = &[("BTC", 11)];
+
+/// The `assetScale` of a deal's `amount_minor` in `currency`: the explicit
+/// table above, else the ISO 4217 minor units.
+fn history_asset_scale(currency: &str) -> Option<u8> {
+    HISTORY_ASSET_SCALES
+        .iter()
+        .find(|(c, _)| *c == currency)
+        .map(|(_, s)| *s)
+        .or_else(|| minor_units(currency))
+}
 
 /// A currency's ISO 4217 minor units: the `assetScale` of an amount in minor
 /// units. `None` for a code with none (a metal, a fund code without them) or

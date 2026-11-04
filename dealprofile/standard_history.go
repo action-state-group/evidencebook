@@ -31,7 +31,7 @@ import (
 //     or absent "bought".
 //   - amount is the amount_minor and currency of the check (typed
 //     proposed-action/v0) the step rests on, scaled by the currency's ISO
-//     4217 minor units. The profile lets a check omit them, and SH gives an
+//     4217 minor units (BTC: 11, msat). The profile lets a check omit them, and SH gives an
 //     amount no unknown value, so a deal without one is ErrUnpriced: the
 //     host refuses the card, it never drops the deal.
 //   - counterparty_class is the one member of that name a pay check carries
@@ -89,7 +89,7 @@ type HistoryInput struct {
 }
 
 // ErrUnpriced is a deal whose agreeing step rests on a check with no
-// amount, or a currency with no ISO 4217 minor units: SH has no entry for
+// amount, or a currency with no ISO 4217 minor units and no explicit scale: SH has no entry for
 // it, so the card cannot be built (agent-action-capsule#516).
 var ErrUnpriced = errors.New("dealprofile: a deal has no recorded amount")
 
@@ -247,7 +247,7 @@ func agreedAmount(step historyRecord, byDigest map[string]historyRecord) (standa
 	if minor == nil || *minor < 0 || currency == "" {
 		return standardhistory.Amount{}, fmt.Errorf("%w: its check states no amount and currency", ErrUnpriced)
 	}
-	scale, ok := MinorUnits(currency)
+	scale, ok := historyAssetScale(currency)
 	if !ok {
 		return standardhistory.Amount{}, fmt.Errorf("%w: currency %q has no ISO 4217 minor units", ErrUnpriced, currency)
 	}
@@ -316,6 +316,21 @@ func happened(records []historyRecord, byDigest map[string]historyRecord, counte
 		}
 	}
 	return "no_record"
+}
+
+// historyAssetScales are the assetScale of a non-ISO 4217 asset whose
+// amount_minor this profile defines (PROFILE.md section 3): BTC counts
+// millisatoshi, 10^-11 BTC. A card keeps it as its own currency row; SR
+// "Amounts" takes BTC as an assetCode, and a card never sums across codes.
+var historyAssetScales = map[string]int{"BTC": 11}
+
+// historyAssetScale is the assetScale of a deal's amount_minor in currency:
+// the explicit table above, else the ISO 4217 minor units.
+func historyAssetScale(currency string) (int, bool) {
+	if scale, ok := historyAssetScales[currency]; ok {
+		return scale, true
+	}
+	return MinorUnits(currency)
 }
 
 // MinorUnits is a currency's ISO 4217 minor units: the assetScale of an

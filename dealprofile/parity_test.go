@@ -435,7 +435,7 @@ func parityHistories(t *testing.T) []parityHistory {
 	for _, role := range []string{"", "seller", "buyer", "other"} {
 		add("classic role "+role, classicDeal(t, role, commit).records, nil, false)
 	}
-	for _, c := range []string{"USD", "JPY", "KWD", "CLF", "XAU", "ZZZ", "usd", "", "XCG", "ANG"} {
+	for _, c := range []string{"USD", "JPY", "KWD", "CLF", "XAU", "ZZZ", "usd", "", "XCG", "ANG", "BTC"} {
 		add("classic currency "+c, classicDeal(t, "", map[string]any{"action": "commit", "amount_minor": 1500, "currency": c}).records, nil, false)
 	}
 	checkCases := map[string]map[string]any{
