@@ -43,6 +43,12 @@ type Half struct {
 	Opened  map[string]string
 	Covered bool
 	Trusted bool
+	// Failed marks a record of an exchange that did not complete (a refused,
+	// errored, timed-out or dropped one). The profile reader sets it from the
+	// record's own outcome; the zero value is a served exchange. A failed
+	// half carries no payload commitments to compare, so its pair is decided
+	// by the outcomes (see ReconcileHalvesWith), never by the content check.
+	Failed bool
 }
 
 // HalfSet is one side's account of a period. Complete means that account is
@@ -201,7 +207,12 @@ func ReconcileHalves(a, b HalfSet, compare Comparator) ([]PairResult, Tallies) {
 // a covered, trusted, correlated pair, Agree is MATCHED, Disagree is
 // CONFLICTING and Undecided is INSUFFICIENT. The precedence is unchanged:
 // a key conflict, then an uncovered half (INSUFFICIENT), then an untrusted
-// half (UNRESOLVED), then the content check.
+// half (UNRESOLVED), then the outcomes: two failed halves are MATCHED (both
+// sides recorded the failure; each side's reason is its own view and is not
+// compared), and a failed half against a served one is CONFLICTING, so a
+// requester that timed out while the provider finished shows as a
+// disagreement, never as a missing peer half. Only two served halves reach
+// the content check.
 func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallies) {
 	partner := make([]int, len(a.Halves))
 	keys := make([]string, len(a.Halves))
@@ -271,6 +282,10 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 			result.State = Insufficient
 		case !own.Trusted || !peer.Trusted:
 			result.State = Unresolved
+		case own.Failed && peer.Failed:
+			result.State = Matched
+		case own.Failed != peer.Failed:
+			result.State = Conflicting
 		default:
 			switch check(own, peer) {
 			case Agree:
