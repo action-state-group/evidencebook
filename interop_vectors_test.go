@@ -14,10 +14,12 @@ import (
 
 // The request-draft conformance vectors, vendored byte for byte from
 // agent-action-capsule vectors/evidence-request/ (last changed at ee83efa,
-// read at main 6cae247). They are spec-derived: every expected result was
-// written from draft-mih-agent-evidence-request-00, never from an
-// implementation. testdata/evidence-request/SHA256SUMS is the upstream
-// SHA256SUMS lines for the four files, so a drifted copy fails here.
+// read at main 6cae247; unavailable-window.json last changed at d3bd61b). They
+// are spec-derived: every expected result was written from the draft
+// (draft-mih-agent-evidence-request-00, and -02 section 4.7 for
+// unavailable-window.json), never from an implementation.
+// testdata/evidence-request/SHA256SUMS is the upstream SHA256SUMS lines for
+// the five files, so a drifted copy fails here.
 const erVectors = "testdata/evidence-request"
 
 func TestVendoredRequestVectorsMatchUpstreamSums(t *testing.T) {
@@ -42,8 +44,8 @@ func TestVendoredRequestVectorsMatchUpstreamSums(t *testing.T) {
 		}
 		checked++
 	}
-	if checked != 4 {
-		t.Fatalf("checked %d files, want 4", checked)
+	if checked != 5 {
+		t.Fatalf("checked %d files, want 5", checked)
 	}
 }
 

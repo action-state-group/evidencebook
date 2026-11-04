@@ -29,7 +29,7 @@ def test_vendored_vectors_match_upstream_sums():
     for line in lines:
         digest, name = line.split("  ")
         assert hashlib.sha256((VECTORS / name).read_bytes()).hexdigest() == digest, name
-    assert len(lines) == 4
+    assert len(lines) == 5
 
 
 REQUESTS = cases("request.json")
