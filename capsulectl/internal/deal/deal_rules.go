@@ -2207,6 +2207,13 @@ type dealReportItem struct {
 	// check's line without the user's and the agent's choices (the items go
 	// only to an adjudicator).
 	Shared string `json:"-"`
+	// SharedPack is what a counterparty's copy adds after its scrubbing when the check was
+	// judged under the party's pinned deal terms: the pack's shown fingerprint, which the
+	// scrubber would take for a code. Empty for any other pack.
+	SharedPack string `json:"-"`
+	// OwnPack is the part of Text that names the pack and its ruleset id: the user's own
+	// policy, kept on the user's own copy and taken out of every other audience's.
+	OwnPack string `json:"-"`
 	// Causes is the part of Text that says what the user's rules flagged on a
 	// check: the user's policy, so an adjudicator's copy takes it out of Text
 	// and keeps the rest (the choices, the approval, the not-yet-checked
@@ -2388,9 +2395,14 @@ func actText(a dealAct, currency string) string {
 	return text
 }
 
+// packDigestShown is how many leading hex characters of a pack's definition digest a receipt
+// line shows: the length studio's publish prints it at.
+const packDigestShown = 12
+
 // buildDealReport reads the sealed steps into the three parts. It invents
-// nothing: every item points at the steps it was read from.
-func buildDealReport(events []sealedEvent) dealReport {
+// nothing: every item points at the steps it was read from. pin is the profile's rules
+// checker pin: it decides whether a counterparty's copy may name the pack.
+func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealReport {
 	open := events[0].Event.Open
 	openID := events[0].CapsuleID
 	currency := open.Terms.Currency
@@ -2494,6 +2506,19 @@ func buildDealReport(events []sealedEvent) dealReport {
 			checkItem[se.CapsuleID] = len(r.Did)
 			text := fmt.Sprintf("Checked before %s: %s", actionNames[e.Check.Action], verdict)
 			shared := text
+			// The pack that judged it: named on the user's own copy, and on a counterparty's
+			// copy only when the profile pins that pack as the party's deal terms
+			// (cli.ProfileRulesChecker.SharesWithCounterparty); a conduct pack, or a pin that
+			// states no kind, is the user's private policy and reaches no one.
+			sharedPack, ownPack := "", ""
+			if r := e.Check.Rules; r != nil && r.Status == "evaluated" && r.RulesetID != "" && len(r.DefinitionDigest) >= packDigestShown {
+				ownPack = ", under " + r.RulesetID + ", pack " + r.DefinitionDigest[:packDigestShown]
+				text += ownPack
+				if pin.SharesWithCounterparty() && slices.Contains(pin.ForRole(dealRole(events)).PinnedDigests(), r.DefinitionDigest) {
+					shared += ", under the " + dealRole(events) + "'s terms"
+					sharedPack = ", pack " + r.DefinitionDigest[:packDigestShown]
+				}
+			}
 			// The user's own copy names what caused a flag first, in the
 			// rules' own words, then the rules the ruleset declares and the
 			// checker does not measure, as not yet checked: they took no part
@@ -2536,7 +2561,7 @@ func buildDealReport(events []sealedEvent) dealReport {
 			}
 			// Last, so the choices above do not read as part of the note.
 			text += notYetChecked
-			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, Causes: causeText, At: e.At})
+			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, SharedPack: sharedPack, OwnPack: ownPack, Causes: causeText, At: e.At})
 			var asked []string
 			for _, d := range e.Check.Differences {
 				// The user's own yes answered it: a "you didn't ask for this" on

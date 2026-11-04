@@ -122,7 +122,7 @@ func (s *dealSession) previousSkill(ctx context.Context, dealID, openedAt string
 // instructions line, and anomalies for another visible copy of the skill
 // and for a change since the previous deal.
 func (s *dealSession) dealReportFor(ctx context.Context, events []sealedEvent) (dealReport, error) {
-	report := buildDealReport(events)
+	report := buildDealReport(events, s.p.RulesChecker)
 	// The AUTHORITY block, from each step's record as sealed: the bytes the
 	// log holds (loading the deal refused any that re-derive differently).
 	records := make([][]byte, len(events))

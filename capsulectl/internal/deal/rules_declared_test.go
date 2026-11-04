@@ -96,7 +96,7 @@ func TestTheReceiptSaysDeclaredRulesQuietly(t *testing.T) {
 	report := dealRun(t, "report", "--deal", id)
 	raw, err := json.Marshal(report["did"])
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "Checked before paying: no differences (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
+	assert.Contains(t, string(raw), "Checked before paying: no differences, under example-rules/1.0.0, pack abababababab (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
 	_, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
 	assert.NotContains(t, shared, "in the ruleset")
 }
@@ -113,7 +113,7 @@ func TestTheReceiptNamesWhatFlaggedTheCheckBeforeWhatIsNotYetChecked(t *testing.
 	report := dealRun(t, "report", "--deal", id)
 	raw, err := json.Marshal(report["did"])
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "Checked before paying: flagged (first payment to this merchant; over your per-purchase limit) (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
+	assert.Contains(t, string(raw), "Checked before paying: flagged, under example-rules/1.0.0, pack abababababab (first payment to this merchant; over your per-purchase limit) (you asked for: item otter sticker); not yet checked: r14, r24, r25 (in the ruleset, not measured by this checker)")
 	_, shared := sharedCopy(t, id, cli.DealAudienceCounterparty, "the shop")
 	assert.NotContains(t, shared, "per-purchase limit", "a shared copy does not name the user's rules")
 	assert.NotContains(t, shared, "not yet checked")
@@ -126,7 +126,7 @@ func TestTheReceiptNamesWhatFlaggedTheCheckBeforeWhatIsNotYetChecked(t *testing.
 	id, _ = checkWithRules(t, "allow", passFinding+","+declaredFindings)
 	raw, err = json.Marshal(dealRun(t, "report", "--deal", id)["did"])
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "Checked before paying: no differences (you asked for: item otter sticker); not yet checked: r14, r24, r25")
+	assert.Contains(t, string(raw), "Checked before paying: no differences, under example-rules/1.0.0, pack abababababab (you asked for: item otter sticker); not yet checked: r14, r24, r25")
 }
 
 // A flag caused only by a rule the checker could not evaluate says so, so the
@@ -138,5 +138,5 @@ func TestAFlagFromARuleThatCouldNotBeEvaluatedSaysSo(t *testing.T) {
 	require.Equal(t, "pause", check["verdict"])
 	raw, err := json.Marshal(dealRun(t, "report", "--deal", id)["did"])
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), "Checked before paying: flagged (the record states no terms (could not be checked)) (you asked for: item otter sticker); not yet checked: r14, r24, r25")
+	assert.Contains(t, string(raw), "Checked before paying: flagged, under example-rules/1.0.0, pack abababababab (the record states no terms (could not be checked)) (you asked for: item otter sticker); not yet checked: r14, r24, r25")
 }
