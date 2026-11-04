@@ -371,6 +371,24 @@ var errStaleAnchor = errors.New("the declaration or policy changed after that ch
 // card does not read: it is refused, never counted as no deal.
 var errLegacyDeal = fmt.Errorf("%w: a deal kept on the old index cannot be counted by the card", cli.ErrConflict)
 
+// shRefusal is a cause the card cannot be built for, said to the operator.
+// msg is written to be shown (SafeError prints it where it masks every other
+// error), so it holds no value from the records: at most a deal id. The cause
+// stays in the chain, so `errors.Is` on it still decides `deal respond`.
+func shRefusal(msg string, cause error) error {
+	return fmt.Errorf("%w: %w", cli.Hint(errCardNotBuilt, msg), cause)
+}
+
+// errCardNotBuilt is the class SafeError prints before a refusal's message.
+// It is no host class, so the exit code stays the cause's own (1, or 5 for a
+// legacy deal's ErrConflict).
+var errCardNotBuilt = errors.New("the History card was not built")
+
+// shNoTick is errNoTick said to the operator, wherever it is found.
+func shNoTick(cause error) error {
+	return shRefusal("no finished checkpoint yet: run `deal tick`, then ask again", cause)
+}
+
 // standardHistory derives the card as of tick n, or the newest finished tick when n is 0. The anchor is the profile's cadence
 // checkpoint, never one deal book's: it commits every book's checkpoint
 // and is the one a witness sees. A deal's records, and the Results on its
@@ -395,13 +413,13 @@ func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standar
 	}
 	anchor, err := cadence.StandardHistoryAnchor(ctx, tick)
 	if errors.Is(err, evidencebook.ErrNotFound) {
-		return standardHistoryCard{}, fmt.Errorf("%w (run `deal tick` first)", errNoTick)
+		return standardHistoryCard{}, shNoTick(fmt.Errorf("%w (run `deal tick` first)", errNoTick))
 	}
 	if err != nil {
 		return standardHistoryCard{}, err
 	}
 	if settings.changedAfter(anchor.Tick.At) {
-		return standardHistoryCard{}, errStaleAnchor
+		return standardHistoryCard{}, shRefusal("the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again", errStaleAnchor)
 	}
 	x := s.books()
 	var deals []standardhistory.Deal
@@ -415,6 +433,10 @@ func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standar
 			return standardHistoryCard{}, err
 		}
 		deal, isDeal, err := dealprofile.StandardHistoryDeal(in)
+		if errors.Is(err, dealprofile.ErrUnpriced) {
+			// No currency or amount: the cause says which, the operator needs only the deal.
+			return standardHistoryCard{}, shRefusal("deal "+dealID+" can't be counted yet: its agreed amount isn't recorded, or its currency is one the card can't count", err)
+		}
 		if err != nil {
 			return standardHistoryCard{}, err
 		}
@@ -440,7 +462,7 @@ func (x shelfDealIndex) historyInput(ctx context.Context, keys []ed25519.PublicK
 	if legacy, err := x.isLegacy(ctx, dealID); err != nil {
 		return in, err
 	} else if legacy {
-		return in, fmt.Errorf("deal %s: %w", dealID, errLegacyDeal)
+		return in, shRefusal("deal "+dealID+" was recorded in an older format and can't be counted", fmt.Errorf("deal %s: %w", dealID, errLegacyDeal))
 	}
 	records, err := x.records(ctx, dealID)
 	if err != nil {
