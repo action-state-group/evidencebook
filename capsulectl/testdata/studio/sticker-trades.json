@@ -56,9 +56,10 @@
       "buyer_domain": "buyer7.example",
       "buyer_name": "Buyer 7",
       "offer_minor": 150,
-      "commit_minor": 175,
+      "commit_minor": 150,
       "paid_minor": 175,
-      "note": "the seller raised the price after the buyer accepted the offer, then delivered"
+      "note": "the seller raised the price after the buyer accepted and the seller committed, then delivered",
+      "price_change_minor": 175
     },
     {
       "n": 8,

@@ -12,9 +12,11 @@
 # witness); a home that already has one is used as it is. Nothing already in a store is touched,
 # so replay into fresh homes: running it twice adds twenty trades.
 #
-# A trade whose commit_minor differs from its offer_minor is the seller raising the price after
-# the buyer accepted: the check pauses ("terms_changed"), the commit is attempted anyway and the
-# deal records it as an unchecked action with outcome mismatch, and the buyer pays the new price.
+# A trade with a price_change_minor is the seller raising the price after the buyer accepted and
+# the seller committed: a detail_change record states the new price, the buyer pays it and the
+# seller delivers. (A commit at a changed price is refused by the deal itself, as
+# changed_after_acceptance, so the change comes after the commit and the miss is the sealed
+# amounts: the offer and the commit at 150, the change and the payment at 175.)
 #
 # Sealed times are the replay's own clock (the CLI has no way to backdate a record), so every
 # trade is paid and delivered within minutes of each other; the fixture carries no times.
@@ -71,6 +73,7 @@ for i in $(seq 0 $((count - 1))); do
   offer=$(jq -r .offer_minor <<<"$t")
   commit=$(jq -r .commit_minor <<<"$t")
   paid=$(jq -r .paid_minor <<<"$t")
+  changed=$(jq -r '.price_change_minor // empty' <<<"$t")
   domain=$(jq -r .buyer_domain <<<"$t")
   name=$(jq -r .buyer_name <<<"$t")
   f="$work/t$n"
@@ -98,6 +101,10 @@ for i in $(seq 0 $((count - 1))); do
   commit_verdict=$(side "$seller_home" check --deal "$thread" --input "$f/commit-check.json" | jq -r .verdict)
   jq -n --argjson p "$commit" '{action:"commit",amount_minor:$p}' >"$f/commit-act.json"
   side "$seller_home" note --deal "$thread" --kind act --input "$f/commit-act.json" >/dev/null
+  if [ -n "$changed" ]; then
+    jq -n --argjson p "$changed" '{source:"seller message",terms:{price_minor:$p}}' >"$f/change.json"
+    side "$seller_home" note --deal "$thread" --kind change --input "$f/change.json" >/dev/null
+  fi
 
   # Buyer: the other half of the same deal, under the seller's thread id; checks and pays.
   jq -n --arg item "$item" --arg cur "$currency" --argjson p "$paid" --arg d "$domain" '{type:"purchase",demo:true,channel:"marketplace",

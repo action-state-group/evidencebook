@@ -3,7 +3,7 @@
 # sticker-trades.json, scripts/studio-replay.sh) lands in fresh seller and buyer
 # stores as ten closed deals each, the buyer's half under the seller's deal id,
 # and a recomputed "price as offered" fold over the seller's exported records finds
-# nine met and the one trade whose commit moved after the buyer accepted.
+# nine met and the one trade whose price changed after the commit (a detail_change to 175).
 #
 #   scripts/check-studio-replay.sh            # uses CAPSULECTL if set, else builds
 #
@@ -45,27 +45,27 @@ while read -r line; do
   deal=$(jq -r .deal_id <<<"$line")
   side "$work/seller" export --deal "$deal" --output "$work/seller-$deal.json" >/dev/null
   side "$work/buyer" export --deal "$deal" --output "$work/buyer-$deal.json" >/dev/null
-  # price as offered: the sealed commit is the sealed offer's amount (a commit that moved
-  # after the acceptance is sealed only as an unchecked action, with the amount it tried).
+  # price as offered: the sealed commit is the sealed offer's amount and no later detail_change
+  # states a different price.
   if jq -e '([.[] | select(.type == "action-record/v0" and .body.action == "offer") | .body.amount_minor] | last) as $o
-            | [.[] | select(.type == "action-record/v0" and .body.action == "commit") | .body.amount_minor] | . == [$o]' \
+            | ([.[] | select(.type == "action-record/v0" and .body.action == "commit") | .body.amount_minor] == [$o])
+              and ([.[] | select(.["x-deal-v0"].record_type == "detail_change" and (.body.changed | index("price")))] | length == 0)' \
     "$work/seller-$deal.json" >/dev/null; then
     met=$((met + 1))
-    # A met trade has no unchecked attempt either.
     check "trade $(jq -r .trade <<<"$line"): no unchecked action" 0 \
       "$(jq '[.[] | select(.type == "action-outcome/v0" and .body.status == "unchecked_action")] | length' "$work/seller-$deal.json")"
   else
     missed=$((missed + 1))
     missed_trade=$(jq -r .trade <<<"$line")
-    # The miss is exactly: the offer as made, its acceptance, no sealed commit, and a commit
-    # attempt at the raised price refused as changed after the acceptance.
-    check "the missed trade is sealed as an offer of 150, its acceptance and a refused commit of 175" true \
+    # The miss is exactly: the offer and its commit at 150, one acceptance, then one change of
+    # the price to 175 (and no unchecked action: the commit itself was a clean one).
+    check "the missed trade is sealed as an offer and a commit of 150, then a change of the price to 175" true \
       "$(jq '([.[] | select(.type == "action-record/v0" and .body.action == "offer") | .body.amount_minor] == [150])
+            and ([.[] | select(.type == "action-record/v0" and .body.action == "commit") | .body.amount_minor] == [150])
             and ([.[] | select(.type == "action-approval/v0")] | length == 1)
-            and ([.[] | select(.type == "action-record/v0" and .body.action == "commit")] | length == 0)
-            and ([.[] | select(.type == "action-outcome/v0" and .body.status == "unchecked_action")] as $u
-                 | ($u | length) == 1 and ($u[0].body.outcome == "mismatch" and $u[0].body.attempted.action == "commit"
-                   and $u[0].body.attempted.amount_minor == 175 and $u[0].body.findings[0].rule == "changed_after_acceptance"))' "$work/seller-$deal.json")"
+            and ([.[] | select(.type == "action-outcome/v0" and .body.status == "unchecked_action")] | length == 0)
+            and ([.[] | select(.["x-deal-v0"].record_type == "detail_change")] as $c
+                 | ($c | length) == 1 and $c[0].body.changed == ["price"] and $c[0].body.terms.price_minor == 175)' "$work/seller-$deal.json")"
   fi
   # the evidence the sibling evaluator reads: one payment, one handoff, each with its sealed time,
   # the payment first (these records have x-deal-v0.record_type and x-deal-v0.at, no top-level type).
