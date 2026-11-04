@@ -1202,11 +1202,14 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 				ids[j] = id
 			}
 			text := item.Text
+			if item.OwnPack != "" && audience != cli.DealAudienceKeep {
+				text = strings.Replace(text, item.OwnPack, "", 1)
+			}
 			switch {
 			case item.Shared != "" && audience == cli.DealAudienceCounterparty:
 				text = item.Shared
 			case item.Causes != "" && audience == cli.DealAudienceAdjudicator:
-				text = strings.Replace(item.Text, item.Causes, "", 1)
+				text = strings.Replace(text, item.Causes, "", 1)
 			case item.Kind == "act":
 				if a := lastAct(item.Steps); a != nil {
 					text = "Did: " + dealShareAct(*a, currency)
@@ -1226,7 +1229,11 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 				}
 				text = words
 			}
-			m := map[string]interface{}{"kind": item.Kind, "text": p.scrub(text), "steps": ids}
+			text = p.scrub(text)
+			if item.SharedPack != "" && audience == cli.DealAudienceCounterparty {
+				text += item.SharedPack
+			}
+			m := map[string]interface{}{"kind": item.Kind, "text": text, "steps": ids}
 			if item.Self != "" {
 				m["self"] = item.Self
 			}
