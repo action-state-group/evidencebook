@@ -1,3 +1,0 @@
-### Changed: capsulectl-book vendors the History card module from capsule-viewer `v0.18.2`
-
-- `capsulectl/internal/book/assets/standard-history` is now the module of capsule-viewer `go/v0.18.2` (it was `go/v0.10.0`): the "Everything on the card" fold-out has the same gap under the card as the other sections (capsule-viewer#283), checkpoint times show to the minute (capsule-viewer#281), and the other card changes since 0.10.0. `capsulectl/go.mod` and `report/go.mod` require capsule-viewer `v0.18.2`, and the committed monthly pages under `report/testdata/presentation` are rewritten with its runtime (`CAPSULECTL_UPDATE_PRESENTATION_PAGES=1`; bundles unchanged). This ships with the next capsulectl release.
