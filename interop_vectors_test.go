@@ -17,7 +17,7 @@ import (
 // read at main 6cae247). They are spec-derived: every expected result was
 // written from draft-mih-agent-evidence-request-00, never from an
 // implementation. testdata/evidence-request/SHA256SUMS is the upstream
-// SHA256SUMS lines for the four files, so a drifted copy fails here.
+// SHA256SUMS lines for the five files (unavailable-window.json last changed at d3bd61b), so a drifted copy fails here.
 const erVectors = "testdata/evidence-request"
 
 func TestVendoredRequestVectorsMatchUpstreamSums(t *testing.T) {
@@ -42,8 +42,8 @@ func TestVendoredRequestVectorsMatchUpstreamSums(t *testing.T) {
 		}
 		checked++
 	}
-	if checked != 4 {
-		t.Fatalf("checked %d files, want 4", checked)
+	if checked != 5 {
+		t.Fatalf("checked %d files, want 5", checked)
 	}
 }
 
