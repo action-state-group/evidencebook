@@ -157,3 +157,48 @@ func TestAPackPinnedPerRoleIsNamedOnlyForThatRole(t *testing.T) {
 		"roles": map[string]any{"seller": map[string]any{"pack": packID, "definition_digest": other}}})
 	assert.NotContains(t, receiptText(t, id, true), "terms, pack", "the flat default still holds the digest, the seller's own pin does not")
 }
+
+// The sealed check carries the pack's kind, and a copy reads that, not the pin as it is now
+// (evidencebook-deal#146). Re-pinning the same pack as another kind after the sale changes
+// no older copy, in either direction; a check sealed with no kind is never shared.
+func TestACopyReadsTheKindTheCheckSealedNotTheCurrentPin(t *testing.T) {
+	repin := func(kind string) {
+		out := `printf '%s' '{"schema":"external-check-result/v0","ruleset_id":"` + packID + `","definition_digest":"` + packDigest + `","verdict":"allow","findings":[]}'`
+		pin := map[string]any{"command": []string{stubChecker(t, "repin", out)}, "definition_digest": packDigest}
+		if kind != "" {
+			pin["kind"] = kind
+		}
+		pinChecker(t, pin)
+	}
+
+	sold := packChecked(t, "deal", dealRoleSeller)
+	repin("conduct")
+	assert.Contains(t, receiptText(t, sold, true), "under the seller's terms, pack "+packShown, "sealed deal stays shared after a re-pin to conduct")
+
+	private := packChecked(t, "conduct", dealRoleSeller)
+	repin("deal")
+	assert.NotContains(t, receiptText(t, private, true), "terms, pack", "sealed conduct stays private after a re-pin to deal")
+
+	unkinded := packChecked(t, "", dealRoleSeller)
+	repin("deal")
+	copyText := receiptText(t, unkinded, true)
+	for _, leak := range []string{packID, packShown, packDigest, "terms, pack"} {
+		assert.NotContains(t, copyText, leak, "a check sealed without a kind is never shared, whatever the pin says now")
+	}
+	assert.Contains(t, receiptText(t, unkinded, false), packShown)
+}
+
+// Role pins carry no kind of their own: a role-pinned check seals the checker pin's kind.
+func TestARolePinnedCheckSealsTheCheckerPinsKind(t *testing.T) {
+	id := packCheckedUnder(t, dealRoleSeller, func(pin map[string]any) {
+		pin["kind"] = "deal"
+		pin["roles"] = map[string]any{"seller": map[string]any{"pack": packID, "definition_digest": packDigest}}
+	})
+	assert.Contains(t, receiptText(t, id, true), "under the seller's terms, pack "+packShown)
+
+	id = packCheckedUnder(t, dealRoleSeller, func(pin map[string]any) {
+		pin["kind"] = "conduct"
+		pin["roles"] = map[string]any{"seller": map[string]any{"pack": packID, "definition_digest": packDigest}}
+	})
+	assert.NotContains(t, receiptText(t, id, true), "terms, pack")
+}

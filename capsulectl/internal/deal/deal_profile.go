@@ -410,7 +410,7 @@ func rulesBody(r dealRules) (map[string]interface{}, error) {
 	// evaluated is a token, and a finding is its id, verdict, limit and
 	// value. The card the user saw, with every reason, is committed to.
 	m := map[string]interface{}{"status": r.Status}
-	for k, v := range map[string]string{"cause": r.Cause, "ruleset_id": r.RulesetID, "definition_digest": r.DefinitionDigest,
+	for k, v := range map[string]string{"cause": r.Cause, "ruleset_id": r.RulesetID, "kind": r.Kind, "definition_digest": r.DefinitionDigest,
 		"checker_sha256": r.CheckerSHA256, "verdict": r.Verdict} {
 		if v != "" {
 			m[k] = v

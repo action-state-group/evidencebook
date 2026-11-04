@@ -2510,14 +2510,15 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 			text := fmt.Sprintf("Checked before %s: %s", actionNames[e.Check.Action], verdict)
 			shared := text
 			// The pack that judged it: named on the user's own copy, and on a counterparty's
-			// copy only when the profile pins that pack as the party's deal terms
-			// (cli.ProfileRulesChecker.SharesWithCounterparty); a conduct pack, or a pin that
-			// states no kind, is the user's private policy and reaches no one.
+			// copy only when the check sealed kind "deal" and the profile still pins that digest
+			// for the party's role; the sealed kind, not the pin's kind now, decides, so a
+			// re-pin does not change an older copy. A conduct pack, or a check sealed without
+			// a kind, is the user's private policy and reaches no one.
 			sharedPack, sharedTerms, ownPack := "", "", ""
 			if r := e.Check.Rules; r != nil && r.Status == "evaluated" && r.RulesetID != "" && len(r.DefinitionDigest) >= packDigestShown {
 				ownPack = ", under " + r.RulesetID + ", pack " + r.DefinitionDigest[:packDigestShown]
 				text += ownPack
-				if pin.SharesWithCounterparty() && slices.Contains(pin.ForRole(dealRole(events)).PinnedDigests(), r.DefinitionDigest) {
+				if r.Kind == "deal" && slices.Contains(pin.ForRole(dealRole(events)).PinnedDigests(), r.DefinitionDigest) {
 					sharedTerms = ", under the " + dealRole(events) + "'s terms"
 					shared += sharedTerms
 					sharedPack = ", pack " + r.DefinitionDigest[:packDigestShown]

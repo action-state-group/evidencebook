@@ -53,9 +53,13 @@ type dealRules struct {
 	Status string `json:"status"`
 	// Cause is why a configured checker's answer was not evaluated, as a
 	// token (the sealed form); Reason says it in words, for the prompt.
-	Cause            string             `json:"cause,omitempty"`
-	Reason           string             `json:"reason,omitempty"`
-	RulesetID        string             `json:"ruleset_id,omitempty"`
+	Cause     string `json:"cause,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	RulesetID string `json:"ruleset_id,omitempty"`
+	// Kind is the pinned pack's kind as the profile's pin stated it when the check ran (an open
+	// string; empty when the pin stated none). It is sealed with the check, and a copy shares the
+	// pack with a counterparty or an adjudicator only when it is exactly "deal" (evidencebook-deal#146).
+	Kind             string             `json:"kind,omitempty"`
 	DefinitionDigest string             `json:"definition_digest,omitempty"`
 	CheckerSHA256    string             `json:"checker_sha256,omitempty"`
 	Verdict          string             `json:"verdict,omitempty"`
@@ -211,7 +215,7 @@ func runRulesChecker(ctx context.Context, p cli.Profile, role string, input []by
 	if pinned := pin.ForRole(role).PinnedDigests(); len(pinned) > 0 && !slices.Contains(pinned, result.DefinitionDigest) {
 		return notEvaluated("ruleset_changed", "the ruleset changed since it was pinned ("+result.RulesetID+" reports another definition digest)"+rePinHint)
 	}
-	return dealRules{Status: "evaluated", RulesetID: result.RulesetID, DefinitionDigest: result.DefinitionDigest, CheckerSHA256: pin.SHA256,
+	return dealRules{Status: "evaluated", RulesetID: result.RulesetID, Kind: pin.Kind, DefinitionDigest: result.DefinitionDigest, CheckerSHA256: pin.SHA256,
 		Verdict: result.Verdict, Tier: result.Tier, Grade: result.Grade, Findings: result.Findings, History: history}
 }
 
