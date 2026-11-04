@@ -90,6 +90,10 @@ type BundleRequest struct {
 	// This check is the producer's; a reader checks the receipts again
 	// under its own directory.
 	WitnessDirectory []WitnessRow
+
+	// rootOnly selects the root alone, with no link hops, for a caller that
+	// has already chosen the whole selected set (Include).
+	rootOnly bool
 }
 
 // Bundle is a portable, self-verifying Evidence Bundle v2 plus the disclosure
@@ -180,7 +184,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
-	selected, missing, err := b.closureLocked(req.Root, req.ClosureDepth)
+	depth := req.ClosureDepth
+	if req.rootOnly {
+		depth = 0
+	}
+	selected, missing, err := b.closureLocked(req.Root, depth)
 	if err != nil {
 		return Bundle{}, err
 	}
