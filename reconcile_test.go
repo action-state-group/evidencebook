@@ -448,11 +448,12 @@ func TestReconcilePairingIsIndependentOfInputOrder(t *testing.T) {
 		a, b []Half
 		want Tallies
 	}{
-		"failed and served against served":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{served("b-s", "d1")}, Tallies{Matched: 1, AOnly: 1}},
-		"served against failed and served":       {[]Half{served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 1, BOnly: 1}},
-		"both hold a failed attempt and a retry": {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 2}},
-		"retries disagree on the request digest": {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d2")}, Tallies{Matched: 1, Conflicting: 1}},
-		"timeout against a finished provider":    {[]Half{failed("a-f")}, []Half{served("b-s", "d1")}, Tallies{Conflicting: 1}},
+		"failed and served against served":             {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{served("b-s", "d1")}, Tallies{Matched: 1, AOnly: 1}},
+		"served against failed and served":             {[]Half{served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 1, BOnly: 1}},
+		"both hold a failed attempt and a retry":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 2}},
+		"retries disagree on the request digest":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d2")}, Tallies{Matched: 1, Conflicting: 1}},
+		"a served half without a digest among digests": {[]Half{served("a-n", ""), served("a-s", "d1")}, []Half{served("b-1", "d1"), served("b-2", "d2")}, Tallies{Matched: 2}},
+		"timeout against a finished provider":          {[]Half{failed("a-f")}, []Half{served("b-s", "d1")}, Tallies{Conflicting: 1}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, pa := range permutations(c.a) {

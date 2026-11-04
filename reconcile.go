@@ -220,25 +220,18 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 	for i := range partner {
 		partner[i] = -1
 	}
-	pick := func(match func(Half) bool, prefer func(Half) bool) int {
-		found := -1
+	pick := func(match func(Half) bool) int {
 		for j, h := range b.Halves {
-			if used[j] || !match(h) {
-				continue
-			}
-			if prefer(h) {
+			if !used[j] && match(h) {
 				return j
 			}
-			if found < 0 {
-				found = j
-			}
 		}
-		return found
+		return -1
 	}
 	// The exchange_id join runs in tiers over all of side A before the next
 	// tier starts, so an earlier half's fallback never takes the partner a
-	// later half matches better: the same outcome with a compatible request
-	// digest, then the same outcome (a digest disagreement is then reported
+	// later half matches better: the same outcome with the same request digest,
+	// the same outcome with a compatible one, then the same outcome (a digest disagreement is then reported
 	// as the key conflict), then any outcome (a requester that timed out
 	// against a provider that finished). A failed half carries no request
 	// digest, so without the outcome tiers it would rank with a served half.
@@ -246,6 +239,9 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 		return x.RequestDigest == "" || y.RequestDigest == "" || x.RequestDigest == y.RequestDigest
 	}
 	for _, tier := range []func(own, h Half) bool{
+		func(own, h Half) bool {
+			return h.Failed == own.Failed && own.Correlation.RequestDigest != "" && own.Correlation.RequestDigest == h.Correlation.RequestDigest
+		},
 		func(own, h Half) bool { return h.Failed == own.Failed && digestsAgree(own.Correlation, h.Correlation) },
 		func(own, h Half) bool { return h.Failed == own.Failed },
 		func(own, h Half) bool { return digestsAgree(own.Correlation, h.Correlation) },
@@ -256,7 +252,7 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 			if partner[i] >= 0 || c.ExchangeID == "" {
 				continue
 			}
-			j := pick(func(h Half) bool { return h.Correlation.ExchangeID == c.ExchangeID && tier(own, h) }, func(Half) bool { return true })
+			j := pick(func(h Half) bool { return h.Correlation.ExchangeID == c.ExchangeID && tier(own, h) })
 			if j >= 0 {
 				partner[i], keys[i], used[j] = j, JoinExchangeID, true
 			}
@@ -267,7 +263,7 @@ func ReconcileHalvesWith(a, b HalfSet, check ContentCheck) ([]PairResult, Tallie
 		if partner[i] >= 0 || c.RequestDigest == "" {
 			continue
 		}
-		j := pick(func(h Half) bool { return h.Correlation.RequestDigest == c.RequestDigest }, func(Half) bool { return true })
+		j := pick(func(h Half) bool { return h.Correlation.RequestDigest == c.RequestDigest })
 		if j >= 0 {
 			partner[i], keys[i], used[j] = j, JoinRequestDigest, true
 		}
