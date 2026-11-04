@@ -234,3 +234,5 @@
   one log, signed `prev_size`/`prev_root`, consistency proofs), as Go's `CheckStaple` does (evidencebook#344).
 
 - Every half the Goose reference node gives carries the deal book's `history_card/1` as a staple (the `history_card` member). Its shelf-level `standard_history/1` card, signed as a staple under the node's producer key (`Node.history_staple`), rides in the `history_staple` member only when the counterparty asks and the user approves: `Node.half(standard_card=True)`, `standard_card=true` on `loop_deal_push` and `loop_deal_end_exchange` ("this sends your standard card"). `verify_half` checks both under the key the half's steps are signed by (`verify_history_staple`) and refuses a staple another key presents, refuses a half without its book card, and holds the book card to the half's checkpoint and the pinned checkpoint key (evidencebook#329).
+
+- `standard_history_deal` prices a deal whose check states currency `BTC` as `{"assetCode": "BTC", "assetScale": 11}` (`amount_minor` counts millisatoshi) instead of raising `Unpriced`; `minor_units("BTC")` stays unpriced, and other codes with no ISO 4217 minor units are still refused (evidencebook#388).

@@ -69,6 +69,8 @@
 - `check_staple` refuses a `history_card/1` staple whose checkpoints are not one chain (signature under the first's key,
   one log, signed `prev_size`/`prev_root`, consistency proofs), as Go's `CheckStaple` does (evidencebook#344).
 
+- `deal::standard_history_deal` prices a deal whose check states currency `BTC` as `{assetCode: "BTC", assetScale: 11}` (`amount_minor` counts millisatoshi) instead of returning `Error::Unpriced`; `minor_units("BTC")` stays unpriced, and other codes with no ISO 4217 minor units are still refused (evidencebook#388).
+
 ## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)
