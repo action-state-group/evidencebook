@@ -196,8 +196,14 @@ func TestBundleAtAnEarlierAnchor(t *testing.T) {
 // header links do not name: a writer whose citations and links differ.
 func citingSealer(t *testing.T, payload string, targets ...string) CapsuleSealer {
 	t.Helper()
+	return citingSealerAs(t, 1, payload, targets...)
+}
+
+// citingSealerAs is citingSealer signing as the book whose signer seed is seed.
+func citingSealerAs(t *testing.T, seed byte, payload string, targets ...string) CapsuleSealer {
+	t.Helper()
 	return func(header Header, headerJSON []byte) (emit.Result, error) {
-		identity, err := emit.NewEd25519SigningIdentity(seededKey(1))
+		identity, err := emit.NewEd25519SigningIdentity(seededKey(seed))
 		if err != nil {
 			return emit.Result{}, err
 		}

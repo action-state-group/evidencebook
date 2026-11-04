@@ -90,6 +90,12 @@ type BundleRequest struct {
 	// This check is the producer's; a reader checks the receipts again
 	// under its own directory.
 	WitnessDirectory []WitnessRow
+
+	// handover is a standard_history handover (StandardHistoryBundle): the
+	// caller has chosen the whole selected set (Include), so the root brings
+	// no link hops, and the interval starts at seq 1 whatever is selected,
+	// since coverage is shown from the first leaf.
+	handover bool
 }
 
 // Bundle is a portable, self-verifying Evidence Bundle v2 plus the disclosure
@@ -180,7 +186,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
-	selected, missing, err := b.closureLocked(req.Root, req.ClosureDepth)
+	depth := req.ClosureDepth
+	if req.handover {
+		depth = 0
+	}
+	selected, missing, err := b.closureLocked(req.Root, depth)
 	if err != nil {
 		return Bundle{}, err
 	}
@@ -198,6 +208,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		return Bundle{}, err
 	}
 	first := anchor.Entries
+	if req.handover {
+		first = 1
+	}
 	for id := range selected {
 		seq := b.records[id].Seq
 		if !anchor.Covers(seq) {
