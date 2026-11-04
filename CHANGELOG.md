@@ -4,7 +4,11 @@
 
 ### Docs: for currency BTC, `amount_minor` counts millisatoshi (#385)
 
-- x-deal-v0 (PROFILE.md sections 3 and 11 and the `currency` descriptions in the schemas, Go, Python and Rust copies): for currency `BTC`, `amount_minor` counts millisatoshi (10^-11 BTC), shown as "N msat". `dealprofile.MinorUnits("BTC")` stays unpriced, and a BTC deal is refused as unpriced by `StandardHistoryDeal` (a test pins it). Description-only; validation is unchanged.
+- x-deal-v0 (PROFILE.md sections 3 and 11 and the `currency` descriptions in the schemas, Go, Python and Rust copies): for currency `BTC`, `amount_minor` counts millisatoshi (10^-11 BTC), shown as "N msat". `dealprofile.MinorUnits("BTC")` stays unpriced. Description-only; validation is unchanged.
+
+### Fix: `StandardHistoryDeal` prices a BTC deal in msat (#388)
+
+- A deal whose check states currency `BTC` is no longer refused as unpriced: its entry is `{value: amount_minor, assetCode: "BTC", assetScale: 11}` (10^-11 BTC = msat; the settlement-records draft's own example). The scale comes from an explicit table (`historyAssetScales`), not from `MinorUnits`, which still has no ISO 4217 minor units for BTC. The card keeps BTC as its own currency row and never sums it with fiat. Other codes with no ISO 4217 minor units stay refused as unpriced.
 
 ## capsulectl/v0.1.0-rc33 (2026-11-03)
 
