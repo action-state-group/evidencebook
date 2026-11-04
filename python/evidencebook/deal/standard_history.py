@@ -285,7 +285,7 @@ def _agreed_amount(step: _Rec, by_digest: dict[str, _Rec]) -> dict[str, Any]:
     if (isinstance(minor, bool) or not isinstance(minor, int) or not -2 ** 63 <= minor < 2 ** 63
             or minor < 0 or not currency):
         raise Unpriced(f"{_UNPRICED}: its check states no amount and currency")
-    scale = history_asset_scale(currency)
+    scale = _history_asset_scale(currency)
     if scale is None:
         raise Unpriced(f'{_UNPRICED}: currency {_go_quote(currency)} has no ISO 4217 minor units')
     return {"value": str(minor), "assetCode": currency, "assetScale": scale}
@@ -380,7 +380,7 @@ _TWO_DECIMAL_CURRENCIES = (
 _HISTORY_ASSET_SCALES = {"BTC": 11}
 
 
-def history_asset_scale(currency: str) -> int | None:
+def _history_asset_scale(currency: str) -> int | None:
     """The assetScale of a deal's amount_minor in ``currency``: the explicit table
     above, else the ISO 4217 minor units."""
     if currency in _HISTORY_ASSET_SCALES:
