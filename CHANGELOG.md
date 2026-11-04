@@ -14,6 +14,14 @@ Go module only.
 
 - A deal whose check states currency `BTC` is no longer refused as unpriced: its entry is `{value: amount_minor, assetCode: "BTC", assetScale: 11}` (10^-11 BTC = msat; the settlement-records draft's own example). The scale comes from an explicit table (`historyAssetScales`), not from `MinorUnits`, which still has no ISO 4217 minor units for BTC. The Python and Rust copies match. The card keeps BTC as its own currency row and never sums it with fiat. Other codes with no ISO 4217 minor units stay refused as unpriced.
 
+## capsulectl/v0.1.0-rc34 (2026-11-04)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc34`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc34` (the version this release pairs with; a mistyped top-level command now names itself, capsule-cli#543). capsulectl-book's code is unchanged; the release ships with capsulectl-deal `v0.1.0-rc34`, which prices a Lightning (BTC, msat) deal on the standard-history card (evidencebook#388, library `v0.13.5`).
+
 ## capsulectl/v0.1.0-rc33 (2026-11-03)
 
 capsulectl-book only; no library tag.
