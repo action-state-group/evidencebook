@@ -1202,8 +1202,15 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 				ids[j] = id
 			}
 			text := item.Text
+			// The adjudicator's pack phrase goes where the owner's stood, right after the verdict:
+			// head is the text before it, and text what follows.
+			head, atPack := "", audience == cli.DealAudienceAdjudicator && item.SharedPack != "" && item.OwnPack != ""
 			if item.OwnPack != "" && audience != cli.DealAudienceKeep {
-				text = strings.Replace(text, item.OwnPack, "", 1)
+				if atPack {
+					head, text, _ = strings.Cut(item.Text, item.OwnPack)
+				} else {
+					text = strings.Replace(text, item.OwnPack, "", 1)
+				}
 			}
 			switch {
 			case item.Shared != "" && audience == cli.DealAudienceCounterparty:
@@ -1229,9 +1236,16 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 				}
 				text = words
 			}
-			text = p.scrub(text)
-			if item.SharedPack != "" && audience == cli.DealAudienceCounterparty {
-				text += item.SharedPack
+			// A deal-kind pack is shared terms: the counterparty's copy (whose Shared text already
+			// says whose terms) and the adjudicator's, who rules by them, carry its fingerprint,
+			// added after the scrubbing, which would take the hex for a code.
+			switch {
+			case atPack:
+				text = p.scrub(head) + item.SharedTerms + item.SharedPack + p.scrub(text)
+			case item.SharedPack != "" && audience == cli.DealAudienceCounterparty:
+				text = p.scrub(text) + item.SharedPack
+			default:
+				text = p.scrub(text)
 			}
 			m := map[string]interface{}{"kind": item.Kind, "text": text, "steps": ids}
 			if item.Self != "" {

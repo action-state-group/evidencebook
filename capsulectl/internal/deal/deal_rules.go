@@ -2211,6 +2211,9 @@ type dealReportItem struct {
 	// judged under the party's pinned deal terms: the pack's shown fingerprint, which the
 	// scrubber would take for a code. Empty for any other pack.
 	SharedPack string `json:"-"`
+	// SharedTerms is the phrase before SharedPack on a copy that has Text rather than Shared
+	// (the adjudicator's): it says whose terms the pack is.
+	SharedTerms string `json:"-"`
 	// OwnPack is the part of Text that names the pack and its ruleset id: the user's own
 	// policy, kept on the user's own copy and taken out of every other audience's.
 	OwnPack string `json:"-"`
@@ -2510,12 +2513,13 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 			// copy only when the profile pins that pack as the party's deal terms
 			// (cli.ProfileRulesChecker.SharesWithCounterparty); a conduct pack, or a pin that
 			// states no kind, is the user's private policy and reaches no one.
-			sharedPack, ownPack := "", ""
+			sharedPack, sharedTerms, ownPack := "", "", ""
 			if r := e.Check.Rules; r != nil && r.Status == "evaluated" && r.RulesetID != "" && len(r.DefinitionDigest) >= packDigestShown {
 				ownPack = ", under " + r.RulesetID + ", pack " + r.DefinitionDigest[:packDigestShown]
 				text += ownPack
 				if pin.SharesWithCounterparty() && slices.Contains(pin.ForRole(dealRole(events)).PinnedDigests(), r.DefinitionDigest) {
-					shared += ", under the " + dealRole(events) + "'s terms"
+					sharedTerms = ", under the " + dealRole(events) + "'s terms"
+					shared += sharedTerms
 					sharedPack = ", pack " + r.DefinitionDigest[:packDigestShown]
 				}
 			}
@@ -2561,7 +2565,7 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 			}
 			// Last, so the choices above do not read as part of the note.
 			text += notYetChecked
-			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, SharedPack: sharedPack, OwnPack: ownPack, Causes: causeText, At: e.At})
+			r.Did = append(r.Did, dealReportItem{Kind: "check", Text: text, Steps: []string{e.Check.Snapshot, se.CapsuleID}, Shared: shared, SharedPack: sharedPack, SharedTerms: sharedTerms, OwnPack: ownPack, Causes: causeText, At: e.At})
 			var asked []string
 			for _, d := range e.Check.Differences {
 				// The user's own yes answered it: a "you didn't ask for this" on
