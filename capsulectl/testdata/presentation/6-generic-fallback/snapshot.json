@@ -19,21 +19,21 @@
     "section": []
   },
   "evidence_ids": [
-    "41af48f792145e2c648f37e4a57d1995c873e9952f72cc35313fd58d54b572f9",
     "4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047",
+    "54d1722093ef71d078d0162859d8750c6ff619daf83631062e39f1de7fa8275e",
     "767a4cc3ebac02f70d077578e94fc607170580beb7ad2930cd3b80ac83ca2c4b"
   ],
   "text": [
     "✓ Unchanged since it was sealed",
-    "10 of 10 checks passed · 1 record",
+    "10 of 10 checks passed · 1 top-level record",
     "How this page was checked",
     "No witness this verifier trusts has vouched for this log: this file checks only against its holder's own signatures. Without such a receipt for its checkpoint, it could be a private copy of the log.",
     "This bundle carries no evaluation summary, so there is no aggregate view. The records and their verification are below.",
     "How this page was checked",
-    "· 10 of 10 checks passed · 1 record",
+    "· 10 of 10 checks passed · 1 top-level record",
     "Verification",
     "bundle digest",
-    "\"41af48f792145e2c648f37e4a57d1995c873e9952f72cc35313fd58d54b572f9\"",
+    "\"54d1722093ef71d078d0162859d8750c6ff619daf83631062e39f1de7fa8275e\"",
     "checkpoint root",
     "\"4d87439768bb3507835ca6f0ed0b728300549bd8109e0943b9e3b8db516a7047\"",
     "checkpoint size",
