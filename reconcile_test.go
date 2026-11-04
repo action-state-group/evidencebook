@@ -312,3 +312,166 @@ func mustStatus(t *testing.T, closeID, key string, bundle VerifiedBundle) CloseS
 	}
 	return status
 }
+
+// TestReconcileFailedHalves covers a failed exchange (evidencebook#205): two
+// failed halves match on their outcomes although neither carries a payload
+// commitment, a failed half against a served one is a disagreement and not a
+// missing peer, and a failed half whose peer is absent is still A_ONLY.
+func TestReconcileFailedHalves(t *testing.T) {
+	failed := func(id string, c Correlation) Half {
+		return Half{RecordID: id, Correlation: c, Covered: true, Trusted: true, Failed: true}
+	}
+	agree := func(Half, Half) bool { t.Fatal("the content check must not run on a failed half"); return false }
+	a := HalfSet{Complete: true, Halves: []Half{
+		failed("a-402", Correlation{ExchangeID: "x1"}),
+		failed("a-timeout", Correlation{ExchangeID: "x2"}),
+		half("a-served", Correlation{ExchangeID: "x3", RequestDigest: "d3"}, "same"),
+		failed("a-alone", Correlation{ExchangeID: "x4"}),
+	}}
+	b := HalfSet{Complete: true, Halves: []Half{
+		failed("b-402", Correlation{ExchangeID: "x1"}),
+		half("b-finished", Correlation{ExchangeID: "x2", RequestDigest: "d2"}, "done"),
+		failed("b-failed", Correlation{ExchangeID: "x3"}),
+	}}
+	results, tallies := ReconcileHalves(a, b, agree)
+	want := Tallies{Matched: 1, Conflicting: 2, AOnly: 1}
+	if tallies != want {
+		t.Fatalf("tallies %+v, want %+v; results %+v", tallies, want, results)
+	}
+	got := make(map[string]ExchangeState)
+	for _, r := range results {
+		got[r.A+"|"+r.B] = r.State
+	}
+	for key, state := range map[string]ExchangeState{
+		"a-402|b-402": Matched, "a-timeout|b-finished": Conflicting, "a-served|b-failed": Conflicting, "a-alone|": AOnly,
+	} {
+		if got[key] != state {
+			t.Fatalf("%s = %s, want %s", key, got[key], state)
+		}
+	}
+}
+
+// A failed half is still gated by coverage and trust before its outcome counts.
+func TestReconcileFailedHalvesKeepCoverageAndTrustGates(t *testing.T) {
+	a := HalfSet{Complete: true, Halves: []Half{
+		{RecordID: "a-uncovered", Correlation: Correlation{ExchangeID: "x1"}, Trusted: true, Failed: true},
+		{RecordID: "a-untrusted", Correlation: Correlation{ExchangeID: "x2"}, Covered: true, Failed: true},
+	}}
+	b := HalfSet{Complete: true, Halves: []Half{
+		{RecordID: "b1", Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true},
+		{RecordID: "b2", Correlation: Correlation{ExchangeID: "x2"}, Covered: true, Trusted: true, Failed: true},
+	}}
+	_, tallies := ReconcileHalves(a, b, SamePayloadCommitments)
+	if want := (Tallies{Insufficient: 1, Unresolved: 1}); tallies != want {
+		t.Fatalf("tallies %+v, want %+v", tallies, want)
+	}
+}
+
+// A failed attempt and a served retry can share an exchange id on one side;
+// each pairs with the same-outcome half whatever the input order.
+func TestReconcileFailedAttemptAndServedRetryPairByOutcome(t *testing.T) {
+	failed := func(id string) Half {
+		return Half{RecordID: id, Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true}
+	}
+	served := func(id string) Half {
+		return half(id, Correlation{ExchangeID: "x1", RequestDigest: "d1"}, "same")
+	}
+	for name, b := range map[string][]Half{
+		"failed first": {failed("b-failed"), served("b-served")},
+		"served first": {served("b-served"), failed("b-failed")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := HalfSet{Complete: true, Halves: []Half{served("a-served"), failed("a-failed")}}
+			results, tallies := ReconcileHalves(a, HalfSet{Complete: true, Halves: b}, SamePayloadCommitments)
+			if want := (Tallies{Matched: 2}); tallies != want {
+				t.Fatalf("tallies %+v, want %+v; results %+v", tallies, want, results)
+			}
+		})
+	}
+}
+
+// Book.Reconcile reads the failed records from the input, since a header
+// carries no outcome.
+func TestBookReconcileReadsFailedRecordsFromTheInput(t *testing.T) {
+	ctx := context.Background()
+	a := newFixture(t, "party-a", 1).open(t)
+	b := newFixture(t, "party-b", 50).open(t)
+	failedA := mustAppend(t, a, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "party-b", Correlation: Correlation{ExchangeID: "x1"}})
+	failedB := mustAppend(t, b, Entry{RecordType: "exchange", EpistemicType: ObservedEvent, CounterpartyRef: "party-a", Correlation: Correlation{ExchangeID: "x1"}})
+	if _, err := a.Checkpoint(ctx); err != nil {
+		t.Fatal(err)
+	}
+	input := ReconcileInput{Peer: peerBundle(t, b), RecordType: "exchange", Compare: SamePayloadCommitments}
+	recon, err := a.Reconcile(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recon.Tallies.Conflicting != 1 {
+		t.Fatalf("without the outcome both records are served halves with nothing to compare: %+v", recon.Tallies)
+	}
+	input.OwnFailed = map[string]bool{failedA.RecordID: true}
+	input.PeerFailed = map[string]bool{failedB.RecordID: true}
+	recon, err = a.Reconcile(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Tallies{Matched: 1}); recon.Tallies != want {
+		t.Fatalf("tallies %+v, want %+v; pairs %+v", recon.Tallies, want, recon.Pairs)
+	}
+}
+
+// Pairing must not depend on the order of either side, including when a
+// failed attempt and a served retry share one exchange id and the sides hold
+// different numbers of halves.
+func TestReconcilePairingIsIndependentOfInputOrder(t *testing.T) {
+	failed := func(id string) Half {
+		return Half{RecordID: id, Correlation: Correlation{ExchangeID: "x1"}, Covered: true, Trusted: true, Failed: true}
+	}
+	served := func(id, digest string) Half {
+		return half(id, Correlation{ExchangeID: "x1", RequestDigest: digest}, "same")
+	}
+	var permutations func(halves []Half) [][]Half
+	permutations = func(halves []Half) [][]Half {
+		if len(halves) == 1 {
+			return [][]Half{halves}
+		}
+		var all [][]Half
+		for i := range halves {
+			rest := append(append([]Half{}, halves[:i]...), halves[i+1:]...)
+			for _, p := range permutations(rest) {
+				all = append(all, append([]Half{halves[i]}, p...))
+			}
+		}
+		return all
+	}
+	for name, c := range map[string]struct {
+		a, b []Half
+		want Tallies
+	}{
+		"failed and served against served":             {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{served("b-s", "d1")}, Tallies{Matched: 1, AOnly: 1}},
+		"served against failed and served":             {[]Half{served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 1, BOnly: 1}},
+		"both hold a failed attempt and a retry":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d1")}, Tallies{Matched: 2}},
+		"retries disagree on the request digest":       {[]Half{failed("a-f"), served("a-s", "d1")}, []Half{failed("b-f"), served("b-s", "d2")}, Tallies{Matched: 1, Conflicting: 1}},
+		"a served half without a digest among digests": {[]Half{served("a-n", ""), served("a-s", "d1")}, []Half{served("b-1", "d1"), served("b-2", "d2")}, Tallies{Matched: 2}},
+		"timeout against a finished provider":          {[]Half{failed("a-f")}, []Half{served("b-s", "d1")}, Tallies{Conflicting: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, pa := range permutations(c.a) {
+				for _, pb := range permutations(c.b) {
+					_, tallies := ReconcileHalves(HalfSet{Complete: true, Halves: pa}, HalfSet{Complete: true, Halves: pb}, SamePayloadCommitments)
+					if tallies != c.want {
+						t.Fatalf("a=%v b=%v: tallies %+v, want %+v", ids(pa), ids(pb), tallies, c.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func ids(halves []Half) []string {
+	out := make([]string, len(halves))
+	for i, h := range halves {
+		out[i] = h.RecordID
+	}
+	return out
+}
