@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A replay fixture for the Terms Pack Studio first demo (evidencebook-deal#136): ten sticker trades,
+  nine clean and one where the seller raised the price after the buyer accepted, and
+  `scripts/studio-replay.sh` to replay them into a seller's and a buyer's deal store;
+  `testdata/studio/README.md` lists the records a store then holds.
+
 ## v0.1.0-rc34
 
 This release pairs with capsulectl `v0.1.0-rc34` (go.mod requires it).

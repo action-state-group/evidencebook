@@ -1,0 +1,88 @@
+{
+  "schema": "studio-sticker-trades/v0",
+  "item": "fox sticker",
+  "currency": "USD",
+  "trades": [
+    {
+      "n": 1,
+      "buyer_domain": "buyer1.example",
+      "buyer_name": "Buyer 1",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    },
+    {
+      "n": 2,
+      "buyer_domain": "buyer2.example",
+      "buyer_name": "Buyer 2",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    },
+    {
+      "n": 3,
+      "buyer_domain": "buyer3.example",
+      "buyer_name": "Buyer 3",
+      "offer_minor": 200,
+      "commit_minor": 200,
+      "paid_minor": 200
+    },
+    {
+      "n": 4,
+      "buyer_domain": "buyer4.example",
+      "buyer_name": "Buyer 4",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    },
+    {
+      "n": 5,
+      "buyer_domain": "buyer5.example",
+      "buyer_name": "Buyer 5",
+      "offer_minor": 175,
+      "commit_minor": 175,
+      "paid_minor": 175
+    },
+    {
+      "n": 6,
+      "buyer_domain": "buyer6.example",
+      "buyer_name": "Buyer 6",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    },
+    {
+      "n": 7,
+      "buyer_domain": "buyer7.example",
+      "buyer_name": "Buyer 7",
+      "offer_minor": 150,
+      "commit_minor": 175,
+      "paid_minor": 175,
+      "note": "the seller raised the price after the buyer accepted the offer, then delivered"
+    },
+    {
+      "n": 8,
+      "buyer_domain": "buyer8.example",
+      "buyer_name": "Buyer 8",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    },
+    {
+      "n": 9,
+      "buyer_domain": "buyer9.example",
+      "buyer_name": "Buyer 9",
+      "offer_minor": 200,
+      "commit_minor": 200,
+      "paid_minor": 200
+    },
+    {
+      "n": 10,
+      "buyer_domain": "buyer10.example",
+      "buyer_name": "Buyer 10",
+      "offer_minor": 150,
+      "commit_minor": 150,
+      "paid_minor": 150
+    }
+  ]
+}
