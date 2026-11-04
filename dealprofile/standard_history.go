@@ -31,7 +31,7 @@ import (
 //     or absent "bought".
 //   - amount is the amount_minor and currency of the check (typed
 //     proposed-action/v0) the step rests on, scaled by the currency's ISO
-//     4217 minor units. The profile lets a check omit them, and SH gives an
+//     4217 minor units (BTC: 11, msat). The profile lets a check omit them, and SH gives an
 //     amount no unknown value, so a deal without one is ErrUnpriced: the
 //     host refuses the card, it never drops the deal.
 //   - counterparty_class is the one member of that name a pay check carries
@@ -89,7 +89,7 @@ type HistoryInput struct {
 }
 
 // ErrUnpriced is a deal whose agreeing step rests on a check with no
-// amount, or a currency with no ISO 4217 minor units: SH has no entry for
+// amount, or a currency with no ISO 4217 minor units and no explicit scale: SH has no entry for
 // it, so the card cannot be built (agent-action-capsule#516).
 var ErrUnpriced = errors.New("dealprofile: a deal has no recorded amount")
 
@@ -249,7 +249,7 @@ func agreedAmount(step historyRecord, byDigest map[string]historyRecord) (standa
 	}
 	scale, ok := historyAssetScale(currency)
 	if !ok {
-		return standardhistory.Amount{}, fmt.Errorf("%w: currency %q has no ISO 4217 minor units and no other known scale", ErrUnpriced, currency)
+		return standardhistory.Amount{}, fmt.Errorf("%w: currency %q has no ISO 4217 minor units", ErrUnpriced, currency)
 	}
 	return standardhistory.Amount{Value: strconv.FormatInt(*minor, 10), AssetCode: currency, AssetScale: scale}, nil
 }

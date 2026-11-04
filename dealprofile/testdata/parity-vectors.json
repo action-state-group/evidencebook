@@ -3288,6 +3288,44 @@
       }
     },
     {
+      "name": "classic currency BTC",
+      "records": [
+        {
+          "payload": "{\"body\":{\"deal_type\":\"purchase\",\"intent\":{\"verbatim_commitment\":\"00\"}},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"baseline\",\"seq\":1}}",
+          "committed_at": "2026-10-06T09:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\",\"amount_minor\":1500,\"currency\":\"BTC\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"check\",\"seq\":2}}",
+          "committed_at": "2026-10-06T10:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"result\":\"pass\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"verdict\",\"refs\":[{\"digest\":\"4409ccca00db86fb0452a02a2069d0dca231f6af96c431c0f5f716dc19e4b0e5\",\"digest_alg\":\"SHA-256\",\"rel\":\"checks\",\"type\":\"deal-record\"}],\"seq\":3}}",
+          "committed_at": "2026-10-06T11:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"choice\":\"proceed\",\"proceed\":true},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"approval\",\"refs\":[{\"digest\":\"19ce772e2121d2c297dd2b0aba81b0f8ebab87f91bc79e60ce28e23dc15ecfd7\",\"digest_alg\":\"SHA-256\",\"rel\":\"approves\",\"type\":\"deal-record\"}],\"seq\":4}}",
+          "committed_at": "2026-10-06T12:00:00Z"
+        },
+        {
+          "payload": "{\"body\":{\"action\":\"commit\"},\"x-deal-v0\":{\"at\":\"2026-10-06T09:00:00Z\",\"canonicalization\":\"jcs\",\"deal_id\":\"deal-0123456789abcdef\",\"profile\":\"x-deal-v0\",\"record_type\":\"action\",\"refs\":[{\"digest\":\"f2fffaa171834800d5ece61103e3b5352f0eb463c41a874986e4cf30b8c8ec73\",\"digest_alg\":\"SHA-256\",\"rel\":\"authorized_by\",\"type\":\"deal-record\"}],\"seq\":5}}",
+          "committed_at": "2026-10-06T13:00:00Z"
+        }
+      ],
+      "entry": {
+        "deal": "deal-0123456789abcdef",
+        "agreed_at": "2026-10-06T13:00:00Z",
+        "role": "bought",
+        "amount": {
+          "value": "1500",
+          "assetCode": "BTC",
+          "assetScale": 11
+        },
+        "outcome": "undecided",
+        "happened": "no_record",
+        "disputes": []
+      }
+    },
+    {
       "name": "classic check: a boolean amount",
       "records": [
         {
@@ -4460,6 +4498,7 @@
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"CLF\",\"assetScale\":4},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"XCG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"ANG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
+        "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"BTC\",\"assetScale\":11},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"9007199254740991\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"0\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"100\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
@@ -4483,7 +4522,7 @@
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"100\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"receipt_only\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"provided\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"JPY\",\"assetScale\":0},\"outcome\":\"held\",\"happened\":\"receipt_only\",\"disputes\":[]}"
       ],
-      "card": "{\"anchor\":\"abababababababababababababababababababababababababababababababab\",\"bands\":[{\"currency\":\"ANG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"CLF\",\"decade\":-1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"JPY\",\"decade\":3,\"did_not_hold\":0,\"held\":1,\"of\":2,\"undecided\":1},{\"currency\":\"KWD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":null,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":22,\"undecided\":22},{\"currency\":\"USD\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":2,\"did_not_hold\":0,\"held\":4,\"of\":18,\"undecided\":14},{\"currency\":\"USD\",\"decade\":13,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"XCG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1}],\"class_missing\":{\"count\":47,\"of\":49},\"controller_class\":\"holder\",\"derivation\":\"standard_history/1\",\"disputes\":{\"raised\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0},\"received\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0}},\"happened\":{\"no_record\":44,\"of\":49,\"receipt_only\":4,\"stamped_by_both\":1},\"holder_kind\":\"person\",\"in_window\":{\"counted\":49,\"not_counted\":1,\"of\":50},\"outcomes\":{\"did_not_hold\":0,\"held\":5,\"of\":49,\"undecided\":44},\"policy\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"roles\":{\"bought\":47,\"of\":49,\"provided\":2},\"since\":\"2026-09\",\"window\":{\"all\":true}}"
+      "card": "{\"anchor\":\"abababababababababababababababababababababababababababababababab\",\"bands\":[{\"currency\":\"ANG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"BTC\",\"decade\":-8,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"CLF\",\"decade\":-1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"JPY\",\"decade\":3,\"did_not_hold\":0,\"held\":1,\"of\":2,\"undecided\":1},{\"currency\":\"KWD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":null,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":22,\"undecided\":22},{\"currency\":\"USD\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":2,\"did_not_hold\":0,\"held\":4,\"of\":18,\"undecided\":14},{\"currency\":\"USD\",\"decade\":13,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"XCG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1}],\"class_missing\":{\"count\":48,\"of\":50},\"controller_class\":\"holder\",\"derivation\":\"standard_history/1\",\"disputes\":{\"raised\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0},\"received\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0}},\"happened\":{\"no_record\":45,\"of\":50,\"receipt_only\":4,\"stamped_by_both\":1},\"holder_kind\":\"person\",\"in_window\":{\"counted\":50,\"not_counted\":1,\"of\":51},\"outcomes\":{\"did_not_hold\":0,\"held\":5,\"of\":50,\"undecided\":45},\"policy\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"roles\":{\"bought\":48,\"of\":50,\"provided\":2},\"since\":\"2026-09\",\"window\":{\"all\":true}}"
     },
     {
       "name": "every entry, three months",
@@ -4527,6 +4566,7 @@
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"CLF\",\"assetScale\":4},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"XCG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"ANG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
+        "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"BTC\",\"assetScale\":11},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"9007199254740991\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"0\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"100\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
@@ -4550,7 +4590,7 @@
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"100\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"receipt_only\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"provided\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"JPY\",\"assetScale\":0},\"outcome\":\"held\",\"happened\":\"receipt_only\",\"disputes\":[]}"
       ],
-      "card": "{\"anchor\":\"abababababababababababababababababababababababababababababababab\",\"bands\":[{\"currency\":\"ANG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"CLF\",\"decade\":-1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"JPY\",\"decade\":3,\"did_not_hold\":0,\"held\":1,\"of\":2,\"undecided\":1},{\"currency\":\"KWD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":null,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":22,\"undecided\":22},{\"currency\":\"USD\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":2,\"did_not_hold\":0,\"held\":4,\"of\":18,\"undecided\":14},{\"currency\":\"USD\",\"decade\":13,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"XCG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1}],\"class_missing\":{\"count\":47,\"of\":49},\"controller_class\":\"holder\",\"derivation\":\"standard_history/1\",\"disputes\":{\"raised\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0},\"received\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0}},\"happened\":{\"no_record\":44,\"of\":49,\"receipt_only\":4,\"stamped_by_both\":1},\"holder_kind\":\"person\",\"in_window\":{\"counted\":49,\"not_counted\":1,\"of\":50},\"outcomes\":{\"did_not_hold\":0,\"held\":5,\"of\":49,\"undecided\":44},\"policy\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"roles\":{\"bought\":47,\"of\":49,\"provided\":2},\"since\":\"2026-09\",\"window\":{\"months\":3}}"
+      "card": "{\"anchor\":\"abababababababababababababababababababababababababababababababab\",\"bands\":[{\"currency\":\"ANG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"BTC\",\"decade\":-8,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"CLF\",\"decade\":-1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"JPY\",\"decade\":3,\"did_not_hold\":0,\"held\":1,\"of\":2,\"undecided\":1},{\"currency\":\"KWD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":null,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":0,\"did_not_hold\":0,\"held\":0,\"of\":22,\"undecided\":22},{\"currency\":\"USD\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"USD\",\"decade\":2,\"did_not_hold\":0,\"held\":4,\"of\":18,\"undecided\":14},{\"currency\":\"USD\",\"decade\":13,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1},{\"currency\":\"XCG\",\"decade\":1,\"did_not_hold\":0,\"held\":0,\"of\":1,\"undecided\":1}],\"class_missing\":{\"count\":48,\"of\":50},\"controller_class\":\"holder\",\"derivation\":\"standard_history/1\",\"disputes\":{\"raised\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0},\"received\":{\"by_forum\":{\"auto\":0,\"external\":0,\"network\":0,\"of\":0,\"rail\":0},\"by_outcome\":{\"against\":0,\"for\":0,\"no_finding\":0,\"of\":0,\"open\":0,\"split\":0,\"withdrawn\":0},\"of\":0}},\"happened\":{\"no_record\":45,\"of\":50,\"receipt_only\":4,\"stamped_by_both\":1},\"holder_kind\":\"person\",\"in_window\":{\"counted\":50,\"not_counted\":1,\"of\":51},\"outcomes\":{\"did_not_hold\":0,\"held\":5,\"of\":50,\"undecided\":45},\"policy\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"roles\":{\"bought\":48,\"of\":50,\"provided\":2},\"since\":\"2026-09\",\"window\":{\"months\":3}}"
     },
     {
       "name": "every entry, an early anchor",
@@ -4594,6 +4634,7 @@
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"CLF\",\"assetScale\":4},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"XCG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"ANG\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
+        "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"1500\",\"assetCode\":\"BTC\",\"assetScale\":11},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"9007199254740991\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"0\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",
         "{\"deal\":\"deal-0123456789abcdef\",\"agreed_at\":\"2026-10-06T13:00:00Z\",\"role\":\"bought\",\"amount\":{\"value\":\"100\",\"assetCode\":\"USD\",\"assetScale\":2},\"outcome\":\"undecided\",\"happened\":\"no_record\",\"disputes\":[]}",

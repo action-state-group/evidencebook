@@ -484,7 +484,7 @@ PARITY = load(TESTDATA / "parity-vectors.json")
 
 
 def test_parity_corpus_sizes():
-    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (135, 95, 77)
+    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (135, 95, 78)
 
 
 @pytest.mark.parametrize("x", PARITY["normalize"], ids=[f"{x['kind']}:{x['raw']!r}" for x in PARITY["normalize"]])
