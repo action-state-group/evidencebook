@@ -5,20 +5,18 @@ package evidencebook
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
-	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
-	"github.com/fxamacker/cbor/v2"
-	"github.com/veraison/go-cose"
 )
 
 type windowVector struct {
@@ -198,47 +196,6 @@ func TestSealUnavailableWindow(t *testing.T) {
 	}
 }
 
-// mintReceiptAt is mintReceipt with the witness's registration time: the iat
-// of the protected CWT claims.
-func mintReceiptAt(t *testing.T, statement []byte, witnessKey ed25519.PrivateKey, iat time.Time) map[string]any {
-	t.Helper()
-	record, err := checkpoint.ParseRecord(statement)
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry, err := record.EntryHash()
-	if err != nil {
-		t.Fatal(err)
-	}
-	proof, err := cbor.Marshal([]any{int64(1), int64(0), [][]byte{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	leaf := sha256.Sum256(append([]byte{0}, entry...))
-	message := cose.NewSign1Message()
-	message.Headers.Protected.SetAlgorithm(cose.AlgorithmEdDSA)
-	message.Headers.Protected[int64(395)] = int64(1)
-	message.Headers.Protected[int64(15)] = map[any]any{int64(6): iat.Unix()}
-	message.Headers.Unprotected[int64(396)] = map[any]any{int64(-1): []any{proof}}
-	message.Payload = leaf[:]
-	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, witnessKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := message.Sign(rand.Reader, nil, signer); err != nil {
-		t.Fatal(err)
-	}
-	message.Payload = nil
-	raw, err := message.MarshalCBOR()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return map[string]any{
-		"ts_url": testWitnessURL, "entry_hash": hex.EncodeToString(entry),
-		"receipt_b64": base64.StdEncoding.EncodeToString(raw), "leaf_index": 0, "tree_size": 1,
-	}
-}
-
 // A responder seals a statement; its bundle carries the checkpoint with a
 // witness receipt; a requester verifies the bundle, reads the statement and
 // shows its own absence beside it.
@@ -267,7 +224,7 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	read := func(t *testing.T, receiptAt time.Time, rows []WitnessRow, responderIsWitness bool) []evidencerequest.WindowStatement {
+	read := func(t *testing.T, receiptAt time.Time) []evidencerequest.WindowStatement {
 		t.Helper()
 		bundle, err := responder.Bundle(ctx, BundleRequest{Root: statementRecord.RecordID, Payloads: PayloadsSelected})
 		if err != nil {
@@ -282,20 +239,16 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		key := witnessKey
-		if responderIsWitness {
-			key = ed25519.NewKeyFromSeed(seededKey(31)[:32])
-		}
-		member["witnesses"] = []any{mintReceiptAt(t, statement, key, receiptAt)}
+		member["witnesses"] = []any{mintReceiptAt(t, statement, witnessKey, receiptAt)}
 		data, err := json.Marshal(wire)
 		if err != nil {
 			t.Fatal(err)
 		}
-		verified, err := VerifyBundleAnswer(data, withWitnesses(responderKeys(responder, 31), rows))
+		verified, err := VerifyBundleAnswer(data, withWitnesses(responderKeys(responder, 31), directory))
 		if err != nil {
 			t.Fatal(err)
 		}
-		statements, err := verified.UnavailableWindowStatements(responderKey, rows)
+		statements, err := verified.UnavailableWindowStatements(responderKey, directory)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,7 +256,7 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 	}
 
 	t.Run("registered before the window closed", func(t *testing.T) {
-		statements := read(t, closed.Add(-time.Minute), directory, false)
+		statements := read(t, closed.Add(-time.Minute))
 		got, err := requester.ShowAbsence(ctx, absence.RecordID, responderKey, statements)
 		if err != nil {
 			t.Fatal(err)
@@ -314,7 +267,7 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 		}
 	})
 	t.Run("registered after the window closed is stated afterwards", func(t *testing.T) {
-		got, err := requester.ShowAbsence(ctx, absence.RecordID, responderKey, read(t, closed.Add(time.Hour), directory, false))
+		got, err := requester.ShowAbsence(ctx, absence.RecordID, responderKey, read(t, closed.Add(time.Hour)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -323,16 +276,26 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 		}
 	})
 	t.Run("a witness the reader does not list registers nothing", func(t *testing.T) {
-		other := []WitnessRow{{Name: "another witness", Endpoint: "https://other.test", KeyIDs: directory[0].KeyIDs}}
+		// The bundle's receipt verifies under the directory it was checked
+		// with; the reader then reads the statements under a directory that
+		// lists another witness.
 		bundle, err := responder.Bundle(ctx, BundleRequest{Root: statementRecord.RecordID, Payloads: PayloadsSelected})
 		if err != nil {
 			t.Fatal(err)
 		}
-		verified, err := VerifyBundle(bundle.JSON)
+		var wire map[string]any
+		if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
+			t.Fatal(err)
+		}
+		member := wire["checkpoint"].(map[string]any)
+		statement, _ := base64.RawURLEncoding.DecodeString(member["cose"].(string))
+		member["witnesses"] = []any{mintReceiptAt(t, statement, witnessKey, closed.Add(-time.Minute))}
+		data, _ := json.Marshal(wire)
+		verified, err := VerifyBundleAnswer(data, withWitnesses(responderKeys(responder, 31), directory))
 		if err != nil {
 			t.Fatal(err)
 		}
-		// No receipt carried: the statement is read but unregistered.
+		other := []WitnessRow{{Name: "another witness", Endpoint: "https://other.test", KeyIDs: directory[0].KeyIDs}}
 		statements, err := verified.UnavailableWindowStatements(responderKey, other)
 		if err != nil {
 			t.Fatal(err)
@@ -342,11 +305,38 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.ShownAs != evidencerequest.StateRecordedAbsence || len(got.CoveredBy) != 0 {
+			t.Fatalf("a receipt from an unlisted witness registered a statement: %+v", got)
+		}
+	})
+	t.Run("a bundle with no receipt registers nothing", func(t *testing.T) {
+		bundle, err := responder.Bundle(ctx, BundleRequest{Root: statementRecord.RecordID, Payloads: PayloadsSelected})
+		if err != nil {
+			t.Fatal(err)
+		}
+		verified, err := VerifyBundle(bundle.JSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		statements, err := verified.UnavailableWindowStatements(responderKey, directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := requester.ShowAbsence(ctx, absence.RecordID, responderKey, statements)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got.CoveredBy) != 0 {
 			t.Fatalf("an unregistered statement covered the absence: %+v", got)
 		}
 	})
 	t.Run("a receipt under the responder's own key is not independent", func(t *testing.T) {
-		own := []WitnessRow{{Name: "responder", Endpoint: testWitnessURL, KeyIDs: []string{responderKey}}}
+		der, err := x509.MarshalPKIXPublicKey(responder.signer.PublicKey())
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(der)
+		// The directory lists the responder's key by the SHA-256 of its DER form.
+		own := []WitnessRow{{Name: "responder", Endpoint: testWitnessURL, KeyIDs: []string{hex.EncodeToString(digest[:])}, PublicKeys: []string{base64.StdEncoding.EncodeToString(der)}}}
 		bundle, err := responder.Bundle(ctx, BundleRequest{Root: statementRecord.RecordID, Payloads: PayloadsSelected})
 		if err != nil {
 			t.Fatal(err)
@@ -377,7 +367,135 @@ func TestUnavailableWindowEndToEnd(t *testing.T) {
 	})
 }
 
+func TestKeyIDNames(t *testing.T) {
+	raw := hex.EncodeToString(seededKey(31)[32:])
+	der, err := x509.MarshalPKIXPublicKey(ed25519.PublicKey(seededKey(31)[32:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(der)
+	for name, id := range map[string]string{"raw hex": raw, "DER digest": hex.EncodeToString(sum[:])} {
+		if !keyIDNames(id, raw) {
+			t.Fatalf("%s does not name the key", name)
+		}
+	}
+	if keyIDNames(hex.EncodeToString(seededKey(77)[32:]), raw) || keyIDNames("zz", raw) {
+		t.Fatal("another key id named the key")
+	}
+}
+
 func withWitnesses(keys ResponderKeys, rows []WitnessRow) ResponderKeys {
 	keys.Witnesses = rows
 	return keys
+}
+
+// A bundle with the anchor's receipts as given: the statement is covered only
+// by a receipt that verifies under the reader's directory, attests a time and
+// is not made under the responder's or the checkpoint's own key.
+func TestUnavailableWindowReceiptRules(t *testing.T) {
+	ctx := context.Background()
+	rf := newFixture(t, "responder", 31)
+	responder := rf.open(t)
+	witnessKey, directory := testWitness()
+	record, err := responder.SealUnavailableWindow(ctx, rf.clock.t.Add(-time.Hour), rf.clock.t.Add(time.Hour), "maintenance")
+	if err != nil {
+		t.Fatal(err)
+	}
+	responderKey := KeyID(responder.signer)
+	checkpointKey := responderKeys(responder, 31).Checkpoint
+	late, early := rf.clock.t.Add(30*time.Minute), rf.clock.t.Add(10*time.Minute)
+
+	read := func(t *testing.T, rows []WitnessRow, receipts func(statement []byte) []any) []evidencerequest.WindowStatement {
+		t.Helper()
+		bundle, err := responder.Bundle(ctx, BundleRequest{Root: record.RecordID, Payloads: PayloadsSelected})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire map[string]any
+		if err := json.Unmarshal(bundle.JSON, &wire); err != nil {
+			t.Fatal(err)
+		}
+		member := wire["checkpoint"].(map[string]any)
+		statement, _ := base64.RawURLEncoding.DecodeString(member["cose"].(string))
+		member["witnesses"] = receipts(statement)
+		data, _ := json.Marshal(wire)
+		verified, err := VerifyBundleAnswer(data, withWitnesses(responderKeys(responder, 31), rows))
+		if err != nil {
+			t.Fatal(err)
+		}
+		statements, err := verified.UnavailableWindowStatements(responderKey, rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return statements
+	}
+	registration := func(statements []evidencerequest.WindowStatement) string {
+		if len(statements) != 1 {
+			t.Fatalf("%d statements", len(statements))
+		}
+		reading := evidencerequest.RecognizeUnavailableWindow(statements[0].Statement, statements[0].Receipts, responderKey)
+		if !reading.Recognized {
+			return ""
+		}
+		return reading.RegistrationTime
+	}
+
+	t.Run("a receipt without a time registers nothing", func(t *testing.T) {
+		got := read(t, directory, func(s []byte) []any { return []any{mintReceipt(t, s, witnessKey)} })
+		if registration(got) != "" {
+			t.Fatalf("a receipt attesting no time registered the statement: %+v", got)
+		}
+	})
+	t.Run("the earliest of several receipts is the registration time", func(t *testing.T) {
+		got := read(t, directory, func(s []byte) []any {
+			return []any{mintReceiptAt(t, s, witnessKey, late), mintReceiptAt(t, s, witnessKey, early)}
+		})
+		if want := evidencerequest.ProfileTime(early); registration(got) != want {
+			t.Fatalf("registration time %q, want %q", registration(got), want)
+		}
+	})
+	t.Run("a receipt under the checkpoint's own key is not independent", func(t *testing.T) {
+		own := []WitnessRow{{Name: "log", Endpoint: testWitnessURL, KeyIDs: []string{checkpointKey}}}
+		got := read(t, own, func(s []byte) []any {
+			return []any{mintReceiptAt(t, s, ed25519.NewKeyFromSeed(seededKey(131)[:32]), early)}
+		})
+		if registration(got) != "" {
+			t.Fatalf("a receipt made under the checkpoint key registered the statement: %+v", got)
+		}
+	})
+}
+
+func TestUnavailableWindowReadRefusals(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "requester", 30)
+	requester := f.open(t)
+	sent, err := requester.Request(ctx, EvidenceRequest{Subject: Subject{Kind: SubjectFullHistory}, Coverage: fresh()}, "book-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.clock.t = f.clock.t.Add(time.Hour)
+	absence, err := requester.RecordAbsence(ctx, sent.RecordID, f.clock.t.Add(-time.Minute), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := hex.EncodeToString(seededKey(31)[32:])
+	for name, key := range map[string]string{"empty": "", "uppercase": strings.ToUpper(good), "short": good[:62], "not hex": strings.Repeat("zz", 32)} {
+		if _, err := requester.ShowAbsence(ctx, absence.RecordID, key, nil); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s responder key: %v", name, err)
+		}
+		if _, err := (VerifiedBundle{}).UnavailableWindowStatements(key, nil); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s responder key on read: %v", name, err)
+		}
+	}
+	// A record that is no absence of this book.
+	if _, err := requester.ShowAbsence(ctx, strings.Repeat("0", 64), good, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an unknown record: %v", err)
+	}
+	// A statement record that is not a JSON object is skipped, not an error.
+	notObject := json.RawMessage(`["flood"]`)
+	verified := VerifiedBundle{AnchorAuthenticated: true, IntervalFirst: 1, IntervalLast: 1, Records: []PeerRecord{{RecordID: "r", Seq: 1, HeaderVerified: true, Header: &Header{RecordType: RecordTypeUnavailableWindow, Statement: notObject}}}}
+	got, err := verified.UnavailableWindowStatements(good, nil)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("a statement that is not an object: %v %v", got, err)
+	}
 }

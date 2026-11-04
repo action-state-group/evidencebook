@@ -5,6 +5,8 @@ package evidencebook
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -73,14 +75,24 @@ func (b *Book) SealUnavailableWindow(ctx context.Context, start, end time.Time, 
 // RecordTypeUnavailableWindow whose header the bundle verified and whose
 // position the authenticated anchor covers. The anchor's receipts are
 // checked against witnesses, the reader's own list of the transparency
-// services it accepts (the directory VerifyBundleAnswer takes); a receipt counts when it verifies there, attests a
-// time, and is not made under responderKey (a service the responder
-// controls is never independent). The IDs are the records' ids.
+// services it accepts (the directory VerifyBundleAnswer takes); a receipt
+// counts when it verifies there, attests a time, and is made under neither
+// responderKey nor the anchor's checkpoint key (a service the responder
+// controls is never independent). responderKey is the raw Ed25519 key in
+// lowercase hex a response would be authenticated by. The IDs are the
+// records' ids.
+//
+// The receipts are those the bundle's anchor carries (checkpoint.witnesses),
+// which the host's witness delivery puts there; this package neither fetches
+// nor attaches them.
 //
 // A statement that is malformed, unsigned by the responder or unregistered
 // is returned all the same: evidencerequest.DisplayAbsence ignores it, as
 // the draft's reader does.
 func (v VerifiedBundle) UnavailableWindowStatements(responderKey string, witnesses []WitnessRow) ([]evidencerequest.WindowStatement, error) {
+	if err := checkResponderKey(responderKey); err != nil {
+		return nil, err
+	}
 	var statements []evidencerequest.WindowStatement
 	var receipts []evidencerequest.RegistrationReceipt
 	receiptsRead := false
@@ -142,10 +154,33 @@ func (v VerifiedBundle) registrationReceipts(responderKey string, witnesses []Wi
 		if result.Status != aacwitness.StatusPass || result.RegistrationTime == nil {
 			continue
 		}
-		independent := result.KeyID == nil || *result.KeyID != responderKey
+		// A pass always names the directory key it verified under.
+		if result.KeyID == nil {
+			continue
+		}
+		independent := !keyIDNames(*result.KeyID, responderKey) && !keyIDNames(*result.KeyID, v.AnchorKeyID)
 		out = append(out, evidencerequest.RegistrationReceipt{Time: evidencerequest.ProfileTime(time.Unix(*result.RegistrationTime, 0).UTC()), Accepted: independent})
 	}
 	return out, nil
+}
+
+// keyIDNames reports whether a witness directory key id names the Ed25519 key
+// whose raw lowercase hex is rawHex. A directory lists a key as that hex or as
+// the SHA-256 of its DER SubjectPublicKeyInfo (WitnessRow), and both name it.
+func keyIDNames(keyID, rawHex string) bool {
+	if keyID == rawHex {
+		return true
+	}
+	raw, err := hex.DecodeString(rawHex)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return false
+	}
+	der, err := x509.MarshalPKIXPublicKey(ed25519.PublicKey(raw))
+	if err != nil {
+		return false
+	}
+	sum := sha256.Sum256(der)
+	return keyID == hex.EncodeToString(sum[:])
 }
 
 // receiptRecord decodes a carried receipt with json.Number numbers, as the
@@ -182,10 +217,20 @@ func (b *Book) ShowAbsence(_ context.Context, absenceRecordID, responderKey stri
 	if err := json.Unmarshal(record.Header.Statement, &absence); err != nil {
 		return evidencerequest.AbsenceDisplay{}, fmt.Errorf("%w: absence record %s: %v", ErrCorrupt, absenceRecordID, err)
 	}
-	if _, err := hex.DecodeString(responderKey); err != nil || len(responderKey) != 2*ed25519.PublicKeySize {
-		return evidencerequest.AbsenceDisplay{}, fmt.Errorf("%w: responder key must be a raw Ed25519 key in lowercase hex", ErrInvalid)
+	if err := checkResponderKey(responderKey); err != nil {
+		return evidencerequest.AbsenceDisplay{}, err
 	}
 	return evidencerequest.DisplayAbsence(evidencerequest.StateRecordedAbsence, absence.Window.Opened, absence.Window.Closed, statements, responderKey)
+}
+
+// checkResponderKey refuses a responder key that is not a raw Ed25519 key in
+// lowercase hex, the form key_id carries.
+func checkResponderKey(responderKey string) error {
+	raw, err := hex.DecodeString(responderKey)
+	if err != nil || len(raw) != ed25519.PublicKeySize || hex.EncodeToString(raw) != responderKey {
+		return fmt.Errorf("%w: responder key must be a raw Ed25519 key in lowercase hex", ErrInvalid)
+	}
+	return nil
 }
 
 func stringsAsAny(in []string) []any {

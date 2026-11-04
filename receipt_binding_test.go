@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/fxamacker/cbor/v2"
@@ -31,6 +32,13 @@ func testWitness() (ed25519.PrivateKey, []WitnessRow) {
 // cll-go's witness/verify_test.go signedReceipt.
 func mintReceipt(t *testing.T, statement []byte, witnessKey ed25519.PrivateKey) map[string]any {
 	t.Helper()
+	return mintReceiptAt(t, statement, witnessKey, time.Time{})
+}
+
+// mintReceiptAt is mintReceipt with the witness's registration time: the iat
+// of the protected CWT claims, omitted when iat is the zero time.
+func mintReceiptAt(t *testing.T, statement []byte, witnessKey ed25519.PrivateKey, iat time.Time) map[string]any {
+	t.Helper()
 	record, err := checkpoint.ParseRecord(statement)
 	if err != nil {
 		t.Fatal(err)
@@ -47,6 +55,9 @@ func mintReceipt(t *testing.T, statement []byte, witnessKey ed25519.PrivateKey) 
 	message := cose.NewSign1Message()
 	message.Headers.Protected.SetAlgorithm(cose.AlgorithmEdDSA)
 	message.Headers.Protected[int64(395)] = int64(1)
+	if !iat.IsZero() {
+		message.Headers.Protected[int64(15)] = map[any]any{int64(6): iat.Unix()}
+	}
 	message.Headers.Unprotected[int64(396)] = map[any]any{int64(-1): []any{proof}}
 	message.Payload = leaf[:]
 	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, witnessKey)
