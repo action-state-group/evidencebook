@@ -145,7 +145,7 @@ func (s *dealSession) stapleHistoryCard(ctx context.Context) (stapleMessages, er
 	}
 	st, err := cadence.HistoryCard(ctx, 0)
 	if errors.Is(err, evidencebook.ErrNotFound) {
-		return stapleMessages{}, fmt.Errorf("%w (run `deal tick` first)", errNoTick)
+		return stapleMessages{}, shNoTick(fmt.Errorf("%w (run `deal tick` first)", errNoTick))
 	}
 	if err != nil {
 		return stapleMessages{}, err
@@ -172,7 +172,7 @@ func stapleAnchor(ctx context.Context, cadence *evidencebook.Cadence) (string, u
 			return evidencerequest.Digest(t.Checkpoint), n, nil
 		}
 	}
-	return "", 0, fmt.Errorf("%w (run `deal tick` first)", errNoTick)
+	return "", 0, shNoTick(fmt.Errorf("%w (run `deal tick` first)", errNoTick))
 }
 
 // stapleRequest is the holder's request for its own card: the derivation over
