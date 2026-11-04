@@ -77,6 +77,17 @@ type BundleRequest struct {
 	// ProducerKey, a raw 32-byte Ed25519 public key, declares the bundle's
 	// producer key (the producer-key/v1 extension).
 	ProducerKey ed25519.PublicKey
+	// Witnesses are witness receipts for the anchor, as checkpoint.witnesses
+	// entries (ts_url, entry_hash, receipt_b64, leaf_index, tree_size): the
+	// bundle carries them in checkpoint.witnesses. The anchor must therefore
+	// be known when the receipts are made, so pin it with At. Each is
+	// checked against the anchor's signed checkpoint under WitnessDirectory
+	// before the bundle is built; one that does not verify, or any receipt
+	// without a directory, is ErrInvalid. At most MaxReplyReceipts.
+	Witnesses []json.RawMessage
+	// WitnessDirectory names the witnesses and keys Witnesses are checked
+	// under (capsule-emit's witnesses.json rows; see ParseWitnessDirectory).
+	WitnessDirectory []WitnessRow
 }
 
 // Bundle is a portable, self-verifying Evidence Bundle v2 plus the disclosure
@@ -173,6 +184,12 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
+	if len(req.Witnesses) > MaxReplyReceipts {
+		return Bundle{}, fmt.Errorf("%w: limit: witness receipts: %d over %d", ErrInvalid, len(req.Witnesses), MaxReplyReceipts)
+	}
+	if err := verifyCarriedReceipts(anchor.Statement, req.Witnesses, req.WitnessDirectory); err != nil {
+		return Bundle{}, err
+	}
 	first := anchor.Entries
 	for id := range selected {
 		seq := b.records[id].Seq
@@ -209,6 +226,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		switch {
 		case err == nil:
 			wire.Certificate, wire.Checkpoint = &interval.Certificate, &interval.Checkpoint
+			if len(req.Witnesses) > 0 {
+				wire.Checkpoint.Witnesses = req.Witnesses
+			}
 			for seq := first; seq <= anchor.Entries; seq++ {
 				carried = append(carried, b.log[seq-1].RecordID)
 			}

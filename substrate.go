@@ -145,4 +145,7 @@ type BundleCheckpoint struct {
 	Root    string `json:"root"`
 	MMRSize uint64 `json:"mmr_size"`
 	COSE    string `json:"cose,omitempty"`
+	// Witnesses are witness receipts for the signed statement
+	// (BundleRequest.Witnesses), as given.
+	Witnesses []json.RawMessage `json:"witnesses,omitempty"`
 }

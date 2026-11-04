@@ -38,10 +38,11 @@ const UnavailableWindowText = "Not answered. The holder says these records are u
 // Sealing is not registering. A reader counts the statement only once a
 // checkpoint covering it carries a receipt, with an attested time, from a
 // transparency service the reader accepts as independent of this book's
-// operator. This package obtains no receipt and has no input to attach one to
-// a bundle: the host gets a receipt for the checkpoint that covers the
-// returned record, pins that checkpoint as BundleRequest.At, and adds the
-// receipt to the bundle's checkpoint.witnesses itself.
+// operator. This package obtains no receipt: the host gets a receipt for the
+// checkpoint that covers the returned record, pins that checkpoint as
+// BundleRequest.At, and passes the receipt (with the witness directory it is
+// checked under) as BundleRequest.Witnesses, which carries it in the
+// bundle's checkpoint.witnesses.
 func (b *Book) SealUnavailableWindow(ctx context.Context, start, end time.Time, reasonClass string) (Record, error) {
 	if !slices.Contains(evidencerequest.UnavailableReasonClasses, reasonClass) {
 		return Record{}, fmt.Errorf("%w: reason_class must be one of %v", ErrInvalid, evidencerequest.UnavailableReasonClasses)
@@ -85,7 +86,7 @@ func (b *Book) SealUnavailableWindow(ctx context.Context, start, end time.Time, 
 // records' ids.
 //
 // The receipts are those the bundle's anchor carries (checkpoint.witnesses).
-// This package neither fetches nor attaches them (see SealUnavailableWindow);
+// This package does not fetch them; BundleRequest.Witnesses carries them (see SealUnavailableWindow);
 // a bundle whose anchor carries none registers no statement.
 //
 // A statement that is malformed, unsigned by the responder or unregistered

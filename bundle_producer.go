@@ -175,6 +175,22 @@ func (b *Book) produceLocked(ctx context.Context, snapshot *proofSnapshot, req B
 	if err != nil {
 		return nil, err
 	}
+	if len(req.Witnesses) > 0 {
+		// The producer has no input for receipts; the member sits outside
+		// the signed statement, so setting it changes nothing the
+		// producer verified.
+		member, ok := built["checkpoint"].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: the built bundle has no checkpoint to carry witness receipts", ErrCorrupt)
+		}
+		receipts := make([]any, len(req.Witnesses))
+		for i, raw := range req.Witnesses {
+			if receipts[i], err = decodeJSON(raw); err != nil {
+				return nil, fmt.Errorf("%w: witness receipt %d: %v", ErrInvalid, i, err)
+			}
+		}
+		member["witnesses"] = receipts
+	}
 	return canonical.JCS(built)
 }
 
