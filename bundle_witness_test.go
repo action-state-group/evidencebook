@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,7 +131,8 @@ func TestBundleRefusesBadWitnessReceipts(t *testing.T) {
 		"over the limit":                   {Witnesses: tooMany, WitnessDirectory: directory},
 		"a member besides the five":        {Witnesses: []json.RawMessage{receiptWith(t, good, "extra", "x")}, WitnessDirectory: directory},
 		"a differently-cased member name":  {Witnesses: []json.RawMessage{receiptWith(t, good, "TS_URL", "https://wrong.test")}, WitnessDirectory: directory},
-		"non-canonical base64":             {Witnesses: []json.RawMessage{receiptWith(t, good, "receipt_b64", "!")}, WitnessDirectory: directory},
+		"non-canonical base64":             {Witnesses: []json.RawMessage{receiptWith(t, good, "receipt_b64", goodBase64(t, good)+"\n")}, WitnessDirectory: directory},
+		"folded extension keys":            {Witnesses: []json.RawMessage{good}, WitnessDirectory: directory, Extensions: map[string]json.RawMessage{"x/v1": json.RawMessage(`{"a":1,"A":2}`)}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			req.Root, req.At = record.RecordID, &anchor
@@ -154,6 +156,18 @@ func TestBundleRefusesBadWitnessReceipts(t *testing.T) {
 	if after := len(responder.log); after != before {
 		t.Fatalf("a refused bundle appended %d records", after-before)
 	}
+}
+
+// goodBase64 is the receipt_b64 of receipt.
+func goodBase64(t *testing.T, receipt json.RawMessage) string {
+	t.Helper()
+	var fields struct {
+		Receipt string `json:"receipt_b64"`
+	}
+	if err := json.Unmarshal(receipt, &fields); err != nil {
+		t.Fatal(err)
+	}
+	return fields.Receipt
 }
 
 // receiptWith is receipt with one member set.
@@ -192,12 +206,48 @@ func TestBundleCarriesWitnessReceiptsOnTheIntervalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verified, err := VerifyBundle(bundle.JSON)
+	verified, err := VerifyBundleAnswer(bundle.JSON, withWitnesses(responderKeys(book, 31), directory))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(verified.Witnesses) != 1 {
-		t.Fatalf("witnesses: %d", len(verified.Witnesses))
+	if !verified.Witnessed || len(verified.Witnesses) != 1 {
+		t.Fatalf("witnessed %v, receipts %d", verified.Witnessed, len(verified.Witnesses))
+	}
+}
+
+// unsupportedInterval is a substrate that proves no interval and no producer
+// snapshot, so its bundle has no checkpoint member.
+type unsupportedInterval struct{ Substrate }
+
+func (unsupportedInterval) ProveInterval(context.Context, uint64, Checkpoint) (IntervalEvidence, error) {
+	return IntervalEvidence{}, ErrUnsupported
+}
+
+// A bundle with no checkpoint member cannot carry receipts: refused, never
+// silently dropped.
+func TestBundleRefusesWitnessReceiptsWhereTheBundleHasNoCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "responder", 31)
+	cfg := f.config(t)
+	cfg.Substrate = unsupportedInterval{cfg.Substrate}
+	book, err := Open(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witnessKey, directory := testWitness()
+	record, err := book.SealUnavailableWindow(ctx, f.clock.t.Add(-time.Hour), f.clock.t.Add(time.Hour), "outage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := rawReceipt(t, mintReceiptAt(t, anchor.Statement, witnessKey, f.clock.t))
+	before := len(book.log)
+	_, err = book.Bundle(ctx, BundleRequest{Root: record.RecordID, At: &anchor, Witnesses: []json.RawMessage{receipt}, WitnessDirectory: directory})
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "no checkpoint to carry") || len(book.log) != before {
+		t.Fatalf("got %v, log grew by %d", err, len(book.log)-before)
 	}
 }
 
@@ -206,6 +256,7 @@ func TestBundleCarriesWitnessReceiptsOnTheIntervalPath(t *testing.T) {
 func TestBundleRefusesWitnessReceiptsOnASCITTBook(t *testing.T) {
 	ctx := context.Background()
 	book := scittBook(t)
+	_, directory := testWitness()
 	record, err := book.Append(ctx, Entry{RecordType: "note", EpistemicType: ProducerClaim, Statement: []byte(`{"n":1}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -214,8 +265,8 @@ func TestBundleRefusesWitnessReceiptsOnASCITTBook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = book.Bundle(ctx, BundleRequest{Root: record.RecordID, At: &anchor, Witnesses: []json.RawMessage{json.RawMessage(`{"ts_url":"https://w.test","entry_hash":"x","receipt_b64":"AAAA","leaf_index":0,"tree_size":1}`)}, WitnessDirectory: []WitnessRow{{Name: "w", Endpoint: testWitnessURL}}})
-	if !errors.Is(err, ErrInvalid) {
-		t.Fatalf("got %v, want ErrInvalid", err)
+	_, err = book.Bundle(ctx, BundleRequest{Root: record.RecordID, At: &anchor, Witnesses: []json.RawMessage{json.RawMessage(`{"ts_url":"` + testWitnessURL + `","entry_hash":"x","receipt_b64":"AAAA","leaf_index":0,"tree_size":1}`)}, WitnessDirectory: directory})
+	if !errors.Is(err, ErrInvalid) || strings.Contains(err.Error(), "no directory row") {
+		t.Fatalf("got %v, want ErrInvalid from the statement", err)
 	}
 }

@@ -87,6 +87,8 @@ type BundleRequest struct {
 	Witnesses []json.RawMessage
 	// WitnessDirectory names the witnesses and keys Witnesses are checked
 	// under (capsule-emit's witnesses.json rows; see ParseWitnessDirectory).
+	// This check is the producer's; a reader checks the receipts again
+	// under its own directory.
 	WitnessDirectory []WitnessRow
 }
 
