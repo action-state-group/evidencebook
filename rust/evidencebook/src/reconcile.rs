@@ -82,7 +82,7 @@ pub struct Half {
     pub covered: bool,
     /// The record verifies and its header matches what it committed.
     pub trusted: bool,
-    /// Records an exchange that did not complete (refused, errored, timed out
+    /// Records an interaction that did not complete (refused, errored, timed out
     /// or dropped). A header carries no outcome, so the caller sets it from
     /// the record's own outcome; the default is a served exchange. A failed
     /// half has no payload commitments to compare, so its pair is decided by
@@ -229,7 +229,7 @@ impl Tallies {
 /// (`INSUFFICIENT`), then an untrusted half (`UNRESOLVED`), then the outcomes:
 /// two failed halves are `MATCHED` (each side's reason is its own view and is
 /// not compared), and a failed half against a served one is `CONFLICTING`, so
-/// a requester that timed out while the provider finished is a disagreement,
+/// one side that timed out while the other finished is a disagreement,
 /// never a missing peer half. Only two served halves reach the content test.
 pub fn reconcile_halves(
     a: &HalfSet,
@@ -255,7 +255,7 @@ pub fn reconcile_halves(
     // half matches better: the same outcome with the same secondary key, the
     // same outcome with a compatible one, the same outcome (a secondary
     // disagreement is then reported as the key conflict), then any outcome (a
-    // requester that timed out against a provider that finished). A failed
+    // one side that timed out against another that finished). A failed
     // half carries no secondary key, so without the outcome tiers it would
     // rank with a served half.
     let compatible = |x: &Half, y: &Half| match (x.key(&policy.secondary), y.key(&policy.secondary))
