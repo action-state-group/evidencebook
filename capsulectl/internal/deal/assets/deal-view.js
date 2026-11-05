@@ -24,7 +24,7 @@
 // what the buyer wrote (evidencebook-deal#56) against what capsulectl
 // recomputed when it built the page (page.openings, one result per opening, in
 // order). The counterparty is named as the OK card names them: the payee, else
-// the name, then the site in brackets; a value that did not recompute is never
+// the name, else the site, phone or email, then the site in brackets; a value that did not recompute is never
 // shown and sets whoBad. An acceptance is shown only
 // when it recomputed.
 function dealOpeningLines(report, checkedBy) {
@@ -33,7 +33,7 @@ function dealOpeningLines(report, checkedBy) {
   let whoBad = false;
   list.forEach((e, i) => {
     const ok = (Array.isArray(checkedBy.counterparty) && checkedBy.counterparty[i]) || {};
-    ["payee", "name", "domain"].forEach((kind) => {
+    ["payee", "name", "domain", "phone", "email"].forEach((kind) => {
       if (!e || typeof e[kind] !== "string") return;
       // The last entry for a field decides it; one that did not recompute
       // leaves the field unnamed rather than an earlier entry's value.
@@ -44,7 +44,7 @@ function dealOpeningLines(report, checkedBy) {
       }
     });
   });
-  const label = got.payee || got.name || got.domain;
+  const label = got.payee || got.name || got.domain || got.phone || got.email;
   const who = !label ? "" : got.domain && label !== got.domain ? `${label} (${got.domain})` : label;
   const accepted = (Array.isArray(report && report.acceptance_openings) ? report.acceptance_openings : []).map((a, i) =>
     a && Array.isArray(checkedBy.acceptances) && checkedBy.acceptances[i] === true && typeof a.text === "string" ? { step: a.step, text: a.text } : {},

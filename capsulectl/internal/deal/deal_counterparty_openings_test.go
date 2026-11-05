@@ -176,13 +176,13 @@ func TestSharedCopiesCarryNoCounterpartyOpenings(t *testing.T) {
 	}
 }
 
-// A deal sealed with no payee, name, domain or acceptance to open reports, and
+// A deal sealed with no payee, name, domain, phone, email or acceptance to open reports, and
 // renders, as it did.
 func TestADealWithNothingToOpenCarriesNoOpenings(t *testing.T) {
 	dealFixture(t)
 	id := dealRun(t, "open", "--input", writeJSON(t, `{"type":"purchase","channel":"web",
 		"intent":{"verbatim":"buy me an otter sticker under 8 bucks","max_total_minor":800,"allowed":["pay"]},
-		"who":{"email":"seller@stickers.example"},
+		"who":{"relay_address":"seller@relay.stickers.example"},
 		"terms":{"item":"otter sticker","price_minor":600,"currency":"USD"},
 		"recourse":{"rail":"card","refundable":true}}`))["deal_id"].(string)
 	b := ownReport(t, id)
@@ -221,7 +221,7 @@ func TestARepeatedStepVerifiesOnlyItsFirstOpening(t *testing.T) {
 }
 
 // The receipt names the counterparty as the OK card does (the payee, else the
-// name, the site in brackets), field by field from the last entry that names
+// name, else the site, phone or email, with the site in brackets), field by field from the last entry that names
 // it, and shows only what recomputed: a value that did not is never shown, and nor are a
 // repeated step's later entries or an acceptance that did not verify.
 func TestTheReceiptShowsOnlyWhatRecomputed(t *testing.T) {
@@ -261,6 +261,11 @@ func TestTheReceiptShowsOnlyWhatRecomputed(t *testing.T) {
 				"checked": map[string]any{"counterparty": []any{map[string]any{"name": true, "domain": true}, map[string]any{"payee": true}}}},
 			// a deal with nothing to open.
 			{"report": map[string]any{}, "checked": map[string]any{}},
+			// known only by an address: the phone, else the email, as the card names them.
+			{"report": steps(map[string]any{"step": "a", "phone": "+1 415 555 0100"}), "checked": map[string]any{"counterparty": []any{map[string]any{"phone": true}}}},
+			{"report": steps(map[string]any{"step": "a", "email": "a@b.example"}), "checked": map[string]any{"counterparty": []any{map[string]any{"email": true}}}},
+			// an address that did not recompute is not shown and says so.
+			{"report": steps(map[string]any{"step": "a", "email": "evil@b.example"}), "checked": map[string]any{"counterparty": []any{map[string]any{"email": false}}}},
 		},
 	})
 	lines := got["openings"].([]any)
@@ -278,6 +283,10 @@ func TestTheReceiptShowsOnlyWhatRecomputed(t *testing.T) {
 	assert.Equal(t, "", line(6)["who"])
 	assert.Equal(t, false, line(6)["whoBad"])
 	assert.Empty(t, line(6)["accepted"])
+	assert.Equal(t, "+1 415 555 0100", line(7)["who"])
+	assert.Equal(t, "a@b.example", line(8)["who"])
+	assert.Equal(t, "", line(9)["who"])
+	assert.Equal(t, true, line(9)["whoBad"])
 }
 
 // The counterparty is who the deal ends with, as the OK card names them: a
@@ -360,4 +369,95 @@ func TestAPayeeBeforeASwitchIsNotNamedBesideTheNewCounterparty(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]string{"name": "eBay", "domain": "ebay.com"}, got)
+}
+
+// A counterparty known only by phone or email is opened as the OK card names
+// them (the phone, else the email), and only when the card has no payee, name
+// or site to name them by; the other address stays unopened (evidencebook-deal#162).
+func TestACounterpartyKnownOnlyByAddressIsOpenedAsTheCardNamesThem(t *testing.T) {
+	for name, tc := range map[string]struct {
+		who  string
+		want map[string]string
+	}{
+		"phone only":      {`{"phone":"+1 415 555 0100"}`, map[string]string{"phone": "+1 415 555 0100"}},
+		"email only":      {`{"email":"seller@buyer.example"}`, map[string]string{"email": "seller@buyer.example"}},
+		"phone and email": {`{"phone":"+1 415 555 0100","email":"seller@buyer.example"}`, map[string]string{"phone": "+1 415 555 0100"}},
+		"a name wins":     {`{"name":"Fawn Seller","email":"seller@buyer.example"}`, map[string]string{"name": "Fawn Seller"}},
+		"a site wins":     {`{"domain":"buyer.example","phone":"+1 415 555 0100"}`, map[string]string{"domain": "buyer.example"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dealFixture(t)
+			open := strings.Replace(fawnOpen, `"who":{"name":"sticker_shop_example","domain":"marketplace.example"}`, `"who":`+tc.who, 1)
+			require.NotEqual(t, fawnOpen, open)
+			id := dealRun(t, "open", "--input", writeJSON(t, open))["deal_id"].(string)
+			b := ownReport(t, id)
+			got := map[string]string{}
+			if cp, ok := sealedReport(t, b)["counterparty_openings"].(map[string]interface{}); ok {
+				for _, e := range cp["steps"].([]interface{}) {
+					for kind, v := range e.(map[string]interface{}) {
+						if kind != "step" {
+							got[kind] = v.(string)
+						}
+					}
+				}
+			}
+			assert.Equal(t, tc.want, got)
+			out, err := dealPageOpenings(b)
+			require.NoError(t, err)
+			require.NotEmpty(t, out["counterparty"])
+			for _, kinds := range out["counterparty"].([]interface{}) {
+				for kind, ok := range kinds.(map[string]interface{}) {
+					assert.Equal(t, true, ok, kind)
+				}
+			}
+		})
+	}
+}
+
+// An email opened under another value, or a phone not sealed, is not verified.
+func TestAnAddressOpeningThatDoesNotMatchIsNotVerified(t *testing.T) {
+	dealFixture(t)
+	open := strings.Replace(fawnOpen, `"who":{"name":"sticker_shop_example","domain":"marketplace.example"}`, `"who":{"email":"seller@buyer.example"}`, 1)
+	id := dealRun(t, "open", "--input", writeJSON(t, open))["deal_id"].(string)
+	b := ownReport(t, id)
+	r := sealedReport(t, b)
+	e := r["counterparty_openings"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+	e["email"] = "other@buyer.example"
+	e["phone"] = "+1 415 555 0100"
+	out, err := dealPageOpenings(b)
+	require.NoError(t, err)
+	kinds := out["counterparty"].([]interface{})[0].(map[string]interface{})
+	assert.Equal(t, false, kinds["email"])
+	assert.Equal(t, false, kinds["phone"])
+}
+
+// The address is chosen as recipientName chooses it: a blank field is skipped.
+func TestCardAddressKindSkipsBlankFields(t *testing.T) {
+	assert.Equal(t, "email", cardAddressKind(dealWho{Phone: " ", Email: "a@b.example"}))
+	assert.Equal(t, "phone", cardAddressKind(dealWho{Phone: "+1 415 555 0100", Email: "a@b.example"}))
+	assert.Equal(t, "", cardAddressKind(dealWho{Domain: " ", Phone: " "}))
+	assert.Equal(t, "email", cardAddressKind(dealWho{Domain: "  ", Email: "a@b.example"}))
+	assert.Equal(t, "", cardAddressKind(dealWho{Name: "N", Email: "a@b.example"}))
+}
+
+// The card takes no phone or email from a check: a check naming another phone
+// than the one the deal opened with leaves the opened email the card names, and
+// the check's phone is not opened.
+func TestACheckDoesNotChangeTheAddressTheCardNames(t *testing.T) {
+	dealFixture(t)
+	open := strings.Replace(fawnOpen, `"who":{"name":"sticker_shop_example","domain":"marketplace.example"}`, `"who":{"email":"seller@buyer.example"}`, 1)
+	id := dealRun(t, "open", "--input", writeJSON(t, open))["deal_id"].(string)
+	pay := dealRun(t, "check", "--deal", id, "--input", writeJSON(t, `{"action":"pay","amount_minor":190,"authorized_max_minor":190,"who":{"phone":"+1 415 555 0199"},"terms":{"item":"Fawn Sticker","price_minor":175},"recourse":{"rail":"card","refundable":true}}`))
+	require.NotEmpty(t, pay["check_id"])
+	dealRun(t, "note", "--deal", id, "--kind", "act", "--input", writeJSON(t, `{"action":"pay","amount_minor":190,"rail":"card"}`))
+
+	got := map[string]string{}
+	for _, e := range sealedReport(t, ownReport(t, id))["counterparty_openings"].(map[string]interface{})["steps"].([]interface{}) {
+		for kind, v := range e.(map[string]interface{}) {
+			if kind != "step" {
+				got[kind] = v.(string)
+			}
+		}
+	}
+	assert.Equal(t, map[string]string{"email": "seller@buyer.example"}, got)
 }

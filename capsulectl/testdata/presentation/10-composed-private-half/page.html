@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-NyU/VCeFHvJlov4e+vMHGUzQSJVPIUE5Wr/uEcUGrNw=' 'sha256-d4SSi6poZDru/ZM2onKYt7FLGjli/L48Lrv8BMJkzug=' 'sha256-GjPsUfQstd5PrwteNQw3syGOljRD31WNTFpA9QF/V3g='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-BHWcE+xl3QJkUUnLfQCRU3Erj4wxAn/XOSPfNelfgnk='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-OrFPBglJHMf3+HTCWoszaU8noRQjBdFZlACsMHzi6gY=' 'sha256-NyU/VCeFHvJlov4e+vMHGUzQSJVPIUE5Wr/uEcUGrNw=' 'sha256-pUUwop/GPZcJPg2n+vlb4NJqcDhEsDQm0rdRDrEggBs=' 'sha256-GjPsUfQstd5PrwteNQw3syGOljRD31WNTFpA9QF/V3g='; style-src 'sha256-U9UbCPvy2QLM7aHKw620JQWRtvFEimSOpTxo1ReNTEI=' 'sha256-OvFajC9liMWF/BSOZHNxvh2l1sQ2aAZql11wyZX6bms=' 'sha256-bWMzcbEi5jnuRvfnK+M2hqYUuy75PsVYo/i0qbCwmUk=' 'sha256-TnXMM+0Fq1X6na2ALm/1DXDUPsCgVGxmUVyXCBGfoyg=' 'sha256-cncT4OYMoss7phrDXOY4dpINPZZ9vGmepBpESuOrcC8=' 'sha256-s1Hwep8I1r8nY6NDRi7DWaukU34KC1bQuwAIy0K6WvM=' 'sha256-RuO4TmjSxyTX5mOP1pm1P82iXcTuhv9kumWRUpFDekY=' 'sha256-5T0/4+LXKtBXbiQ1pNehS9ztTdGpSWdp72GVPltyhxU=' 'sha256-9XVagwzRCQjejTg6rQrF5gvDz4JNsa2rLsvqiZTCMEw=' 'sha256-BHWcE+xl3QJkUUnLfQCRU3Erj4wxAn/XOSPfNelfgnk='; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Deal: both halves</title>
     <style>
@@ -30294,7 +30294,7 @@ globalThis.renderEvidenceGraph = EvidenceGraph.renderEvidenceGraph;
 // what the buyer wrote (evidencebook-deal#56) against what capsulectl
 // recomputed when it built the page (page.openings, one result per opening, in
 // order). The counterparty is named as the OK card names them: the payee, else
-// the name, then the site in brackets; a value that did not recompute is never
+// the name, else the site, phone or email, then the site in brackets; a value that did not recompute is never
 // shown and sets whoBad. An acceptance is shown only
 // when it recomputed.
 function dealOpeningLines(report, checkedBy) {
@@ -30303,7 +30303,7 @@ function dealOpeningLines(report, checkedBy) {
   let whoBad = false;
   list.forEach((e, i) => {
     const ok = (Array.isArray(checkedBy.counterparty) && checkedBy.counterparty[i]) || {};
-    ["payee", "name", "domain"].forEach((kind) => {
+    ["payee", "name", "domain", "phone", "email"].forEach((kind) => {
       if (!e || typeof e[kind] !== "string") return;
       // The last entry for a field decides it; one that did not recompute
       // leaves the field unnamed rather than an earlier entry's value.
@@ -30314,7 +30314,7 @@ function dealOpeningLines(report, checkedBy) {
       }
     });
   });
-  const label = got.payee || got.name || got.domain;
+  const label = got.payee || got.name || got.domain || got.phone || got.email;
   const who = !label ? "" : got.domain && label !== got.domain ? `${label} (${got.domain})` : label;
   const accepted = (Array.isArray(report && report.acceptance_openings) ? report.acceptance_openings : []).map((a, i) =>
     a && Array.isArray(checkedBy.acceptances) && checkedBy.acceptances[i] === true && typeof a.text === "string" ? { step: a.step, text: a.text } : {},
