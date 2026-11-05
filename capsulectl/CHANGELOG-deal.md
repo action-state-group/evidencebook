@@ -12,6 +12,10 @@
   reported as not verified and not shown. Shared copies carry none of it, nor the deal key, and a shared copy that did
   refuses the page. A deal with nothing to open reports as before. No sealed record or schema changes
   (evidencebook-deal#56).
+- A counterparty known only by phone or email is opened the same way in the user's own report, as the OK card names
+  them: the phone, else the email, and only when the deal has no payee, name or site to name them by. The receipt shows
+  it as "With <phone or email>" once it recomputes against the sealed fingerprint; shared copies are unchanged
+  (evidencebook-deal#162).
 
 ## v0.1.0-rc37
 
