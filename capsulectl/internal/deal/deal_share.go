@@ -914,7 +914,7 @@ func dealRecordShareable(v interface{}, key string, audience string, p dealPriva
 			p.seller && (dealTypedShareKeys[key] || key == "item" ||
 				strings.HasSuffix(key, "_basis") && len(x) == 64 && cli.IsLowerHex(x)) ||
 			(audience == cli.DealAudienceAdjudicator && dealAdjudicatorKeys[key]) ||
-			key == "source" && (x == "merchant_email" || x == wrappedSource) || // a fixed token, not a claim's source
+			key == "source" && (x == "merchant_email" || x == wrappedSource || x == sourceRulingBuyer || x == sourceRulingSell) || // a fixed token, not a claim's source
 			key == "class" && dealClaimClasses[x] // a claim's kind of representation
 		return allowed && p.clean(x)
 	default:
@@ -1093,6 +1093,13 @@ func dealShareStepLine(e dealEvent, audience string, p dealPrivate, currency str
 		}
 		return "Claim recorded (withheld)"
 	case "evidence":
+		if e.Evidence.Source == sourceDispute {
+			return "A dispute was recorded"
+		}
+		if r, ok := rulingOfEvent(e); ok {
+			line, _ := rulingLine(r)
+			return "Ruling " + line
+		}
 		state := "not verified"
 		if e.Evidence.Verified {
 			state = "verified"
@@ -1204,7 +1211,7 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			text := item.Text
 			// The adjudicator's pack phrase goes where the owner's stood, right after the verdict:
 			// head is the text before it, and text what follows.
-			head, atPack := "", audience == cli.DealAudienceAdjudicator && item.SharedPack != "" && item.OwnPack != ""
+			head, atPack := "", (audience == cli.DealAudienceAdjudicator || item.Kind == "ruling" && audience == cli.DealAudienceCounterparty) && item.SharedPack != "" && item.OwnPack != ""
 			if item.OwnPack != "" && audience != cli.DealAudienceKeep {
 				if atPack {
 					head, text, _ = strings.Cut(item.Text, item.OwnPack)

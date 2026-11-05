@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `deal note --kind dispute` and `--kind ruling` (evidencebook-deal#151, Terms Pack Studio step 6). They stand in for
+  the dispute and ruling record kinds until those land and add no record family and no schema: each seals an evidence
+  step whose `source` is `dispute` (the buyer's, once per deal), `ruling_for_buyer` or `ruling_for_seller` (the
+  referee's one ruling, final once sealed). The ruling digest is the SHA-256 of the ruling body, which names both
+  parties' copies, so the same body written to both stores gives the same digest; `--ruling-digest` makes the second
+  store refuse a ruling that differs from the first. A buyer's store checks the ruling against its dispute. The receipt reads
+  `Ruling <12 hex> on "price as offered": found for the buyer` on both parties' own copies and on the counterparty's
+  shared copy. The standard history card's `disputes` tally is filled from it: raised for a buyer, received for a
+  seller, `for` or `against` the holder, forum `external`; a dispute with no ruling yet counts as open.
 - `deal standard-history card` works right after `declare` and `deal tick` on a new profile (evidencebook-deal#153).
   A tick's stored time is rounded down to the minute, so a declaration made in the same minute read as newer than
   the tick and the card was refused. `deal tick` now keeps the tick's real cut time, and the card is still refused

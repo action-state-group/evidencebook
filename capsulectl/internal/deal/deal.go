@@ -1338,7 +1338,7 @@ func dealNoteCommand() *cobra.Command {
 			return cli.InputError("--object and --object-digest go with --kind evidence")
 		}
 		path, _ := c.Flags().GetString("input")
-		settlementKind := ""
+		settlementKind, disputeKind := "", ""
 		// The intent note's derived move, once it is checked against the deal.
 		var journeyMove *dealIntentMove
 		switch {
@@ -1348,6 +1348,12 @@ func dealNoteCommand() *cobra.Command {
 				return err
 			}
 			ev, settlementKind, kind = built, kind, "evidence"
+		case kind == noteKindDispute || kind == noteKindRuling:
+			built, err := disputeNoteEvent(c, kind)
+			if err != nil {
+				return err
+			}
+			ev, disputeKind, kind = built, kind, "evidence"
 		case kind == "evidence" && emailPath != "" && path == "":
 			ev.Evidence = &dealEvidence{About: "merchant confirmation email", Source: "merchant_email"}
 		case kind == "evidence" && wrapped != nil && path == "":
@@ -1497,7 +1503,7 @@ func dealNoteCommand() *cobra.Command {
 			}
 			ev.Acceptance = a
 		default:
-			return cli.InputError("--kind must be message, claim, evidence, change, intent, approval, act, disclosure, platform_approval, acceptance, payment_received, delivered, searched, options, recommended, chose or couldnt")
+			return cli.InputError("--kind must be message, claim, evidence, change, intent, approval, act, disclosure, platform_approval, acceptance, payment_received, delivered, dispute, ruling, searched, options, recommended, chose or couldnt")
 		}
 		if wrapped != nil {
 			ev.Evidence.Wrapped = wrapped
@@ -1563,6 +1569,13 @@ func dealNoteCommand() *cobra.Command {
 						return err
 					}
 				}
+			}
+			if disputeKind != "" {
+				if err := checkDisputeNote(events, ev); err != nil {
+					return err
+				}
+			} else if ev.Evidence != nil && isDisputeSource(ev.Evidence.Source) {
+				return cli.InputError("source " + ev.Evidence.Source + " is sealed only by deal note --kind dispute or --kind ruling")
 			}
 			if settlementKind != "" {
 				if err := checkSettlementNote(events, &ev, settlementKind); err != nil {
@@ -1904,6 +1917,17 @@ func dealNoteCommand() *cobra.Command {
 					})
 				case settlementKind == noteKindDelivered:
 					cli.Speak(out, s.p, func(w cli.Wording) cli.Narration { return line(w.Line("say.delivered", nil)) })
+				case disputeKind == noteKindDispute:
+					out["dispute_digest"] = disputeRef(se.Digest)
+					cli.Speak(out, s.p, func(w cli.Wording) cli.Narration {
+						return line(w.Line("say.dispute", cli.V{"row": rowWords(ev.Evidence.About)}))
+					})
+				case disputeKind == noteKindRuling:
+					r, _ := rulingIn(all)
+					out["ruling_digest"] = r.Digest
+					cli.Speak(out, s.p, func(w cli.Wording) cli.Narration {
+						return line(w.Line("say.ruling", cli.V{"row": rowWords(r.Row), "who": winnerWords(r.ForBuyer), "digest": r.Digest[:rulingShown]}))
+					})
 				case ev.Evidence.Email != nil:
 					if state, err := foldDeal(all); err == nil {
 						s.stepReport(ctx, out, all, htmlPath, cli.VoiceLine, func(w cli.Wording) []string { return emailLines(w, ev.Evidence.Email, state) })
@@ -1918,10 +1942,16 @@ func dealNoteCommand() *cobra.Command {
 	}}
 	cmd.Annotations = map[string]string{saleStepsAnnotation: "post"}
 	cmd.Flags().String("deal", "", "Deal ID from `deal open`, or a sale id from `deal sale new` for a listing post's approval and act")
-	cmd.Flags().String("kind", "", "message, claim, evidence, change, intent, approval, act, disclosure, platform_approval, acceptance, payment_received or delivered")
+	cmd.Flags().String("kind", "", "message, claim, evidence, change, intent, approval, act, disclosure, platform_approval, acceptance, payment_received, delivered, dispute or ruling")
 	cmd.Flags().String("html", "", "With --kind act or --kind evidence --email: also write the updated receipt page (your own copy) to this new file, as `deal report --html` does")
 	addSettlementNoteFlags(cmd)
-	cmd.Flags().String("words", "", "acceptance: the counterparty's words accepting the offer, exactly as given (committed, never stored)")
+	cmd.Flags().String("row", "", "dispute, ruling: the pack row it is about (price_as_offered)")
+	cmd.Flags().String("finding", "", "ruling: for_buyer or for_seller")
+	cmd.Flags().String("referee", "", "ruling: who rules")
+	cmd.Flags().String("dispute-digest", "", "ruling: the dispute_digest the dispute note printed")
+	cmd.Flags().String("ruling-digest", "", "ruling, in the second store: the ruling_digest the first store printed; a ruling that differs is refused")
+	cmd.Flags().StringArray("copy", nil, "ruling: each party's `disclose --share adjudicator` file, the two `terms-result --check` ran over")
+	cmd.Flags().String("words", "", "acceptance: the counterparty's words accepting the offer, exactly as given (committed, never stored); dispute: what the buyer says was wrong")
 	cmd.Flags().String("channel", "", "acceptance: the channel the counterparty accepted on (x-deal-v0's channel set)")
 	cmd.Flags().String("input", "", "JSON body for message, claim, evidence, change, intent or act (optional for evidence with --email)")
 	cmd.Flags().String("email", "", "evidence: a merchant's email as a raw RFC 822 file (.eml), headers intact; sealed with its DKIM key records")
