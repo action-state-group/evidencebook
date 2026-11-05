@@ -15,7 +15,7 @@ import (
 // holder's reader only: the output goes to stdout, carries each record's
 // nonce, recipient and withheld records, and feeds no share, page or bundle.
 func dealDisclosuresCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "disclosures", Short: "The sealed disclosure records of the deal's shares, as your store holds them, each with its digest and its sequence on the deal's disclosure log; for your own reading only (never put it in a share); read-only: seals and writes nothing", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "disclosures", Short: "Your deal's sealed disclosure records, for your own reading (read-only)", Long: "The sealed disclosure record of each share of the deal, as your store holds it, each with its digest and its sequence on the deal's disclosure log. For your own reading only: never put the output in a share or a file you send. Read-only: seals and writes nothing, and reads the log not at all.", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) (err error) {
 		p, err := cli.Selected(c)
 		if err != nil {
 			return err
@@ -52,8 +52,8 @@ func dealDisclosuresCommand() *cobra.Command {
 // stored. A row still at sequence 0 was never confirmed on the log (recordShare
 // inserts before it appends), so it is not listed, as deal_requests rows are
 // not (exchangeRows). Its JCS digest is
-// recomputed and must be the one stored, which is the digest sealed on the
-// disclosure log.
+// recomputed and must be the digest stored with it (the one its share sealed);
+// the log itself is not re-read.
 func (s *dealSession) disclosures(ctx context.Context, dealID, only string) (_ map[string]any, err error) {
 	q, args := `SELECT n, record_digest, cll_sequence, record FROM deal_disclosures WHERE deal_id=? AND cll_sequence>0 ORDER BY n`, []any{dealID}
 	if only != "" {
