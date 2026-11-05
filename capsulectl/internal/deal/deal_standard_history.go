@@ -38,6 +38,10 @@ import (
 const (
 	shSettingsFile = "standard-history.json"
 	shPolicyFile   = "standard-history-policy.json"
+	// shCutFile holds the full-precision time of the newest tick this profile
+	// cut. A tick's stored time is coarsened to the minute, so a declaration
+	// made earlier in that minute would read as later than the tick.
+	shCutFile = "standard-history-cut.json"
 	// shDefaultPolicy is the policy a holder who sets none has: the last 3
 	// months (9b frame 4, F4.8: "default 3").
 	shDefaultPolicy = `{"months":3}`
@@ -73,6 +77,49 @@ func (s shSettings) changedAfter(t time.Time) bool {
 		}
 	}
 	return false
+}
+
+// shCut is when a tick was actually cut, on the deal clock.
+type shCut struct {
+	Tick uint64 `json:"tick"`
+	At   string `json:"at"`
+}
+
+// recordSHCut keeps the cut time of the tick just made (the newest only: a
+// card as of an older tick falls back to that tick's coarsened time).
+func recordSHCut(p cli.Profile, n uint64, at time.Time) error {
+	dir, err := shDir(p)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(shCut{Tick: n, At: at.UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		return err
+	}
+	return putSetting(filepath.Join(dir, shCutFile), raw)
+}
+
+// cutOf is when tick n was cut: the recorded full-precision time when it is
+// n's and lies in the minute the tick's time was coarsened to, otherwise the
+// tick's own (minute-coarsened) time, which can only make a
+// change look later than the cut, never earlier.
+func cutOf(p cli.Profile, n uint64, coarse time.Time) time.Time {
+	dir, err := shDir(p)
+	if err != nil {
+		return coarse
+	}
+	raw, err := readSetting(filepath.Join(dir, shCutFile))
+	if err != nil {
+		return coarse
+	}
+	var c shCut
+	if cli.DecodeJSON(raw, &c) != nil || c.Tick != n {
+		return coarse
+	}
+	if at, err := time.Parse(time.RFC3339Nano, c.At); err == nil && !at.Before(coarse) && at.Before(coarse.Add(time.Minute)) {
+		return at
+	}
+	return coarse
 }
 
 // answers is whether `deal respond` answers a card request.
@@ -384,6 +431,14 @@ func shRefusal(msg string, cause error) error {
 // legacy deal's ErrConflict).
 var errCardNotBuilt = errors.New("the History card was not built")
 
+// errCardNotYet is errCardNotBuilt for a card that can be built once the next
+// checkpoint is cut: it is the pending class (exit 4, said as "still waiting
+// on something"), not a fault of the device, and prints as errCardNotBuilt.
+type errCardNotYet struct{}
+
+func (errCardNotYet) Error() string        { return errCardNotBuilt.Error() }
+func (errCardNotYet) Is(target error) bool { return target == cli.ErrPending }
+
 // shNoTick is errNoTick said to the operator, wherever it is found.
 func shNoTick(cause error) error {
 	return shRefusal("no finished checkpoint yet: run `deal tick`, then ask again", cause)
@@ -418,8 +473,12 @@ func (s *dealSession) standardHistory(ctx context.Context, tick uint64) (standar
 	if err != nil {
 		return standardHistoryCard{}, err
 	}
-	if settings.changedAfter(anchor.Tick.At) {
-		return standardHistoryCard{}, shRefusal("the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again", errStaleAnchor)
+	if settings.changedAfter(cutOf(s.p, anchor.Tick.N, anchor.Tick.At)) {
+		msg := "the declaration or policy changed after the last checkpoint: run `deal tick`, then ask again"
+		if last, ok, err := cadence.Last(ctx); err == nil && ok && last.DueNext.After(cli.DealClock()) {
+			msg = "the declaration or policy changed after the last checkpoint. The next checkpoint can be cut at " + last.DueNext.UTC().Format(time.RFC3339) + "; run `deal tick` then and ask again"
+		}
+		return standardHistoryCard{}, fmt.Errorf("%w: %w", cli.Hint(errCardNotYet{}, msg), errStaleAnchor)
 	}
 	x := s.books()
 	var deals []standardhistory.Deal
