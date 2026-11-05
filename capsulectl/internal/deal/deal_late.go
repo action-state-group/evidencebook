@@ -232,6 +232,11 @@ func buildDealLifecycle(events []sealedEvent, now time.Time) dealLifecycle {
 		if se.Event.Confirms == "" {
 			continue
 		}
+		// A dispute or a ruling is bound to the closed deal like any later record, but it does not
+		// confirm the close; the receipt lists the ruling among what was done.
+		if e := se.Event.Evidence; e != nil && isDisputeSource(e.Source) {
+			continue
+		}
 		// The line says what the record is; the relation is said beside it
 		// ("confirms the close"), so trailLine's own prefix is left off.
 		ev := se.Event

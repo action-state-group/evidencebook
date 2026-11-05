@@ -2112,6 +2112,13 @@ func trailLine(e dealEvent) string {
 	case "claim":
 		return "claim recorded (" + e.Claim.Source + "): " + e.Claim.Text
 	case "evidence":
+		if e.Evidence.Source == sourceDispute {
+			return "the buyer disputed " + rowWords(e.Evidence.About)
+		}
+		if r, ok := rulingOfEvent(e); ok {
+			line, _ := rulingLine(r)
+			return "ruling " + line
+		}
 		if e.Confirms != "" {
 			c := e
 			c.Confirms = ""
@@ -2503,6 +2510,12 @@ func buildDealReport(events []sealedEvent, pin cli.ProfileRulesChecker) dealRepo
 		case "evidence":
 			if e.Evidence.Who != nil {
 				changedWho(*e.Evidence.Who, se.CapsuleID)
+			}
+			// The referee's one ruling: the same line on both parties' receipts. The digest is
+			// kept apart so a shared copy can place it after its scrubbing (deal_share.go).
+			if ru, ok := rulingOfEvent(e); ok {
+				words, hex := rulingLine(ru)
+				r.Did = append(r.Did, dealReportItem{Kind: "ruling", Text: "Ruling " + hex + " " + words, Steps: []string{se.CapsuleID}, At: e.At, OwnPack: " " + hex, SharedPack: " " + hex})
 			}
 		case "check":
 			verdict := map[string]string{"pass": "no differences", "pause": "flagged", "deny": "not allowed by your rules"}[e.Check.Verdict]

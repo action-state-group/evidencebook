@@ -449,6 +449,23 @@ merchant's word when the merchant's own email says so.
 
    The date then reads RESOLVED and leaves the open list.
 
+### A dispute and its ruling
+
+When the buyer says what they bought was not what was offered, the buyer's agent notes it on that deal, even after the deal has closed:
+
+```bash
+capsulectl --profile deal deal note --deal ID --kind dispute --row price_as_offered --words "the sticker was the wrong one"
+```
+
+It prints `dispute_digest`. A referee who has run `deal terms-result --check` over both parties' copies then notes one ruling in each party's store: the buyer's first, where it is checked against the dispute, then the seller's, with that store's own `--deal` and the same other flags, plus `--ruling-digest` set to the `ruling_digest` the buyer's store printed, so a flag that differs is refused. A ruling cannot be changed once it is sealed.
+
+```bash
+capsulectl --profile deal deal note --deal ID --kind ruling --row price_as_offered --finding for_buyer \
+  --referee NAME --dispute-digest DIGEST --copy buyer.json --copy seller.json
+```
+
+A second ruling, or a dispute after the ruling, is refused. When both stores got the same flags, both receipts read the same line, `Ruling <12 hex> on "price as offered": found for the buyer`, and the note's `say` gives the same sentence. Report that sentence as it is; do not add your own account of who was right.
+
 ### Where the user sells: payment received, and what was delivered
 
 On a deal where the user sells (typed records), the user is the payee and seals

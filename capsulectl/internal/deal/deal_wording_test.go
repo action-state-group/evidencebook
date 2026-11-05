@@ -63,7 +63,7 @@ func TestTheDealWordingPackIsRegisteredBesideTheCores(t *testing.T) {
 	assert.Equal(t, "capsulectl.deal-wording/v0", doc.ID)
 	assert.Equal(t, cli.BuiltinWording().Locale, doc.Locale)
 	var names []string
-	for _, k := range regexp.MustCompile(`"([^"]+)":`).FindAllStringSubmatch(string(doc.Entries), -1) {
+	for _, k := range regexp.MustCompile(`(?m)^\s*"([^"]+)":`).FindAllStringSubmatch(string(doc.Entries), -1) {
 		names = append(names, k[1])
 	}
 	assert.True(t, sort.StringsAreSorted(names), "the keys are listed once, sorted")
