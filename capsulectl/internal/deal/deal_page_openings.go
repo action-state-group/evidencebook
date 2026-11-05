@@ -1,6 +1,7 @@
 package deal
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -17,14 +18,19 @@ import (
 // the user's own copy, each card they answered on (card_openings, against
 // the approval's card_commitment), each SHA-256 over JCS({nonce, text}).
 // The page's own script does not recompute them: it shows what this check
-// found, worded as checked when the page was built.
+// found, worded as checked when the page was built. Beside the asked words
+// and the statements, its result holds counterparty and acceptances: for each
+// opening of the user's own copy, in order, whether it recomputed.
 //
 // It reads the bundle the page embeds, as the page does: the report is the
 // sealed report the x-deal-v0 extension names (or, in a bundle written before
 // reports were sealed, the extension itself), and each payload is the
 // record's disclosed agent_input, which pageGate has already checked against
-// its committed digest. An opening that is present but does not recompute
-// refuses the page; the error names what, never the words. The result says,
+// its committed digest. An asked-words, card or statement opening that is
+// present but does not recompute refuses the page; the error names what,
+// never the words. A counterparty or acceptance opening that does not
+// recompute is reported not verified instead, and the page shows no value.
+// The result says,
 // for the asked words and for each representation in order, whether it was
 // checked; one that is absent, or whose sealed claim is not the agent's, is
 // not checked, and the page says so.
@@ -114,6 +120,66 @@ func dealPageOpenings(b map[string]interface{}) (map[string]interface{}, error) 
 		}
 	}
 
+	// Who the deal was with and what the buyer wrote (evidencebook-deal#56),
+	// the user's own copy only, reported as counterparty and acceptances, one
+	// result per opening in order. A shared copy carrying either, or the deal
+	// key, refuses the page. An opening that does not recompute against its
+	// step's sealed fingerprint or content_commitment is reported as not
+	// verified and its value is never shown; one that names no step of this
+	// bundle is not verified either.
+	cpRaw, hasCP := report["counterparty_openings"]
+	accRaw, hasAcc := report["acceptance_openings"]
+	if hasCP || hasAcc {
+		if audience == cli.DealAudienceCounterparty || audience == cli.DealAudienceAdjudicator {
+			return nil, errors.New("refusing to write the page: a shared copy carries who the deal was with or what the buyer wrote, which only your own copy may")
+		}
+	}
+	// The results line up with the openings, entry by entry: a step named
+	// twice, or none, verifies no entry for it.
+	if hasCP {
+		cp, _ := cpRaw.(map[string]interface{})
+		key, _ := hex.DecodeString(strOf(cp["key"]))
+		steps, _ := cp["steps"].([]interface{})
+		checked := make([]interface{}, len(steps))
+		seen := map[string]bool{}
+		for i, e := range steps {
+			entry, _ := e.(map[string]interface{})
+			step, _ := entry["step"].(string)
+			ids := recordCounterpartyIDs(input(step))
+			kinds := map[string]interface{}{}
+			for _, kind := range counterpartyOpeningKinds {
+				value, present := entry[kind].(string)
+				if !present {
+					continue
+				}
+				want, _ := ids[kind].(string)
+				got, err := dealprofile.Fingerprint(key, kind, value)
+				kinds[kind] = len(key) > 0 && want != "" && err == nil && got == want && !seen[step+"\x00"+kind]
+				seen[step+"\x00"+kind] = true
+			}
+			checked[i] = kinds
+		}
+		out["counterparty"] = checked
+	}
+	if hasAcc {
+		list, _ := accRaw.([]interface{})
+		checked := make([]interface{}, len(list))
+		seen := map[string]bool{}
+		for i, a := range list {
+			opening, _ := a.(map[string]interface{})
+			step, _ := opening["step"].(string)
+			body, _ := input(step)["body"].(map[string]interface{})
+			var commitment interface{}
+			if body["kind"] == counterpartyAcceptanceKind {
+				commitment = body["content_commitment"]
+			}
+			present, ok := opens(opening, commitment)
+			checked[i] = present && ok && !seen[step]
+			seen[step] = true
+		}
+		out["acceptances"] = checked
+	}
+
 	said, _ := report["representations"].([]interface{})
 	checked := make([]interface{}, len(said))
 	for i, r := range said {
@@ -141,4 +207,9 @@ func dealPageOpenings(b map[string]interface{}) (map[string]interface{}, error) 
 	}
 	out["representations"] = checked
 	return out, nil
+}
+
+func strOf(v interface{}) string {
+	s, _ := v.(string)
+	return s
 }

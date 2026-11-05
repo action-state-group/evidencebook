@@ -3,6 +3,15 @@
 ## Unreleased
 
 - `deal disclosures --deal ID [--record DIGEST]`: a read-only verb that returns the sealed disclosure record of each share of a deal, with its digest and its sequence on the disclosure log; each stored record's JCS digest is recomputed and must equal the digest stored with it (the one its share sealed); the log itself is not re-read. It reads the holder's own store and feeds no share, page or bundle. Lets a script drop its sqlite read of `deal_disclosures` (evidencebook-deal#27).
+- The user's own deal report opens who the deal was with and what the buyer wrote. `counterparty_openings` holds the
+  deal's key and the payee, name and domain of the counterparty the deal ends with (the one the OK card names), each at
+  a step whose sealed record carries the keyed fingerprint it recomputes to; `acceptance_openings` holds each
+  acceptance's step, nonce and words. The page recomputes each against that step's sealed `counterparty.ids` or
+  `content_commitment` when it is written: the receipt names a checked counterparty as the OK card does (the payee, else
+  the name, with the site) and shows a buyer's acceptance words as checked, and a value that does not recompute is
+  reported as not verified and not shown. Shared copies carry none of it, nor the deal key, and a shared copy that did
+  refuses the page. A deal with nothing to open reports as before. No sealed record or schema changes
+  (evidencebook-deal#56).
 
 ## v0.1.0-rc37
 
