@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## capsulectl/v0.1.0-rc37 (2026-11-05)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc37`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc37` (the version this release pairs with). It also carries what merged since `capsulectl/v0.1.0-rc36`: #407, below.
+
 ### Changed: capsulectl-book vendors the History card module from capsule-viewer `v0.18.3`
 
 - `capsulectl/internal/book/assets/standard-history` is now the module of capsule-viewer `go/v0.18.3` (it was `go/v0.18.2`): the PRIVATE notice is a rounded, bordered box like the card's other boxes, and "Which checks ran" has a gap under the "How this page was checked" line (capsule-viewer#298, PR #299). Layout only; no wording or contract change.
