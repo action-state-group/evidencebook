@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed: capsulectl-book vendors the History card module from capsule-viewer `v0.18.3`
+
+- `capsulectl/internal/book/assets/standard-history` is now the module of capsule-viewer `go/v0.18.3` (it was `go/v0.18.2`): the PRIVATE notice is a rounded, bordered box like the card's other boxes, and "Which checks ran" has a gap under the "How this page was checked" line (capsule-viewer#298, PR #299). Layout only; no wording or contract change.
+
 ## capsulectl/v0.1.0-rc36 (2026-11-05)
 
 capsulectl-book only; no library tag.

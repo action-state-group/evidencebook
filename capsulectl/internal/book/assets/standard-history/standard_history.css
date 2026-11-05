@@ -6,7 +6,10 @@
 .cv-sh { display: flex; flex-direction: column; gap: var(--cv-space-3); }
 /* The L1 fold-out is the card's sibling, outside .cv-sh's flex gap: its own top margin is the one gap under the card, so the last section keeps no bottom margin of its own (in a single column it would add to it). */
 .cv-sh > .cv-sh__cols > :last-child { margin-bottom: 0; }
-.cv-drilldown[data-sh-level="L1"] { margin-top: var(--cv-space-3); }
+.cv-drilldown[data-sh-level="L1"], .cv-drilldown[data-sh-level="L2"] { margin-top: var(--cv-space-3); }
+/* The PRIVATE banner and a refusal lead are boxes like the card's other boxes: the same corner and padding. The banner gets the tone's own colour as its border; a refusal keeps its dashed one. */
+.cv-notice[data-banner="private"] { border: 1px solid var(--cv-color-caution-fg); }
+.cv-notice[data-banner="private"], .cv-sh > .cv-notice { border-radius: var(--cv-radius); padding: var(--cv-space-3); }
 .cv-sh__cols { columns: 22rem 2; column-gap: var(--cv-space-5); }
 .cv-sh__cols > * { break-inside: avoid; margin: 0 0 var(--cv-space-3); }
 .cv-sh__lead { border: 1px solid var(--cv-color-border); border-radius: var(--cv-radius); padding: var(--cv-space-3); background: var(--cv-color-surface-sunken); }
