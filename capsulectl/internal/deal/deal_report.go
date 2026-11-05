@@ -336,6 +336,14 @@ func (s *dealSession) dealReportExtension(events []sealedEvent, report dealRepor
 		// merchant, the item and what was told.
 		"journey": sealedJourney(dealJourney(events, cli.BuiltinWording())),
 	}
+	// Who the deal was with and what the buyer wrote, opened in this copy
+	// only (evidencebook-deal#56); a deal with none carries neither field.
+	if o := counterpartyOpenings(s.dkey, events); o != nil {
+		ext["counterparty_openings"] = o
+	}
+	if o := acceptanceOpenings(events); len(o) > 0 {
+		ext["acceptance_openings"] = o
+	}
 	// The merchant rows carry only strings and booleans; round-trip them to
 	// the generic JSON shape the bundle encoder takes.
 	var merchant []interface{}

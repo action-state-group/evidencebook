@@ -358,6 +358,7 @@ process.stdout.write(JSON.stringify(vm.runInContext(` + "`" + `({
   band: cases.band.map((b) => dealBandLabel(b)),
   afterYes: cases.afterYes.map((steps) => { const r = dealAfterYes(steps); return r.state + (r.why ? ":" + r.why : "") + (r.act ? ":" + r.act.id : "") + (r.approvers && r.approvers.length ? " by " + r.approvers.join(",") : ""); }),
   settlement: settled,
+  openings: (cases.openings || []).map((c) => dealOpeningLines(c.report, c.checked)),
 })` + "`" + `, context)));
 })();
 `

@@ -20,6 +20,37 @@
 // itself (it is all zeros here). Its stylesheet is DEAL_VIEW_CSS, inserted
 // once at render and pinned by the manifest's style_sha256 (assets/deal-view.css
 // holds the same bytes).
+// dealOpeningLines reads the owner's copy openings of who the deal was with and
+// what the buyer wrote (evidencebook-deal#56) against what capsulectl
+// recomputed when it built the page (page.openings, one result per opening, in
+// order). The counterparty is named as the OK card names them: the payee, else
+// the name, then the site in brackets; a value that did not recompute is never
+// shown and sets whoBad. An acceptance is shown only
+// when it recomputed.
+function dealOpeningLines(report, checkedBy) {
+  const list = report && report.counterparty_openings && Array.isArray(report.counterparty_openings.steps) ? report.counterparty_openings.steps : [];
+  const got = {};
+  let whoBad = false;
+  list.forEach((e, i) => {
+    const ok = (Array.isArray(checkedBy.counterparty) && checkedBy.counterparty[i]) || {};
+    ["payee", "name", "domain"].forEach((kind) => {
+      if (!e || typeof e[kind] !== "string") return;
+      // The last entry for a field decides it; one that did not recompute
+      // leaves the field unnamed rather than an earlier entry's value.
+      if (ok[kind] === true) got[kind] = e[kind];
+      else {
+        delete got[kind];
+        whoBad = true;
+      }
+    });
+  });
+  const label = got.payee || got.name || got.domain;
+  const who = !label ? "" : got.domain && label !== got.domain ? `${label} (${got.domain})` : label;
+  const accepted = (Array.isArray(report && report.acceptance_openings) ? report.acceptance_openings : []).map((a, i) =>
+    a && Array.isArray(checkedBy.acceptances) && checkedBy.acceptances[i] === true && typeof a.text === "string" ? { step: a.step, text: a.text } : {},
+  );
+  return { who, whoBad, accepted };
+}
 // versionBefore reports whether version a is older than b: "v0.1.0-rc3" style,
 // numbers compared as numbers, a pre-release before its release. An
 // unparsable version, or a development build, is never called older.
@@ -78,6 +109,8 @@ const DEAL_VIEW_WORDS = {
   "page.cancel.not_shown": "What this does not show",
   "page.cancel.shows": "What this shows",
   "page.cancel.title": "Your cancellation",
+  "page.card.accepted": "Their words accepting the offer",
+  "page.card.accepted_unchecked": "⚠️ Their words accepting the offer could not be checked against the sealed record.",
   "page.card.asked": "You asked",
   "page.card.asked_day": "You asked, {day}",
   "page.card.asked_unchecked": "⚠️ The words you asked could not be checked against the sealed record.",
@@ -89,6 +122,8 @@ const DEAL_VIEW_WORDS = {
   "page.card.so_far": "So far: {text}",
   "page.card.title": "Receipt",
   "page.card.title_deal": "Receipt · deal {deal}",
+  "page.card.with": "With {who}",
+  "page.card.with_unchecked": "⚠️ Some of who this deal was with could not be checked against the sealed record, so it is not shown.",
   "page.card.withheld": "What was asked is withheld from this copy.",
   "page.claim.address": "Address",
   "page.claim.authenticity": "Authenticity",
@@ -1319,6 +1354,24 @@ const dealViewRender = (model, regions) => {
     card.append(quote);
   } else {
     card.append(el("div", W("page.card.asked_unchecked"), "deal-bad"));
+  }
+  // Who the deal was with and what the buyer wrote, on the user's own copy:
+  // each value is shown only when capsulectl recomputed it against its sealed
+  // fingerprint or commitment when it built the page.
+  if (!shared) {
+    const lines = dealOpeningLines(report, (page && page.openings) || {});
+    if (lines.who) card.append(el("div", W("page.card.with", { who: lines.who }), "deal-small"));
+    if (lines.whoBad) card.append(el("div", W("page.card.with_unchecked"), "deal-bad"));
+    lines.accepted.forEach((a) => {
+      if (!a.text) {
+        card.append(el("div", W("page.card.accepted_unchecked"), "deal-bad"));
+        return;
+      }
+      card.append(el("div", W("page.card.accepted"), "deal-small"));
+      const said = el("div", `“${a.text}”`, "deal-quote");
+      said.dataset.accepted = a.step;
+      card.append(said);
+    });
   }
   const did = report.did || [];
   if (did.length > 0) {
