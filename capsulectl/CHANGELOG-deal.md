@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.1.0-rc37
+
+This release pairs with capsulectl `v0.1.0-rc37` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc36`: the card names a terms pack's row in the pack's words (#158).
+
+- For a check whose pinned pack is kind `deal` (the user's own terms), the seller's card says the checker's finding reasons by name instead of "your rules don't allow this" or "I couldn't check this against your rules". Other rulesets, and findings with no reason, keep the card's own wording. No schema change (`reason` is an existing member) (evidencebook-deal#157, #158).
+
 ## v0.1.0-rc36
 
 This release pairs with capsulectl `v0.1.0-rc36` (go.mod requires it).
