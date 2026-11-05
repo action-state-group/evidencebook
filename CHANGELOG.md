@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## capsulectl/v0.1.0-rc36 (2026-11-05)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc36`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc36` (the version this release pairs with; capsule-cli#547, #549, #552). capsulectl-book's code is unchanged, and it keeps vendoring the History card module of capsule-viewer `go/v0.18.2` (`capsulectl/go.mod` still requires capsule-viewer `v0.18.2`).
+
 ## v0.13.6 (2026-11-04)
 
 Go module only.
