@@ -184,7 +184,7 @@ Go module only.
   proof from the one before, as of tick `n`'s checkpoint and signed by the shelf's `Signer`. `CheckStaple` accepts it for
   `KeyID` of that signer. A host that holds a shelf and no per-profile book (capsulectl-deal) staples this card.
 
-### Added: `Book.StapleForDeal` and `Book.StandardCardDeals`, which deals the standard card left the book for (#334)
+### Added: `Book.StapleForDeal` and `Book.StandardCardDeals` (which deals got the standard card) (#334)
 
 - `Book.StapleForDeal(ctx, derivation, deal)` is `Staple` for a staple attached to one deal. A
   `standard_history/1` staple's `evidence_request_answered` record then carries the host's opaque
