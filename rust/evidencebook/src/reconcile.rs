@@ -84,7 +84,7 @@ pub struct Half {
     pub trusted: bool,
     /// Records an interaction that did not complete (refused, errored, timed out
     /// or dropped). A header carries no outcome, so the caller sets it from
-    /// the record's own outcome; the default is a served exchange. A failed
+    /// the record's own outcome; the default is a completed one. A failed
     /// half has no payload commitments to compare, so its pair is decided by
     /// the outcomes, never by the content test.
     pub failed: bool,
