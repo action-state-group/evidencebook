@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc36
+
+This release pairs with capsulectl `v0.1.0-rc36` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc35`: the sealed check's pack kind (#149), dispute and ruling notes with the card's disputes tally (#151, #154) and the History card right after declare and tick (#155).
+
 - `deal note --kind dispute` and `--kind ruling` (evidencebook-deal#151, Terms Pack Studio step 6). They stand in for
   the dispute and ruling record kinds until those land and add no record family and no schema: each seals an evidence
   step whose `source` is `dispute` (the buyer's, once per deal), `ruling_for_buyer` or `ruling_for_seller` (the
@@ -21,7 +27,6 @@
   pack for the party's role. Sharing follows the sealed kind, never the profile's current pin. Checks sealed
   before this release carry no `kind` and never name their pack on those copies. The user's own copy is unchanged.
   Requires evidencebook `v0.13.6`.
-
 ## v0.1.0-rc35
 
 This release pairs with capsulectl `v0.1.0-rc35` (go.mod requires it).
