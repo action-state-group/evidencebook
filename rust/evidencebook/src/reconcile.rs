@@ -780,6 +780,61 @@ mod tests {
         }
     }
 
+    /// The tiers run over all of side A before the next starts, so an earlier
+    /// half's fallback never takes the partner a later half matches better.
+    #[test]
+    fn an_earlier_halfs_fallback_never_takes_a_later_halfs_better_partner() {
+        let a = HalfSet {
+            complete: true,
+            halves: vec![
+                half("a1", &[("k1", "x")], "same"),
+                half("a2", &[("k1", "x"), ("k2", "d1")], "same"),
+            ],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![
+                half("b1", &[("k1", "x"), ("k2", "d1")], "same"),
+                half("b2", &[("k1", "x"), ("k2", "d9")], "same"),
+            ],
+        };
+        let (results, tallies) = reconcile_halves(&a, &b, &policy(), &same_payload_commitments);
+        let got = by_pair(&results);
+        assert_eq!(got.get("a2|b1"), Some(&PairState::Matched), "{results:?}");
+        assert_eq!(got.get("a1|b2"), Some(&PairState::Matched), "{results:?}");
+        assert_eq!(
+            tallies,
+            Tallies {
+                matched: 2,
+                ..Tallies::default()
+            }
+        );
+    }
+
+    /// A key conflict outranks the outcomes: two failed halves whose secondary
+    /// keys disagree are CONFLICTING, not MATCHED.
+    #[test]
+    fn a_key_conflict_outranks_two_failed_halves() {
+        let a = HalfSet {
+            complete: true,
+            halves: vec![failed("a", &[("k1", "x"), ("k2", "r1")])],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![failed("b", &[("k1", "x"), ("k2", "r2")])],
+        };
+        let never = |_: &Half, _: &Half| -> bool { panic!("content test ran on a failed half") };
+        let (results, tallies) = reconcile_halves(&a, &b, &policy(), &never);
+        assert_eq!(by_pair(&results).get("a|b"), Some(&PairState::Conflicting));
+        assert_eq!(
+            tallies,
+            Tallies {
+                conflicting: 1,
+                ..Tallies::default()
+            }
+        );
+    }
+
     #[test]
     fn tallies_serialize_under_the_state_tokens() {
         let v = serde_json::to_value(Tallies::default()).unwrap();
