@@ -82,6 +82,12 @@ pub struct Half {
     pub covered: bool,
     /// The record verifies and its header matches what it committed.
     pub trusted: bool,
+    /// Records an interaction that did not complete (refused, errored, timed out
+    /// or dropped). A header carries no outcome, so the caller sets it from
+    /// the record's own outcome; the default is a completed one. A failed
+    /// half has no payload commitments to compare, so its pair is decided by
+    /// the outcomes, never by the content test.
+    pub failed: bool,
 }
 
 impl Half {
@@ -146,6 +152,7 @@ impl HalfSet {
                     payload_commitments,
                     covered: r.leaf_index < covered,
                     trusted,
+                    failed: false,
                 }
             })
             .collect();
@@ -215,8 +222,15 @@ impl Tallies {
 ///
 /// Correlation runs in two passes over all halves, so the result does not
 /// depend on input order within a side: first the primary key (preferring a
-/// counterpart whose secondary key also agrees, or is absent on either
-/// half), then the secondary key for halves still unpaired.
+/// counterpart of the same outcome whose secondary key also agrees), then the
+/// secondary key for halves still unpaired.
+///
+/// Classification keeps the key conflict, then an uncovered half
+/// (`INSUFFICIENT`), then an untrusted half (`UNRESOLVED`), then the outcomes:
+/// two failed halves are `MATCHED` (each side's reason is its own view and is
+/// not compared), and a failed half against a served one is `CONFLICTING`, so
+/// one side that timed out while the other finished is a disagreement,
+/// never a missing peer half. Only two served halves reach the content test.
 pub fn reconcile_halves(
     a: &HalfSet,
     b: &HalfSet,
@@ -227,39 +241,55 @@ pub fn reconcile_halves(
     let mut joined_on: Vec<Option<&str>> = vec![None; a.halves.len()];
     let mut used = vec![false; b.halves.len()];
 
-    // First unused B half satisfying `matches`, preferring one that also
-    // satisfies `prefer`.
-    let pick = |used: &[bool], matches: &dyn Fn(&Half) -> bool, prefer: &dyn Fn(&Half) -> bool| {
-        let mut found = None;
-        for (j, h) in b.halves.iter().enumerate() {
-            if used[j] || !matches(h) {
-                continue;
-            }
-            if prefer(h) {
-                return Some(j);
-            }
-            found.get_or_insert(j);
-        }
-        found
+    // First unused B half satisfying `matches`.
+    let pick = |used: &[bool], matches: &dyn Fn(&Half) -> bool| {
+        b.halves
+            .iter()
+            .enumerate()
+            .find(|(j, h)| !used[*j] && matches(h))
+            .map(|(j, _)| j)
     };
 
-    for (i, own) in a.halves.iter().enumerate() {
-        let Some(primary) = own.key(&policy.primary) else {
-            continue;
-        };
-        let own_secondary = own.key(&policy.secondary);
-        let j = pick(
-            &used,
-            &|h| h.key(&policy.primary) == Some(primary),
-            &|h| match (h.key(&policy.secondary), own_secondary) {
-                (Some(theirs), Some(ours)) => theirs == ours,
-                _ => true,
-            },
-        );
-        if let Some(j) = j {
-            partner[i] = Some(j);
-            joined_on[i] = Some(&policy.primary);
-            used[j] = true;
+    // The primary join runs in tiers over all of side A before the next tier
+    // starts, so an earlier half's fallback never takes the partner a later
+    // half matches better: the same outcome with the same secondary key, the
+    // same outcome with a compatible one, the same outcome (a secondary
+    // disagreement is then reported as the key conflict), then any outcome (a
+    // one side that timed out against another that finished). A failed
+    // half carries no secondary key, so without the outcome tiers it would
+    // rank with a served half.
+    let compatible = |x: &Half, y: &Half| match (x.key(&policy.secondary), y.key(&policy.secondary))
+    {
+        (Some(p), Some(q)) => p == q,
+        _ => true,
+    };
+    type Tier<'t> = &'t dyn Fn(&Half, &Half) -> bool;
+    let tiers: [Tier<'_>; 5] = [
+        &|own, h| {
+            h.failed == own.failed
+                && own.key(&policy.secondary).is_some()
+                && own.key(&policy.secondary) == h.key(&policy.secondary)
+        },
+        &|own, h| h.failed == own.failed && compatible(own, h),
+        &|own, h| h.failed == own.failed,
+        &|own, h| compatible(own, h),
+        &|_, _| true,
+    ];
+    for tier in tiers {
+        for (i, own) in a.halves.iter().enumerate() {
+            if partner[i].is_some() {
+                continue;
+            }
+            let Some(primary) = own.key(&policy.primary) else {
+                continue;
+            };
+            if let Some(j) = pick(&used, &|h| {
+                h.key(&policy.primary) == Some(primary) && tier(own, h)
+            }) {
+                partner[i] = Some(j);
+                joined_on[i] = Some(&policy.primary);
+                used[j] = true;
+            }
         }
     }
     for (i, own) in a.halves.iter().enumerate() {
@@ -269,11 +299,7 @@ pub fn reconcile_halves(
         let Some(secondary) = own.key(&policy.secondary) else {
             continue;
         };
-        if let Some(j) = pick(
-            &used,
-            &|h| h.key(&policy.secondary) == Some(secondary),
-            &|_| true,
-        ) {
+        if let Some(j) = pick(&used, &|h| h.key(&policy.secondary) == Some(secondary)) {
             partner[i] = Some(j);
             joined_on[i] = Some(&policy.secondary);
             used[j] = true;
@@ -314,6 +340,10 @@ pub fn reconcile_halves(
             PairState::Insufficient
         } else if !own.trusted || !peer.trusted {
             PairState::Unresolved
+        } else if own.failed && peer.failed {
+            PairState::Matched
+        } else if own.failed != peer.failed {
+            PairState::Conflicting
         } else if compare(own, peer) {
             PairState::Matched
         } else {
@@ -414,6 +444,15 @@ mod tests {
             payload_commitments: vec![crate::canonical::json_digest(&payload.into()).unwrap()],
             covered: true,
             trusted: true,
+            failed: false,
+        }
+    }
+
+    fn failed(id: &str, correlation: &[(&str, &str)]) -> Half {
+        Half {
+            payload_commitments: Vec::new(),
+            failed: true,
+            ..half(id, correlation, "")
         }
     }
 
@@ -640,6 +679,160 @@ mod tests {
         let (_, t) = reconcile_halves(&a, &b, &policy(), &same_payload_commitments);
         assert_eq!(t.insufficient, 1);
         assert_eq!(t.a_only, 0);
+    }
+
+    /// Mirror of the Go TestReconcileFailedHalves.
+    #[test]
+    fn failed_halves_pair_by_outcome_and_never_reach_the_content_test() {
+        let a = HalfSet {
+            complete: true,
+            halves: vec![
+                failed("a-402", &[("k1", "x1")]),
+                failed("a-timeout", &[("k1", "x2")]),
+                half("a-served", &[("k1", "x3"), ("k2", "d3")], "same"),
+                failed("a-alone", &[("k1", "x4")]),
+            ],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![
+                failed("b-402", &[("k1", "x1")]),
+                half("b-finished", &[("k1", "x2"), ("k2", "d2")], "done"),
+                failed("b-failed", &[("k1", "x3")]),
+            ],
+        };
+        let never = |_: &Half, _: &Half| -> bool { panic!("content test ran on a failed half") };
+        let (results, tallies) = reconcile_halves(&a, &b, &policy(), &never);
+        assert_eq!(
+            tallies,
+            Tallies {
+                matched: 1,
+                conflicting: 2,
+                a_only: 1,
+                ..Tallies::default()
+            }
+        );
+        let got = by_pair(&results);
+        for (pair, state) in [
+            ("a-402|b-402", PairState::Matched),
+            ("a-timeout|b-finished", PairState::Conflicting),
+            ("a-served|b-failed", PairState::Conflicting),
+            ("a-alone|", PairState::AOnly),
+        ] {
+            assert_eq!(got.get(pair), Some(&state), "{pair}: {results:?}");
+        }
+    }
+
+    #[test]
+    fn a_failed_half_is_still_gated_by_coverage_and_trust() {
+        let mut uncovered = failed("a-uncovered", &[("k1", "x1")]);
+        uncovered.covered = false;
+        let mut untrusted = failed("a-untrusted", &[("k1", "x2")]);
+        untrusted.trusted = false;
+        let a = HalfSet {
+            complete: true,
+            halves: vec![uncovered, untrusted],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![failed("b1", &[("k1", "x1")]), failed("b2", &[("k1", "x2")])],
+        };
+        let (_, tallies) = reconcile_halves(&a, &b, &policy(), &same_payload_commitments);
+        assert_eq!(
+            tallies,
+            Tallies {
+                insufficient: 1,
+                unresolved: 1,
+                ..Tallies::default()
+            }
+        );
+    }
+
+    /// A failed attempt and a served retry can share a primary key on one
+    /// side; each pairs with the same-outcome half whatever the input order.
+    #[test]
+    fn a_failed_attempt_and_a_served_retry_pair_by_outcome() {
+        let served = |id: &str| half(id, &[("k1", "x1"), ("k2", "d1")], "same");
+        for b_halves in [
+            vec![failed("b-failed", &[("k1", "x1")]), served("b-served")],
+            vec![served("b-served"), failed("b-failed", &[("k1", "x1")])],
+        ] {
+            let a = HalfSet {
+                complete: true,
+                halves: vec![served("a-served"), failed("a-failed", &[("k1", "x1")])],
+            };
+            let b = HalfSet {
+                complete: true,
+                halves: b_halves,
+            };
+            let (results, tallies) = reconcile_halves(&a, &b, &policy(), &same_payload_commitments);
+            assert_eq!(
+                tallies,
+                Tallies {
+                    matched: 2,
+                    ..Tallies::default()
+                },
+                "{results:?}"
+            );
+            let got = by_pair(&results);
+            assert_eq!(got.get("a-served|b-served"), Some(&PairState::Matched));
+            assert_eq!(got.get("a-failed|b-failed"), Some(&PairState::Matched));
+        }
+    }
+
+    /// The tiers run over all of side A before the next starts, so an earlier
+    /// half's fallback never takes the partner a later half matches better.
+    #[test]
+    fn an_earlier_halfs_fallback_never_takes_a_later_halfs_better_partner() {
+        let a = HalfSet {
+            complete: true,
+            halves: vec![
+                half("a1", &[("k1", "x")], "same"),
+                half("a2", &[("k1", "x"), ("k2", "d1")], "same"),
+            ],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![
+                half("b1", &[("k1", "x"), ("k2", "d1")], "same"),
+                half("b2", &[("k1", "x"), ("k2", "d9")], "same"),
+            ],
+        };
+        let (results, tallies) = reconcile_halves(&a, &b, &policy(), &same_payload_commitments);
+        let got = by_pair(&results);
+        assert_eq!(got.get("a2|b1"), Some(&PairState::Matched), "{results:?}");
+        assert_eq!(got.get("a1|b2"), Some(&PairState::Matched), "{results:?}");
+        assert_eq!(
+            tallies,
+            Tallies {
+                matched: 2,
+                ..Tallies::default()
+            }
+        );
+    }
+
+    /// A key conflict outranks the outcomes: two failed halves whose secondary
+    /// keys disagree are CONFLICTING, not MATCHED.
+    #[test]
+    fn a_key_conflict_outranks_two_failed_halves() {
+        let a = HalfSet {
+            complete: true,
+            halves: vec![failed("a", &[("k1", "x"), ("k2", "r1")])],
+        };
+        let b = HalfSet {
+            complete: true,
+            halves: vec![failed("b", &[("k1", "x"), ("k2", "r2")])],
+        };
+        let never = |_: &Half, _: &Half| -> bool { panic!("content test ran on a failed half") };
+        let (results, tallies) = reconcile_halves(&a, &b, &policy(), &never);
+        assert_eq!(by_pair(&results).get("a|b"), Some(&PairState::Conflicting));
+        assert_eq!(
+            tallies,
+            Tallies {
+                conflicting: 1,
+                ..Tallies::default()
+            }
+        );
     }
 
     #[test]
