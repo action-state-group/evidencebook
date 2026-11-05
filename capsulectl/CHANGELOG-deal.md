@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `deal disclosures --deal ID [--record DIGEST]`: a read-only verb that returns the sealed disclosure record of each share of a deal, with its digest and its sequence on the disclosure log; each stored record's JCS digest is recomputed and must equal the one sealed. It reads the holder's own store and feeds no share, page or bundle. Lets a script drop its sqlite read of `deal_disclosures` (evidencebook-deal#27).
+
 ## v0.1.0-rc37
 
 This release pairs with capsulectl `v0.1.0-rc37` (go.mod requires it).
