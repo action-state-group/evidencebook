@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `deal standard-history card` works right after `declare` and `deal tick` on a new profile (evidencebook-deal#153).
+  A tick's stored time is rounded down to the minute, so a declaration made in the same minute read as newer than
+  the tick and the card was refused. `deal tick` now keeps the tick's real cut time, and the card is still refused
+  for a declaration or policy change made after the tick. That refusal now says when the next tick is due, is
+  reported as waiting rather than as a device fault, and exits 4 instead of 1.
 - The sealed check now records the terms pack's `kind` (evidencebook-deal#146). A counterparty's or adjudicator's
   copy names the pack only when the kind sealed with the check is exactly `deal` and the profile still pins that
   pack for the party's role. Sharing follows the sealed kind, never the profile's current pin. Checks sealed
