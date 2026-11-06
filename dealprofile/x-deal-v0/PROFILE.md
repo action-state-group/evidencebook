@@ -1014,7 +1014,10 @@ At every check, after the `check` record is sealed:
     `definition_digest`, the status and cause of a check that was not evaluated (a refusal, a
     timeout) and the checker's stderr stay as they would be without cards, and a card the checker cannot read is never a refusal (it says so in
     `notice`). The host sends `received_cards` only to a checker that accepts the member, since
-    the input schema is closed. The deal check hands over at most 64 cards and 1 MiB of them, so cards cannot push a
+    the input schema is closed. The deal check seals the run of the checker that was given no cards; with cards it runs the
+    checker a second time and keeps only that run's `notice`, so a checker that refuses, times out
+    on or answers differently over cards changes nothing sealed. It hands over at most 64 cards and
+    1 MiB of them, so cards cannot push a
     checker past its timeout. Absent when none was handed over, never empty.
 
   A rolling window is evaluated over the history the deal check supplies. A checker given no
