@@ -29,7 +29,7 @@ A conduct pack is private to the book's owner. Any pack in `packs/*/pack-source.
 directory with `scope.kind: conduct` is private with no further step, and its `pack_id` may also be
 listed (no `@version`) on its own line in `<profile database>/book/conduct-packs`. `bundle`,
 `disclose`, `permalink` and a Close's `--bundle-out` then refuse a record that cites such a pack, in
-its `subject_ref` or a claim's `contract_ref`. Until `capsulectl` pins an `evidencebook` release with #418, only Results are refused; an observation or evidence_request that cites the pack still goes into the bundle. The list is local policy and is written into no record.
+its `subject_ref` or a claim's `contract_ref`. Until `capsulectl` pins an `evidencebook` release with #418, only Results are refused; an observation or evidence_request that cites the pack still goes into the bundle. Run from a directory with no `packs/`, the verb warns on stderr that no workspace conduct packs were read. The list is local policy and is written into no record.
 
 ## Agent skill
 

@@ -66,7 +66,7 @@ var (
 // buildArtifact builds the canonical Artifact from view's snapshot. It
 // reads the store and substrate, which lock themselves, and nothing else the
 // book changes, so it runs without the book's lock.
-func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry, conduct []string) (builtArtifact, error) {
+func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
 	if req.Derivation == DerivationStandardHistory {
 		// A card of counts whatever the history's length: the item cap
 		// bounds record lists, and the card lists none.
@@ -102,9 +102,9 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			head["checkpoints"], declared = list, checkpointsFields
 		}
 	case def != nil:
-		records, declined, err := b.project(ctx, view, leaves, def, conduct)
-		if err != nil || declined {
-			return builtArtifact{declined: declined}, err
+		records, err := b.project(ctx, view, leaves, def)
+		if err != nil {
+			return builtArtifact{}, err
 		}
 		head["derivation"], head["records"] = def.id, records
 		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: append([]string{"digest", "leaf_index"}, def.def.Fields...), list: "records"}
@@ -117,9 +117,6 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 		body, err := capsulePreimage(stored.Capsule, id)
 		if err != nil {
 			return builtArtifact{}, err
-		}
-		if cited, err := citesConductInline(id, view.log[leaves[0]].Header, stored.Capsule, conduct); err != nil || cited {
-			return builtArtifact{declined: cited}, err
 		}
 		if !view.disclosureClean(body, nil) {
 			return builtArtifact{declined: true}, nil
@@ -144,9 +141,6 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			body, err := capsulePreimage(stored.Capsule, id)
 			if err != nil {
 				return builtArtifact{}, err
-			}
-			if cited, err := citesConductInline(id, view.log[leaf].Header, stored.Capsule, conduct); err != nil || cited {
-				return builtArtifact{declined: cited}, err
 			}
 			records[i] = map[string]any{"leaf_index": leaf, "digest": id, "body": hex.EncodeToString(body)}
 		}
@@ -309,27 +303,18 @@ func mentionsAny(document []byte, strs map[string]bool) bool {
 
 // project builds a registered derivation's records: each record's
 // digest, its position, and the declared header fields it carries.
-func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def *derivationEntry, conduct []string) ([]any, bool, error) {
-	// A projection that declares subject_ref or statement reveals the pack a
-	// record cites, whoever sealed it, so it is declined for a conduct record.
-	reveals := len(conduct) > 0 && (slices.Contains(def.def.Fields, "subject_ref") || slices.Contains(def.def.Fields, "statement"))
+func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def *derivationEntry) ([]any, error) {
 	records := make([]any, len(leaves))
 	for i, leaf := range leaves {
 		id := view.log[leaf].RecordID
-		if reveals {
-			pack, err := conductPackCited(id, view.log[leaf].Header, conduct)
-			if err != nil || pack != "" {
-				return nil, pack != "", err
-			}
-		}
 		stored, err := b.store.GetRecord(ctx, id)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		header, err := evidencerequest.DecodeJSON(stored.Header)
 		fields, ok := header.(map[string]any)
 		if err != nil || !ok {
-			return nil, false, fmt.Errorf("%w: header of %s", ErrCorrupt, id)
+			return nil, fmt.Errorf("%w: header of %s", ErrCorrupt, id)
 		}
 		entry := map[string]any{"digest": id, "leaf_index": leaf}
 		for _, name := range def.def.Fields {
@@ -339,21 +324,5 @@ func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def
 		}
 		records[i] = entry
 	}
-	return records, false, nil
-}
-
-// citesConductInline reports whether a record a responder would serve carries
-// its header inside its capsule (a record its caller sealed) and that header
-// cites a conduct pack: the capsule is served whole, so its subject_ref and
-// statement would reach the requester. A record the book sealed is served
-// digest-only, which shows neither.
-func citesConductInline(id string, h Header, capsule []byte, packs []string) (bool, error) {
-	if len(packs) == 0 {
-		return false, nil
-	}
-	if _, inline, err := inlineHeader(capsule); err != nil || !inline {
-		return false, err
-	}
-	pack, err := conductPackCited(id, h, packs)
-	return pack != "", err
+	return records, nil
 }

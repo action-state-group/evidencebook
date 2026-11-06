@@ -213,12 +213,11 @@ type RespondOptions struct {
 	RequesterID string
 	Policy      SharePolicy
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
-	// (BundleRequest.ConductPacks): a record its caller sealed with its header
-	// inside its capsule that cites one is declined (policy_declined), since
-	// that capsule is served whole, and so is any record a registered
-	// derivation that declares subject_ref or statement would project. A record
-	// the book sealed is otherwise served digest-only and needs no check. The kind is local policy, written into no
-	// record.
+	// (BundleRequest.ConductPacks). A record that cites one, whatever its type
+	// and whoever sealed it, is treated like the holder's other private
+	// records (neverServed): no subject form or derivation serves it, and a
+	// request that names it gets the uniform refusal an unknown id gets. The
+	// kind is local policy, written into no record.
 	ConductPacks []string
 	// stapleDeal is the deal a standard_history/1 staple is attached for
 	// (Book.StapleForDeal); the answered record carries it.
@@ -486,7 +485,7 @@ func (a *answer) run() (Reply, error) {
 			return a.refuse(ReasonPolicyDeclined, "")
 		}
 	}
-	view, err := b.view(a.ctx, log)
+	view, err := b.view(a.ctx, log, a.opts.ConductPacks)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -504,7 +503,7 @@ func (a *answer) run() (Reply, error) {
 		if err != nil {
 			return Reply{}, err
 		}
-		if view, err = b.view(a.ctx, log); err != nil {
+		if view, err = b.view(a.ctx, log, a.opts.ConductPacks); err != nil {
 			return Reply{}, err
 		}
 		// The new snapshot may hold records sealed since the first, among
@@ -520,7 +519,7 @@ func (a *answer) run() (Reply, error) {
 	}
 	r, def := d.Resolution, d.def
 	anchor := view.checkpoints[r.Anchor]
-	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def, a.opts.ConductPacks)
+	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -612,6 +611,9 @@ func (b *Book) clock() time.Time {
 // built at that anchor's size, is about records the snapshot holds, however
 // far the log has grown since (evidencebook#208).
 type bookView struct {
+	// private are the leaves of records that cite a conduct pack: never
+	// served, like neverServed record types.
+	private     map[uint64]bool
 	log         []Record
 	checkpoints []Checkpoint
 	views       []evidencerequest.AnchorView
@@ -619,12 +621,12 @@ type bookView struct {
 	commitments []retentionCommitment
 }
 
-func (b *Book) view(ctx context.Context, log []Record) (*bookView, error) {
+func (b *Book) view(ctx context.Context, log []Record, conduct []string) (*bookView, error) {
 	history, err := b.store.Checkpoints(ctx)
 	if err != nil {
 		return nil, err
 	}
-	v := &bookView{log: log, leaves: make(map[string]uint64, len(log))}
+	v := &bookView{log: log, leaves: make(map[string]uint64, len(log)), private: map[uint64]bool{}}
 	for _, cp := range history {
 		if cp.Kind != SubstrateKindCLL || cp.Entries > uint64(len(log)) {
 			continue
@@ -634,6 +636,12 @@ func (b *Book) view(ctx context.Context, log []Record) (*bookView, error) {
 	}
 	for i, record := range log {
 		v.leaves[record.RecordID] = uint64(i)
+		if len(conduct) > 0 {
+			// A statement that cannot be read fails closed: not served.
+			if pack, err := conductPackCited(record.RecordID, record.Header, conduct); pack != "" || err != nil {
+				v.private[uint64(i)] = true
+			}
+		}
 		if record.Header.RecordType == RecordTypeRetentionCommitment {
 			if c, ok := readRetentionCommitment(record.Header.Statement); ok {
 				v.commitments = append(v.commitments, c)
@@ -667,7 +675,7 @@ func (v *bookView) Servable(leaf uint64) bool {
 	if leaf >= uint64(len(v.log)) {
 		return false
 	}
-	return !neverServed(v.log[leaf].Header.RecordType)
+	return !neverServed(v.log[leaf].Header.RecordType) && !v.private[leaf]
 }
 
 // neverServed reports the record types that are the holder's own

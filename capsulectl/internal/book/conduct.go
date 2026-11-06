@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -48,6 +49,9 @@ func conductPacks(p cli.Profile) ([]string, error) {
 	return listed, nil
 }
 
+// warnings is where a warning that does not stop the verb goes.
+var warnings io.Writer = os.Stderr
+
 // workspacePacksDir is where the workspace keeps its Terms Packs, one folder
 // per pack with a pack-source.yaml, relative to the current directory.
 const workspacePacksDir = "packs"
@@ -61,6 +65,11 @@ func workspaceConductPacks() ([]string, error) {
 	// leaving its packs unprotected, so the directories are listed here.
 	folders, err := os.ReadDir(workspacePacksDir)
 	if errors.Is(err, fs.ErrNotExist) {
+		// Run from another directory, the workspace's conduct packs are not
+		// read and nothing else says so, which is the accident scope.kind
+		// conduct exists to prevent (Terms Pack Studio PRD v5 §5).
+		cwd, _ := os.Getwd()
+		fmt.Fprintf(warnings, "capsulectl-book: warning: no %s directory in %s, so no workspace conduct packs were read; run from the workspace root or list the pack ids in the conduct-packs file\n", workspacePacksDir, cwd)
 		return nil, nil
 	}
 	if err != nil {

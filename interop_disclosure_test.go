@@ -26,7 +26,7 @@ func TestDisclosureScanRefusesLinkableArtifacts(t *testing.T) {
 		"undeclared top member":   `{"anchor":"a","evidence_stream":"s","records":[],"subject":{"full_history":null},"producer":"x"}`,
 		"undeclared entry member": `{"anchor":"a","evidence_stream":"s","records":[{"body":"","digest":"d","leaf_index":0,"verification":{}}],"subject":{"full_history":null}}`,
 	} {
-		view, err := book.view(t.Context(), book.log)
+		view, err := book.view(t.Context(), book.log, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

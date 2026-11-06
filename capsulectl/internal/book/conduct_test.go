@@ -1,6 +1,7 @@
 package book
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -280,4 +281,29 @@ func TestWorkspaceConductPacksRefuseADanglingSource(t *testing.T) {
 	_, err = conductPacks(p)
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "cannot read the pack folder")
+}
+
+// evidencebook#421: run from a directory with no packs/, the workspace's
+// conduct packs are not read, and the verb says so instead of protecting less
+// in silence. A directory with packs/ says nothing.
+func TestWorkspaceConductPacksWarnWhenPacksAreNotFound(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	var out bytes.Buffer
+	previous := warnings
+	warnings = &out
+	t.Cleanup(func() { warnings = previous })
+
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+	assert.Contains(t, out.String(), "warning: no packs directory in ")
+	assert.Contains(t, out.String(), "no workspace conduct packs were read")
+
+	out.Reset()
+	require.NoError(t, os.Mkdir(filepath.Join(workspace, workspacePacksDir), 0o700))
+	_, err = conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, out.String())
 }

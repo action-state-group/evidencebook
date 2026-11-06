@@ -212,7 +212,7 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 	now, log := b.now(), b.logLocked()
 	_, isCLL := b.commitments.(cllMaterialSource)
 	b.mu.Unlock()
-	view, err := b.view(ctx, log)
+	view, err := b.view(ctx, log, nil)
 	if err != nil {
 		return f, err
 	}
@@ -235,7 +235,7 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 		return f, nil
 	}
 	anchor := view.checkpoints[d.Anchor]
-	built, err := b.buildArtifact(ctx, view, check.request, anchor, d.Leaves, nil, nil)
+	built, err := b.buildArtifact(ctx, view, check.request, anchor, d.Leaves, nil)
 	if err != nil {
 		f.Detail = fmt.Sprintf("the host cannot build the standard_history/1 card: %v", err)
 		return f, nil
@@ -325,7 +325,7 @@ func (t probeTarget) anchored(ctx context.Context, anchor string) (bool, error) 
 }
 
 func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, *Checkpoint, error) {
-	view, err := b.view(ctx, b.logLocked())
+	view, err := b.view(ctx, b.logLocked(), nil)
 	if err != nil {
 		return nil, nil, err
 	}

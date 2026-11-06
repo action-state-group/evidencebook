@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -319,18 +320,22 @@ func TestStandardHistoryBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.
 	}
 }
 
-// book respond (evidence-interop) serves a record the book sealed only as a
-// digest-only capsule, so a requester naming a conduct observation or
-// evidence_request, or the correlation key of its subject_ref, gets neither
-// the row text nor a pack id beyond the key it sent. A record its caller
-// sealed is served whole, header included, so RespondOptions.ConductPacks
-// declines it (evidencebook#418, #417).
-func TestRespondServesNoConductRowText(t *testing.T) {
+// book respond treats a record that cites a conduct pack like the holder's
+// other private records (neverServed): whatever its type and whoever sealed it,
+// no subject form or derivation serves it, and a request that names it gets
+// the refusal an unknown id gets (Steven, PRD §13; evidencebook#418, #417).
+func TestRespondNeverServesAConductRecord(t *testing.T) {
 	ctx := context.Background()
 	book := newFixture(t, "conduct-respond", 15).open(t)
 	obs := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")}})
-	req := mustAppend(t, book, Entry{RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`)})
-	mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@2", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-sealed")}})
+	result := mustAppend(t, book, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer",
+		Statement: []byte(`{"claims":[{"claim_id":"CONDUCT-ROW-7f3a","contract_ref":"asg/everyday-rules@1","text":"CONDUCT-ROW-TEXT-result"}]}`),
+	})
+	byClaim := mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/seller@2", CounterpartyRef: "peer",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/everyday-rules@1"}]}`),
+	})
 	payload := `{"order":17}`
 	inline, err := book.AppendCapsule(ctx, Entry{
 		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
@@ -339,14 +344,25 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	deal := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/seller@2", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("deal fact")}})
+	withSubject := func(name string, fields ...string) string {
+		id, err := book.RegisterDerivation(DerivationDefinition{
+			Document: []byte(`{"project":"` + name + `"}`), Recipient: "peer", Forms: []SubjectKind{SubjectRecord, SubjectCorrelation}, Fields: fields,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	projection := withSubject("with-subject", "subject_ref", "record_type")
+	private := []string{"asg/everyday-rules"}
+	ask := func(subject Subject, derivation string, packs []string) (Reply, AnsweredStatement) {
+		return respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Derivation: derivation, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
+	}
 	// served is everything a reply carries: the message, the artifact and the
 	// body of each record in a record set.
-	served := func(subject Subject, packs []string) ([]byte, string) {
-		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}),
-			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
-		if reply.Envelope == nil {
-			return nil, st.Reason
-		}
+	served := func(reply Reply) []byte {
 		all := append([]byte(nil), reply.Message.Octets...)
 		artifact := mustEnvelope(t, reply).Artifact
 		all = append(all, artifact...)
@@ -361,9 +377,61 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 				all = append(all, body...)
 			}
 		}
-		return all, ""
+		return all
 	}
-	private := []string{"asg/everyday-rules"}
+
+	// Without the list the same requests are answered: the controls that show
+	// the refusals below come from ConductPacks and the leak checks can see.
+	if reply, _ := ask(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, "", nil); reply.Envelope == nil || !holds(served(reply), "CONDUCT-ROW-TEXT-inline") {
+		t.Fatal("control: a caller-sealed record without ConductPacks should be served whole")
+	}
+	if reply, _ := ask(Subject{Kind: SubjectRecord, Digest: obs.RecordID}, projection, nil); reply.Envelope == nil || !holds(served(reply), "everyday-rules") {
+		t.Fatal("control: a projection declaring subject_ref should reveal the pack without ConductPacks")
+	}
+
+	// An unknown id is the reference refusal.
+	unknown := strings.Repeat("ab", 32)
+	reference, referenceStatement := ask(Subject{Kind: SubjectRecord, Digest: unknown}, "", private)
+	if reference.Refusal == nil {
+		t.Fatalf("an unknown id: outcome %q; want a refusal", referenceStatement.Outcome)
+	}
+	for name, id := range map[string]string{"observation": obs.RecordID, "result": result.RecordID, "claim": byClaim.RecordID, "caller-sealed": inline.RecordID} {
+		for form, derivation := range map[string]string{"plain": "", "projection": projection} {
+			reply, st := ask(Subject{Kind: SubjectRecord, Digest: id}, derivation, private)
+			if reply.Refusal == nil || reply.Envelope != nil {
+				t.Fatalf("%s %s: outcome %q; want a refusal", name, form, st.Outcome)
+			}
+			if reply.Refusal.Reason != reference.Refusal.Reason || st.Outcome != referenceStatement.Outcome || st.Reason != referenceStatement.Reason || len(reply.Message.Octets) != len(reference.Message.Octets) {
+				t.Fatalf("%s %s: refusal %q/%q (%d bytes) differs from an unknown id's %q/%q (%d bytes)", name, form,
+					reply.Refusal.Reason, st.Reason, len(reply.Message.Octets), reference.Refusal.Reason, referenceStatement.Reason, len(reference.Message.Octets))
+			}
+		}
+	}
+
+	// A correlation (or an exchange) holding conduct records leaves them out
+	// and serves the rest; the row text and the pack stay out of the reply.
+	for _, subject := range []Subject{
+		{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"},
+		{Kind: SubjectCorrelation, Correlation: "asg/seller@2"},
+	} {
+		reply, _ := ask(subject, "", private)
+		if reply.Envelope == nil {
+			continue
+		}
+		out := served(reply)
+		for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-result", "CONDUCT-ROW-TEXT-inline", "CONDUCT-ROW-7f3a"} {
+			if holds(out, leaked) {
+				t.Fatalf("%s: the reply carries %q", subject.Correlation, leaked)
+			}
+		}
+		if subject.Correlation == "asg/seller@2" && bytes.Contains(out, []byte(byClaim.RecordID)) {
+			t.Fatalf("a correlation served the record that cites the pack in a claim: %s", byClaim.RecordID)
+		}
+	}
+	// A record that does not cite a pack is still served.
+	if reply, st := ask(Subject{Kind: SubjectRecord, Digest: deal.RecordID}, "", private); reply.Envelope == nil {
+		t.Fatalf("a deal record: %q %q; want served", st.Outcome, st.Reason)
+	}
 
 	// A pack id that could never match refuses, as it does for a bundle.
 	for _, bad := range []string{"asg/everyday-rules@1", ""} {
@@ -371,72 +439,6 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: []string{bad}})
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("ConductPacks %q: err = %v; want ErrInvalid", bad, err)
-		}
-	}
-
-	// The control: the check finds a caller-sealed record's text when it is served.
-	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, nil); out == nil || !holds(out, "CONDUCT-ROW-TEXT-inline") {
-		t.Fatalf("control: a caller-sealed record without ConductPacks should be served whole (declined %q)", reason)
-	}
-	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, private); out != nil || reason != ReasonPolicyDeclined {
-		t.Fatalf("a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
-	}
-	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, nil); out == nil || !holds(out, "CONDUCT-ROW-TEXT-inline") {
-		t.Fatalf("control: a correlation holding a caller-sealed record should be served whole without ConductPacks (declined %q)", reason)
-	}
-	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, private); out != nil || reason != ReasonPolicyDeclined {
-		t.Fatalf("a correlation holding a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
-	}
-	// A projection that declares subject_ref reveals the pack of a book-sealed
-	// record, so it is declined for it and served for a neutral one.
-	register := func(name string, fields ...string) string {
-		id, err := book.RegisterDerivation(DerivationDefinition{
-			Document: []byte(`{"project":"` + name + `"}`), Recipient: "peer", Forms: []SubjectKind{SubjectRecord}, Fields: fields,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return id
-	}
-	project := func(derivation string, packs []string, digest string) ([]byte, string) {
-		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digest}, Derivation: derivation, Coverage: fresh()}),
-			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
-		if reply.Envelope == nil {
-			return nil, st.Reason
-		}
-		return mustEnvelope(t, reply).Artifact, ""
-	}
-	withSubject, typeOnly := register("with-subject", "subject_ref", "record_type"), register("type-only", "record_type")
-	if out, reason := project(withSubject, nil, obs.RecordID); out == nil || !holds(out, "everyday-rules") {
-		t.Fatalf("control: a projection declaring subject_ref should reveal the pack without ConductPacks (declined %q)", reason)
-	}
-	if out, reason := project(withSubject, private, obs.RecordID); out != nil || reason != ReasonPolicyDeclined {
-		t.Fatalf("a projection declaring subject_ref over a conduct record: served=%v reason=%q; want declined", out != nil, reason)
-	}
-	if out, reason := project(typeOnly, private, obs.RecordID); out == nil || holds(out, "everyday-rules") {
-		t.Fatalf("a projection declaring only record_type: served=%v reason=%q; want served without the pack", out != nil, reason)
-	}
-
-	// A correlation holding only book-sealed records is served as a record set
-	// of hex bodies; it shows neither row text nor, beyond the key the
-	// requester sent, the pack id.
-	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@2"}, private); out == nil {
-		t.Fatalf("a correlation of book-sealed records: declined %q; want served", reason)
-	} else if holds(out, "CONDUCT-ROW-TEXT-sealed") {
-		t.Fatal("the record set carries conduct row text")
-	}
-	for _, subject := range []Subject{
-		{Kind: SubjectRecord, Digest: obs.RecordID},
-		{Kind: SubjectRecord, Digest: req.RecordID},
-	} {
-		out, reason := served(subject, private)
-		if out == nil {
-			t.Fatalf("%s: declined %q; a digest-only capsule is served", subject.Kind, reason)
-		}
-		for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-request", "everyday-rules"} {
-			if holds(out, leaked) {
-				t.Fatalf("%s: the reply carries %q", subject.Kind, leaked)
-			}
 		}
 	}
 }
