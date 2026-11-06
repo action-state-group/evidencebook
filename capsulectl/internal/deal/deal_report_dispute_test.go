@@ -2,6 +2,7 @@ package deal
 
 import (
 	"testing"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +45,9 @@ func TestReadOnlyReportCarriesTheDisputeAndRuling(t *testing.T) {
 	assert.Equal(t, "price_as_offered", ruling["row"])
 	assert.Equal(t, "for_seller", ruling["finding"])
 	assert.Len(t, ruling["digest"], 64)
+	at, _ := ruling["at"].(string)
+	_, perr := time.Parse(time.RFC3339Nano, at)
+	assert.NoError(t, perr, "the ruling states when it was sealed")
 	assert.NotContains(t, ruled, "words")
 	assert.NotContains(t, ruled["dispute"], "words")
 }

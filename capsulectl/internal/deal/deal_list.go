@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/spf13/cobra"
@@ -35,6 +36,10 @@ type dealListing struct {
 	// Say is the deal's line for "show my receipts", from the wording pack
 	// (listingSay); only `deal list --json` fills it.
 	Say string `json:"say,omitempty"`
+	// Reconcile is the held-half and conflict state the deal's sealed terms
+	// Results state (dealReconcileFacts), or null; only `deal list --json`
+	// fills it.
+	Reconcile *dealReconcileFacts `json:"reconcile"`
 	// events are the steps the listing was read from.
 	events []sealedEvent
 }
@@ -98,6 +103,9 @@ func dealListCommand() *cobra.Command {
 				return err
 			}
 			if asJSON {
+				if err := s.fillReconcile(c.Context(), r.Deals, bounds.until); err != nil {
+					return err
+				}
 				key, vals := "say.list.other", cli.V{"count": fmt.Sprint(r.Totals.Deals)}
 				if r.Totals.Deals == 1 {
 					key = "say.list.one"
@@ -117,6 +125,9 @@ func dealListCommand() *cobra.Command {
 			if asJSON {
 				// A plain array carries no narration of its own: each
 				// listing has its line, with the words the profile pins.
+				if err := s.fillReconcile(c.Context(), list, time.Time{}); err != nil {
+					return err
+				}
 				w, _ := cli.ActiveWording(p)
 				sayListings(w, list)
 				return json.NewEncoder(c.OutOrStdout()).Encode(list)
@@ -133,7 +144,7 @@ func dealListCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	cmd.Flags().Bool("json", false, "Emit the deals as one JSON array, each with a plain summary, instead of tab-separated lines; with --since or --until, one object: the range, its deals, totals and disclosures")
+	cmd.Flags().Bool("json", false, "Emit the deals as one JSON array, each with a plain summary and its reconcile state (null until a verified sealed terms Result: then counterparty_half_held, halves_conflict, at), instead of tab-separated lines; with --since or --until, one object: the range, its deals, totals and disclosures")
 	cmd.Flags().String("since", "", "List only deals with a step at or after this date (2026-10-01, UTC) or time (2026-10-01T00:00:00-07:00)")
 	cmd.Flags().String("until", "", "List only deals with a step before this date or time (exclusive), each as it stood then")
 	return cmd

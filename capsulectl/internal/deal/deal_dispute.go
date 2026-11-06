@@ -289,7 +289,7 @@ func disputesOf(records []dealprofile.HistoryRecord, role string) []standardhist
 // present when the store holds a dispute step, raised only when the holder is the buyer who
 // raised it, and carries the row but never the buyer's words; ruling is present when the store
 // holds a ruling, whether or not it holds the dispute (the seller's store has none), and
-// carries the row and the finding. Both come from the same sealed evidence steps the trail
+// carries the row, the finding and the time the ruling step was sealed (at). Both come from the same sealed evidence steps the trail
 // and the ruling's did item read.
 func disputeFields(events []sealedEvent) (side string, dispute, ruling map[string]any) {
 	side = "provided"
@@ -309,7 +309,7 @@ func disputeFields(events []sealedEvent) (side string, dispute, ruling map[strin
 			if r.ForBuyer {
 				finding = findingForBuyer
 			}
-			ruling = map[string]any{"row": r.Row, "finding": finding, "digest": r.Digest}
+			ruling = map[string]any{"row": r.Row, "finding": finding, "digest": r.Digest, "at": se.Event.At}
 		}
 	}
 	return side, dispute, ruling
