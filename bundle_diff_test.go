@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -66,8 +67,8 @@ func TestDiffBundlesListsExactlyWhatTheLowerLevelDrops(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !!slices.Equal(d.DroppedRecords, []string{claim.RecordID}) || !d.Subset() {
-			t.Fatalf("diff = %+v; want only the claim dropped", d)
+		if !slices.Equal(d.DroppedRecords, sortedCopy([]string{claim.RecordID, observed.RecordID})) || !d.Subset() {
+			t.Fatalf("diff = %+v; want the claim and the observation it cites dropped (the closure)", d)
 		}
 	})
 
@@ -108,6 +109,23 @@ func TestDiffBundlesRefusesABundleThatDoesNotVerify(t *testing.T) {
 	}
 	if _, err := DiffBundles([]byte("nope"), lo); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("higher: err = %v; want ErrInvalid", err)
+	}
+}
+
+func TestDiffBundlesRefusesBundlesOfTwoLogs(t *testing.T) {
+	book, records := linkedBook(t)
+	other := newFixture(t, "book-b", 1).open(t)
+	otherRecord := mustAppend(t, other, observation("order-17", `{"status":"approved"}`))
+	hi, err := book.Bundle(context.Background(), BundleRequest{Root: records[0].RecordID, Payloads: PayloadsSelected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lo, err := other.Bundle(context.Background(), BundleRequest{Root: otherRecord.RecordID, WithholdPayloads: true, Suppress: []string{HeaderMember}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DiffBundles(hi.JSON, lo.JSON); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "not of one log") {
+		t.Fatalf("err = %v; want ErrInvalid for bundles of two logs", err)
 	}
 }
 

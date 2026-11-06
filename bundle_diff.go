@@ -39,7 +39,8 @@ func (d BundleDiff) Empty() bool {
 
 // DiffBundles verifies both bundles (VerifyBundle) and lists what lower drops
 // from higher. Each list is sorted. A bundle that does not verify is an
-// error, so a difference is never drawn from bytes nobody checked.
+// error, and so are bundles of two different logs, so a difference is never
+// drawn from bytes nobody checked or from two histories.
 func DiffBundles(higher, lower []byte) (BundleDiff, error) {
 	hi, err := VerifyBundle(higher)
 	if err != nil {
@@ -48,6 +49,12 @@ func DiffBundles(higher, lower []byte) (BundleDiff, error) {
 	lo, err := VerifyBundle(lower)
 	if err != nil {
 		return BundleDiff{}, fmt.Errorf("lower bundle: %w", err)
+	}
+	// Two logs are two histories: a bundle from another log that discloses
+	// less would otherwise pass as a lower level of this one. The anchors may
+	// differ (a level can be cut at a later checkpoint), the log may not.
+	if hi.LogID == "" || hi.LogID != lo.LogID {
+		return BundleDiff{}, fmt.Errorf("%w: the bundles are not of one log (%q, %q)", ErrInvalid, hi.LogID, lo.LogID)
 	}
 	hiRecords, loRecords := disclosedRecords(hi), disclosedRecords(lo)
 	var d BundleDiff
