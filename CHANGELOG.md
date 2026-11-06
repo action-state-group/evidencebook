@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added: `external-check-input/v0` carries `received_cards`; `external-check-result/v0` may carry an unsealed `notice` (evidencebook-deal#166)
+
+- `dealprofile/x-deal-v0/external-check-input-v0.schema.json` allows an optional top-level `received_cards`, a non-empty array of the cards the host received about the deal's counterparty, each exactly as received, given only to the profile's own rules checker. `external-check-result-v0.schema.json` allows an optional `notice` (`{line}`), the checker's one-line reading for the person. Neither is sealed or shared, and nothing derived from the cards may reach the sealed verdict, findings, tier or grade. Both are additive: a checker and a deal check that do not use them behave as before.
+
 ## v0.13.8 (2026-11-06)
 
 Go module only. Pull requests since v0.13.7: #415 (capsulectl refuses a conduct Result in a bundle), #419 (`DiffBundles`), #420 (the conduct refusal for every record type, `Book.Respond`, and the workspace default).

@@ -51,6 +51,21 @@
         "countersigned"
       ]
     },
+    "notice": {
+      "description": "Optional: what the checker makes of the input's received_cards, for the person only. The deal check shows it beside the check and seals, stores and shares none of it: it is not part of the sealed rules block, and a checker must not let received_cards change verdict, findings, tier or grade, which are sealed. Absent states no notice.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line"],
+      "properties": {
+        "line": {
+          "description": "One line of text for the person, no line break.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[^\\n\\r]+$"
+        }
+      }
+    },
     "findings": {
       "description": "One entry per rule evaluated, in the ruleset's order, passes included.",
       "type": "array",

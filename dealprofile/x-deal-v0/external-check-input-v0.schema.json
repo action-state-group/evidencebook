@@ -130,6 +130,12 @@
       "description": "Optional: on a check of a sale's thread, the sale's opaque item reference (256 random bits, lowercase hex), sent only to the profile's own rules checker on the user's device. It is equal across the sale's threads, so a rule can hold the sale to one accepted commitment; no record carries it, only a salted commitment per check (item_ref_commitment).",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "received_cards": {
+      "description": "Optional: cards the host received about this deal's counterparty (a history_card/1, a selection, an operator list), each exactly as received, handed over by the person's host at this check (deal check --received) and sent only to the profile's own rules checker on the user's device. The deal check does not bind a card to the counterparty: each card carries its own subject, which the checker reads. The cards are not stored, not sealed and not shared, and nothing derived from them may reach the result's verdict, findings, tier or grade, which are sealed: a checker reports what it makes of them only in the result's notice. Absent when the host handed over none; never empty, never null.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "object" }
     }
   },
   "$defs": {
