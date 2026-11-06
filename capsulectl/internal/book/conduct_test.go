@@ -3,6 +3,7 @@ package book
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -308,4 +309,72 @@ func TestWorkspaceConductPacksWarnWhenPacksAreNotFound(t *testing.T) {
 	_, err = conductPacks(p)
 	require.NoError(t, err)
 	assert.Empty(t, out.String())
+}
+
+// With the pin on an evidencebook release that has #418, an observation that
+// cites a listed pack is refused too, not only a Result.
+func TestBundleAndDiscloseRefuseAConductObservation(t *testing.T) {
+	p, stored := jsonlPublished(t)
+	var id string
+	cites := recordOfCapsule(t, p, stored.CapsuleID)
+	withBook(t, p, func(book *evidencebook.Book) {
+		record, err := book.Append(t.Context(), evidencebook.Entry{
+			RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: conductPack + "@1",
+			Links: []evidencebook.Link{{Type: evidencebook.Cites, Target: cites}},
+		})
+		require.NoError(t, err)
+		id = record.RecordID
+		_, err = book.Checkpoint(t.Context())
+		require.NoError(t, err)
+	})
+	writeConductPacks(t, p, conductPack+"\n")
+	for _, verb := range []string{"disclose", "bundle", "permalink"} {
+		_, err := invoke(t, "", verb, "--profile", p.Name, "--root", id)
+		require.ErrorIs(t, err, cli.ErrInput, verb)
+		assert.Contains(t, cli.SafeError(err), "conduct pack "+conductPack)
+	}
+}
+
+// book respond reads the conduct pack list too (evidencebook#418): an
+// unusable list refuses the answer instead of serving with the packs
+// unprotected, and a record that cites a listed pack is refused where it is
+// answered without the list.
+func TestRespondReadsTheConductPackList(t *testing.T) {
+	x := newEvidenceExchange(t)
+	var conduct string
+	withBook(t, x.b, func(book *evidencebook.Book) {
+		record, err := book.Append(t.Context(), evidencebook.Entry{
+			RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: conductPack + "@1",
+			CounterpartyRef: "a", Payloads: [][]byte{[]byte("row text")},
+		})
+		require.NoError(t, err)
+		conduct = record.RecordID
+		_, err = book.Checkpoint(t.Context())
+		require.NoError(t, err)
+	})
+	x.ask("record", `{"subject":{"record":"`+conduct+`"},"coverage":{"min_freshness":1}}`)
+	answers := 0
+	respond := func() (cli.EvidenceRespondResult, error) {
+		answers++
+		out, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "record.sent"), "--requester", "a", "--output", filepath.Join(x.dir, fmt.Sprintf("record%d.response", answers)))
+		var result cli.EvidenceRespondResult
+		if err == nil {
+			require.NoError(t, json.Unmarshal([]byte(out), &result), out)
+		}
+		return result, err
+	}
+
+	result, err := respond()
+	require.NoError(t, err)
+	require.Equal(t, evidencebook.OutcomeArtifact, result.Outcome, "control: without the list the record is answered")
+
+	writeConductPacks(t, x.b, conductPack+" # note\n")
+	_, err = respond()
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "is not a pack id")
+
+	writeConductPacks(t, x.b, conductPack+"\n")
+	result, err = respond()
+	require.NoError(t, err)
+	assert.Equal(t, evidencebook.OutcomeRefusal, result.Outcome, "a conduct record is refused as an unknown id is")
 }
