@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -70,6 +71,15 @@ type BundleRequest struct {
 	Withhold []string
 	// At pins the coverage anchor; nil checkpoints the book now.
 	At *Checkpoint
+	// ConductPacks are the pack ids the book's owner holds as conduct packs
+	// (scope.kind conduct): private, judged only for the owner. A scoped
+	// bundle whose selected set holds a Result that cites one is refused
+	// unless OwnerCopy is set. The kind is local policy, written into no
+	// record.
+	ConductPacks []string
+	// OwnerCopy marks a bundle that stays with the book's owner, so it may
+	// carry a conduct Result.
+	OwnerCopy bool
 	// Extensions are further extension blocks, by kind. producer-key/v1
 	// is set through ProducerKey and composed/v1 is agent-action-capsule's
 	// own, so both are refused here.
@@ -186,6 +196,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
+	if err := checkConductPacks(req.ConductPacks); err != nil {
+		return Bundle{}, err
+	}
 	depth := req.ClosureDepth
 	if req.handover {
 		depth = 0
@@ -199,6 +212,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 			return Bundle{}, fmt.Errorf("%w: included record %s", ErrNotFound, id)
 		}
 		selected[id] = struct{}{}
+	}
+	for id := range selected {
+		if err := b.refuseConductLocked(id, req); err != nil {
+			return Bundle{}, err
+		}
 	}
 	anchor, err := b.anchorLocked(ctx, req.At)
 	if err != nil {
@@ -289,6 +307,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		wire.Records = append(wire.Records, stored.Capsule)
 		if _, inline[id], err = inlineHeader(stored.Capsule); err != nil {
 			return Bundle{}, fmt.Errorf("%w: capsule %s: %v", ErrCorrupt, id, err)
+		}
+		if inline[id] {
+			if err := b.refuseConductLocked(id, req); err != nil {
+				return Bundle{}, err
+			}
 		}
 		if !slices.Contains(disclosed, id) && !inline[id] {
 			statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, Member: HeaderMember, Digest: digestBytes(stored.Header)})
@@ -409,6 +432,57 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		return Bundle{}, err
 	}
 	return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor, Disclosure: record}, nil
+}
+
+// checkConductPacks refuses a pack id that could never match: a Result's
+// reference is cut at its first "@", so an id still holding the version
+// ("asg/everyday-rules@1") would silently protect nothing.
+func checkConductPacks(packs []string) error {
+	for _, p := range packs {
+		if p == "" || strings.Contains(p, "@") {
+			return fmt.Errorf("%w: conduct pack %q must be a pack id, without a version", ErrInvalid, p)
+		}
+	}
+	return nil
+}
+
+// refuseConductLocked refuses a bundle that would carry a Result citing a
+// conduct pack to anyone but the book's owner (Terms Pack Studio PRD v5 §13:
+// a conduct pack never appears in a scoped bundle sent to a counterparty).
+// It checks the records the bundle discloses (root, closure and Include
+// alike); a Result the book's caller sealed with its header inside its
+// capsule is checked wherever it sits in the carried interval, since that
+// header travels with the capsule whether or not it is selected.
+func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
+	if req.OwnerCopy || len(req.ConductPacks) == 0 {
+		return nil
+	}
+	h := b.records[id].Header
+	if h.RecordType != RecordTypeEvidenceResult {
+		return nil
+	}
+	// A Result names its pack in its subject_ref and in each claim's
+	// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack
+	// ids are conduct.
+	refs := []string{h.SubjectRef}
+	var doc struct {
+		Claims []struct {
+			ContractRef string `json:"contract_ref"`
+		} `json:"claims"`
+	}
+	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
+		return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
+	}
+	for _, c := range doc.Claims {
+		refs = append(refs, c.ContractRef)
+	}
+	for _, ref := range refs {
+		pack, _, _ := strings.Cut(ref, "@")
+		if pack != "" && slices.Contains(req.ConductPacks, pack) {
+			return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
+		}
+	}
+	return nil
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does
