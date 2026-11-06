@@ -130,8 +130,8 @@ func TestBundleDiffRefusals(t *testing.T) {
 	})
 }
 
-// The plugin's metadata lists the commands the core shows and dispatches:
-// every command BookCommands registers is in it.
+// The core shows the plugin's metadata list (help, plugin listing, doctor);
+// dispatch does not depend on it. Every command BookCommands registers is in it.
 func TestBookMetadataListsEveryCommand(t *testing.T) {
 	listed := map[string]bool{}
 	for _, name := range BookMetadata.Subcommands {
@@ -164,7 +164,7 @@ func TestBundleDiffRefusesDifferentCheckpointKeys(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--checkpoint-key", hex.EncodeToString(key)}} {
 		_, err = invoke(t, "", append([]string{"bundle-diff", "--higher", higher, "--lower", other}, extra...)...)
 		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "not a lower level", "the key mismatch is what refuses it")
+		assert.ErrorContains(t, err, "signed by different keys")
 	}
 }
 
