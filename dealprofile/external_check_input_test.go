@@ -92,6 +92,7 @@ func TestExternalCheckInputReceivedCards(t *testing.T) {
 		"absent": "",
 		"one":    `[{"schema":"history_card/1"}]`,
 		"two":    `[{"schema":"history_card/1"},{"x":1}]`,
+		"64":     `[` + strings.TrimSuffix(strings.Repeat(`{},`, 64), ",") + `]`,
 	}
 	invalid := map[string]string{
 		"null":       `null`,
@@ -99,6 +100,7 @@ func TestExternalCheckInputReceivedCards(t *testing.T) {
 		"an object":  `{"schema":"history_card/1"}`,
 		"a string":   `["card"]`,
 		"null entry": `[null]`,
+		"65 cards":   `[` + strings.TrimSuffix(strings.Repeat(`{},`, 65), ",") + `]`,
 	}
 	for name, cards := range valid {
 		doc, err := jsonschema.UnmarshalJSON(strings.NewReader(input(cards)))

@@ -44,6 +44,7 @@ func TestExternalCheckResultNotice(t *testing.T) {
 		"no line":             `{}`,
 		"empty line":          `{"line":""}`,
 		"line break":          `{"line":"a\nb"}`,
+		"trailing newline":    `{"line":"a\n"}`,
 		"carriage return":     `{"line":"a\rb"}`,
 		"escape":              `{"line":"a\u001b[31mb"}`,
 		"C1 control":          `{"line":"a\u0085b"}`,
