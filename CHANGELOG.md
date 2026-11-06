@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## v0.13.9 (2026-11-06)
+
+Go module only. Pull requests since v0.13.8: #427 (`external-check-input/v0` carries `received_cards`; `external-check-result/v0` may carry an unsealed `notice`) and #428 (how the deal check treats them). The `capsulectl-book` entries pending in `changelog.d/` (#425, #424) and the Rust entry (#426) belong to those packages' own releases.
+
+### Added: `external-check-input/v0` carries `received_cards`; `external-check-result/v0` may carry an unsealed `notice` (evidencebook-deal#166)
+
+- `dealprofile/x-deal-v0/external-check-input-v0.schema.json` allows an optional top-level `received_cards`, a non-empty array of the cards the host received about the deal's counterparty, each with its JSON values, numbers and key order as received, given only to the profile's own rules checker. `external-check-result-v0.schema.json` allows an optional `notice` (`{line}`), the checker's one-line reading of those cards for the person.
+- Neither is sealed or shared. Nothing derived from the cards may reach any other member of the result (the sealed verdict, findings, tier, grade, ruleset id and definition digest), and an unreadable card is never a refusal. A host sends no `received_cards` until its checker accepts the member (the input schema is closed), and a checker prints `notice` only when it was given cards, so a deal check and a checker that do not use them behave as before.
+
+### Changed: the deal check seals the run given no cards; `received_cards` go to a second run read for `notice` alone (evidencebook-deal#166)
+
+- `dealprofile/x-deal-v0/PROFILE.md` and `external-check-input-v0.schema.json` state how the deal check treats `received_cards`: the sealed result comes from a run of the checker given no cards, and when that run was evaluated, a second run given them is read only for its `notice`, so nothing a card could change reaches a sealed result. No schema member changes.
+
 ## v0.13.8 (2026-11-06)
 
 Go module only. Pull requests since v0.13.7: #415 (capsulectl refuses a conduct Result in a bundle), #419 (`DiffBundles`), #420 (the conduct refusal for every record type, `Book.Respond`, and the workspace default).
