@@ -387,6 +387,36 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, private); out != nil || reason != ReasonPolicyDeclined {
 		t.Fatalf("a correlation holding a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
 	}
+	// A projection that declares subject_ref reveals the pack of a book-sealed
+	// record, so it is declined for it and served for a neutral one.
+	register := func(name string, fields ...string) string {
+		id, err := book.RegisterDerivation(DerivationDefinition{
+			Document: []byte(`{"project":"` + name + `"}`), Recipient: "peer", Forms: []SubjectKind{SubjectRecord}, Fields: fields,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	project := func(derivation string, packs []string, digest string) ([]byte, string) {
+		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digest}, Derivation: derivation, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
+		if reply.Envelope == nil {
+			return nil, st.Reason
+		}
+		return mustEnvelope(t, reply).Artifact, ""
+	}
+	withSubject, typeOnly := register("with-subject", "subject_ref", "record_type"), register("type-only", "record_type")
+	if out, reason := project(withSubject, nil, obs.RecordID); out == nil || !holds(out, "everyday-rules") {
+		t.Fatalf("control: a projection declaring subject_ref should reveal the pack without ConductPacks (declined %q)", reason)
+	}
+	if out, reason := project(withSubject, private, obs.RecordID); out != nil || reason != ReasonPolicyDeclined {
+		t.Fatalf("a projection declaring subject_ref over a conduct record: served=%v reason=%q; want declined", out != nil, reason)
+	}
+	if out, reason := project(typeOnly, private, obs.RecordID); out == nil || holds(out, "everyday-rules") {
+		t.Fatalf("a projection declaring only record_type: served=%v reason=%q; want served without the pack", out != nil, reason)
+	}
+
 	// A correlation holding only book-sealed records is served as a record set
 	// of hex bodies; it shows neither row text nor, beyond the key the
 	// requester sent, the pack id.

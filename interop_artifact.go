@@ -102,9 +102,9 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			head["checkpoints"], declared = list, checkpointsFields
 		}
 	case def != nil:
-		records, err := b.project(ctx, view, leaves, def)
-		if err != nil {
-			return builtArtifact{}, err
+		records, declined, err := b.project(ctx, view, leaves, def, conduct)
+		if err != nil || declined {
+			return builtArtifact{declined: declined}, err
 		}
 		head["derivation"], head["records"] = def.id, records
 		declared = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "records", "subject"}, entry: append([]string{"digest", "leaf_index"}, def.def.Fields...), list: "records"}
@@ -309,18 +309,27 @@ func mentionsAny(document []byte, strs map[string]bool) bool {
 
 // project builds a registered derivation's records: each record's
 // digest, its position, and the declared header fields it carries.
-func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def *derivationEntry) ([]any, error) {
+func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def *derivationEntry, conduct []string) ([]any, bool, error) {
+	// A projection that declares subject_ref or statement reveals the pack a
+	// record cites, whoever sealed it, so it is declined for a conduct record.
+	reveals := len(conduct) > 0 && (slices.Contains(def.def.Fields, "subject_ref") || slices.Contains(def.def.Fields, "statement"))
 	records := make([]any, len(leaves))
 	for i, leaf := range leaves {
 		id := view.log[leaf].RecordID
+		if reveals {
+			pack, err := conductPackCited(id, view.log[leaf].Header, conduct)
+			if err != nil || pack != "" {
+				return nil, pack != "", err
+			}
+		}
 		stored, err := b.store.GetRecord(ctx, id)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		header, err := evidencerequest.DecodeJSON(stored.Header)
 		fields, ok := header.(map[string]any)
 		if err != nil || !ok {
-			return nil, fmt.Errorf("%w: header of %s", ErrCorrupt, id)
+			return nil, false, fmt.Errorf("%w: header of %s", ErrCorrupt, id)
 		}
 		entry := map[string]any{"digest": id, "leaf_index": leaf}
 		for _, name := range def.def.Fields {
@@ -330,7 +339,7 @@ func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def
 		}
 		records[i] = entry
 	}
-	return records, nil
+	return records, false, nil
 }
 
 // citesConductInline reports whether a record a responder would serve carries

@@ -274,4 +274,10 @@ func TestWorkspaceConductPacksRefuseADanglingSource(t *testing.T) {
 	_, err = conductPacks(p)
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
+
+	require.NoError(t, os.RemoveAll(folder))
+	require.NoError(t, os.Symlink(filepath.Join(workspace, "gone"), filepath.Join(workspace, workspacePacksDir, "moved")))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack folder")
 }

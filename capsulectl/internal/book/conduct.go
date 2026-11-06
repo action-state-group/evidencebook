@@ -69,6 +69,12 @@ func workspaceConductPacks() ([]string, error) {
 	var packs []string
 	for _, folder := range folders {
 		path := filepath.Join(workspacePacksDir, folder.Name(), "pack-source.yaml")
+		// A folder link that no longer resolves has a kind that cannot be told.
+		if folder.Type()&fs.ModeSymlink != 0 {
+			if _, err := os.Stat(filepath.Join(workspacePacksDir, folder.Name())); err != nil {
+				return nil, cli.InputError(fmt.Sprintf("cannot read the pack folder %s, so nothing is bundled: %v", filepath.Join(workspacePacksDir, folder.Name()), err))
+			}
+		}
 		data, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 			// Only a pack folder with no source at all is skipped; a dangling

@@ -215,8 +215,9 @@ type RespondOptions struct {
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (BundleRequest.ConductPacks): a record its caller sealed with its header
 	// inside its capsule that cites one is declined (policy_declined), since
-	// that capsule is served whole. A record the book sealed is served
-	// digest-only and needs no check. The kind is local policy, written into no
+	// that capsule is served whole, and so is any record a registered
+	// derivation that declares subject_ref or statement would project. A record
+	// the book sealed is otherwise served digest-only and needs no check. The kind is local policy, written into no
 	// record.
 	ConductPacks []string
 	// stapleDeal is the deal a standard_history/1 staple is attached for
