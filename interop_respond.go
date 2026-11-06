@@ -663,6 +663,13 @@ func (v *bookView) record(id string) (Record, bool) {
 func (v *bookView) Anchors() []evidencerequest.AnchorView { return v.views }
 func (v *bookView) LogEntries() uint64                    { return uint64(len(v.log)) }
 
+// servableDigest is false only for a record this snapshot holds that is not
+// servable; an id it does not hold is the evidencerequest library's to refuse.
+func (v *bookView) servableDigest(digest string) bool {
+	leaf, held := v.leaves[digest]
+	return !held || v.Servable(leaf)
+}
+
 func (v *bookView) LeafOf(digest string) (uint64, bool) {
 	leaf, ok := v.leaves[digest]
 	return leaf, ok && v.Servable(leaf)
@@ -735,10 +742,18 @@ func (v *bookView) named(subject Subject) []Header {
 }
 
 func (v *bookView) Citing(half string) []uint64 {
+	// An exchange on a private record's id is refused as an unknown id is.
+	if leaf, held := v.leaves[half]; held && !v.Servable(leaf) {
+		return nil
+	}
 	return v.matching(func(h Header) bool { return slices.Contains(h.LinksTo(Cites), half) })
 }
 
 func (v *bookView) Lapsed(subject Subject, now time.Time) bool {
+	// A private record is answered as an unknown id, never as lapsed.
+	if (subject.Kind == SubjectRecord || subject.Kind == SubjectExchange) && !v.servableDigest(subject.Digest) {
+		return false
+	}
 	for _, c := range v.commitments {
 		if c.subject == subject && now.After(c.until) {
 			return true

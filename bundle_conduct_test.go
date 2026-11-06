@@ -408,25 +408,21 @@ func TestRespondNeverServesAConductRecord(t *testing.T) {
 		}
 	}
 
-	// A correlation (or an exchange) holding conduct records leaves them out
-	// and serves the rest; the row text and the pack stay out of the reply.
-	for _, subject := range []Subject{
-		{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"},
-		{Kind: SubjectCorrelation, Correlation: "asg/seller@2"},
-	} {
-		reply, _ := ask(subject, "", private)
-		if reply.Envelope == nil {
-			continue
-		}
-		out := served(reply)
-		for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-result", "CONDUCT-ROW-TEXT-inline", "CONDUCT-ROW-7f3a"} {
-			if holds(out, leaked) {
-				t.Fatalf("%s: the reply carries %q", subject.Correlation, leaked)
-			}
-		}
-		if subject.Correlation == "asg/seller@2" && bytes.Contains(out, []byte(byClaim.RecordID)) {
-			t.Fatalf("a correlation served the record that cites the pack in a claim: %s", byClaim.RecordID)
-		}
+	// A correlation holding conduct records leaves them out and serves the
+	// rest; one holding only conduct records is refused as an unknown key is.
+	mixed, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "asg/seller@2"}, "", private)
+	if mixed.Envelope == nil {
+		t.Fatal("a correlation of a deal record and a record citing the pack in a claim should be served")
+	}
+	out := served(mixed)
+	if !bytes.Contains(out, []byte(deal.RecordID)) || bytes.Contains(out, []byte(byClaim.RecordID)) || holds(out, "everyday-rules") {
+		t.Fatalf("the mixed correlation should carry the deal record only: deal=%v claim=%v pack=%v",
+			bytes.Contains(out, []byte(deal.RecordID)), bytes.Contains(out, []byte(byClaim.RecordID)), holds(out, "everyday-rules"))
+	}
+	unknownKey, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "no/such-key"}, "", private)
+	onlyConduct, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, "", private)
+	if unknownKey.Refusal == nil || onlyConduct.Refusal == nil || onlyConduct.Refusal.Reason != unknownKey.Refusal.Reason || len(onlyConduct.Message.Octets) != len(unknownKey.Message.Octets) {
+		t.Fatalf("a correlation of conduct records only: %+v; want the refusal an unknown key gets: %+v", onlyConduct.Refusal, unknownKey.Refusal)
 	}
 	// A record that does not cite a pack is still served.
 	if reply, st := ask(Subject{Kind: SubjectRecord, Digest: deal.RecordID}, "", private); reply.Envelope == nil {

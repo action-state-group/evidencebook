@@ -472,21 +472,19 @@ func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 }
 
 // conductPackCited returns the listed conduct pack a record's header cites,
-// or "" for none. A record names its pack in its subject_ref and, for a
-// Result, in each claim's contract_ref, "<pack_id>@<pack_version>"; the owner
-// says which pack ids are conduct.
+// or "" for none. A record names its pack in its subject_ref and in any
+// contract_ref member of its statement (a Result's claims carry one each),
+// "<pack_id>@<pack_version>"; the owner says which pack ids are conduct. A
+// statement that cannot be read is an error, so a caller that must not serve
+// what it cannot classify fails closed.
 func conductPackCited(id string, h Header, packs []string) (string, error) {
 	refs := []string{h.SubjectRef}
-	var doc struct {
-		Claims []struct {
-			ContractRef string `json:"contract_ref"`
-		} `json:"claims"`
-	}
-	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil && h.RecordType == RecordTypeEvidenceResult {
-		return "", fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
-	}
-	for _, c := range doc.Claims {
-		refs = append(refs, c.ContractRef)
+	if len(h.Statement) > 0 {
+		var statement any
+		if err := json.Unmarshal(h.Statement, &statement); err != nil {
+			return "", fmt.Errorf("%w: %s %s: statement is not JSON: %v", ErrCorrupt, h.RecordType, id, err)
+		}
+		refs = appendContractRefs(refs, statement)
 	}
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
@@ -495,6 +493,26 @@ func conductPackCited(id string, h Header, packs []string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// appendContractRefs adds every string value under a "contract_ref" key, at
+// any depth of a decoded statement.
+func appendContractRefs(refs []string, value any) []string {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, member := range v {
+			if text, ok := member.(string); ok && key == "contract_ref" {
+				refs = append(refs, text)
+				continue
+			}
+			refs = appendContractRefs(refs, member)
+		}
+	case []any:
+		for _, member := range v {
+			refs = appendContractRefs(refs, member)
+		}
+	}
+	return refs
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does
