@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc38
+
+This release pairs with capsulectl `v0.1.0-rc38` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc37`: `deal disclosures` (#161), the owner's copy opening the counterparty and the buyer's words (#160, #165), `deal check --received` (#167) and the sealed dispute, ruling and side in `deal report` (#169).
+
 - `deal report` (`--read-only` included) carries the holder's `side` (`bought` or `provided`) and, when the store holds them, a structured `dispute` (`row`, and `raised`: true only for the buyer who disputed) and `ruling` (`row`, `finding` `for_buyer` or `for_seller`, `digest`), read from the sealed evidence steps rather than the trail text a claim can imitate. The ruling stands without the dispute (a seller's store holds none); the buyer's words are not in either. `--read-only` keeps its guarantees: nothing is sealed, cut or migrated, and it takes the same shelf lock and checkpoint key as before. No record or schema changes (evidencebook-deal#168).
 - `deal check --received FILE` lets a host hand the profile's rules checker the cards it received about the deal's counterparty (a JSON array, at most 64 cards and 1 MiB; the profile must pin a rules checker). The sealed rules block still comes from a run given no cards, so nothing the cards could change reaches it, whatever the checker does with them; when that run was evaluated, a second run given the cards as the optional `received_cards` member of `external-check-input/v0` is read for the checker's optional one-line `notice` alone, printed as `rules_notice` (or `rules_notice_unavailable`, with the reason). Cards and notice are not stored, sealed or shared, and a sale's post check refuses the flag because it runs no checker. A checker must accept `received_cards` before a host sends cards; needs evidencebook with the `received_cards` and `notice` schema members (evidencebook v0.13.9, #427) (evidencebook-deal#166).
 - `deal disclosures --deal ID [--record DIGEST]`: a read-only verb that returns the sealed disclosure record of each share of a deal, with its digest and its sequence on the disclosure log; each stored record's JCS digest is recomputed and must equal the digest stored with it (the one its share sealed); the log itself is not re-read. It reads the holder's own store and feeds no share, page or bundle. Lets a script drop its sqlite read of `deal_disclosures` (evidencebook-deal#27).
