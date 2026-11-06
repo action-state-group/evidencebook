@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## capsulectl/v0.1.0-rc38 (2026-11-06)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc38`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc38` (the version this release pairs with). It also carries what merged since `capsulectl/v0.1.0-rc37`: #415, #418 and #420 (the conduct refusal) and #403 (`book bundle-diff`), below.
+
+### Added: `capsulectl book bundle-diff` renders one history at two disclosure levels (#403)
+
+- `capsulectl book bundle-diff --higher A.json --lower B.json [--checkpoint-key HEX]` reads two held bundles of the same log and lists the records and payloads the lower one drops (`DiffBundles`). It reads files only: no profile, nothing is sealed.
+- It refuses a bundle that does not verify, bundles of different logs or signed under different checkpoint keys, a `--checkpoint-key` that did not sign them, and a `--lower` that discloses something `--higher` does not (it is then not a lower level).
+- Only records and payloads are compared: an interval-coverage leaf whose header a bundle does not carry is not, and the verb does not detect a fork.
+
+### Changed: `capsulectl-book` requires `evidencebook` v0.13.9 (#415, #418, #420)
+
+- The conduct refusal now covers every record type, not only a Result: `bundle`, `disclose`, `permalink` and a Close's `--bundle-out` refuse an observation or an evidence_request that cites a conduct pack. `book respond` hands the pack list to the book, so a record that cites one is refused as an unknown id is.
+
 ## v0.13.9 (2026-11-06)
 
 Go module only. Pull requests since v0.13.8: #427 (`external-check-input/v0` carries `received_cards`; `external-check-result/v0` may carry an unsealed `notice`) and #428 (how the deal check treats them). The `capsulectl-book` entries pending in `changelog.d/` (#425, #424) and the Rust entry (#426) belong to those packages' own releases.
