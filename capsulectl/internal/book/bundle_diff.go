@@ -38,12 +38,7 @@ func bundleDiffCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		diff, err := evidencebook.DiffBundles(higher, lower)
-		if err != nil {
-			return errors.Join(cli.InputError("the bundles cannot be compared: "+err.Error()), err)
-		}
-		// DiffBundles proves both bundles come from one log under an
-		// authenticated checkpoint; only the caller knows whose key that is.
+		// Verify first, so a bad bundle is named by its flag.
 		verified, err := evidencebook.VerifyBundle(higher)
 		if err != nil {
 			return errors.Join(cli.InputError("the --higher bundle does not verify: "+err.Error()), err)
@@ -52,12 +47,19 @@ func bundleDiffCommand() *cobra.Command {
 		if err != nil {
 			return errors.Join(cli.InputError("the --lower bundle does not verify: "+err.Error()), err)
 		}
+		// DiffBundles proves both come from one log under an authenticated
+		// checkpoint; only the caller knows whose key that is, and that both
+		// bundles carry the same one.
+		diff, err := evidencebook.DiffBundles(higher, lower)
+		if err != nil {
+			return errors.Join(cli.InputError("the bundles cannot be compared: "+err.Error()), err)
+		}
 		if verifiedLower.AnchorKeyID != verified.AnchorKeyID {
 			return cli.InputError("the two bundles' checkpoints are signed by different keys")
 		}
-		if key != "" {
+		if c.Flags().Changed("checkpoint-key") {
 			pinned, e := cli.ParseKeys([]string{key})
-			if e != nil {
+			if e != nil || key == "" {
 				return cli.InputError("--checkpoint-key is a 32-byte Ed25519 public key in hex")
 			}
 			if verified.AnchorKeyID != hex.EncodeToString(pinned[0]) {
