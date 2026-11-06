@@ -15,7 +15,10 @@ import (
 // A bundle also carries every record its interval covers, undisclosed, so
 // the checkpoint proves completeness. Those leaves reveal nothing and are
 // not compared: a record counts as disclosed in a bundle only when the
-// bundle verifies its header.
+// bundle verifies its header. Only records and payloads are compared: a
+// bundle's other extensions are the producer's own statements (VerifiedBundle
+// .Extensions) and disclosed members other than the header are not read, so a
+// caller that gates on Subset gates on records and payloads only.
 type BundleDiff struct {
 	// DroppedRecords are records whose header the higher bundle discloses
 	// and the lower does not.
@@ -53,6 +56,13 @@ func DiffBundles(higher, lower []byte) (BundleDiff, error) {
 	// Two logs are two histories: a bundle from another log that discloses
 	// less would otherwise pass as a lower level of this one. The anchors may
 	// differ (a level can be cut at a later checkpoint), the log may not.
+	// Both anchors must verify under the key they name, so the log id is the
+	// signed one; that the key belongs to the expected party is the caller's
+	// check, as VerifiedBundle.AnchorAuthenticated says, and a fork of one
+	// log is not detected here.
+	if !hi.AnchorAuthenticated || !lo.AnchorAuthenticated {
+		return BundleDiff{}, fmt.Errorf("%w: a bundle's anchor is not authenticated", ErrInvalid)
+	}
 	if hi.LogID == "" || hi.LogID != lo.LogID {
 		return BundleDiff{}, fmt.Errorf("%w: the bundles are not of one log (%q, %q)", ErrInvalid, hi.LogID, lo.LogID)
 	}

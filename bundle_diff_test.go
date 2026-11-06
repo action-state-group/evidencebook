@@ -54,8 +54,9 @@ func TestDiffBundlesListsExactlyWhatTheLowerLevelDrops(t *testing.T) {
 		if len(d.DroppedRecords) != 0 || !d.Subset() {
 			t.Fatalf("diff = %+v; want payloads only", d)
 		}
-		if !slices.Contains(d.DroppedPayloads, observed.Header.PayloadCommitments[0]) {
-			t.Fatalf("DroppedPayloads = %v; want the observation's payload", d.DroppedPayloads)
+		want := sortedCopy(slices.Concat(ruling.Header.PayloadCommitments, claim.Header.PayloadCommitments, observed.Header.PayloadCommitments))
+		if !slices.Equal(d.DroppedPayloads, want) {
+			t.Fatalf("DroppedPayloads = %v; want the ruling's, the claim's and the observation's payloads %v", d.DroppedPayloads, want)
 		}
 	})
 
@@ -82,6 +83,19 @@ func TestDiffBundlesListsExactlyWhatTheLowerLevelDrops(t *testing.T) {
 		}
 		if !d.Empty() {
 			t.Fatalf("diff = %+v; want empty", d)
+		}
+	})
+
+	t.Run("a level cut at a later checkpoint of the same log still compares", func(t *testing.T) {
+		lo := mustBundle(t, book, BundleRequest{Root: claim.RecordID, WithholdPayloads: true})
+		mustAppend(t, book, observation("order-19", `{"status":"new"}`))
+		hi := mustBundle(t, book, BundleRequest{Root: claim.RecordID, Payloads: PayloadsSelected})
+		d, err := DiffBundles(hi, lo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(d.DroppedRecords) != 0 || len(d.DroppedPayloads) == 0 || !d.Subset() {
+			t.Fatalf("diff = %+v; want payloads dropped across two anchors", d)
 		}
 	})
 
@@ -127,6 +141,15 @@ func TestDiffBundlesRefusesBundlesOfTwoLogs(t *testing.T) {
 	if _, err := DiffBundles(hi.JSON, lo.JSON); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "not of one log") {
 		t.Fatalf("err = %v; want ErrInvalid for bundles of two logs", err)
 	}
+}
+
+func mustBundle(t *testing.T, book *Book, req BundleRequest) []byte {
+	t.Helper()
+	b, err := book.Bundle(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.JSON
 }
 
 func sortedCopy(s []string) []string {
