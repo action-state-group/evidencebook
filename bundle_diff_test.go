@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -140,6 +141,28 @@ func TestDiffBundlesRefusesBundlesOfTwoLogs(t *testing.T) {
 	}
 	if _, err := DiffBundles(hi.JSON, lo.JSON); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "not of one log") {
 		t.Fatalf("err = %v; want ErrInvalid for bundles of two logs", err)
+	}
+}
+
+func TestDiffBundlesRefusesAnUnauthenticatedAnchor(t *testing.T) {
+	book, records := linkedBook(t)
+	good := mustBundle(t, book, BundleRequest{Root: records[1].RecordID, Payloads: PayloadsSelected})
+	var tree map[string]any
+	if err := json.Unmarshal(good, &tree); err != nil {
+		t.Fatal(err)
+	}
+	delete(tree["checkpoint"].(map[string]any), "cose")
+	bad, err := json.Marshal(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := VerifyBundle(bad); err != nil || v.AnchorAuthenticated || v.LogID == "" {
+		t.Fatalf("setup: want a bundle that verifies with a log id and an unauthenticated anchor; err=%v authenticated=%v log=%q", err, v.AnchorAuthenticated, v.LogID)
+	}
+	for name, pair := range map[string][2][]byte{"higher": {bad, good}, "lower": {good, bad}} {
+		if _, err := DiffBundles(pair[0], pair[1]); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "not authenticated") {
+			t.Fatalf("%s unauthenticated: err = %v; want ErrInvalid naming the anchor", name, err)
+		}
 	}
 }
 

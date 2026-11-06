@@ -12,10 +12,11 @@ import (
 // not a hidden row, so the difference is exactly what the two bundles
 // disclose: nothing here is inferred from a policy.
 //
-// A bundle also carries every record its interval covers, undisclosed, so
-// the checkpoint proves completeness. Those leaves reveal nothing and are
-// not compared: a record counts as disclosed in a bundle only when the
-// bundle verifies its header. Only records and payloads are compared: a
+// A bundle also carries every record its interval covers, so the checkpoint
+// proves completeness. A leaf whose header the bundle does not carry reveals
+// nothing and is not compared: a record counts as disclosed in a bundle only
+// when the bundle verifies its header, wherever the header travels (a
+// caller-sealed record carries it inside its capsule). Only records and payloads are compared: a
 // bundle's other extensions are the producer's own statements (VerifiedBundle
 // .Extensions) and disclosed members other than the header are not read, so a
 // caller that gates on Subset gates on records and payloads only.
@@ -32,7 +33,8 @@ type BundleDiff struct {
 	Extra []string
 }
 
-// Subset reports whether the lower bundle discloses nothing the higher does not.
+// Subset reports whether the lower bundle discloses no record or payload the
+// higher does not.
 func (d BundleDiff) Subset() bool { return len(d.Extra) == 0 }
 
 // Empty reports whether the two bundles disclose the same records and payloads.
@@ -41,9 +43,15 @@ func (d BundleDiff) Empty() bool {
 }
 
 // DiffBundles verifies both bundles (VerifyBundle) and lists what lower drops
-// from higher. Each list is sorted. A bundle that does not verify is an
-// error, and so are bundles of two different logs, so a difference is never
-// drawn from bytes nobody checked or from two histories.
+// from higher. Each list is sorted.
+//
+// Both bundles must verify, carry an authenticated anchor and name the same
+// log, else the error is ErrInvalid. The log id is then the signed one, but
+// whether the signing key belongs to the expected party is the caller's
+// check: compare VerifyBundle(...).AnchorKeyID of both bundles against a key
+// obtained independently. Two forks of one log are not detected, and a
+// bundle from a receipt-only substrate (no authenticated anchor) cannot be
+// compared. Only records and payloads are compared (see BundleDiff).
 func DiffBundles(higher, lower []byte) (BundleDiff, error) {
 	hi, err := VerifyBundle(higher)
 	if err != nil {
