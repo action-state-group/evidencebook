@@ -1018,13 +1018,13 @@ func checkpointBook(ctx context.Context, p cli.Profile, book *evidencebook.Book,
 // header and no payload; `disclose` and `permalink` disclose headers and the
 // payloads --payloads names. A book record has no agent_output member, so
 // suppressing it is refused rather than silently meaning nothing.
-func bookBundle(ctx context.Context, book *evidencebook.Book, artifacts cli.BundleArtifacts, root string, depth int, payloads string, suppress map[string]bool, disclose, attachOriginals bool, producerKey ed25519.PublicKey) (evidencebook.Bundle, error) {
+func bookBundle(ctx context.Context, book *evidencebook.Book, artifacts cli.BundleArtifacts, root string, depth int, payloads string, suppress map[string]bool, disclose, attachOriginals bool, producerKey ed25519.PublicKey, conduct []string) (evidencebook.Bundle, error) {
 	if depth < 1 {
 		// The book reads a zero depth as its default; it has no root-only
 		// closure, so a zero is refused rather than silently widened.
 		return evidencebook.Bundle{}, cli.Hint(cli.ErrInput, "--closure-depth must be at least 1 on a jsonl profile")
 	}
-	request := evidencebook.BundleRequest{Root: root, ClosureDepth: depth}
+	request := evidencebook.BundleRequest{Root: root, ClosureDepth: depth, ConductPacks: conduct}
 	if record, ok, err := publishedRecord(ctx, book, root); err != nil {
 		return evidencebook.Bundle{}, err
 	} else if ok {

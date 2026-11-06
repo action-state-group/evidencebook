@@ -62,7 +62,11 @@ func (b *bookLog) Checkpoint(ctx context.Context, service string) (map[string]an
 }
 
 func (b *bookLog) Bundle(ctx context.Context, req cli.LogBundleRequest) ([]byte, error) {
-	bundle, err := bookBundle(ctx, b.opened.book, b.opened.originals, req.Root, req.ClosureDepth, req.Payloads, req.Suppress, req.Disclose, req.AttachOriginals, req.ProducerKey)
+	conduct, err := conductPacks(b.profile)
+	if err != nil {
+		return nil, err
+	}
+	bundle, err := bookBundle(ctx, b.opened.book, b.opened.originals, req.Root, req.ClosureDepth, req.Payloads, req.Suppress, req.Disclose, req.AttachOriginals, req.ProducerKey, conduct)
 	return bundle.JSON, err
 }
 
