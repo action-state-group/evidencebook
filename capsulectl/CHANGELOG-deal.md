@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `deal list --json` states, per deal, `reconcile`: `null` until the deal has a verified sealed terms Result, then `counterparty_half_held` (any verified Result cites two distinct halves, as the History card reads it), `halves_conflict` (from the newest verified Result that cites both halves: true on a conflicting pairing, false when every claim matched, null when none exists or a claim could not be compared, so a later one-half Result never erases a conflict) and `at` (when the newest verified Result was sealed). `null` is "not reconciled" or "unknown", not false, so a plugin counting held halves and conflicts per `counterparty_fingerprint` never reads a zero it was not given; a ranged listing reads only Results sealed before `--until`. `deal report`'s `ruling` member also states `at`, when the ruling step was sealed. Read-only fields over sealed records; nothing sealed or shared changes (evidencebook-deal#171).
+
 ## v0.1.0-rc38
 
 This release pairs with capsulectl `v0.1.0-rc38` (go.mod requires it).
