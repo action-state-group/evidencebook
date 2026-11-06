@@ -51,6 +51,21 @@
         "countersigned"
       ]
     },
+    "notice": {
+      "description": "Optional: what the checker makes of the input's received_cards, for the person only; a checker prints it only when the input carried received_cards. The deal check shows it beside the check, outside the card and the approval text, and seals, stores and shares none of it: it enters no card or rendering commitment and is not part of the sealed rules block. The checker must not let received_cards change any other member of the result, nor put card content on stderr. Absent states no notice.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line"],
+      "properties": {
+        "line": {
+          "description": "One line of text for the person: no line break or other control character.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$"
+        }
+      }
+    },
     "findings": {
       "description": "One entry per rule evaluated, in the ruleset's order, passes included.",
       "type": "array",

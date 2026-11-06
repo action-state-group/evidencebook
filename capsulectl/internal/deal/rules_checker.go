@@ -74,6 +74,11 @@ type dealRules struct {
 	Grade string `json:"grade,omitempty"`
 	// History is what the checker was given beside the record.
 	History *dealRulesHistory `json:"history,omitempty"`
+	// Notice is the checker's one line for the person (external-check-result/v0
+	// notice), as the run reported it. Only the run that was given received
+	// cards is read for it (receivedNotice); json:"-" keeps it out of every
+	// marshalled form of the rules block.
+	Notice string `json:"-"`
 }
 
 // dealRulesHistory states the history a checker was given: how many earlier
@@ -98,6 +103,9 @@ type externalCheckResult struct {
 	Tier             string             `json:"tier"`
 	Grade            string             `json:"grade"`
 	Findings         []dealRulesFinding `json:"findings"`
+	Notice           *struct {
+		Line string `json:"line"`
+	} `json:"notice"`
 }
 
 //go:embed assets/external-check-result-v0.schema.json
@@ -215,8 +223,13 @@ func runRulesChecker(ctx context.Context, p cli.Profile, role string, input []by
 	if pinned := pin.ForRole(role).PinnedDigests(); len(pinned) > 0 && !slices.Contains(pinned, result.DefinitionDigest) {
 		return notEvaluated("ruleset_changed", "the ruleset changed since it was pinned ("+result.RulesetID+" reports another definition digest)"+rePinHint)
 	}
-	return dealRules{Status: "evaluated", RulesetID: result.RulesetID, Kind: pin.Kind, DefinitionDigest: result.DefinitionDigest, CheckerSHA256: pin.SHA256,
+	rules := dealRules{Status: "evaluated", RulesetID: result.RulesetID, Kind: pin.Kind, DefinitionDigest: result.DefinitionDigest, CheckerSHA256: pin.SHA256,
 		Verdict: result.Verdict, Tier: result.Tier, Grade: result.Grade, Findings: result.Findings, History: history}
+	// The notice is read only from the run that was given cards (receivedNotice).
+	if result.Notice != nil {
+		rules.Notice = result.Notice.Line
+	}
+	return rules
 }
 
 // privateExecutableCopy reads the executable at path once (under a trusted
@@ -1032,4 +1045,34 @@ func (s *dealSession) actCounterpartyProfile(ctx context.Context, actID string) 
 		}
 	}
 	return out, nil
+}
+
+// receivedNotice is the checker's one line about the cards a host received,
+// for the person. The sealed rules block comes from a run given no cards, so
+// nothing the cards could change reaches it: this second run is read for its
+// notice alone, and a run that is not evaluated, or prints none, says why
+// there is no line and nothing else of it is kept.
+func receivedNotice(ctx context.Context, p cli.Profile, role string, input []byte, received []json.RawMessage) (line, unavailable string) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(input, &doc); err != nil {
+		return "", "the rules checker's input could not be extended with the cards"
+	}
+	cards, err := json.Marshal(received)
+	if err != nil {
+		return "", "the cards could not be handed to the rules checker"
+	}
+	doc["received_cards"] = cards
+	extended, err := json.Marshal(doc)
+	if err != nil {
+		return "", "the cards could not be handed to the rules checker"
+	}
+	run := runRulesChecker(ctx, p, role, extended, nil)
+	switch {
+	case run.Status != "evaluated":
+		// The cause, never the run's own words: its stderr may carry a card.
+		return "", "the rules checker did not read the cards (" + run.Cause + ")"
+	case run.Notice == "":
+		return "", "the rules checker printed no line about the cards"
+	}
+	return run.Notice, ""
 }
