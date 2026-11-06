@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## v0.13.7 (2026-11-05)
+
+Go module only.
+
+### Added: carry witness receipts in a bundle (#397)
+
+- `BundleRequest.Witnesses` and `BundleRequest.WitnessDirectory`: the witness receipts (`checkpoint.witnesses` entries: `ts_url`, `entry_hash`, `receipt_b64`, `leaf_index`, `tree_size`) for the anchor pinned by `At` (required with them), and the directory they are checked under. `Book.Bundle` checks each receipt against the anchor's signed checkpoint before building and refuses (`ErrInvalid`, nothing written to the book) a receipt that does not verify, one with a member besides the five or non-canonical base64, any receipt without `At` or a directory, and more than `MaxReplyReceipts`; it then carries them in `checkpoint.witnesses`. With this a bundle can carry the receipt a reader needs before it counts an unavailable-window statement as registered, with no edit of the bundle JSON; a reader still checks the receipt under its own witness directory.
+
+### Added: a conduct pack's Result never enters a counterparty's bundle (#412)
+
+- `BundleRequest.ConductPacks` lists the pack ids the book's owner holds as conduct packs (`scope.kind: conduct`, private to the owner). `Book.Bundle` refuses, with `ErrInvalid` naming the Result and pack, a bundle whose selected set (root, closure or `Include`) holds an `evidence_result` that cites one, in its `subject_ref` or any claim's `contract_ref`, and so does a caller-sealed such Result anywhere in the carried interval (its header travels inside its capsule). `StandardHistoryBundleRequest.ConductPacks` applies the same refusal to a handover. `BundleRequest.OwnerCopy` marks a bundle that stays with the owner, which may carry it. The kind is local policy: no record, Result or compiled-output member changes. The `capsulectl` wiring (a local list of private pack ids) follows once `capsulectl` pins a release that has this field.
+
+### Added: reconcile failed exchanges by outcome (#205)
+
+- `Half.Failed` marks the record of an exchange that did not complete. `ReconcileHalves` pairs a failed half with its counterpart on the exchange id as before, then decides the pair by outcome: two failed halves are `MATCHED`, a failed half against a served one is `CONFLICTING`, and the content check runs only on two served halves. A served pair is classified as before, except that served halves sharing an exchange id now pair by request digest first, whatever the input order (evidencebook#205). `ReconcileInput.OwnFailed` and `PeerFailed` name the records `Book.Reconcile` treats as failed, since a header carries no outcome. Pairing prefers a half of the same outcome, so a failed attempt and a served retry of one exchange id never swap partners.
+
+### Added: hand a standard_history card's material, and recompute its counts (#211)
+
+- `Book.StandardHistoryBundle` (and `Cadence.StandardHistoryBundles`, one per committed log): the `evidence-bundle/v2` of a book's records from seq 1 to a checkpoint it issued, as `spec/standard-history-v0.md` §6 "Handing the material" (SH-3) carries it, with no new member. `StandardHistoryBundleRequest.Disclose` is the host's share gate: a record it refuses still travels as a capsule with its header and payloads withheld, so coverage can be shown without the record; a record whose caller sealed its header inside the capsule cannot be refused (`ErrInvalid`).
+- `CheckStandardHistoryMaterial`: reports the card's six properties and recomputes the counts over the card's own window from the handed bundles. `counts_recompute` is `PASS` or `FAIL` only when coverage is shown for the anchor's log and for every other log the anchor commits (interval coverage and per-record membership established from seq 1 to the committed extent, anchored at the committed checkpoint), the anchor's time is the checkpoint's own, no record's header is withheld, and the host's `DealMapping` read every member it needs. A partial handover, a withheld member (`ErrMaterialWithheld`) or an anchor that commits its logs through a salted or sparse tree (SH-10, which a cadence tick's anchor does) keeps it `NOT_CHECKED`, never `FAIL`.
+
+### Added: seal and read unavailable-window statements (#223)
+
+- `Book.SealUnavailableWindow` seals the book's signed statement that it was unavailable from `start` to `end`, for a `reason_class` of `flood`, `maintenance`, `outage` or `other_declared` (record type `unavailable_window`; signature: Ed25519 over the JCS of `end`, `reason_class` and `start`, the profile of agent-action-capsule's `unavailable-window.json`). It is registered once a checkpoint covering it carries a receipt from a transparency service the reader accepts as independent; the host obtains and attaches that receipt (this package has no input to attach one to a bundle yet).
+- `VerifiedBundle.UnavailableWindowStatements` reads the statements out of a bundle `VerifyBundleAnswer` accepted, with each receipt's attested time under the reader's witness directory; a receipt made under the responder's own key is never independent. `Book.ShowAbsence` shows a recorded absence beside them through agent-action-capsule's `evidencerequest.DisplayAbsence`: "no answer; holder states unavailability" with the class, the stated period and "stated afterwards" when registered after the waiting window closed, never a refusal and never proof of an attack. The absence record and any retention commitment are unchanged. `UnavailableWindowText` is the wording a person is shown.
+- The vendored request vectors gain `unavailable-window.json`; all 16 display cases run against a requester's book.
+
 ## capsulectl/v0.1.0-rc37 (2026-11-05)
 
 capsulectl-book only; no library tag.
