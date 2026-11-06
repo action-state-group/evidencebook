@@ -1061,7 +1061,11 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	if path == "" {
 		return nil
 	}
-	include, err := closeBundleRecords(c.Context(), opened.book, result.Counterparty, from, to, sealed.RecordID)
+	conduct, err := conductPacks(p)
+	if err != nil {
+		return err
+	}
+	include, err := closeBundleRecords(c.Context(), opened.book, result.Counterparty, from, to, sealed.RecordID, conduct)
 	if err != nil {
 		return err
 	}
@@ -1070,10 +1074,6 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	// (evidencebook#84 §4), so the declaration reveals nothing more to the
 	// counterparty.
 	key, err := cli.PrivateKey(p.Signing)
-	if err != nil {
-		return err
-	}
-	conduct, err := conductPacks(p)
 	if err != nil {
 		return err
 	}
@@ -1099,13 +1099,20 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 // at either edge, the counterparty reads that edge as unproven, which is
 // safe. The bundle withholds every payload; reconciliation compares the
 // payload commitments the headers carry.
-func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterparty string, from, to uint64, closeID string) ([]string, error) {
+func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterparty string, from, to uint64, closeID string, conduct []string) ([]string, error) {
 	records, err := book.Query(ctx, evidencebook.Filter{FromSeq: max(from, 2) - 1, ToSeq: to + 1})
 	if err != nil {
 		return nil, err
 	}
 	ids := []string{closeID}
 	for _, r := range records {
+		// A conduct Result at an edge only places the window; it is left out
+		// like a record that names another counterparty, so it cannot block
+		// the Close's bundle. One inside the window is refused by the book.
+		edge := r.Seq < from || r.Seq > to
+		if edge && citesConductPack(r.Header, conduct) {
+			continue
+		}
 		if r.RecordID != closeID && (r.Header.CounterpartyRef == "" || r.Header.CounterpartyRef == counterparty) {
 			ids = append(ids, r.RecordID)
 		}

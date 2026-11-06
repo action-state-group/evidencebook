@@ -3,14 +3,17 @@ package book
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook"
 )
 
 // conductPacksFile is the owner's list of conduct pack ids (scope.kind
@@ -39,7 +42,38 @@ func conductPacks(p cli.Profile) ([]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+		// "pack # note" would be stored as one id that matches no Result and
+		// protect nothing, so a line is exactly one id.
+		if strings.ContainsAny(line, " \t#") {
+			return nil, cli.InputError(fmt.Sprintf("%s: %q is not a pack id; put one pack id per line, with comments on their own line", path, line))
+		}
 		packs = append(packs, line)
 	}
 	return packs, scanner.Err()
+}
+
+// citesConductPack reports whether a Result's header cites a listed pack in
+// its subject_ref or a claim's contract_ref ("<pack_id>@<version>"), the
+// test the book applies to a record a bundle discloses.
+func citesConductPack(h evidencebook.Header, packs []string) bool {
+	if h.RecordType != resultRecordType || len(packs) == 0 {
+		return false
+	}
+	refs := []string{h.SubjectRef}
+	var doc struct {
+		Claims []struct {
+			ContractRef string `json:"contract_ref"`
+		} `json:"claims"`
+	}
+	_ = json.Unmarshal(h.Statement, &doc)
+	for _, c := range doc.Claims {
+		refs = append(refs, c.ContractRef)
+	}
+	for _, ref := range refs {
+		pack, _, _ := strings.Cut(ref, "@")
+		if slices.Contains(packs, pack) {
+			return true
+		}
+	}
+	return false
 }

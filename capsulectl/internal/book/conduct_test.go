@@ -42,7 +42,7 @@ func TestBundleAndDiscloseRefuseAConductResult(t *testing.T) {
 	p, stored := jsonlPublished(t)
 	result := appendConductResult(t, p, conductPack, recordOfCapsule(t, p, stored.CapsuleID))
 
-	for _, verb := range []string{"disclose", "bundle"} {
+	for _, verb := range []string{"disclose", "bundle", "permalink"} {
 		t.Run(verb+" with the pack listed", func(t *testing.T) {
 			writeConductPacks(t, p, "# private to the owner\n\n"+conductPack+"\n")
 			_, err := invoke(t, "", verb, "--profile", p.Name, "--root", result)
@@ -62,8 +62,8 @@ func TestBundleAndDiscloseRefuseAConductResult(t *testing.T) {
 	}
 }
 
-// A bundle built from a root that merely cites the Result's closure is
-// refused too, and an unusable list refuses rather than protects nothing.
+// An unusable list refuses rather than protects nothing: a versioned id, an
+// id with a trailing comment (it would match no pack) and an unreadable file.
 func TestConductPackListIsStrict(t *testing.T) {
 	p, stored := jsonlPublished(t)
 	result := appendConductResult(t, p, conductPack, recordOfCapsule(t, p, stored.CapsuleID))
@@ -72,6 +72,11 @@ func TestConductPackListIsStrict(t *testing.T) {
 	_, err := invoke(t, "", "disclose", "--profile", p.Name, "--root", result)
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "without a version")
+
+	writeConductPacks(t, p, conductPack+" # private to the owner\n")
+	_, err = invoke(t, "", "disclose", "--profile", p.Name, "--root", result)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "is not a pack id")
 
 	require.NoError(t, os.Remove(filepath.Join(p.Connection.Database, "book", conductPacksFile)))
 	require.NoError(t, os.Mkdir(filepath.Join(p.Connection.Database, "book", conductPacksFile), 0o700))
@@ -105,6 +110,29 @@ func TestCloseBundleRefusesAConductResult(t *testing.T) {
 
 	require.NoError(t, os.Remove(filepath.Join(p.Connection.Database, "book", conductPacksFile)))
 	_, err = invoke(t, "", "close", "--profile", "a", "--period", "day", "--counterparty", "b", "--bundle-out", out)
+	require.NoError(t, err)
+	assert.FileExists(t, out)
+}
+
+// A conduct Result just after the window only places its end: it is left out
+// of the Close's bundle, which still builds.
+func TestCloseBundleLeavesOutAConductResultAtTheEdge(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	set := bookClock(t, day0)
+	p, _ := bookProfile(t, "a")
+	appendHalves(t, p, half{"x1", "r1", "p1"})
+	var halfID string
+	withBook(t, p, func(book *evidencebook.Book) {
+		records, err := book.Query(t.Context(), evidencebook.Filter{})
+		require.NoError(t, err)
+		halfID = records[0].RecordID
+	})
+	set(day1)
+	appendConductResult(t, p, conductPack, halfID)
+	set(day1.AddDate(0, 0, 1))
+	writeConductPacks(t, p, conductPack+"\n")
+	out := filepath.Join(t.TempDir(), "close-bundle.json")
+	_, err := invoke(t, "", "close", "--profile", "a", "--period", "day", "--date", "2026-09-24", "--counterparty", "b", "--bundle-out", out)
 	require.NoError(t, err)
 	assert.FileExists(t, out)
 }
