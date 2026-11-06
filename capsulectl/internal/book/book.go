@@ -1073,7 +1073,11 @@ func closeOutputs(c *cobra.Command, opened openedBook, p cli.Profile, result *cl
 	if err != nil {
 		return err
 	}
-	bundle, err := opened.book.Bundle(c.Context(), evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey)})
+	conduct, err := conductPacks(p)
+	if err != nil {
+		return err
+	}
+	bundle, err := opened.book.Bundle(c.Context(), evidencebook.BundleRequest{Root: sealed.RecordID, Include: include, WithholdPayloads: true, ProducerKey: key.Public().(ed25519.PublicKey), ConductPacks: conduct})
 	if err != nil {
 		return bookError(err)
 	}

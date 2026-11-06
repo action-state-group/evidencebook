@@ -1,0 +1,3 @@
+### Added: `capsulectl-book` refuses a conduct pack's Result in a bundle (#414)
+
+- `bundle`, `disclose`, `permalink` and a Close's `--bundle-out` read the pack ids in `<profile database>/book/conduct-packs` (one per line; blank lines and `#` comments skipped; no file means none) and hand them to the book as `ConductPacks`, so a Result that cites one of those private conduct packs is refused with the book's `ErrInvalid` and nothing is written. A pack id holding `@` or an unreadable file also refuses. There is no owner-copy path: the CLI bundles only for others. The list is local policy; no record, Result or compiled output changes.
