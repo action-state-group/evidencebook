@@ -2665,6 +2665,14 @@ func dealReportCommand() *cobra.Command {
 			// profile's wording pack (capsule-cli#340).
 			pack, _ := cli.ActiveWording(s.p)
 			out["journey"] = dealJourney(events, pack)
+			side, dispute, ruling := disputeFields(events)
+			out["side"] = side
+			if dispute != nil {
+				out["dispute"] = dispute
+			}
+			if ruling != nil {
+				out["ruling"] = ruling
+			}
 			if report.Money != nil {
 				out["money"] = report.Money
 			}

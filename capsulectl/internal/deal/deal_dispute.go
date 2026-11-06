@@ -282,3 +282,35 @@ func disputesOf(records []dealprofile.HistoryRecord, role string) []standardhist
 	}
 	return []standardhistory.Dispute{d}
 }
+
+// disputeFields are the report's structured dispute and ruling, for a host that reads the
+// report read-only and must not parse the trail text (a claim's words can forge a trail line).
+// side is the holder's role in standard history's words ("bought" or "provided"); dispute is
+// present when the store holds a dispute step, raised only when the holder is the buyer who
+// raised it, and carries the row but never the buyer's words; ruling is present when the store
+// holds a ruling, whether or not it holds the dispute (the seller's store has none), and
+// carries the row and the finding. Both come from the same sealed evidence steps the trail
+// and the ruling's did item read.
+func disputeFields(events []sealedEvent) (side string, dispute, ruling map[string]any) {
+	side = "provided"
+	if dealRole(events) == dealRoleBuyer {
+		side = "bought"
+	}
+	for _, se := range events {
+		ev := se.Event.Evidence
+		if ev == nil {
+			continue
+		}
+		if ev.Source == sourceDispute && dispute == nil {
+			dispute = map[string]any{"row": ev.About, "raised": side == "bought"}
+		}
+		if r, ok := rulingOfEvent(se.Event); ok && ruling == nil {
+			finding := findingForSeller
+			if r.ForBuyer {
+				finding = findingForBuyer
+			}
+			ruling = map[string]any{"row": r.Row, "finding": finding, "digest": r.Digest}
+		}
+	}
+	return side, dispute, ruling
+}
