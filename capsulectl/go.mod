@@ -8,7 +8,7 @@ require (
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-viewer/go v0.18.2
 	github.com/action-state-group/checkpointed-local-log/go v0.3.0
-	github.com/action-state-group/evidencebook v0.13.7
+	github.com/action-state-group/evidencebook v0.13.8
 	github.com/action-state-group/evidencebook/report v0.4.1-0.20261102153942-976f311c5170
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/spf13/cobra v1.10.2

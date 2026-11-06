@@ -309,3 +309,46 @@ func TestWorkspaceConductPacksWarnWhenPacksAreNotFound(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, out.String())
 }
+
+// With the pin on an evidencebook release that has #418, an observation that
+// cites a listed pack is refused too, not only a Result.
+func TestBundleAndDiscloseRefuseAConductObservation(t *testing.T) {
+	p, stored := jsonlPublished(t)
+	var id string
+	cites := recordOfCapsule(t, p, stored.CapsuleID)
+	withBook(t, p, func(book *evidencebook.Book) {
+		record, err := book.Append(t.Context(), evidencebook.Entry{
+			RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: conductPack + "@1",
+			Links: []evidencebook.Link{{Type: evidencebook.Cites, Target: cites}},
+		})
+		require.NoError(t, err)
+		id = record.RecordID
+		_, err = book.Checkpoint(t.Context())
+		require.NoError(t, err)
+	})
+	writeConductPacks(t, p, conductPack+"\n")
+	for _, verb := range []string{"disclose", "bundle", "permalink"} {
+		_, err := invoke(t, "", verb, "--profile", p.Name, "--root", id)
+		require.ErrorIs(t, err, cli.ErrInput, verb)
+		assert.Contains(t, cli.SafeError(err), "conduct pack "+conductPack)
+	}
+}
+
+// book respond reads the conduct pack list too (evidencebook#418): an
+// unusable list refuses the answer instead of serving with the packs
+// unprotected, and a usable one answers as before.
+func TestRespondReadsTheConductPackList(t *testing.T) {
+	x := newEvidenceExchange(t)
+	x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
+	respond := func() error {
+		_, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "history.sent"), "--requester", "a", "--output", filepath.Join(x.dir, "history.response"))
+		return err
+	}
+	writeConductPacks(t, x.b, conductPack+" # note\n")
+	err := respond()
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "is not a pack id")
+
+	writeConductPacks(t, x.b, conductPack+"\n")
+	require.NoError(t, respond())
+}

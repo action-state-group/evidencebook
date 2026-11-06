@@ -1279,6 +1279,12 @@ func respondCommand() *cobra.Command {
 				return e
 			}
 		}
+		// A record that cites a private conduct pack is never served: the
+		// peer gets the refusal an unknown id gets (evidencebook#418).
+		conduct, e := conductPacks(p)
+		if e != nil {
+			return e
+		}
 		opened, e := openBook(c.Context(), p, false)
 		if e != nil {
 			return e
@@ -1289,7 +1295,7 @@ func respondCommand() *cobra.Command {
 		// input to the book's relationship gate. Empty, only public
 		// subjects are answered.
 		reply, record, e := opened.book.Respond(c.Context(), evidencebook.Message{Octets: in.Request, MediaType: evidencebook.MediaTypeJSON},
-			evidencebook.RespondOptions{AuthenticatedRequester: in.Requester, Policy: policy})
+			evidencebook.RespondOptions{AuthenticatedRequester: in.Requester, Policy: policy, ConductPacks: conduct})
 		if e != nil {
 			return bookError(e)
 		}
