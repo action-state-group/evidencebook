@@ -1,0 +1,3 @@
+### Added: `DiffBundles` lists what a lower disclosure level drops (#403)
+
+- `DiffBundles(higher, lower)` verifies two bundles of one history and lists the records whose header the higher discloses and the lower does not, the payload digests the lower leaves out, and anything the lower discloses that the higher does not (`Extra`, so a bundle that is not a lower level of the other is not mistaken for one). A level is a scoped bundle; the difference is read from what the two bundles carry, not from a policy. Interval-coverage leaves reveal nothing and are not compared. A bundle that does not verify is `ErrInvalid`.
