@@ -33,17 +33,24 @@ func TestExternalCheckResultNotice(t *testing.T) {
 		return r + `}`
 	}
 	valid := map[string]string{
-		"absent": "",
-		"a line": `{"line":"ASK: new counterparty, no card read"}`,
+		"absent":    "",
+		"a line":    `{"line":"ASK: the card names a different counterparty"}`,
+		"500 chars": `{"line":"` + strings.Repeat("a", 500) + `"}`,
+		"non-ASCII": `{"line":"Prüfung: kein Treffer"}`,
 	}
 	invalid := map[string]string{
-		"null":         `null`,
-		"a string":     `"ASK"`,
-		"no line":      `{}`,
-		"empty line":   `{"line":""}`,
-		"line break":   `{"line":"a\nb"}`,
-		"extra member": `{"line":"a","decision":"ask"}`,
-		"too long":     `{"line":"` + strings.Repeat("a", 501) + `"}`,
+		"null":                `null`,
+		"a string":            `"ASK"`,
+		"no line":             `{}`,
+		"empty line":          `{"line":""}`,
+		"line break":          `{"line":"a\nb"}`,
+		"carriage return":     `{"line":"a\rb"}`,
+		"escape":              `{"line":"a\u001b[31mb"}`,
+		"C1 control":          `{"line":"a\u0085b"}`,
+		"line separator":      `{"line":"a\u2028b"}`,
+		"paragraph separator": `{"line":"a\u2029b"}`,
+		"extra member":        `{"line":"a","decision":"ask"}`,
+		"too long":            `{"line":"` + strings.Repeat("a", 501) + `"}`,
 	}
 	for name, notice := range valid {
 		d, err := jsonschema.UnmarshalJSON(strings.NewReader(result(notice)))

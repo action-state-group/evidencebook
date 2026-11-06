@@ -52,17 +52,17 @@
       ]
     },
     "notice": {
-      "description": "Optional: what the checker makes of the input's received_cards, for the person only. The deal check shows it beside the check and seals, stores and shares none of it: it is not part of the sealed rules block, and a checker must not let received_cards change verdict, findings, tier or grade, which are sealed. Absent states no notice.",
+      "description": "Optional: what the checker makes of the input's received_cards, for the person only; a checker prints it only when the input carried received_cards. The deal check shows it beside the check, outside the card and the approval text, and seals, stores and shares none of it: it enters no card or rendering commitment and is not part of the sealed rules block. The checker must not let received_cards change any other member of the result, nor put card content on stderr. Absent states no notice.",
       "type": "object",
       "additionalProperties": false,
       "required": ["line"],
       "properties": {
         "line": {
-          "description": "One line of text for the person, no line break.",
+          "description": "One line of text for the person: no line break or other control character.",
           "type": "string",
           "minLength": 1,
           "maxLength": 500,
-          "pattern": "^[^\\n\\r]+$"
+          "pattern": "^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$"
         }
       }
     },

@@ -1009,9 +1009,12 @@ At every check, after the `check` record is sealed:
     received about the deal's counterparty (a `history_card/1`, a selection, an operator list),
     each exactly as received. They are given only to this device's checker, which reads each
     card's own subject; the deal check binds none to the counterparty. They are not stored, not
-    sealed and not shared, and nothing derived from them may reach the result's `verdict`,
-    `findings`, `tier` or `grade`, which are sealed; the checker states what it makes of them
-    only in the result's `notice`. Absent when none was handed over, never empty.
+    sealed and not shared. Nothing derived from them may reach any member of the result but
+    `notice`: the sealed `verdict`, `findings`, `tier`, `grade`, `ruleset_id` and
+    `definition_digest`, a refusal's cause and the checker's stderr stay as they would be
+    without cards, and a card the checker cannot read is never a refusal (it says so in
+    `notice`). The host sends `received_cards` only to a checker that accepts the member, since
+    the input schema is closed. Absent when none was handed over, never empty.
 
   A rolling window is evaluated over the history the deal check supplies. A checker given no
   history, or too little (`complete` false, or a window longer than `days`), reports that rule
@@ -1027,9 +1030,11 @@ At every check, after the `check` record is sealed:
   included; `disposition`, optional, is what a failing rule does on its own: `ask` or `deny`;
   `limit` and `value` are each a number, or a string of at most 64 characters with no line
   break).
-  `notice`, optional, `{line}`: one line of text (at most 500 characters, no line break) for the
-  person about what the checker made of `received_cards`. The deal check shows it beside the
-  check and does not seal, store or share it: it is not part of the sealed rules block.
+  `notice`, optional, `{line}`: one line of text (at most 500 characters; no line break or other
+  control character) for the person about what the checker made of `received_cards`; a checker
+  prints it only when the input carried cards. The deal check shows it beside the check, outside
+  the card and the approval text, and does not seal, store or share it: it enters no card or
+  rendering commitment and is not part of the sealed rules block.
   Members outside the schema are refused. Any other exit is a refusal of the input, with the
   cause on stderr.
 - **What the check does with it.** It folds the answer into its one verdict:
