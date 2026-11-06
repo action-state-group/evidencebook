@@ -74,3 +74,42 @@ func TestExternalCheckInputRulesPin(t *testing.T) {
 		assert.Error(t, s.Validate(doc), name)
 	}
 }
+
+// TestExternalCheckInputReceivedCards holds the optional received_cards member
+// to a non-empty array of objects: an input without it stays valid.
+func TestExternalCheckInputReceivedCards(t *testing.T) {
+	s := externalCheckInputSchema(t)
+	input := func(cards string) string {
+		in := `{"schema":"external-check-input/v0","party_role":"buyer",` +
+			`"record":{"capsule_id":"c1","agent_input":{}},"history":[],` +
+			`"history_scope":{"days":31,"max_records":1000,"complete":true}`
+		if cards != "" {
+			in += `,"received_cards":` + cards
+		}
+		return in + `}`
+	}
+	valid := map[string]string{
+		"absent": "",
+		"one":    `[{"schema":"history_card/1"}]`,
+		"two":    `[{"schema":"history_card/1"},{"x":1}]`,
+		"64":     `[` + strings.TrimSuffix(strings.Repeat(`{},`, 64), ",") + `]`,
+	}
+	invalid := map[string]string{
+		"null":       `null`,
+		"empty":      `[]`,
+		"an object":  `{"schema":"history_card/1"}`,
+		"a string":   `["card"]`,
+		"null entry": `[null]`,
+		"65 cards":   `[` + strings.TrimSuffix(strings.Repeat(`{},`, 65), ",") + `]`,
+	}
+	for name, cards := range valid {
+		doc, err := jsonschema.UnmarshalJSON(strings.NewReader(input(cards)))
+		require.NoError(t, err, name)
+		assert.NoError(t, s.Validate(doc), name)
+	}
+	for name, cards := range invalid {
+		doc, err := jsonschema.UnmarshalJSON(strings.NewReader(input(cards)))
+		require.NoError(t, err, name)
+		assert.Error(t, s.Validate(doc), name)
+	}
+}
