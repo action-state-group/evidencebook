@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	aacbundle "github.com/action-state-group/agent-action-capsule/go/bundle"
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
@@ -70,6 +71,15 @@ type BundleRequest struct {
 	Withhold []string
 	// At pins the coverage anchor; nil checkpoints the book now.
 	At *Checkpoint
+	// ConductPacks are the pack ids the book's owner holds as conduct packs
+	// (scope.kind conduct): private, judged only for the owner. A scoped
+	// bundle whose selected set holds a Result that cites one is refused
+	// unless OwnerCopy is set. The kind is local policy, written into no
+	// record.
+	ConductPacks []string
+	// OwnerCopy marks a bundle that stays with the book's owner, so it may
+	// carry a conduct Result.
+	OwnerCopy bool
 	// Extensions are further extension blocks, by kind. producer-key/v1
 	// is set through ProducerKey and composed/v1 is agent-action-capsule's
 	// own, so both are refused here.
@@ -199,6 +209,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 			return Bundle{}, fmt.Errorf("%w: included record %s", ErrNotFound, id)
 		}
 		selected[id] = struct{}{}
+	}
+	if err := b.refuseConductLocked(selected, req); err != nil {
+		return Bundle{}, err
 	}
 	anchor, err := b.anchorLocked(ctx, req.At)
 	if err != nil {
@@ -409,6 +422,44 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		return Bundle{}, err
 	}
 	return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor, Disclosure: record}, nil
+}
+
+// refuseConductLocked refuses a bundle that would disclose a Result citing a
+// conduct pack to anyone but the book's owner (Terms Pack Studio PRD v5 §13:
+// a conduct pack never appears in a scoped bundle sent to a counterparty).
+// A Result names its pack in its subject_ref and in each claim's
+// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack ids are
+// conduct. The selected set is every record the bundle discloses, closure
+// and Include alike.
+func (b *Book) refuseConductLocked(selected map[string]struct{}, req BundleRequest) error {
+	if req.OwnerCopy || len(req.ConductPacks) == 0 {
+		return nil
+	}
+	for id := range selected {
+		h := b.records[id].Header
+		if h.RecordType != RecordTypeEvidenceResult {
+			continue
+		}
+		refs := []string{h.SubjectRef}
+		var doc struct {
+			Claims []struct {
+				ContractRef string `json:"contract_ref"`
+			} `json:"claims"`
+		}
+		if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
+			return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
+		}
+		for _, c := range doc.Claims {
+			refs = append(refs, c.ContractRef)
+		}
+		for _, ref := range refs {
+			pack, _, _ := strings.Cut(ref, "@")
+			if pack != "" && slices.Contains(req.ConductPacks, pack) {
+				return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
+			}
+		}
+	}
+	return nil
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does

@@ -1,0 +1,3 @@
+### Added: a conduct pack's Result never enters a counterparty's bundle (#412)
+
+- `BundleRequest.ConductPacks` lists the pack ids the book's owner holds as conduct packs (`scope.kind: conduct`, private to the owner). `Book.Bundle` refuses, with `ErrInvalid` naming the Result and pack, a bundle whose selected set (root, closure or `Include`) holds an `evidence_result` that cites one, in its `subject_ref` or any claim's `contract_ref`. `BundleRequest.OwnerCopy` marks a bundle that stays with the owner, which may carry it. The kind is local policy: no record, Result or compiled-output member changes. The `capsulectl` wiring (a local list of private pack ids) follows once `capsulectl` pins a release that has this field.
