@@ -162,3 +162,70 @@ func closeWithEdgeResult(t *testing.T, claimRefs []string) {
 	require.NoError(t, err)
 	assert.FileExists(t, out)
 }
+
+func writePackSource(t *testing.T, dir, kind, packID string) {
+	t.Helper()
+	folder := filepath.Join(dir, workspacePacksDir, "pack-"+kind)
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	body := "scope:\n  kind: " + kind + "\npack_id: " + packID + "\npack_version: \"0.1.0\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte(body), 0o600))
+}
+
+// evidencebook#418: the owner's pack sources decide, so a pack marked
+// scope.kind conduct is protected with no conduct-packs file at all, and a
+// deal pack beside it is not.
+func TestWorkspaceConductPacksDefaultTheList(t *testing.T) {
+	p, stored := jsonlPublished(t)
+	conduct := appendConductResult(t, p, conductPack, recordOfCapsule(t, p, stored.CapsuleID))
+	deal := appendConductResult(t, p, "asg/seller", recordOfCapsule(t, p, stored.CapsuleID))
+	workspace := t.TempDir()
+	writePackSource(t, workspace, "conduct", conductPack)
+	writePackSource(t, workspace, "deal", "asg/seller")
+	t.Chdir(workspace)
+
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Equal(t, []string{conductPack}, got)
+
+	for _, verb := range []string{"disclose", "bundle", "permalink"} {
+		_, err := invoke(t, "", verb, "--profile", p.Name, "--root", conduct)
+		require.ErrorIs(t, err, cli.ErrInput, verb)
+		assert.Contains(t, cli.SafeError(err), "conduct pack "+conductPack)
+		_, err = invoke(t, "", verb, "--profile", p.Name, "--root", deal)
+		require.NoError(t, err, verb)
+	}
+
+	// The file adds to the workspace's packs, never replaces them.
+	writeConductPacks(t, p, "asg/other\n")
+	got, err = conductPacks(p)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"asg/other", conductPack}, got)
+}
+
+// A pack source whose kind cannot be read refuses, like an unreadable list.
+func TestWorkspaceConductPacksRefuseAnUnreadableSource(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, workspacePacksDir, "broken")
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte("scope: [unclosed\n"), 0o600))
+	t.Chdir(workspace)
+
+	_, err := conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot parse the pack source")
+
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte("scope:\n  kind: conduct\n"), 0o600))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "without a pack_id")
+}
+
+// A record of any type that cites a listed pack is the one an edge Close
+// leaves out, not only a Result.
+func TestCitesConductPackForAnyRecordType(t *testing.T) {
+	h := evidencebook.Header{RecordType: "observation", SubjectRef: conductPack + "@1"}
+	assert.True(t, citesConductPack(h, []string{conductPack}))
+	assert.False(t, citesConductPack(h, []string{"asg/seller"}))
+	assert.False(t, citesConductPack(h, nil))
+}

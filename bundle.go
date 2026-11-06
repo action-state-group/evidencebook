@@ -73,12 +73,13 @@ type BundleRequest struct {
 	At *Checkpoint
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (scope.kind conduct): private, judged only for the owner. A scoped
-	// bundle whose selected set holds a Result that cites one is refused
-	// unless OwnerCopy is set. The kind is local policy, written into no
+	// bundle whose selected set holds a record of any type whose subject_ref
+	// names one, or a Result claim whose contract_ref does, is refused unless
+	// OwnerCopy is set. The kind is local policy, written into no
 	// record.
 	ConductPacks []string
 	// OwnerCopy marks a bundle that stays with the book's owner, so it may
-	// carry a conduct Result.
+	// carry a conduct record.
 	OwnerCopy bool
 	// Extensions are further extension blocks, by kind. producer-key/v1
 	// is set through ProducerKey and composed/v1 is agent-action-capsule's
@@ -446,31 +447,31 @@ func checkConductPacks(packs []string) error {
 	return nil
 }
 
-// refuseConductLocked refuses a bundle that would carry a Result citing a
+// refuseConductLocked refuses a bundle that would carry a record citing a
 // conduct pack to anyone but the book's owner (Terms Pack Studio PRD v5 §13:
 // a conduct pack never appears in a scoped bundle sent to a counterparty).
-// It checks the records the bundle discloses (root, closure and Include
-// alike); a Result the book's caller sealed with its header inside its
-// capsule is checked wherever it sits in the carried interval, since that
-// header travels with the capsule whether or not it is selected.
+// Whatever its record_type, a record whose subject_ref names a listed pack is
+// refused, and so is any record whose statement holds a claim whose
+// contract_ref does. It checks the records the bundle discloses (root,
+// closure and Include alike); a record the book's caller sealed with its
+// header inside its capsule is checked wherever it sits in the carried
+// interval, since that header travels with the capsule whether or not it is
+// selected.
 func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 	if req.OwnerCopy || len(req.ConductPacks) == 0 {
 		return nil
 	}
 	h := b.records[id].Header
-	if h.RecordType != RecordTypeEvidenceResult {
-		return nil
-	}
-	// A Result names its pack in its subject_ref and in each claim's
-	// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack
-	// ids are conduct.
+	// A record names its pack in its subject_ref and, for a Result, in each
+	// claim's contract_ref, "<pack_id>@<pack_version>"; the owner says which
+	// pack ids are conduct.
 	refs := []string{h.SubjectRef}
 	var doc struct {
 		Claims []struct {
 			ContractRef string `json:"contract_ref"`
 		} `json:"claims"`
 	}
-	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
+	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil && h.RecordType == RecordTypeEvidenceResult {
 		return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
 	}
 	for _, c := range doc.Claims {
@@ -479,7 +480,7 @@ func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
 		if pack != "" && slices.Contains(req.ConductPacks, pack) {
-			return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
+			return fmt.Errorf("%w: %s %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, h.RecordType, id, pack)
 		}
 	}
 	return nil

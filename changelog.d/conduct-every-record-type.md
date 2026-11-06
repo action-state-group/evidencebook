@@ -1,0 +1,3 @@
+### Changed: the conduct refusal covers every record type (#418)
+
+- `Book.Bundle` and `Book.StandardHistoryBundle` now refuse, for anyone but the owner, any selected record whose `subject_ref` names a listed conduct pack, whatever its `record_type` (an `observation` or an `evidence_request`, not only an `evidence_result`), and any record whose statement holds a claim whose `contract_ref` names one. This replaces the `evidence_result`-only check of #412. `ErrInvalid` names the record type and pack. The pack ids are still the ones the caller lists in `ConductPacks`. No record, Result or compiled-output member changes.

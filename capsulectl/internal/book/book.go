@@ -1106,7 +1106,7 @@ func closeBundleRecords(ctx context.Context, book *evidencebook.Book, counterpar
 	}
 	ids := []string{closeID}
 	for _, r := range records {
-		// A conduct Result at an edge only places the window; it is left out
+		// A conduct record at an edge only places the window; it is left out
 		// like a record that names another counterparty, so it cannot block
 		// the Close's bundle. One inside the window is refused by the book.
 		edge := r.Seq < from || r.Seq > to

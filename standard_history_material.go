@@ -39,7 +39,7 @@ type StandardHistoryBundleRequest struct {
 	Witnesses        []json.RawMessage
 	WitnessDirectory []WitnessRow
 	// ConductPacks is BundleRequest's: a handover goes to a recipient, so a
-	// Result citing one of these packs is refused if Disclose lets it
+	// record citing one of these packs is refused if Disclose lets it
 	// through, or if its header is inline. One Disclose withholds travels
 	// digest-only, which shows no claim.
 	ConductPacks []string

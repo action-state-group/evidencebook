@@ -190,3 +190,100 @@ func TestAConductSetAppendsNothing(t *testing.T) {
 		t.Fatalf("the set grew from %d to %d records though it was refused", before, got)
 	}
 }
+
+// The rule is about the pack, not the record type (PRD v5 §13): an
+// observation or an evidence_request whose subject_ref names a conduct pack is
+// refused as a Result is, as root, by closure or by Include, and no bundle
+// holds the row text.
+func TestBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-any-type", 13).open(t)
+	deal := mustAppend(t, book, observation("asg/seller@2", "deal fact"))
+	private := []string{"asg/everyday-rules"}
+	for name, entry := range map[string]Entry{
+		"observation": {
+			RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+			Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")},
+		},
+		"evidence_request": {
+			RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1",
+			Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`),
+		},
+	} {
+		rec := mustAppend(t, book, entry)
+		above := mustAppend(t, book, Entry{
+			RecordType: "note", EpistemicType: ObservedEvent, SubjectRef: "n-" + name, Links: []Link{{Type: Cites, Target: rec.RecordID}},
+			Payloads: [][]byte{[]byte("cites it")},
+		})
+		for how, req := range map[string]BundleRequest{
+			"root":    {Root: rec.RecordID},
+			"closure": {Root: above.RecordID},
+			"include": {Root: deal.RecordID, Include: []string{rec.RecordID}},
+		} {
+			req.ConductPacks = private
+			if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("%s %s: err = %v; want ErrInvalid", name, how, err)
+			}
+		}
+		own, err := book.Bundle(ctx, BundleRequest{Root: rec.RecordID, ConductPacks: private, OwnerCopy: true})
+		if err != nil {
+			t.Fatalf("%s: the owner's own bundle: %v", name, err)
+		}
+		if !bytes.Contains(own.JSON, []byte("everyday-rules")) {
+			t.Fatalf("%s: the owner's bundle should carry the record", name)
+		}
+	}
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: deal.RecordID, ConductPacks: private})
+	if err != nil {
+		t.Fatalf("a deal record alongside conduct ones: %v", err)
+	}
+	for _, leaked := range []string{"CONDUCT-ROW-TEXT", "everyday-rules"} {
+		if bytes.Contains(bundle.JSON, []byte(leaked)) {
+			t.Fatalf("the counterparty bundle carries %q", leaked)
+		}
+	}
+}
+
+// A handover takes the same rule for a record that is not a Result.
+func TestStandardHistoryBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-handover-any", 14).open(t)
+	mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`),
+	})
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{ConductPacks: []string{"asg/everyday-rules"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+}
+
+// book respond (evidence-interop) serves a record only as a digest-only
+// capsule, so a requester naming a conduct observation or evidence_request, or
+// the correlation key of its subject_ref, gets neither the row text nor a pack
+// id beyond the key it sent (evidencebook#418, #417).
+func TestRespondServesNoConductRowText(t *testing.T) {
+	book := newFixture(t, "conduct-respond", 15).open(t)
+	obs := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")}})
+	req := mustAppend(t, book, Entry{RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`)})
+	for _, subject := range []Subject{
+		{Kind: SubjectRecord, Digest: obs.RecordID},
+		{Kind: SubjectRecord, Digest: req.RecordID},
+		{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"},
+	} {
+		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers")})
+		if reply.Envelope == nil {
+			t.Fatalf("%s: outcome %q (%s); the probe needs an answered request", subject.Kind, st.Outcome, st.Reason)
+		}
+		if bytes.Contains(reply.Message.Octets, []byte("CONDUCT-ROW-TEXT")) {
+			t.Fatalf("%s: the reply carries conduct row text", subject.Kind)
+		}
+		if subject.Kind != SubjectCorrelation && bytes.Contains(reply.Message.Octets, []byte("everyday-rules")) {
+			t.Fatalf("%s: the reply names the conduct pack", subject.Kind)
+		}
+	}
+}

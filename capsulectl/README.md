@@ -25,10 +25,11 @@ is re-vendored by copying its `standard-history-module` bundle there.
 
 ## Conduct packs
 
-A conduct pack is private to the book's owner. List its pack id (no `@version`) on its own line in
-`<profile database>/book/conduct-packs`; `bundle`, `disclose`, `permalink` and a Close's `--bundle-out`
-then refuse any Result that cites it, in its `subject_ref` or a claim's `contract_ref`. The list is
-local policy and is written into no record.
+A conduct pack is private to the book's owner. Any pack in `packs/*/pack-source.yaml` of the current
+directory with `scope.kind: conduct` is private with no further step, and its `pack_id` may also be
+listed (no `@version`) on its own line in `<profile database>/book/conduct-packs`. `bundle`,
+`disclose`, `permalink` and a Close's `--bundle-out` then refuse a record that cites such a pack, in
+its `subject_ref` or a claim's `contract_ref`. The list is local policy and is written into no record.
 
 ## Agent skill
 

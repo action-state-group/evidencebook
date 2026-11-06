@@ -15,6 +15,7 @@ import (
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
+	"go.yaml.in/yaml/v3"
 )
 
 // conductPacksFile is the owner's list of conduct pack ids (scope.kind
@@ -22,12 +23,73 @@ import (
 // into no record.
 const conductPacksFile = "conduct-packs"
 
-// conductPacks reads the profile's private pack ids: one per line, blank
-// lines and "#" comments skipped. No file means no conduct packs. Every
-// bundle the book builds is handed this list, so a Result that cites one
-// never goes into a bundle (evidencebook#412); a file that cannot be read
-// refuses the bundle rather than leaving the packs unprotected.
+// conductPacks is the owner's private pack ids: the packs of the current
+// directory's workspace that say so (workspacePacksDir) and the ids in the
+// profile's conduct-packs file, so a pack the owner marked conduct in its
+// source is never bundled whether or not anyone also lists it. Every bundle
+// the book builds is handed this list, so a record that cites one never goes
+// into a bundle (evidencebook#412, #418); a pack source or list that cannot
+// be read refuses the bundle rather than leaving the packs unprotected.
 func conductPacks(p cli.Profile) ([]string, error) {
+	listed, err := listedConductPacks(p)
+	if err != nil {
+		return nil, err
+	}
+	workspace, err := workspaceConductPacks()
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range workspace {
+		if !slices.Contains(listed, id) {
+			listed = append(listed, id)
+		}
+	}
+	return listed, nil
+}
+
+// workspacePacksDir is where the workspace keeps its Terms Packs, one folder
+// per pack with a pack-source.yaml, relative to the current directory.
+const workspacePacksDir = "packs"
+
+// workspaceConductPacks reads each packs/*/pack-source.yaml of the current
+// directory and returns the pack_id of those whose scope.kind is conduct. No
+// packs directory means none; a source that does not parse refuses, since its
+// kind cannot be told.
+func workspaceConductPacks() ([]string, error) {
+	sources, err := filepath.Glob(filepath.Join(workspacePacksDir, "*", "pack-source.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	var packs []string
+	for _, path := range sources {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, cli.InputError(fmt.Sprintf("cannot read the pack source %s, so nothing is bundled: %v", path, err))
+		}
+		var source struct {
+			PackID string `yaml:"pack_id"`
+			Scope  struct {
+				Kind string `yaml:"kind"`
+			} `yaml:"scope"`
+		}
+		if err := yaml.Unmarshal(data, &source); err != nil {
+			return nil, cli.InputError(fmt.Sprintf("cannot parse the pack source %s, so its scope.kind is unknown and nothing is bundled: %v", path, err))
+		}
+		if source.Scope.Kind != "conduct" {
+			continue
+		}
+		id, _, _ := strings.Cut(strings.TrimSpace(source.PackID), "@")
+		if id == "" {
+			return nil, cli.InputError(fmt.Sprintf("%s is a conduct pack without a pack_id, so nothing is bundled", path))
+		}
+		packs = append(packs, id)
+	}
+	return packs, nil
+}
+
+// listedConductPacks reads the profile's conduct-packs file: one pack id per
+// line, blank lines and "#" comments skipped. No file means none.
+func listedConductPacks(p cli.Profile) ([]string, error) {
 	path := filepath.Join(p.Connection.Database, "book", conductPacksFile)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -43,7 +105,7 @@ func conductPacks(p cli.Profile) ([]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// "pack # note" would be stored as one id that matches no Result and
+		// "pack # note" would be stored as one id that matches no record and
 		// protect nothing, so a line is exactly one id.
 		if strings.ContainsFunc(line, func(r rune) bool { return r == '#' || unicode.IsSpace(r) }) {
 			return nil, cli.InputError(fmt.Sprintf("%s: %q is not a pack id; put one pack id per line, with comments on their own line", path, line))
@@ -53,11 +115,11 @@ func conductPacks(p cli.Profile) ([]string, error) {
 	return packs, scanner.Err()
 }
 
-// citesConductPack reports whether a Result's header cites a listed pack in
-// its subject_ref or a claim's contract_ref ("<pack_id>@<version>"), the
-// test the book applies to a record a bundle discloses.
+// citesConductPack reports whether a record's header cites a listed pack in
+// its subject_ref or a claim's contract_ref ("<pack_id>@<version>"), whatever
+// its record type, the test the book applies to a record a bundle discloses.
 func citesConductPack(h evidencebook.Header, packs []string) bool {
-	if h.RecordType != resultRecordType || len(packs) == 0 {
+	if len(packs) == 0 {
 		return false
 	}
 	refs := []string{h.SubjectRef}
