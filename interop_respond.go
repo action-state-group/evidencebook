@@ -270,6 +270,9 @@ func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions
 	if err := opts.Policy.Validate(); err != nil {
 		return Reply{}, Record{}, err
 	}
+	if err := checkConductPacks(opts.ConductPacks); err != nil {
+		return Reply{}, Record{}, err
+	}
 	if request.MediaType != MediaTypeJSON && request.MediaType != MediaTypeCBOR {
 		return Reply{}, Record{}, fmt.Errorf("%w: a request is carried as %s or %s, not %q", ErrInvalid, MediaTypeJSON, MediaTypeCBOR, request.MediaType)
 	}

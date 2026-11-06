@@ -364,6 +364,15 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 	}
 	private := []string{"asg/everyday-rules"}
 
+	// A pack id that could never match refuses, as it does for a bundle.
+	for _, bad := range []string{"asg/everyday-rules@1", ""} {
+		_, _, err := book.Respond(ctx, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: inline.RecordID}, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: []string{bad}})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("ConductPacks %q: err = %v; want ErrInvalid", bad, err)
+		}
+	}
+
 	// The control: the check finds a caller-sealed record's text when it is served.
 	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, nil); out == nil || !holds(out, "CONDUCT-ROW-TEXT-inline") {
 		t.Fatalf("control: a caller-sealed record without ConductPacks should be served whole (declined %q)", reason)
