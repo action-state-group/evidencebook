@@ -39,7 +39,9 @@ type StandardHistoryBundleRequest struct {
 	Witnesses        []json.RawMessage
 	WitnessDirectory []WitnessRow
 	// ConductPacks is BundleRequest's: a handover goes to a recipient, so a
-	// Result citing one of these packs is refused whatever Disclose says.
+	// Result citing one of these packs is refused if Disclose lets it
+	// through, or if its header is inline. One Disclose withholds travels
+	// digest-only, which shows no claim.
 	ConductPacks []string
 }
 
@@ -96,6 +98,15 @@ func (b *Book) handoverLocked(ctx context.Context, at Checkpoint, req StandardHi
 	}
 	if len(include) == 0 {
 		return Checkpoint{}, nil, fmt.Errorf("%w: the share gate lets no record of %s through", ErrInvalid, b.id)
+	}
+	// Refused here, before any book of a tick is written, as the checks above are.
+	if err := checkConductPacks(req.ConductPacks); err != nil {
+		return Checkpoint{}, nil, err
+	}
+	for _, id := range include {
+		if err := b.refuseConductLocked(id, BundleRequest{ConductPacks: req.ConductPacks}); err != nil {
+			return Checkpoint{}, nil, err
+		}
 	}
 	return anchor, include, nil
 }

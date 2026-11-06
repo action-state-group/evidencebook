@@ -46,7 +46,7 @@ func TestBundleRefusesAConductResultForACounterparty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a deal Result alongside a conduct one in the book: %v", err)
 	}
-	for _, leaked := range []string{"CONDUCT-ROW-7f3a", "CONDUCT-CLAIM-never-leaves-the-owner"} {
+	for _, leaked := range []string{"CONDUCT-ROW-7f3a", "CONDUCT-CLAIM-never-leaves-the-owner", "asg/everyday-rules"} {
 		if bytes.Contains(bundle.JSON, []byte(leaked)) {
 			t.Fatalf("the counterparty bundle carries %q", leaked)
 		}
@@ -122,5 +122,71 @@ func TestStandardHistoryBundleRefusesAConductResult(t *testing.T) {
 	}
 	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{}); err != nil {
 		t.Fatalf("without a conduct list: %v", err)
+	}
+}
+
+// A pack id with its version could never match a Result's reference, so it
+// is refused instead of protecting nothing.
+func TestConductPacksTakeBareIds(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-ids", 13).open(t)
+	r := mustAppend(t, book, observation("s", "x"))
+	for _, bad := range []string{"asg/everyday-rules@1", ""} {
+		if _, err := book.Bundle(ctx, BundleRequest{Root: r.RecordID, ConductPacks: []string{bad}}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%q: err = %v; want ErrInvalid", bad, err)
+		}
+	}
+}
+
+// A handover that Disclose keeps the conduct Result out of travels digest-only
+// and carries none of its claim text.
+func TestStandardHistoryBundleWithheldConductResultCarriesNoClaim(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-withheld", 14).open(t)
+	mustAppend(t, book, observation("s", "x"))
+	mustAppend(t, book, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"claims":[{"claim_id":"WITHHELD-ROW","contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{
+		ConductPacks: []string{"asg/everyday-rules"},
+		Disclose:     func(r Record) bool { return r.Header.RecordType != RecordTypeEvidenceResult },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(bundle.JSON, []byte("WITHHELD-ROW")) {
+		t.Fatal("the handover carries a withheld conduct Result's claim")
+	}
+}
+
+// A tick whose set holds a conduct Result is refused before any book of the
+// set is written, whichever book is built first.
+func TestAConductSetAppendsNothing(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newCadence(t, shelf)
+	plain := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, plain, observation("a", "1"))
+	private := mustOpenBook(t, shelf, "deal/b")
+	mustAppend(t, private, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	mustTick(t, c, tickTime)
+	anchor, err := c.StandardHistoryAnchor(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(plain.log) + len(private.log)
+	if _, err := c.StandardHistoryBundles(ctx, anchor, StandardHistoryBundleRequest{ConductPacks: []string{"asg/everyday-rules"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+	if got := len(plain.log) + len(private.log); got != before {
+		t.Fatalf("the set grew from %d to %d records though it was refused", before, got)
 	}
 }

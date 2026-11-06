@@ -196,6 +196,9 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	if err != nil {
 		return Bundle{}, err
 	}
+	if err := checkConductPacks(req.ConductPacks); err != nil {
+		return Bundle{}, err
+	}
 	depth := req.ClosureDepth
 	if req.handover {
 		depth = 0
@@ -429,6 +432,18 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		return Bundle{}, err
 	}
 	return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor, Disclosure: record}, nil
+}
+
+// checkConductPacks refuses a pack id that could never match: a Result's
+// reference is cut at its first "@", so an id still holding the version
+// ("asg/everyday-rules@1") would silently protect nothing.
+func checkConductPacks(packs []string) error {
+	for _, p := range packs {
+		if p == "" || strings.Contains(p, "@") {
+			return fmt.Errorf("%w: conduct pack %q must be a pack id, without a version", ErrInvalid, p)
+		}
+	}
+	return nil
 }
 
 // refuseConductLocked refuses a bundle that would carry a Result citing a
