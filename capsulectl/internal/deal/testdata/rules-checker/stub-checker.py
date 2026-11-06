@@ -66,7 +66,11 @@ if weekly is not None:
                          "limit": weekly, "value": total, **({"reason": "over the 7-day limit"} if over else {})})
         if over:
             verdict = "deny"
-print(json.dumps({"schema": "external-check-result/v0", "ruleset_id": "stub-rules/0.1.0",
-                  "definition_digest": "0" * 63 + "1", "verdict": verdict, "tier": "recomputed",
-                  "grade": "self-attested",
-                  "findings": findings}))
+out = {"schema": "external-check-result/v0", "ruleset_id": "stub-rules/0.1.0",
+       "definition_digest": "0" * 63 + "1", "verdict": verdict, "tier": "recomputed",
+       "grade": "self-attested",
+       "findings": findings}
+# Received cards never change the result above; the stub only says it read them.
+if doc.get("received_cards"):
+    out["notice"] = {"line": "read %d received card(s)" % len(doc["received_cards"])}
+print(json.dumps(out))

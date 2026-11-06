@@ -2079,12 +2079,22 @@ func dealCheckCommand() *cobra.Command {
 		if staleAfter < time.Minute {
 			return cli.InputError("--stale-after must be at least one minute")
 		}
+		received, err := readReceivedCards(c)
+		if err != nil {
+			return err
+		}
 		return runDeal(c, true, func(ctx context.Context, s *dealSession, dealID string, events []sealedEvent) error {
 			if isSaleLog(dealID) {
+				if len(received) > 0 {
+					return cli.InputError("--received goes with a check on a deal; a sale's post check runs no rules checker")
+				}
 				return s.checkPost(ctx, c, dealID, events, snap, staleAfter)
 			}
 			if dealFinallyClosed(events) {
 				return cli.InputError("this deal is closed and takes no more steps; start a new one with `deal open`")
+			}
+			if len(received) > 0 && len(s.p.RulesChecker.Command) == 0 {
+				return cli.InputError("--received needs a pinned rules checker to hand the cards to; this profile has none")
 			}
 			// The profile's pinned materiality predicate, read before anything
 			// is sealed: one that cannot be read, or no longer has the pinned
@@ -2285,12 +2295,24 @@ func dealCheckCommand() *cobra.Command {
 			// disclosed record) and the profile's recent acts. One verdict and
 			// one prompt with the check's own differences.
 			rules := dealRules{Status: "not_configured"}
+			var notice, unavailable string
 			if len(s.p.RulesChecker.Command) > 0 {
 				input, history, err := s.rulesInput(ctx, snapped.CapsuleID, events)
 				if err != nil {
 					return err
 				}
 				rules = runRulesChecker(ctx, s.p, dealRole(events), input, history)
+				rules.Notice = ""
+				if len(received) > 0 {
+					// The sealed rules above come from a run given no cards.
+					// A second run with them is read for its notice only, and
+					// only when the first answered.
+					if rules.Status == "evaluated" {
+						notice, unavailable = receivedNotice(ctx, s.p, dealRole(events), input, received)
+					} else {
+						unavailable = "the rules checker did not read the cards (the check itself was not evaluated: " + rules.Cause + ")"
+					}
+				}
 				// The card reads the thread's acceptance against the same
 				// cutoff the checker's history was read from.
 				state.historySince = history.Since
@@ -2360,6 +2382,12 @@ func dealCheckCommand() *cobra.Command {
 			out["picked_by_agent"] = result.Picked
 			out["materiality"] = result.Materiality
 			out["rules"] = result.Rules
+			// The checker's line about the received cards: shown, never sealed.
+			if notice != "" {
+				out["rules_notice"] = notice
+			} else if unavailable != "" {
+				out["rules_notice_unavailable"] = unavailable
+			}
 			if rc := result.Recipient; rc != nil {
 				out["recipient"] = rc
 				if len(rc.Repeat) > 0 {
@@ -2393,7 +2421,45 @@ func dealCheckCommand() *cobra.Command {
 	cmd.Flags().String("deal", "", "Deal ID from `deal open`, or a sale id from `deal sale new` for a listing's post check")
 	cmd.Flags().String("input", "", "Snapshot JSON: the action and exactly what is about to happen")
 	cmd.Flags().Duration("stale-after", 15*time.Minute, "How long the check stays current; the approval text says when it goes stale")
+	cmd.Flags().String("received", "", "A JSON array of cards received about the counterparty, handed to the rules checker in a second run read for its notice only: never stored, sealed or shared")
 	return cmd
+}
+
+const (
+	receivedCardsMax      = 64
+	receivedCardsMaxBytes = 1 << 20
+)
+
+// readReceivedCards reads `deal check --received FILE`: a non-empty JSON array
+// of card objects, kept as given (values, numbers and key order), or nil when the flag is not
+// given.
+func readReceivedCards(c *cobra.Command) ([]json.RawMessage, error) {
+	if !c.Flags().Changed("received") {
+		return nil, nil
+	}
+	path, _ := c.Flags().GetString("received")
+	raw, err := cli.ReadInput(path)
+	if err != nil {
+		return nil, err
+	}
+	var cards []json.RawMessage
+	if err = cli.DecodeJSONAs("--received", raw, &cards); err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return nil, cli.InputError("--received needs a non-empty JSON array of cards")
+	}
+	// The input schema's bound: cards must not push a checker past its timeout.
+	if len(cards) > receivedCardsMax || len(raw) > receivedCardsMaxBytes {
+		return nil, cli.InputError("--received holds at most 64 cards and 1 MiB")
+	}
+	for _, card := range cards {
+		var obj map[string]json.RawMessage
+		if err = json.Unmarshal(card, &obj); err != nil || obj == nil {
+			return nil, cli.InputError("--received holds something that is not a card (a JSON object)")
+		}
+	}
+	return cards, nil
 }
 
 func dealCloseCommand() *cobra.Command {
