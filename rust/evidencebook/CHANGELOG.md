@@ -71,6 +71,10 @@
 
 - `deal::standard_history_deal` prices a deal whose check states currency `BTC` as `{assetCode: "BTC", assetScale: 11}` (`amount_minor` counts millisatoshi) instead of returning `Error::Unpriced`; `minor_units("BTC")` stays unpriced, and other codes with no ISO 4217 minor units are still refused (evidencebook#388).
 
+### Added: Rust reconcile pairs a failed exchange's halves by outcome (#400)
+
+- `Half::failed` marks the record of an exchange that did not complete; `from_store` sets it to `false`, since a header carries no outcome, so the caller marks failed halves. `reconcile_halves` now mirrors the Go `ReconcileHalves` (#205, #399): the primary-key join prefers a half of the same outcome, two failed halves are `MATCHED`, a failed half against a served one is `CONFLICTING`, and the content test runs only on two served halves. Adding a public field to `Half` is source-breaking for code that builds it with a struct literal.
+
 ## 0.0.13 (2026-11-01)
 
 ### Breaking: `deal::Record` has a `counterparty_class` field (evidencebook#273)

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v0.13.8 (2026-11-06)
+
+Go module only. Pull requests since v0.13.7: #415 (capsulectl refuses a conduct Result in a bundle), #419 (`DiffBundles`), #420 (the conduct refusal for every record type, `Book.Respond`, and the workspace default).
+
+### Added: `DiffBundles` lists what a lower disclosure level drops (#403)
+
+- `DiffBundles(higher, lower)` verifies two bundles of one history and lists the records whose header the higher discloses and the lower does not, the payload digests the lower leaves out, and anything the lower discloses that the higher does not (`Extra`, so a bundle that is not a lower level of the other is not mistaken for one). A level is a scoped bundle; the difference is read from what the two bundles carry, not from a policy. Interval-coverage leaves whose header the bundle does not carry are not compared, and only records and payloads are compared, not a bundle's other extensions. A bundle that does not verify, whose anchor is not authenticated, or that comes from a different log than the other is `ErrInvalid`.
+
+### Added: `capsulectl-book` refuses a conduct pack's records in a bundle (#414, #418)
+
+- `bundle`, `disclose`, `permalink` and a Close's `--bundle-out` hand the book the private conduct pack ids, so a bundle that would carry a record citing one is refused with the book's `ErrInvalid`, and no bundle is written. The ids come from `packs/*/pack-source.yaml` in the current directory with `scope.kind: conduct` (read as `pack_id`, version cut at `@`), and from the pack ids in `<profile database>/book/conduct-packs` (one per line; blank lines and `#` comments skipped); a pack source that cannot be parsed, a conduct source without a `pack_id`, or an unreadable list also refuses. Run from a directory with no `packs/`, the verb prints a warning on stderr that no workspace conduct packs were read (the list file still applies). For a Close, the Close is already sealed when its bundle is refused, and a conduct record just outside the window (an edge record) is left out of the bundle instead. There is no owner-copy path: the CLI bundles only for others. The kind is local policy; no record, Result or compiled output changes.
+- Until `capsulectl` requires an `evidencebook` release with the library change of #418, the book itself still checks only `evidence_result` records.
+
+### Changed: the conduct refusal covers every record type (#418)
+
+- `Book.Bundle` and `Book.StandardHistoryBundle` now refuse, for anyone but the owner, any selected record whose `subject_ref` names a listed conduct pack, whatever its `record_type` (an `observation` or an `evidence_request`, not only an `evidence_result`), and any record whose statement holds a `contract_ref` member, at any depth, that names one. This replaces the `evidence_result`-only check of #412. `ErrInvalid` names the record type and pack. The pack ids are still the ones the caller lists in `ConductPacks`. No record, Result or compiled-output member changes.
+- `RespondOptions.ConductPacks` is the same list for `Book.Respond`: a record that cites a listed pack, whatever its type and whoever sealed it, is treated like the holder's other private records (`neverServed`). No subject form or derivation serves it, and a request that names it gets the refusal an unknown id gets, where a conduct Result was served digest-only before. An exchange named by its id, and a lapsed retention commitment on it, are refused the same way. A correlation holding one serves the rest. `A2AOptions` and `MCPOptions` take the same `ConductPacks`. A pack id holding `@` or empty is refused with `ErrInvalid`, as for a bundle. Built-in derivations read only servable records, so they leave it out too. The kind is local policy: no record changes.
+
 ## v0.13.7 (2026-11-05)
 
 Go module only.
