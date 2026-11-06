@@ -1,6 +1,7 @@
 package book
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,12 +22,25 @@ func writeConductPacks(t *testing.T, p cli.Profile, body string) {
 // appendConductResult seals an evidence_result record citing pack, linked to
 // the published record, into the profile's book and checkpoints it.
 func appendConductResult(t *testing.T, p cli.Profile, pack, cites string) string {
+	return appendResult(t, p, pack+"@1", nil, cites)
+}
+
+// appendResult seals an evidence_result record with the given subject_ref and
+// claim contract_refs.
+func appendResult(t *testing.T, p cli.Profile, subject string, contractRefs []string, cites string) string {
 	t.Helper()
 	var id string
 	withBook(t, p, func(book *evidencebook.Book) {
+		var claims []map[string]string
+		for _, ref := range contractRefs {
+			claims = append(claims, map[string]string{"contract_ref": ref})
+		}
+		statement, err := json.Marshal(map[string]any{"claims": claims})
+		require.NoError(t, err)
 		record, err := book.Append(t.Context(), evidencebook.Entry{
-			RecordType: resultRecordType, EpistemicType: evidencebook.DerivedMetric, SubjectRef: pack + "@1",
-			Links: []evidencebook.Link{{Type: evidencebook.Cites, Target: cites}},
+			RecordType: resultRecordType, EpistemicType: evidencebook.DerivedMetric, SubjectRef: subject,
+			Links:     []evidencebook.Link{{Type: evidencebook.Cites, Target: cites}},
+			Statement: statement,
 		})
 		require.NoError(t, err)
 		id = record.RecordID
@@ -73,10 +87,12 @@ func TestConductPackListIsStrict(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "without a version")
 
-	writeConductPacks(t, p, conductPack+" # private to the owner\n")
-	_, err = invoke(t, "", "disclose", "--profile", p.Name, "--root", result)
-	require.ErrorIs(t, err, cli.ErrInput)
-	assert.Contains(t, cli.SafeError(err), "is not a pack id")
+	for _, line := range []string{conductPack + " # private to the owner", conductPack + "\u00a0note"} {
+		writeConductPacks(t, p, line+"\n")
+		_, err = invoke(t, "", "disclose", "--profile", p.Name, "--root", result)
+		require.ErrorIs(t, err, cli.ErrInput)
+		assert.Contains(t, cli.SafeError(err), "is not a pack id")
+	}
 
 	require.NoError(t, os.Remove(filepath.Join(p.Connection.Database, "book", conductPacksFile)))
 	require.NoError(t, os.Mkdir(filepath.Join(p.Connection.Database, "book", conductPacksFile), 0o700))
@@ -117,6 +133,12 @@ func TestCloseBundleRefusesAConductResult(t *testing.T) {
 // A conduct Result just after the window only places its end: it is left out
 // of the Close's bundle, which still builds.
 func TestCloseBundleLeavesOutAConductResultAtTheEdge(t *testing.T) {
+	for name, subject := range map[string][]string{"by subject_ref": nil, "by claim contract_ref only": {conductPack + "@1"}} {
+		t.Run(name, func(t *testing.T) { closeWithEdgeResult(t, subject) })
+	}
+}
+
+func closeWithEdgeResult(t *testing.T, claimRefs []string) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	set := bookClock(t, day0)
 	p, _ := bookProfile(t, "a")
@@ -128,7 +150,11 @@ func TestCloseBundleLeavesOutAConductResultAtTheEdge(t *testing.T) {
 		halfID = records[0].RecordID
 	})
 	set(day1)
-	appendConductResult(t, p, conductPack, halfID)
+	if claimRefs == nil {
+		appendConductResult(t, p, conductPack, halfID)
+	} else {
+		appendResult(t, p, "other/pack@1", claimRefs, halfID)
+	}
 	set(day1.AddDate(0, 0, 1))
 	writeConductPacks(t, p, conductPack+"\n")
 	out := filepath.Join(t.TempDir(), "close-bundle.json")

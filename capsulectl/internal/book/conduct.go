@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/evidencebook"
@@ -44,7 +45,7 @@ func conductPacks(p cli.Profile) ([]string, error) {
 		}
 		// "pack # note" would be stored as one id that matches no Result and
 		// protect nothing, so a line is exactly one id.
-		if strings.ContainsAny(line, " \t#") {
+		if strings.ContainsFunc(line, func(r rune) bool { return r == '#' || unicode.IsSpace(r) }) {
 			return nil, cli.InputError(fmt.Sprintf("%s: %q is not a pack id; put one pack id per line, with comments on their own line", path, line))
 		}
 		packs = append(packs, line)
