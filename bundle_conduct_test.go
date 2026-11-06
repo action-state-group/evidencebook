@@ -3,9 +3,28 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 )
+
+// holds reports whether data carries marker as it travels: plain, in base64
+// (a payload in a bundle) or in hex (a record body in a reply).
+func holds(data []byte, marker string) bool {
+	for _, form := range [][]byte{
+		[]byte(marker),
+		[]byte(base64.StdEncoding.EncodeToString([]byte(marker))),
+		[]byte(base64.RawURLEncoding.EncodeToString([]byte(marker))),
+		[]byte(hex.EncodeToString([]byte(marker))),
+	} {
+		if bytes.Contains(data, form) {
+			return true
+		}
+	}
+	return false
+}
 
 // A conduct pack never appears in a scoped bundle sent to a counterparty
 // (Terms Pack Studio PRD v5 §13). The book holds a conduct Result and a deal
@@ -232,15 +251,54 @@ func TestBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.T) {
 		if !bytes.Contains(own.JSON, []byte("everyday-rules")) {
 			t.Fatalf("%s: the owner's bundle should carry the record", name)
 		}
+		// The detector must see what the owner's copy carries (the payload
+		// travels base64), or a clean counterparty bundle proves nothing.
+		if marker := "CONDUCT-ROW-TEXT-" + name; name == "observation" && !holds(own.JSON, marker) {
+			t.Fatalf("%s: the leak check does not find %q in the owner's bundle", name, marker)
+		}
 	}
 	bundle, err := book.Bundle(ctx, BundleRequest{Root: deal.RecordID, ConductPacks: private})
 	if err != nil {
 		t.Fatalf("a deal record alongside conduct ones: %v", err)
 	}
-	for _, leaked := range []string{"CONDUCT-ROW-TEXT", "everyday-rules"} {
-		if bytes.Contains(bundle.JSON, []byte(leaked)) {
+	for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-request", "everyday-rules"} {
+		if holds(bundle.JSON, leaked) {
 			t.Fatalf("the counterparty bundle carries %q", leaked)
 		}
+	}
+}
+
+// A record that is not a Result is also found where a Result is: a claim
+// whose contract_ref names the pack, and a caller-sealed record with its
+// header inside its capsule anywhere in the carried interval.
+func TestBundleRefusesANonResultByClaimAndInline(t *testing.T) {
+	ctx := context.Background()
+	private := []string{"asg/everyday-rules"}
+
+	book := newFixture(t, "conduct-claim-any", 16).open(t)
+	byClaim := mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/seller@2",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	if _, err := book.Bundle(ctx, BundleRequest{Root: byClaim.RecordID, ConductPacks: private}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("claim contract_ref: err = %v; want ErrInvalid", err)
+	}
+
+	inline := newFixture(t, "conduct-inline-any", 1)
+	book = inline.open(t)
+	earlier := mustAppend(t, book, observation("s", "x"))
+	payload := `{"order":17}`
+	if _, err := book.AppendCapsule(ctx, Entry{
+		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"INLINE-ROW"}`),
+	}, boundPayload(payload), ownSealer(t, 1, payload, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: earlier.RecordID, ConductPacks: private}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("inline observation in the interval: err = %v; want ErrInvalid", err)
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: earlier.RecordID, ConductPacks: private, OwnerCopy: true}); err != nil {
+		t.Fatalf("owner copy: %v", err)
 	}
 }
 
@@ -261,29 +319,73 @@ func TestStandardHistoryBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.
 	}
 }
 
-// book respond (evidence-interop) serves a record only as a digest-only
-// capsule, so a requester naming a conduct observation or evidence_request, or
-// the correlation key of its subject_ref, gets neither the row text nor a pack
-// id beyond the key it sent (evidencebook#418, #417).
+// book respond (evidence-interop) serves a record the book sealed only as a
+// digest-only capsule, so a requester naming a conduct observation or
+// evidence_request, or the correlation key of its subject_ref, gets neither
+// the row text nor a pack id beyond the key it sent. A record its caller
+// sealed is served whole, header included, so RespondOptions.ConductPacks
+// declines it (evidencebook#418, #417).
 func TestRespondServesNoConductRowText(t *testing.T) {
+	ctx := context.Background()
 	book := newFixture(t, "conduct-respond", 15).open(t)
 	obs := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")}})
 	req := mustAppend(t, book, Entry{RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`)})
+	payload := `{"order":17}`
+	inline, err := book.AppendCapsule(ctx, Entry{
+		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-inline"}`),
+	}, boundPayload(payload), ownSealer(t, 15, payload, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// served is everything a reply carries: the message, the artifact and the
+	// body of each record in a record set.
+	served := func(subject Subject, packs []string) ([]byte, string) {
+		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
+		if reply.Envelope == nil {
+			return nil, st.Reason
+		}
+		all := append([]byte(nil), reply.Message.Octets...)
+		artifact := mustEnvelope(t, reply).Artifact
+		all = append(all, artifact...)
+		var set struct {
+			Records []struct {
+				Body string `json:"body"`
+			} `json:"records"`
+		}
+		if json.Unmarshal(artifact, &set) == nil {
+			for _, r := range set.Records {
+				body, _ := hex.DecodeString(r.Body)
+				all = append(all, body...)
+			}
+		}
+		return all, ""
+	}
+	private := []string{"asg/everyday-rules"}
+
+	// The control: the check finds a caller-sealed record's text when it is served.
+	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, nil); out == nil || !holds(out, "CONDUCT-ROW-TEXT-inline") {
+		t.Fatalf("control: a caller-sealed record without ConductPacks should be served whole (declined %q)", reason)
+	}
+	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, private); out != nil || reason != ReasonPolicyDeclined {
+		t.Fatalf("a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
+	}
+	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, private); out != nil || reason != ReasonPolicyDeclined {
+		t.Fatalf("a correlation holding a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
+	}
 	for _, subject := range []Subject{
 		{Kind: SubjectRecord, Digest: obs.RecordID},
 		{Kind: SubjectRecord, Digest: req.RecordID},
-		{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"},
 	} {
-		reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Coverage: fresh()}),
-			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers")})
-		if reply.Envelope == nil {
-			t.Fatalf("%s: outcome %q (%s); the probe needs an answered request", subject.Kind, st.Outcome, st.Reason)
+		out, reason := served(subject, private)
+		if out == nil {
+			t.Fatalf("%s: declined %q; a digest-only capsule is served", subject.Kind, reason)
 		}
-		if bytes.Contains(reply.Message.Octets, []byte("CONDUCT-ROW-TEXT")) {
-			t.Fatalf("%s: the reply carries conduct row text", subject.Kind)
-		}
-		if subject.Kind != SubjectCorrelation && bytes.Contains(reply.Message.Octets, []byte("everyday-rules")) {
-			t.Fatalf("%s: the reply names the conduct pack", subject.Kind)
+		for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-request", "everyday-rules"} {
+			if holds(out, leaked) {
+				t.Fatalf("%s: the reply carries %q", subject.Kind, leaked)
+			}
 		}
 	}
 }

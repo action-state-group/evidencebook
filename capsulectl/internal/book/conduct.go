@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"github.com/action-state-group/capsule-cli/cli"
@@ -56,13 +57,22 @@ const workspacePacksDir = "packs"
 // packs directory means none; a source that does not parse refuses, since its
 // kind cannot be told.
 func workspaceConductPacks() ([]string, error) {
-	sources, err := filepath.Glob(filepath.Join(workspacePacksDir, "*", "pack-source.yaml"))
+	// filepath.Glob would drop a directory it cannot read without an error,
+	// leaving its packs unprotected, so the directories are listed here.
+	folders, err := os.ReadDir(workspacePacksDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, err
+		return nil, cli.InputError(fmt.Sprintf("cannot read the packs directory %s, so nothing is bundled: %v", workspacePacksDir, err))
 	}
 	var packs []string
-	for _, path := range sources {
+	for _, folder := range folders {
+		path := filepath.Join(workspacePacksDir, folder.Name(), "pack-source.yaml")
 		data, err := os.ReadFile(path)
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			continue
+		}
 		if err != nil {
 			return nil, cli.InputError(fmt.Sprintf("cannot read the pack source %s, so nothing is bundled: %v", path, err))
 		}
@@ -75,6 +85,7 @@ func workspaceConductPacks() ([]string, error) {
 		if err := yaml.Unmarshal(data, &source); err != nil {
 			return nil, cli.InputError(fmt.Sprintf("cannot parse the pack source %s, so its scope.kind is unknown and nothing is bundled: %v", path, err))
 		}
+		// A source with no scope.kind is an ordinary pack, not a conduct one.
 		if source.Scope.Kind != "conduct" {
 			continue
 		}
@@ -117,7 +128,9 @@ func listedConductPacks(p cli.Profile) ([]string, error) {
 
 // citesConductPack reports whether a record's header cites a listed pack in
 // its subject_ref or a claim's contract_ref ("<pack_id>@<version>"), whatever
-// its record type, the test the book applies to a record a bundle discloses.
+// its record type, as the book's own check does once capsulectl pins an evidencebook
+// release with #418. The book pinned today (v0.13.7) checks only a Result, so
+// another record type is refused only after the pin moves.
 func citesConductPack(h evidencebook.Header, packs []string) bool {
 	if len(packs) == 0 {
 		return false

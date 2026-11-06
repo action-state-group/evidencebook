@@ -461,10 +461,21 @@ func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 	if req.OwnerCopy || len(req.ConductPacks) == 0 {
 		return nil
 	}
-	h := b.records[id].Header
-	// A record names its pack in its subject_ref and, for a Result, in each
-	// claim's contract_ref, "<pack_id>@<pack_version>"; the owner says which
-	// pack ids are conduct.
+	pack, err := conductPackCited(id, b.records[id].Header, req.ConductPacks)
+	if err != nil {
+		return err
+	}
+	if pack != "" {
+		return fmt.Errorf("%w: %s %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, b.records[id].Header.RecordType, id, pack)
+	}
+	return nil
+}
+
+// conductPackCited returns the listed conduct pack a record's header cites,
+// or "" for none. A record names its pack in its subject_ref and, for a
+// Result, in each claim's contract_ref, "<pack_id>@<pack_version>"; the owner
+// says which pack ids are conduct.
+func conductPackCited(id string, h Header, packs []string) (string, error) {
 	refs := []string{h.SubjectRef}
 	var doc struct {
 		Claims []struct {
@@ -472,18 +483,18 @@ func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 		} `json:"claims"`
 	}
 	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil && h.RecordType == RecordTypeEvidenceResult {
-		return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
+		return "", fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
 	}
 	for _, c := range doc.Claims {
 		refs = append(refs, c.ContractRef)
 	}
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
-		if pack != "" && slices.Contains(req.ConductPacks, pack) {
-			return fmt.Errorf("%w: %s %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, h.RecordType, id, pack)
+		if pack != "" && slices.Contains(packs, pack) {
+			return pack, nil
 		}
 	}
-	return nil
+	return "", nil
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does

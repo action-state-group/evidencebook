@@ -235,7 +235,7 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 		return f, nil
 	}
 	anchor := view.checkpoints[d.Anchor]
-	built, err := b.buildArtifact(ctx, view, check.request, anchor, d.Leaves, nil)
+	built, err := b.buildArtifact(ctx, view, check.request, anchor, d.Leaves, nil, nil)
 	if err != nil {
 		f.Detail = fmt.Sprintf("the host cannot build the standard_history/1 card: %v", err)
 		return f, nil

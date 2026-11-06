@@ -212,6 +212,13 @@ type RespondOptions struct {
 	// it; set AuthenticatedRequester from the transport's authentication.
 	RequesterID string
 	Policy      SharePolicy
+	// ConductPacks are the pack ids the book's owner holds as conduct packs
+	// (BundleRequest.ConductPacks): a record its caller sealed with its header
+	// inside its capsule that cites one is declined (policy_declined), since
+	// that capsule is served whole. A record the book sealed is served
+	// digest-only and needs no check. The kind is local policy, written into no
+	// record.
+	ConductPacks []string
 	// stapleDeal is the deal a standard_history/1 staple is attached for
 	// (Book.StapleForDeal); the answered record carries it.
 	stapleDeal string
@@ -509,7 +516,7 @@ func (a *answer) run() (Reply, error) {
 	}
 	r, def := d.Resolution, d.def
 	anchor := view.checkpoints[r.Anchor]
-	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def)
+	built, err := b.buildArtifact(a.ctx, view, req, anchor, r.Leaves, def, a.opts.ConductPacks)
 	if err != nil {
 		return Reply{}, err
 	}

@@ -229,3 +229,30 @@ func TestCitesConductPackForAnyRecordType(t *testing.T) {
 	assert.False(t, citesConductPack(h, []string{"asg/seller"}))
 	assert.False(t, citesConductPack(h, nil))
 }
+
+// A packs directory that cannot be read refuses, as an unreadable source
+// does; filepath.Glob would have returned no packs without saying so.
+func TestWorkspaceConductPacksRefuseAnUnreadableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any directory")
+	}
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	writePackSource(t, workspace, "conduct", conductPack)
+	t.Chdir(workspace)
+	packs := filepath.Join(workspace, workspacePacksDir)
+	require.NoError(t, os.Chmod(packs, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(packs, 0o700) })
+
+	_, err := conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the packs directory")
+
+	require.NoError(t, os.Chmod(packs, 0o700))
+	folder := filepath.Join(packs, "pack-conduct")
+	require.NoError(t, os.Chmod(folder, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(folder, 0o700) })
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
+}

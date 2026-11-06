@@ -66,7 +66,7 @@ var (
 // buildArtifact builds the canonical Artifact from view's snapshot. It
 // reads the store and substrate, which lock themselves, and nothing else the
 // book changes, so it runs without the book's lock.
-func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry) (builtArtifact, error) {
+func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRequest, anchor Checkpoint, leaves []uint64, def *derivationEntry, conduct []string) (builtArtifact, error) {
 	if req.Derivation == DerivationStandardHistory {
 		// A card of counts whatever the history's length: the item cap
 		// bounds record lists, and the card lists none.
@@ -118,6 +118,9 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 		if err != nil {
 			return builtArtifact{}, err
 		}
+		if cited, err := citesConductInline(id, view.log[leaves[0]].Header, stored.Capsule, conduct); err != nil || cited {
+			return builtArtifact{declined: cited}, err
+		}
 		if !view.disclosureClean(body, nil) {
 			return builtArtifact{declined: true}, nil
 		}
@@ -141,6 +144,9 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 			body, err := capsulePreimage(stored.Capsule, id)
 			if err != nil {
 				return builtArtifact{}, err
+			}
+			if cited, err := citesConductInline(id, view.log[leaf].Header, stored.Capsule, conduct); err != nil || cited {
+				return builtArtifact{declined: cited}, err
 			}
 			records[i] = map[string]any{"leaf_index": leaf, "digest": id, "body": hex.EncodeToString(body)}
 		}
@@ -325,4 +331,20 @@ func (b *Book) project(ctx context.Context, view *bookView, leaves []uint64, def
 		records[i] = entry
 	}
 	return records, nil
+}
+
+// citesConductInline reports whether a record a responder would serve carries
+// its header inside its capsule (a record its caller sealed) and that header
+// cites a conduct pack: the capsule is served whole, so its subject_ref and
+// statement would reach the requester. A record the book sealed is served
+// digest-only, which shows neither.
+func citesConductInline(id string, h Header, capsule []byte, packs []string) (bool, error) {
+	if len(packs) == 0 {
+		return false, nil
+	}
+	if _, inline, err := inlineHeader(capsule); err != nil || !inline {
+		return false, err
+	}
+	pack, err := conductPackCited(id, h, packs)
+	return pack != "", err
 }
