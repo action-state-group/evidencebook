@@ -3,6 +3,7 @@ package book
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -336,19 +337,44 @@ func TestBundleAndDiscloseRefuseAConductObservation(t *testing.T) {
 
 // book respond reads the conduct pack list too (evidencebook#418): an
 // unusable list refuses the answer instead of serving with the packs
-// unprotected, and a usable one answers as before.
+// unprotected, and a record that cites a listed pack is refused where it is
+// answered without the list.
 func TestRespondReadsTheConductPackList(t *testing.T) {
 	x := newEvidenceExchange(t)
-	x.ask("history", `{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}`)
-	respond := func() error {
-		_, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "history.sent"), "--requester", "a", "--output", filepath.Join(x.dir, "history.response"))
-		return err
+	var conduct string
+	withBook(t, x.b, func(book *evidencebook.Book) {
+		record, err := book.Append(t.Context(), evidencebook.Entry{
+			RecordType: "observation", EpistemicType: evidencebook.ObservedEvent, SubjectRef: conductPack + "@1",
+			CounterpartyRef: "a", Payloads: [][]byte{[]byte("row text")},
+		})
+		require.NoError(t, err)
+		conduct = record.RecordID
+		_, err = book.Checkpoint(t.Context())
+		require.NoError(t, err)
+	})
+	x.ask("record", `{"subject":{"record":"`+conduct+`"},"coverage":{"min_freshness":1}}`)
+	answers := 0
+	respond := func() (cli.EvidenceRespondResult, error) {
+		answers++
+		out, err := invoke(t, "", "respond", "--profile", "b", "--request", filepath.Join(x.dir, "record.sent"), "--requester", "a", "--output", filepath.Join(x.dir, fmt.Sprintf("record%d.response", answers)))
+		var result cli.EvidenceRespondResult
+		if err == nil {
+			require.NoError(t, json.Unmarshal([]byte(out), &result), out)
+		}
+		return result, err
 	}
+
+	result, err := respond()
+	require.NoError(t, err)
+	require.Equal(t, evidencebook.OutcomeArtifact, result.Outcome, "control: without the list the record is answered")
+
 	writeConductPacks(t, x.b, conductPack+" # note\n")
-	err := respond()
+	_, err = respond()
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "is not a pack id")
 
 	writeConductPacks(t, x.b, conductPack+"\n")
-	require.NoError(t, respond())
+	result, err = respond()
+	require.NoError(t, err)
+	assert.Equal(t, evidencebook.OutcomeRefusal, result.Outcome, "a conduct record is refused as an unknown id is")
 }

@@ -148,9 +148,8 @@ func listedConductPacks(p cli.Profile) ([]string, error) {
 
 // citesConductPack reports whether a record's header cites a listed pack in
 // its subject_ref or a claim's contract_ref ("<pack_id>@<version>"), whatever
-// its record type, as the book's own check does once capsulectl pins an evidencebook
-// release with #418. The book pinned today (v0.13.7) checks only a Result, so
-// another record type is refused only after the pin moves.
+// its record type, as the book's own check does (evidencebook v0.13.8 and later). A Close's
+// bundle uses it to leave out a conduct record just outside the window.
 func citesConductPack(h evidencebook.Header, packs []string) bool {
 	if len(packs) == 0 {
 		return false
