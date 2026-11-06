@@ -60,6 +60,8 @@ type A2AOptions struct {
 	// Policy is the sharing policy every request is answered under, as for
 	// RespondOptions.Policy.
 	Policy SharePolicy
+	// ConductPacks is RespondOptions.ConductPacks, applied to every request.
+	ConductPacks []string
 	// Name and URL are the Agent Card's name and the JSON-RPC endpoint the
 	// host serves Handle at. Both are required.
 	Name, URL string
@@ -106,6 +108,7 @@ type A2AServer struct {
 	book     *Book
 	manifest json.RawMessage
 	policy   SharePolicy
+	conduct  []string
 	card     []byte
 }
 
@@ -118,6 +121,9 @@ func (b *Book) A2A(opts A2AOptions) (*A2AServer, error) {
 		return nil, fmt.Errorf("%w: an Agent Card names the agent and its endpoint URL", ErrInvalid)
 	}
 	if err := opts.Policy.Validate(); err != nil {
+		return nil, err
+	}
+	if err := checkConductPacks(opts.ConductPacks); err != nil {
 		return nil, err
 	}
 	manifest, err := b.Manifest(opts.Manifest)
@@ -150,7 +156,7 @@ func (b *Book) A2A(opts A2AOptions) (*A2AServer, error) {
 		// No AgentSkill: the extension entry advertises the exchange (P-37).
 		"skills": []any{},
 	}
-	return &A2AServer{book: b, manifest: manifest, policy: opts.Policy, card: mcpMarshal(card)}, nil
+	return &A2AServer{book: b, manifest: manifest, policy: opts.Policy, conduct: opts.ConductPacks, card: mcpMarshal(card)}, nil
 }
 
 // AgentCard returns the Agent Card to serve at the host's well-known URL. It
@@ -270,7 +276,7 @@ func (s *A2AServer) Handle(ctx context.Context, req A2ARequest, authenticated st
 			}
 		}
 	}
-	reply, _, err := s.book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: authenticated, Policy: s.policy})
+	reply, _, err := s.book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: authenticated, Policy: s.policy, ConductPacks: s.conduct})
 	if err != nil {
 		// The responder sends no reply; to the requester this is a transport
 		// condition (ER §4.4), never a refusal.

@@ -212,7 +212,7 @@ func (b *Book) doctorStandardCard(ctx context.Context, policy SharePolicy) (Doct
 	now, log := b.now(), b.logLocked()
 	_, isCLL := b.commitments.(cllMaterialSource)
 	b.mu.Unlock()
-	view, err := b.view(ctx, log)
+	view, err := b.view(ctx, log, nil)
 	if err != nil {
 		return f, err
 	}
@@ -325,7 +325,7 @@ func (t probeTarget) anchored(ctx context.Context, anchor string) (bool, error) 
 }
 
 func (b *Book) doctorLocked(ctx context.Context, opts DoctorOptions) ([]DoctorFinding, *Checkpoint, error) {
-	view, err := b.view(ctx, b.logLocked())
+	view, err := b.view(ctx, b.logLocked(), nil)
 	if err != nil {
 		return nil, nil, err
 	}

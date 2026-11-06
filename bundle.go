@@ -73,12 +73,13 @@ type BundleRequest struct {
 	At *Checkpoint
 	// ConductPacks are the pack ids the book's owner holds as conduct packs
 	// (scope.kind conduct): private, judged only for the owner. A scoped
-	// bundle whose selected set holds a Result that cites one is refused
-	// unless OwnerCopy is set. The kind is local policy, written into no
+	// bundle whose selected set holds a record of any type whose subject_ref
+	// names one, or a Result claim whose contract_ref does, is refused unless
+	// OwnerCopy is set. The kind is local policy, written into no
 	// record.
 	ConductPacks []string
 	// OwnerCopy marks a bundle that stays with the book's owner, so it may
-	// carry a conduct Result.
+	// carry a conduct record.
 	OwnerCopy bool
 	// Extensions are further extension blocks, by kind. producer-key/v1
 	// is set through ProducerKey and composed/v1 is agent-action-capsule's
@@ -446,43 +447,87 @@ func checkConductPacks(packs []string) error {
 	return nil
 }
 
-// refuseConductLocked refuses a bundle that would carry a Result citing a
+// refuseConductLocked refuses a bundle that would carry a record citing a
 // conduct pack to anyone but the book's owner (Terms Pack Studio PRD v5 §13:
 // a conduct pack never appears in a scoped bundle sent to a counterparty).
-// It checks the records the bundle discloses (root, closure and Include
-// alike); a Result the book's caller sealed with its header inside its
-// capsule is checked wherever it sits in the carried interval, since that
-// header travels with the capsule whether or not it is selected.
+// Whatever its record_type, a record whose subject_ref names a listed pack is
+// refused, and so is any record whose statement holds a claim whose
+// contract_ref does. It checks the records the bundle discloses (root,
+// closure and Include alike); a record the book's caller sealed with its
+// header inside its capsule is checked wherever it sits in the carried
+// interval, since that header travels with the capsule whether or not it is
+// selected.
 func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 	if req.OwnerCopy || len(req.ConductPacks) == 0 {
 		return nil
 	}
-	h := b.records[id].Header
-	if h.RecordType != RecordTypeEvidenceResult {
-		return nil
+	pack, err := conductPackCited(id, b.records[id].Header, req.ConductPacks)
+	if err != nil {
+		return err
 	}
-	// A Result names its pack in its subject_ref and in each claim's
-	// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack
-	// ids are conduct.
+	if pack != "" {
+		return fmt.Errorf("%w: %s %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, b.records[id].Header.RecordType, id, pack)
+	}
+	return nil
+}
+
+// conductPackCited returns the listed conduct pack a record's header cites,
+// or "" for none. A record names its pack in its subject_ref and in any
+// contract_ref member of its statement (a Result's claims carry one each),
+// "<pack_id>@<pack_version>"; the owner says which pack ids are conduct. A
+// statement that cannot be read is an error, so a caller that must not serve
+// what it cannot classify fails closed.
+func conductPackCited(id string, h Header, packs []string) (string, error) {
 	refs := []string{h.SubjectRef}
-	var doc struct {
-		Claims []struct {
-			ContractRef string `json:"contract_ref"`
-		} `json:"claims"`
-	}
-	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
-		return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
-	}
-	for _, c := range doc.Claims {
-		refs = append(refs, c.ContractRef)
+	if len(h.Statement) > 0 {
+		var statement any
+		if err := json.Unmarshal(h.Statement, &statement); err != nil {
+			return "", fmt.Errorf("%w: %s %s: statement is not JSON: %v", ErrCorrupt, h.RecordType, id, err)
+		}
+		var err error
+		if refs, err = appendContractRefs(refs, statement); err != nil {
+			return "", fmt.Errorf("%w: %s %s", err, h.RecordType, id)
+		}
 	}
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
-		if pack != "" && slices.Contains(req.ConductPacks, pack) {
-			return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
+		if pack != "" && slices.Contains(packs, pack) {
+			return pack, nil
 		}
 	}
-	return nil
+	return "", nil
+}
+
+// appendContractRefs adds every string value under a "contract_ref" key
+// (matched without regard to case, as a typed decode would), at any depth of
+// a decoded statement. A contract_ref that is not a string cannot be
+// classified, so it is an error and the caller fails closed.
+func appendContractRefs(refs []string, value any) ([]string, error) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, member := range v {
+			if strings.EqualFold(key, "contract_ref") {
+				text, ok := member.(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: contract_ref is not a string", ErrCorrupt)
+				}
+				refs = append(refs, text)
+				continue
+			}
+			var err error
+			if refs, err = appendContractRefs(refs, member); err != nil {
+				return nil, err
+			}
+		}
+	case []any:
+		for _, member := range v {
+			var err error
+			if refs, err = appendContractRefs(refs, member); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return refs, nil
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does

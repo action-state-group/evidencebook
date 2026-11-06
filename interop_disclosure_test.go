@@ -26,12 +26,34 @@ func TestDisclosureScanRefusesLinkableArtifacts(t *testing.T) {
 		"undeclared top member":   `{"anchor":"a","evidence_stream":"s","records":[],"subject":{"full_history":null},"producer":"x"}`,
 		"undeclared entry member": `{"anchor":"a","evidence_stream":"s","records":[{"body":"","digest":"d","leaf_index":0,"verification":{}}],"subject":{"full_history":null}}`,
 	} {
-		view, err := book.view(t.Context(), book.log)
+		view, err := book.view(t.Context(), book.log, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if view.disclosureClean([]byte(artifact), &recordSetFields) {
 			t.Fatalf("%s passed the disclosure scan", name)
 		}
+	}
+}
+
+// The scan treats a record the snapshot holds but does not serve, such as one
+// that cites a conduct pack, like a record type that is never served: an
+// artifact naming its digest fails (evidencebook#418).
+func TestDisclosureScanRefusesAPrivateRecordsDigest(t *testing.T) {
+	book := newFixture(t, "conduct-scan", 20).open(t)
+	private := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", Payloads: [][]byte{[]byte("x")}})
+	open := mustAppend(t, book, observation("asg/seller@2", "y"))
+	artifact := func(id string) []byte {
+		return []byte(`{"anchor":"a","evidence_stream":"s","records":[{"body":"","digest":"` + id + `","leaf_index":0}],"subject":{"full_history":null}}`)
+	}
+	view, err := book.view(t.Context(), book.log, []string{"asg/everyday-rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.disclosureClean(artifact(private.RecordID), &recordSetFields) {
+		t.Fatal("an artifact naming a conduct record passed the disclosure scan")
+	}
+	if !view.disclosureClean(artifact(open.RecordID), &recordSetFields) {
+		t.Fatal("control: an artifact naming an ordinary record failed the scan")
 	}
 }

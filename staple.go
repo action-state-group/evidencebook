@@ -102,6 +102,8 @@ func (b *Book) StapleForDeal(ctx context.Context, derivation, deal string) (Stap
 	}
 	request := Message{Octets: octets, MediaType: MediaTypeJSON}
 	// The share policy gates record-naming subjects only; neither card is one.
+	// No ConductPacks: a card is counts only and carries no record field, so
+	// it names no conduct pack or row (the pack list is a responder option).
 	opts := RespondOptions{Policy: DefaultSharePolicy()}
 	if derivation == DerivationStandardHistory {
 		opts.AuthenticatedRequester = KeyID(b.signer)

@@ -91,6 +91,8 @@ type MCPOptions struct {
 	// Policy is the sharing policy every request is answered under, as for
 	// RespondOptions.Policy.
 	Policy SharePolicy
+	// ConductPacks is RespondOptions.ConductPacks, applied to every request.
+	ConductPacks []string
 	// ServerVersion is the version in the serverInfo each result carries;
 	// empty is "unversioned".
 	ServerVersion string
@@ -110,6 +112,7 @@ type MCPServer struct {
 	book       *Book
 	manifest   json.RawMessage
 	policy     SharePolicy
+	conduct    []string
 	serverInfo map[string]any
 }
 
@@ -121,6 +124,9 @@ func (b *Book) MCP(opts MCPOptions) (*MCPServer, error) {
 	if err := opts.Policy.Validate(); err != nil {
 		return nil, err
 	}
+	if err := checkConductPacks(opts.ConductPacks); err != nil {
+		return nil, err
+	}
 	manifest, err := b.Manifest(opts.Manifest)
 	if err != nil {
 		return nil, err
@@ -129,7 +135,7 @@ func (b *Book) MCP(opts MCPOptions) (*MCPServer, error) {
 	if version == "" {
 		version = "unversioned"
 	}
-	return &MCPServer{book: b, manifest: manifest, policy: opts.Policy,
+	return &MCPServer{book: b, manifest: manifest, policy: opts.Policy, conduct: opts.ConductPacks,
 		serverInfo: map[string]any{"name": "evidencebook", "version": version}}, nil
 }
 
@@ -227,7 +233,7 @@ func (s *MCPServer) Handle(ctx context.Context, message []byte, authenticated st
 			// digest for a reply to bind. Never an envelope or a refusal.
 			return mcpError(id, mcpInvalidParams, "arguments do not match the evidence_request input schema", nil)
 		}
-		reply, _, err := s.book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: authenticated, Policy: s.policy})
+		reply, _, err := s.book.Respond(ctx, request, RespondOptions{AuthenticatedRequester: authenticated, Policy: s.policy, ConductPacks: s.conduct})
 		if err != nil {
 			// The responder sends no reply; to the requester this is a
 			// transport condition (ER §4.4), never a refusal.

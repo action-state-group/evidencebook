@@ -1,6 +1,7 @@
 package book
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -161,4 +162,150 @@ func closeWithEdgeResult(t *testing.T, claimRefs []string) {
 	_, err := invoke(t, "", "close", "--profile", "a", "--period", "day", "--date", "2026-09-24", "--counterparty", "b", "--bundle-out", out)
 	require.NoError(t, err)
 	assert.FileExists(t, out)
+}
+
+func writePackSource(t *testing.T, dir, kind, packID string) {
+	t.Helper()
+	folder := filepath.Join(dir, workspacePacksDir, "pack-"+kind)
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	body := "scope:\n  kind: " + kind + "\npack_id: " + packID + "\npack_version: \"0.1.0\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte(body), 0o600))
+}
+
+// evidencebook#418: the owner's pack sources decide, so a pack marked
+// scope.kind conduct is protected with no conduct-packs file at all, and a
+// deal pack beside it is not.
+func TestWorkspaceConductPacksDefaultTheList(t *testing.T) {
+	p, stored := jsonlPublished(t)
+	conduct := appendConductResult(t, p, conductPack, recordOfCapsule(t, p, stored.CapsuleID))
+	deal := appendConductResult(t, p, "asg/seller", recordOfCapsule(t, p, stored.CapsuleID))
+	workspace := t.TempDir()
+	writePackSource(t, workspace, "conduct", conductPack)
+	writePackSource(t, workspace, "deal", "asg/seller")
+	t.Chdir(workspace)
+
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Equal(t, []string{conductPack}, got)
+
+	for _, verb := range []string{"disclose", "bundle", "permalink"} {
+		_, err := invoke(t, "", verb, "--profile", p.Name, "--root", conduct)
+		require.ErrorIs(t, err, cli.ErrInput, verb)
+		assert.Contains(t, cli.SafeError(err), "conduct pack "+conductPack)
+		_, err = invoke(t, "", verb, "--profile", p.Name, "--root", deal)
+		require.NoError(t, err, verb)
+	}
+
+	// The file adds to the workspace's packs, never replaces them.
+	writeConductPacks(t, p, "asg/other\n")
+	got, err = conductPacks(p)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"asg/other", conductPack}, got)
+}
+
+// A pack source whose kind cannot be read refuses, like an unreadable list.
+func TestWorkspaceConductPacksRefuseAnUnreadableSource(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, workspacePacksDir, "broken")
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte("scope: [unclosed\n"), 0o600))
+	t.Chdir(workspace)
+
+	_, err := conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot parse the pack source")
+
+	require.NoError(t, os.WriteFile(filepath.Join(folder, "pack-source.yaml"), []byte("scope:\n  kind: conduct\n"), 0o600))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "without a pack_id")
+}
+
+// A record of any type that cites a listed pack is the one an edge Close
+// leaves out, not only a Result.
+func TestCitesConductPackForAnyRecordType(t *testing.T) {
+	h := evidencebook.Header{RecordType: "observation", SubjectRef: conductPack + "@1"}
+	assert.True(t, citesConductPack(h, []string{conductPack}))
+	assert.False(t, citesConductPack(h, []string{"asg/seller"}))
+	assert.False(t, citesConductPack(h, nil))
+	odd := evidencebook.Header{RecordType: "evidence_request", SubjectRef: "asg/seller@2", Statement: []byte(`{"claims":{"contract_ref":"` + conductPack + `@1"}}`)}
+	assert.True(t, citesConductPack(odd, []string{conductPack}))
+}
+
+// A packs directory that cannot be read refuses, as an unreadable source
+// does; filepath.Glob would have returned no packs without saying so.
+func TestWorkspaceConductPacksRefuseAnUnreadableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any directory")
+	}
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	writePackSource(t, workspace, "conduct", conductPack)
+	t.Chdir(workspace)
+	packs := filepath.Join(workspace, workspacePacksDir)
+	require.NoError(t, os.Chmod(packs, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(packs, 0o700) })
+
+	_, err := conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the packs directory")
+
+	require.NoError(t, os.Chmod(packs, 0o700))
+	folder := filepath.Join(packs, "pack-conduct")
+	require.NoError(t, os.Chmod(folder, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(folder, 0o700) })
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
+}
+
+// A dangling pack-source.yaml symlink has a kind that cannot be told, so it
+// refuses; a pack folder with no source is skipped.
+func TestWorkspaceConductPacksRefuseADanglingSource(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workspace, workspacePacksDir, "empty"), 0o700))
+	t.Chdir(workspace)
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	folder := filepath.Join(workspace, workspacePacksDir, "dangling")
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	require.NoError(t, os.Symlink(filepath.Join(workspace, "missing.yaml"), filepath.Join(folder, "pack-source.yaml")))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
+
+	require.NoError(t, os.RemoveAll(folder))
+	require.NoError(t, os.Symlink(filepath.Join(workspace, "gone"), filepath.Join(workspace, workspacePacksDir, "moved")))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack folder")
+}
+
+// evidencebook#421: run from a directory with no packs/, the workspace's
+// conduct packs are not read, and the verb says so instead of protecting less
+// in silence. A directory with packs/ says nothing.
+func TestWorkspaceConductPacksWarnWhenPacksAreNotFound(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	var out bytes.Buffer
+	previous := warnings
+	warnings = &out
+	t.Cleanup(func() { warnings = previous })
+
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+	assert.Contains(t, out.String(), "warning: no packs directory in ")
+	assert.Contains(t, out.String(), "no workspace conduct packs were read")
+
+	out.Reset()
+	require.NoError(t, os.Mkdir(filepath.Join(workspace, workspacePacksDir), 0o700))
+	_, err = conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, out.String())
 }

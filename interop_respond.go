@@ -212,6 +212,13 @@ type RespondOptions struct {
 	// it; set AuthenticatedRequester from the transport's authentication.
 	RequesterID string
 	Policy      SharePolicy
+	// ConductPacks are the pack ids the book's owner holds as conduct packs
+	// (BundleRequest.ConductPacks). A record that cites one, whatever its type
+	// and whoever sealed it, is treated like the holder's other private
+	// records (neverServed): no subject form or derivation serves it, and a
+	// request that names it gets the uniform refusal an unknown id gets. The
+	// kind is local policy, written into no record.
+	ConductPacks []string
 	// stapleDeal is the deal a standard_history/1 staple is attached for
 	// (Book.StapleForDeal); the answered record carries it.
 	stapleDeal string
@@ -261,6 +268,9 @@ func (b *Book) Respond(ctx context.Context, request Message, opts RespondOptions
 // the cost policy does not count: the limiter and size cap are for askers.
 func (b *Book) respond(ctx context.Context, request Message, opts RespondOptions, own bool) (Reply, Record, error) {
 	if err := opts.Policy.Validate(); err != nil {
+		return Reply{}, Record{}, err
+	}
+	if err := checkConductPacks(opts.ConductPacks); err != nil {
 		return Reply{}, Record{}, err
 	}
 	if request.MediaType != MediaTypeJSON && request.MediaType != MediaTypeCBOR {
@@ -475,7 +485,7 @@ func (a *answer) run() (Reply, error) {
 			return a.refuse(ReasonPolicyDeclined, "")
 		}
 	}
-	view, err := b.view(a.ctx, log)
+	view, err := b.view(a.ctx, log, a.opts.ConductPacks)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -493,7 +503,7 @@ func (a *answer) run() (Reply, error) {
 		if err != nil {
 			return Reply{}, err
 		}
-		if view, err = b.view(a.ctx, log); err != nil {
+		if view, err = b.view(a.ctx, log, a.opts.ConductPacks); err != nil {
 			return Reply{}, err
 		}
 		// The new snapshot may hold records sealed since the first, among
@@ -601,6 +611,9 @@ func (b *Book) clock() time.Time {
 // built at that anchor's size, is about records the snapshot holds, however
 // far the log has grown since (evidencebook#208).
 type bookView struct {
+	// private are the leaves of records that cite a conduct pack: never
+	// served, like neverServed record types.
+	private     map[uint64]bool
 	log         []Record
 	checkpoints []Checkpoint
 	views       []evidencerequest.AnchorView
@@ -608,12 +621,12 @@ type bookView struct {
 	commitments []retentionCommitment
 }
 
-func (b *Book) view(ctx context.Context, log []Record) (*bookView, error) {
+func (b *Book) view(ctx context.Context, log []Record, conduct []string) (*bookView, error) {
 	history, err := b.store.Checkpoints(ctx)
 	if err != nil {
 		return nil, err
 	}
-	v := &bookView{log: log, leaves: make(map[string]uint64, len(log))}
+	v := &bookView{log: log, leaves: make(map[string]uint64, len(log)), private: map[uint64]bool{}}
 	for _, cp := range history {
 		if cp.Kind != SubstrateKindCLL || cp.Entries > uint64(len(log)) {
 			continue
@@ -623,6 +636,12 @@ func (b *Book) view(ctx context.Context, log []Record) (*bookView, error) {
 	}
 	for i, record := range log {
 		v.leaves[record.RecordID] = uint64(i)
+		if len(conduct) > 0 {
+			// A statement that cannot be read fails closed: not served.
+			if pack, err := conductPackCited(record.RecordID, record.Header, conduct); pack != "" || err != nil {
+				v.private[uint64(i)] = true
+			}
+		}
 		if record.Header.RecordType == RecordTypeRetentionCommitment {
 			if c, ok := readRetentionCommitment(record.Header.Statement); ok {
 				v.commitments = append(v.commitments, c)
@@ -644,6 +663,13 @@ func (v *bookView) record(id string) (Record, bool) {
 func (v *bookView) Anchors() []evidencerequest.AnchorView { return v.views }
 func (v *bookView) LogEntries() uint64                    { return uint64(len(v.log)) }
 
+// servableDigest is false only for a record this snapshot holds that is not
+// servable; an id it does not hold is the evidencerequest library's to refuse.
+func (v *bookView) servableDigest(digest string) bool {
+	leaf, held := v.leaves[digest]
+	return !held || v.Servable(leaf)
+}
+
 func (v *bookView) LeafOf(digest string) (uint64, bool) {
 	leaf, ok := v.leaves[digest]
 	return leaf, ok && v.Servable(leaf)
@@ -656,7 +682,7 @@ func (v *bookView) Servable(leaf uint64) bool {
 	if leaf >= uint64(len(v.log)) {
 		return false
 	}
-	return !neverServed(v.log[leaf].Header.RecordType)
+	return !neverServed(v.log[leaf].Header.RecordType) && !v.private[leaf]
 }
 
 // neverServed reports the record types that are the holder's own
@@ -716,10 +742,18 @@ func (v *bookView) named(subject Subject) []Header {
 }
 
 func (v *bookView) Citing(half string) []uint64 {
+	// An exchange on a private record's id is refused as an unknown id is.
+	if leaf, held := v.leaves[half]; held && !v.Servable(leaf) {
+		return nil
+	}
 	return v.matching(func(h Header) bool { return slices.Contains(h.LinksTo(Cites), half) })
 }
 
 func (v *bookView) Lapsed(subject Subject, now time.Time) bool {
+	// A private record is answered as an unknown id, never as lapsed.
+	if (subject.Kind == SubjectRecord || subject.Kind == SubjectExchange) && !v.servableDigest(subject.Digest) {
+		return false
+	}
 	for _, c := range v.commitments {
 		if c.subject == subject && now.After(c.until) {
 			return true

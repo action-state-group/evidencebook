@@ -3,9 +3,29 @@ package evidencebook
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
+
+// holds reports whether data carries marker as it travels: plain, in base64
+// (a payload in a bundle) or in hex (a record body in a reply).
+func holds(data []byte, marker string) bool {
+	for _, form := range [][]byte{
+		[]byte(marker),
+		[]byte(base64.StdEncoding.EncodeToString([]byte(marker))),
+		[]byte(base64.RawURLEncoding.EncodeToString([]byte(marker))),
+		[]byte(hex.EncodeToString([]byte(marker))),
+	} {
+		if bytes.Contains(data, form) {
+			return true
+		}
+	}
+	return false
+}
 
 // A conduct pack never appears in a scoped bundle sent to a counterparty
 // (Terms Pack Studio PRD v5 §13). The book holds a conduct Result and a deal
@@ -188,5 +208,233 @@ func TestAConductSetAppendsNothing(t *testing.T) {
 	}
 	if got := len(plain.log) + len(private.log); got != before {
 		t.Fatalf("the set grew from %d to %d records though it was refused", before, got)
+	}
+}
+
+// The rule is about the pack, not the record type (PRD v5 §13): an
+// observation or an evidence_request whose subject_ref names a conduct pack is
+// refused as a Result is, as root, by closure or by Include, and no bundle
+// holds the row text.
+func TestBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-any-type", 13).open(t)
+	deal := mustAppend(t, book, observation("asg/seller@2", "deal fact"))
+	private := []string{"asg/everyday-rules"}
+	for name, entry := range map[string]Entry{
+		"observation": {
+			RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+			Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")},
+		},
+		"evidence_request": {
+			RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1",
+			Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`),
+		},
+	} {
+		rec := mustAppend(t, book, entry)
+		above := mustAppend(t, book, Entry{
+			RecordType: "note", EpistemicType: ObservedEvent, SubjectRef: "n-" + name, Links: []Link{{Type: Cites, Target: rec.RecordID}},
+			Payloads: [][]byte{[]byte("cites it")},
+		})
+		for how, req := range map[string]BundleRequest{
+			"root":    {Root: rec.RecordID},
+			"closure": {Root: above.RecordID},
+			"include": {Root: deal.RecordID, Include: []string{rec.RecordID}},
+		} {
+			req.ConductPacks = private
+			if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("%s %s: err = %v; want ErrInvalid", name, how, err)
+			}
+		}
+		own, err := book.Bundle(ctx, BundleRequest{Root: rec.RecordID, ConductPacks: private, OwnerCopy: true})
+		if err != nil {
+			t.Fatalf("%s: the owner's own bundle: %v", name, err)
+		}
+		if !bytes.Contains(own.JSON, []byte("everyday-rules")) {
+			t.Fatalf("%s: the owner's bundle should carry the record", name)
+		}
+		// The detector must see what the owner's copy carries (the payload
+		// travels base64), or a clean counterparty bundle proves nothing.
+		if marker := "CONDUCT-ROW-TEXT-" + name; name == "observation" && !holds(own.JSON, marker) {
+			t.Fatalf("%s: the leak check does not find %q in the owner's bundle", name, marker)
+		}
+	}
+	bundle, err := book.Bundle(ctx, BundleRequest{Root: deal.RecordID, ConductPacks: private})
+	if err != nil {
+		t.Fatalf("a deal record alongside conduct ones: %v", err)
+	}
+	for _, leaked := range []string{"CONDUCT-ROW-TEXT-observation", "CONDUCT-ROW-TEXT-request", "everyday-rules"} {
+		if holds(bundle.JSON, leaked) {
+			t.Fatalf("the counterparty bundle carries %q", leaked)
+		}
+	}
+}
+
+// A record that is not a Result is also found where a Result is: a claim
+// whose contract_ref names the pack, and a caller-sealed record with its
+// header inside its capsule anywhere in the carried interval.
+func TestBundleRefusesANonResultByClaimAndInline(t *testing.T) {
+	ctx := context.Background()
+	private := []string{"asg/everyday-rules"}
+
+	book := newFixture(t, "conduct-claim-any", 16).open(t)
+	byClaim := mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/seller@2",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	if _, err := book.Bundle(ctx, BundleRequest{Root: byClaim.RecordID, ConductPacks: private}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("claim contract_ref: err = %v; want ErrInvalid", err)
+	}
+
+	inline := newFixture(t, "conduct-inline-any", 1)
+	book = inline.open(t)
+	earlier := mustAppend(t, book, observation("s", "x"))
+	payload := `{"order":17}`
+	if _, err := book.AppendCapsule(ctx, Entry{
+		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"INLINE-ROW"}`),
+	}, boundPayload(payload), ownSealer(t, 1, payload, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: earlier.RecordID, ConductPacks: private}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("inline observation in the interval: err = %v; want ErrInvalid", err)
+	}
+	if _, err := book.Bundle(ctx, BundleRequest{Root: earlier.RecordID, ConductPacks: private, OwnerCopy: true}); err != nil {
+		t.Fatalf("owner copy: %v", err)
+	}
+}
+
+// A handover takes the same rule for a record that is not a Result.
+func TestStandardHistoryBundleRefusesAnyRecordTypeNamingAConductPack(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-handover-any", 14).open(t)
+	mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`),
+	})
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{ConductPacks: []string{"asg/everyday-rules"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+}
+
+// book respond treats a record that cites a conduct pack like the holder's
+// other private records (neverServed): whatever its type and whoever sealed it,
+// no subject form or derivation serves it, and a request that names it gets
+// the refusal an unknown id gets (Steven, PRD §13; evidencebook#418, #417).
+func TestRespondNeverServesAConductRecord(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-respond", 15).open(t)
+	obs := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")}})
+	result := mustAppend(t, book, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer",
+		Statement: []byte(`{"claims":[{"claim_id":"CONDUCT-ROW-7f3a","contract_ref":"asg/everyday-rules@1","text":"CONDUCT-ROW-TEXT-result"}]}`),
+	})
+	byClaim := mustAppend(t, book, Entry{
+		RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/seller@2", CounterpartyRef: "peer",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	payload := `{"order":17}`
+	inline, err := book.AppendCapsule(ctx, Entry{
+		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-inline"}`),
+	}, boundPayload(payload), ownSealer(t, 15, payload, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deal := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/seller@2", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("deal fact")}})
+	withSubject := func(name string, fields ...string) string {
+		id, err := book.RegisterDerivation(DerivationDefinition{
+			Document: []byte(`{"project":"` + name + `"}`), Recipient: "peer", Forms: []SubjectKind{SubjectRecord, SubjectCorrelation}, Fields: fields,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	projection := withSubject("with-subject", "subject_ref", "record_type")
+	private := []string{"asg/everyday-rules"}
+	ask := func(subject Subject, derivation string, packs []string) (Reply, AnsweredStatement) {
+		return respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: subject, Derivation: derivation, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: packs})
+	}
+	// served is everything a reply carries: the message, the artifact and the
+	// body of each record in a record set.
+	served := func(reply Reply) []byte {
+		all := append([]byte(nil), reply.Message.Octets...)
+		artifact := mustEnvelope(t, reply).Artifact
+		all = append(all, artifact...)
+		var set struct {
+			Records []struct {
+				Body string `json:"body"`
+			} `json:"records"`
+		}
+		if json.Unmarshal(artifact, &set) == nil {
+			for _, r := range set.Records {
+				body, _ := hex.DecodeString(r.Body)
+				all = append(all, body...)
+			}
+		}
+		return all
+	}
+
+	// Without the list the same requests are answered: the controls that show
+	// the refusals below come from ConductPacks and the leak checks can see.
+	if reply, _ := ask(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, "", nil); reply.Envelope == nil || !holds(served(reply), "CONDUCT-ROW-TEXT-inline") {
+		t.Fatal("control: a caller-sealed record without ConductPacks should be served whole")
+	}
+	if reply, _ := ask(Subject{Kind: SubjectRecord, Digest: obs.RecordID}, projection, nil); reply.Envelope == nil || !holds(served(reply), "everyday-rules") {
+		t.Fatal("control: a projection declaring subject_ref should reveal the pack without ConductPacks")
+	}
+
+	// An unknown id is the reference refusal.
+	unknown := strings.Repeat("ab", 32)
+	reference, referenceStatement := ask(Subject{Kind: SubjectRecord, Digest: unknown}, "", private)
+	if reference.Refusal == nil {
+		t.Fatalf("an unknown id: outcome %q; want a refusal", referenceStatement.Outcome)
+	}
+	for name, id := range map[string]string{"observation": obs.RecordID, "result": result.RecordID, "claim": byClaim.RecordID, "caller-sealed": inline.RecordID} {
+		for form, derivation := range map[string]string{"plain": "", "projection": projection} {
+			reply, st := ask(Subject{Kind: SubjectRecord, Digest: id}, derivation, private)
+			if reply.Refusal == nil || reply.Envelope != nil {
+				t.Fatalf("%s %s: outcome %q; want a refusal", name, form, st.Outcome)
+			}
+			if reply.Refusal.Reason != reference.Refusal.Reason || st.Outcome != referenceStatement.Outcome || st.Reason != referenceStatement.Reason || len(reply.Message.Octets) != len(reference.Message.Octets) {
+				t.Fatalf("%s %s: refusal %q/%q (%d bytes) differs from an unknown id's %q/%q (%d bytes)", name, form,
+					reply.Refusal.Reason, st.Reason, len(reply.Message.Octets), reference.Refusal.Reason, referenceStatement.Reason, len(reference.Message.Octets))
+			}
+		}
+	}
+
+	// A correlation holding conduct records leaves them out and serves the
+	// rest; one holding only conduct records is refused as an unknown key is.
+	mixed, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "asg/seller@2"}, "", private)
+	if mixed.Envelope == nil {
+		t.Fatal("a correlation of a deal record and a record citing the pack in a claim should be served")
+	}
+	out := served(mixed)
+	if !bytes.Contains(out, []byte(deal.RecordID)) || bytes.Contains(out, []byte(byClaim.RecordID)) || holds(out, "everyday-rules") {
+		t.Fatalf("the mixed correlation should carry the deal record only: deal=%v claim=%v pack=%v",
+			bytes.Contains(out, []byte(deal.RecordID)), bytes.Contains(out, []byte(byClaim.RecordID)), holds(out, "everyday-rules"))
+	}
+	unknownKey, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "no/such-key"}, "", private)
+	onlyConduct, _ := ask(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, "", private)
+	if unknownKey.Refusal == nil || onlyConduct.Refusal == nil || onlyConduct.Refusal.Reason != unknownKey.Refusal.Reason || len(onlyConduct.Message.Octets) != len(unknownKey.Message.Octets) {
+		t.Fatalf("a correlation of conduct records only: %+v; want the refusal an unknown key gets: %+v", onlyConduct.Refusal, unknownKey.Refusal)
+	}
+	// A record that does not cite a pack is still served.
+	if reply, st := ask(Subject{Kind: SubjectRecord, Digest: deal.RecordID}, "", private); reply.Envelope == nil {
+		t.Fatalf("a deal record: %q %q; want served", st.Outcome, st.Reason)
+	}
+
+	// A pack id that could never match refuses, as it does for a bundle.
+	for _, bad := range []string{"asg/everyday-rules@1", ""} {
+		_, _, err := book.Respond(ctx, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: inline.RecordID}, Coverage: fresh()}),
+			RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: []string{bad}})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("ConductPacks %q: err = %v; want ErrInvalid", bad, err)
+		}
 	}
 }
