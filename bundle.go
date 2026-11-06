@@ -210,8 +210,10 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		}
 		selected[id] = struct{}{}
 	}
-	if err := b.refuseConductLocked(selected, req); err != nil {
-		return Bundle{}, err
+	for id := range selected {
+		if err := b.refuseConductLocked(id, req); err != nil {
+			return Bundle{}, err
+		}
 	}
 	anchor, err := b.anchorLocked(ctx, req.At)
 	if err != nil {
@@ -302,6 +304,11 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 		wire.Records = append(wire.Records, stored.Capsule)
 		if _, inline[id], err = inlineHeader(stored.Capsule); err != nil {
 			return Bundle{}, fmt.Errorf("%w: capsule %s: %v", ErrCorrupt, id, err)
+		}
+		if inline[id] {
+			if err := b.refuseConductLocked(id, req); err != nil {
+				return Bundle{}, err
+			}
 		}
 		if !slices.Contains(disclosed, id) && !inline[id] {
 			statement.Withheld = append(statement.Withheld, WithheldItem{RecordID: id, Member: HeaderMember, Digest: digestBytes(stored.Header)})
@@ -424,39 +431,40 @@ func (b *Book) bundleLocked(ctx context.Context, req BundleRequest) (Bundle, err
 	return Bundle{JSON: data, Digest: statement.BundleDigest, Anchor: anchor, Disclosure: record}, nil
 }
 
-// refuseConductLocked refuses a bundle that would disclose a Result citing a
+// refuseConductLocked refuses a bundle that would carry a Result citing a
 // conduct pack to anyone but the book's owner (Terms Pack Studio PRD v5 §13:
 // a conduct pack never appears in a scoped bundle sent to a counterparty).
-// A Result names its pack in its subject_ref and in each claim's
-// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack ids are
-// conduct. The selected set is every record the bundle discloses, closure
-// and Include alike.
-func (b *Book) refuseConductLocked(selected map[string]struct{}, req BundleRequest) error {
+// It checks the records the bundle discloses (root, closure and Include
+// alike); a Result the book's caller sealed with its header inside its
+// capsule is checked wherever it sits in the carried interval, since that
+// header travels with the capsule whether or not it is selected.
+func (b *Book) refuseConductLocked(id string, req BundleRequest) error {
 	if req.OwnerCopy || len(req.ConductPacks) == 0 {
 		return nil
 	}
-	for id := range selected {
-		h := b.records[id].Header
-		if h.RecordType != RecordTypeEvidenceResult {
-			continue
-		}
-		refs := []string{h.SubjectRef}
-		var doc struct {
-			Claims []struct {
-				ContractRef string `json:"contract_ref"`
-			} `json:"claims"`
-		}
-		if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
-			return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
-		}
-		for _, c := range doc.Claims {
-			refs = append(refs, c.ContractRef)
-		}
-		for _, ref := range refs {
-			pack, _, _ := strings.Cut(ref, "@")
-			if pack != "" && slices.Contains(req.ConductPacks, pack) {
-				return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
-			}
+	h := b.records[id].Header
+	if h.RecordType != RecordTypeEvidenceResult {
+		return nil
+	}
+	// A Result names its pack in its subject_ref and in each claim's
+	// contract_ref, "<pack_id>@<pack_version>"; the owner says which pack
+	// ids are conduct.
+	refs := []string{h.SubjectRef}
+	var doc struct {
+		Claims []struct {
+			ContractRef string `json:"contract_ref"`
+		} `json:"claims"`
+	}
+	if err := json.Unmarshal(h.Statement, &doc); len(h.Statement) > 0 && err != nil {
+		return fmt.Errorf("%w: result %s: statement is not a Result: %v", ErrCorrupt, id, err)
+	}
+	for _, c := range doc.Claims {
+		refs = append(refs, c.ContractRef)
+	}
+	for _, ref := range refs {
+		pack, _, _ := strings.Cut(ref, "@")
+		if pack != "" && slices.Contains(req.ConductPacks, pack) {
+			return fmt.Errorf("%w: result %s cites conduct pack %s, which is private to the book's owner and never goes into a bundle for anyone else", ErrInvalid, id, pack)
 		}
 	}
 	return nil

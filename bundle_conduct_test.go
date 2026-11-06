@@ -60,3 +60,67 @@ func TestBundleRefusesAConductResultForACounterparty(t *testing.T) {
 		t.Fatal("the owner's bundle should carry the conduct Result")
 	}
 }
+
+// The pack is found in any claim's contract_ref, not only in the subject.
+func TestBundleRefusesAResultWhoseLaterClaimCitesAConductPack(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-claim", 10).open(t)
+	conduct := mustAppend(t, book, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/seller@2",
+		Statement: []byte(`{"claims":[{"contract_ref":"asg/seller@2"},{"claim_id":"LATE-CLAIM","contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	req := BundleRequest{Root: conduct.RecordID, ConductPacks: []string{"asg/everyday-rules"}}
+	if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+	req.OwnerCopy = true
+	if _, err := book.Bundle(ctx, req); err != nil {
+		t.Fatalf("owner copy: %v", err)
+	}
+}
+
+// A Result the caller sealed carries its header, and so its claims, inside
+// its capsule; every capsule of the interval travels, so it is refused even
+// when the bundle's root is an earlier record and does not select it.
+func TestBundleRefusesAnInlineConductResultInTheInterval(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, "conduct-inline", 1)
+	book := f.open(t)
+	earlier := mustAppend(t, book, observation("s", "x"))
+	payload := `{"order":17}`
+	_, err := book.AppendCapsule(ctx, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"claims":[{"claim_id":"INLINE-ROW","contract_ref":"asg/everyday-rules@1"}]}`),
+	}, boundPayload(payload), ownSealer(t, 1, payload, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := BundleRequest{Root: earlier.RecordID, ConductPacks: []string{"asg/everyday-rules"}}
+	if _, err := book.Bundle(ctx, req); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+	req.OwnerCopy = true
+	if _, err := book.Bundle(ctx, req); err != nil {
+		t.Fatalf("owner copy: %v", err)
+	}
+}
+
+// A handover goes to a recipient, so it takes the same policy.
+func TestStandardHistoryBundleRefusesAConductResult(t *testing.T) {
+	ctx := context.Background()
+	book := newFixture(t, "conduct-handover", 12).open(t)
+	mustAppend(t, book, Entry{
+		RecordType: RecordTypeEvidenceResult, EpistemicType: DerivedMetric, SubjectRef: "asg/everyday-rules@1",
+		Statement: []byte(`{"claims":[{"claim_id":"HANDOVER-ROW","contract_ref":"asg/everyday-rules@1"}]}`),
+	})
+	cp, err := book.Checkpoint(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{ConductPacks: []string{"asg/everyday-rules"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v; want ErrInvalid", err)
+	}
+	if _, err := book.StandardHistoryBundle(ctx, cp, StandardHistoryBundleRequest{}); err != nil {
+		t.Fatalf("without a conduct list: %v", err)
+	}
+}

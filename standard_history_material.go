@@ -38,6 +38,9 @@ type StandardHistoryBundleRequest struct {
 	// built.
 	Witnesses        []json.RawMessage
 	WitnessDirectory []WitnessRow
+	// ConductPacks is BundleRequest's: a handover goes to a recipient, so a
+	// Result citing one of these packs is refused whatever Disclose says.
+	ConductPacks []string
 }
 
 // StandardHistoryBundle is the evidence-bundle/v2 of this book's records
@@ -55,7 +58,7 @@ func (b *Book) StandardHistoryBundle(ctx context.Context, at Checkpoint, req Sta
 	}
 	return b.bundleLocked(ctx, BundleRequest{
 		Root: include[len(include)-1], Include: include, Payloads: PayloadsSelected, At: &anchor,
-		Witnesses: req.Witnesses, WitnessDirectory: req.WitnessDirectory, handover: true,
+		Witnesses: req.Witnesses, WitnessDirectory: req.WitnessDirectory, ConductPacks: req.ConductPacks, handover: true,
 	})
 }
 
