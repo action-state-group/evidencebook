@@ -35,8 +35,9 @@ func TestIIFEIsPinned(t *testing.T) {
 }
 
 // book report build reads its bundle, and book report check the page that
-// embeds one, with cli.ReadBundleInput, the MaxBundleInput bound; they are
-// the plugin's only callers, so every other plugin input keeps MaxInput.
+// embeds one, and book bundle-diff its two bundles, with cli.ReadBundleInput,
+// the MaxBundleInput bound; they are the plugin's only callers, so every
+// other plugin input keeps MaxInput.
 func TestReportBuildReadsABundle(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
@@ -64,7 +65,8 @@ func TestReportBuildReadsABundle(t *testing.T) {
 		}
 	}
 	// report check reads the page it checks, which embeds a bundle.
-	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1}, calls)
+	// bundle-diff reads the higher and the lower bundle.
+	assert.Equal(t, map[string]int{"reportCommands": 1, "reportCheckCommand": 1, "bundleDiffCommand": 2}, calls)
 }
 
 func runReportBuild(t *testing.T, bundlePath string, extra ...string) (reportBuildResult, string, error) {

@@ -38,7 +38,7 @@ func BookCommands() []*cobra.Command {
 		}
 		return nil
 	})
-	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), holderPageCommand(), backfillCommands(), migrateCommand(), doctorCommand(), policyCommands()}
+	return []*cobra.Command{closeCommand(), reconcileCommand(), request, respond, remote, resultCommands(), reportCommands(), holderPageCommand(), backfillCommands(), migrateCommand(), doctorCommand(), policyCommands(), bundleDiffCommand()}
 }
 
 // BookAliases are `capsulectl book list|get|head`, which read another
