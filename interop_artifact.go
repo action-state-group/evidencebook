@@ -252,7 +252,7 @@ func (v *bookView) disclosureClean(artifact []byte, declared *declaredFields) bo
 			}
 		}
 		if digest, ok := entry["digest"].(string); ok {
-			if record, held := v.record(digest); held && (neverServed(record.Header.RecordType)) {
+			if !v.servableDigest(digest) {
 				return false
 			}
 		}

@@ -22,6 +22,15 @@ func TestConductPackIsFoundInAnyStatementShape(t *testing.T) {
 	if _, err := book.Bundle(ctx, BundleRequest{Root: odd.RecordID, ConductPacks: private}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bundle: err = %v; want ErrInvalid", err)
 	}
+	for name, statement := range map[string]string{
+		"a non-string contract_ref": `{"claims":[{"contract_ref":["asg/everyday-rules@1"]}]}`,
+		"a differently cased key":   `{"claims":[{"Contract_Ref":"asg/everyday-rules@1"}]}`,
+	} {
+		rec := mustAppend(t, book, Entry{RecordType: "evidence_result", EpistemicType: DerivedMetric, SubjectRef: "asg/seller@2", Statement: []byte(statement)})
+		if _, err := book.Bundle(ctx, BundleRequest{Root: rec.RecordID, ConductPacks: private}); err == nil {
+			t.Fatalf("%s: a bundle was built", name)
+		}
+	}
 	reply, st := respondWith(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: odd.RecordID}, Coverage: fresh()}),
 		RespondOptions{AuthenticatedRequester: "peer", Policy: policyWith("peers"), ConductPacks: private})
 	if reply.Refusal == nil {
@@ -92,6 +101,17 @@ func TestCarriagesTakeTheConductList(t *testing.T) {
 	known, unknown := ask(conduct.RecordID), ask(strings.Repeat("cd", 32))
 	if known.Refusal == nil || unknown.Refusal == nil || known.Refusal.Reason != unknown.Refusal.Reason {
 		t.Fatalf("MCP: %+v vs an unknown id's %+v", known.Refusal, unknown.Refusal)
+	}
+	a2a, err := book.A2A(A2AOptions{Manifest: manifest, Policy: policyWith("peers"), Name: "n", URL: "https://example.test/a2a", ConductPacks: []string{"asg/everyday-rules"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	askA2A := func(digest string) Reply {
+		return a2aReply(t, a2a, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digest}, Coverage: fresh()}), "peer")
+	}
+	knownA2A, unknownA2A := askA2A(conduct.RecordID), askA2A(strings.Repeat("cd", 32))
+	if knownA2A.Refusal == nil || unknownA2A.Refusal == nil || knownA2A.Refusal.Reason != unknownA2A.Refusal.Reason {
+		t.Fatalf("A2A: %+v vs an unknown id's %+v", knownA2A.Refusal, unknownA2A.Refusal)
 	}
 	if _, err := book.MCP(MCPOptions{Manifest: manifest, Policy: policyWith("peers"), ConductPacks: []string{"asg/everyday-rules@1"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("MCP with a versioned pack id: err = %v; want ErrInvalid", err)

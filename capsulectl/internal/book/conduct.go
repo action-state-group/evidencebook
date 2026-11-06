@@ -156,14 +156,14 @@ func citesConductPack(h evidencebook.Header, packs []string) bool {
 		return false
 	}
 	refs := []string{h.SubjectRef}
-	var doc struct {
-		Claims []struct {
-			ContractRef string `json:"contract_ref"`
-		} `json:"claims"`
+	var statement any
+	if len(h.Statement) > 0 {
+		if err := json.Unmarshal(h.Statement, &statement); err != nil {
+			return false
+		}
 	}
-	_ = json.Unmarshal(h.Statement, &doc)
-	for _, c := range doc.Claims {
-		refs = append(refs, c.ContractRef)
+	for _, ref := range contractRefs(statement) {
+		refs = append(refs, ref)
 	}
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
@@ -172,4 +172,25 @@ func citesConductPack(h evidencebook.Header, packs []string) bool {
 		}
 	}
 	return false
+}
+
+// contractRefs are the string values under a contract_ref key, at any depth
+// of a decoded statement, as the book reads them.
+func contractRefs(value any) []string {
+	var refs []string
+	switch v := value.(type) {
+	case map[string]any:
+		for key, member := range v {
+			if text, ok := member.(string); ok && strings.EqualFold(key, "contract_ref") {
+				refs = append(refs, text)
+				continue
+			}
+			refs = append(refs, contractRefs(member)...)
+		}
+	case []any:
+		for _, member := range v {
+			refs = append(refs, contractRefs(member)...)
+		}
+	}
+	return refs
 }

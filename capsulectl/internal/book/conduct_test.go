@@ -229,6 +229,8 @@ func TestCitesConductPackForAnyRecordType(t *testing.T) {
 	assert.True(t, citesConductPack(h, []string{conductPack}))
 	assert.False(t, citesConductPack(h, []string{"asg/seller"}))
 	assert.False(t, citesConductPack(h, nil))
+	odd := evidencebook.Header{RecordType: "evidence_request", SubjectRef: "asg/seller@2", Statement: []byte(`{"claims":{"contract_ref":"` + conductPack + `@1"}}`)}
+	assert.True(t, citesConductPack(odd, []string{conductPack}))
 }
 
 // A packs directory that cannot be read refuses, as an unreadable source

@@ -484,7 +484,10 @@ func conductPackCited(id string, h Header, packs []string) (string, error) {
 		if err := json.Unmarshal(h.Statement, &statement); err != nil {
 			return "", fmt.Errorf("%w: %s %s: statement is not JSON: %v", ErrCorrupt, h.RecordType, id, err)
 		}
-		refs = appendContractRefs(refs, statement)
+		var err error
+		if refs, err = appendContractRefs(refs, statement); err != nil {
+			return "", fmt.Errorf("%w: %s %s", err, h.RecordType, id)
+		}
 	}
 	for _, ref := range refs {
 		pack, _, _ := strings.Cut(ref, "@")
@@ -495,24 +498,36 @@ func conductPackCited(id string, h Header, packs []string) (string, error) {
 	return "", nil
 }
 
-// appendContractRefs adds every string value under a "contract_ref" key, at
-// any depth of a decoded statement.
-func appendContractRefs(refs []string, value any) []string {
+// appendContractRefs adds every string value under a "contract_ref" key
+// (matched without regard to case, as a typed decode would), at any depth of
+// a decoded statement. A contract_ref that is not a string cannot be
+// classified, so it is an error and the caller fails closed.
+func appendContractRefs(refs []string, value any) ([]string, error) {
 	switch v := value.(type) {
 	case map[string]any:
 		for key, member := range v {
-			if text, ok := member.(string); ok && key == "contract_ref" {
+			if strings.EqualFold(key, "contract_ref") {
+				text, ok := member.(string)
+				if !ok {
+					return nil, fmt.Errorf("%w: contract_ref is not a string", ErrCorrupt)
+				}
 				refs = append(refs, text)
 				continue
 			}
-			refs = appendContractRefs(refs, member)
+			var err error
+			if refs, err = appendContractRefs(refs, member); err != nil {
+				return nil, err
+			}
 		}
 	case []any:
 		for _, member := range v {
-			refs = appendContractRefs(refs, member)
+			var err error
+			if refs, err = appendContractRefs(refs, member); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return refs
+	return refs, nil
 }
 
 // closureLocked walks links from root up to depth hops. Targets the book does
