@@ -330,6 +330,7 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 	book := newFixture(t, "conduct-respond", 15).open(t)
 	obs := mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-observation")}})
 	req := mustAppend(t, book, Entry{RecordType: "evidence_request", EpistemicType: ProducerClaim, SubjectRef: "asg/everyday-rules@1", CounterpartyRef: "peer", Statement: []byte(`{"text":"CONDUCT-ROW-TEXT-request"}`)})
+	mustAppend(t, book, Entry{RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@2", CounterpartyRef: "peer", Payloads: [][]byte{[]byte("CONDUCT-ROW-TEXT-sealed")}})
 	payload := `{"order":17}`
 	inline, err := book.AppendCapsule(ctx, Entry{
 		RecordType: "observation", EpistemicType: ObservedEvent, SubjectRef: "asg/everyday-rules@1",
@@ -380,8 +381,19 @@ func TestRespondServesNoConductRowText(t *testing.T) {
 	if out, reason := served(Subject{Kind: SubjectRecord, Digest: inline.RecordID}, private); out != nil || reason != ReasonPolicyDeclined {
 		t.Fatalf("a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
 	}
+	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, nil); out == nil || !holds(out, "CONDUCT-ROW-TEXT-inline") {
+		t.Fatalf("control: a correlation holding a caller-sealed record should be served whole without ConductPacks (declined %q)", reason)
+	}
 	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@1"}, private); out != nil || reason != ReasonPolicyDeclined {
 		t.Fatalf("a correlation holding a caller-sealed conduct record: served=%v reason=%q; want declined", out != nil, reason)
+	}
+	// A correlation holding only book-sealed records is served as a record set
+	// of hex bodies; it shows neither row text nor, beyond the key the
+	// requester sent, the pack id.
+	if out, reason := served(Subject{Kind: SubjectCorrelation, Correlation: "asg/everyday-rules@2"}, private); out == nil {
+		t.Fatalf("a correlation of book-sealed records: declined %q; want served", reason)
+	} else if holds(out, "CONDUCT-ROW-TEXT-sealed") {
+		t.Fatal("the record set carries conduct row text")
 	}
 	for _, subject := range []Subject{
 		{Kind: SubjectRecord, Digest: obs.RecordID},

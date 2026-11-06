@@ -71,6 +71,11 @@ func workspaceConductPacks() ([]string, error) {
 		path := filepath.Join(workspacePacksDir, folder.Name(), "pack-source.yaml")
 		data, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			// Only a pack folder with no source at all is skipped; a dangling
+			// symlink in its place has a kind that cannot be told.
+			if _, lerr := os.Lstat(path); lerr == nil {
+				return nil, cli.InputError(fmt.Sprintf("cannot read the pack source %s, so nothing is bundled: %v", path, err))
+			}
 			continue
 		}
 		if err != nil {

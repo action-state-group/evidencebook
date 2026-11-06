@@ -256,3 +256,22 @@ func TestWorkspaceConductPacksRefuseAnUnreadableDirectory(t *testing.T) {
 	require.ErrorIs(t, err, cli.ErrInput)
 	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
 }
+
+// A dangling pack-source.yaml symlink has a kind that cannot be told, so it
+// refuses; a pack folder with no source is skipped.
+func TestWorkspaceConductPacksRefuseADanglingSource(t *testing.T) {
+	p, _ := jsonlPublished(t)
+	workspace := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(workspace, workspacePacksDir, "empty"), 0o700))
+	t.Chdir(workspace)
+	got, err := conductPacks(p)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	folder := filepath.Join(workspace, workspacePacksDir, "dangling")
+	require.NoError(t, os.MkdirAll(folder, 0o700))
+	require.NoError(t, os.Symlink(filepath.Join(workspace, "missing.yaml"), filepath.Join(folder, "pack-source.yaml")))
+	_, err = conductPacks(p)
+	require.ErrorIs(t, err, cli.ErrInput)
+	assert.Contains(t, cli.SafeError(err), "cannot read the pack source")
+}
