@@ -1005,17 +1005,23 @@ At every check, after the `check` record is sealed:
   - `item_ref` (a sale's thread): the sale's item reference, 64 lowercase hex, the same on every
     thread of the sale (section 6, rule 10). Only this device's checker is given it; no record
     carries it. A rule that needs it and is given none reports `not_evaluable`, never a pass.
-  - `received_cards` (when the host handed over cards at this check): the cards the host
-    received about the deal's counterparty (a `history_card/1`, a selection, an operator list),
-    each exactly as received. They are given only to this device's checker, which reads each
-    card's own subject; the deal check binds none to the counterparty. They are not stored, not
-    sealed and not shared. Nothing derived from them may reach any member of the result but
-    `notice`: the sealed `verdict`, `findings`, `tier`, `grade`, `ruleset_id` and
-    `definition_digest`, the status and cause of a check that was not evaluated (a refusal, a
-    timeout) and the checker's stderr stay as they would be without cards, and a card the checker cannot read is never a refusal (it says so in
-    `notice`). The host sends `received_cards` only to a checker that accepts the member, since
-    the input schema is closed. The deal check hands over at most 64 cards and 1 MiB of them, so cards cannot push a
-    checker past its timeout. Absent when none was handed over, never empty.
+  - `received_cards` (only in the second run, when the host handed over cards at this check): the
+    cards the host received about the deal's counterparty (a `history_card/1`, a selection, an
+    operator list), each with its JSON values, numbers and key order as received. They are given
+    only to this device's checker, which reads each card's own subject; the deal check binds none to
+    the counterparty. They are not stored, not sealed and not shared. The deal check seals the run
+    of the checker that was given no cards. When that run was evaluated and cards were handed
+    over, it runs the checker a second time with the cards and keeps only that run's `notice`, so
+    a checker that refuses, times out on or answers differently over cards changes nothing sealed;
+    a second run that is not evaluated yields no notice. Nothing derived from the cards may
+    reach any member of the result but `notice`: the sealed `verdict`, `findings`, `tier`,
+    `grade`, `ruleset_id` and `definition_digest`, the status and cause of a check that was not
+    evaluated (a refusal, a timeout) and the checker's stderr stay as they would be without
+    cards, and a card the checker cannot read is never a refusal (it says so in `notice`). The
+    host sends `received_cards` only to a checker that accepts the member, since the input schema
+    is closed. The deal check hands over at most 64 cards and 1 MiB of them, which bounds what the
+    second run is given. Absent from the run the deal check seals and whenever none was handed
+    over; never empty.
 
   A rolling window is evaluated over the history the deal check supplies. A checker given no
   history, or too little (`complete` false, or a window longer than `days`), reports that rule
