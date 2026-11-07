@@ -41,10 +41,17 @@ func TestReportBuildDiagnosticWritesAMarkedPageAndStillFails(t *testing.T) {
 
 func TestReportBuildDiagnosticRefusals(t *testing.T) {
 	disclosed, _ := bookFormBundle(t)
+	tampered := rewriteBundle(t, disclosed, func(value map[string]interface{}) {
+		record := value["records"].([]interface{})[0].(map[string]interface{})
+		record["signature"] = "00" + record["signature"].(string)[2:]
+	})
+	// The combination itself is refused, for a bundle that would otherwise
+	// get a diagnostic page.
 	for _, flag := range []string{"--seal", "--permalink"} {
-		_, out, err := runReportBuild(t, disclosed, "--card", "obligation", "--diagnostic", flag)
+		_, out, err := runReportBuild(t, tampered, "--card", "obligation", "--diagnostic", flag)
 		require.ErrorIs(t, err, cli.ErrInput, flag)
-		assert.NoFileExists(t, out)
+		assert.Contains(t, cli.SafeError(err), "--diagnostic cannot be used with --seal or --permalink", flag)
+		assert.NoFileExists(t, out, flag)
 	}
 	// A bundle that verifies has no diagnostic page.
 	_, out, err := runReportBuild(t, disclosed, "--card", "obligation", "--diagnostic")

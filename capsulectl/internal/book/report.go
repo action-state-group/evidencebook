@@ -100,8 +100,9 @@ type reportBuildResult struct {
 	Draft          bool   `json:"draft"`
 	// Verdict is `verify --bundle`'s own verdict on the bundle (VALID,
 	// INCOMPLETE or INVALID), and UnmetClaims the claims that kept it from
-	// VALID. Page says whether the page was written: only for a VALID
-	// bundle (pageGate), else "not written".
+	// VALID. Page says whether the page was written: "written" for a VALID
+	// bundle (pageGate), "diagnostic" for a marked diagnostic page
+	// (--diagnostic), else "not written".
 	Verdict     string   `json:"verdict"`
 	UnmetClaims []string `json:"unmet_claims,omitempty"`
 	Page        string   `json:"page"`
