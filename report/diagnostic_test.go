@@ -156,6 +156,9 @@ func TestCheckPageBlocksAPageThatFailsAPrePublishCheck(t *testing.T) {
 		"a host in script-src": {func(h string) string {
 			return strings.Replace(h, "script-src ", "script-src evil.example ", 1)
 		}, "admits evil.example"},
+		"a repeated script-src ahead of the real one": {func(h string) string {
+			return strings.Replace(h, "script-src ", "script-src 'none'; script-src ", 1)
+		}, "repeats script-src"},
 		"a meta refresh": {func(h string) string {
 			return strings.Replace(h, `<div id="app">`, `<meta http-equiv="refresh" content="0;url=https://evil.example"><div id="app">`, 1)
 		}, "redirects"},

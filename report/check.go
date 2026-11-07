@@ -25,7 +25,7 @@ const DiagnosticTitle = "DIAGNOSTIC PAGE: not a verified report"
 // diagnosticBanner is the notice a diagnostic page opens with, above the
 // viewer's own failed-bundle callout. It uses the shell's own banner classes,
 // so it needs no style of its own under the page's CSP.
-const diagnosticBanner = `<div class="aac-banner" data-state="failed" role="alert"><strong>Diagnostic page.</strong> This page was built from a bundle that did not verify. It is not a verified report: do not rely on it, publish it or send it on as one.</div>`
+const diagnosticBanner = `<div class="aac-banner" data-state="failed" role="alert"><strong>Diagnostic page.</strong> This page was built from a bundle that did not verify. It is not a verified report. Do not rely on it, and do not publish or forward it as a report.</div>`
 
 const appElement = `<div id="app"></div>`
 
@@ -139,9 +139,16 @@ func checkSecurity(page string) error {
 	policy := map[string][]string{}
 	for _, directive := range strings.Split(match[1], ";") {
 		fields := strings.Fields(directive)
-		if len(fields) > 0 {
-			policy[fields[0]] = fields[1:]
+		if len(fields) == 0 {
+			continue
 		}
+		// A browser keeps the first of a repeated directive, a reader of
+		// the last: refuse the ambiguity rather than pick one.
+		name := strings.ToLower(fields[0])
+		if _, repeated := policy[name]; repeated {
+			return refusef("page check failed: the page's Content-Security-Policy repeats %s; nothing was written", name)
+		}
+		policy[name] = fields[1:]
 	}
 	if d := policy["default-src"]; len(d) != 1 || d[0] != "'none'" {
 		return refusal("page check failed: the page's Content-Security-Policy does not deny by default; nothing was written")
