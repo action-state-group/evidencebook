@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## capsulectl/v0.1.0-rc39 (2026-11-06)
+
+capsulectl-book only; no library tag.
+
+### Changed: capsulectl-book `v0.1.0-rc39`
+
+- `capsulectl/go.mod` and `report/go.mod` require capsule-cli `v0.1.0-rc39` (the version this release pairs with). No change to the plugin since `capsulectl/v0.1.0-rc38`: it exists so the plugin pairs with the new capsulectl release, whose install check refuses a plugin built for another one.
+
 ## capsulectl/v0.1.0-rc38 (2026-11-06)
 
 capsulectl-book only; no library tag.
