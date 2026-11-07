@@ -780,7 +780,8 @@ read over DNS-over-HTTPS in the same call instead: by default from
 URLs) or turns DoH off (`off`). A proxied resolver is asked last, when no DoH
 endpoint answers, and counts only when it finds every key. When this device's
 resolver finds no key and no DoH endpoint can be reached to check, the absent
-key is sealed and `deal note` says so in `key_check`.
+key is sealed and `deal note` says so in `key_check`, with the stable code
+`key_check_code`: `key_absent_unchecked`.
 
 **DoH tells a third party who emailed the user.** It sends the names looked
 up (`selector._domainkey.<signing domain>` and `_dmarc.<From domain>`) to the
@@ -802,6 +803,16 @@ user is never asked to look anything up: `deal note` answers `"state":
 "deferred"` with a `reason`, keeps the email on the device, and the next
 `deal tick` reads the key records and seals the email then (listed under
 `merchant_emails` in its result, each one still waiting with its reason).
+The result and each waiting entry carry a stable `reason_code` beside the raw
+`reason`: branch on the code, never on the reason, which is a diagnostic and
+is not spoken. Codes are never renamed; new ones may be added, so treat an
+unknown code like `dns_unreachable`. They are: `doh_off` (`CAPSULECTL_DOH=off`,
+so DoH could not rescue the capture), `doh_invalid` (`CAPSULECTL_DOH` is
+malformed, so DoH could not rescue it), `resolver_proxied` (the system
+resolver hands out placeholder addresses and DoH did not answer),
+`doh_unreachable` (the system resolver and every DoH endpoint failed) and
+`dns_unreachable` (no resolver could be reached, none of the causes above).
+When several apply, the first listed wins.
 `--key-record` (and optionally `--dmarc-record`) supplies records by hand (for tests, or a machine with no
 resolver); the record says `key_source: supplied`, and the report says the key
 was not read from the signing domain's DNS.

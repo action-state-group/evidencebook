@@ -77,7 +77,7 @@ func evidenceOutput(out map[string]any, e dealEvidence, events []sealedEvent) {
 				out["key_resolver_endpoint"] = m.ResolverEndpoint
 			}
 			if m.keyCheck != "" {
-				out["key_check"] = m.keyCheck
+				out["key_check"], out["key_check_code"] = m.keyCheck, m.keyCheckCode
 			}
 		}
 		out["dmarc_policy"] = m.DKIM.Policy
@@ -118,6 +118,7 @@ func (s *dealSession) deferEmail(ctx context.Context, c *cobra.Command, dealID s
 		"deal_id": dealID, "state": "deferred", "sealed": false,
 		"message_digest": emailDigest(raw),
 		"reason":         deferred.Error(),
+		"reason_code":    deferred.reasonCode(),
 		"next":           "nothing to do now: the signing domain's key could not be read from this device, so the email is kept here unsealed and the next `deal tick` reads the key and seals it; on the next turn about this deal, run deal report --html and send the updated receipt if the email is sealed by then",
 	}
 	if s.htmlDeferred {
@@ -190,7 +191,7 @@ func sealDeferredEmails(c *cobra.Command) (map[string]any, error) {
 		var unreachable *keysUnreachableError
 		if errors.As(err, &unreachable) {
 			w := d.about()
-			w["reason"] = unreachable.Error()
+			w["reason"], w["reason_code"] = unreachable.Error(), unreachable.reasonCode()
 			waiting = append(waiting, w)
 			continue
 		}
