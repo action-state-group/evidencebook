@@ -176,7 +176,8 @@ const (
 // about the subject is read, so it learns nothing of what is held. A
 // counterparty asking for a record not held is let through to resolution,
 // which answers no_such_subject or retention_expired; the uniform refusal
-// policy folds those and not_authorized into one answer (ER §4.2, §12).
+// policy folds no_such_subject and not_authorized into one answer and keeps
+// retention_expired honest (ER §4.2, §12).
 func (p SharePolicy) mayHave(requester, relationship string, named []Header) bool {
 	if requester == "" {
 		return false
