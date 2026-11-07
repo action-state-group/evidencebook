@@ -96,18 +96,20 @@ impl RequestLimiter for WindowLimiter {
 /// Refusal policies a responder may declare (profile §11.4.2).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RefusalPolicy {
-    /// Answer the most specific registered token.
-    #[default]
+    /// Answer the most specific registered token. An explicit operator
+    /// opt-in: it tells a requester whether the holder has a record for a key
+    /// it does not hold (#206 row 8).
     Specific,
     /// Answer `policy_declined` wherever a more specific token would
     /// disclose what the responder's policy protects: whether a subject
     /// exists, whether it is covered yet, and whether this requester may see
-    /// it (ER §4.2, §12).
+    /// it (ER §4.2, §12). The default.
+    #[default]
     Uniform,
 }
 
-/// The responder's cost and abuse policy (FR-37). The default answers the
-/// most specific token with no rate limit.
+/// The responder's cost and abuse policy (FR-37). The default answers
+/// uniformly with no rate limit.
 #[derive(Default)]
 pub struct ResponderPolicy {
     pub refusal_policy: RefusalPolicy,

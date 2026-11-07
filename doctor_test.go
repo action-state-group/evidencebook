@@ -175,7 +175,7 @@ func TestDoctorServedAnswerDisagreesWithPolicy(t *testing.T) {
 	t.Run("the responder declines", func(t *testing.T) {
 		f := newFixture(t, "declines", 5)
 		cfg := f.config(t)
-		cfg.Responder = ResponderPolicy{Limiter: NewWindowLimiter(0, time.Hour)}
+		cfg.Responder = ResponderPolicy{RefusalPolicy: RefusalPolicySpecific, Limiter: NewWindowLimiter(0, time.Hour)}
 		book, err := Open(ctx, cfg)
 		if err != nil {
 			t.Fatal(err)

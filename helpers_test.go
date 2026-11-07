@@ -63,7 +63,9 @@ func (f *bookFixture) config(t *testing.T) Config {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Config{BookID: f.id, Operator: f.id + "-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer, Now: f.clock.Now}
+	return Config{BookID: f.id, Operator: f.id + "-operator", Store: store, Substrate: substrate, Originals: originals, Signer: signer, Now: f.clock.Now,
+		// The suites assert the specific reasons; the zero value is uniform (#225).
+		Responder: ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}}
 }
 
 func (f *bookFixture) open(t *testing.T) *Book {

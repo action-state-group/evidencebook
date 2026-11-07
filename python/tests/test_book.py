@@ -36,6 +36,8 @@ class Clock:
 
 
 def book(clock: Clock, name: str = "b", store: eb.Store | None = None, **kwargs) -> eb.Book:
+    # The suites assert the specific reasons; an empty policy is uniform (#225).
+    kwargs.setdefault("responder", eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC))
     return eb.Book(name, f"{name}-operator", signer=key(f"{name} signer"), log_id=f"{name}-log",
                    log_key=key(f"{name} log"), store=store, now=clock, **kwargs)
 
@@ -553,7 +555,7 @@ def test_a_passed_deadline_is_refused(clock, responder):
 
 
 def test_an_answer_over_the_item_cap_is_declined(clock):
-    r = book(clock, "responder", responder=eb.ResponderPolicy(max_answer_items=1))
+    r = book(clock, "responder", responder=eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC, max_answer_items=1))
     first = r.append(eb.Entry("observation", eb.OBSERVED_EVENT))
     for _ in range(2):
         r.append(eb.Entry("observation", eb.OBSERVED_EVENT, links=(eb.Link(eb.CITES, first.record_id),)))
@@ -992,3 +994,19 @@ def test_a_waiting_close_holds_back_new_answers(clock):
     for th in (first, closer, second):
         th.join(10)
     assert not closer.is_alive() and not second.is_alive()
+
+
+def test_the_default_refusal_policy_is_uniform_and_specific_is_an_opt_in(clock):
+    """#206 row 8: an empty or default policy answers policy_declined; an explicit specific
+    still answers the specific reason."""
+    assert eb.ResponderPolicy().refusal_policy == eb.REFUSAL_POLICY_UNIFORM
+    for policy, want in [(eb.ResponderPolicy(), "policy_declined"), (eb.ResponderPolicy(refusal_policy=""), "policy_declined"),
+                         (eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC), "no_such_subject")]:
+        r = book(clock, "responder", responder=policy)
+        r.append(eb.Entry("observation", eb.OBSERVED_EVENT))
+        r.checkpoint()
+        pin = r.checkpoints()[-1].anchor_digest
+        q = book(clock, "q")
+        sent = q.request(eb.EvidenceRequest(eb.Subject("record", "0" * 64), eb.Coverage(expected_pin=pin)), "responder")
+        reply, _ = r.respond(sent.message, PEERS)
+        assert reply.refusal is not None and reply.refusal.reason == want

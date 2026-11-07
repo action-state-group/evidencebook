@@ -379,7 +379,7 @@ func flipped(nonce string) string {
 func TestStapleIsNotCountedByTheLimiter(t *testing.T) {
 	ctx := context.Background()
 	book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, func(c *Config) {
-		c.Responder = ResponderPolicy{Limiter: NewWindowLimiter(1, time.Hour)}
+		c.Responder = ResponderPolicy{RefusalPolicy: RefusalPolicySpecific, Limiter: NewWindowLimiter(1, time.Hour)}
 	})
 	pin := anchorPin(t, book)
 	stranger := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard, Coverage: Coverage{ExpectedPin: pin}})

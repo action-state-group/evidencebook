@@ -372,6 +372,6 @@ func ExampleBook_Respond() {
 	// 22 of 22 malformed cases refused with the vector's reason
 	// derivation id matches the vector: true
 	// history for "alice": artifact
-	// history for "bob": not_authorized
-	// history for "": not_authorized
+	// history for "bob": policy_declined
+	// history for "": policy_declined
 }

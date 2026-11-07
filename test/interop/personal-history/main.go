@@ -167,6 +167,8 @@ func run(ctx context.Context, correlated bool) error {
 	book, err := evidencebook.Open(ctx, evidencebook.Config{
 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Originals: originals,
 		Signer: signer, Now: now,
+		// The corpus run pins the specific refusal reasons; the zero value is uniform (#225).
+		Responder: evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific},
 	})
 	if err != nil {
 		return err

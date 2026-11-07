@@ -31,7 +31,7 @@ import (
 const (
 	aacCommit      = "9d653f41419d2d2bac4714137b763315947ec754"
 	vectorsSHA256  = "f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9"
-	producerSHA256 = "99e9f3e7e43de6d879c7730155aae8f14f081c0f2e528e5a21cfda1da0f9ace9"
+	producerSHA256 = "c2ed0caca48a37121e194d03e407f6a9ac38bac01c4f5eeb984ad800125e5d63"
 )
 
 var (

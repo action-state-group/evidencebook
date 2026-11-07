@@ -60,7 +60,8 @@ def main(directory: str, out_path: str, profile: str = eb.PROFILE) -> None:
 
     def open_book(book_id: str, policy: eb.ResponderPolicy | None = None) -> eb.Book:
         return eb.Book(book_id, f"{book_id}-operator", signer=seeded(RESPONDER_LABEL), log_id=LOG_ID,
-                       log_key=seeded(LOG_LABEL), now=now, responder=policy)
+                       log_key=seeded(LOG_LABEL), now=now,
+                       responder=policy or eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC))
 
     book = open_book("responder")
     records = [book.append(eb.Entry("observation", eb.OBSERVED_EVENT, subject_ref=f"order-{i}")) for i in range(3)]
@@ -141,7 +142,7 @@ def main(directory: str, out_path: str, profile: str = eb.PROFILE) -> None:
                                                          profile, eb.MEDIA_TYPE_JSON))
 
     # The same request C to a responder whose cost policy declines it.
-    declining = open_book("responder", eb.ResponderPolicy(limiter=_LimitNone()))
+    declining = open_book("responder", eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC, limiter=_LimitNone()))
     declined = {"requests": [carry(req_c)], "replies": [carry(respond(req_c, "alice", declining).message)]}
     if profile == eb.PROFILE_V1:
         # Under /1 a limit is capacity_exceeded; policy_declined is policy:

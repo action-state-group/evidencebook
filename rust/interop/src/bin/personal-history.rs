@@ -155,7 +155,11 @@ fn main() {
 
     let pin_a = checkpoints[0]["expected_pin"].as_str().unwrap().to_string();
     let pin_b = checkpoints[1]["expected_pin"].as_str().unwrap().to_string();
-    let policy = ResponderPolicy::default();
+    // The corpus run pins the specific refusal reasons; the default is uniform (#225).
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..ResponderPolicy::default()
+    };
     let responder_signer = book.signer().clone();
     let responder = Responder {
         signer: &responder_signer,

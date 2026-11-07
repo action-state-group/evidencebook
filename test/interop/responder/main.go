@@ -269,7 +269,7 @@ func mcpRequest(ctx context.Context, server *evidencebook.MCPServer, id int, m e
 
 func run(ctx context.Context, dir, out, profile string) error {
 	clock := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
-	book, err := open(ctx, filepath.Join(dir, "responder"), evidencebook.ResponderPolicy{}, &clock)
+	book, err := open(ctx, filepath.Join(dir, "responder"), evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific}, &clock)
 	if err != nil {
 		return err
 	}
@@ -478,7 +478,7 @@ func run(ctx context.Context, dir, out, profile string) error {
 	o.Requests["another-record"], o.Requests["another-pin"] = carry(other), carry(otherPin)
 
 	// The same request C to a responder whose cost policy declines it.
-	declining, err := open(ctx, filepath.Join(dir, "declining"), evidencebook.ResponderPolicy{Limiter: limitNone{}}, &clock)
+	declining, err := open(ctx, filepath.Join(dir, "declining"), evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific, Limiter: limitNone{}}, &clock)
 	if err != nil {
 		return err
 	}
@@ -507,7 +507,7 @@ func run(ctx context.Context, dir, out, profile string) error {
 
 	// A requester's own absence record: request C sent from another book,
 	// and no reply in a one-minute window.
-	requester, err := open(ctx, filepath.Join(dir, "requester"), evidencebook.ResponderPolicy{}, &clock)
+	requester, err := open(ctx, filepath.Join(dir, "requester"), evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific}, &clock)
 	if err != nil {
 		return err
 	}

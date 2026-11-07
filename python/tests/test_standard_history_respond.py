@@ -39,6 +39,7 @@ def _book(holder_kind: str, source: bool) -> eb.Book:
 
     b = eb.Book(V["book_id"], V["operator"], signer=eb.Ed25519Signer(bytes.fromhex(V["signer_seed"])),
                 log_id=V["log_id"], log_key=eb.Ed25519Signer(bytes.fromhex(V["log_seed"])), now=now,
+                responder=eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC),
                 standard_history=eb.StandardHistorySource(holder_kind, _host_inputs) if source else None)
     for e in V["entries"]:
         b.append(eb.Entry(e["record_type"], EPISTEMIC[e["epistemic_type"]],

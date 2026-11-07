@@ -324,10 +324,10 @@ class WindowLimiter:
 
 @dataclass(frozen=True)
 class ResponderPolicy:
-    """The responder's cost and abuse policy. The default answers the most
-    specific token with no rate limit."""
+    """The responder's cost and abuse policy. The default answers
+    uniformly (policy_declined) with no rate limit."""
 
-    refusal_policy: str = REFUSAL_POLICY_SPECIFIC  # "" reads as specific, as in Go
+    refusal_policy: str = REFUSAL_POLICY_UNIFORM  # "" reads as uniform, as in Go
     limiter: RequestLimiter | None = None
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
     max_answer_items: int = DEFAULT_MAX_ANSWER_ITEMS
@@ -1433,7 +1433,7 @@ class _Answer:
             return False
 
         return _decide.Policy(derivation=derivation, authorize=authorize,
-                              uniform=book._responder.refusal_policy == REFUSAL_POLICY_UNIFORM, may_issue=may_issue)
+                              uniform=book._responder.refusal_policy != REFUSAL_POLICY_SPECIFIC, may_issue=may_issue)
 
     def _decide(self, view: _View, req: EvidenceRequest, may_issue: bool) -> _decide.Resolution:
         return _decide.decide(view, req, self._policy(view, req, may_issue), nanos(self.now))

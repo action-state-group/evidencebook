@@ -52,8 +52,8 @@ type Config struct {
 	Reproduction bool
 
 	// Responder is the responder's cost and abuse policy for Respond
-	// (FR-37). The zero value answers the most specific reason with no rate
-	// limit.
+	// (FR-37). The zero value answers uniformly (policy_declined) with no rate
+	// limit; RefusalPolicySpecific is an explicit opt-in.
 	Responder ResponderPolicy
 	// StandardHistory, when set, has Respond answer standard_history/1 to
 	// authenticated requesters (StandardHistorySource).

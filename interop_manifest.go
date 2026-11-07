@@ -57,7 +57,7 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 	}
 	policy := b.responder.RefusalPolicy
 	if policy == "" {
-		policy = RefusalPolicySpecific
+		policy = RefusalPolicyUniform
 	}
 	// A registered derivation is never listed: one names its recipient.
 	// standard_history/1 is a registered token, the same for everyone.

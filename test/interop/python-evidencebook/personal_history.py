@@ -58,7 +58,8 @@ def main() -> None:
         return clock[0]
 
     signer = seeded(HOLDER_LABEL)
-    book = eb.Book("holder", "holder-operator", signer=signer, log_id=LOG_ID, log_key=seeded(LOG_LABEL), now=now)
+    book = eb.Book("holder", "holder-operator", signer=signer, log_id=LOG_ID, log_key=seeded(LOG_LABEL), now=now,
+                   responder=eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC))
 
     d = [deal_ref(1), deal_ref(2), deal_ref(3), deal_ref(4)]
     minutes = lambda m: timedelta(minutes=m)  # noqa: E731

@@ -212,7 +212,7 @@ func seed(ctx context.Context, policy evidencebook.ResponderPolicy, issue func()
 // answer seeds a book, answers request as the authenticated requester (""
 // for none), and returns the reply octets.
 func answer(ctx context.Context, request evidencebook.Message, requester string, decline bool, issue func() time.Time) ([]byte, error) {
-	policy := evidencebook.ResponderPolicy{}
+	policy := evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific}
 	if decline {
 		policy.Limiter = declineAll{}
 	}
@@ -257,7 +257,7 @@ type bookInfo struct {
 
 // info describes the seeded book: what a caller pins and what it can ask.
 func info(ctx context.Context) ([]byte, error) {
-	s, err := seed(ctx, evidencebook.ResponderPolicy{}, func() time.Time { return seedStart })
+	s, err := seed(ctx, evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific}, func() time.Time { return seedStart })
 	if err != nil {
 		return nil, err
 	}

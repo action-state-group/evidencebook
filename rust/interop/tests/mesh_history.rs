@@ -113,7 +113,10 @@ fn history_card(node: &mut Node) -> Vec<u8> {
     .unwrap();
     let signer = seeded("mesh history example: node key");
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,

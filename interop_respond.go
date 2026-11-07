@@ -42,10 +42,11 @@ type RequestLimiter interface {
 }
 
 // ResponderPolicy is the responder's cost and abuse policy (FR-37). The zero
-// value answers the most specific token with no rate limit.
+// value answers uniformly (policy_declined) with no rate limit.
 type ResponderPolicy struct {
-	// RefusalPolicy is RefusalPolicySpecific (the default when empty) or
-	// RefusalPolicyUniform.
+	// RefusalPolicy is RefusalPolicyUniform (the default when empty) or
+	// RefusalPolicySpecific, an explicit operator opt-in: it tells a requester
+	// whether the holder has a record for a key it does not hold (#206 row 8).
 	RefusalPolicy string
 	// Limiter rate-limits requests per requester; nil sets no limit.
 	Limiter RequestLimiter
@@ -175,7 +176,8 @@ const (
 // about the subject is read, so it learns nothing of what is held. A
 // counterparty asking for a record not held is let through to resolution,
 // which answers no_such_subject or retention_expired; the uniform refusal
-// policy folds those and not_authorized into one answer (ER §4.2, §12).
+// policy folds no_such_subject and not_authorized into one answer and keeps
+// retention_expired honest (ER §4.2, §12).
 func (p SharePolicy) mayHave(requester, relationship string, named []Header) bool {
 	if requester == "" {
 		return false
@@ -368,7 +370,7 @@ type gate struct {
 // uniform applies the uniform refusal policy to a reason that would
 // disclose what the policy protects.
 func (g gate) uniform(reason string) string {
-	return evidencerequest.Policy{Uniform: g.refusalPolicy == RefusalPolicyUniform}.Disclose(reason)
+	return evidencerequest.Policy{Uniform: g.refusalPolicy != RefusalPolicySpecific}.Disclose(reason)
 }
 
 // responderPolicy is the gate as go/evidencerequest's responder policy: the
@@ -411,7 +413,7 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 				return false
 			}
 		},
-		Uniform:    g.refusalPolicy == RefusalPolicyUniform,
+		Uniform:    g.refusalPolicy != RefusalPolicySpecific,
 		Unanchored: !g.cll,
 		MayIssue:   mayIssue,
 	}
