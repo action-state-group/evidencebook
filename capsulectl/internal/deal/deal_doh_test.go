@@ -241,6 +241,7 @@ func TestAnAbsentKeyStandsWhenDoHCannotBeReached(t *testing.T) {
 	assert.Equal(t, "fail", e.DKIM.Result)
 	assert.Equal(t, "system", e.Resolver)
 	assert.Contains(t, e.keyCheck, "DNS-over-HTTPS could not be reached to check it", "the unchecked absence is said, not silent")
+	assert.Equal(t, keyAbsentUnchecked, e.keyCheckCode)
 }
 
 // deal note says so too.
@@ -254,6 +255,7 @@ func TestDealNoteSaysAnAbsentKeyWentUnchecked(t *testing.T) {
 	assert.Equal(t, "fail", got["dkim"])
 	assert.Equal(t, "system", got["key_resolver"])
 	assert.Contains(t, got["key_check"], "DNS-over-HTTPS could not be reached to check it")
+	assert.Equal(t, "key_absent_unchecked", got["key_check_code"])
 }
 
 // One answer without AD makes the whole capture not_validated.
@@ -285,15 +287,73 @@ func TestDeferredWhenNeitherDNSNorDoHAnswers(t *testing.T) {
 	assert.Contains(t, reason, "through the system resolver (")
 	assert.Contains(t, reason, "through DNS-over-HTTPS "+doh.url()+" (the resolver answered RCodeServerFailure)")
 	assert.NotContains(t, reason, "\n")
+	assert.Equal(t, "doh_unreachable", got["reason_code"])
 
 	waiting := dealRun(t, "tick")["merchant_emails"].(map[string]any)["waiting"].([]any)
 	require.Len(t, waiting, 1)
 	assert.Contains(t, waiting[0].(map[string]any)["reason"], "DNS-over-HTTPS")
+	assert.Equal(t, "doh_unreachable", waiting[0].(map[string]any)["reason_code"])
 
 	// With DoH turned off, the reason says so.
 	t.Setenv(dohEnv, "off")
 	waiting = dealRun(t, "tick")["merchant_emails"].(map[string]any)["waiting"].([]any)
 	assert.Contains(t, waiting[0].(map[string]any)["reason"], "DNS-over-HTTPS is turned off (CAPSULECTL_DOH=off)")
+	assert.Equal(t, "doh_off", waiting[0].(map[string]any)["reason_code"])
+}
+
+// Each deferral cause has its own stable code, read from the cause and not
+// from the message text.
+func TestReasonCodeNamesTheCauseOfEachDeferral(t *testing.T) {
+	codeOf := func(t *testing.T) string {
+		t.Helper()
+		_, err := captureEmail(readMerchantFixture(t), nil)
+		var unreachable *keysUnreachableError
+		require.ErrorAs(t, err, &unreachable)
+		return unreachable.reasonCode()
+	}
+	t.Run("doh_unreachable", func(t *testing.T) {
+		newDoHStub(t, nil).srv.Close()
+		blockDNS(t)
+		assert.Equal(t, "doh_unreachable", codeOf(t))
+	})
+	t.Run("doh_off", func(t *testing.T) {
+		t.Setenv(dohEnv, "off")
+		blockDNS(t)
+		assert.Equal(t, "doh_off", codeOf(t))
+	})
+	t.Run("doh_invalid", func(t *testing.T) {
+		t.Setenv(dohEnv, "http://insecure.example")
+		blockDNS(t)
+		assert.Equal(t, "doh_invalid", codeOf(t))
+	})
+	t.Run("resolver_proxied", func(t *testing.T) {
+		newDoHStub(t, nil).srv.Close()
+		proxiedResolver(t, "198.19.255.1", map[string]string{dmarcName: merchantDMARC(t)})
+		assert.Equal(t, "resolver_proxied", codeOf(t))
+	})
+	t.Run("doh_off wins over a proxied resolver", func(t *testing.T) {
+		t.Setenv(dohEnv, "off")
+		proxiedResolver(t, "198.19.255.1", map[string]string{dmarcName: merchantDMARC(t)})
+		assert.Equal(t, "doh_off", codeOf(t))
+	})
+	t.Run("doh_invalid wins over a proxied resolver", func(t *testing.T) {
+		t.Setenv(dohEnv, "http://insecure.example")
+		proxiedResolver(t, "198.19.255.1", map[string]string{dmarcName: merchantDMARC(t)})
+		assert.Equal(t, "doh_invalid", codeOf(t))
+	})
+	t.Run("dns_unreachable is the default", func(t *testing.T) {
+		assert.Equal(t, "dns_unreachable", unreachableCode(errors.New("no route"), false))
+		assert.Equal(t, "dns_unreachable", (&keysUnreachableError{}).reasonCode())
+	})
+}
+
+// Every code is documented in the deal skill's README.
+func TestEveryReasonCodeIsDocumented(t *testing.T) {
+	readme, err := os.ReadFile("../../skills/deal/README.md")
+	require.NoError(t, err)
+	for _, code := range []string{reasonResolverProxied, reasonDoHOff, reasonDoHInvalid, reasonDoHUnreachable, reasonDNSUnreachable, keyAbsentUnchecked} {
+		assert.Contains(t, string(readme), "`"+code+"`")
+	}
 }
 
 // A proxied resolver with DoH unreachable is deferred, never sealed from the

@@ -79,6 +79,8 @@ type merchantEmail struct {
 	// keyCheck says, for the call that captured it only, why an absent key
 	// stands unchecked over DoH.
 	keyCheck string
+	// keyCheckCode is keyCheck's stable code (keyAbsentUnchecked).
+	keyCheckCode string
 	// DMARC holds the sender domain's DMARC records as they stood at seal
 	// time (_dmarc.<From domain>, then its organizational domain), with the
 	// same source rule as the keys. Nil when they were not captured.
@@ -218,12 +220,14 @@ func captureEmail(raw []byte, supplied []dkimKeyRecord) (*merchantEmail, error) 
 	}
 	resolvers, why := keyResolvers(fromDomain(raw))
 	var keyAbsent *merchantEmail
+	dohFailed := false
 	for _, r := range resolvers {
 		e, absent, err := captureWith(raw, r)
 		var unreachable *keysUnreachableError
 		switch {
 		case errors.As(err, &unreachable):
 			why = errors.Join(why, unreachable.err)
+			dohFailed = dohFailed || r.via == resolverDoH
 		case err != nil:
 			return nil, err
 		case absent && r.proxied:
@@ -235,11 +239,12 @@ func captureEmail(raw []byte, supplied []dkimKeyRecord) (*merchantEmail, error) 
 		}
 	}
 	if keyAbsent != nil {
+		keyAbsent.keyCheckCode = keyAbsentUnchecked
 		keyAbsent.keyCheck = "the system resolver found no DKIM key record, and DNS-over-HTTPS could not be reached to check it: " +
 			strings.ReplaceAll(why.Error(), "\n", "; ")
 		return keyAbsent, nil
 	}
-	return nil, &keysUnreachableError{raw: raw, err: why}
+	return nil, &keysUnreachableError{raw: raw, err: why, code: unreachableCode(why, dohFailed)}
 }
 
 // captureWith reads every key and DMARC record of one capture through r, and
@@ -324,8 +329,47 @@ func captureWith(raw []byte, r keyResolver) (*merchantEmail, bool, error) {
 // Nothing is sealed from it: `deal note` defers the capture to the next
 // cadence tick (deferEmail), which reads the records again.
 type keysUnreachableError struct {
-	raw []byte
-	err error
+	raw  []byte
+	err  error
+	code string // one of the reason codes below, set by captureEmail
+}
+
+// The closed set of reason codes next to a deferred email's raw reason, and
+// next to key_check. They are an output contract for agents and Muse pages
+// (deal-skill README, "Merchant email"): add codes, never rename one. The raw
+// reason stays the diagnostic.
+const (
+	reasonDoHOff          = "doh_off"          // CAPSULECTL_DOH=off, so DoH could not rescue the capture
+	reasonDoHInvalid      = "doh_invalid"      // CAPSULECTL_DOH is malformed, so DoH could not rescue the capture
+	reasonResolverProxied = "resolver_proxied" // the system resolver hands out placeholder addresses, and DoH did not answer
+	reasonDoHUnreachable  = "doh_unreachable"  // the system resolver and every DoH endpoint failed
+	reasonDNSUnreachable  = "dns_unreachable"  // no resolver could be reached, none of the causes above
+	keyAbsentUnchecked    = "key_absent_unchecked"
+)
+
+// unreachableCode names the one cause that best tells an agent what to do,
+// in the order the codes are listed.
+func unreachableCode(why error, dohFailed bool) string {
+	switch {
+	case errors.Is(why, errDoHOff):
+		return reasonDoHOff
+	case errors.Is(why, errDoHInvalid):
+		return reasonDoHInvalid
+	case errors.Is(why, errResolverProxied):
+		return reasonResolverProxied
+	case dohFailed:
+		return reasonDoHUnreachable
+	}
+	return reasonDNSUnreachable
+}
+
+// reasonCode is the stable code for Error(); a capture that did not set one
+// is plain DNS trouble.
+func (e *keysUnreachableError) reasonCode() string {
+	if e.code == "" {
+		return reasonDNSUnreachable
+	}
+	return e.code
 }
 
 func (e *keysUnreachableError) Error() string { return strings.ReplaceAll(e.err.Error(), "\n", "; ") }

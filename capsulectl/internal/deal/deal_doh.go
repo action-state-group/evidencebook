@@ -115,7 +115,7 @@ func keyResolvers(from string) (list []keyResolver, skipped error) {
 		ips, _ := systemProbe(from)
 		for _, ip := range ips {
 			if isPlaceholder(ip) {
-				skipped = fmt.Errorf("the system resolver is proxied: it answers %s with the placeholder address %s", from, ip)
+				skipped = fmt.Errorf("%w: it answers %s with the placeholder address %s", errResolverProxied, from, ip)
 				break
 			}
 		}
@@ -137,6 +137,14 @@ func keyResolvers(from string) (list []keyResolver, skipped error) {
 	return list, errors.Join(skipped, err)
 }
 
+// Why DNS-over-HTTPS cannot rescue a capture, as sentinels so a reason code
+// is read from the cause, never from the message text.
+var (
+	errResolverProxied = errors.New("the system resolver is proxied")
+	errDoHOff          = errors.New("DNS-over-HTTPS is turned off")
+	errDoHInvalid      = errors.New("DNS-over-HTTPS is misconfigured")
+)
+
 // dohEndpoints reads CAPSULECTL_DOH. A malformed value is a reason the
 // capture could not use DoH, never a reason to drop the email.
 func dohEndpoints() ([]string, error) {
@@ -145,14 +153,14 @@ func dohEndpoints() ([]string, error) {
 	case v == "":
 		return dohDefaultEndpoints, nil
 	case strings.EqualFold(v, "off"):
-		return nil, errors.New("DNS-over-HTTPS is turned off (" + dohEnv + "=off)")
+		return nil, fmt.Errorf("%w (%s=off)", errDoHOff, dohEnv)
 	}
 	var out []string
 	for _, s := range strings.Split(v, ",") {
 		s = strings.TrimSpace(s)
 		u, err := url.Parse(s)
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-			return nil, errors.New(dohEnv + " must be a comma-separated list of https:// URLs, or off")
+			return nil, fmt.Errorf("%w: %s must be a comma-separated list of https:// URLs, or off", errDoHInvalid, dohEnv)
 		}
 		out = append(out, s)
 	}
