@@ -7,7 +7,7 @@
 // Build verifies before it renders: the neutral Evidence Bundle verifier,
 // the root gate (the root carries the one Result the page is built on), the
 // Result gate, the book's own verifier for a Result in book form, and the
-// page gate (`capsulectl verify --bundle` must call the bundle VALID). It
+// page gate (`capsulectl verify --bundle` must call the bundle VALID, unless the view asks for a marked diagnostic page). It
 // reads only the bundle it is given and never a claim the bundle does not
 // carry. The page is capsule-viewer's emitter shell around the bundle and
 // capsule-cli's pinned browser runtime; it loads nothing from the network.
