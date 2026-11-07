@@ -195,8 +195,13 @@ fn main() {
 
     let signer = seeded(RESPONDER_LABEL);
     let derivations = Derivations::new();
-    let default_policy = ResponderPolicy::default();
+    // The vectors assert the specific reasons; the default policy is uniform (#225).
+    let default_policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..ResponderPolicy::default()
+    };
     let declining_policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
         limiter: Some(Box::new(LimitNone)),
         ..ResponderPolicy::default()
     };
