@@ -55,17 +55,13 @@ func countRecords(value, report map[string]any) (total, verified int) {
 	return total, verified
 }
 
-// ClaimsNotEvaluable is the claims the page shows unsupported or unmet: those
-// whose cited evidence is not all in the bundle.
-func (p *Page) ClaimsNotEvaluable() int { return p.UnsupportedClaims }
-
 // StatusLine is the one line a build prints beside the page path: counts with
 // their denominators, never a percentage, e.g. "787 of 812 records verified ·
 // 3 of 12 claims not evaluable". A diagnostic page says so first.
 func (p *Page) StatusLine() string {
 	parts := []string{
 		fmt.Sprintf("%d of %d %s verified", p.RecordsVerified, p.Records, plural(p.Records, "record", "records")),
-		fmt.Sprintf("%d of %d %s not evaluable", p.ClaimsNotEvaluable(), p.Claims, plural(p.Claims, "claim", "claims")),
+		fmt.Sprintf("%d of %d %s not evaluable", p.UnsupportedClaims, p.Claims, plural(p.Claims, "claim", "claims")),
 	}
 	if p.Diagnostic {
 		parts = append([]string{"diagnostic page, not a verified report"}, parts...)
@@ -222,7 +218,7 @@ func checkChartText(charts []json.RawMessage) error {
 	for i, raw := range charts {
 		var entry map[string]interface{}
 		if err := json.Unmarshal(raw, &entry); err != nil {
-			return refusef("page check failed: charts[%d] is not a JSON object", i)
+			return refusef("page check failed: charts[%d] is not a JSON object; nothing was written", i)
 		}
 		specs := chartSpecsOf(entry)
 		if len(specs) == 0 {

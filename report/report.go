@@ -232,7 +232,8 @@ type Page struct {
 	// BundleDigest is the digest of the bundle the page embeds, with its
 	// card and header blocks.
 	BundleDigest string
-	// Verification is VerificationPass or VerificationClosureWithheld.
+	// Verification is VerificationPass, VerificationClosureWithheld or, on a
+	// diagnostic page, VerificationFailed.
 	Verification string
 	// Verdict is `verify --bundle`'s verdict on the embedded bundle (VALID,
 	// INCOMPLETE or INVALID); UnmetClaims names the claims that kept it
@@ -259,7 +260,11 @@ type Page struct {
 // root is a sealed Evidence Result v0, and renders it under view.
 //
 // Every refusal of the bundle (including one that does not decode), its
-// root or the view is an ErrRefused, and nothing is rendered. When all of those pass but the bundle is not VALID by
+// root or the view is an ErrRefused, and nothing is rendered; under
+// View.Diagnostic a bundle that fails verification is not refused but rendered
+// as a marked diagnostic page (Page.Diagnostic, Page.Failure), provided its
+// root still decodes to a Result. Every page passes checkPage before it is
+// returned. When all of those pass but the bundle is not VALID by
 // `verify --bundle`'s verdict, Build returns the Page with no HTML and the
 // page gate's error, so a caller can still report what it found.
 func Build(bundle []byte, view View) (*Page, error) {
@@ -428,9 +433,13 @@ func Build(bundle []byte, view View) (*Page, error) {
 			return page, err
 		}
 		page.DiagnosticReasons = append(page.DiagnosticReasons, cli.SafeError(err))
-		if failure == nil {
-			failure = err
-		}
+		// The page gate's own error carries the class `verify --bundle`
+		// gives the bundle (INCOMPLETE or INVALID); the hints above stand in
+		// only when the gate did not refuse.
+		failure = err
+	}
+	if diagnostic {
+		page.Verification = VerificationFailed
 	}
 	page.failure = failure
 	// With no wording and no contract, BuildOfflineHTML's default settings write exactly

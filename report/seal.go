@@ -63,8 +63,9 @@ type Seal struct {
 // Book.SealResult does for a Result. Everything the record states is read
 // from page itself: its digest, and the digest and Result root of the bundle
 // it embeds. A page whose bytes the book already sealed for its bundle finds
-// that record and appends nothing. A file that is not a report page, a draft
-// page, or a page whose embedded bundle the page gate refuses is refused.
+// that record and appends nothing. A file that is not a report page, a draft page, a
+// diagnostic page, or a page whose embedded bundle the page gate refuses is
+// refused.
 //
 // A failure after the record was appended returns the record with the
 // error, so the caller never loses its id. It is not atomic: callers that

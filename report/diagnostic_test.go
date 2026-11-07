@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/capsule-viewer/go/presentation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,12 @@ func TestBuildWritesAMarkedDiagnosticPageForABundleThatDoesNotVerify(t *testing.
 			require.NoError(t, err)
 			card := embedded["extensions"].(map[string]interface{})[presentation.CardExtension].(map[string]interface{})
 			assert.Equal(t, true, card["diagnostic"])
+			assert.Equal(t, VerificationFailed, page.Verification)
+			if c.verdict == "INVALID" {
+				require.ErrorIs(t, page.Failure(), cli.ErrBundleInvalid)
+			} else {
+				require.ErrorIs(t, page.Failure(), cli.ErrPartial)
+			}
 			_, err = page.Permalink("")
 			require.ErrorIs(t, err, ErrRefused)
 			assert.Contains(t, err.Error(), "diagnostic")
