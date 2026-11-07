@@ -113,7 +113,10 @@ fn the_crate_answers_as_go_does() {
         let signer = b.signer().clone();
         let host = source(&v, scenario["holder_kind"].as_str().unwrap());
         let derivations = Derivations::new();
-        let policy = ResponderPolicy::default();
+        let policy = ResponderPolicy {
+            refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+            ..Default::default()
+        };
         let responder = Responder {
             signer: &signer,
             derivations: &derivations,
@@ -166,7 +169,10 @@ fn a_stranger_never_reaches_the_hosts_inputs() {
         }),
     };
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,
@@ -201,7 +207,10 @@ fn inputs_that_make_no_standard_card_are_an_error_never_a_card() {
         inputs: Box::new(|_, _| Err(StandardHistoryError("no inputs".into()))),
     };
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,
@@ -227,7 +236,10 @@ fn a_responder_with_an_invalid_holder_kind_answers_nothing() {
     let signer = b.signer().clone();
     let host = source(&v, "agent");
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,
@@ -263,7 +275,10 @@ fn a_staple_of_the_standard_card_passes_the_checker() {
     let signer = b.signer().clone();
     let host = source(&v, "node");
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: evidencebook::respond::RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,

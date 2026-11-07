@@ -126,3 +126,39 @@ func TestLapsedRetentionCommitmentIsRetentionExpired(t *testing.T) {
 	f.clock.t = until.Add(time.Minute)
 	mustRefusal(t, respondAs(t, book, req, "peer-1"), ReasonRetentionExpired)
 }
+
+// #206 row 8: an empty RefusalPolicy answers uniformly and the manifest
+// declares it; an explicit specific still answers the specific reason.
+func TestZeroValueRefusalPolicyIsUniform(t *testing.T) {
+	for i, c := range []struct {
+		policy, want string
+	}{
+		{"", ReasonPolicyDeclined},
+		{RefusalPolicyUniform, ReasonPolicyDeclined},
+		{RefusalPolicySpecific, ReasonNoSuchSubject},
+	} {
+		f := newFixture(t, "book-z", byte(20+i))
+		cfg := f.config(t)
+		cfg.Responder = ResponderPolicy{RefusalPolicy: c.policy}
+		book, err := Open(context.Background(), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = book.Release() })
+		mustAppend(t, book, observation("a", "x"))
+		pin := anchorPin(t, book)
+		req := jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectRecord, Digest: digestBytes([]byte("never"))}, Coverage: Coverage{ExpectedPin: pin}})
+		mustRefusal(t, respondAs(t, book, req, "peer-1"), c.want)
+		manifest, err := book.Manifest(ManifestOptions{Bindings: []string{BindingHTTP}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantPolicy := RefusalPolicyUniform
+		if c.policy == RefusalPolicySpecific {
+			wantPolicy = RefusalPolicySpecific
+		}
+		if !strings.Contains(string(manifest), `"refusal_policy":"`+wantPolicy+`"`) {
+			t.Fatalf("policy %q: manifest %s", c.policy, manifest)
+		}
+	}
+}

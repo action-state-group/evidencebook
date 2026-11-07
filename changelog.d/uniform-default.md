@@ -1,0 +1,3 @@
+### Changed (breaking): `uniform` is the default refusal policy (#225, #206 row 8)
+
+- An empty `ResponderPolicy.RefusalPolicy` now means `RefusalPolicyUniform`: a responder answers `policy_declined` wherever a more specific token (`not_authorized`, `no_such_subject`, `retention_expired`) would tell a counterparty whether the holder has a record for a key it does not hold. The manifest declares `refusal_policy: "uniform"` for the zero value. `RefusalPolicySpecific` is an explicit operator opt-in. To keep the old answers, set `ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}`. Rust and Python change the same way (see their changelogs).

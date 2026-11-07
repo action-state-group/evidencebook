@@ -38,13 +38,16 @@
 < 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Payloads: payloads,
 ---
 > 		BookID: "holder", Operator: "holder-operator", Store: store, Substrate: substrate, Originals: originals,
-185a198
+157a170,171
+> 		// The corpus run pins the specific refusal reasons; the zero value is uniform (#225).
+> 		Responder: evidencebook.ResponderPolicy{RefusalPolicy: evidencebook.RefusalPolicySpecific},
+185a200
 > 	numbered := map[string]int{}
-187c200
+187c202
 < 		r, err := book.Append(ctx, evidencebook.Entry{
 ---
 > 		entry := evidencebook.Entry{
-190c203,209
+190c205,211
 < 		})
 ---
 > 		}
@@ -54,7 +57,7 @@
 > 			entry.Correlation = evidencebook.Correlation{ExchangeID: s.deal}
 > 		}
 > 		r, err := book.Append(ctx, entry)
-194c213,217
+194c215,219
 < 		out.Records = append(out.Records, record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind})
 ---
 > 		rec := record{Digest: r.RecordID, Deal: s.deal, RecordType: s.kind}

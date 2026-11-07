@@ -329,7 +329,10 @@ fn reason(reply: &Reply) -> Reason {
 #[test]
 fn a_stranger_has_only_the_public_questions_answered_and_leaves_no_record() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let pin = json!({"expected_pin": b.pin(1)});
     let before = b.records.len();
 
@@ -362,7 +365,10 @@ fn a_stranger_has_only_the_public_questions_answered_and_leaves_no_record() {
 #[test]
 fn a_counterparty_is_answered_and_the_answer_is_sealed_without_naming_it() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let pin = b.pin(1);
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": pin}));
     let (reply, sealed) = run(
@@ -402,7 +408,10 @@ fn a_counterparty_is_answered_and_the_answer_is_sealed_without_naming_it() {
 #[test]
 fn a_record_is_refused_to_a_requester_it_does_not_name_but_the_asking_is_recorded() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
 
     // Bob is a counterparty of this book, but record 0 names alice.
@@ -449,7 +458,10 @@ fn a_record_is_refused_to_a_requester_it_does_not_name_but_the_asking_is_recorde
 #[test]
 fn range_and_full_history_are_answered_to_no_one() {
     let (mut b, _) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let pin = json!({"expected_pin": b.pin(1)});
     for subject in [json!({"range": [0, 1]}), json!({"full_history": null})] {
         let (reply, _) = run(
@@ -484,7 +496,10 @@ fn a_correlation_is_answered_per_record() {
     b.add_under("observation", Some("alice"), "deal-both");
     b.add_under("observation", Some("bob"), "deal-both");
     b.cut();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let pin = json!({"expected_pin": b.pin(2)});
     let mut ask_for = |who: &Ask<'_>, key: &str| {
         run(
@@ -544,7 +559,10 @@ fn a_correlation_is_answered_per_record() {
 #[test]
 fn the_answered_records_are_never_served() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     // Seal one, then ask for it by digest as a peer: not held.
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
     run(
@@ -578,7 +596,10 @@ fn the_answered_records_are_never_served() {
 #[test]
 fn only_an_authenticated_well_formed_request_may_force_a_checkpoint() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     b.add("observation", Some("alice"));
     let floor = json!({"min_freshness": 5});
     let request = req(json!({"record": ids[0]}), floor);
@@ -623,7 +644,10 @@ fn only_an_authenticated_well_formed_request_may_force_a_checkpoint() {
 #[test]
 fn a_malformed_request_is_refused_signed_and_leaves_no_record() {
     let (mut b, _) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let before = b.records.len();
     for binding in [Binding::Json, Binding::Cbor] {
         let (reply, sealed) = run(
@@ -670,7 +694,10 @@ fn a_malformed_request_is_refused_signed_and_leaves_no_record() {
 #[test]
 fn a_cbor_request_is_answered_in_cbor() {
     let (mut b, _) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let (reply, _) = run(&mut b, &policy, &[0xa0], Binding::Cbor, &ask(None));
     assert_eq!(reason(&reply), Reason::RequestMalformed);
 }
@@ -682,7 +709,10 @@ fn a_cbor_request_is_answered_in_cbor() {
 fn a_non_deterministic_cbor_request_is_refused_over_its_octets() {
     use ciborium::Value as C;
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let text = |s: &str| C::Text(s.into());
     let mut deterministic = Vec::new();
     ciborium::into_writer(
@@ -732,6 +762,7 @@ fn the_cost_policy_declines_before_any_work() {
     let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
 
     let small = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
         max_request_bytes: 10,
         ..Default::default()
     };
@@ -743,6 +774,7 @@ fn the_cost_policy_declines_before_any_work() {
     );
 
     let limited = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
         limiter: Some(Box::new(WindowLimiter::new(1, 60)) as Box<dyn RequestLimiter>),
         ..Default::default()
     };
@@ -767,6 +799,7 @@ fn the_cost_policy_declines_before_any_work() {
     assert_eq!(reason(&reply), Reason::NotAuthorized);
 
     let capped = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
         max_answer_items: 1,
         ..Default::default()
     };
@@ -798,7 +831,10 @@ fn the_cost_policy_declines_before_any_work() {
 #[test]
 fn evidence_interop_1_is_answered_as_0_is() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let mut artifacts = Vec::new();
     for (asked, named) in [
         ("", PROFILE_ID),
@@ -918,6 +954,7 @@ fn a_limit_is_refused_for_the_requested_profile() {
     // reads it: one that repeats a member, or names /1 and nothing else.
     let (mut b, _) = book();
     let small = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
         max_request_bytes: 10,
         ..Default::default()
     };
@@ -962,7 +999,10 @@ fn the_uniform_policy_discloses_nothing_a_specific_token_would() {
 #[test]
 fn a_deadline_that_has_passed_is_unmet() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let request = serde_json::to_vec(&json!({
         "subject": {"record": ids[0]}, "coverage": {"expected_pin": b.pin(1)},
         "deadline": "2026-10-27T00:00:01Z", "profile": "evidence-interop/0",
@@ -983,7 +1023,10 @@ fn an_invalid_share_policy_is_an_error_not_a_refusal() {
     let (mut b, _) = book();
     let signer = key("responder");
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,
@@ -1028,7 +1071,10 @@ fn respond_raw(b: &mut Mem, policy: &ResponderPolicy, request: &[u8], who: Optio
 #[test]
 fn a_request_go_would_not_read_as_well_formed_is_refused_before_anything_is_recorded() {
     let (mut b, ids) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let pin = b.pin(1);
     let before = (b.records.len(), b.checkpoints());
     let base = |extra: &str| {
@@ -1094,7 +1140,10 @@ fn the_uniform_policy_leaves_the_derivation_checks_before_it_as_they_are() {
 fn a_book_without_headers_is_an_error_not_a_leak() {
     let (mut b, ids) = book();
     b.headerless = true;
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let signer = key("responder");
     let derivations = Derivations::new();
     let responder = Responder {
@@ -1116,7 +1165,10 @@ fn a_book_without_headers_is_an_error_not_a_leak() {
 fn an_unreadable_clock_is_an_error() {
     let (mut b, _) = book();
     b.ticks = -1; // formats as a time no RFC 3339 reader accepts
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let signer = key("responder");
     let derivations = Derivations::new();
     let responder = Responder {
@@ -1136,7 +1188,10 @@ fn an_unreadable_clock_is_an_error() {
 fn a_header_without_a_record_type_is_an_error_too() {
     let (mut b, ids) = book();
     b.typeless = true;
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let signer = key("responder");
     let derivations = Derivations::new();
     let responder = Responder {
@@ -1156,7 +1211,10 @@ fn a_header_without_a_record_type_is_an_error_too() {
 #[test]
 fn a_bad_member_wins_over_a_bad_coverage_count() {
     let (mut b, _) = book();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     for (extra, want) in [
         (r#","profile":7"#, "request_malformed"),
         (r#","derivation":"Foo/1""#, "request_malformed"),
@@ -1186,7 +1244,10 @@ fn a_history_card_staple_is_the_books_own_answer_and_grows_no_record() {
     b.add("observation", Some("carol")); // past the last checkpoint: stapling cuts one
     let signer = key("responder");
     let derivations = Derivations::new();
-    let policy = ResponderPolicy::default();
+    let policy = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
     let responder = Responder {
         signer: &signer,
         derivations: &derivations,
@@ -1218,7 +1279,10 @@ fn a_history_card_staple_is_not_counted_by_the_limiter() {
     let derivations = Derivations::new();
     let policy = ResponderPolicy {
         limiter: Some(Box::new(WindowLimiter::new(0, 60)) as Box<dyn RequestLimiter>),
-        ..ResponderPolicy::default()
+        ..ResponderPolicy {
+            refusal_policy: RefusalPolicy::Specific,
+            ..Default::default()
+        }
     };
     let responder = Responder {
         signer: &signer,
@@ -1229,4 +1293,34 @@ fn a_history_card_staple_is_not_counted_by_the_limiter() {
     let holder = hex::encode(signer.verifying_key().to_bytes());
     let s = staple_history_card(&mut b, &responder).unwrap();
     check_staple(&s.request, &s.reply, &holder).unwrap();
+}
+
+/// #206 row 8: the default policy answers uniformly; `specific` is an
+/// explicit opt-in that still answers the specific reason.
+#[test]
+fn the_default_refusal_policy_is_uniform_and_specific_is_an_opt_in() {
+    assert_eq!(RefusalPolicy::default(), RefusalPolicy::Uniform);
+    let (mut b, ids) = book();
+    let request = req(json!({"record": ids[0]}), json!({"expected_pin": b.pin(1)}));
+    // Bob is a counterparty, but record 0 names alice.
+    let (reply, _) = run(
+        &mut b,
+        &ResponderPolicy::default(),
+        &request,
+        Binding::Json,
+        &ask(Some("bob")),
+    );
+    assert_eq!(reason(&reply), Reason::PolicyDeclined);
+    let specific = ResponderPolicy {
+        refusal_policy: RefusalPolicy::Specific,
+        ..Default::default()
+    };
+    let (reply, _) = run(
+        &mut b,
+        &specific,
+        &request,
+        Binding::Json,
+        &ask(Some("bob")),
+    );
+    assert_eq!(reason(&reply), Reason::NotAuthorized);
 }

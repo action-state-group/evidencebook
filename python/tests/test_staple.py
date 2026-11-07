@@ -64,7 +64,7 @@ def test_standard_history_needs_a_responder_that_serves_it() -> None:
 
 
 def test_the_holders_staple_is_not_counted_by_the_limiter() -> None:
-    b = book(Clock(), "limited", responder=eb.ResponderPolicy(limiter=eb.WindowLimiter(1, timedelta(hours=1))))
+    b = book(Clock(), "limited", responder=eb.ResponderPolicy(refusal_policy=eb.REFUSAL_POLICY_SPECIFIC, limiter=eb.WindowLimiter(1, timedelta(hours=1))))
     b.append(eb.Entry("observation", eb.OBSERVED_EVENT))
     pin = b.checkpoint().anchor_digest
     stranger = eb.Message(eb.encode_request(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=pin),
