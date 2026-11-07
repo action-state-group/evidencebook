@@ -129,16 +129,20 @@ is loaded from the network.
 `status_line`, `records` and `records_verified`, and `claims_not_evaluable`
 give the build in counts with denominators ("5 of 5 records verified · 0 of 3
 claims not evaluable"), never a percentage; the answer itself is in the page.
-A bundle that does not verify gets no page. With `--diagnostic`, one that
-fails verification or is incomplete gets a page marked as a diagnostic page
+A bundle that fails verification or is incomplete gets no page. With
+`--diagnostic`, it gets a page marked as a diagnostic page
 (its title, a banner and `diagnostic: true` in the card block, under the
 viewer's own failed-bundle callout; `page` is `diagnostic` and
 `diagnostic_reasons` says what failed), and the command still exits with the
 bundle's own failure. A diagnostic page gets no permalink and is never sealed
 (`--seal` and `--permalink` are refused with it), and a bundle that verifies
-is refused under `--diagnostic`. Every page passes the build's page checks
-(no foreign script, a text alternative per chart, the core runtime) before it
-is written; a failed check writes nothing.
+is refused under `--diagnostic`. Every page passes the build's page checks before it is written, and a failed
+check writes nothing: no foreign script (the page's Content-Security-Policy
+admits only its own hashed scripts), a text alternative for each chart, the
+core runtime at its pinned digest, and the page frame (language, phone-width
+viewport, title, print stylesheet). A chart is checked against its dataset
+where it is filled. Accessibility, phone-width and print layout are the viewer's
+own renderer tests, which the page records by its runtime digest.
 
 ### Seal a page, check a page
 
