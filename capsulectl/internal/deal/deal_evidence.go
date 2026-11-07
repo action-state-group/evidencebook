@@ -58,6 +58,10 @@ const (
 	dealExchangeResponse = "evidence_response"
 	dealExchangeAbsence  = "evidence_absence"
 	dealExchangeAnswered = "evidence_request_answered"
+	// dealExchangeHeld is a request above the standard that the holder has
+	// not decided: pending, with no reply written.
+	dealExchangeHeld = "evidence_request_held"
+	dealOutcomeHeld  = "held"
 )
 
 // dealRequestsLogID names the log a deal's request records go on. An answer
@@ -636,6 +640,17 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		check.Request.Derivation = derivation
 		return s.respondStandardHistory(c, check, raw, requester, path, signer)
 	}
+	// Any other derivation asked in evidence-interop's request shape is above
+	// the standard card too: held, once the request reads as well formed.
+	if _, interop := members["profile"]; interop && derivation != "" {
+		check := evidencerequest.ParseRequest(evidencerequest.Message{Octets: raw, MediaType: evidencerequest.MediaTypeJSON})
+		// A coverage that is not exactly one member is no reason to refuse a
+		// derivation the holder does not serve: held, as a deal-shaped one is.
+		if check.Reason == "" || check.Reason == evidencebook.ReasonCoverageUnsatisfiable {
+			answered["subject_kind"] = string(check.Request.Subject.Kind)
+			return s.holdRequest(c, "", answered, derivation)
+		}
+	}
 	req, e := parseDealRequest(raw)
 	if e != nil || !dealSubject(req.Subject) {
 		if e == nil && req.Subject.Kind != "" {
@@ -653,9 +668,8 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		return refuse(evidencebook.ReasonNoSuchSubject)
 	}
 	dealID = req.Subject.Value
-	if (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
-		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
-	}
+	// A malformed time is the request's fault, whatever it asks for: refused
+	// before any hold, so a held item is always a well-formed request.
 	if req.Deadline != "" {
 		if _, e = time.Parse(time.RFC3339Nano, req.Deadline); e != nil {
 			return refuse(evidencebook.ReasonRequestMalformed)
@@ -666,12 +680,19 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		if notBefore, e = time.Parse(time.RFC3339Nano, floor.Time); e != nil {
 			return refuse(evidencebook.ReasonRequestMalformed)
 		}
-		if notBefore.After(cli.DealClock()) {
-			return refuse(evidencebook.ReasonCoverageUnsatisfiable)
-		}
 	}
 	if req.Derivation != "" {
-		return refuse(evidencebook.ReasonDerivationUnsupported)
+		// "Ask me" (F4.10, Steven's 2026-11-01 ruling): a derivation the
+		// holder does not serve automatically is above the standard card.
+		// It is not refused and not answered, whatever the coverage would
+		// say today. Deciding a held item has no CLI surface yet (#178).
+		return s.holdRequest(c, dealID, answered, req.Derivation)
+	}
+	if (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
+		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
+	}
+	if !notBefore.IsZero() && notBefore.After(cli.DealClock()) {
+		return refuse(evidencebook.ReasonCoverageUnsatisfiable)
 	}
 	if e = s.useDeal(ctx, dealID, false); e != nil {
 		return e
@@ -804,6 +825,30 @@ func (s *dealSession) writeAnswer(c *cobra.Command, dealID string, answered map[
 		return err
 	}
 	return s.writeAnswerBytes(c, dealID, answered, encoded, path)
+}
+
+// holdRequest records a request above the standard as pending for the
+// holder and writes no reply: no wire change, so the requester sees pending
+// until its window closes and then a recorded absence (RecordAbsence). The
+// same request held twice is one item.
+func (s *dealSession) holdRequest(c *cobra.Command, dealID string, held map[string]interface{}, derivation string) error {
+	ctx := c.Context()
+	digest, _ := held["request_digest"].(string)
+	prior, err := s.exchangeRows(ctx, `kind=? AND deal_id=?`, dealExchangeHeld, dealID)
+	if err != nil {
+		return err
+	}
+	for _, r := range prior {
+		if r.record["request_digest"] == digest {
+			return cli.Output(c, cli.EvidenceRespondResult{RecordID: r.digest, RequestDigest: digest, Outcome: dealOutcomeHeld, Relationship: evidencebook.RelationshipIdentified})
+		}
+	}
+	held["derivation"], held["outcome"] = derivation, dealOutcomeHeld
+	id, err := s.recordExchange(ctx, dealID, dealExchangeHeld, "", held)
+	if err != nil {
+		return err
+	}
+	return cli.Output(c, cli.EvidenceRespondResult{RecordID: id, RequestDigest: digest, Outcome: dealOutcomeHeld, Relationship: evidencebook.RelationshipIdentified})
 }
 
 // writeAnswerBytes records the answer and writes its octets: a deal answer's

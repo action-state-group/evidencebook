@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `deal respond` holds a request for a derivation it does not serve automatically (anything but `standard_history/1`) instead of refusing it with `derivation_unsupported`: the F4.10 "ask me" tier, per Steven's 2026-11-01 ruling. It records one pending `evidence_request_held` item (the same request twice is one item), writes no reply file, and prints outcome `held`. No wire change: the requester sees pending until its window closes, then a recorded absence. A held item cannot be answered or declined from the CLI yet (follow-up evidencebook-deal#178). Contract scope stays deferred (evidencebook-deal#96).
+
 ## v0.1.0-rc39
 
 This release pairs with capsulectl `v0.1.0-rc39` (go.mod requires it).

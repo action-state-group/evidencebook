@@ -386,7 +386,7 @@ func TestADealCopyUnderAnotherCheckpointKeyIsRecordedFailed(t *testing.T) {
 
 // respond refuses, signed, what it cannot serve: a deal this profile does
 // not hold, a subject that names no deal, a request without exactly one
-// coverage member, a derivation, and a field it does not define.
+// coverage member, and a field it does not define.
 func TestDealRespondRefusesWhatItCannotServe(t *testing.T) {
 	dealFixture(t)
 	held := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
@@ -399,8 +399,6 @@ func TestDealRespondRefusesWhatItCannotServe(t *testing.T) {
 		"not a deal subject": {map[string]any{"subject": map[string]any{"kind": "range", "first": 1, "last": 1},
 			"coverage": map[string]any{"min_freshness": map[string]any{"size": 1}}}, "no_such_subject"},
 		"a held deal with no coverage": {map[string]any{"subject": map[string]any{"kind": "correlation", "value": held}, "coverage": map[string]any{}}, "coverage_unsatisfiable"},
-		"a held deal with a derivation": {map[string]any{"subject": map[string]any{"kind": "correlation", "value": held},
-			"coverage": map[string]any{"min_freshness": map[string]any{"size": 1}}, "derivation": "history_card/1"}, "derivation_unsupported"},
 		"unknown field": {map[string]any{"subject": map[string]any{"kind": "correlation", "value": "deal-0000000000000000"},
 			"coverage": map[string]any{"min_freshness": map[string]any{"size": 1}}, "extra": true}, "request_malformed"},
 	} {
@@ -411,6 +409,61 @@ func TestDealRespondRefusesWhatItCannotServe(t *testing.T) {
 			assert.Equal(t, c.reason, result["reason"])
 		})
 	}
+}
+
+// A request above the standard card (any derivation the holder does not serve
+// automatically) is held for the holder: not refused, not answered, no reply
+// written, one pending item however often it is presented (F4.10 "ask me").
+func TestDealRespondHoldsADerivationAboveTheStandard(t *testing.T) {
+	dealFixture(t)
+	held := dealRun(t, "open", "--input", writeJSON(t, crossPartyBuyerOpen))["deal_id"].(string)
+	request := writeJSONFile(t, "req.json", map[string]any{"subject": map[string]any{"kind": "correlation", "value": held},
+		"coverage": map[string]any{"min_freshness": map[string]any{"size": 1}}, "derivation": "outcome/1"})
+	out := filepath.Join(t.TempDir(), "response.json")
+	first := runJSON(t, "deal", "respond", "--request", request, "--requester", "x", "--output", out)
+	assert.Equal(t, "held", first["outcome"])
+	assert.Empty(t, first["reason"], "a hold is not a refusal")
+	assert.NoFileExists(t, out, "the holder does not reply until it decides")
+	again := runJSON(t, "deal", "respond", "--request", request, "--requester", "x", "--output", out)
+	assert.Equal(t, "held", again["outcome"])
+	assert.Equal(t, first["record_id"], again["record_id"], "the same request is one pending item")
+	assert.NoFileExists(t, out)
+	// A future time floor does not refuse it first; the same request is held
+	// before and after the floor passes.
+	future := writeJSONFile(t, "future.json", map[string]any{"subject": map[string]any{"kind": "correlation", "value": held},
+		"coverage": map[string]any{"min_freshness": map[string]any{"time": "2099-01-01T00:00:00Z"}}, "derivation": "outcome/1"})
+	assert.Equal(t, "held", runJSON(t, "deal", "respond", "--request", future, "--requester", "x", "--output", out)["outcome"])
+
+	// A malformed time is refused, never held.
+	for name, cov := range map[string]map[string]any{"floor": {"min_freshness": map[string]any{"time": "garbage"}}, "deadline": {"min_freshness": map[string]any{"size": 1}}} {
+		req := map[string]any{"subject": map[string]any{"kind": "correlation", "value": held}, "coverage": cov, "derivation": "outcome/1"}
+		if name == "deadline" {
+			req["deadline"] = "garbage"
+		}
+		bad := runJSON(t, "deal", "respond", "--request", writeJSONFile(t, name+".json", req), "--requester", "x", "--output", filepath.Join(t.TempDir(), name+".json"))
+		assert.Equal(t, "refusal", bad["outcome"], name)
+		assert.Equal(t, "request_malformed", bad["reason"], name)
+	}
+
+	// The interop request shape (full_history subject) is held too.
+	interop := filepath.Join(t.TempDir(), "interop.json")
+	require.NoError(t, os.WriteFile(interop, []byte(`{"subject":{"full_history":null},"coverage":{"min_freshness":1},"derivation":"outcome/1","profile":"evidence-interop/0"}`), 0o600))
+	got := runJSON(t, "deal", "respond", "--request", interop, "--requester", "x", "--output", out)
+	assert.Equal(t, "held", got["outcome"])
+	assert.NoFileExists(t, out)
+	// An interop request with no coverage member is held too, not refused.
+	nocov := filepath.Join(t.TempDir(), "nocov.json")
+	require.NoError(t, os.WriteFile(nocov, []byte(`{"subject":{"full_history":null},"coverage":{},"derivation":"outcome/1","profile":"evidence-interop/0"}`), 0o600))
+	assert.Equal(t, "held", runJSON(t, "deal", "respond", "--request", nocov, "--requester", "x", "--output", out)["outcome"])
+	p, err := cli.LoadProfile("deal")
+	require.NoError(t, err)
+	s, err := openDealSession(t.Context(), p)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, s.close()) }()
+	rows, err := s.exchangeRows(t.Context(), `kind=?`, dealExchangeHeld)
+	require.NoError(t, err)
+	require.Len(t, rows, 4, "the plain, future-floor and two interop requests are four items")
+	assert.Equal(t, "outcome/1", rows[0].record["derivation"])
 }
 
 // dealReportCount is how many reports the profile's store has sealed for a
