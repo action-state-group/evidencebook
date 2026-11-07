@@ -98,7 +98,7 @@ as a committed payload has those bytes withheld by `--suppress agent_input`
 ## Render a report
 
 ```sh
-capsulectl book report build --bundle B.json --card CARD --out report.html [--presentation P.json] [--permalink] [--base-url URL] [--dry-run]
+capsulectl book report build --bundle B.json --card CARD --out report.html [--presentation P.json] [--permalink] [--base-url URL] [--dry-run] [--diagnostic]
 ```
 
 Read-only over a held file; no profile, no store, no record, unless `--seal`
@@ -125,6 +125,20 @@ unsupported), and `permalink` when asked. `--dry-run` writes the
 page with `draft: true` in its card block and mints no permalink. The page
 is self-contained: the bundle and the browser runtime are inline and nothing
 is loaded from the network.
+
+`status_line`, `records` and `records_verified`, and `claims_not_evaluable`
+give the build in counts with denominators ("5 of 5 records verified · 0 of 3
+claims not evaluable"), never a percentage; the answer itself is in the page.
+A bundle that does not verify gets no page. With `--diagnostic`, one that
+fails verification or is incomplete gets a page marked as a diagnostic page
+(its title, a banner and `diagnostic: true` in the card block, under the
+viewer's own failed-bundle callout; `page` is `diagnostic` and
+`diagnostic_reasons` says what failed), and the command still exits with the
+bundle's own failure. A diagnostic page gets no permalink and is never sealed
+(`--seal` and `--permalink` are refused with it), and a bundle that verifies
+is refused under `--diagnostic`. Every page passes the build's page checks
+(no foreign script, a text alternative per chart, the core runtime) before it
+is written; a failed check writes nothing.
 
 ### Seal a page, check a page
 

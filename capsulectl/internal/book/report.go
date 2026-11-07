@@ -105,6 +105,19 @@ type reportBuildResult struct {
 	Verdict     string   `json:"verdict"`
 	UnmetClaims []string `json:"unmet_claims,omitempty"`
 	Page        string   `json:"page"`
+	// Records and RecordsVerified are the records the bundle holds and those
+	// that verify; ClaimsNotEvaluable of Claims are the claims the page shows
+	// unsupported. StatusLine is the one line a build reports beside
+	// the page path: counts with denominators, never a percentage.
+	Records            int    `json:"records"`
+	RecordsVerified    int    `json:"records_verified"`
+	ClaimsNotEvaluable int    `json:"claims_not_evaluable"`
+	StatusLine         string `json:"status_line"`
+	// Diagnostic is true for a page written under --diagnostic from a bundle
+	// that does not verify; the command then still ends in the failure the
+	// bundle earns, and DiagnosticReasons says what failed.
+	Diagnostic        bool     `json:"diagnostic,omitempty"`
+	DiagnosticReasons []string `json:"diagnostic_reasons,omitempty"`
 	// PageSeal is the record sealing the page's bytes (--seal).
 	PageSeal *report.Seal `json:"page_seal,omitempty"`
 }
@@ -118,6 +131,10 @@ func reportCommands() *cobra.Command {
 		presentationPath, _ := c.Flags().GetString("presentation")
 		permalink, _ := c.Flags().GetBool("permalink")
 		dryRun, _ := c.Flags().GetBool("dry-run")
+		diagnostic, _ := c.Flags().GetBool("diagnostic")
+		if seal, _ := c.Flags().GetBool("seal"); diagnostic && (seal || permalink) {
+			return cli.InputError("--diagnostic cannot be used with --seal or --permalink: a diagnostic page is never sealed and gets no permalink")
+		}
 		var sealProfile *cli.Profile
 		if seal, _ := c.Flags().GetBool("seal"); seal && !dryRun {
 			p, err := cli.Selected(c)
@@ -132,7 +149,7 @@ func reportCommands() *cobra.Command {
 		if bundlePath == "" || out == "" {
 			return cli.InputError("--bundle and --out are required")
 		}
-		view := report.View{Card: card, Draft: dryRun}
+		view := report.View{Card: card, Draft: dryRun, Diagnostic: diagnostic}
 		wordingPath, _ := c.Flags().GetString("wording")
 		wordingDigest, _ := c.Flags().GetString("wording-digest")
 		if wordingPath != "" && permalink {
@@ -167,6 +184,11 @@ func reportCommands() *cobra.Command {
 			return refused(err)
 		}
 		result := reportBuildResult{Root: page.Root, Form: page.Form, Member: page.Member, Card: card, Claims: page.Claims, UnsupportedClaims: page.UnsupportedClaims, ContractRefs: page.ContractRefs, Report: out, BundleDigest: page.BundleDigest, Verification: page.Verification, Draft: dryRun, ContractRef: page.ContractRef, ContractSHA256: page.ContractSHA256, Verdict: page.Verdict, UnmetClaims: page.UnmetClaims, Page: "written"}
+		result.Records, result.RecordsVerified, result.ClaimsNotEvaluable, result.StatusLine = page.Records, page.RecordsVerified, page.UnsupportedClaims, page.StatusLine()
+		result.Diagnostic, result.DiagnosticReasons = page.Diagnostic, page.DiagnosticReasons
+		if page.Diagnostic {
+			result.Page = "diagnostic"
+		}
 		if err != nil {
 			result.Page, result.Report = "not written", ""
 			if outErr := cli.Output(c, result); outErr != nil {
@@ -194,7 +216,10 @@ func reportCommands() *cobra.Command {
 				return errors.Join(err, cli.Output(c, result))
 			}
 		}
-		return cli.Output(c, result)
+		if err := cli.Output(c, result); err != nil {
+			return err
+		}
+		return page.Failure()
 	}}
 	build.Flags().String("bundle", "", "A held, disclosed Evidence Bundle whose root is a sealed Result v0")
 	build.Flags().String("card", "", "Renderer card: "+strings.Join(report.Cards(), ", ")+" (recorded in the report's report-card/v1 block)")
@@ -207,6 +232,7 @@ func reportCommands() *cobra.Command {
 	build.Flags().Bool("permalink", false, "Also mint a viewer permalink over the same embedded bundle")
 	build.Flags().String("base-url", cli.DefaultBundleURL, "Bundle viewer base URL for --permalink")
 	build.Flags().Bool("dry-run", false, "Write the page marked draft in its report-card/v1 block and mint no permalink")
+	build.Flags().Bool("diagnostic", false, "For a bundle that does not verify, write a page marked as a diagnostic page (title, banner and the viewer's failed-bundle callout) instead of none; the command still fails with the bundle's own error. Needs a bundle that does not verify; cannot be used with --seal or --permalink")
 	build.Flags().Bool("seal", false, "Also seal the written page's SHA-256 in the book of --profile, with the bundle digest and the Result root, and checkpoint it; `report check` checks a page against it. A --dry-run page is never sealed")
 	group.AddCommand(build, reportCheckCommand())
 	return group
