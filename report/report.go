@@ -166,6 +166,13 @@ type View struct {
 	// Wording, they live in the page, not in the bundle, so a page built with
 	// them gets no permalink. The pack's wording entries go into Wording.
 	Charts []json.RawMessage
+	// Diagnostic asks for a diagnostic page when the bundle does not verify
+	// (or is incomplete), instead of the page gate's refusal. The page is
+	// marked as one in its title, its body and its report-card/v1 block, and
+	// carries the viewer's own failed-bundle callout; it gets no permalink
+	// and is never sealed. A bundle that verifies is refused: a diagnostic
+	// page is never a way to mark a good report.
+	Diagnostic bool
 }
 
 // Wording is an aac.wording-pack/v0 wording pack as distributed: its exact
@@ -195,6 +202,9 @@ const (
 	// VerificationClosureWithheld: the bundle declares records of its
 	// closure missing; the claims citing them count as unsupported.
 	VerificationClosureWithheld = "graph_closure withheld"
+	// VerificationFailed: a diagnostic page was built from a bundle whose
+	// verification failed.
+	VerificationFailed = "failed"
 )
 
 // Page is a built report: what Build established about the bundle, and the
@@ -210,7 +220,15 @@ type Page struct {
 	// evidence is not all in the bundle, which the page shows unsupported,
 	// never met.
 	Claims, UnsupportedClaims int
-	ContractRefs              []string
+	// Records counts the records the bundle holds and RecordsVerified those
+	// whose capsule verifies on its own (the denominator and numerator of the
+	// status line).
+	Records, RecordsVerified int
+	// Diagnostic marks a page built under View.Diagnostic from a bundle that
+	// does not verify; DiagnosticReasons says what kept it from VALID.
+	Diagnostic        bool
+	DiagnosticReasons []string
+	ContractRefs      []string
 	// BundleDigest is the digest of the bundle the page embeds, with its
 	// card and header blocks.
 	BundleDigest string
@@ -229,6 +247,9 @@ type Page struct {
 	HTML                        []byte
 
 	bundle map[string]interface{}
+	// failure is what kept a diagnostic page's bundle from VALID, with the
+	// class a refusal of it carries (Failure).
+	failure error
 	// worded is set when the page carries a wording layer; contracted when
 	// it carries a contract.
 	worded, contracted, charted bool
@@ -269,10 +290,18 @@ func Build(bundle []byte, view View) (*Page, error) {
 		return nil, refusedBy{err}
 	}
 	// Verify first, then gate the root, then decorate, then render: nothing
-	// is rendered until everything before it has passed.
+	// is rendered until everything before it has passed. A diagnostic page
+	// goes on past a verification failure, keeping what failed.
+	var reasons []string
+	var failure error
 	verification, err := acceptHeldVerification(aacbundle.VerifyBundle(value))
 	if err != nil {
-		return nil, err
+		if !view.Diagnostic {
+			return nil, err
+		}
+		reasons = append(reasons, err.Error())
+		failure = cli.Hint(cli.ErrBundleInvalid, err.Error())
+		verification = VerificationFailed
 	}
 	root, err := resultRootOf(value)
 	if err != nil {
@@ -291,21 +320,40 @@ func Build(bundle []byte, view View) (*Page, error) {
 	if root.form == FormBook {
 		// The book's own verifier checks the header the record commits and
 		// the checkpoint under which it sits.
-		verified, err := evidencebook.VerifyBundle(bundle)
+		book, err := evidencebook.VerifyBundle(bundle)
 		if err != nil {
-			return nil, refusal("the bundle does not verify as an evidence-book bundle: " + err.Error())
+			if !view.Diagnostic {
+				return nil, refusal("the bundle does not verify as an evidence-book bundle: " + err.Error())
+			}
+			reasons = append(reasons, "the bundle does not verify as an evidence-book bundle: "+err.Error())
+			failure = cli.Hint(cli.ErrBundleInvalid, reasons[len(reasons)-1])
+		} else {
+			verifiedRoot := false
+			for _, r := range book.Records {
+				verifiedRoot = verifiedRoot || (r.RecordID == root.id && r.HeaderVerified && r.CapsuleOK && book.Covers(r.Seq))
+			}
+			if !verifiedRoot {
+				if !view.Diagnostic {
+					return nil, refusef("root %s's disclosed header does not verify against its record, or the record is not under the bundle's checkpoint; nothing was rendered", root.id)
+				}
+				reasons = append(reasons, "the Result root's disclosed header does not verify against its record, or the record is not under the bundle's checkpoint")
+				failure = cli.Hint(cli.ErrBundleInvalid, reasons[len(reasons)-1])
+			}
 		}
-		verifiedRoot := false
-		for _, r := range verified.Records {
-			verifiedRoot = verifiedRoot || (r.RecordID == root.id && r.HeaderVerified && r.CapsuleOK && verified.Covers(r.Seq))
-		}
-		if !verifiedRoot {
-			return nil, refusef("root %s's disclosed header does not verify against its record, or the record is not under the bundle's checkpoint; nothing was rendered", root.id)
+	}
+	// A diagnostic page is for a bundle `verify --bundle` does not call VALID.
+	diagnostic := false
+	if view.Diagnostic {
+		if diagnostic = len(reasons) > 0 || cli.PageGate(value) != nil; !diagnostic {
+			return nil, refusal("diagnostic: this bundle verifies, so it gets a report page and no diagnostic one; build it without the diagnostic option")
 		}
 	}
 	cardBlock := map[string]interface{}{"card": view.Card}
 	if view.Draft {
 		cardBlock["draft"] = true
+	}
+	if diagnostic {
+		cardBlock["diagnostic"] = true
 	}
 	if err = setExtension(value, presentation.CardExtension, cardBlock); err != nil {
 		return nil, err
@@ -338,6 +386,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 	page := &Page{
 		Root: root.id, Form: root.form, Member: root.member, Card: view.Card, Draft: view.Draft,
 		Claims: len(checked.Claims), UnsupportedClaims: unsupportedClaims(value, checked.Claims), ContractRefs: checked.Contracts,
+		Diagnostic: diagnostic, DiagnosticReasons: reasons,
 		BundleDigest: digest, Verification: verification, bundle: value, worded: view.Wording != nil, contracted: view.Contract != nil, charted: len(charts) > 0,
 	}
 	if view.Contract != nil {
@@ -348,6 +397,7 @@ func Build(bundle []byte, view View) (*Page, error) {
 		if judged, err := cli.DecodeBundleJSON(reread); err == nil {
 			verdict, claims := cli.BundleVerdict(judged, nil)
 			page.Verdict = verdict
+			page.Records, page.RecordsVerified = countRecords(judged, claims)
 			// cli.UnmetClaims falls back to a failure message when no claim
 			// failed, which a VALID bundle must not report.
 			if verdict != "VALID" {
@@ -359,8 +409,15 @@ func Build(bundle []byte, view View) (*Page, error) {
 	// bundle must be VALID by `verify --bundle`'s own verdict, which also
 	// checks every record's signature and the checkpoint's.
 	if err := cli.PageGate(value); err != nil {
-		return page, err
+		if !diagnostic {
+			return page, err
+		}
+		page.DiagnosticReasons = append(page.DiagnosticReasons, cli.SafeError(err))
+		if failure == nil {
+			failure = err
+		}
 	}
+	page.failure = failure
 	// With no wording and no contract, BuildOfflineHTML's default settings write exactly
 	// EmitEvidenceGraphHTML's page.
 	options := emitter.OfflineOptions{Audience: "*", Wording: wording, CoreRuntimeSHA256: pageruntime.SHA256}
@@ -368,12 +425,35 @@ func Build(bundle []byte, view View) (*Page, error) {
 		options.Contract = &emitter.Contract{Text: view.Contract.Text, SHA256: view.Contract.SHA256}
 	}
 	options.Charts = charts
+	if diagnostic {
+		options.Title = DiagnosticTitle
+	}
 	html, err := emitter.BuildOfflineHTML(value, pageruntime.IIFE, options)
 	if err != nil {
 		return nil, err
 	}
+	if diagnostic {
+		if html, err = markDiagnostic(html); err != nil {
+			return nil, err
+		}
+	}
+	// Nothing is published that fails the checks every page must pass.
+	if err := checkPage(html, charts); err != nil {
+		return nil, err
+	}
 	page.HTML = []byte(html)
 	return page, nil
+}
+
+// Failure is, for a diagnostic page, the error the same bundle would have been
+// refused with: a caller that writes the page still ends in this failure, so
+// a diagnostic page is never mistaken for a success. It is nil for any other
+// page.
+func (p *Page) Failure() error {
+	if !p.Diagnostic {
+		return nil
+	}
+	return p.failure
 }
 
 // Permalink is a viewer link over the same bundle the page embeds, so both
@@ -383,6 +463,9 @@ func Build(bundle []byte, view View) (*Page, error) {
 func (p *Page) Permalink(base string) (string, error) {
 	if p.Draft {
 		return "", refusal("a draft page gets no permalink")
+	}
+	if p.Diagnostic {
+		return "", refusal("a diagnostic page gets no permalink")
 	}
 	if p.HTML == nil {
 		return "", refusal("no page was rendered, so there is no permalink")
