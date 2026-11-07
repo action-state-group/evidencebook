@@ -74,6 +74,9 @@ func SealPage(ctx context.Context, book *evidencebook.Book, page []byte) (Seal, 
 	if err != nil {
 		return Seal{}, err
 	}
+	if inspected.diagnostic {
+		return Seal{}, refusal("a diagnostic page is never sealed")
+	}
 	if inspected.Refusal != nil {
 		return Seal{}, errors.Join(refusal("the page's embedded bundle is not one a page may be written for, so it is not sealed"), inspected.Refusal)
 	}
@@ -207,6 +210,8 @@ type Check struct {
 
 	root  string
 	draft bool
+	// diagnostic is set for a page marked as a diagnostic page.
+	diagnostic bool
 }
 
 // InspectPage reads the Evidence Bundle page embeds and judges it, with no
@@ -228,6 +233,7 @@ func inspect(page []byte) (Check, error) {
 	extensions, _ := value["extensions"].(map[string]interface{})
 	card, _ := extensions[presentation.CardExtension].(map[string]interface{})
 	out.draft = card["draft"] == true
+	out.diagnostic = card["diagnostic"] == true
 	if reread, err := json.Marshal(value); err == nil {
 		if judged, err := cli.DecodeBundleJSON(reread); err == nil {
 			out.Verdict, _ = cli.BundleVerdict(judged, nil)

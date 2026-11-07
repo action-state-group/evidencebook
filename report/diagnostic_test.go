@@ -143,6 +143,15 @@ func TestCheckPageBlocksAPageThatFailsAPrePublishCheck(t *testing.T) {
 		"a stylesheet link": {func(h string) string {
 			return strings.Replace(h, `<div id="app">`, `<link rel="stylesheet" href="x.css"><div id="app">`, 1)
 		}, "<link>"},
+		"a spaced script src hiding behind a json-looking attribute": {func(h string) string {
+			return strings.Replace(h, `<div id="app">`, `<script src = "https://evil.example/x.js" data-note="application/json"></script><div id="app">`, 1)
+		}, "outside the page"},
+		"a host in script-src": {func(h string) string {
+			return strings.Replace(h, "script-src ", "script-src evil.example ", 1)
+		}, "admits evil.example"},
+		"a meta refresh": {func(h string) string {
+			return strings.Replace(h, `<div id="app">`, `<meta http-equiv="refresh" content="0;url=https://evil.example"><div id="app">`, 1)
+		}, "redirects"},
 		"an open policy": {func(h string) string {
 			return strings.Replace(h, "default-src 'none'", "default-src *", 1)
 		}, "does not deny"},
@@ -185,4 +194,35 @@ func TestCheckPageRequiresATextAlternativePerChart(t *testing.T) {
 		require.ErrorIs(t, err, ErrRefused)
 		assert.Contains(t, err.Error(), "text alternative")
 	}
+}
+
+// A bundle that already carries this build's own card block (without the
+// mark) still gets a diagnostic page; a different block still refuses.
+func TestBuildMarksADiagnosticPageWhenTheBundleAlreadyCarriesItsCardBlock(t *testing.T) {
+	withCard := func(card string) []byte {
+		return edited(t, tamperedSignature(t), func(v map[string]interface{}) {
+			ext, _ := v["extensions"].(map[string]interface{})
+			if ext == nil {
+				ext = map[string]interface{}{}
+				v["extensions"] = ext
+			}
+			ext[presentation.CardExtension] = map[string]interface{}{"card": card}
+		})
+	}
+	page, err := Build(withCard("obligation"), View{Card: "obligation", Diagnostic: true})
+	require.NoError(t, err)
+	assert.True(t, page.Diagnostic)
+	_, err = Build(withCard("outcome"), View{Card: "obligation", Diagnostic: true})
+	require.ErrorIs(t, err, ErrRefused)
+	assert.Contains(t, err.Error(), "already carries a different")
+}
+
+// SealPage refuses a diagnostic page by its mark, not only because the page
+// gate happens to refuse its bundle.
+func TestSealPageRefusesAPageMarkedDiagnostic(t *testing.T) {
+	page, err := Build(tamperedSignature(t), View{Card: "obligation", Diagnostic: true})
+	require.NoError(t, err)
+	_, err = SealPage(t.Context(), newBook(t), page.HTML)
+	require.ErrorIs(t, err, ErrRefused)
+	assert.Contains(t, err.Error(), "diagnostic page is never sealed")
 }

@@ -354,6 +354,21 @@ func Build(bundle []byte, view View) (*Page, error) {
 	}
 	if diagnostic {
 		cardBlock["diagnostic"] = true
+		// A bundle that already carries this same card block (without the
+		// mark) gets the mark added; a different block still refuses.
+		if extensions, _ := value["extensions"].(map[string]interface{}); extensions != nil {
+			if existing, present := extensions[presentation.CardExtension]; present {
+				plain := map[string]interface{}{"card": view.Card}
+				if view.Draft {
+					plain["draft"] = true
+				}
+				have, _ := json.Marshal(existing)
+				want, _ := json.Marshal(plain)
+				if bytes.Equal(have, want) {
+					delete(extensions, presentation.CardExtension)
+				}
+			}
+		}
 	}
 	if err = setExtension(value, presentation.CardExtension, cardBlock); err != nil {
 		return nil, err

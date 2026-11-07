@@ -7,11 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/envelope"
 	"github.com/action-state-group/capsule-viewer/go/pageruntime"
+	"golang.org/x/net/html"
 )
 
 // DiagnosticTitle is the document title of a diagnostic page: what a browser
@@ -79,10 +82,6 @@ func plural(n int, one, many string) string {
 
 var (
 	cspPattern      = regexp.MustCompile(`<meta http-equiv="Content-Security-Policy" content="([^"]*)"`)
-	scriptPattern   = regexp.MustCompile(`(?s)<script([^>]*)>(.*?)</script>`)
-	stylePattern    = regexp.MustCompile(`(?s)<style[^>]*>.*?</style>`)
-	foreignTag      = regexp.MustCompile(`(?i)<(link|iframe|object|embed|base|form|frame|applet)[\s>/]`)
-	urlAttribute    = regexp.MustCompile(`(?i)\s(src|href|action|srcset|poster|data)\s*=\s*["']?\s*([^"'\s>]*)`)
 	htmlLangPattern = regexp.MustCompile(`(?i)<html[^>]*\slang="[a-zA-Z-]+"`)
 	viewportPattern = regexp.MustCompile(`(?i)<meta name="viewport" content="[^"]*width=device-width`)
 	titlePattern    = regexp.MustCompile(`(?s)<title>\s*[^<\s][^<]*</title>`)
@@ -133,45 +132,88 @@ func checkPage(html string, charts []json.RawMessage) error {
 	return nil
 }
 
-// checkSecurity is the "no foreign script" check, read from the page's bytes.
-func checkSecurity(html string) error {
-	match := cspPattern.FindStringSubmatch(html)
+// checkSecurity is the "no foreign script" check, read from the page's bytes:
+// the policy is parsed, every inline script is matched to a hash in it, and
+// the markup is walked element by element.
+func checkSecurity(page string) error {
+	match := cspPattern.FindStringSubmatch(page)
 	if match == nil {
 		return refusal("page check failed: the page carries no Content-Security-Policy; nothing was written")
 	}
-	policy := match[1]
-	if !strings.Contains(policy, "default-src 'none'") {
+	policy := map[string][]string{}
+	for _, directive := range strings.Split(match[1], ";") {
+		fields := strings.Fields(directive)
+		if len(fields) > 0 {
+			policy[fields[0]] = fields[1:]
+		}
+	}
+	if d := policy["default-src"]; len(d) != 1 || d[0] != "'none'" {
 		return refusal("page check failed: the page's Content-Security-Policy does not deny by default; nothing was written")
 	}
-	for _, directive := range strings.Split(policy, ";") {
-		directive = strings.TrimSpace(directive)
-		if strings.HasPrefix(directive, "script-src") && (strings.Contains(directive, "'unsafe-") || strings.Contains(directive, "http") || strings.Contains(directive, "*")) {
-			return refusal("page check failed: the page's script-src admits more than its own hashed scripts; nothing was written")
+	// Every source is a hash of something in the page, 'none', or (images)
+	// data: URLs; a host, a scheme, a wildcard or an 'unsafe-' keyword is not.
+	for name, sources := range policy {
+		for _, source := range sources {
+			ok := source == "'none'" || strings.HasPrefix(source, "'sha256-") && strings.HasSuffix(source, "'") || name == "img-src" && source == "data:"
+			if !ok {
+				return refusef("page check failed: the page's %s admits %s, more than its own hashed content; nothing was written", name, source)
+			}
 		}
 	}
-	for _, script := range scriptPattern.FindAllStringSubmatch(html, -1) {
-		attrs, body := script[1], script[2]
-		if strings.Contains(strings.ToLower(attrs), "src=") {
-			return refusal("page check failed: a script loads from a source outside the page; nothing was written")
+	tokens := html.NewTokenizer(strings.NewReader(page))
+	for {
+		kind := tokens.Next()
+		if kind == html.ErrorToken {
+			if err := tokens.Err(); err != io.EOF {
+				return refusef("page check failed: the page's markup cannot be read: %v; nothing was written", err)
+			}
+			return nil
 		}
-		if strings.Contains(attrs, "application/json") {
+		if kind != html.StartTagToken && kind != html.SelfClosingTagToken {
 			continue
 		}
-		sum := sha256.Sum256([]byte(body))
-		if !strings.Contains(policy, "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'") {
-			return refusal("page check failed: an inline script is not pinned by the page's Content-Security-Policy; nothing was written")
+		name, hasAttr := tokens.TagName()
+		tag := string(name)
+		attrs := map[string]string{}
+		for hasAttr {
+			var key, value []byte
+			key, value, hasAttr = tokens.TagAttr()
+			attrs[string(key)] = string(value)
+		}
+		switch tag {
+		case "link", "iframe", "object", "embed", "base", "form", "frame", "frameset", "applet":
+			return refusef("page check failed: the page holds a <%s> element; nothing was written", tag)
+		case "meta":
+			if strings.EqualFold(attrs["http-equiv"], "refresh") {
+				return refusal("page check failed: the page redirects; nothing was written")
+			}
+		case "script":
+			if _, ok := attrs["src"]; ok {
+				return refusal("page check failed: a script loads from a source outside the page; nothing was written")
+			}
+			if strings.EqualFold(strings.TrimSpace(attrs["type"]), "application/json") {
+				continue
+			}
+			// The tokenizer yields a script's body as one text token.
+			if tokens.Next() != html.TextToken {
+				return refusal("page check failed: an inline script is empty; nothing was written")
+			}
+			sum := sha256.Sum256(tokens.Raw())
+			if !slices.Contains(policy["script-src"], "'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"'") {
+				return refusal("page check failed: an inline script is not pinned by the page's Content-Security-Policy; nothing was written")
+			}
+			continue
+		}
+		for key, value := range attrs {
+			switch key {
+			case "src", "href", "action", "srcset", "poster", "data", "formaction", "background", "xlink:href":
+				value = strings.ToLower(strings.TrimSpace(value))
+				if value != "" && !strings.HasPrefix(value, "#") && !strings.HasPrefix(value, "data:image/") {
+					return refusef("page check failed: the page's %s attribute reaches outside the page; nothing was written", key)
+				}
+			}
 		}
 	}
-	markup := stylePattern.ReplaceAllString(scriptPattern.ReplaceAllString(html, ""), "")
-	if tag := foreignTag.FindStringSubmatch(markup); tag != nil {
-		return refusef("page check failed: the page holds a <%s> element; nothing was written", strings.ToLower(tag[1]))
-	}
-	for _, attr := range urlAttribute.FindAllStringSubmatch(markup, -1) {
-		if value := strings.ToLower(attr[2]); value != "" && !strings.HasPrefix(value, "#") && !strings.HasPrefix(value, "data:image/") {
-			return refusef("page check failed: the page's %s attribute reaches outside the page; nothing was written", strings.ToLower(attr[1]))
-		}
-	}
-	return nil
 }
 
 // checkChartText requires a description (the chart spec's text alternative)
