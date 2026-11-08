@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+## v0.1.0-rc40
+
+This release pairs with capsulectl `v0.1.0-rc40` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc39`: the held-request tier in `deal respond` (#176), `deal held` and `deal decline` (#180), the stable `reason_code` on a deferred merchant email (#177), the wording change from "deal" to "receipt" (#179) and a design note for dropping a held object or email (#174).
+
+- A deferred merchant email's result and each waiting entry carry a stable `reason_code` beside the raw `reason`, and the key check carries `key_check_code`. Branch on the code, never on the reason; codes are never renamed and new ones may be added, so treat an unknown code like `dns_unreachable`. The codes are listed in `skills/deal/README.md` (evidencebook-deal#21, #177).
+
 - `deal respond` holds a request for a derivation it does not serve automatically (anything but `standard_history/1`) instead of refusing it with `derivation_unsupported`: the F4.10 "ask me" tier, per Steven's 2026-11-01 ruling. It records one pending `evidence_request_held` item (the same request twice is one item), writes no reply file, and prints outcome `held`. No wire change: the requester sees pending until its window closes, then a recorded absence. Contract scope stays deferred (evidencebook-deal#96).
 - `deal held` lists the held requests you have not decided (request digest, requester, derivation, subject kind, receipt, time held, state `held, can be declined`). `deal decline --request-digest D --output FILE` answers one with a signed `policy_declined` refusal (a deal-shaped request gets the deal reply, an evidence-interop one its own reply) and records it as the request's answer, so it leaves the list; `deal respond` on a declined request says so instead of holding it again. No wire change. Serving a held request is not built: a held item keeps no request octets and no held derivation is servable (evidencebook-deal#178).
-- The wording pack no longer shows the word "deal" to a person: report and receipt pages say "receipt" (side unknown), per Sherlock2's ruling (actionstate-muse#363). Message ids and the `deal` verb, `--profile deal` and `x-deal-v0` are unchanged (#175).
+- The wording pack no longer shows the word "deal" to a person: report and receipt pages say "receipt" (side unknown), per Sherlock2's ruling (actionstate-muse#363). Message ids and the `deal` verb, `--profile deal` and `x-deal-v0` are unchanged (evidencebook-deal#175, #179).
 
 ## v0.1.0-rc39
 
