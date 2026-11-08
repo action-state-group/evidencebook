@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 pass="${CAPSULE_TEST_PASS:-all}"
 shard="${CAPSULE_TEST_SHARD:-1/1}"
 budget="${CAPSULE_TEST_BUDGET:-420}"
+# go test -timeout for the race pass; the nightly full-case run needs more.
+race_timeout="${CAPSULE_TEST_RACE_TIMEOUT:-15m}"
 case "$pass" in all | race | plain) ;; *)
   printf 'CAPSULE_TEST_PASS must be race, plain or all, not %s\n' "$pass" >&2
   exit 1
@@ -69,7 +71,7 @@ timed() {
 status=0
 for m in "${modules[@]}"; do
   if [[ "$pass" != plain ]]; then
-    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -race -count=1 -timeout=15m ./...) || status=$?
+    (cd "$m" && timed "race $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -race -count=1 -timeout="$race_timeout" ./...) || status=$?
   fi
   if [[ "$pass" != race ]]; then
     (cd "$m" && timed "plain $shard ($m)" ${@+"$@"} ${run[@]+"${run[@]}"} -count=1 -timeout=10m ./...) || status=$?
