@@ -34,7 +34,7 @@ func TestASellersDeliveryIsADueDate(t *testing.T) {
 	assert.Equal(t, "2026-10-03", d["due_by"])
 	assert.Equal(t, "open", d["status"])
 	assert.Equal(t, float64(5), d["days_left"])
-	assert.Equal(t, "It is due by 2026-10-03; nothing resolving it is sealed on this deal yet.", d["holds"])
+	assert.Equal(t, "It is due by 2026-10-03; nothing resolving it is sealed on this receipt yet.", d["holds"])
 	cal, err := os.ReadFile(ics)
 	require.NoError(t, err)
 	assert.Contains(t, string(cal), "SUMMARY:Due ("+id+"): delivery is due by 2026-10-03")

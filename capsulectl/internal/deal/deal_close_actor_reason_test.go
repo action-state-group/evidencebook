@@ -68,8 +68,8 @@ func TestAUserCloseAndAnAgentAbandonSealDifferentActorsAndReasons(t *testing.T) 
 		_, export := exportRecords(t, id)
 		checkProfile(t, export)
 	}
-	assert.Contains(t, didTexts(t, byUser), "close: You closed this deal")
-	assert.Contains(t, didTexts(t, byAgent), "close: The agent could not complete this deal")
+	assert.Contains(t, didTexts(t, byUser), "close: You closed it")
+	assert.Contains(t, didTexts(t, byAgent), "close: The agent could not complete it")
 }
 
 // Where the status says why, the reason follows from it; the actor is the
@@ -78,11 +78,11 @@ func TestACloseReasonFollowsFromItsStatus(t *testing.T) {
 	dealFixture(t)
 	open := func() string { return dealRun(t, "open", "--input", writeJSON(t, stickerOpen))["deal_id"].(string) }
 	for _, c := range []struct{ input, actor, reason, line string }{
-		{`{"status":"received","delivered":{"item":"otter sticker","price_minor":454}}`, "agent", "completed", "The agent closed this deal: completed as agreed"},
-		{`{"status":"received","delivered":{"item":"beaver sticker","price_minor":454}}`, "agent", "delivered_mismatch", "The agent closed this deal: what was delivered differs from what was agreed"},
-		{`{"status":"received","actor":"user","delivered":{"item":"otter sticker","price_minor":454}}`, "user", "completed", "You closed this deal: completed as agreed"},
-		{`{"status":"not_selected"}`, "agent", "not_selected", "The agent closed this deal: the other side was not chosen"},
-		{`{"status":"not_received","reason":"payment_failed","actor":"platform"}`, "platform", "payment_failed", "The platform closed this deal: the payment failed"},
+		{`{"status":"received","delivered":{"item":"otter sticker","price_minor":454}}`, "agent", "completed", "The agent closed it: completed as agreed"},
+		{`{"status":"received","delivered":{"item":"beaver sticker","price_minor":454}}`, "agent", "delivered_mismatch", "The agent closed it: what was delivered differs from what was agreed"},
+		{`{"status":"received","actor":"user","delivered":{"item":"otter sticker","price_minor":454}}`, "user", "completed", "You closed it: completed as agreed"},
+		{`{"status":"not_selected"}`, "agent", "not_selected", "The agent closed it: the other side was not chosen"},
+		{`{"status":"not_received","reason":"payment_failed","actor":"platform"}`, "platform", "payment_failed", "The platform closed it: the payment failed"},
 	} {
 		id := open()
 		out := closeDealWith(t, id, c.input)
@@ -211,5 +211,5 @@ func TestTheDealPageShowsWhoClosedTheDeal(t *testing.T) {
 	closeDealWith(t, id, `{"status":"not_received","reason":"agent_could_not_complete"}`)
 	page := filepath.Join(t.TempDir(), "page.html")
 	dealRun(t, "report", "--deal", id, "--html", page)
-	assert.True(t, strings.Contains(string(mustRead(t, page)), "The agent could not complete this deal"))
+	assert.True(t, strings.Contains(string(mustRead(t, page)), "The agent could not complete it"))
 }

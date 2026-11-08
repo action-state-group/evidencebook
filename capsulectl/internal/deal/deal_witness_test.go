@@ -22,7 +22,7 @@ func TestDealReceiptsStateTheirScope(t *testing.T) {
 	page, eml := filepath.Join(dir, "receipt.html"), filepath.Join(dir, "receipt.eml")
 	dealRun(t, "report", "--deal", dealID, "--html", page, "--email", eml)
 
-	const scope = "This receipt covers this one deal. It is not a record of everything the agent did."
+	const scope = "This receipt covers this one exchange. It is not a record of everything the agent did."
 	assert.Equal(t, scope, dealScopeLine)
 	assert.Contains(t, string(mustRead(t, page)), scope, "the receipt page header")
 	_, bodies, _ := emailParts(t, mustRead(t, eml))

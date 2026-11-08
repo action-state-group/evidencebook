@@ -38,12 +38,12 @@ func closedMerchantDeal(t *testing.T, approvedMinor string) string {
 // The receipt's own words, on the page (the bundle's sealed report, which
 // the page renders as written) and in the emailed receipt: a completed close
 // is "matched, nothing left to match"; the merchant's email after the close
-// is "The merchant's receipt arrived." and whether it matches what the user
+// is "The merchant's confirmation arrived." and whether it matches what the user
 // approved, with both amounts when it differs.
 func TestTheReceiptSaysWhetherTheMerchantsReceiptMatches(t *testing.T) {
 	for name, tc := range map[string]struct{ approved, line string }{
-		"matches": {"6400", "The merchant's receipt arrived. It matches what you approved."},
-		"differs": {"4800", "The merchant's receipt arrived. It differs: you approved $48.00; their receipt says $64.00."},
+		"matches": {"6400", "The merchant's confirmation arrived. It matches what you approved."},
+		"differs": {"4800", "The merchant's confirmation arrived. It differs: you approved $48.00; their confirmation says $64.00."},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dealID := closedMerchantDeal(t, tc.approved)
@@ -63,7 +63,7 @@ func TestTheReceiptSaysWhetherTheMerchantsReceiptMatches(t *testing.T) {
 			require.NoError(t, err)
 			text := strings.ReplaceAll(string(email), "=\r\n", "")
 			assert.Contains(t, text, "matched, nothing left to match")
-			assert.Contains(t, text, "The merchant's receipt arrived.")
+			assert.Contains(t, text, "The merchant's confirmation arrived.")
 		})
 	}
 }
@@ -75,7 +75,7 @@ func TestAnOpenDealIsWaitingForTheMerchantsReceipt(t *testing.T) {
 	setDealClock(t, "2026-10-03T21:00:00Z")
 	dealID := openMerchantDeal(t)
 	life := dealRun(t, "report", "--deal", dealID)["lifecycle"].(map[string]any)
-	assert.True(t, strings.HasPrefix(life["text"].(string), "Open: waiting for the merchant's receipt."), life["text"])
+	assert.True(t, strings.HasPrefix(life["text"].(string), "Open: waiting for the merchant's confirmation."), life["text"])
 
 	dealRun(t, "close", "--deal", dealID, "--input", writeJSON(t, `{"status":"not_received","reason":"not_delivered"}`))
 	life = dealRun(t, "report", "--deal", dealID)["lifecycle"].(map[string]any)

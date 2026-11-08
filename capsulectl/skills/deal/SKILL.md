@@ -388,7 +388,7 @@ for every later email.
    default 14 days for a purchase, 1 for a booking, 7 for a rental, 30 for a
    service). Set it when you know better, for example the delivery estimate.
 2. `deal deadlines` lists every open deal under `open_deals`, against that
-   date (and `--ics` writes a "Close deal …?" event for it into the file).
+   date (and `--ics` writes a "Close receipt …?" event for it into the file).
    Hand those to the host's tracking like any other date. When you see a
    deal there that is done, close it.
 3. Evidence that arrives after the close (the merchant's confirmation, a
@@ -408,11 +408,11 @@ for every later email.
    deal", with its expected date. Pass that on as written; it is not a sign
    that anything went wrong.
 5. In your own words to the user: an open deal still waiting on the
-   merchant's confirmation is "waiting for the merchant's receipt"; at the
+   merchant's confirmation is "waiting for the merchant's confirmation"; at the
    close, say "matched" or "nothing left to match". When the merchant's email
-   arrives after the close, say "The merchant's receipt arrived. It matches
-   what you approved." or, when it does not, "The merchant's receipt arrived.
-   It differs: you approved $4.54; their receipt says $5.20." with the real
+   arrives after the close, say "The merchant's confirmation arrived. It matches
+   what you approved." or, when it does not, "The merchant's confirmation arrived.
+   It differs: you approved $4.54; their confirmation says $5.20." with the real
    amounts.
 
 ### Cancellation (proving "I cancelled")
@@ -1195,8 +1195,8 @@ never as the seller or the other side. Never call a countersignature
 confirmed, independent or notarized. When it covers part of the deal, say
 "through step k of n".
 
-Every page opens with its scope (this one deal, not a record of everything the agent did), whether it is countersigned, and what it does not claim. What
-was verified, the witness receipt included, is the page's own verification
+Every page opens with its scope (this one exchange, not a record of everything the agent did), whether it is countersigned, and what it does not claim. What
+was verified, the witness signature included, is the page's own verification
 section, said once; anyone can also run `capsulectl verify --bundle
 deal-report.html` on the file.
 
@@ -1243,7 +1243,7 @@ the reader chooses. The email copy cannot check itself; the attached page and
 `capsulectl verify --bundle bundle.json` can.
 
 Every receipt, page and email states its own scope on its face: "This
-receipt covers this one deal. It is not a record of everything the agent
+receipt covers this one exchange. It is not a record of everything the agent
 did." Never describe a receipt as complete. What was asked, proposed and
 approved is sealed where it happened, in the conversation. What the agent
 did is the agent's own report until an independent source, such as the

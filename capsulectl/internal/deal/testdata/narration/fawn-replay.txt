@@ -25,4 +25,4 @@ Keep it for a missing item, a wrong charge, a refund, an expense report, or to c
 View details
 (attached: text/html)
 [close: report]
-Final receipt: arrived, deal closed.
+Closed: it arrived.

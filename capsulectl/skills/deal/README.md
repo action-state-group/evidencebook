@@ -476,7 +476,7 @@ check the receipt itself and says so; `capsulectl verify --bundle FILE
 reader chooses. Making a report never contacts the witness.
 
 The page and the email both say, on their face, "This receipt covers this
-one deal. It is not a record of everything the agent did." They also say
+one exchange. It is not a record of everything the agent did." They also say
 that what was asked, proposed and approved is sealed where it happened, while
 what the agent did is the agent's own report until an independent source is
 attached.
@@ -927,7 +927,7 @@ that is linked to the closed deal instead of holding it open.
   close date (`expect_close_by`, sealed in the baseline; by default 14 days
   for a purchase, 1 for a booking, 7 for a rental, 30 for a service).
   `deal deadlines` lists open deals against it under `open_deals`, and
-  `--ics` writes a "Close deal …?" event into its file, so the host's own
+  `--ics` writes a "Close receipt …?" event into its file, so the host's own
   tracking can surface a deal nobody closed.
 - **The receipt shows the chain, or says it may be incomplete.** Every
   receipt (page, email, JSON, and shared copies, in fixed words) says whether

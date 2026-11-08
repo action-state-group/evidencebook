@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `deal respond` holds a request for a derivation it does not serve automatically (anything but `standard_history/1`) instead of refusing it with `derivation_unsupported`: the F4.10 "ask me" tier, per Steven's 2026-11-01 ruling. It records one pending `evidence_request_held` item (the same request twice is one item), writes no reply file, and prints outcome `held`. No wire change: the requester sees pending until its window closes, then a recorded absence. A held item cannot be answered or declined from the CLI yet (follow-up evidencebook-deal#178). Contract scope stays deferred (evidencebook-deal#96).
+- The wording pack no longer shows the word "deal" to a person: report and receipt pages say "receipt" (side unknown), per Sherlock2's ruling (actionstate-muse#363). Message ids and the `deal` verb, `--profile deal` and `x-deal-v0` are unchanged (#175).
 
 ## v0.1.0-rc39
 

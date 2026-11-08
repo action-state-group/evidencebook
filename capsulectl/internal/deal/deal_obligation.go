@@ -189,7 +189,7 @@ func (d dealDeadline) date() string {
 }
 
 var deadlineMarkings = map[string]string{
-	"open": "OPEN DEAL", "carried_at_close": "CARRIED AT CLOSE", "resolved": "RESOLVED",
+	"open": "OPEN RECEIPT", "carried_at_close": "CARRIED AT CLOSE", "resolved": "RESOLVED",
 	"cancelled": "CANCEL SEALED", "passed": "DATE PASSED",
 }
 
@@ -234,7 +234,7 @@ func dealDeadlines(events []sealedEvent, now time.Time, remindDays int) []dealDe
 			// A cancel ends a cancel-by obligation, not something the user owes.
 			if a := later.Event.Act; a != nil && a.Action == "cancel" && d.Status == "" && !o.due() {
 				d.Status, d.CancelledAt = "cancelled", later.Event.At
-				d.Holds = "A cancel is sealed on this deal at " + later.Event.At + "."
+				d.Holds = "A cancel is sealed on this receipt at " + later.Event.At + "."
 			}
 		}
 		when := "the last day to cancel is " + o.CancelBy
@@ -245,16 +245,16 @@ func dealDeadlines(events []sealedEvent, now time.Time, remindDays int) []dealDe
 		case d.Status != "":
 		case day > o.date() && o.due():
 			d.Status = "passed"
-			d.Holds = fmt.Sprintf("The due date passed (as of %s). Nothing resolving it is sealed on this deal.", asOf)
+			d.Holds = fmt.Sprintf("The due date passed (as of %s). Nothing resolving it is sealed on this receipt.", asOf)
 		case day > o.date():
 			d.Status = "passed"
-			d.Holds = fmt.Sprintf("The date passed (as of %s). No cancellation confirmation is sealed on this deal.", asOf)
+			d.Holds = fmt.Sprintf("The date passed (as of %s). No cancellation confirmation is sealed on this receipt.", asOf)
 		default:
 			d.Status = "open"
-			d.Holds = strings.ToUpper(when[:1]) + when[1:] + "; nothing resolving it is sealed on this deal yet."
+			d.Holds = strings.ToUpper(when[:1]) + when[1:] + "; nothing resolving it is sealed on this receipt yet."
 			if d.Carried {
 				d.Status = "carried_at_close"
-				d.Holds = "Carried at the close of this deal: " + when + "; nothing resolving it is sealed on this deal yet."
+				d.Holds = "Carried at the close of this receipt: " + when + "; nothing resolving it is sealed on this receipt yet."
 			}
 			by, _ := time.Parse("2006-01-02", o.date())
 			today, _ := time.Parse("2006-01-02", day)
@@ -306,7 +306,7 @@ func deadlinesICS(ds []dealDeadline, deals []dealOpenListing, remindDays int, no
 				event(uid, d.DueBy, "Due ("+d.DealID+"): "+d.Text, d.Holds+" "+d.Note, "Due date: "+d.DueBy)
 			case "carried_at_close":
 				event(uid, d.DueBy, "CARRIED AT CLOSE · "+d.DealID+" · due: "+d.Text,
-					"This deal is closed; this due date was carried at its close and stays open until a record resolves it. "+d.Holds+" "+d.Note, "Carried at close, "+d.DealID+": due "+d.DueBy)
+					"This receipt is closed; this due date was carried at its close and stays open until a record resolves it. "+d.Holds+" "+d.Note, "Carried at close, "+d.DealID+": due "+d.DueBy)
 			}
 			continue
 		}
@@ -315,15 +315,15 @@ func deadlinesICS(ds []dealDeadline, deals []dealOpenListing, remindDays int, no
 			event(uid, d.CancelBy, "Last day to cancel ("+d.DealID+"): "+d.Text, d.Holds+" "+d.Note, "Cancel-by date: "+d.CancelBy)
 		case "carried_at_close":
 			event(uid, d.CancelBy, "CARRIED AT CLOSE · "+d.DealID+" · last day to cancel: "+d.Text,
-				"This deal is closed; this cancel-by date was carried at its close and stays open until a record resolves it. "+d.Holds+" "+d.Note, "Carried at close, "+d.DealID+": cancel by "+d.CancelBy)
+				"This receipt is closed; this cancel-by date was carried at its close and stays open until a record resolves it. "+d.Holds+" "+d.Note, "Carried at close, "+d.DealID+": cancel by "+d.CancelBy)
 		}
 	}
 	for _, l := range deals {
 		if l.ExpectCloseBy == "" {
 			continue
 		}
-		event(l.DealID+"-close", l.ExpectCloseBy, "Close deal "+l.DealID+"? (open, expected to close by "+l.ExpectCloseBy+")",
-			l.Text+" Close it with capsulectl deal close when it is resolved.", "Open deal "+l.DealID)
+		event(l.DealID+"-close", l.ExpectCloseBy, "Close receipt "+l.DealID+"? (open, expected to close by "+l.ExpectCloseBy+")",
+			l.Text+" Close it with capsulectl deal close when it is resolved.", "Receipt "+l.DealID+" is open")
 	}
 	b.WriteString("END:VCALENDAR\r\n")
 	return b.String()
@@ -474,7 +474,7 @@ func dealDeadlinesCommand() *cobra.Command {
 		out := map[string]any{
 			"deadlines": list, "open_deals": deals, "enforced": false, "note": deadlineNotEnforced,
 			"as_of":  now.UTC().Format("2006-01-02T15:04:05Z"),
-			"states": "deadlines: OPEN DEAL (on an open deal), CARRIED AT CLOSE (on a closed deal, still open), RESOLVED, CANCEL SEALED and DATE PASSED (with --all). open_deals: deals with no close sealed, against their expected close date.",
+			"states": "deadlines: OPEN RECEIPT (on an open receipt), CARRIED AT CLOSE (on a closed receipt, still open), RESOLVED, CANCEL SEALED and DATE PASSED (with --all). open_deals: receipts with no close sealed, against their expected close date.",
 		}
 		if icsPath != "" {
 			if err := cli.AtomicFile(icsPath, []byte(deadlinesICS(list, deals, remind, now)), false); err != nil {

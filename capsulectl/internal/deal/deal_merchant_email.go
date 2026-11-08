@@ -934,7 +934,7 @@ const ourSealWords = "our seal shows this device held these exact bytes no later
 
 // An email result states its own scope on its face, as a receipt does
 // (dealScopeLine).
-const emailScopeLine = "This covers one email from the merchant about this deal. It is not a record of everything the merchant sent or charged."
+const emailScopeLine = "This covers one email from the merchant about this exchange. It is not a record of everything the merchant sent or charged."
 
 // merchantDidSources names each sealed merchant email that is
 // merchant-confirmed (a passing, aligned signature verified by our own check)

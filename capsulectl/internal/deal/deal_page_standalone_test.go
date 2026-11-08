@@ -126,7 +126,7 @@ func TestTheDealPageRefusesADowngradedInLogReceipt(t *testing.T) {
 	inLogReports(t)
 	run := dealPageUnderNode(t)
 	assert.Empty(t, run("")["refusal"], "the page as written shows its report")
-	assert.Equal(t, "⚠️ The deal's text could not be checked against its sealed record. Do not rely on it.", run("downgraded-in-log")["refusal"])
+	assert.Equal(t, "⚠️ The receipt's text could not be checked against its sealed record. Do not rely on it.", run("downgraded-in-log")["refusal"])
 }
 
 // dealPageUnderNode writes a retail deal's counterparty page and returns a

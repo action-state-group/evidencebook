@@ -193,7 +193,7 @@ func TestDealPurchaseLifecycleReadsHonestly(t *testing.T) {
 
 	at0 := lifecycle()
 	assert.Equal(t, "open", at0["state"])
-	assert.Equal(t, "Open: waiting for the merchant's receipt. It is expected to close by Oct 17, 2026.", at0["text"])
+	assert.Equal(t, "Open: waiting for the merchant's confirmation. It is expected to close by Oct 17, 2026.", at0["text"])
 	assert.Len(t, openDeals(), 1)
 
 	setDealClock(t, "2026-10-03T22:00:00Z")
@@ -214,9 +214,9 @@ func TestDealPurchaseLifecycleReadsHonestly(t *testing.T) {
 	assert.Equal(t, true, l["past_expected"])
 	cal, err := os.ReadFile(ics)
 	require.NoError(t, err)
-	assert.Contains(t, string(cal), "SUMMARY:Close deal "+dealID+"? (open\\, expected to close by 2026-10-17)")
+	assert.Contains(t, string(cal), "SUMMARY:Close receipt "+dealID+"? (open\\, expected to close by 2026-10-17)")
 	late := lifecycle()
-	assert.Equal(t, "Open: the merchant's email is sealed; no close is sealed on this deal yet. It was expected to close by Oct 17, 2026, which has passed (as of Oct 24, 2026).", late["text"])
+	assert.Equal(t, "Open: the merchant's email is sealed; no close is sealed on this receipt yet. It was expected to close by Oct 17, 2026, which has passed (as of Oct 24, 2026).", late["text"])
 	assertStatesHoldingsOnly(t, late["text"].(string))
 
 	// Closed at delivery, the deal leaves the listing.
@@ -327,7 +327,7 @@ func TestDealCarriedObligationDatePassedIsComputedWhenRead(t *testing.T) {
 	assert.Equal(t, "passed", d["status"])
 	assert.Equal(t, "DATE PASSED", d["marking"])
 	holds := d["holds"].(string)
-	assert.Equal(t, "The date passed (as of 2026-10-20T08:30:00Z). No cancellation confirmation is sealed on this deal.", holds)
+	assert.Equal(t, "The date passed (as of 2026-10-20T08:30:00Z). No cancellation confirmation is sealed on this receipt.", holds)
 	assertStatesHoldingsOnly(t, holds)
 	assert.Empty(t, dealRun(t, "deadlines")["deadlines"], "a passed date leaves the open list")
 
@@ -339,7 +339,7 @@ func TestDealCarriedObligationDatePassedIsComputedWhenRead(t *testing.T) {
 	mail := report["email"].(map[string]any)
 	for _, body := range []string{mail["text"].(string), mail["html"].(string)} {
 		assert.Contains(t, body, "DATE PASSED")
-		assert.Contains(t, body, "No cancellation confirmation is sealed on this deal.")
+		assert.Contains(t, body, "No cancellation confirmation is sealed on this receipt.")
 		section := body[strings.Index(body, "Cancel-by dates"):]
 		assertStatesHoldingsOnly(t, section[:min(len(section), 600)])
 	}

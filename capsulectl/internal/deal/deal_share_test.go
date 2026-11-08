@@ -358,7 +358,7 @@ func TestDealSharePageGate(t *testing.T) {
 // implies it is complete.
 func assertScope(t *testing.T, html string, ext map[string]any) {
 	t.Helper()
-	const scope = "This receipt covers this one deal. It is not a record of everything the agent did."
+	const scope = "This receipt covers this one exchange. It is not a record of everything the agent did."
 	assert.Equal(t, scope, ext["scope"])
 	assert.Contains(t, html, scope)
 	for _, claim := range []string{"all activity", "complete history", "complete record", "full history"} {
@@ -370,7 +370,7 @@ func TestDealReportStatesItsScope(t *testing.T) {
 	dealFixture(t)
 	dealID := openJetSki(t)
 	out := dealRun(t, "report", "--deal", dealID)
-	assert.Equal(t, "This receipt covers this one deal. It is not a record of everything the agent did.", out["scope"])
+	assert.Equal(t, "This receipt covers this one exchange. It is not a record of everything the agent did.", out["scope"])
 }
 
 // The gate derives its own needles: it must not call the scrubber.
