@@ -161,9 +161,9 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 			case ok && strings.HasPrefix(text, cli.WitnessNotDelivered):
 				sealed += "This checkpoint was sent at a cadence tick. Witness " + text + " "
 			case ok:
-				sealed += "This checkpoint was sent at a cadence tick, but no receipt has come back yet. Witness " + text + " "
+				sealed += "This checkpoint was sent at a cadence tick, but no witness signature has come back yet. Witness " + text + " "
 			default:
-				sealed += "Witness pending. This checkpoint was sent at a cadence tick, but no receipt has come back yet; it is retried at every tick. "
+				sealed += "Witness pending. This checkpoint was sent at a cadence tick, but no witness signature has come back yet; it is retried at every tick. "
 			}
 			if reason := cadence["reason"]; reason == "network_consent_needed" || reason == "refused" {
 				out["witness_reason"] = reason
@@ -182,7 +182,7 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 	when := "a checkpoint covering these steps, sent at a cadence tick after them"
 	out := map[string]any{"rung": "witnessed", "witness_state": "witnessed", "witness": host}
 	if at, _ := cadence["checkpoint_at"].(string); at != "" {
-		when = "this receipt's checkpoint, cut at " + at + " at a cadence tick after the receipt's steps"
+		when = "this receipt's checkpoint, cut at " + at + " at a cadence tick after its steps"
 		out["checkpoint_at"] = at
 	}
 	// Witnessed in part: the receipt covers an earlier checkpoint of this
@@ -204,12 +204,12 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 			rest = "The rest did not verify: the witness's signature for the current checkpoint is held, but the check against the witness this profile names now failed. "
 		}
 		out["text"] = fmt.Sprintf(
-			"Witnessed in part: %s, an independent log, signed a receipt for %s, covering steps 1 to %d of %d: those existed, unchanged, by then. Steps %d to %d are sealed by my agent on this device only. %s%sIt does not confirm what the agent did. The receipt is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s",
+			"Witnessed in part: %s, an independent log, signed %s. That signature covers steps 1 to %d of %d: those existed, unchanged, by then. Steps %d to %d are sealed by my agent on this device only. %s%sIt does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s",
 			host, when, k, n, k+1, n, coverageSentence(b, k, n), rest, dealDidLineOf(b))
 		return out
 	}
 	out["text"] = fmt.Sprintf(
-		"Witnessed: %s, an independent log, signed a receipt for %s: the record existed, unchanged, by then. It does not confirm what the agent did. The receipt is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s", host, when, dealDidLineOf(b))
+		"Witnessed: %s, an independent log, signed %s: the record existed, unchanged, by then. It does not confirm what the agent did. The witness signature is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s", host, when, dealDidLineOf(b))
 	return out
 }
 

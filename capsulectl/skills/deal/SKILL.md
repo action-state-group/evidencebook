@@ -388,7 +388,7 @@ for every later email.
    default 14 days for a purchase, 1 for a booking, 7 for a rental, 30 for a
    service). Set it when you know better, for example the delivery estimate.
 2. `deal deadlines` lists every open deal under `open_deals`, against that
-   date (and `--ics` writes a "Close receipt …?" event for it into the file).
+   date (and `--ics` writes a "Close exchange …?" event for it into the file).
    Hand those to the host's tracking like any other date. When you see a
    deal there that is done, close it.
 3. Evidence that arrives after the close (the merchant's confirmation, a

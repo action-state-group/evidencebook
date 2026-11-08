@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Wording: the witness's record is called the witness signature, not a receipt, in the email text (`Witnessed: … signed this receipt's checkpoint`, "no witness signature has come back yet") and in the countersignature line ("Its log signature verifies"); "receipt" no longer stands for the exchange in `page.card.with_unchecked`, `page.close.not_closed`, `page.own.note`, `page.same.deal`, `page.detail.points_exchange`, the obligation state label (`OPEN`), the closed-exchange and calendar lines, the skill-instructions lines, the changed-rules lines and the opened-exchange lines. Per Sherlock2's re-review of #179 (#187).
 - Wording: `say.close.open` no longer says a receipt "stays open until it arrives" (now "this stays open until it arrives"); `page.asked.exact` says the words were "sealed when the exchange began"; `page.detail.same_deal` says "the same exchange". Per Sherlock2's review of actionstate-muse#371 (#185).
 ## v0.1.0-rc40
 

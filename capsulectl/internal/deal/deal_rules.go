@@ -1528,7 +1528,7 @@ func evaluateDeal(s dealState, snap dealSnapshot) dealCheckResult {
 	// opened, or the check says it is not: a re-pin mid-deal is never
 	// silent.
 	if opened, now := s.open.Materiality.Digest, s.materiality.Ref(); opened != "" && opened != now.Digest {
-		add("safety", "materiality_changed", "", fmt.Sprintf("The rule for which of the agent's picks need your answer changed since this receipt was opened (%s → %s)", materialityLabel(s.open.Materiality), materialityLabel(now)))
+		add("safety", "materiality_changed", "", fmt.Sprintf("The rule for which of the agent's picks need your answer changed since this exchange began (%s → %s)", materialityLabel(s.open.Materiality), materialityLabel(now)))
 	}
 	// A material attribute the agent picked needs the user's nod: it pauses
 	// the check, so "proceed" is never true on an empty card. Which picks are
@@ -2098,7 +2098,7 @@ func trailLine(e dealEvent) string {
 	case "counterparty_profile":
 		return "noted the payee for this profile's own history (never shared)"
 	case "open":
-		line := fmt.Sprintf("opened %s receipt: %q", e.Open.Type, e.Open.Intent.Verbatim)
+		line := fmt.Sprintf("began a %s exchange: %q", e.Open.Type, e.Open.Intent.Verbatim)
 		if e.Open.Demo {
 			line = "DEMO · " + line
 		}

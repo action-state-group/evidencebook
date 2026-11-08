@@ -1032,7 +1032,7 @@ func sharedDifferenceText(rule, text string) string {
 
 var dealShareAnomaly = map[string]string{
 	"changed_identifier":       "A payee or contact detail changed after first contact",
-	"materiality_changed":      "The rule for which of the agent's picks need an answer changed while this receipt was open",
+	"materiality_changed":      "The rule for which of the agent's picks need an answer changed while this exchange was open",
 	"recourse_changed":         "The way to pay changed after it was agreed",
 	"irreversible_rail":        "Payment by a rail with no card protection",
 	"domain_recent":            "The website was registered recently",
@@ -1079,7 +1079,7 @@ func dealShareStepLine(e dealEvent, audience string, p dealPrivate, currency str
 	case "counterparty_profile":
 		return "A record kept for the user only (withheld)"
 	case "open":
-		return "Opened a " + e.Open.Type + " receipt (details withheld)"
+		return "Began a " + e.Open.Type + " exchange (details withheld)"
 	case "intent":
 		return "You changed what you asked (your words withheld)"
 	case "message":

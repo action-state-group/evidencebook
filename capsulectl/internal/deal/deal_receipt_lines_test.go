@@ -52,7 +52,7 @@ func TestTheReceiptSaysWhatTheApprovalIsAndRecomputesItsOrder(t *testing.T) {
 	assert.Equal(t, "Each act came after your yes · passed · recomputed from the order of this log", stampLine(t, own, "Each act came after"))
 	assert.Equal(t, "The payment is settled on its rail · missing · a card payment; the card processor's report is not in this file",
 		stampLine(t, own, "The payment is settled"), "a card payment carries no settlement record, so nothing is checked")
-	assert.Equal(t, "Their agreement with how it closed · not checked · the receipt is not closed in this copy", stampLine(t, own, "Their agreement"))
+	assert.Equal(t, "Their agreement with how it closed · not checked · the exchange is not closed in this copy", stampLine(t, own, "Their agreement"))
 	for _, s := range own["stampText"].([]any) {
 		assert.NotContains(t, s, "signed with your key ·", "never says the approval is signed")
 	}

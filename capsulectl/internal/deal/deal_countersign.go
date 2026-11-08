@@ -114,11 +114,11 @@ func dealCountersignLine(r cli.CountersignatureReport) string {
 	receipt := ""
 	switch r.Receipt {
 	case "verified":
-		receipt = " Its log receipt verifies."
+		receipt = " Its log signature verifies."
 	case "absent":
-		receipt = " It carries no log receipt."
+		receipt = " It carries no log signature."
 	case "unverified":
-		receipt = " Its log receipt does not verify."
+		receipt = " Its log signature does not verify."
 	}
 	switch r.State {
 	case "resolved":

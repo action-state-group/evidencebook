@@ -70,7 +70,7 @@ func TestDealSkillDigestCatchesAStaleBackup(t *testing.T) {
 	}
 	assert.Contains(t, changed, "sha256:"+digestOf(freshSkill)[:12]+" → sha256:"+digestOf(staleSkill)[:12])
 	a := report["assurance"].(map[string]any)
-	assert.Contains(t, a["text"], "Instructions present when the receipt was opened: deal SKILL.md sha256:"+digestOf(staleSkill)[:12])
+	assert.Contains(t, a["text"], "Instructions present when the exchange began: deal SKILL.md sha256:"+digestOf(staleSkill)[:12])
 	assert.Contains(t, a["text"], "not proof the agent followed them")
 
 	// The sealed baseline carries the digest and the count, never a path.
@@ -106,7 +106,7 @@ func TestDealWithoutSkillSaysSo(t *testing.T) {
 	dealFixture(t)
 	dealID := dealRun(t, "open", "--input", filepath.Join(retailDemo, "open.json"))["deal_id"].(string)
 	report := dealRun(t, "report", "--deal", dealID)
-	assert.Equal(t, "Which skill instructions were present was not recorded (the receipt was opened without --skill).", report["instructions"])
+	assert.Equal(t, "Which skill instructions were present was not recorded (the exchange began without --skill).", report["instructions"])
 	for _, k := range anomalyKinds(report) {
 		assert.False(t, strings.HasPrefix(k, "skill_"), "no skill record is not an anomaly")
 	}
