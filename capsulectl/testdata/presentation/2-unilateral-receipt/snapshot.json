@@ -103,7 +103,7 @@
     "“Order the cat sticker in my cart at Example Stickers”",
     "Nov 3, 2026, 11:41 PM ·",
     "Opened: \"Order the cat sticker in my cart at Example Stickers\"",
-    "✓ These are the exact words sealed when the receipt was opened, checked when this page was built.",
+    "✓ These are the exact words sealed when the exchange began, checked when this page was built.",
     "Where this receipt stands",
     "Open: waiting for the merchant's receipt. It is expected to close by Nov 17, 2026.",
     "Records can be linked to this deal after this receipt was made (a merchant's confirmation, a shipping notice, a refund). This receipt shows those sealed when it was made; to see later ones, make a new report with `capsulectl deal report`. (as of Nov 3, 2026, 11:41 PM)",
