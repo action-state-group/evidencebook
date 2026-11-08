@@ -685,7 +685,8 @@ func dealRespond(c *cobra.Command, p cli.Profile, raw []byte, requester, path st
 		// "Ask me" (F4.10, Steven's 2026-11-01 ruling): a derivation the
 		// holder does not serve automatically is above the standard card.
 		// It is not refused and not answered, whatever the coverage would
-		// say today. Deciding a held item has no CLI surface yet (#178).
+		// say today. The holder lists held items with `deal held` and declines one
+		// with `deal decline`.
 		return s.holdRequest(c, dealID, answered, req.Derivation)
 	}
 	if (req.Coverage.ExpectedPin == nil) == (req.Coverage.MinFreshness == nil) {
@@ -827,6 +828,11 @@ func (s *dealSession) writeAnswer(c *cobra.Command, dealID string, answered map[
 	return s.writeAnswerBytes(c, dealID, answered, encoded, path)
 }
 
+// marshalDealRefusal is a deal-shaped refusal's reply octets.
+func marshalDealRefusal(r evidencebook.Refusal) ([]byte, error) {
+	return json.Marshal(dealResponse{Refusal: &r})
+}
+
 // holdRequest records a request above the standard as pending for the
 // holder and writes no reply: no wire change, so the requester sees pending
 // until its window closes and then a recorded absence (RecordAbsence). The
@@ -840,6 +846,13 @@ func (s *dealSession) holdRequest(c *cobra.Command, dealID string, held map[stri
 	}
 	for _, r := range prior {
 		if r.record["request_digest"] == digest {
+			_, decided, e := s.heldRows(c)
+			if e != nil {
+				return e
+			}
+			if decided[digest] {
+				return cli.InputError("this request was declined: `deal decline --request-digest " + digest + " --output FILE` writes the refusal again")
+			}
 			return cli.Output(c, cli.EvidenceRespondResult{RecordID: r.digest, RequestDigest: digest, Outcome: dealOutcomeHeld, Relationship: evidencebook.RelationshipIdentified})
 		}
 	}
