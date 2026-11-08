@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Wording: `say.close.open` no longer says a receipt "stays open until it arrives" (now "this stays open until it arrives"); `page.asked.exact` says the words were "sealed when the exchange began"; `page.detail.same_deal` says "the same exchange". Per Sherlock2's review of actionstate-muse#371 (#185).
 ## v0.1.0-rc40
 
 This release pairs with capsulectl `v0.1.0-rc40` (go.mod requires it).

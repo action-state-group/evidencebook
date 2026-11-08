@@ -122,7 +122,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		require.Len(t, got.Stamps, 7)
 		assert.Contains(t, got.Stamps[1], "passed | ✓Each side's record is stamped into its own book")
 		assert.Contains(t, got.Stamps[2], "passed | ✓Their record and yours are about the same receipt")
-		assert.Contains(t, got.Stamps[2], "both records name the same receipt")
+		assert.Contains(t, got.Stamps[2], "both records name the same exchange")
 		assert.Contains(t, got.Stamps[3], "missing | —Their record points at yours · missing · no record in their half links to yours",
 			"no deal verb seals a link to your records yet (evidencebook-deal#95), so no pointer is found")
 		assert.Contains(t, got.Stamps[4], "missing | —The payment is settled on its rail · missing · no settlement record is in this file")
