@@ -214,7 +214,7 @@ func TestDealPurchaseLifecycleReadsHonestly(t *testing.T) {
 	assert.Equal(t, true, l["past_expected"])
 	cal, err := os.ReadFile(ics)
 	require.NoError(t, err)
-	assert.Contains(t, string(cal), "SUMMARY:Close receipt "+dealID+"? (open\\, expected to close by 2026-10-17)")
+	assert.Contains(t, string(cal), "SUMMARY:Close exchange "+dealID+"? (open\\, expected to close by 2026-10-17)")
 	late := lifecycle()
 	assert.Equal(t, "Open: the merchant's email is sealed; no close is sealed on this receipt yet. It was expected to close by Oct 17, 2026, which has passed (as of Oct 24, 2026).", late["text"])
 	assertStatesHoldingsOnly(t, late["text"].(string))

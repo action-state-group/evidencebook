@@ -325,7 +325,7 @@ func TestARepinMidDealIsFlagged(t *testing.T) {
 	changed := dealRun(t, "check", "--deal", id, "--input", filepath.Join(otterFixture, "check-pay.json"))
 	assert.Equal(t, "pause", changed["verdict"])
 	assert.Contains(t, rules(changed), "materiality_changed")
-	assert.Contains(t, differenceTexts(changed), "The rule for which of the agent's picks need your answer changed since this receipt was opened ("+p.Name+" "+p.Version+" → nothing 2)")
+	assert.Contains(t, differenceTexts(changed), "The rule for which of the agent's picks need your answer changed since this exchange began ("+p.Name+" "+p.Version+" → nothing 2)")
 	assert.Empty(t, pausedOn(changed), "the new predicate itself pauses on nothing: only the change is flagged")
 	_, export := exportRecords(t, id)
 	checkProfile(t, export)

@@ -26,7 +26,7 @@ import (
 // that the agent followed them. The paths stay on this device.
 
 // dealSkillCaveat is said wherever the digest is shown.
-const dealSkillCaveat = "This records which skill instructions were present when the receipt was opened, as the agent reported them: a marker for accidents such as a stale copy, not proof the agent followed them."
+const dealSkillCaveat = "This records which skill instructions were present when the exchange began, as the agent reported them: a marker for accidents such as a stale copy, not proof the agent followed them."
 
 // dealSkillEnv names the SKILL.md when --skill is not given.
 const dealSkillEnv = "CAPSULE_DEAL_SKILL"
@@ -137,14 +137,14 @@ func (s *dealSession) dealReportFor(ctx context.Context, events []sealedEvent) (
 	open := events[0].Event
 	skill := open.Open.Skill
 	if skill == nil {
-		report.Instructions = "Which skill instructions were present was not recorded (the receipt was opened without --skill)."
+		report.Instructions = "Which skill instructions were present was not recorded (the exchange began without --skill)."
 		return report, nil
 	}
-	report.Instructions = "Instructions present when the receipt was opened: deal SKILL.md sha256:" + shortDigest(skill.Digest) + ". " + dealSkillCaveat
+	report.Instructions = "Instructions present when the exchange began: deal SKILL.md sha256:" + shortDigest(skill.Digest) + ". " + dealSkillCaveat
 	base := []string{events[0].CapsuleID}
 	if skill.OtherCopies > 0 {
 		report.Anomalies = append(report.Anomalies, dealReportItem{Side: "agent", Kind: "skill_copies_visible",
-			Text: "Another copy of the deal skill was visible to the agent when this receipt was opened: an old copy may be the one it followed", Steps: base})
+			Text: "Another copy of the deal skill was visible to the agent when this exchange began: an old copy may be the one it followed", Steps: base})
 	}
 	prev, err := s.previousSkill(ctx, open.DealID, open.At)
 	if err != nil {

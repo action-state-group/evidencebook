@@ -121,7 +121,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.NotContains(t, got.Box, "named it", "no label from the composer's declaration")
 		require.Len(t, got.Stamps, 7)
 		assert.Contains(t, got.Stamps[1], "passed | ✓Each side's record is stamped into its own book")
-		assert.Contains(t, got.Stamps[2], "passed | ✓Their record and yours are about the same receipt")
+		assert.Contains(t, got.Stamps[2], "passed | ✓Their record and yours are about the same exchange")
 		assert.Contains(t, got.Stamps[2], "both records name the same exchange")
 		assert.Contains(t, got.Stamps[3], "missing | —Their record points at yours · missing · no record in their half links to yours",
 			"no deal verb seals a link to your records yet (evidencebook-deal#95), so no pointer is found")
@@ -140,7 +140,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.Equal(t, "absent", got.Their)
 		assert.Contains(t, got.Box, "deal-none")
 		assert.Contains(t, got.Box, "No record. Your agent asked and nothing came back by")
-		assert.Contains(t, got.Stamps[2], "missing | —Their record and yours are about the same receipt")
+		assert.Contains(t, got.Stamps[2], "missing | —Their record and yours are about the same exchange")
 	})
 
 	t.Run("their record failed is never an absence", func(t *testing.T) {
@@ -153,7 +153,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.Equal(t, "failed", failed.Their)
 		assert.Contains(t, failed.Box, "Their record is in this file, but it did not check: failed.")
 		assert.Contains(t, failed.Stamps[1], "failed | —Each side's record is stamped into its own book")
-		assert.Contains(t, failed.Stamps[2], "failed | —Their record and yours are about the same receipt")
+		assert.Contains(t, failed.Stamps[2], "failed | —Their record and yours are about the same exchange")
 		gone := open(t, false, absent)
 		assert.NotEqual(t, gone.Box, failed.Box, "the failed box and the absence box differ (S4)")
 		assert.NotEqual(t, gone.Stamps, failed.Stamps)
