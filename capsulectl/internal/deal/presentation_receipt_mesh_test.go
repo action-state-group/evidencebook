@@ -377,9 +377,9 @@ func TestPresentationMeshReceiptWithTheirHalf(t *testing.T) {
 		assert.Equal(t, "verified", their)
 		require.Len(t, stamps, 9)
 		assert.Contains(t, stamps[2], "passed | ✓Their record and yours are about the same exchange")
-		assert.Contains(t, stamps[7], "not checked | —Their agreement with how the deal closed · not checked · their record is of the exchange, not of your close")
+		assert.Contains(t, stamps[7], "not checked | —Their agreement with how it closed · not checked · their record is of the exchange, not of your close")
 		assert.Contains(t, stamps[2], "both records name the same request")
-		assert.Contains(t, stamps[3], "not checked | —Their record points at yours · not checked · their record is of the exchange, not a deal record that can point at yours", "an exchange half is no deal record to point back")
+		assert.Contains(t, stamps[3], "not checked | —Their record points at yours · not checked · their record is of the exchange, not a receipt record that can point at yours", "an exchange half is no deal record to point back")
 	})
 	same := meshHalf{nonce: "client-nonce-1", source: "client_supplied", requestDigest: request}
 	at := time.Date(2026, 10, 9, 16, 15, 0, 0, time.UTC)

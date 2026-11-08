@@ -121,12 +121,12 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.NotContains(t, got.Box, "named it", "no label from the composer's declaration")
 		require.Len(t, got.Stamps, 7)
 		assert.Contains(t, got.Stamps[1], "passed | ✓Each side's record is stamped into its own book")
-		assert.Contains(t, got.Stamps[2], "passed | ✓Their record and yours are about the same deal")
-		assert.Contains(t, got.Stamps[2], "both records name the same deal")
+		assert.Contains(t, got.Stamps[2], "passed | ✓Their record and yours are about the same receipt")
+		assert.Contains(t, got.Stamps[2], "both records name the same receipt")
 		assert.Contains(t, got.Stamps[3], "missing | —Their record points at yours · missing · no record in their half links to yours",
 			"no deal verb seals a link to your records yet (evidencebook-deal#95), so no pointer is found")
 		assert.Contains(t, got.Stamps[4], "missing | —The payment is settled on its rail · missing · no settlement record is in this file")
-		assert.Contains(t, got.Stamps[5], "missing | —Their agreement with how the deal closed · missing · closed by your side only: their record is here, and it does not point at your close",
+		assert.Contains(t, got.Stamps[5], "missing | —Their agreement with how it closed · missing · closed by your side only: their record is here, and it does not point at your close",
 			"no deal verb seals an acknowledgement yet (evidencebook-deal#95), so the close reads unilateral")
 		assert.Contains(t, got.Stamps[6], "An outside witness recorded both books' snapshots")
 		assert.Contains(t, got.Private, "This page is your private copy", "the page says on its face that it carries the keep copy")
@@ -140,7 +140,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.Equal(t, "absent", got.Their)
 		assert.Contains(t, got.Box, "deal-none")
 		assert.Contains(t, got.Box, "No record. Your agent asked and nothing came back by")
-		assert.Contains(t, got.Stamps[2], "missing | —Their record and yours are about the same deal")
+		assert.Contains(t, got.Stamps[2], "missing | —Their record and yours are about the same receipt")
 	})
 
 	t.Run("their record failed is never an absence", func(t *testing.T) {
@@ -153,7 +153,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		assert.Equal(t, "failed", failed.Their)
 		assert.Contains(t, failed.Box, "Their record is in this file, but it did not check: failed.")
 		assert.Contains(t, failed.Stamps[1], "failed | —Each side's record is stamped into its own book")
-		assert.Contains(t, failed.Stamps[2], "failed | —Their record and yours are about the same deal")
+		assert.Contains(t, failed.Stamps[2], "failed | —Their record and yours are about the same receipt")
 		gone := open(t, false, absent)
 		assert.NotEqual(t, gone.Box, failed.Box, "the failed box and the absence box differ (S4)")
 		assert.NotEqual(t, gone.Stamps, failed.Stamps)
@@ -182,7 +182,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		require.Empty(t, got.Refusal)
 		assert.Contains(t, got.Banner, "Your copy is not in this file · not fully checked")
 		assert.Equal(t, "no", got.Checked)
-		assert.Contains(t, got.Banner, "Your own copy of this deal is not in this file.")
+		assert.Contains(t, got.Banner, "Your own copy of this receipt is not in this file.")
 		assert.Contains(t, got.Stamps[1], "missing | —Each side's record is stamped into its own book and can't be changed after · missing · your record is not in this file")
 		assert.Empty(t, got.Private, "no keep copy, no private-copy line")
 	})
@@ -214,7 +214,7 @@ func TestPresentationReceiptWithTheirHalf(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "other.json")
 		dealRun(t, "report", "--deal", otherDeal, "--bundle", path)
 		got := openWith(t, exactBundle(t, string(mustRead(t, path))), nil, theirs)
-		assert.Contains(t, got.Refusal, "not the composer's own copy of this deal")
+		assert.Contains(t, got.Refusal, "not the composer's own copy of this receipt")
 	})
 
 	t.Run("a viewer without Ed25519", func(t *testing.T) {

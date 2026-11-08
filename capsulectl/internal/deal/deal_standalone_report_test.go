@@ -395,9 +395,9 @@ func TestAnEmailFromAnEarlierBundleShowsItsReportsLifecycle(t *testing.T) {
 	dealRun(t, "close", "--deal", id, "--input", writeJSON(t, `{"status":"received"}`))
 	out := dealRun(t, "report", "--deal", id, "--from-bundle", path, "--email", filepath.Join(t.TempDir(), "r.eml"))
 	text := out["email"].(map[string]any)["text"].(string)
-	stands := text[strings.Index(text, "Where this deal stands:"):]
-	assert.True(t, strings.HasPrefix(stands, "Where this deal stands:\nOpen"), "the report's own state: %.120s", stands)
-	assert.Contains(t, text, "when the deal stood so: Closed", "now is the composed note's")
+	stands := text[strings.Index(text, "Where this receipt stands:"):]
+	assert.True(t, strings.HasPrefix(stands, "Where this receipt stands:\nOpen"), "the report's own state: %.120s", stands)
+	assert.Contains(t, text, "when the receipt stood so: Closed", "now is the composed note's")
 }
 
 // verify --bundle says when a standalone report's state is from, and what

@@ -5,7 +5,7 @@ the report JSON and the page each carry a `countersign` field. With no
 countersignature it says:
 
 > Not countersigned: no other party has signed this record. It stands on the
-> agent's own seal and any witness receipt this file carries.
+> agent's own seal and any witness signature this file carries.
 
 That is the honest value for every receipt today.
 
@@ -81,7 +81,7 @@ The evidence grade ladder is self-attested → witnessed → countersigned.
 `unresolved_signer` are annotations, not rungs: they add nothing, and the
 receipt's grade stays where witnessing put it (`assurance.rung`:
 `self_attested`, `witnessed` or `witnessed_in_part`), so a self-countersigned
-receipt with no witness receipt is self-attested. `not_countersigned` and
+receipt with no witness signature is self-attested. `not_countersigned` and
 `unverified` name no rung.
 
 The report's `countersign` object carries a rung only when one is reached:

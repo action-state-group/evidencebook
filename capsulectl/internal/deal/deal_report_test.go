@@ -109,7 +109,7 @@ func dealReportIsOneLocalVerifyingPage(t *testing.T, inLog bool) {
 	require.NoError(t, err)
 	html := string(raw)
 	assert.NotRegexp(t, regexp.MustCompile(`(?i)<(script|link|img|iframe)[^>]+(src|href)=`), html)
-	assert.Regexp(t, `<title>Deal report: “[^<]+”</title>`, html, "the user's own copy is titled with the words they asked")
+	assert.Regexp(t, `<title>Receipt report: “[^<]+”</title>`, html, "the user's own copy is titled with the words they asked")
 	assert.Contains(t, html, string(pageruntime.IIFE))
 	assert.NotContains(t, html, "Checked only by capsulectl verify", "the deal view lists no checks of its own: the core's lists stand (capsule-cli#341)")
 

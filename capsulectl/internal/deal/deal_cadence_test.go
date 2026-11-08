@@ -263,7 +263,7 @@ func TestDealReceiptUnderAnotherKeyIsUnverified(t *testing.T) {
 	assurance := report["assurance"].(map[string]any)
 	assert.Equal(t, "unverified", assurance["witness_state"])
 	assert.Equal(t, "self_attested", assurance["rung"])
-	assert.Contains(t, assurance["text"], "Witness receipt did not verify")
+	assert.Contains(t, assurance["text"], "Witness signature did not verify")
 	assert.Equal(t, "unverified", asGrade(t, report["grade"]).Witness.State)
 }
 
@@ -650,7 +650,7 @@ func TestDealIsWitnessPendingUntilATick(t *testing.T) {
 	a := report["assurance"].(map[string]any)
 	assert.Equal(t, "scheduled", a["witness_state"])
 	assert.Equal(t, "self_attested", a["rung"])
-	assert.Contains(t, a["text"], "Witness pending. A deal is not witnessed at the moment it happens: its checkpoint goes to the witness at the next tick of this profile's checkpoint cadence, within about 7m (every 5m, give or take 2m)")
+	assert.Contains(t, a["text"], "Witness pending. A receipt is not witnessed at the moment it is made: its checkpoint goes to the witness at the next tick of this profile's checkpoint cadence, within about 7m (every 5m, give or take 2m)")
 	assert.NotContains(t, a["text"], "an hour by default", "the profile's own cadence, not the default")
 	html := string(mustRead(t, page))
 	assert.NotContains(t, html, "Sealed by my agent, witness pending.", "the page states no witness of its own (capsule-cli#341)")
@@ -670,7 +670,7 @@ func TestDealIsWitnessPendingUntilATick(t *testing.T) {
 	a = report["assurance"].(map[string]any)
 	assert.Equal(t, "witnessed", a["rung"])
 	assert.Equal(t, "2026-09-27T18:07:00Z", a["checkpoint_at"], "the tick's time, coarsened to the minute")
-	assert.Contains(t, a["text"], "signed a receipt for this deal's checkpoint, cut at 2026-09-27T18:07:00Z at a cadence tick after the deal's steps")
+	assert.Contains(t, a["text"], "signed a receipt for this receipt's checkpoint, cut at 2026-09-27T18:07:00Z at a cadence tick after the receipt's steps")
 	cadence := embeddedBundle(t, string(mustRead(t, page)))["extensions"].(map[string]any)[cli.DealCadenceExtension].(map[string]any)
 	assert.Equal(t, "2026-09-27T18:07:00Z", cadence["checkpoint_at"], "the page reads it from the bundle")
 }

@@ -94,9 +94,9 @@ func TestPresentationDealPageWithoutJavaScript(t *testing.T) {
 		extra []string
 		title string
 	}{
-		"own":          {nil, "Deal report: “Order the cat sticker in my cart at Example Stickers”"},
-		"counterparty": {[]string{"--share", "counterparty", "--to", "the shop's support desk"}, "Deal report: a shared copy for the other party"},
-		"adjudicator":  {[]string{"--share", "adjudicator", "--to", "the shop's support desk"}, "Deal report: a shared copy for an adjudicator"},
+		"own":          {nil, "Receipt report: “Order the cat sticker in my cart at Example Stickers”"},
+		"counterparty": {[]string{"--share", "counterparty", "--to", "the shop's support desk"}, "Receipt report: a shared copy for the other party"},
+		"adjudicator":  {[]string{"--share", "adjudicator", "--to", "the shop's support desk"}, "Receipt report: a shared copy for an adjudicator"},
 	} {
 		path := filepath.Join(dir, name+".html")
 		dealRun(t, append([]string{"report", "--deal", id, "--html", path}, c.extra...)...)

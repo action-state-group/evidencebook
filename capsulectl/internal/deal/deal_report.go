@@ -563,9 +563,9 @@ func dealPageTitle(b map[string]interface{}, openings map[string]interface{}) st
 	report := dealPageReport(b)
 	switch audience, _ := report["audience"].(string); audience {
 	case cli.DealAudienceCounterparty:
-		return "Deal report: a shared copy for the other party"
+		return "Receipt report: a shared copy for the other party"
 	case cli.DealAudienceAdjudicator:
-		return "Deal report: a shared copy for an adjudicator"
+		return "Receipt report: a shared copy for an adjudicator"
 	}
 	opening, _ := report["asked_opening"].(map[string]interface{})
 	text, _ := opening["text"].(string)
@@ -578,13 +578,13 @@ func dealPageTitle(b map[string]interface{}, openings map[string]interface{}) st
 		return r
 	}, text)
 	if openings["asked"] != true || strings.TrimSpace(text) == "" {
-		return "Deal report"
+		return "Receipt report"
 	}
 	words := []rune(strings.Join(strings.Fields(text), " "))
 	if len(words) > dealPageTitleWords {
 		words = append(words[:dealPageTitleWords-1], '…')
 	}
-	return "Deal report: “" + string(words) + "”"
+	return "Receipt report: “" + string(words) + "”"
 }
 
 // dealPageReport is the report text the page shows: the sealed report's

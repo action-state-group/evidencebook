@@ -93,9 +93,9 @@ func openDealListing(events []sealedEvent, now time.Time) *dealOpenListing {
 	l := &dealOpenListing{DealID: events[0].Event.DealID, State: "open", OpenedAt: events[0].Event.At, ExpectCloseBy: o.ExpectCloseBy, AsOf: asOf}
 	// An open deal with no merchant email sealed yet is waiting for the
 	// merchant's receipt; one that has it is waiting only to be closed.
-	l.Text = "Open: waiting for the merchant's receipt."
+	l.Text = "Open: waiting for the merchant's confirmation."
 	if hasMerchantEmail(events) {
-		l.Text = "Open: the merchant's email is sealed; no close is sealed on this deal yet."
+		l.Text = "Open: the merchant's email is sealed; no close is sealed on this receipt yet."
 	}
 	switch {
 	case o.ExpectCloseBy == "":
@@ -148,10 +148,10 @@ func lateReceiptLine(events []sealedEvent, i int) string {
 	if approved == nil || limit {
 		return ""
 	}
-	line := "The merchant's receipt arrived. It matches what you approved."
+	line := "The merchant's confirmation arrived. It matches what you approved."
 	sameCurrency := m.Parsed.Currency == "" || currency == "" || strings.EqualFold(m.Parsed.Currency, currency)
 	if !sameCurrency || *m.Parsed.TotalMinor != *approved {
-		line = fmt.Sprintf("The merchant's receipt arrived. It differs: you approved %s; their receipt says %s.", formatMoney(*approved, currency), formatMoney(*m.Parsed.TotalMinor, m.Parsed.Currency))
+		line = fmt.Sprintf("The merchant's confirmation arrived. It differs: you approved %s; their confirmation says %s.", formatMoney(*approved, currency), formatMoney(*m.Parsed.TotalMinor, m.Parsed.Currency))
 	}
 	if !(m.DKIM.Result == "pass" && m.DKIM.Merchant) {
 		line += " (This copy is not confirmed by the merchant's signature.)"
@@ -188,7 +188,7 @@ type dealLateRecord struct {
 	Text      string `json:"text"`
 }
 
-const dealMayChange = "Records can be linked to this deal after this receipt was made (a merchant's confirmation, a shipping notice, a refund). This receipt shows those sealed when it was made; to see later ones, make a new report with `capsulectl deal report`."
+const dealMayChange = "Records can be linked to this receipt after it was made (a merchant's confirmation, a shipping notice, a refund). This receipt shows those sealed when it was made; to see later ones, make a new report with `capsulectl deal report`."
 
 // authorizedCancelAt is when the latest act was an authorized cancel, or ""
 // when the latest act is not one (a later pay reopens the business).
@@ -221,7 +221,7 @@ func buildDealLifecycle(events []sealedEvent, now time.Time) dealLifecycle {
 		// sealed: the deal is cancelled, not open.
 		if at := authorizedCancelAt(events); at != "" {
 			l.State = "cancelled"
-			l.Text = "Cancelled: an authorized cancel was sealed at " + at + ". No close is sealed on this deal yet."
+			l.Text = "Cancelled: an authorized cancel was sealed at " + at + ". No close is sealed on this receipt yet."
 		}
 		return l
 	}

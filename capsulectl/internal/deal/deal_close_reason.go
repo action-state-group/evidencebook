@@ -99,9 +99,9 @@ func closeLine(c dealCloseResult) string {
 	who := map[string]string{closeActorUser: "You", closeActorAgent: "The agent", closeActorPlatform: "The platform"}[c.Actor]
 	switch c.Reason {
 	case "user_closed":
-		return "You closed this deal"
+		return "You closed it"
 	case "agent_could_not_complete":
-		return "The agent could not complete this deal"
+		return "The agent could not complete it"
 	case "called_off":
 		return "You called off this errand"
 	}
@@ -116,7 +116,7 @@ func closeLine(c dealCloseResult) string {
 		"not_delivered":       "nothing was delivered",
 		"other":               "for another reason",
 	}[c.Reason]
-	return who + " closed this deal: " + why
+	return who + " closed it: " + why
 }
 
 // closeActorReasonBody seals a close's actor and reason on its outcome or

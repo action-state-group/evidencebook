@@ -102,14 +102,14 @@ func TestDealViewComparesBuildsByName(t *testing.T) {
 	assert.Empty(t, got[1].OlderBuilds)
 	assert.Equal(t, []string{"capsulectl v0.1.0-rc21"}, got[1].EarlierBuilds)
 	assert.Equal(t, "https://example.com/deal/releases/tag/v0.1.1", got[1].ReleaseNotes)
-	assert.Equal(t, "Some steps were sealed by capsulectl v0.1.0-rc21, the build that sealed deals before capsulectl-deal did; capsulectl-deal v0.1.1 made this page.", got[1].BuildNote)
+	assert.Equal(t, "Some steps were sealed by capsulectl v0.1.0-rc21, the build that sealed receipts before capsulectl-deal did; capsulectl-deal v0.1.1 made this page.", got[1].BuildNote)
 
 	// An unrecorded step is an earlier capsulectl too, never an older
 	// capsulectl-deal; same-name builds compare by tag.
 	assert.Equal(t, []string{"v0.1.0"}, got[2].OlderBuilds)
 	assert.Equal(t, []string{"an earlier capsulectl that did not record its version", "capsulectl v0.1.0-rc21"}, got[2].EarlierBuilds)
 	assert.Equal(t, "Produced by an older version (v0.1.0) than the capsulectl-deal that made this page (v0.1.1). "+
-		"Some steps were sealed by an earlier capsulectl that did not record its version, capsulectl v0.1.0-rc21, the builds that sealed deals before capsulectl-deal did; capsulectl-deal v0.1.1 made this page.", got[2].BuildNote)
+		"Some steps were sealed by an earlier capsulectl that did not record its version, capsulectl v0.1.0-rc21, the builds that sealed receipts before capsulectl-deal did; capsulectl-deal v0.1.1 made this page.", got[2].BuildNote)
 
 	// The build that made the page sealed every step: nothing to say.
 	assert.Empty(t, got[3].OlderBuilds)

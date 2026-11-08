@@ -2801,7 +2801,7 @@ func dealReportCommand() *cobra.Command {
 					if err = json.Unmarshal(raw, &lifecycle); err != nil {
 						return cli.ErrConflict
 					}
-					composed = fmt.Sprintf("Made by capsulectl at %s, when the deal stood so: %s This report shows the deal as of %s; open the attached page for where it stands now.", now.UTC().Format("2006-01-02T15:04:05Z"), buildDealLifecycle(events, now).Text, at.Format("2006-01-02T15:04:05Z"))
+					composed = fmt.Sprintf("Made by capsulectl at %s, when the receipt stood so: %s This report shows the receipt as of %s; open the attached page for where it stands now.", now.UTC().Format("2006-01-02T15:04:05Z"), buildDealLifecycle(events, now).Text, at.Format("2006-01-02T15:04:05Z"))
 				}
 				view := dealEmailView{Demo: events[0].Event.Open.Demo, Asked: report.Asked, Outcome: outcome, Assurance: dealEmailVerifyLine + " " + dealDidLine(dealDidSources(events)), Countersign: countersign.Text, Did: report.Did, Authority: report.Authority, AuthorityOrder: dealAuthorityOrder, Anomalies: report.Anomalies, Merchant: report.Merchant, Deadlines: dealDeadlines(events, now, 2), Cancellations: dealCancellations(events), Lifecycle: lifecycle, ComposedNote: composed, Steps: len(events)}
 				eml, subject, text, htmlBody, err := dealEmail(view, []byte(page), bundle, cli.DealClock())

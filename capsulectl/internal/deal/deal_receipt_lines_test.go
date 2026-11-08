@@ -52,7 +52,7 @@ func TestTheReceiptSaysWhatTheApprovalIsAndRecomputesItsOrder(t *testing.T) {
 	assert.Equal(t, "Each act came after your yes · passed · recomputed from the order of this log", stampLine(t, own, "Each act came after"))
 	assert.Equal(t, "The payment is settled on its rail · missing · a card payment; the card processor's report is not in this file",
 		stampLine(t, own, "The payment is settled"), "a card payment carries no settlement record, so nothing is checked")
-	assert.Equal(t, "Their agreement with how the deal closed · not checked · the deal is not closed in this copy", stampLine(t, own, "Their agreement"))
+	assert.Equal(t, "Their agreement with how it closed · not checked · the receipt is not closed in this copy", stampLine(t, own, "Their agreement"))
 	for _, s := range own["stampText"].([]any) {
 		assert.NotContains(t, s, "signed with your key ·", "never says the approval is signed")
 	}
@@ -66,7 +66,7 @@ func TestTheReceiptSaysWhatTheApprovalIsAndRecomputesItsOrder(t *testing.T) {
 	shared := renderJourney(t, id, true)
 	require.Empty(t, shared["refusal"])
 	assert.Equal(t, "Each act came after the holder's yes · not checked · steps are withheld from this copy", stampLine(t, shared, "Each act came after"))
-	assert.Equal(t, "Their agreement with how the deal closed · not checked · steps are withheld from this copy", stampLine(t, shared, "Their agreement"),
+	assert.Equal(t, "Their agreement with how it closed · not checked · steps are withheld from this copy", stampLine(t, shared, "Their agreement"),
 		"with steps withheld, no close in the copy does not mean the deal is open")
 }
 
@@ -78,7 +78,7 @@ func TestAReceiptWithNoActDrawsNoApprovalLine(t *testing.T) {
 	require.Empty(t, got["refusal"])
 	noStampLine(t, got, "Your own key's signature")
 	noStampLine(t, got, "Each act came after")
-	assert.Equal(t, "Their agreement with how the deal closed · missing · no record from their side", stampLine(t, got, "Their agreement"),
+	assert.Equal(t, "Their agreement with how it closed · missing · no record from their side", stampLine(t, got, "Their agreement"),
 		"a closed deal with only your copy: their side is missing, never agreed")
 	assert.Equal(t, "none", got["close"])
 
@@ -175,16 +175,16 @@ func TestTheComposedReceiptReadsTheCloseFromTheirRecord(t *testing.T) {
 
 	both := open(keep, theirs)
 	assert.Equal(t, "unilateral", both["close"], "no deal verb seals an acknowledgement yet, so their record never points at your close")
-	assert.Equal(t, "Their agreement with how the deal closed · missing · closed by your side only: their record is here, and it does not point at your close", stampLine(t, both, "Their agreement"))
+	assert.Equal(t, "Their agreement with how it closed · missing · closed by your side only: their record is here, and it does not point at your close", stampLine(t, both, "Their agreement"))
 	assert.Equal(t, "The payment is settled on its rail · missing · no settlement record is in this file", stampLine(t, both, "The payment is settled"))
 
 	only := open(keep, absent)
-	assert.Equal(t, "Their agreement with how the deal closed · missing · no record from their side", stampLine(t, only, "Their agreement"))
+	assert.Equal(t, "Their agreement with how it closed · missing · no record from their side", stampLine(t, only, "Their agreement"))
 	assert.Equal(t, "none", only["close"])
 
 	none := open(nil, theirs)
 	assert.Equal(t, "Each act came after your yes · missing · your record is not in this file", stampLine(t, none, "Each act came after"))
-	assert.Equal(t, "Their agreement with how the deal closed · not checked · your record is not in this file", stampLine(t, none, "Their agreement"))
+	assert.Equal(t, "Their agreement with how it closed · not checked · your record is not in this file", stampLine(t, none, "Their agreement"))
 	assert.Equal(t, "The payment is settled on its rail · missing · no settlement record is in this file", stampLine(t, none, "The payment is settled"))
 }
 
@@ -258,7 +258,7 @@ func TestTheComposedWitnessLineNamesWhatWasChecked(t *testing.T) {
 	assert.Regexp(t, fmt.Sprintf(yours, "not checked", "the other side's is not checked"), line(both, "witness:PASS,NOT_CHECKED"))
 	assert.Regexp(t, fmt.Sprintf(yours, "failed", "the other side's witness signature did not verify"), line(both, "witness:PASS,FAIL"))
 	assert.Equal(t, label+" · failed · the witness's signature did not verify", line(both, "witness:FAIL,PASS"), "yours failed: failed whatever theirs says")
-	assert.Regexp(t, fmt.Sprintf(yours, "missing", "the other side's has no witness receipt"), line(both, "witness:PASS,NOT_PRESENT"), "theirs has none: missing, not unchecked")
+	assert.Regexp(t, fmt.Sprintf(yours, "missing", "the other side's has no witness signature"), line(both, "witness:PASS,NOT_PRESENT"), "theirs has none: missing, not unchecked")
 	for _, edit := range []string{"witness:NOT_CHECKED,PASS", "no-checks"} {
 		assert.Equal(t, asIs, line(both, edit), "yours is not passed: "+edit+" leaves the line as it was")
 	}

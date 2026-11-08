@@ -59,7 +59,7 @@ func (s *dealSession) heldWitnessReceipt(ctx context.Context, statement []byte) 
 
 // dealScopeLine is printed on the face of every receipt, report page and
 // email: a receipt is about one deal, never about the agent's whole activity.
-const dealScopeLine = "This receipt covers this one deal. It is not a record of everything the agent did."
+const dealScopeLine = "This receipt covers this one exchange. It is not a record of everything the agent did."
 
 // dealDidLine says what kind of evidence the "did" part is. What was asked,
 // proposed and approved happened in the conversation on the agent's device,
@@ -93,7 +93,7 @@ func dealDidLineOf(b map[string]interface{}) string {
 // It names no witness state of its own: the attached page's verification
 // section is the one verdict, and the email does not give a second
 // (capsule-cli#341; the report's JSON keeps the rung for the agent).
-const dealEmailVerifyLine = "The attached page checks itself when it is opened. To check every seal and signature, run capsulectl verify --bundle bundle.json; to check the witness receipt too, add --witness-directory with a witness directory you trust."
+const dealEmailVerifyLine = "The attached page checks itself when it is opened. To check every seal and signature, run capsulectl verify --bundle bundle.json; to check the witness signature too, add --witness-directory with a witness directory you trust."
 
 // dealAssurance names the rung the report stands on, from the bundle itself,
 // and says the witness state truthfully. "witnessed" needs a receipt in the
@@ -147,10 +147,10 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 		switch state {
 		case "scheduled":
 			out["witness_state"] = "scheduled"
-			sealed += "Witness pending. A deal is not witnessed at the moment it happens: its checkpoint goes to the witness at the next tick of this profile's checkpoint cadence" + cadencePhrase(cadence) + ", and only then can it be witnessed. Until then it is sealed on this device only. "
+			sealed += "Witness pending. A receipt is not witnessed at the moment it is made: its checkpoint goes to the witness at the next tick of this profile's checkpoint cadence" + cadencePhrase(cadence) + ", and only then can it be witnessed. Until then it is sealed on this device only. "
 		case "unverified":
 			out["witness_state"] = "unverified"
-			sealed += "Witness receipt did not verify: a receipt for this deal is held, but the check against the witness this profile names now failed, so the record is sealed on this device only and is not shown as witnessed. "
+			sealed += "Witness signature did not verify: the witness's signature is held, but the check against the witness this profile names now failed, so the record is sealed on this device only and is not shown as witnessed. "
 		case "pending":
 			out["witness_state"] = "pending"
 			// The cadence's text says whether and why it is retried; a
@@ -182,7 +182,7 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 	when := "a checkpoint covering these steps, sent at a cadence tick after them"
 	out := map[string]any{"rung": "witnessed", "witness_state": "witnessed", "witness": host}
 	if at, _ := cadence["checkpoint_at"].(string); at != "" {
-		when = "this deal's checkpoint, cut at " + at + " at a cadence tick after the deal's steps"
+		when = "this receipt's checkpoint, cut at " + at + " at a cadence tick after the receipt's steps"
 		out["checkpoint_at"] = at
 	}
 	// Witnessed in part: the receipt covers an earlier checkpoint of this
@@ -201,7 +201,7 @@ func dealAssuranceRung(b map[string]interface{}) map[string]any {
 		case "scheduled":
 			rest = "Witness pending for the rest: the current checkpoint goes to the witness at the next tick of this profile's checkpoint cadence" + cadencePhrase(r) + ". "
 		case "unverified":
-			rest = "The rest did not verify: a receipt for the current checkpoint is held, but the check against the witness this profile names now failed. "
+			rest = "The rest did not verify: the witness's signature for the current checkpoint is held, but the check against the witness this profile names now failed. "
 		}
 		out["text"] = fmt.Sprintf(
 			"Witnessed in part: %s, an independent log, signed a receipt for %s, covering steps 1 to %d of %d: those existed, unchanged, by then. Steps %d to %d are sealed by my agent on this device only. %s%sIt does not confirm what the agent did. The receipt is in the attached bundle; check it with capsulectl verify --bundle bundle.json --witness-directory DIRECTORY.json, using a witness directory you trust. %s",
@@ -277,16 +277,16 @@ var dealEmailNotClaimed = []string{
 	"Tamper-evident against ourselves and the agent, not non-repudiation: it shows the record was not changed after it was made, not who made it.",
 	"It covers this skill's own records only, never the agent host's own store: a change there is not detected.",
 	"It records what the agent reported doing; it does not prove what the merchant charged or shipped.",
-	"Calling the deal check is advisory: steps the agent never sealed are not in it.",
+	"Running capsulectl deal check is advisory: steps the agent never sealed are not in it.",
 }
 
 const dealEmailVerify = "capsulectl verify --bundle bundle.json"
 
 var dealEmailHTML = template.Must(template.New("email").Parse(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Deal receipt</title></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Receipt</title></head>
 <body style="margin:0;padding:16px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a;background:#ffffff;">
 <div style="max-width:640px;margin:0 auto;">
-<h1 style="font-size:20px;margin:0 0 8px;">Deal receipt{{if .Demo}} <span style="font-size:13px;border:1px solid #b45309;color:#b45309;padding:0 6px;border-radius:4px;">DEMO</span>{{end}}</h1>
+<h1 style="font-size:20px;margin:0 0 8px;">Receipt{{if .Demo}} <span style="font-size:13px;border:1px solid #b45309;color:#b45309;padding:0 6px;border-radius:4px;">DEMO</span>{{end}}</h1>
 <p style="margin:0 0 8px;font-weight:600;">{{.Scope}}</p>
 <h2 style="font-size:16px;margin:16px 0 4px;">What you asked</h2>
 <p style="margin:0;">&ldquo;{{.Asked}}&rdquo;</p>
@@ -301,7 +301,7 @@ var dealEmailHTML = template.Must(template.New("email").Parse(`<!DOCTYPE html>
 <p style="margin:0 0 16px;color:#444;">{{.Countersign}}</p>
 <h2 style="font-size:16px;margin:16px 0 4px;">Anomalies</h2>
 <ul style="margin:0;padding-left:20px;">{{range .Anomalies}}<li>{{if .Side}}{{.Side}} side: {{end}}{{.Text}}</li>{{else}}<li>None found.</li>{{end}}</ul>
-<h2 style="font-size:16px;margin:16px 0 4px;">Where this deal stands</h2>
+<h2 style="font-size:16px;margin:16px 0 4px;">Where this receipt stands</h2>
 <p style="margin:0 0 4px;">{{.Lifecycle.Text}}</p>
 {{if .Lifecycle.Later}}<ul style="margin:0;padding-left:20px;">{{range .Lifecycle.Later}}<li>{{.At}} &middot; confirms the close: {{.Text}}</li>{{end}}</ul>{{end}}
 <p style="margin:4px 0 0;color:#444;">{{.Lifecycle.MayChange}} (as of {{.Lifecycle.AsOf}})</p>
@@ -353,7 +353,7 @@ func dealEmail(view dealEmailView, page, bundle []byte, at time.Time) (eml []byt
 	if r := []rune(asked); len(r) > 60 {
 		asked = string(r[:59]) + "…"
 	}
-	subject = "Deal receipt: " + asked
+	subject = "Receipt: " + asked
 	if view.Demo {
 		subject = "DEMO · " + subject
 	}
@@ -402,7 +402,7 @@ func dealEmail(view dealEmailView, page, bundle []byte, at time.Time) (eml []byt
 		}
 		fmt.Fprintf(&tb, "- %s%s\n", side, a.Text)
 	}
-	fmt.Fprintf(&tb, "\nWhere this deal stands:\n%s\n", view.Lifecycle.Text)
+	fmt.Fprintf(&tb, "\nWhere this receipt stands:\n%s\n", view.Lifecycle.Text)
 	for _, l := range view.Lifecycle.Later {
 		fmt.Fprintf(&tb, "- %s · confirms the close: %s\n", l.At, l.Text)
 	}
