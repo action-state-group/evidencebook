@@ -19,7 +19,7 @@ name = "evidencebook"
 path = "src/lib.rs"
 
 [dependencies]
-cll = { package = "checkpointed-local-log", version = "0.4.0" }
+cll = { package = "checkpointed-local-log", version = "0.5.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
@@ -32,12 +32,14 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 ciborium = "0.2"
 # The request draft (draft-mih-agent-evidence-request-00): its registry and
 # refusal profile, the interop profile's envelope, and (`cll`) the encoders and
-# checks of the Checkpointed Local Log material, on the same
-# checkpointed-local-log line as this crate.
+# checks of the Checkpointed Local Log material. evidence-request 0.4.1 still
+# depends on checkpointed-local-log 0.4, so the graph carries both that line and
+# this crate's 0.5; no cll type crosses between them (the crate builds and tests
+# pass).
 evidence-request = { version = "0.4.1", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
-agent-action-capsule = { version = "0.8.0", default-features = false, features = ["strict"] }
+agent-action-capsule = { version = "0.10.0", default-features = false, features = ["strict"] }
 # The `deal` feature's dependencies (the x-deal-v0 reference profile, module
 # `deal`): its schemas' validator, the normalization of counterparty
 # identifiers (Unicode normalization, case mapping, general categories, IDNA,
@@ -56,7 +58,7 @@ regex = { version = "1", optional = true }
 # originals, base64 for the stored statements, and libc for the writer lock's
 # flock. None is built without the feature.
 rusqlite = { version = "0.40", features = ["bundled"], optional = true }
-capsule-emit-artifact = { version = "0.0.2", features = ["sqlite"], optional = true }
+capsule-emit-artifact = { version = "0.0.3", features = ["sqlite"], optional = true }
 base64 = { version = "0.22", optional = true }
 libc = { version = "0.2", optional = true }
 
