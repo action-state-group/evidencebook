@@ -4,7 +4,7 @@
     python build_bundle.py <bundle.json> <tampered.json>
 
 A test-only producer, independent of this module: the records are sealed by
-the Python Agent Action Capsule library (`agent_action_capsule.emit`), and
+the Python Agent Action Capsule library (`capsule_emit.builder.build_capsule`), and
 the log, the signed checkpoint (COSE), the interval range proof and every
 record's inclusion proof are built by the Python Checkpointed Local Log
 (`cll`). The checkpoint is signed with an Ed25519 key through
@@ -21,7 +21,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 
-import agent_action_capsule
+from capsule_emit.builder import build_capsule
 from capsule_emit.signing import LocalKeypairSigner
 from cll.checkpoint import MmrLedger, checkpoint_to_cose, emit_checkpoint
 
@@ -58,9 +58,9 @@ def _proof_json(proof) -> dict:
 
 
 def build() -> dict:
-    first = agent_action_capsule.emit("interop.first", "fyi", "interop-operator", "python-producer", timestamp="2026-10-05T00:00:00Z")
-    second = agent_action_capsule.emit("interop.second", "fyi", "interop-operator", "python-producer", timestamp="2026-10-05T00:00:01Z")
-    third = agent_action_capsule.emit(
+    first = build_capsule("interop.first", "fyi", "interop-operator", "python-producer", timestamp="2026-10-05T00:00:00Z")
+    second = build_capsule("interop.second", "fyi", "interop-operator", "python-producer", timestamp="2026-10-05T00:00:01Z")
+    third = build_capsule(
         "interop.third", "fyi", "interop-operator", "python-producer", timestamp="2026-10-05T00:00:02Z",
         prior_capsule_id=second["capsule_id"], chain_relation="follows",
     )

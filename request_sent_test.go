@@ -186,6 +186,13 @@ func TestRespondAnswersEvidenceInterop1(t *testing.T) {
 	if refusal.Detail != "profiles supported: evidence-interop/0, evidence-interop/1" {
 		t.Fatalf("detail %q", refusal.Detail)
 	}
+	// evidence-interop/2 is defined by the library but not answered by the book
+	// (evidencebook#436): it is refused the same way, never answered as /0.
+	octets = []byte(`{"coverage":{"min_freshness":1},"profile":"evidence-interop/2","subject":{"checkpoints":null}}`)
+	refusal = mustRefusal(t, respondAs(t, responder, Message{Octets: octets, MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
+	if refusal.Detail != "profiles supported: evidence-interop/0, evidence-interop/1" {
+		t.Fatalf("/2 detail %q", refusal.Detail)
+	}
 	mustAppend(t, responder, observation("s", "p"))
 	pin := anchorPin(t, responder)
 	artifacts := map[string][]byte{}

@@ -24,9 +24,9 @@ classifiers = [
 # the SQLite log and the checkpoint runner are checkpointed-local-log's; a
 # shelf's artifact store is capsule-emit's. Nothing here reimplements them.
 dependencies = [
-    "agent-action-capsule>=0.14.0,<0.15",
+    "agent-action-capsule>=0.16.0,<0.17",
     "checkpointed-local-log>=0.8.0,<0.9",
-    "capsule-emit>=0.14.0,<0.15",
+    "capsule-emit>=0.15.0,<0.16",
     # The checkpoint reader decodes with cbor2's strict mode and keeps every
     # tag cbor2 6.1 decodes semantically raw (_cll.SEMANTIC_TAGS), so cbor2 is
     # pinned to the minor version that list was taken from.

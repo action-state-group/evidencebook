@@ -314,10 +314,13 @@ def test_malformed_traffic_is_refused_and_never_grows_the_log(clock, responder):
     assert r.size() == size
 
 
-def test_an_unknown_profile_is_refused_with_the_profiles_supported(clock, responder):
+# evidence-interop/2 is defined by agent-action-capsule but not answered by the book
+# (evidencebook#436): it is refused like an unknown profile, never answered as /0.
+@pytest.mark.parametrize("profile", ["evidence-interop/9", "evidence-interop/2"])
+def test_an_unknown_profile_is_refused_with_the_profiles_supported(clock, responder, profile):
     r, records = responder
     request = eb.encode_request(eb.EvidenceRequest(eb.Subject("record", records[0].record_id),
-                                                   eb.Coverage(min_freshness=1), profile="evidence-interop/9"))
+                                                   eb.Coverage(min_freshness=1), profile=profile))
     reply, record = r.respond(eb.Message(request), PEERS)
     assert reply.refusal.reason == "request_malformed" and record is None
     assert json.loads(reply.message.octets)["detail"] == "profiles supported: evidence-interop/0, evidence-interop/1"

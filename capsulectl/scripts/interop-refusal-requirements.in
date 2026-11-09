@@ -5,5 +5,5 @@
 # Locked with hashes, transitively, in interop-refusal-requirements.txt:
 #   uv pip compile scripts/interop-refusal-requirements.in --generate-hashes \
 #     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-refusal-requirements.txt
-agent-action-capsule==0.13.0
+agent-action-capsule==0.16.0
 cryptography
