@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed: pin agent-action-capsule go v0.21.0; evidence-interop/2 is still refused (#436)
+
+- The module pins `agent-action-capsule/go` v0.21.0, whose `evidencerequest.Profiles` also names `evidence-interop/2`. The book does not implement `/2`, so a request naming it reads as an unknown profile everywhere the book reads a request (answering, `RequestSent`, `CheckStaple`), and the signed refusal's detail still reads `profiles supported: evidence-interop/0, evidence-interop/1`; it is never answered as `/0`.
+
+- `capsulectl book report build`: `--diagnostic` writes a marked diagnostic page for a bundle that fails verification or is incomplete, and the command still exits with the bundle's own failure; the result gains `status_line`, `records`, `records_verified`, `claims_not_evaluable`, `diagnostic` and `diagnostic_reasons` (counts with denominators, no percentage). `--diagnostic` cannot be combined with `--seal` or `--permalink` (evidencebook#111).
+
+- `report`: `View.Diagnostic` writes a marked diagnostic page for a bundle that does not verify (title, banner and card block say so; the viewer draws its failed-bundle callout), with no permalink and no seal; `Page.Failure` returns the error the bundle earns. `Page` carries `Records`, `RecordsVerified` and `StatusLine`, counts with denominators and no percentage. `Build` runs pre-publish page checks (no foreign script, pinned inline scripts, a chart text alternative, the core runtime, language, viewport, title and print stylesheet) and writes nothing when one fails; a chart view without a `description` is now refused (evidencebook#111).
+
+### Changed (breaking): `uniform` is the default refusal policy (#225, #206 row 8)
+
+- An empty `ResponderPolicy.RefusalPolicy` now means `RefusalPolicyUniform`: a responder answers `policy_declined` wherever a more specific token (`not_authorized`, `no_such_subject`, `coverage_unsatisfiable`) would tell a counterparty whether the holder has a record for a key it does not hold. The manifest declares `refusal_policy: "uniform"` for the zero value. `RefusalPolicySpecific` is an explicit operator opt-in. To keep the old answers, set `ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}`. Rust and Python change the same way (see their changelogs).
+
 ## capsulectl/v0.1.0-rc39 (2026-11-06)
 
 capsulectl-book only; no library tag.
