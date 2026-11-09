@@ -285,6 +285,11 @@ fn the_envelope_is_signed_under_the_profile_the_request_names() {
         under(Some("evidence-interop/9")),
         Err(AnswerError::Sign(_))
     ));
+    // evidence-request signs for /2, which the book does not answer.
+    assert!(matches!(
+        under(Some("evidence-interop/2")),
+        Err(AnswerError::Sign(_))
+    ));
 }
 
 #[test]

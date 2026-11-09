@@ -50,6 +50,14 @@ pub const PROFILE_ID: &str = crate::ask::PROFILE_ID;
 /// answers [`PROFILE_ID`].
 pub const PROFILE_V1: &str = evidence_request::envelope::PROFILE_V1;
 
+/// The profile identifiers this responder answers. evidence-request 0.5.0 also
+/// implements `evidence-interop/2`, which the book does not answer: a request
+/// naming it is `request_malformed`, as in the Go and Python books.
+pub(crate) const ANSWERED_PROFILES: [&str; 2] = [
+    evidence_request::envelope::PROFILE,
+    evidence_request::envelope::PROFILE_V1,
+];
+
 /// Decides whether a requester may be answered now. The requester is the
 /// authenticated identity, or `None` for every caller the transport did not
 /// authenticate. A request over the limit is refused for a limit:
@@ -824,9 +832,7 @@ fn read_request(octets: &[u8], binding: Binding) -> Result<Request, Refused> {
         NamedProfile::Absent => {}
         NamedProfile::NotText => return Err((Reason::RequestMalformed, None)),
         NamedProfile::Text(profile) => {
-            if !profile.is_empty()
-                && !evidence_request::envelope::PROFILES.contains(&profile.as_str())
-            {
+            if !profile.is_empty() && !ANSWERED_PROFILES.contains(&profile.as_str()) {
                 return Err((Reason::RequestMalformed, Some(const_concat_profiles())));
             }
         }
