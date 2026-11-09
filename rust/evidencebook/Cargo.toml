@@ -32,11 +32,11 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 ciborium = "0.2"
 # The request draft (draft-mih-agent-evidence-request-00): its registry and
 # refusal profile, the interop profile's envelope, and (`cll`) the encoders and
-# checks of the Checkpointed Local Log material. evidence-request 0.4.1 still
-# depends on checkpointed-local-log 0.4, so the graph carries both that line and
-# this crate's 0.5; no cll type crosses between them (the crate builds and tests
-# pass).
-evidence-request = { version = "0.4.1", default-features = false, features = ["cll"] }
+# checks of the Checkpointed Local Log material. evidence-request 0.5.0 is on
+# checkpointed-local-log 0.5, the line this crate uses, so one copy is in the
+# graph. agent-action-capsule 0.10.0 still depends on evidence-request 0.4
+# (without its `cll` feature), so evidence-request itself is in the graph twice.
+evidence-request = { version = "0.5.0", default-features = false, features = ["cll"] }
 # AAC's witness receipt verifier (`witness`, feature `strict`): the served
 # summary counts a checkpoint witnessed only on a receipt it verifies.
 agent-action-capsule = { version = "0.10.0", default-features = false, features = ["strict"] }

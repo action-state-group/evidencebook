@@ -478,6 +478,14 @@ pub fn build(
         Some(profile) => profile,
         None => evidence_request::envelope::PROFILE.to_string(),
     };
+    // evidence-request 0.5.0 signs for `evidence-interop/2` too; the book does
+    // not answer it, so it is refused here as `sign_with_profile` refused any
+    // profile the library did not implement.
+    if !crate::respond::ANSWERED_PROFILES.contains(&profile.as_str()) {
+        return Err(AnswerError::Sign(
+            evidence_request::envelope::SignError::Profile,
+        ));
+    }
     Ok(sign_with_profile(
         &profile,
         request_bytes,

@@ -660,34 +660,37 @@ fn a_malformed_request_is_refused_signed_and_leaves_no_record() {
         assert_eq!(reason(&reply), Reason::RequestMalformed);
         assert!(sealed.is_none());
     }
-    // An unknown profile is malformed, and the refusal lists the supported ones.
-    let other = serde_json::to_vec(&json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}, "profile": "evidence-interop/9"})).unwrap();
-    let signer = key("responder");
-    let derivations = Derivations::new();
-    let responder = Responder {
-        signer: &signer,
-        derivations: &derivations,
-        policy: &policy,
-        standard_history: None,
-    };
-    let (octets, sealed) = respond(
-        &mut b,
-        &responder,
-        &other,
-        Binding::Json,
-        &RespondOptions {
-            authenticated_requester: Some("alice"),
-            policy: SharePolicy::default(),
-        },
-    )
-    .unwrap();
-    let object: Value = serde_json::from_slice(&octets).unwrap();
-    assert_eq!(object["reason"], "request_malformed");
-    assert_eq!(
-        object["detail"],
-        "profiles supported: evidence-interop/0, evidence-interop/1"
-    );
-    assert!(sealed.is_none());
+    // An unknown profile is malformed, and the refusal lists the supported ones;
+    // evidence-interop/2, which evidence-request implements, is not answered here.
+    for named in ["evidence-interop/9", "evidence-interop/2"] {
+        let other = serde_json::to_vec(&json!({"subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}, "profile": named})).unwrap();
+        let signer = key("responder");
+        let derivations = Derivations::new();
+        let responder = Responder {
+            signer: &signer,
+            derivations: &derivations,
+            policy: &policy,
+            standard_history: None,
+        };
+        let (octets, sealed) = respond(
+            &mut b,
+            &responder,
+            &other,
+            Binding::Json,
+            &RespondOptions {
+                authenticated_requester: Some("alice"),
+                policy: SharePolicy::default(),
+            },
+        )
+        .unwrap();
+        let object: Value = serde_json::from_slice(&octets).unwrap();
+        assert_eq!(object["reason"], "request_malformed");
+        assert_eq!(
+            object["detail"],
+            "profiles supported: evidence-interop/0, evidence-interop/1"
+        );
+        assert!(sealed.is_none());
+    }
     assert_eq!(b.records.len(), before);
 }
 
