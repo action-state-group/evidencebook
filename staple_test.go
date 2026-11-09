@@ -489,3 +489,13 @@ func TestStandardCardDealsSkipsARefusedStaple(t *testing.T) {
 		t.Fatalf("a refused staple lists %v, %v", got, err)
 	}
 }
+
+// A staple whose request names evidence-interop/2 is refused: the book does not
+// answer /2, so it does not vouch for a card answered under it (evidencebook#436).
+func TestCheckStapleRefusesProfile2(t *testing.T) {
+	request := Message{Octets: []byte(`{"coverage":{"min_freshness":1},"profile":"evidence-interop/2","subject":{"checkpoints":null}}`), MediaType: MediaTypeJSON}
+	_, err := CheckStaple(Staple{Request: request, Reply: Reply{Message: Message{Octets: []byte(`{}`), MediaType: MediaTypeJSON}}}, "holder")
+	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "profile is not supported") {
+		t.Fatalf("%v, want ErrInvalid: profile is not supported", err)
+	}
+}

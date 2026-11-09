@@ -182,11 +182,11 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 	if s.Request.MediaType != MediaTypeJSON || s.Reply.MediaType != MediaTypeJSON {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request and reply are JSON", ErrInvalid)
 	}
-	parsed := evidencerequest.ParseRequest(s.Request)
-	if parsed.Reason != "" {
-		return StapleCheck{}, fmt.Errorf("%w: a staple's request is malformed: %s", ErrInvalid, parsed.Why)
+	parsed := readRequest(s.Request)
+	if parsed.reason != "" {
+		return StapleCheck{}, fmt.Errorf("%w: a staple's request is malformed: %s", ErrInvalid, parsed.why)
 	}
-	req := parsed.Request
+	req := parsed.request
 	subject, ok := stapleSubjects[req.Derivation]
 	if !ok || req.Subject.Kind != subject {
 		return StapleCheck{}, fmt.Errorf("%w: a staple carries %s over %s or %s over %s, not %q over %s", ErrInvalid,

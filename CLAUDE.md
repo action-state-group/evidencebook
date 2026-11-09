@@ -60,9 +60,8 @@ python -m pytest -q .github/test_release.py
 
 # Interoperability (test/interop/): Go programs that write or read files, and
 # Python checks from the other implementations. Each needs a sibling checkout
-# or package pinned in ci.yml; for example, with checkpointed-local-log at the
-# pinned commit and `agent-action-capsule` and `capsule-emit` installed at
-# their pinned versions:
+# or package pinned in ci.yml; for example, with `agent-action-capsule`,
+# `checkpointed-local-log` and `capsule-emit` installed at their pinned versions:
 dir=$(mktemp -d)
 go run ./test/interop/bundle "$dir/book" "$dir/bundle.json" "$dir/refusal.json"
 python test/interop/python-aac/verify_bundle.py "$dir/bundle.json"

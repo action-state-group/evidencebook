@@ -759,6 +759,8 @@ def test_request_sent_refuses_what_was_not_sent(clock):
         ("two coverages", two, eb.MEDIA_TYPE_JSON),
         ("unknown profile", '{"coverage":{"min_freshness":1},"profile":"evidence-interop/9",'
                             '"subject":{"checkpoints":null}}', eb.MEDIA_TYPE_JSON),
+        ("profile /2", '{"coverage":{"min_freshness":1},"profile":"evidence-interop/2",'
+                       '"subject":{"checkpoints":null}}', eb.MEDIA_TYPE_JSON),
         ("not JSON", '{"subject":', eb.MEDIA_TYPE_JSON),
     ]:
         with pytest.raises(eb.InvalidError):

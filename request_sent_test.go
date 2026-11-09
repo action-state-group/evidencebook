@@ -104,6 +104,7 @@ func TestRequestSentRefusesWhatWasNotSent(t *testing.T) {
 		"no subject":      {`{"coverage":{"min_freshness":1}}`, MediaTypeJSON},
 		"two coverages":   {`{"coverage":{"expected_pin":"` + strings.Repeat("ab", 32) + `","min_freshness":1},"subject":{"checkpoints":null}}`, MediaTypeJSON},
 		"unknown profile": {`{"coverage":{"min_freshness":1},"profile":"evidence-interop/9","subject":{"checkpoints":null}}`, MediaTypeJSON},
+		"profile /2":      {`{"coverage":{"min_freshness":1},"profile":"evidence-interop/2","subject":{"checkpoints":null}}`, MediaTypeJSON},
 		"not JSON":        {`{"subject":`, MediaTypeJSON},
 	} {
 		if err := sent(tc.octets, tc.mediaType); !errors.Is(err, ErrInvalid) {

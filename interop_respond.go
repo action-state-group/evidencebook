@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -475,7 +474,7 @@ func (a *answer) run() (Reply, error) {
 	}
 	// The book answers evidence-interop/0 and /1, and an unknown profile's
 	// detail lists both (§3.3 step 4), however many the library knows.
-	check := answerableRequest(readRequest(a.request))
+	check := readRequest(a.request)
 	if check.reason != "" {
 		return a.refuse(check.reason, check.detail)
 	}
@@ -789,24 +788,4 @@ func capsulePreimage(capsule []byte, recordID string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: capsule body does not hash to record id %s", ErrCorrupt, recordID)
 	}
 	return body, nil
-}
-
-// answeredProfiles are the profiles the book answers. The library's
-// evidencerequest.Profiles also names evidence-interop/2, which the book does not
-// implement: answering it would sign a claim the book cannot back, so a request
-// naming it is refused like any unknown profile (evidencebook#436).
-var answeredProfiles = []string{ProfileID, ProfileIDv1}
-
-// answerableRequest turns a request naming a profile the book does not answer
-// into the unknown-profile refusal, and rewrites the library's own
-// unknown-profile detail to list only the profiles the book answers.
-func answerableRequest(check requestCheck) requestCheck {
-	const listing = "profiles supported: "
-	if check.reason == "" && !slices.Contains(answeredProfiles, check.request.Profile) {
-		check.reason, check.why = ReasonRequestMalformed, "profile is not supported"
-		check.detail = listing + strings.Join(answeredProfiles, ", ")
-	} else if strings.HasPrefix(check.detail, listing) {
-		check.detail = listing + strings.Join(answeredProfiles, ", ")
-	}
-	return check
 }

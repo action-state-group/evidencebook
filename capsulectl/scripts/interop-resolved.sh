@@ -13,7 +13,10 @@
 #
 # EVIDENCEBOOK_SRC is a checkout of evidencebook at the version this module
 # resolves (for its Python verifier scripts). Needs Python with checkpointed-local-log,
-# agent-action-capsule and capsule-emit installed, as evidencebook's CI installs them.
+# agent-action-capsule and capsule-emit installed from scripts/interop-requirements.txt. That lock
+# follows the RESOLVED evidencebook release's scripts (its build_bundle.py is run below), not the
+# repository's main: it stays at agent-action-capsule 0.6.0 until capsulectl/go.mod resolves a
+# release whose build_bundle.py uses capsule_emit.builder.build_capsule, then moves to 0.16.0.
 # REFUSAL_PYTHON is the interpreter verify_refusal.py runs with, one with
 # scripts/interop-refusal-requirements.txt installed (default: python).
 set -euo pipefail
