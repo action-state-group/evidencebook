@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.0.15 (2026-11-09)
+
+Tag `crates/evidencebook-v0.0.15`. Pull request [#442](https://github.com/action-state-group/evidencebook/pull/442): chore(rust): move evidence-request to 0.5.0.
+
+- Breaking for hosts: `evidence-request` moves from 0.4.1 to 0.5.0 (also `rust/interop`), which is on `checkpointed-local-log` 0.5, so a host's graph carries one `checkpointed-local-log` line instead of two; the 0.0.14 note about carrying both no longer applies. `evidence-request` 0.5.0 implements `evidence-interop/2`, which the book does not answer: the responder reads requests against its own list of answered profiles (`/0` and `/1`), so a request naming `/2` is still `request_malformed` listing `/0` and `/1`, and `answer` refuses it with `AnswerError::Sign`, as the Go and Python books do. Types from `evidence-request` in this crate's public API (`AnswerError::Sign`, `Envelope`) are now 0.5.0's.
+
 ## 0.0.14 (2026-11-09)
 
 Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the user-facing changes):
