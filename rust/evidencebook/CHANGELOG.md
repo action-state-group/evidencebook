@@ -9,7 +9,7 @@ Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the 
 - [#440](https://github.com/action-state-group/evidencebook/pull/440): chore(rust): move the Rust crates to AAC 0.10 / cll 0.5 / capsule-emit-artifact 0.0.3 (#437)
 - [#433](https://github.com/action-state-group/evidencebook/pull/433): feat(respond)!: uniform is the default refusal policy, specific an opt-in (#206 row 8)
 - [#430](https://github.com/action-state-group/evidencebook/pull/430): build(capsulectl): require capsule-cli rc38 and evidencebook v0.13.9; cut the CHANGELOG for capsulectl/v0.1.0-rc38
-- [#409](https://github.com/action-state-group/evidencebook/pull/409): feat(rust): pair a failed exchange's halves by outcome in reconcile_halves
+- [#409](https://github.com/action-state-group/evidencebook/pull/409): feat(rust): pair a failed interaction's halves by outcome in reconcile_halves
 - [#394](https://github.com/action-state-group/evidencebook/pull/394): feat(dealprofile): a verdict's rules body records the pinned pack's kind
 - [#390](https://github.com/action-state-group/evidencebook/pull/390): chore(release): v0.13.5
 - [#389](https://github.com/action-state-group/evidencebook/pull/389): fix(dealprofile): price a BTC deal in msat on the standard-history card
@@ -19,7 +19,7 @@ Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the 
 - [#371](https://github.com/action-state-group/evidencebook/pull/371): chore(release): v0.13.3
 - [#367](https://github.com/action-state-group/evidencebook/pull/367): fix(dealprofile): rule_inputs_version accepts 3 and 4 (#363)
 - [#359](https://github.com/action-state-group/evidencebook/pull/359): feat: bound Cadence.HistoryCard at DefaultMaxAnswerItems (#354)
-- [#342](https://github.com/action-state-group/evidencebook/pull/342): docs(guide): derive and check the Mesh node's History in path 4 (#322)
+- [#342](https://github.com/action-state-group/evidencebook/pull/342): docs(guide): derive and check the node's History in path 4 (#322)
 - [#351](https://github.com/action-state-group/evidencebook/pull/351): feat(python): the Goose close step cites the counterparty's checkpoint (#303)
 - [#353](https://github.com/action-state-group/evidencebook/pull/353): feat: Python and Rust responders answer standard_history/1 (#328)
 - [#346](https://github.com/action-state-group/evidencebook/pull/346): chore(release): v0.13.2
@@ -45,14 +45,15 @@ Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the 
   `testdata/staple/staples.json`.
 - New: `staple::staple_history_card(book, responder)` builds a `history_card/1` staple as of the
   book's newest checkpoint (cut if the book grew), with a fresh nonce. It grows no record and is
-  not counted by the responder's limiter. `standard_history/1` is not stapled from a Rust book:
-  this crate's responder does not answer it yet (evidencebook#328).
+  not counted by the responder's limiter. `standard_history/1` is stapled with
+  `staple::staple_standard_history` (evidencebook#328).
 
-### `Header.reproduction`, the reproduced-scratch-book marker (evidencebook#232)
+### Breaking: `Header.reproduction`, the reproduced-scratch-book marker (evidencebook#232)
 
 - New: `Header::reproduction` (`Reproduction`, `REPRODUCTION_CLOCK_CALLER`), read, validated
   and written as Go does, so a reproduced book's header keeps its identity here. Writing one
-  is not implemented in this crate.
+  is not implemented in this crate. `Header` gains a public field and has no `Default`, so a struct literal of it no longer compiles: set
+  `reproduction: None`.
 
 ### `deal::check_chain`, the chain stage (PROFILE.md §6) (evidencebook#308)
 
@@ -82,7 +83,11 @@ Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the 
 - `Cadence::history_card(n)` returns the profile's `history_card/1` over the cadence log as a `Staple`, as Go's
   `Cadence.HistoryCard` does (#341); `check_staple` accepts it for the shelf signer's key id.
 
-- `Cadence::history_card` returns the new `ShelfError::OverLimit` when the card would list more than `DEFAULT_MAX_ANSWER_ITEMS` (10,000) ticks, as Go's `Cadence.HistoryCard` does (evidencebook#354).
+- Breaking: `ShelfError` gains the variant `OverLimit(String)`, and the enum is not `#[non_exhaustive]`, so an exhaustive `match` on it needs a new arm. `Cadence::history_card` returns the new `ShelfError::OverLimit` when the card would list more than `DEFAULT_MAX_ANSWER_ITEMS` (10,000) ticks, as Go's `Cadence.HistoryCard` does (evidencebook#354).
+
+### Breaking: `deal::VerdictBodyRules` has a `kind` field (evidencebook#394)
+
+- `VerdictBodyRules` gains `kind: Option<String>`, the pinned pack's kind, read and written as Go's verdict `rules` body does. A struct literal of it needs `kind: None` (or `..Default::default()`), and an older release refuses a verdict body carrying `kind` (`deny_unknown_fields`).
 
 ### Changed: deal records accept rule_inputs_version 4 (#363)
 
