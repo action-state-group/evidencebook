@@ -1,4 +1,7 @@
-# The Python stack for scripts/interop-resolved.sh, as evidencebook's CI pins it.
+# The Python stack for scripts/interop-resolved.sh. It follows the scripts of the evidencebook
+# release capsulectl/go.mod resolves, not evidencebook's main CI (which is at agent-action-capsule
+# 0.16.0): that release's build_bundle.py still calls 0.6.0's emit(). Move this lock to 0.16.0,
+# capsule-emit 0.15.0 and checkpointed-local-log 0.8.0 once the resolved release has the new script.
 # Locked with hashes, transitively, in interop-requirements.txt:
 #   uv pip compile scripts/interop-requirements.in --generate-hashes --no-emit-package checkpointed-local-log \
 #     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-requirements.txt

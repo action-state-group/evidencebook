@@ -472,8 +472,8 @@ func (a *answer) run() (Reply, error) {
 	if oversized || limited {
 		return a.refuse(limitReason(requestProfile(a.request)), "")
 	}
-	// The book answers evidence-interop/0 and /1 (evidencerequest.Profiles),
-	// and an unknown profile's detail lists both (§3.3 step 4).
+	// The book answers evidence-interop/0 and /1, and an unknown profile's
+	// detail lists both (§3.3 step 4), however many the library knows.
 	check := readRequest(a.request)
 	if check.reason != "" {
 		return a.refuse(check.reason, check.detail)

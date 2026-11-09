@@ -63,8 +63,11 @@ _BINDINGS = {MEDIA_TYPE_JSON: "json", MEDIA_TYPE_CBOR: "cbor"}
 #: The revision that pins ER -02 and registers its two refusal reasons
 #: (``spec/interop-profile-v1.md``, P-65).
 PROFILE_V1 = "evidence-interop/1"
-#: The profiles the book answers, in code-point order (profile §3.3).
-_SUPPORTED_PROFILES = tuple(sorted(PROFILES))
+#: The profiles the book answers, in code-point order (profile §3.3). Not the
+#: library's ``PROFILES``, which also names evidence-interop/2: the book does not
+#: implement /2, so a request naming it is refused like any unknown profile
+#: (evidencebook#436).
+_SUPPORTED_PROFILES = ("evidence-interop/0", PROFILE_V1)
 _DERIVATION_TOKEN = re.compile(r"[a-z0-9_]+/[0-9]+\Z")
 
 

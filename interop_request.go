@@ -3,6 +3,8 @@
 package evidencebook
 
 import (
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/action-state-group/agent-action-capsule/go/evidencerequest"
@@ -81,10 +83,25 @@ type requestCheck struct {
 	detail    string
 }
 
+// answeredProfiles are the profiles the book answers, in code-point order.
+var answeredProfiles = []string{ProfileID, ProfileIDv1}
+
 // readRequest validates received request octets (profile §6.1 steps 1 to 5).
 func readRequest(m Message) requestCheck {
 	check := evidencerequest.ParseRequest(m)
 	out := requestCheck{request: check.Request, reason: check.Reason, why: check.Why, detail: check.Detail}
+	// The library's Profiles also names evidence-interop/2, which the book does not
+	// implement: answering it would sign a claim the book cannot back, so a request
+	// naming it reads as an unknown profile, and the library's own unknown-profile
+	// detail is rewritten to list only the profiles the book answers (evidencebook#436).
+	// Python's read_request applies the same gate.
+	const listing = "profiles supported: "
+	if out.reason == "" && !slices.Contains(answeredProfiles, out.request.Profile) {
+		out.reason, out.why = ReasonRequestMalformed, "profile is not supported"
+		out.detail = listing + strings.Join(answeredProfiles, ", ")
+	} else if strings.HasPrefix(out.detail, listing) {
+		out.detail = listing + strings.Join(answeredProfiles, ", ")
+	}
 	if check.Reason == "" {
 		if f := check.Request.Coverage.MinFreshness; f != nil && f.Time != "" {
 			out.floorTime, _ = evidencerequest.ParseRequestTime(f.Time)

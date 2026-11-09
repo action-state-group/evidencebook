@@ -116,7 +116,7 @@ jobs:
         with:
           ref: ${{ steps.resolved.outputs.evidencebook }}
           path: .interop/evidencebook
-      - name: Check out Python CLL (as the library's CI pins it)
+      - name: Check out Python CLL (the commit the resolved release's scripts were written against)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/checkpointed-local-log

@@ -104,6 +104,7 @@ func TestRequestSentRefusesWhatWasNotSent(t *testing.T) {
 		"no subject":      {`{"coverage":{"min_freshness":1}}`, MediaTypeJSON},
 		"two coverages":   {`{"coverage":{"expected_pin":"` + strings.Repeat("ab", 32) + `","min_freshness":1},"subject":{"checkpoints":null}}`, MediaTypeJSON},
 		"unknown profile": {`{"coverage":{"min_freshness":1},"profile":"evidence-interop/9","subject":{"checkpoints":null}}`, MediaTypeJSON},
+		"profile /2":      {`{"coverage":{"min_freshness":1},"profile":"evidence-interop/2","subject":{"checkpoints":null}}`, MediaTypeJSON},
 		"not JSON":        {`{"subject":`, MediaTypeJSON},
 	} {
 		if err := sent(tc.octets, tc.mediaType); !errors.Is(err, ErrInvalid) {
@@ -185,6 +186,13 @@ func TestRespondAnswersEvidenceInterop1(t *testing.T) {
 	refusal := mustRefusal(t, respondAs(t, responder, Message{Octets: octets, MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
 	if refusal.Detail != "profiles supported: evidence-interop/0, evidence-interop/1" {
 		t.Fatalf("detail %q", refusal.Detail)
+	}
+	// evidence-interop/2 is defined by the library but not answered by the book
+	// (evidencebook#436): it is refused the same way, never answered as /0.
+	octets = []byte(`{"coverage":{"min_freshness":1},"profile":"evidence-interop/2","subject":{"checkpoints":null}}`)
+	refusal = mustRefusal(t, respondAs(t, responder, Message{Octets: octets, MediaType: MediaTypeJSON}, ""), ReasonRequestMalformed)
+	if refusal.Detail != "profiles supported: evidence-interop/0, evidence-interop/1" {
+		t.Fatalf("/2 detail %q", refusal.Detail)
 	}
 	mustAppend(t, responder, observation("s", "p"))
 	pin := anchorPin(t, responder)
