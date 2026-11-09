@@ -18,8 +18,8 @@ sha2 = "0.10"
 tempfile = "3"
 # The shelf storage interlock's Rust side (src/shelf.rs, bin shelf).
 # 0.9.0 adds `inference-history`, which tests/mesh_history.rs runs.
-agent-action-capsule = { version = "0.9.0", default-features = false, features = ["strict", "inference-history"] }
+agent-action-capsule = { version = "0.10.0", default-features = false, features = ["strict", "inference-history"] }
 base64 = "0.22"
-capsule-emit-artifact = { version = "0.0.2", features = ["sqlite"] }
-cll = { package = "checkpointed-local-log", version = "0.4.0" }
+capsule-emit-artifact = { version = "0.0.3", features = ["sqlite"] }
+cll = { package = "checkpointed-local-log", version = "0.5.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }
