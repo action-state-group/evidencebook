@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+## 0.0.14 (2026-11-09)
+
+Pull requests merged since 0.0.13 that touch `rust/` (the entries below are the user-facing changes):
+
+- [#440](https://github.com/action-state-group/evidencebook/pull/440): chore(rust): move the Rust crates to AAC 0.10 / cll 0.5 / capsule-emit-artifact 0.0.3 (#437)
+- [#433](https://github.com/action-state-group/evidencebook/pull/433): feat(respond)!: uniform is the default refusal policy, specific an opt-in (#206 row 8)
+- [#430](https://github.com/action-state-group/evidencebook/pull/430): build(capsulectl): require capsule-cli rc38 and evidencebook v0.13.9; cut the CHANGELOG for capsulectl/v0.1.0-rc38
+- [#409](https://github.com/action-state-group/evidencebook/pull/409): feat(rust): pair a failed exchange's halves by outcome in reconcile_halves
+- [#394](https://github.com/action-state-group/evidencebook/pull/394): feat(dealprofile): a verdict's rules body records the pinned pack's kind
+- [#390](https://github.com/action-state-group/evidencebook/pull/390): chore(release): v0.13.5
+- [#389](https://github.com/action-state-group/evidencebook/pull/389): fix(dealprofile): price a BTC deal in msat on the standard-history card
+- [#386](https://github.com/action-state-group/evidencebook/pull/386): docs(dealprofile): for currency BTC, amount_minor counts millisatoshi
+- [#377](https://github.com/action-state-group/evidencebook/pull/377): fix(dealprofile): a disagreeing reconcile Result counts as undecided, never did_not_hold (#212)
+- [#372](https://github.com/action-state-group/evidencebook/pull/372): test: Respond refuses a non-deterministic CBOR request in Rust and Python (#365)
+- [#371](https://github.com/action-state-group/evidencebook/pull/371): chore(release): v0.13.3
+- [#367](https://github.com/action-state-group/evidencebook/pull/367): fix(dealprofile): rule_inputs_version accepts 3 and 4 (#363)
+- [#359](https://github.com/action-state-group/evidencebook/pull/359): feat: bound Cadence.HistoryCard at DefaultMaxAnswerItems (#354)
+- [#342](https://github.com/action-state-group/evidencebook/pull/342): docs(guide): derive and check the Mesh node's History in path 4 (#322)
+- [#351](https://github.com/action-state-group/evidencebook/pull/351): feat(python): the Goose close step cites the counterparty's checkpoint (#303)
+- [#353](https://github.com/action-state-group/evidencebook/pull/353): feat: Python and Rust responders answer standard_history/1 (#328)
+- [#346](https://github.com/action-state-group/evidencebook/pull/346): chore(release): v0.13.2
+- [#352](https://github.com/action-state-group/evidencebook/pull/352): fix: CheckStaple verifies a history card's checkpoints form one chain (#344)
+- [#343](https://github.com/action-state-group/evidencebook/pull/343): feat: Cadence.HistoryCard builds the profile's history_card/1 (#341)
+- [#327](https://github.com/action-state-group/evidencebook/pull/327): feat: stapled History card, capped at the standard card (#275)
+- [#320](https://github.com/action-state-group/evidencebook/pull/320): feat: the reproduction header member and Config.Reproduction (#232)
+- [#307](https://github.com/action-state-group/evidencebook/pull/307): feat(python): the Goose deal cites its admission and exports it with the opening as one bundle (#302)
+- [#309](https://github.com/action-state-group/evidencebook/pull/309): feat(deal): the x-deal-v0 chain stage (§6) in Go and Rust (#308)
+- [#305](https://github.com/action-state-group/evidencebook/pull/305): fix(python): a null deal record is no step; pin xn-- label vectors (#298, #299)
+- [#294](https://github.com/action-state-group/evidencebook/pull/294): fix(dealprofile): fold both cases of a Cherokee name to the capitals (#283)
+- [#295](https://github.com/action-state-group/evidencebook/pull/295): test(rust): the deal feature reads dealprofile/testdata/parity-vectors.json (#284)
+
 ### `staple::check_staple` and `staple::staple_history_card`, a stapled History card (evidencebook#275)
 
 - New: `staple::check_staple(request, reply, holder)`, a reader's check of a staple it received:
@@ -74,6 +105,16 @@
 ### Added: Rust reconcile pairs a failed interaction's halves by outcome (#400)
 
 - `Half::failed` marks the record of an interaction that did not complete; `from_store` sets it to `false`, since a header carries no outcome, so the caller marks failed halves. `reconcile_halves` now mirrors the Go `ReconcileHalves` (#205, #399): the primary-key join prefers a half of the same outcome, two failed halves are `MATCHED`, a failed half against a served one is `CONFLICTING`, and the content test runs only on two served halves. Adding a public field to `Half` is source-breaking for code that builds it with a struct literal.
+
+### Breaking: depend on agent-action-capsule 0.10, checkpointed-local-log 0.5 and capsule-emit-artifact 0.0.3 (#437)
+
+- `agent-action-capsule` 0.10.0 (was 0.8.0), `checkpointed-local-log` 0.5.0 (was 0.4.0) and, with the `shelf` feature, `capsule-emit-artifact` 0.0.3 (was 0.0.2).
+- With the `shelf` feature, `HostLogStores::log` is now `checkpointed-local-log` 0.5's `SqliteStore`, so a host that names it moves its own `checkpointed-local-log` pin to 0.5 with this crate.
+- `evidence-request` 0.4.1 still depends on `checkpointed-local-log` 0.4, so a build carries both lines.
+
+### Changed (breaking): `uniform` is the default refusal policy (#225, #206 row 8)
+
+- `RefusalPolicy::default()`, and so `ResponderPolicy::default()`, is now `Uniform`: a responder answers `policy_declined` wherever a more specific token would tell a counterparty whether the holder has a record for a key it does not hold. `RefusalPolicy::Specific` is an explicit operator opt-in; set `refusal_policy: RefusalPolicy::Specific` to keep the old answers.
 
 ## 0.0.13 (2026-11-01)
 
