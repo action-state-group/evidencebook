@@ -381,9 +381,8 @@ impl BookCore {
                 after = entry.seq;
             }
         }
-        for i in committed as usize..state.records.len() {
-            let record = state.records[i].clone();
-            self.commit(&record)?;
+        for record in &state.records[committed as usize..] {
+            self.commit(record)?;
         }
         for record in &state.records {
             if record.record_type() == record_types::INDEX_ROOT {
