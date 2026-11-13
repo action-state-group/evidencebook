@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.14.0 (2026-11-13)
+
+Go module only. Pull requests since v0.13.9: #433 (`uniform` is the default refusal policy, breaking), #432 and #434 (diagnostic page and `report build --diagnostic`), #435 and #439 (pin agent-action-capsule go v0.21.0) and #445 (the `rules_verdict` record).
+
 ### Changed: pin agent-action-capsule go v0.21.0; evidence-interop/2 is still refused (#436)
 
 - The module pins `agent-action-capsule/go` v0.21.0, whose `evidencerequest.Profiles` also names `evidence-interop/2`. The book does not implement `/2`, so a request naming it reads as an unknown profile everywhere the book reads a request (answering, `RequestSent`, `CheckStaple`), and the signed refusal's detail still reads `profiles supported: evidence-interop/0, evidence-interop/1`; it is never answered as `/0`.
@@ -13,6 +17,10 @@
 ### Changed (breaking): `uniform` is the default refusal policy (#225, #206 row 8)
 
 - An empty `ResponderPolicy.RefusalPolicy` now means `RefusalPolicyUniform`: a responder answers `policy_declined` wherever a more specific token (`not_authorized`, `no_such_subject`, `coverage_unsatisfiable`) would tell a counterparty whether the holder has a record for a key it does not hold. The manifest declares `refusal_policy: "uniform"` for the zero value. `RefusalPolicySpecific` is an explicit operator opt-in. To keep the old answers, set `ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}`. Rust and Python change the same way (see their changelogs).
+
+### Added: x-deal-v0 `rules_verdict` record, the party's own overall rules word (#444)
+
+- x-deal-v0: a deal-level `rules_verdict` record carries one word (`met`, `not_met`, `unknown` or `out_of_scope`), the pack's `pack_digest` and, only for a published pack, its `pack_id`. At most one per deal, sealed after the final `close` and confirming it (a late record like evidence). It carries Steven's ruling for evidencebook-deal#191 (Buzz 8b6aaecf) and adds no meaning beyond it: the word is never derived here, re-run, counted or combined. Go (`dealprofile.RulesVerdictBody`), Rust (`RulesVerdictBody`), Python names, the schema, `check_profile.py`, fixtures and vectors carry it.
 
 ## capsulectl/v0.1.0-rc39 (2026-11-06)
 

@@ -1,3 +1,0 @@
-### Added: x-deal-v0 `rules_verdict` record, the party's own overall rules word (#444)
-
-- x-deal-v0: a deal-level `rules_verdict` record carries one word (`met`, `not_met`, `unknown` or `out_of_scope`), the pack's `pack_digest` and, only for a published pack, its `pack_id`. At most one per deal, sealed after the final `close` and confirming it (a late record like evidence). It carries Steven's ruling for evidencebook-deal#191 (Buzz 8b6aaecf) and adds no meaning beyond it: the word is never derived here, re-run, counted or combined. Go (`dealprofile.RulesVerdictBody`), Rust (`RulesVerdictBody`), Python names, the schema, `check_profile.py`, fixtures and vectors carry it.
