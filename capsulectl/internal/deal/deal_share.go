@@ -77,6 +77,8 @@ var dealShareKeys = map[string]bool{
 	"profile": true, "canonicalization": true, "deal_id": true, "record_type": true, "at": true,
 	"type": true, "digest_alg": true, "digest": true, "rel": true, "fp_alg": true, "channel": true,
 	"deal_type": true, "action": true, "currency": true, "rail": true, "result": true, "pack_id": true,
+	// A rules verdict's one word, from a closed set, and the pack's digest.
+	"word": true, "pack_digest": true,
 	// How a sold item reaches the buyer (terms.handover): in_person or
 	// shipped, a closed set.
 	"handover": true,
@@ -986,6 +988,20 @@ func (s *dealSession) dealWithholdRecords(events []sealedEvent, audience string,
 		if !dealRecordShareable(record, "", audience, p) {
 			withhold[se.CapsuleID] = true
 		}
+		// The holder's own choice (evidencebook-deal#191): a rules verdict is in
+		// a counterparty copy only when its share policy says so, and in no
+		// other shared copy.
+		if se.Event.Kind == "rules_verdict" {
+			shares := false
+			if audience == cli.DealAudienceCounterparty {
+				if shares, err = s.sharesRulesVerdict(); err != nil {
+					return nil, err
+				}
+			}
+			if !shares {
+				withhold[se.CapsuleID] = true
+			}
+		}
 	}
 	return withhold, nil
 }
@@ -1187,8 +1203,18 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 		if restated[se.CapsuleID] {
 			line = "You said again what you asked, unchanged (your words withheld)"
 		}
+		kind := dealShareKind(se.Event.Kind)
+		if se.Event.Kind == "rules_verdict" {
+			// The holder's own choice: carried, it says whose rules it is; withheld,
+			// the copy does not even say what the record is.
+			if withhold[se.CapsuleID] {
+				kind, line = dealSharePrivateKind, "A record kept for the user only (withheld)"
+			} else {
+				line = "The party's own rules check (their rules): " + strings.ReplaceAll(se.Event.RulesVerdict.Word, "_", " ")
+			}
+		}
 		steps[i] = map[string]interface{}{
-			"n": cli.Integer(uint64(se.Event.N)), "kind": dealShareKind(se.Event.Kind), "capsule_id": se.CapsuleID, "at": se.Event.At,
+			"n": cli.Integer(uint64(se.Event.N)), "kind": kind, "capsule_id": se.CapsuleID, "at": se.Event.At,
 			"line": p.scrub(line), "withheld": withhold[se.CapsuleID],
 		}
 	}

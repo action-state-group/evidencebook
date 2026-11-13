@@ -63,10 +63,14 @@ const (
 // built as of a tick cut after the latest change: an older anchor would carry
 // today's policy, not the one then in force.
 type shSettings struct {
-	HolderKind      string `json:"holder_kind"`
-	Answer          *bool  `json:"answer,omitempty"`
-	ChangedAt       string `json:"changed_at,omitempty"`
-	PolicyChangedAt string `json:"policy_changed_at,omitempty"`
+	HolderKind string `json:"holder_kind"`
+	Answer     *bool  `json:"answer,omitempty"`
+	// ShareRulesVerdict is the holder's own choice of whether a counterparty
+	// copy carries its rules_verdict record (evidencebook-deal#191); unset, a
+	// node shares it and a person does not, as the History card is answered.
+	ShareRulesVerdict *bool  `json:"share_rules_verdict,omitempty"`
+	ChangedAt         string `json:"changed_at,omitempty"`
+	PolicyChangedAt   string `json:"policy_changed_at,omitempty"`
 }
 
 // changedAfter is whether a declaration or policy change is not before t.
@@ -126,6 +130,15 @@ func cutOf(p cli.Profile, n uint64, coarse time.Time) time.Time {
 func (s shSettings) answers() bool {
 	if s.Answer != nil {
 		return *s.Answer
+	}
+	return s.HolderKind == "node"
+}
+
+// sharesRulesVerdict is whether a counterparty copy carries the holder's
+// rules verdict. A profile that never declared a holder kind shares nothing.
+func (s shSettings) sharesRulesVerdict() bool {
+	if s.ShareRulesVerdict != nil {
+		return *s.ShareRulesVerdict
 	}
 	return s.HolderKind == "node"
 }

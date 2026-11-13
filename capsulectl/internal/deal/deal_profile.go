@@ -1088,6 +1088,16 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 		if sn.NoProposal {
 			body["no_proposal"] = true
 		}
+	case "rules_verdict":
+		// The party's own overall rules word, sealed once after the final
+		// close, which it confirms as late evidence does.
+		rtype = "rules_verdict"
+		rv := ev.RulesVerdict
+		if ev.Confirms == "" {
+			return nil, cli.InputError("a rules verdict is sealed after the deal's final close")
+		}
+		block["refs"] = []interface{}{relRef("confirms", digestOf(ev.Confirms))}
+		body["word"], body["pack_digest"] = rv.Word, rv.PackDigest
 	case "counterparty_profile":
 		// A companion of the check it is about: only the payee's
 		// profile-scoped fingerprint, never in a shared copy.

@@ -5,8 +5,8 @@
 # checkpointed-local-log itself is installed FIRST from its pinned commit with --no-deps (a
 # git checkout cannot be hash-pinned); its runtime dependencies are listed here so
 # the lock covers them: cbor2, scitt-cose, agent-action-capsule, cryptography.
-agent-action-capsule==0.6.0
-capsule-emit==0.8.6
+agent-action-capsule==0.16.0
+capsule-emit==0.15.0
 cbor2>=5.5
 scitt-cose>=0.2.0
 cryptography>=42.0
