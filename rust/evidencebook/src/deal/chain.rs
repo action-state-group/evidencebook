@@ -1513,9 +1513,15 @@ impl Chain {
                 bail!(self, "a check has at most one counterparty_profile record");
             }
         } else if t == TYPE_RULES_VERDICT {
-            // The party's own overall rules word, sealed once for the deal; after a
-            // final close it confirms that close, as late evidence does.
-            self.one("confirms", &[TYPE_CLOSE], false)?;
+            // The party's own overall rules word for the finished deal, sealed once,
+            // after the final close, which it confirms as late evidence does.
+            if self.closed_final.is_none() {
+                bail!(
+                    self,
+                    "a rules_verdict is sealed after the deal's final close"
+                );
+            }
+            self.one("confirms", &[TYPE_CLOSE], true)?;
             if self.rules_verdict {
                 bail!(self, "a deal has at most one rules_verdict record");
             }

@@ -1,7 +1,7 @@
 {
   "fixture": "neg-rules-verdict-after-close-unconfirmed",
   "expect": "invalid",
-  "description": "A rules_verdict after the final close that does not confirm it.",
+  "description": "A rules_verdict after the final close whose confirms ref names another record than the close.",
   "expected_stage": "chain",
   "expected_error_contains": "that confirms that close",
   "chain_prefix": [
@@ -42,7 +42,15 @@
         "type": "deal-record",
         "digest_alg": "SHA-256",
         "digest": "f9c1b032be606cc18fd3741fb5183716c731144322164b246c4d145b71a81f09"
-      }
+      },
+      "refs": [
+        {
+          "rel": "confirms",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "f555ee1492d3dfe60effb5ce7ddfd4910dd12d732f6a82f622977255c6e402db"
+        }
+      ]
     },
     "body": {
       "word": "not_met",

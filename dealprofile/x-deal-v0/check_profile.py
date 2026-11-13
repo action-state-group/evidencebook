@@ -1181,9 +1181,11 @@ def check_chain(records):
                 fail(i, "a check has at most one counterparty_profile record")
             profile_for_check.add(j)
         elif t == "rules_verdict":
-            # The party's own overall rules word, sealed once for the deal; after a
-            # final close it confirms that close, as late evidence does.
-            one("confirms", ("close",), required=False)
+            # The party's own overall rules word for the finished deal, sealed once,
+            # after the final close, which it confirms as late evidence does.
+            if closed_final is None:
+                fail(i, "a rules_verdict is sealed after the deal's final close")
+            one("confirms", ("close",))
             if rules_verdict_seen:
                 fail(i, "a deal has at most one rules_verdict record")
             rules_verdict_seen = True
@@ -2348,9 +2350,15 @@ def regen():
     neg("neg-second-rules-verdict", "chain", "at most one rules_verdict", r, 20,
         "A second rules_verdict on a deal that already holds one.")
 
-    r = copy.deepcopy(records[19]); del r["x-deal-v0"]["refs"]
+    r = copy.deepcopy(records[19]); r["x-deal-v0"]["refs"] = [{"rel": "confirms", **_ref(record_digest(records[17]))}]
     neg("neg-rules-verdict-after-close-unconfirmed", "chain", "that confirms that close", r, 19,
-        "A rules_verdict after the final close that does not confirm it.")
+        "A rules_verdict after the final close whose confirms ref names another record than the close.")
+
+    r = copy.deepcopy(records[19]); r["x-deal-v0"]["seq"] = 19
+    r["x-deal-v0"]["prev"] = _ref(record_digest(records[17]))
+    r["x-deal-v0"]["refs"] = [{"rel": "confirms", **_ref(record_digest(records[17]))}]
+    neg("neg-rules-verdict-before-close", "chain", "this deal is not closed", r, 18,
+        "A rules_verdict sealed while the deal is still open: a confirms ref names the final close, and there is none yet.")
 
     r = copy.deepcopy(records[19]); r["body"]["word"] = "pass"
     neg("neg-rules-verdict-unknown-word", "schema", "word", r, 19,

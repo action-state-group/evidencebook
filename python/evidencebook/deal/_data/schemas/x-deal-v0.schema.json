@@ -28,7 +28,7 @@
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "sale_close" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_close" }, "x-deal-v0": { "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" } }, "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["refs"] } ] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "rules_verdict" } } } } },
-      "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "properties": { "refs": { "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "intent" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_intent" } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "agent_move" } } } } },
@@ -140,7 +140,7 @@
       }
     },
     "body_rules_verdict": {
-      "description": "The party's own overall rules word for this deal, under the pack its digest names. word is one of met, not_met, unknown, out_of_scope; it is derived once by the party's own check and never re-run, counted or combined. After a final close it confirms that close (refs: one confirms). pack_id names the pack only when it is published (publisher/name/semver); a private or forked pack carries the digest alone.",
+      "description": "The party's own overall rules word for this deal, under the pack its digest names. word is one of met, not_met, unknown, out_of_scope; it is derived once by the party's own check and never re-run, counted or combined. It is sealed once, after the final close, which it confirms (one confirms ref). pack_id names the pack only when it is published (publisher/name/semver); a private or forked pack carries the digest alone.",
       "type": "object", "additionalProperties": false, "required": ["word", "pack_digest"],
       "properties": {
         "word": { "enum": ["met", "not_met", "unknown", "out_of_scope"] },

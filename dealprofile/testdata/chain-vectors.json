@@ -397,6 +397,11 @@
       "error": "seq position 20: record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record or the rules_verdict that confirms that close may follow"
     },
     {
+      "name": "negative/neg-rules-verdict-before-close.json",
+      "stage": "chain",
+      "error": "seq position 19: a confirms ref names the deal's final close; this deal is not closed"
+    },
+    {
       "name": "negative/neg-rules-verdict-extra-member.json",
       "stage": "",
       "error": ""
