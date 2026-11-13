@@ -35,6 +35,7 @@ func (DisclosureBody) RecordType() string          { return TypeDisclosure }
 func (SaleBody) RecordType() string                { return TypeSale }
 func (CounterpartyProfileBody) RecordType() string { return TypeCounterpartyProfile }
 func (ThreadBody) RecordType() string              { return TypeThread }
+func (RulesVerdictBody) RecordType() string        { return TypeRulesVerdict }
 func (ThreadOpenedBody) RecordType() string        { return TypeThreadOpened }
 func (SaleCutBody) RecordType() string             { return TypeSaleCut }
 func (SaleCloseBody) RecordType() string           { return TypeSaleClose }
@@ -56,6 +57,7 @@ func (DisclosureBody) isBody()          {}
 func (SaleBody) isBody()                {}
 func (CounterpartyProfileBody) isBody() {}
 func (ThreadBody) isBody()              {}
+func (RulesVerdictBody) isBody()        {}
 func (ThreadOpenedBody) isBody()        {}
 func (SaleCutBody) isBody()             {}
 func (SaleCloseBody) isBody()           {}
@@ -96,6 +98,8 @@ func newBody(recordType string) Body {
 		return &CounterpartyProfileBody{}
 	case TypeThread:
 		return &ThreadBody{}
+	case TypeRulesVerdict:
+		return &RulesVerdictBody{}
 	case TypeThreadOpened:
 		return &ThreadOpenedBody{}
 	case TypeSaleCut:

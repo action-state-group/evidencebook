@@ -27,6 +27,8 @@
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_cut" }, "x-deal-v0": { "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" } }, "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["refs"] } ] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "sale_close" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_close" }, "x-deal-v0": { "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" } }, "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["refs"] } ] } } } } },
+    { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "rules_verdict" } } } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "intent" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_intent" } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "agent_move" } } } } },
@@ -73,7 +75,7 @@
     },
     "short_text": { "type": "string", "minLength": 1, "maxLength": 200 },
     "record_type": {
-      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "agent_move"]
+      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "agent_move", "rules_verdict"]
     },
     "point_of_no_return": { "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer"] },
     "check_action": { "description": "What a check is of: a point of no return, represent (where the user sells: what the agent is about to tell the buyer), or post (on a sale's own log: a listing about to be posted). represent is a check only: never an act, never in allowed. post is never in allowed: every post check asks.", "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer", "represent", "post"] },
@@ -135,6 +137,15 @@
           "type": "object", "additionalProperties": false, "required": ["payee"],
           "properties": { "payee": { "$ref": "#/$defs/hex64" } }
         }
+      }
+    },
+    "body_rules_verdict": {
+      "description": "The party's own overall rules word for this deal, under the pack its digest names. word is one of met, not_met, unknown, out_of_scope; it is derived once by the party's own check and never re-run, counted or combined. It is sealed once, after the final close, which it confirms (one confirms ref). pack_id names the pack only when it is published (publisher/name/semver); a private or forked pack carries the digest alone.",
+      "type": "object", "additionalProperties": false, "required": ["word", "pack_digest"],
+      "properties": {
+        "word": { "enum": ["met", "not_met", "unknown", "out_of_scope"] },
+        "pack_digest": { "$ref": "#/$defs/hex64" },
+        "pack_id": { "$ref": "#/$defs/pack_id" }
       }
     },
     "body_counterparty_profile": { "type": "object", "additionalProperties": false, "maxProperties": 0 },

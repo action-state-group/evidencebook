@@ -789,7 +789,7 @@ def check_chain(records):
                     "close": {"outcome"}, "disclosure": {"authorized_by"}, "claim": {"authorized_by"},
                     "task_authority": {"source", "approves", "registration"}, "platform_approval": set(), "policy_change": set(),
                     "check": {"supersedes", "source"}, "counterparty_acceptance": set(),
-                    "counterparty_profile": {"about"}}
+                    "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}}
     # The user's limits in force. Absent allowed = no restriction; present and
     # empty = nothing allowed. An intent may narrow them; only the user's
     # confirm_limits answer to an intent that asks for more puts a new version
@@ -838,6 +838,7 @@ def check_chain(records):
     # offer, None until there is one.
     latest_offer, accepted = None, None
     closed_final = None  # index of the final close, once there is one
+    rules_verdict_seen = False
     for i, rec in enumerate(records):
         b, body = rec["x-deal-v0"], rec["body"]
         t = b["record_type"]
@@ -863,10 +864,11 @@ def check_chain(records):
         confirms = [r for r in b.get("refs", []) if r["rel"] == "confirms"]
         if closed_final is not None:
             # Close is terminal: after it, only later evidence that confirms
-            # that close (and commits to its digest) may follow.
-            if t != "evidence" or len(confirms) != 1 or confirms[0]["digest"] != digests[closed_final]:
+            # that close (and commits to its digest) may follow; the party's one
+            # rules_verdict is such a record.
+            if t not in ("evidence", "rules_verdict") or len(confirms) != 1 or confirms[0]["digest"] != digests[closed_final]:
                 fail(i, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): "
-                        "only an evidence record that confirms that close may follow")
+                        "only an evidence record or the rules_verdict that confirms that close may follow")
         elif confirms:
             fail(i, "a confirms ref names the deal's final close; this deal is not closed")
         if b["deal_id"] != blk0["deal_id"]:
@@ -1178,6 +1180,15 @@ def check_chain(records):
             if j in profile_for_check:
                 fail(i, "a check has at most one counterparty_profile record")
             profile_for_check.add(j)
+        elif t == "rules_verdict":
+            # The party's own overall rules word for the finished deal, sealed once,
+            # after the final close, which it confirms as late evidence does.
+            if closed_final is None:
+                fail(i, "a rules_verdict is sealed after the deal's final close")
+            one("confirms", ("close",))
+            if rules_verdict_seen:
+                fail(i, "a deal has at most one rules_verdict record")
+            rules_verdict_seen = True
         elif t == "evidence":
             one("about", ("claim", "baseline"))
             one("confirms", ("close",), required=False)
@@ -1671,7 +1682,7 @@ def regen():
                   "2026-10-01T16:20:06Z", "2026-10-01T16:20:06Z", "2026-10-01T16:20:30Z",
                   "2026-10-01T18:41:00Z", "2026-10-01T18:41:20Z", "2026-10-01T18:43:00Z",
                   "2026-10-01T18:43:01Z", "2026-10-01T18:44:30Z", "2026-10-01T18:52:00Z", "2026-10-03T08:30:00Z",
-                  "2026-10-04T09:00:00Z", "2026-10-04T09:00:05Z"])
+                  "2026-10-04T09:00:00Z", "2026-10-04T09:00:05Z", "2026-10-04T09:00:09Z"])
 
     def cp(*keys):
         return {"fp_alg": "hmac-sha256-deal-key", "ids": {k[0]: fps[k] for k in keys}}
@@ -1751,8 +1762,10 @@ def regen():
                                              "detail_commitment": com["couldnt-detail"]})
     o = add("outcome", "outcome", {"status": "not_received", "outcome": "mismatch",
                                    "differences": [{"question": "delivered", "rule": "not_delivered"}]})
-    add("close", "close", {"outcome": "mismatch", "unchecked_actions": 0,
+    closed = add("close", "close", {"outcome": "mismatch", "unchecked_actions": 0,
                            "differences": [{"question": "delivered", "rule": "not_delivered"}]}, refs=[("outcome", o)])
+    add("rules-verdict", "rules_verdict", {"word": "not_met", "pack_digest": "ab" * 32,
+                                           "pack_id": "example/travel-deal/1.2.0"}, refs=[("confirms", closed)])
     assert a2 and b == 0
 
     for d in (FIX / "positive", FIX / "negative"):
@@ -1779,6 +1792,8 @@ def regen():
         "detail_change": "The counterparty switches payee, phone and rail after first contact (fingerprints only).",
         "outcome": "Saturday passes; nothing was delivered as agreed.",
         "close": "The deal closes on mismatch, citing the outcome.",
+        "rules_verdict": "After the close, the party seals its own overall rules word, confirming the close, under the pack whose digest "
+                         "it names (and whose published id it may name): one word, never re-run, counted or combined.",
         "agent_move": "Saturday morning the agent cannot reach the marina office: a Couldn't (an agent move whose "
                       "label the record type fixes), its reason a closed token and its detail a commitment.",
         "disclosure": "After the Hold, the agent texts the user's phone and the pickup spot to the new number with no "
@@ -2329,6 +2344,29 @@ def regen():
     r = copy.deepcopy(records[17]); r["body"] = {"status": "not_selected", "outcome": "not_selected", "differences": []}
     neg("neg-not-selected-after-an-action", "chain", "nothing was done on the deal", r, 17,
         "An outcome that says the other side was not chosen, on a deal where an action was taken.")
+
+    r = copy.deepcopy(records[19]); r["x-deal-v0"]["seq"] = 21; r["x-deal-v0"]["at"] = "2026-10-04T09:00:12Z"
+    r["x-deal-v0"]["prev"] = _ref(record_digest(records[19]))
+    neg("neg-second-rules-verdict", "chain", "at most one rules_verdict", r, 20,
+        "A second rules_verdict on a deal that already holds one.")
+
+    r = copy.deepcopy(records[19]); r["x-deal-v0"]["refs"] = [{"rel": "confirms", **_ref(record_digest(records[17]))}]
+    neg("neg-rules-verdict-after-close-unconfirmed", "chain", "that confirms that close", r, 19,
+        "A rules_verdict after the final close whose confirms ref names another record than the close.")
+
+    r = copy.deepcopy(records[19]); r["x-deal-v0"]["seq"] = 19
+    r["x-deal-v0"]["prev"] = _ref(record_digest(records[17]))
+    r["x-deal-v0"]["refs"] = [{"rel": "confirms", **_ref(record_digest(records[17]))}]
+    neg("neg-rules-verdict-before-close", "chain", "this deal is not closed", r, 18,
+        "A rules_verdict sealed while the deal is still open: a confirms ref names the final close, and there is none yet.")
+
+    r = copy.deepcopy(records[19]); r["body"]["word"] = "pass"
+    neg("neg-rules-verdict-unknown-word", "schema", "word", r, 19,
+        "A rules_verdict whose word is not one of met, not_met, unknown, out_of_scope.")
+
+    r = copy.deepcopy(records[19]); r["body"]["findings"] = []
+    neg("neg-rules-verdict-extra-member", "schema", "findings", r, 19,
+        "A rules_verdict carrying a member beyond word, pack_digest and pack_id: no per-rule result rides on it.")
 
     r = copy.deepcopy(records[4]); r["body"]["party_role"] = "seller"
     neg("neg-intent-changes-party-role", "chain", "cannot change the deal's party_role", r, 4,

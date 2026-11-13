@@ -37,6 +37,7 @@ pub enum Body {
     SaleCut(SaleCutBody),
     SaleClose(SaleCloseBody),
     AgentMove(AgentMoveBody),
+    RulesVerdict(RulesVerdictBody),
 }
 
 impl Body {
@@ -63,6 +64,7 @@ impl Body {
             Body::SaleCut(_) => TYPE_SALE_CUT,
             Body::SaleClose(_) => TYPE_SALE_CLOSE,
             Body::AgentMove(_) => TYPE_AGENT_MOVE,
+            Body::RulesVerdict(_) => TYPE_RULES_VERDICT,
         }
     }
 
@@ -88,6 +90,7 @@ impl Body {
             TYPE_SALE_CUT => Body::SaleCut(serde_json::from_value(body)?),
             TYPE_SALE_CLOSE => Body::SaleClose(serde_json::from_value(body)?),
             TYPE_AGENT_MOVE => Body::AgentMove(serde_json::from_value(body)?),
+            TYPE_RULES_VERDICT => Body::RulesVerdict(serde_json::from_value(body)?),
             other => {
                 return Err(<serde_json::Error as serde::de::Error>::custom(format!(
                     "record type {other:?} has no body type"
@@ -120,6 +123,7 @@ impl Serialize for Body {
             Body::SaleCut(b) => b.serialize(s),
             Body::SaleClose(b) => b.serialize(s),
             Body::AgentMove(b) => b.serialize(s),
+            Body::RulesVerdict(b) => b.serialize(s),
         }
     }
 }

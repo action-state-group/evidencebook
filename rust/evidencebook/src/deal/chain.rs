@@ -296,6 +296,7 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "task_authority" => &["source", "approves", "registration"],
         "check" => &["supersedes", "source"],
         "counterparty_profile" => &["about"],
+        "rules_verdict" => &["confirms"],
         _ => &[],
     }
 }
@@ -664,6 +665,7 @@ struct Chain {
     used_approvals: HashSet<usize>,
     verdict_for_check: HashSet<usize>,
     profile_for_check: HashSet<usize>,
+    rules_verdict: bool,
     reversed: HashSet<usize>,
     first_answer: HashMap<usize, usize>,
     last_outcome: Option<usize>,
@@ -1007,6 +1009,7 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         used_approvals: HashSet::new(),
         verdict_for_check: HashSet::new(),
         profile_for_check: HashSet::new(),
+        rules_verdict: false,
         reversed: HashSet::new(),
         first_answer: HashMap::new(),
         last_outcome: None,
@@ -1122,12 +1125,13 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
             .collect();
         if let Some(cf) = c.closed_final {
             // Close is terminal: after it, only later evidence that confirms
-            // that close (and commits to its digest) may follow.
-            if t != TYPE_EVIDENCE
+            // that close (and commits to its digest) may follow; the party's one
+            // rules_verdict is such a record.
+            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT)
                 || confirms.len() != 1
                 || !string_is(g(confirms[0], "digest"), &c.digests[cf])
             {
-                bail!(c, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record that confirms that close may follow");
+                bail!(c, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record or the rules_verdict that confirms that close may follow");
             }
         } else if !confirms.is_empty() {
             bail!(
@@ -1508,6 +1512,20 @@ impl Chain {
             if !self.profile_for_check.insert(j) {
                 bail!(self, "a check has at most one counterparty_profile record");
             }
+        } else if t == TYPE_RULES_VERDICT {
+            // The party's own overall rules word for the finished deal, sealed once,
+            // after the final close, which it confirms as late evidence does.
+            if self.closed_final.is_none() {
+                bail!(
+                    self,
+                    "a rules_verdict is sealed after the deal's final close"
+                );
+            }
+            self.one("confirms", &[TYPE_CLOSE], true)?;
+            if self.rules_verdict {
+                bail!(self, "a deal has at most one rules_verdict record");
+            }
+            self.rules_verdict = true;
         } else if t == TYPE_EVIDENCE {
             self.one("about", &[TYPE_CLAIM, TYPE_BASELINE], true)?;
             self.one("confirms", &[TYPE_CLOSE], false)?;
