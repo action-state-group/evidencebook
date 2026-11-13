@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+## v0.1.0-rc41
+
+This release pairs with capsulectl `v0.1.0-rc41` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc40`: the party's own rules verdict (#194), the wording fixes (#186, #188), the `agent-action-capsule/go` v0.21.0 pin (#192) and a longer timeout for the nightly race run (#189).
+
 - `deal rules-verdict seal --word met|not_met|unknown|out_of_scope` seals the party's own overall rules word as a `rules_verdict` record (evidencebook v0.14.0) after the final close, bound to the deal and to the digest of the pack its checks ran under; the pack is named by its digest alone, never by a name. `deal rules-verdict policy [--share|--no-share]` is the holder's choice of whether a counterparty copy (`deal report --share counterparty`, `deal respond`) carries it: a node shares by default, a person does not, a profile with no declared holder kind shares none; otherwise the copy lists the record as withheld, says nothing of what it is, and the other side's receipt has no verdict to read and says "not shared" (the receipt wording is the reader's, actionstate-muse#192). Never on a History card or an adjudicator's copy. This repository derives, re-runs, counts and combines nothing. Carries Steven's ruling (Buzz 8b6aaecf; evidencebook-deal#191); the module now requires evidencebook v0.14.0, which also makes `uniform` the default refusal policy (evidencebook#433).
 - Wording: the witness's record is called the witness signature, not a receipt, in the email text (`Witnessed: … signed this receipt's checkpoint`, "no witness signature has come back yet") and in the countersignature line ("Its log signature verifies"); "receipt" no longer stands for the exchange in `page.card.with_unchecked`, `page.close.not_closed`, `page.own.note`, `page.same.deal`, `page.detail.points_exchange`, the obligation state label (`OPEN`), the closed-exchange and calendar lines, the skill-instructions lines, the changed-rules lines and the opened-exchange lines. Per Sherlock2's re-review of #179 (#187).
 - Wording: `say.close.open` no longer says a receipt "stays open until it arrives" (now "this stays open until it arrives"); `page.asked.exact` says the words were "sealed when the exchange began"; `page.detail.same_deal` says "the same exchange". Per Sherlock2's review of actionstate-muse#371 (#185).
+
 ## v0.1.0-rc40
 
 This release pairs with capsulectl `v0.1.0-rc40` (go.mod requires it).
