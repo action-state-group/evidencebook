@@ -45,6 +45,7 @@ const (
 	TypeSaleCut             = "sale_cut"
 	TypeSaleClose           = "sale_close"
 	TypeAgentMove           = "agent_move"
+	TypeRulesVerdict        = "rules_verdict"
 )
 
 // RecordTypes are the x-deal-v0 record types, in the schema's order.
@@ -54,6 +55,7 @@ var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
 	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeAgentMove,
+	TypeRulesVerdict,
 }
 
 // The typed action records and contract types (PROFILE.md §9).

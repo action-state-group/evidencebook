@@ -97,6 +97,11 @@
       "error": ""
     },
     {
+      "name": "positive/20",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "positive-typed/1",
       "stage": "",
       "error": ""
@@ -387,6 +392,16 @@
       "error": ""
     },
     {
+      "name": "negative/neg-rules-verdict-extra-member.json",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "negative/neg-rules-verdict-unknown-word.json",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "negative/neg-sale-close-with-body.json",
       "stage": "",
       "error": ""
@@ -450,6 +465,11 @@
       "name": "negative/neg-sale-thread-after-close.json",
       "stage": "chain",
       "error": "seq position 11: after a sale's close, its log holds only cuts"
+    },
+    {
+      "name": "negative/neg-second-rules-verdict.json",
+      "stage": "chain",
+      "error": "seq position 21: a deal has at most one rules_verdict record"
     },
     {
       "name": "negative/neg-seq-gap.json",
@@ -4163,6 +4183,153 @@
       "value": 1,
       "stage": "chain",
       "error": "seq position 19: unchecked_actions must count unchecked_action outcomes (0)"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.deal_id/set=\"deal-3f9c2a7be4d15068x\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "deal_id"
+      ],
+      "op": "set",
+      "value": "deal-3f9c2a7be4d15068x",
+      "stage": "chain",
+      "error": "seq position 20: deal_id differs from the baseline's"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.deal_id/set=\"\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "deal_id"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: deal_id differs from the baseline's"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.record_type/set=\"rules_verdictx\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "rules_verdictx",
+      "stage": "chain",
+      "error": "seq position 20: record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record that confirms that close, or the rules_verdict, may follow"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record that confirms that close, or the rules_verdict, may follow"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.seq/set=21",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 21,
+      "stage": "chain",
+      "error": "seq position 20: seq gap: expected 20, got 21"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.seq/set=0",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "seq"
+      ],
+      "op": "set",
+      "value": 0,
+      "stage": "chain",
+      "error": "seq position 20: seq regression: expected 20, got 0"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.at/set=\"\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 20: at is earlier than the previous record's"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.prev.type/delete",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "prev",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 20: prev is not the digest of the previous record"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.prev.type/set=\"deal-recordx\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "prev",
+        "type"
+      ],
+      "op": "set",
+      "value": "deal-recordx",
+      "stage": "chain",
+      "error": "seq position 20: prev is not the digest of the previous record"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.baseline_ref.type/delete",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "baseline_ref",
+        "type"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 20: baseline_ref is not the digest of the baseline"
+    },
+    {
+      "name": "mutation/positive/20/x-deal-v0.baseline_ref.type/set=\"deal-recordx\"",
+      "chain": "positive",
+      "index": 19,
+      "path": [
+        "x-deal-v0",
+        "baseline_ref",
+        "type"
+      ],
+      "op": "set",
+      "value": "deal-recordx",
+      "stage": "chain",
+      "error": "seq position 20: baseline_ref is not the digest of the baseline"
     },
     {
       "name": "mutation/positive-typed/1/x-deal-v0.seq/set=2",

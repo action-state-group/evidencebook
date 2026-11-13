@@ -14,7 +14,7 @@ Files in this directory:
 | `PROFILE.md` | This document. The normative text for the skill. |
 | `x-deal-v0.schema.json` | JSON Schema (Draft 2020-12) for one record: the block and each record type's body. |
 | `records/` | JSON Schemas (Draft 2020-12) for the typed action records and the check request and response (section 9). |
-| `fixtures/positive/` | One deal, 19 records, covering most record types (not `sale`, which `positive-sale/` carries; the fixture run of `check_profile.py` names the types no positive fixture carries yet), with the expected JCS digest of each. |
+| `fixtures/positive/` | One deal, 20 records, covering most record types (not `sale`, which `positive-sale/` carries; the fixture run of `check_profile.py` names the types no positive fixture carries yet), with the expected JCS digest of each. |
 | `fixtures/positive-typed/` | One deal sealed in the typed action records beside x-deal-v0 evidence records (section 9). |
 | `fixtures/positive-typed-seller/` | A seller's typed deal that gives a listing platform the public pickup area (`pickup_area`) before any offer. |
 | `fixtures/negative/` | Records that MUST be rejected, each at one named stage. |
@@ -169,7 +169,7 @@ when or how often the deal was shared:
 | `profile` | `"x-deal-v0"` | REQUIRED | Profile and version. |
 | `canonicalization` | `"jcs"` | REQUIRED | Pinned: RFC 8785. Any other value fails closed (section 5). |
 | `deal_id` | string `^deal-[0-9a-f]{16,64}$` | REQUIRED | Random, opaque, and the same on every record of the deal. Never derived from any identifier. |
-| `record_type` | enum (section 3) | REQUIRED | One of the 19 record types. |
+| `record_type` | enum (section 3) | REQUIRED | One of the 21 record types. |
 | `seq` | integer ≥ 1 | REQUIRED | Position in the deal: 1, 2, 3, … with no gaps (section 6). |
 | `at` | string `YYYY-MM-DDThh:mm:ssZ` | REQUIRED | The seal time in UTC, whole seconds. |
 | `prev` | digest ref | REQUIRED iff `seq` > 1 | The record digest of record `seq − 1`. |
@@ -191,7 +191,7 @@ never against a later change.
 
 ## 3. Record types (action-type conventions)
 
-Nineteen record types. The set is closed: an unknown `record_type` fails the schema.
+Twenty-one record types. The set is closed: an unknown `record_type` fails the schema.
 
 | record_type | What it records | Required body fields | Required refs / block fields |
 |---|---|---|---|
@@ -215,6 +215,7 @@ Nineteen record types. The set is closed: an unknown `record_type` fails the sch
 | `sale_cut` | On a sale's own log: the cut a sale bundle is made at, sealed after each thread's report and before the bundle's checkpoint (section 6, rule 10). | `thread_heads[]`: `{registration (digest ref), head_commitment}`, one per opened thread, each committing to that thread's last record at the cut | `deal_id` `sale-…`; each head names an opened thread, once. No `counterparty`, no `refs`. |
 | `sale_close` | On a sale's own log: the end of the sale, sealed by `deal sale close` after every opened thread's `thread_opened` (section 6, rule 10). No buyer's thread opens on the sale after it; a thread already open goes on and ends at its own close. | nothing: `body` is empty | `deal_id` `sale-…`; follows the sale's previous record. No `counterparty`, no `refs`. At most one per sale, and only `sale_cut` records follow it, since every later sale bundle cuts the threads' heads again. |
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
+| `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block, no `refs`. | At most one per deal. Sealed once the deal is over: it may follow a final `close`, which is otherwise terminal for every record but a confirming `evidence`. |
 
 ### Action classes
 

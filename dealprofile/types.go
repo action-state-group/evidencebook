@@ -465,6 +465,16 @@ type SaleBody struct {
 type CounterpartyProfileBody struct {
 }
 
+// RulesVerdictBody is body_rules_verdict in the schema: the party's own
+// overall rules word for the deal, under the pack whose definition digest it
+// names. PackID is the published pack's publisher/name/semver, absent for a
+// private or forked pack.
+type RulesVerdictBody struct {
+	Word       string `json:"word"`
+	PackDigest string `json:"pack_digest"`
+	PackID     string `json:"pack_id,omitzero"`
+}
+
 // ThreadBody is body_thread in the schema.
 type ThreadBody struct {
 	ThreadRefCommitment string `json:"thread_ref_commitment"`

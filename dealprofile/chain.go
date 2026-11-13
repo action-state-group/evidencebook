@@ -537,6 +537,7 @@ type dealChain struct {
 	usedApprovals map[int]bool
 	verdictForChk map[int]bool
 	profileForChk map[int]bool
+	rulesVerdict  bool
 	reversed      map[int]bool
 	firstAnswer   map[int]int
 	lastOutcome   int
@@ -888,10 +889,11 @@ func checkDealChain(raw []obj) {
 		}
 		if c.closedFinal >= 0 {
 			// Close is terminal: after it, only later evidence that confirms
-			// that close (and commits to its digest) may follow.
-			if t != TypeEvidence || len(confirms) != 1 || confirms[0]["digest"] != c.digests[c.closedFinal] {
+			// that close (and commits to its digest) may follow, and the party's
+			// one rules_verdict, which is sealed once the deal is over.
+			if t != TypeRulesVerdict && (t != TypeEvidence || len(confirms) != 1 || confirms[0]["digest"] != c.digests[c.closedFinal]) {
 				c.fail("record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): " +
-					"only an evidence record that confirms that close may follow")
+					"only an evidence record that confirms that close, or the rules_verdict, may follow")
 			}
 		} else if len(confirms) > 0 {
 			c.fail("a confirms ref names the deal's final close; this deal is not closed")

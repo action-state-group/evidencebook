@@ -757,6 +757,19 @@ pub struct SaleBody {
 #[serde(deny_unknown_fields)]
 pub struct CounterpartyProfileBody {}
 
+/// RulesVerdictBody is `body_rules_verdict` in the schema: the party's own
+/// overall rules word for the deal, under the pack whose definition digest it
+/// names. `pack_id` is the published pack's publisher/name/semver, absent for
+/// a private or forked pack.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RulesVerdictBody {
+    pub word: String,
+    pub pack_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack_id: Option<String>,
+}
+
 /// ThreadBody is `body_thread` in the schema.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

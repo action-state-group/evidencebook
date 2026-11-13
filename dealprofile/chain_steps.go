@@ -221,6 +221,12 @@ func (c *dealChain) step(typed bool) {
 			c.fail("a check has at most one counterparty_profile record")
 		}
 		c.profileForChk[j] = true
+	case t == TypeRulesVerdict:
+		// The party's own overall rules word, sealed once for the deal.
+		if c.rulesVerdict {
+			c.fail("a deal has at most one rules_verdict record")
+		}
+		c.rulesVerdict = true
 	case t == TypeEvidence:
 		asOne("about", TypeClaim, TypeBaseline)
 		asOpt("confirms", TypeClose)
