@@ -215,7 +215,7 @@ Twenty-one record types. The set is closed: an unknown `record_type` fails the s
 | `sale_cut` | On a sale's own log: the cut a sale bundle is made at, sealed after each thread's report and before the bundle's checkpoint (section 6, rule 10). | `thread_heads[]`: `{registration (digest ref), head_commitment}`, one per opened thread, each committing to that thread's last record at the cut | `deal_id` `sale-…`; each head names an opened thread, once. No `counterparty`, no `refs`. |
 | `sale_close` | On a sale's own log: the end of the sale, sealed by `deal sale close` after every opened thread's `thread_opened` (section 6, rule 10). No buyer's thread opens on the sale after it; a thread already open goes on and ends at its own close. | nothing: `body` is empty | `deal_id` `sale-…`; follows the sale's previous record. No `counterparty`, no `refs`. At most one per sale, and only `sale_cut` records follow it, since every later sale bundle cuts the threads' heads again. |
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
-| `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block, no `refs`. | At most one per deal. Sealed once the deal is over: it may follow a final `close`, which is otherwise terminal for every record but a confirming `evidence`. |
+| `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal. Before the final close it carries no ref; sealed after it, it is a late record like `evidence` (Late records, section 3): one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
 
 ### Action classes
 
@@ -306,7 +306,7 @@ Field details:
 - **expect_close_by** (on `baseline`, optional): the day the deal is expected to close
   (YYYY-MM-DD). capsulectl seals one on every deal (by default 14 days for a purchase, 1 for a
   booking, 7 for a rental, 30 for a service) so an open deal can be listed against it.
-- **Late records.** A record sealed after a final close is an `evidence` record whose Capsule
+- **Late records.** A record sealed after a final close is an `evidence` record, or the party's one `rules_verdict`, whose Capsule
   chains to the close with the registered `chain.relation` `confirms` (non-terminal: it records
   an outcome of the close, whose state stands), never `follows` (ordering only), and whose
   `confirms` ref commits to the close record's digest, so it cannot be reattached to another
@@ -621,7 +621,7 @@ A verifier holding one deal's records in `seq` order checks:
    other side was not chosen, one buyer of several for example, and nothing was done: no `action`
    precedes it. `called_off` (status, outcome and reason alike, actor `user`) says the user dropped
    the errand, with nothing done, and never reads as nothing delivered. A terminal close:
-   after it, only `evidence` records that `confirms` that close may follow. A close with `open`
+   after it, only `evidence` records and the deal's `rules_verdict` that `confirms` that close may follow. A close with `open`
    MAY be followed by later `outcome` and `close` records. Each `carried_obligations` entry names
    an earlier record holding that `cancel_by`, or that `due_by`.
 8. **Reversals.** An `action` with `direction: "in"` and an `amount_minor` returns money the user paid: it carries
@@ -1215,7 +1215,7 @@ parties' capsulectl (DR-1). Only a final close whose status is `received` commit
 the delivered price and currency, or the agreed ones where the close names none. Every other step,
 and a received close with no known price or currency, commits the empty text. So the two halves
 match only where both parties closed as received, and every other pair is `INSUFFICIENT` (DR §6
-rule 5). A finally closed deal takes later evidence only, chained `confirms` to the close, so the
+rule 5). A finally closed deal takes later evidence, and the party's `rules_verdict`, only, chained `confirms` to the close, so the
 final close is the deal's last step chained `follows`.
 
 **Admission (DR §4.1).** A half is admitted only after these checks; any failure refuses the

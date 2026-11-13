@@ -1,7 +1,7 @@
 {
   "fixture": "20-rules-verdict.json",
   "expect": "valid",
-  "story": "After the close, the party seals its own overall rules word under the pack whose digest it names (and whose published id it may name): one word, never re-run, counted or combined.",
+  "story": "After the close, the party seals its own overall rules word, confirming the close, under the pack whose digest it names (and whose published id it may name): one word, never re-run, counted or combined.",
   "record": {
     "x-deal-v0": {
       "profile": "x-deal-v0",
@@ -19,7 +19,15 @@
         "type": "deal-record",
         "digest_alg": "SHA-256",
         "digest": "f9c1b032be606cc18fd3741fb5183716c731144322164b246c4d145b71a81f09"
-      }
+      },
+      "refs": [
+        {
+          "rel": "confirms",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "5835f5c228b6c810feb9d8b4aa4db0bc0d6c5e678650db4009276c912e17a507"
+        }
+      ]
     },
     "body": {
       "word": "not_met",
@@ -27,5 +35,5 @@
       "pack_id": "example/travel-deal/1.2.0"
     }
   },
-  "expected_digest": "f77885a17ac404c51ad6c85afc628b7949968ec3d0c33db812139557f576953e"
+  "expected_digest": "68d51ede64b82a08ef2b9bf3b4a120e0582c96e645a4b724f96e7eea08690a31"
 }

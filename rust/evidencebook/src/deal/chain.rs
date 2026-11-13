@@ -296,6 +296,7 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "task_authority" => &["source", "approves", "registration"],
         "check" => &["supersedes", "source"],
         "counterparty_profile" => &["about"],
+        "rules_verdict" => &["confirms"],
         _ => &[],
     }
 }
@@ -1124,14 +1125,13 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
             .collect();
         if let Some(cf) = c.closed_final {
             // Close is terminal: after it, only later evidence that confirms
-            // that close (and commits to its digest) may follow, and the party's
-            // one rules_verdict, which is sealed once the deal is over.
-            if t != TYPE_RULES_VERDICT
-                && (t != TYPE_EVIDENCE
-                    || confirms.len() != 1
-                    || !string_is(g(confirms[0], "digest"), &c.digests[cf]))
+            // that close (and commits to its digest) may follow; the party's one
+            // rules_verdict is such a record.
+            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT)
+                || confirms.len() != 1
+                || !string_is(g(confirms[0], "digest"), &c.digests[cf])
             {
-                bail!(c, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record that confirms that close, or the rules_verdict, may follow");
+                bail!(c, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): only an evidence record or the rules_verdict that confirms that close may follow");
             }
         } else if !confirms.is_empty() {
             bail!(
@@ -1513,7 +1513,9 @@ impl Chain {
                 bail!(self, "a check has at most one counterparty_profile record");
             }
         } else if t == TYPE_RULES_VERDICT {
-            // The party's own overall rules word, sealed once for the deal.
+            // The party's own overall rules word, sealed once for the deal; after a
+            // final close it confirms that close, as late evidence does.
+            self.one("confirms", &[TYPE_CLOSE], false)?;
             if self.rules_verdict {
                 bail!(self, "a deal has at most one rules_verdict record");
             }

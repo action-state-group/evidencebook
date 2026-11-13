@@ -222,7 +222,9 @@ func (c *dealChain) step(typed bool) {
 		}
 		c.profileForChk[j] = true
 	case t == TypeRulesVerdict:
-		// The party's own overall rules word, sealed once for the deal.
+		// The party's own overall rules word, sealed once for the deal; after a
+		// final close it confirms that close, as late evidence does.
+		asOpt("confirms", TypeClose)
 		if c.rulesVerdict {
 			c.fail("a deal has at most one rules_verdict record")
 		}

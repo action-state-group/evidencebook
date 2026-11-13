@@ -42,7 +42,15 @@
         "type": "deal-record",
         "digest_alg": "SHA-256",
         "digest": "f9c1b032be606cc18fd3741fb5183716c731144322164b246c4d145b71a81f09"
-      }
+      },
+      "refs": [
+        {
+          "rel": "confirms",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "5835f5c228b6c810feb9d8b4aa4db0bc0d6c5e678650db4009276c912e17a507"
+        }
+      ]
     },
     "body": {
       "word": "not_met",
