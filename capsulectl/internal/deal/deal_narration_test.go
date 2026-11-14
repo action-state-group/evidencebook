@@ -395,6 +395,39 @@ func TestTheReceiptNeverClaimsAnApprovalThatWasNotSealed(t *testing.T) {
 	}
 }
 
+// No card button ever shows a raw option id: every action `deal check`
+// accepts, with and without a broken limit, gets its words from the pack
+// (capsule-cli#368), and a seller's offer card says what it sends.
+func TestNoCardButtonIsARawOptionID(t *testing.T) {
+	w := cli.BuiltinWording()
+	actions := map[string]bool{representAction: true}
+	for _, as := range dealPointsOfNoReturn {
+		for _, a := range as {
+			actions[a] = true
+		}
+	}
+	amount := int64(2000)
+	for action := range actions {
+		for _, rule := range []string{"", "over_limit", "under_floor"} {
+			r := &dealCheckResult{Options: []dealOption{{ID: "hold"}, {ID: "proceed"}}}
+			if rule != "" {
+				r.Differences = []dealDifference{{Rule: rule}}
+			}
+			labelOptions(w, r, dealSnapshot{Action: action, AmountMinor: &amount}, dealState{})
+			for _, o := range r.Options {
+				assert.NotEqual(t, o.ID, o.Label, "%s (%q): button shows its raw id", action, rule)
+				assert.NotEmpty(t, o.Label, "%s (%q)", action, rule)
+			}
+		}
+	}
+	r := &dealCheckResult{Options: []dealOption{{ID: "proceed"}}}
+	labelOptions(w, r, dealSnapshot{Action: offerAction, AmountMinor: &amount}, dealState{})
+	assert.Equal(t, "Send offer", r.Options[0].Label)
+	vals := cli.V{"payee": "Example Buyer", "amount": "$20"}
+	assert.Equal(t, "Send Example Buyer an offer of $20?", cardQuestion(w, dealSnapshot{Action: offerAction}, vals))
+	assert.Equal(t, "Send Example Buyer an offer?", cardQuestion(w, dealSnapshot{Action: offerAction}, cli.V{"payee": "Example Buyer"}))
+}
+
 // --html never goes unsaid: on a deferred email the result says why there
 // is no page, and a pending close still writes it.
 func TestHTMLIsNeverDroppedSilently(t *testing.T) {
