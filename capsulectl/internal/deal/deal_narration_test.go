@@ -370,6 +370,31 @@ func TestTheReceiptSaysEachOKOnce(t *testing.T) {
 	assert.Contains(t, lines, "You OK'd 1 thing on the way: going ahead.")
 }
 
+// The saved line never claims a yes: with no sealed approval behind the act
+// the receipt says nothing about what the user OK'd (capsule-cli#365).
+func TestTheReceiptNeverClaimsAnApprovalThatWasNotSealed(t *testing.T) {
+	check := sealedEvent{CapsuleID: "c1", Event: dealEvent{Kind: "check", Check: &dealCheckResult{Action: "pay"}}}
+	open := sealedEvent{Event: dealEvent{Kind: "open", Open: &dealOpen{Terms: dealTerms{Item: "lease", Currency: "USD"}}}}
+	sealed := sealedEvent{Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "c1", Choice: "proceed", Proceed: true, Approver: "user"}}}
+	const saved = "Our receipt for this is saved: what you asked, what was checked and what I did, locked."
+	for name, tc := range map[string]struct {
+		events []sealedEvent
+		okd    bool
+	}{
+		"no approval":     {[]sealedEvent{open, check}, false},
+		"sealed approval": {[]sealedEvent{open, check, sealed}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := cli.BuiltinWording()
+			// The first receipt adds its own keep line: it must not imply a yes either.
+			lines := append(receiptLines(w, tc.events), firstReceiptLines(w, tc.events)...)
+			joined := strings.Join(lines, "\n")
+			assert.Contains(t, lines, saved)
+			assert.Equal(t, tc.okd, strings.Contains(joined, "OK'd"), joined)
+		})
+	}
+}
+
 // --html never goes unsaid: on a deferred email the result says why there
 // is no page, and a pending close still writes it.
 func TestHTMLIsNeverDroppedSilently(t *testing.T) {
