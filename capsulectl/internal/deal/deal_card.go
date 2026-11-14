@@ -414,7 +414,7 @@ func cardQuestion(w cli.Wording, snap dealSnapshot, v cli.V) string {
 	base := "card.question." + snap.Action
 	var keys []string
 	switch {
-	case snap.Action == "pay" && v["amount"] == "":
+	case (snap.Action == "pay" || snap.Action == offerAction) && v["amount"] == "":
 		keys = append(keys, base+".no_amount")
 	case snap.Action == "share_contact" && v["what"] == "":
 		keys = append(keys, base+".details")
