@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wording: the saved-receipt line says the receipt holds "what you asked, what was checked and what I did" (`say.receipt.saved`), and the first receipt's keep lines (`say.receipt.first.keep`, `.sold`) end "to check I did only what you asked", so no line claims a yes that was never sealed. Per Sherlock2's ruling and review (evidencebook-deal#196, capsule-cli#365).
+
 ## v0.1.0-rc41
 
 This release pairs with capsulectl `v0.1.0-rc41` (go.mod requires it).
