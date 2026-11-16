@@ -139,7 +139,9 @@ struct LogKey(VerifyingKey);
 
 impl LogKeyPolicy for LogKey {
     fn resolve(&self, iss: &str, sub: &str, kid: &[u8], _at: &str) -> KeyDecision {
-        if iss == LOG_ID && sub.starts_with(&format!("{LOG_ID}#")) && kid == self.0.to_bytes() {
+        // CLL -02: sub is the log id; the pre-02 form is <log id>#<log size>.
+        let sub_ok = sub == LOG_ID || sub.starts_with(&format!("{LOG_ID}#"));
+        if iss == LOG_ID && sub_ok && kid == self.0.to_bytes() {
             KeyDecision::Accept(self.0)
         } else {
             KeyDecision::Reject

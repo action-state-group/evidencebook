@@ -51,3 +51,12 @@ def test_cbor2_decodes_no_tag_semantically_beyond_the_kept_list():
         if not (isinstance(value, cbor2.CBORTag) and value.tag == n):
             found.append(n)
     assert tuple(found) == SEMANTIC_TAGS
+
+
+def test_the_cwt_subject_is_the_log_id_or_the_pre_02_per_checkpoint_form():
+    """CLL -02 makes sub the log id; the pre-02 <log id>#<log_size> stays
+    readable; any other subject is refused."""
+    assert parity.python_verdict(CASES["first-protected-cwt-sub-log-id"]) == "accept"
+    assert parity.python_verdict(CASES["second-protected-cwt-sub-log-id"]) == "accept"
+    assert parity.python_verdict(CASES["first-protected-cwt-sub-foreign"]) != "accept"
+    assert parity.python_verdict(CASES["first-protected-cwt-sub-mismatch"]) != "accept"

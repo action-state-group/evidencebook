@@ -299,8 +299,11 @@ def _read(statement: bytes) -> Checkpoint:
         raise _Refused(f"prev_size {prev_size!r} is not a complete MMR size up to log_size")
     if "cadence" in claims and not (_uint(claims["cadence"]) and claims["cadence"] > 0):
         raise _Refused("cadence is not a positive portable integer")
-    if cwt[2] != f"{cwt[1]}#{log_size}" or not validate_identifier(cwt[1]):
-        raise _Refused("the CWT subject is not <log id>#<log_size> under a CLL identifier")
+    # CLL -02: sub is the log id, the same in every checkpoint of a log. The
+    # pre-02 form <log id>#<log_size> is still accepted, so logs written
+    # before -02 stay readable; any other subject is refused.
+    if cwt[2] not in (cwt[1], f"{cwt[1]}#{log_size}") or not validate_identifier(cwt[1]):
+        raise _Refused("the CWT subject is neither the log id nor <log id>#<log_size> under a CLL identifier")
     peaks = _peaks(claims["commitment"], log_size, "the commitment")
     # prev_commitment: zero-length for the first, else the peak list at prev_size.
     if prev_size == 0:
