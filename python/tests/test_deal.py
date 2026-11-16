@@ -141,7 +141,7 @@ def expected_digests() -> dict[str, str]:
     return out
 
 
-POSITIVE_CHAINS = ["positive", "positive-typed", "positive-typed-seller", "positive-sale"]
+POSITIVE_CHAINS = ["positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"]
 POSITIVE = [(d, f) for d in POSITIVE_CHAINS for f in sorted((FIXTURES / d).glob("*.json"))]
 
 
@@ -157,7 +157,7 @@ def test_positive_fixtures(chain, path):
 
 
 def test_positive_corpus_size():
-    assert len(POSITIVE) == 50
+    assert len(POSITIVE) == 65
 
 
 # Schema-stage negatives whose expected text is the reference validator's own

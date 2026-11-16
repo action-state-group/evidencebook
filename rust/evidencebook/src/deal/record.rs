@@ -36,6 +36,7 @@ pub enum Body {
     ThreadOpened(ThreadOpenedBody),
     SaleCut(SaleCutBody),
     SaleClose(SaleCloseBody),
+    SaleUnpost(SaleUnpostBody),
     AgentMove(AgentMoveBody),
     RulesVerdict(RulesVerdictBody),
 }
@@ -63,6 +64,7 @@ impl Body {
             Body::ThreadOpened(_) => TYPE_THREAD_OPENED,
             Body::SaleCut(_) => TYPE_SALE_CUT,
             Body::SaleClose(_) => TYPE_SALE_CLOSE,
+            Body::SaleUnpost(_) => TYPE_SALE_UNPOST,
             Body::AgentMove(_) => TYPE_AGENT_MOVE,
             Body::RulesVerdict(_) => TYPE_RULES_VERDICT,
         }
@@ -89,6 +91,7 @@ impl Body {
             TYPE_THREAD_OPENED => Body::ThreadOpened(serde_json::from_value(body)?),
             TYPE_SALE_CUT => Body::SaleCut(serde_json::from_value(body)?),
             TYPE_SALE_CLOSE => Body::SaleClose(serde_json::from_value(body)?),
+            TYPE_SALE_UNPOST => Body::SaleUnpost(serde_json::from_value(body)?),
             TYPE_AGENT_MOVE => Body::AgentMove(serde_json::from_value(body)?),
             TYPE_RULES_VERDICT => Body::RulesVerdict(serde_json::from_value(body)?),
             other => {
@@ -122,6 +125,7 @@ impl Serialize for Body {
             Body::ThreadOpened(b) => b.serialize(s),
             Body::SaleCut(b) => b.serialize(s),
             Body::SaleClose(b) => b.serialize(s),
+            Body::SaleUnpost(b) => b.serialize(s),
             Body::AgentMove(b) => b.serialize(s),
             Body::RulesVerdict(b) => b.serialize(s),
         }

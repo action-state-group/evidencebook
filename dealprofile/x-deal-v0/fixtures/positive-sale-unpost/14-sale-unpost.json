@@ -1,0 +1,37 @@
+{
+  "fixture": "14-sale-unpost.json",
+  "expect": "valid",
+  "story": "A listing taken down: the platform and the live post act it takes down, and nothing else. It needs no check or approval; a later post on the platform makes it live again.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "sale-3c9e1a7b5d2f8064",
+      "record_type": "sale_unpost",
+      "seq": 14,
+      "at": "2026-10-06T08:00:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "b2dad8c2f9ecf93a0ef33de344e00944d4f17427eff368dbf63706c4df08fc98"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f"
+      },
+      "refs": [
+        {
+          "rel": "unposts",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "b2dad8c2f9ecf93a0ef33de344e00944d4f17427eff368dbf63706c4df08fc98"
+        }
+      ]
+    },
+    "body": {
+      "platform": "marketplace.example"
+    }
+  },
+  "expected_digest": "83580b8a37eb9440088a229359823593f47f336ff58a49b2dd35e22ecd453084"
+}

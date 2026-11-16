@@ -312,7 +312,7 @@
           }
         },
         "listing_classes": {
-          "description": "Rule input, on an offer or commit check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest post act per platform on the sale's log ([] when they state no class in common). Absent when the sale has no post act. Class names only, never a reference to the post.",
+          "description": "Rule input, on an offer or commit check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest post act per platform on the sale's log that no sale_unpost took down ([] when they state no class in common). Absent when the sale has no post act. Class names only, never a reference to the post.",
           "type": "array",
           "uniqueItems": true,
           "items": {

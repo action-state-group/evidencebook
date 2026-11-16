@@ -305,3 +305,29 @@ func TestAVerdictRulesBodyCarriesThePackKind(t *testing.T) {
 	require.NoError(t, Check(rules(nil), nil), "kind is optional")
 	assert.Error(t, Check(rules(""), nil), "an empty kind is refused")
 }
+
+// A sale's takedown carries its platform and nothing else, and names the post
+// it takes down: the typed body encodes as the fixture's, and one without a
+// platform fails the schema.
+func TestSaleUnpostRecord(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(fixturesDir, "positive-sale-unpost", "09-sale-unpost.json"))
+	require.NoError(t, err)
+	var fx struct {
+		Record         json.RawMessage `json:"record"`
+		ExpectedDigest string          `json:"expected_digest"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &fx))
+	var r Record
+	require.NoError(t, Decode(fx.Record, &r))
+	assert.Equal(t, TypeSaleUnpost, r.Block.RecordType)
+	assert.Equal(t, &SaleUnpostBody{Platform: "marketplace.example"}, r.Body)
+	_, digest, err := Encode(r, nil)
+	require.NoError(t, err)
+	assert.Equal(t, fx.ExpectedDigest, digest)
+
+	r.Body = SaleUnpostBody{}
+	_, _, err = Encode(r, nil)
+	var se *StageError
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, StageSchema, se.Stage)
+}

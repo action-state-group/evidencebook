@@ -39,6 +39,7 @@ pub const TYPE_THREAD: &str = "thread";
 pub const TYPE_THREAD_OPENED: &str = "thread_opened";
 pub const TYPE_SALE_CUT: &str = "sale_cut";
 pub const TYPE_SALE_CLOSE: &str = "sale_close";
+pub const TYPE_SALE_UNPOST: &str = "sale_unpost";
 pub const TYPE_AGENT_MOVE: &str = "agent_move";
 pub const TYPE_RULES_VERDICT: &str = "rules_verdict";
 
@@ -64,6 +65,7 @@ pub fn record_types() -> &'static [&'static str] {
         TYPE_THREAD_OPENED,
         TYPE_SALE_CUT,
         TYPE_SALE_CLOSE,
+        TYPE_SALE_UNPOST,
         TYPE_AGENT_MOVE,
         TYPE_RULES_VERDICT,
     ]

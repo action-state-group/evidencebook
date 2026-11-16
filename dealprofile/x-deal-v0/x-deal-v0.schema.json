@@ -27,6 +27,8 @@
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_cut" }, "x-deal-v0": { "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" } }, "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["refs"] } ] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "sale_close" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_close" }, "x-deal-v0": { "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" } }, "not": { "anyOf": [ { "required": ["counterparty"] }, { "required": ["refs"] } ] } } } } },
+    { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "sale_unpost" } } } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_unpost" }, "x-deal-v0": { "required": ["refs"], "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" }, "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "unposts" } } } } }, "not": { "required": ["counterparty"] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "rules_verdict" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "intent" } } } } },
@@ -75,7 +77,7 @@
     },
     "short_text": { "type": "string", "minLength": 1, "maxLength": 200 },
     "record_type": {
-      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "agent_move", "rules_verdict"]
+      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "agent_move", "rules_verdict"]
     },
     "point_of_no_return": { "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer"] },
     "check_action": { "description": "What a check is of: a point of no return, represent (where the user sells: what the agent is about to tell the buyer), or post (on a sale's own log: a listing about to be posted). represent is a check only: never an act, never in allowed. post is never in allowed: every post check asks.", "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer", "represent", "post"] },
@@ -121,7 +123,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["rel", "type", "digest_alg", "digest"],
       "properties": {
-        "rel": { "enum": ["about", "source", "checks", "approves", "authorized_by", "observes", "outcome", "confirms", "reverses", "supersedes", "registration"] },
+        "rel": { "enum": ["about", "source", "checks", "approves", "authorized_by", "observes", "outcome", "confirms", "reverses", "supersedes", "registration", "unposts"] },
         "type": { "const": "deal-record" },
         "digest_alg": { "const": "SHA-256" },
         "digest": { "$ref": "#/$defs/hex64" }
@@ -483,7 +485,7 @@
           }
         },
         "listing_classes": {
-          "description": "Rule input, on an offer or commit check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest post act per platform on the sale's log ([] when they state no class in common). Absent when the sale has no post act. Class names only, never a reference to the post.",
+          "description": "Rule input, on an offer or commit check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest post act per platform on the sale's log that no sale_unpost took down ([] when they state no class in common). Absent when the sale has no post act. Class names only, never a reference to the post.",
           "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/representation_class" }
         },
         "representing": {
@@ -713,6 +715,12 @@
     "body_sale_close": {
       "description": "On a sale's own log: the end of the sale. It names no buyer and carries nothing: which buyer bought, if any, is in that thread's own close. After it, only sale_cut records follow, so every later bundle still cuts the threads' heads.",
       "type": "object", "additionalProperties": false, "maxProperties": 0
+    },
+    "body_sale_unpost": {
+      "description": "On a sale's own log: a listing taken down. It names the platform and nothing else; its one unposts ref is the live post action it takes down, the latest post on that platform. It needs no check or approval. A later post on the platform makes it live again.",
+      "type": "object", "additionalProperties": false,
+      "required": ["platform"],
+      "properties": { "platform": { "type": "string", "minLength": 3, "maxLength": 253, "pattern": "^[^\\s/@]+\\.[^\\s/@]+$" } }
     },
     "body_outcome": {
       "type": "object", "additionalProperties": false,

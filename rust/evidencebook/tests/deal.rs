@@ -314,6 +314,7 @@ fn positive_fixtures() {
         "positive-typed",
         "positive-typed-seller",
         "positive-sale",
+        "positive-sale-unpost",
     ] {
         for f in sorted_json_files(&fixtures_dir().join(dir)) {
             let name = format!("{dir}/{}", f.file_name().unwrap().to_string_lossy());
