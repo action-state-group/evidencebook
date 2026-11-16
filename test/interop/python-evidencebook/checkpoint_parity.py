@@ -40,6 +40,7 @@ _PEAKS = "-01 Commitment Representation: the peak list of the MMR at that size"
 #: (case name, without its first-/second- prefix when the departure holds for
 #: both checkpoints, the spec's verdict, the basis).
 GO_DEPARTS: list[tuple[str, str, str]] = [
+    ("protected-cwt-sub-log-id", "accept", "CLL -02: sub is the log id, the same in every checkpoint (Go's pinned reader still requires <log id>#<log_size>)"),
     ("claims-extra-member", "accept", _MUST_IGNORE),
     ("claims-consistency_proof-missing", "accept", _PROOF_CLAIM),
     ("claims-consistency_proof-null", "accept", _PROOF_CLAIM),
@@ -274,6 +275,8 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
     header_case("empty", b"")
     header_case("cwt-extra-claim", cbor2.dumps({**prot, 15: {**cwt, 3: "x"}}))
     header_case("cwt-iss-int", cbor2.dumps({**prot, 15: {1: 7, 2: cwt[2]}}))
+    header_case("cwt-sub-log-id", cbor2.dumps({**prot, 15: {1: cwt[1], 2: cwt[1]}}))
+    header_case("cwt-sub-foreign", cbor2.dumps({**prot, 15: {1: cwt[1], 2: "other-log"}}))
     header_case("cwt-sub-mismatch", cbor2.dumps({**prot, 15: {1: cwt[1], 2: cwt[1] + "#1"}}))
     header_case("cwt-label-bool", cbor2.dumps({**prot, 15: {True: cwt[1], 2: cwt[2]}}))
     header_case("cwt-duplicate-iss", raw_map([(1, prot[1]), (3, prot[3]), (4, kid),

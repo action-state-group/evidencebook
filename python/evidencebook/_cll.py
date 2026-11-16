@@ -248,7 +248,8 @@ def _read(statement: bytes) -> Checkpoint:
     the revision of the wire form deployed implementations write (spec
     §The Checkpoint, §Commitment Representation, §Required constraints,
     §Witnessing), RFC 9052, RFC 8949 and RFC 3339; where the draft is
-    silent, as Go's reader reads it. test/interop/python-evidencebook/
+    silent, as Go's reader reads it. The -02 CWT subject (the log id) is also
+    accepted. test/interop/python-evidencebook/
     checkpoint_parity.py holds every rule, and the cases where Go departs
     from the draft."""
     if len(statement) > _MAX_CHECKPOINT_BYTES:
@@ -277,8 +278,9 @@ def _read(statement: bytes) -> Checkpoint:
             protected.get(3) != CLL_CHECKPOINT_CONTENT_TYPE or not isinstance(kid, bytes) or len(kid) != 32:
         raise _Refused("the protected header does not carry EdDSA, the content type and a 32-byte kid")
     # §Witnessing: CWT_Claims with iss and sub (texts, RFC 8392); other
-    # claims allowed. The draft does not define sub's form; Go's is
-    # "<iss>#<log_size>", with iss a CLL identifier.
+    # claims allowed. -01 does not define sub's form; Go's is
+    # "<iss>#<log_size>", with iss a CLL identifier. -02 makes sub the log id,
+    # which is accepted too (below).
     # RFC 8392 §3: a claim key is an integer or a text (CBOR true is not key 1).
     cwt_keys = _labels(_member(protected_tree, ("int", 15)))
     if not isinstance(cwt, Mapping) or any(kind not in ("int", "text") for kind, _ in cwt_keys) or \
@@ -299,8 +301,11 @@ def _read(statement: bytes) -> Checkpoint:
         raise _Refused(f"prev_size {prev_size!r} is not a complete MMR size up to log_size")
     if "cadence" in claims and not (_uint(claims["cadence"]) and claims["cadence"] > 0):
         raise _Refused("cadence is not a positive portable integer")
-    if cwt[2] != f"{cwt[1]}#{log_size}" or not validate_identifier(cwt[1]):
-        raise _Refused("the CWT subject is not <log id>#<log_size> under a CLL identifier")
+    # CLL -02: sub is the log id, the same in every checkpoint of a log. The
+    # pre-02 form <log id>#<log_size> is still accepted, so logs written
+    # before -02 stay readable; any other subject is refused.
+    if cwt[2] not in (cwt[1], f"{cwt[1]}#{log_size}") or not validate_identifier(cwt[1]):
+        raise _Refused("the CWT subject is neither the log id nor <log id>#<log_size> under a CLL identifier")
     peaks = _peaks(claims["commitment"], log_size, "the commitment")
     # prev_commitment: zero-length for the first, else the peak list at prev_size.
     if prev_size == 0:
