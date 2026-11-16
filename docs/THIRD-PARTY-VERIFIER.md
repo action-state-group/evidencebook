@@ -121,8 +121,8 @@ are the same on every run and on every machine:
 |---|---|
 | `responder_key` | `e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117` |
 | log key `kid` | `c82acf66ef2bdc106017544b91873dfbdc92f0963b099d49b0f621bedf76e2af` |
-| checkpoint 1 `expected_pin` | `07e8e7a0936fdc0d5eda424946ca36576a0bdff8b7602b419daf308d7719afbd` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#8`) |
-| checkpoint 2 `expected_pin` | `a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#19`) |
+| checkpoint 1 `expected_pin` | `aaf396605ae8f26c66ed3befc0ed5e51716193d36c14b44021cbf7151d02d598` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1`) |
+| checkpoint 2 `expected_pin` | `d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1`) |
 | record 1 | `78c2628bf823fc958b96c66e47cbaec799194b4da38b5f3ad30eda1404b4a9b0` |
 | record 2 | `5053828d77686751cdefd690ff1c8112a3e0f11c038060e69029d300adc412b4` |
 | record 3 | `b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d` |
@@ -167,7 +167,7 @@ that you can compare your own encoder's output with it, and then gets the reply.
 
 ```bash
 mkdir -p run
-PIN=a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d
+PIN=d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01
 REC=b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d
 ```
 
@@ -180,7 +180,7 @@ go run ./test/interop/answer -media-type application/json -requester alice -in r
 
 **Invariance.** The same question, as `bob` with another nonce, in
 deterministic CBOR. Your encoder's output must be these 211 bytes, with SHA-256
-`bb1f40c649a44c58bd0ab9da36f90c3a83938ca0ec5933d73f5488c57e8e487f`:
+`dedb4ea810029cfc5781be5694e939dc8268df85b8fa494c84c0f51e5c393169`:
 
 ```bash
 printf '%b' '\xa4\x65nonce\x65bob-1\x67profile\x72evidence-interop/0\x67subject\xa1\x66record\x78\x40'$REC'\x68coverage\xa1\x6cexpected_pin\x78\x40'$PIN > run/invariance-bob.req.cbor

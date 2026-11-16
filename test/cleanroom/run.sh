@@ -71,8 +71,8 @@ step "§3 the test responder"
 info=$(go run ./test/interop/answer -info)
 for v in e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117 \
   c82acf66ef2bdc106017544b91873dfbdc92f0963b099d49b0f621bedf76e2af \
-  07e8e7a0936fdc0d5eda424946ca36576a0bdff8b7602b419daf308d7719afbd \
-  a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d \
+  aaf396605ae8f26c66ed3befc0ed5e51716193d36c14b44021cbf7151d02d598 \
+  d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01 \
   78c2628bf823fc958b96c66e47cbaec799194b4da38b5f3ad30eda1404b4a9b0 \
   5053828d77686751cdefd690ff1c8112a3e0f11c038060e69029d300adc412b4 \
   b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d \
@@ -85,14 +85,14 @@ done
 
 step "§4 requests"
 mkdir -p run
-PIN=a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d
+PIN=d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01
 REC=b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d
 printf '%s' '{"coverage":{"expected_pin":"'$PIN'"},"nonce":"alice-1","profile":"evidence-interop/0","subject":{"record":"'$REC'"}}' > run/positive.req.json
 go run ./test/interop/answer -media-type application/json -requester alice -in run/positive.req.json -out run/positive.reply.json
 printf '%b' '\xa4\x65nonce\x65bob-1\x67profile\x72evidence-interop/0\x67subject\xa1\x66record\x78\x40'$REC'\x68coverage\xa1\x6cexpected_pin\x78\x40'$PIN > run/invariance-bob.req.cbor
 n=$(wc -c < run/invariance-bob.req.cbor | tr -d ' ')
 [ "$n" = 211 ] || fail "the CBOR request is $n bytes, the page says 211"
-want_sha run/invariance-bob.req.cbor bb1f40c649a44c58bd0ab9da36f90c3a83938ca0ec5933d73f5488c57e8e487f
+want_sha run/invariance-bob.req.cbor dedb4ea810029cfc5781be5694e939dc8268df85b8fa494c84c0f51e5c393169
 go run ./test/interop/answer -media-type application/cbor -requester bob -in run/invariance-bob.req.cbor -out run/invariance-bob.reply.cbor
 go run ./test/interop/answer -media-type application/json -requester alice -decline -in run/positive.req.json -out run/declined.reply.json
 printf '%s' '{"coverage":{"expected_pin":"'$PIN'"},"nonce":"alice-2","profile":"evidence-interop/0","subject":{"record":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}' > run/missing.req.json

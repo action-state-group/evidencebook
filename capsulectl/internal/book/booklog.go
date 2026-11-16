@@ -950,13 +950,24 @@ func (s bookWitnessStore) seed(witnessID string, size uint64, statement []byte, 
 }
 
 func (s bookWitnessStore) PendingWitnesses(_ context.Context, now time.Time, limit int) ([]cll.WitnessState, error) {
+	return s.pending("", now, limit)
+}
+
+// PendingWitnessesFor is PendingWitnesses restricted to one witness, as the
+// cll.WitnessStateStore contract (CLL 0.9.0) asks.
+func (s bookWitnessStore) PendingWitnessesFor(_ context.Context, witnessID string, now time.Time, limit int) ([]cll.WitnessState, error) {
+	return s.pending(witnessID, now, limit)
+}
+
+// pending lists the due, undelivered states; witnessID "" matches every witness.
+func (s bookWitnessStore) pending(witnessID string, now time.Time, limit int) ([]cll.WitnessState, error) {
 	states, err := s.load()
 	if err != nil {
 		return nil, err
 	}
 	var out []cll.WitnessState
 	for _, w := range states {
-		if w.Receipt == nil && !w.Permanent && !w.NextAttemptAt.After(now) && len(out) < limit {
+		if (witnessID == "" || w.WitnessID == witnessID) && w.Receipt == nil && !w.Permanent && !w.NextAttemptAt.After(now) && len(out) < limit {
 			out = append(out, w)
 		}
 	}

@@ -6,7 +6,7 @@ require (
 	github.com/action-state-group/agent-action-capsule/go v0.21.0
 	github.com/action-state-group/capsule-emit/go v0.3.1-0.20261027234055-9defe98af14b
 	github.com/action-state-group/capsule-engine/go v0.3.0
-	github.com/action-state-group/checkpointed-local-log/go v0.3.0
+	github.com/action-state-group/checkpointed-local-log/go v0.4.0
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
