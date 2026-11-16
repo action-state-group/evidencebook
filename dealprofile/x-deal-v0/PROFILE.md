@@ -852,9 +852,13 @@ A verifier holding one deal's records in `seq` order checks:
     chain refuses it unless that post is live: the latest post act on that platform (the
     platform being the one its post check's `posting` names) and not already taken down, with
     the same platform in the body. A later post on the platform, sealed as rule 15 says, makes
-    it live again, and a later `sale_unpost` takes that post down. It is refused after the sale's `sale_close`: after a close only cuts follow. A sale that holds no `sale_unpost` verifies as it did before this record type;
-    a verifier that predates it refuses a sale that holds one, since the type is not in its
-    closed set.
+    it live again, and a later `sale_unpost` takes that post down. It is refused after the
+    sale's `sale_close`: after a close only cuts follow.
+
+    The takedown is its own record type and not an `unpost` action beside `post`, because an
+    action record rests on a check and an approval and a takedown needs neither. A sale that
+    holds no `sale_unpost` verifies as it did before this record type; a verifier that predates
+    it refuses a sale that holds one, since the type is not in its closed set.
     `post` is never in a task authority's `allowed`, `allowed_actions` or `preconditions`
     (`record-common-v0`'s `plan_action`), and no deal's own chain holds a `post` check or action.
 
@@ -915,14 +919,14 @@ sealed before carries none and re-derives unchanged.
 | `offer_fields_changed`, `offer_fields_basis` | How many of the offer fields (`terms.item`, `terms.quantity`, `terms.price_minor`, `terms.deposit_minor`, `terms.conditions`, `recourse.refundable`) the user's own words state (`intent.asked`) that the proposal does not match, and the list's digest. Only the keys the user's words state are compared: a key they never state is not a change. Both are absent when the user's words state none of them. |
 | `task_authority_ref` | Typed records only: the task authority in force, as on the evaluation. |
 | `no_proposal` | On an `offer` only: `true` when no message from the counterparty was sealed in the deal before the check, so the offer answers no proposal (section 6, rule 9). Absent otherwise, and never beside a `source` ref. Decided by the producer from its whole log, never from a shared copy. |
-| `listing_classes` | On an `offer` or `commit` check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest `post` action per platform on the sale's own log that no later `sale_unpost` took down (section 6, rule 15). `[]` when the listings state no class in common; absent when the sale has no post. Read from the sale's log, which the producer holds, under the existing store writer lock (the one `flock` a deal session holds from open to close, which every post action is also sealed under), so none lands between the read and the check; sealed in the check, so a later re-post never changes an earlier check, and a replay reads what was sealed. Class names only, never a reference to the post: equal across a sale's threads like `recipient_role`, it links nothing. A listing counts until a post replaces it or a `sale_unpost` takes it down (section 6, rule 15). |
+| `listing_classes` | On an `offer` or `commit` check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest `post` action per platform on the sale's own log that no later `sale_unpost` took down (section 6, rule 15). `[]` when the listings state no class in common; absent when the sale has no live listing (it never posted, or every post was taken down: a thread's check then has no listing limit). Read from the sale's log, which the producer holds, under the existing store writer lock (the one `flock` a deal session holds from open to close, which every post action is also sealed under), so none lands between the read and the check; sealed in the check, so a later re-post never changes an earlier check, and a replay reads what was sealed. Class names only, never a reference to the post: equal across a sale's threads like `recipient_role`, it links nothing. A listing counts until a post replaces it or a `sale_unpost` takes it down (section 6, rule 15). |
 
 **Recomputing `listing_classes`.** `check_profile.py SALE.json THREAD.json …` (the sale's log
 from `deal sale export` beside its threads' `deal export`) recomputes each sealed
 `listing_classes` from the sale's log: the intersection over the latest post action per
-platform sealed before the check, by `at`, less each one a `sale_unpost` sealed before the check took down, for each thread whose task authority names a
+platform sealed before the check, by `at`, less any post that a `sale_unpost` sealed before the check took down, for each thread whose task authority names a
 registration of that sale. A value that differs is a failure. The two logs have no ordering
-finer than `at`: a post action in the same second as the check, or a copy of the sale's log
+finer than `at`: a post action or a takedown in the same second as the check, or a copy of the sale's log
 with no record sealed after the check (a later post, cut or close shows the copy holds every
 post before it), leaves the value *not independently established*, reported as neither a match
 nor a mismatch. A thread checked alone reports it as a producer input, like the other rule

@@ -783,6 +783,64 @@ def listing_classes_report(sale, thread):
         yield r["seq"], "match" if sealed == want else "mismatch", sealed, want
 
 
+def listing_classes_selftest() -> list[str]:
+    """listing_classes recomputed over a sale's log with takedowns (section 8): a taken-down
+    listing stops counting, a later post makes its platform count again, no live listing
+    leaves the value absent, and a takedown in the check's second leaves it not established.
+    Returns the failures. The records are minimal stand-ins: the recomputation reads only
+    each post's check (by refs), the takedowns, the thread registrations and the times."""
+    def sale_post(platform, classes, at):
+        chk = {"type": "proposed-action/v0", "at": at, "body": {"posting": {"platform": platform, "classes": classes}}}
+        ev = {"type": "action-evaluation/v0", "at": at, "refs": [{"rel": "checks", "digest": record_digest(chk)}]}
+        ap = {"type": "action-approval/v0", "at": at, "refs": [{"rel": "approves", "digest": record_digest(ev)}]}
+        act = {"type": "action-record/v0", "at": at, "body": {"action": "post"},
+               "refs": [{"rel": "authorized_by", "digest": record_digest(ap)}]}
+        return [chk, ev, ap, act]
+
+    def unpost(platform, at):
+        return {"x-deal-v0": {"record_type": "sale_unpost", "at": at}, "body": {"platform": platform}}
+
+    reg = {"x-deal-v0": {"record_type": "thread", "at": "2026-10-06T08:00:00Z"}, "body": {}}
+    tail = {"x-deal-v0": {"record_type": "sale_cut", "at": "2026-10-06T09:00:00Z"}, "body": {}}
+    sale_root = {"x-deal-v0": {"record_type": "sale", "at": "2026-10-06T08:00:00Z"}, "body": {}}
+    ta = {"type": "task-authority/v0", "at": "2026-10-06T08:00:00Z", "refs": [{"rel": "registration", "digest": record_digest(reg)}]}
+
+    def offer(at, sealed):
+        body = {"action": "offer"}
+        if sealed is not None:
+            body["listing_classes"] = sealed
+        return {"type": "proposed-action/v0", "seq": 3, "at": at, "body": body}
+
+    two = sale_post("marketplace.example", ["condition", "price"], "2026-10-06T08:01:00Z") + \
+        sale_post("other.example", ["condition"], "2026-10-06T08:02:00Z")
+    cases = [
+        ("both live", two, "2026-10-06T08:10:00Z", ["condition"], "match"),
+        ("one taken down", two + [unpost("other.example", "2026-10-06T08:03:00Z")], "2026-10-06T08:10:00Z",
+         ["condition", "price"], "match"),
+        ("a taken-down listing still counted", two + [unpost("other.example", "2026-10-06T08:03:00Z")],
+         "2026-10-06T08:10:00Z", ["condition"], "mismatch"),
+        ("all taken down", two + [unpost("other.example", "2026-10-06T08:03:00Z"), unpost("marketplace.example", "2026-10-06T08:04:00Z")],
+         "2026-10-06T08:10:00Z", None, "match"),
+        ("all taken down, value sealed anyway", two + [unpost("other.example", "2026-10-06T08:03:00Z"),
+                                                       unpost("marketplace.example", "2026-10-06T08:04:00Z")],
+         "2026-10-06T08:10:00Z", [], "mismatch"),
+        ("posted again", two + [unpost("other.example", "2026-10-06T08:03:00Z")]
+         + sale_post("other.example", ["price"], "2026-10-06T08:05:00Z"), "2026-10-06T08:10:00Z", ["price"], "match"),
+        ("takedown after the check", two + [unpost("other.example", "2026-10-06T08:30:00Z")], "2026-10-06T08:10:00Z",
+         ["condition"], "match"),
+        ("takedown in the check's second", two + [unpost("other.example", "2026-10-06T08:10:00Z")], "2026-10-06T08:10:00Z",
+         ["condition"], "not_established"),
+    ]
+    fails = []
+    for name, events, at, sealed, want in cases:
+        sale = [sale_root, ta, reg] + events + [tail]
+        thread = [{"type": "baseline"}, ta, offer(at, sealed)]
+        got = [status for _, status, _, _ in listing_classes_report(sale, thread)]
+        if got != [want]:
+            fails.append(f"{name}: {got} != {[want]}")
+    return fails
+
+
 def check_chain(records):
     """Profile section 6 rules over one deal, in seq order. Raises StageError('chain')."""
     def fail(i, msg):
@@ -1650,7 +1708,7 @@ def check_listing_classes(chains) -> int:
             elif status == "match":
                 print(f"ok   {p}: listing_classes at seq {seq} matches the sale's listings in force then")
             else:
-                print(f"note {p}: listing_classes at seq {seq} is not independently established: a post act in the same "
+                print(f"note {p}: listing_classes at seq {seq} is not independently established: a post act or a takedown in the same "
                       f"second, or the sale's log copy ends before the check, leaves the two logs unordered")
     return bad
 
@@ -2989,6 +3047,11 @@ def main(argv):
     for f in fails:
         print("FAIL jcs", f)
     print(f"{'ok  ' if not fails else 'FAIL'} RFC 8785 self-test (Appendix B numbers, 3.2.2 example, 3.2.3 sort order)")
+    lc_fails = listing_classes_selftest()
+    for f in lc_fails:
+        print("FAIL listing_classes", f)
+    print(f"{'ok  ' if not lc_fails else 'FAIL'} listing_classes self-test (takedowns, repost, no live listing, same second)")
+    fails = fails + lc_fails
     if "--selftest" in argv:
         return 1 if fails else 0
     _validator()
