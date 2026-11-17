@@ -8,6 +8,7 @@
 //! 32-byte salt, and an opening `{salt, value}` shows one value.
 //! `testdata/shelf/facts/vectors.json` holds the shared vectors.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -32,8 +33,9 @@ pub const SHELF_FACTS_FORMAT: &str = "book_facts/1";
 /// The profile of a book no profile describes.
 pub const PROFILE_NONE: &str = "none";
 
-/// An opening: the salt, in lowercase hex, and the committed value.
-#[derive(Debug, Clone, PartialEq)]
+/// An opening: the salt, in lowercase hex, and the committed value (Go
+/// `FactOpening`; its JSON is `{salt, value}`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Opening {
     pub salt: String,
     pub value: Value,
@@ -72,6 +74,22 @@ pub fn commit(salt: &[u8], value: &Value) -> Result<(String, Opening), Invalid> 
         value: serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?,
     };
     Ok((hex::encode(h.finalize()), opening))
+}
+
+/// A book fact document as decoded (Go `BookFact`), members in Go's order.
+/// [`book_fact`] makes the document; this is how a reader reads one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookFact {
+    pub v: i64,
+    pub kind: String,
+    pub profile: String,
+    pub book_id: String,
+    pub log_id: String,
+    pub size: u64,
+    pub checkpoint_sha256: String,
+    pub prev_fact_size: u64,
+    pub link_commitment: String,
+    pub status_commitment: String,
 }
 
 /// What a book's fact is made from at a stamp. `status` is the profile's

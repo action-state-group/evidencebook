@@ -83,7 +83,7 @@ pub struct BatchEntry {
 }
 
 /// Go's `[]byte` in JSON: standard base64, `null` for none.
-mod bytes_b64 {
+pub(super) mod bytes_b64 {
     use super::*;
 
     pub fn serialize<S: Serializer>(b: &[u8], s: S) -> Result<S::Ok, S::Error> {
