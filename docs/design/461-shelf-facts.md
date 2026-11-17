@@ -106,19 +106,21 @@ the owner's private bookkeeping is, never how long it is.
 
 New tables, all in the same file:
 
-- `shelf_entries (entry_seq PRIMARY KEY, kind, book_id, doc BLOB, link_opening BLOB,
-  status_opening BLOB)`: every entry document after the marker and both openings of a fact.
-- `shelf_stamps (stamp PRIMARY KEY, at, due_next, entry_from, entry_to, checkpoint_size,
-  checkpoint BLOB, batch TEXT)`: one row per stamp; `checkpoint_size` 0 marks a stamp not
-  finished; `batch` is the stored batch (2.5).
+- `shelf_entries (entry_seq PRIMARY KEY, kind, book_id, log_id, doc BLOB, link_opening BLOB,
+  status_opening BLOB, tick)`: every entry document after the marker and both openings of a fact.
+- Stamps are rows of `cadence_ticks`, the table every tick already lives in: a stamp is a tick
+  whose stored leaves carry its batch (`leaves.stamp`, 2.5) and whose `deals` member holds, for
+  each fact, the log's size and checkpoint statement. So a stamp's storage, its recovery, its
+  numbering, its witnessing (`Witnessed`, `cadence_witnessed`) and the `/1` and `/2` anchor are the
+  cadence's own, with no second table. (This note first proposed a `shelf_stamps` table and a
+  `shelf_book_checkpoints` table; the tick row and its leaves hold the same data.)
 - `shelf_receipts (checkpoint_sha256, witness_id, receipt TEXT, registered_at, PRIMARY KEY
-  (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, for any shelf
-  checkpoint, with its registration time or null.
-- `shelf_book_checkpoints (log_id, size, checkpoint BLOB, PRIMARY KEY (log_id, size))`: the COSE
-  bytes of every book checkpoint a fact carries, so a handover can include them.
+  (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, with its
+  registration time or null; it lands with `RecordTime` (part 5), until which a tick keeps the
+  receipt `Witnessed` stores today.
 - `shelf_received`, `shelf_received_proofs`, `shelf_received_tombstones` and `shelf_evidence`: the
   store (section 3).
-- `shelf_migration (id = 1, state, backup_sha256, batch TEXT)`: the migration's progress (section 4).
+- `shelf_migration (id = 1, state, backup_sha256)`: the migration's progress (section 4); its batch is the migration's tick row, as a stamp's is.
 
 `cadence_ticks` and the tree tables are kept and no longer written after the marker.
 
@@ -151,13 +153,13 @@ grow at every stamp, so every stamp cuts a new shelf checkpoint with a new time,
 fact, which a log that did not grow would not get (section 1). The shelf checkpoint is then cut and
 queued for the witnesses, as today.
 
-A stamp is a batch. Before appending, the shelf stores it in `shelf_stamps.batch`, a JSON object
-`{"v": 1, "stamp": n, "at", "due_next", "entries": [{"kind", "book_id", "doc", "link_opening",
-"status_opening"}, ...], "book_checkpoints": [{"log_id", "size", "checkpoint"}]}` (bytes as
-base64url, no padding), with the stamp entry last in `entries`. Then it appends the entries in
-that order, then cuts the shelf checkpoint and fills the row's `checkpoint_size` and
+A stamp is a batch. Before appending, the shelf stores it as a `cadence_ticks` row whose `leaves`
+JSON carries `"stamp": {"v": 1, "entries": [{"kind", "book_id", "log_id", "doc", "link_opening",
+"status_opening"}, ...]}` (bytes as standard base64), with the stamp entry last in `entries`, and
+`"deals"` holding each fact's log, size, checkpoint digest and statement. Then it appends the
+entries in that order, then cuts the shelf checkpoint and fills the row's `checkpoint_size` and
 `checkpoint`. On open, and before any stamp, a stored batch not finished is completed: the shelf
-compares the log's entries after the previous stamp's `entry_to` with the batch's, appends the
+compares the log's entries after the previous tick's checkpoint with the batch's, appends the
 ones missing, and only then cuts the checkpoint. A checkpoint therefore never covers part of a
 batch, any implementation can finish another's batch, and nothing is rewritten.
 
@@ -310,8 +312,8 @@ is one-way, and recoverable at every step:
    the same shelf transaction as the batch, `shelf_migration.state` becomes `migrating`.
 4. **Append and checkpoint.** The marker, then the genesis facts in `book_id` order, then a stamp
    entry, are appended through the cadence log's own CLL handle; then the shelf checkpoint is cut
-   and queued for the shelf's witnesses, as every stamp's is. The shelf records this as stamp 1 in
-   `shelf_stamps` (its entries, checkpoint, `at`, and `due_next` from the cadence's interval and
+   and queued for the shelf's witnesses, as every stamp's is. This is the tick after the last old one,
+   stored as the batch of step 3 (its `at`, and `due_next` from the cadence's interval and
    jitter). This checkpoint is the **coverage start**.
 5. **Finish.** `shelf_migration.state` becomes `done`. A new build that opens a file in state
    `backing_up` resumes step 2, and one in state `migrating` repeats step 4 from the stored batch,

@@ -116,10 +116,12 @@ def test_the_scripted_shelf_is_gos(tmp_path):
     assert script.dump(str(tmp_path)) == (VECTORS / "after-write.json").read_bytes()
     script.run(str(tmp_path / "shelf.db"), script.SCRIPT["continue_phase"])
     assert script.dump(str(tmp_path)) == (VECTORS / "after-continue.json").read_bytes()
+    script.run(str(tmp_path / "shelf.db"), script.SCRIPT["migrate_phase"])
+    assert script.dump(str(tmp_path)) == (VECTORS / "after-migrate.json").read_bytes()
 
 
 def test_minted_receipts_are_the_vectors():
-    for name in ("after-write.json", "after-continue.json"):
+    for name in ("after-write.json", "after-continue.json", "after-migrate.json"):
         for tick in json.loads((VECTORS / name).read_text())["cadence_ticks"]:
             if tick["receipt"] is not None:
                 statement = base64.urlsafe_b64decode(tick["checkpoint"] + "=" * (-len(tick["checkpoint"]) % 4))
@@ -202,7 +204,7 @@ def test_a_fresh_shelf_is_version_one_and_an_unknown_version_is_refused(fx):
     fx.open().release()
     db = sqlite3.connect(fx.path)
     assert db.execute("SELECT version FROM shelf_meta").fetchall() == [(SHELF_VERSION,)]
-    db.execute("UPDATE shelf_meta SET version = 2")
+    db.execute("UPDATE shelf_meta SET version = 3")
     db.commit()
     db.close()
     with pytest.raises(UnsupportedError):

@@ -5,6 +5,11 @@ repository's Python package, as test/interop/shelf (Go) runs it.
 
     python shelf.py write DIR       the writer phase, on a new DIR/shelf.db
     python shelf.py continue DIR    the continuer phase, on DIR/shelf.db
+    python shelf.py migrate DIR     the migrate phase (a shelf log of book facts,
+                                    evidencebook#461), on DIR/shelf.db
+    python shelf.py recover DIR     the recover phase: finish a crash Go's
+                                    test/interop/shelf plant-tick or
+                                    plant-migration left (#461 §7)
     python shelf.py dump DIR        the file's dump on stdout (it reads a copy)
     python shelf.py hold DIR SECS   open the shelf, print "held", keep it SECS seconds
     python shelf.py try DIR MS      open the shelf, waiting at most MS ms for its
@@ -12,7 +17,8 @@ repository's Python package, as test/interop/shelf (Go) runs it.
                                     writer holds the lock
 
 Each language writes or continues the other's file, and every dump must
-equal testdata/shelf/after-write.json or after-continue.json byte for byte.
+equal testdata/shelf/after-write.json, after-continue.json, after-migrate.json
+or a recovery scenario's after-recover-*.json byte for byte.
 The keys are test keys. Never use them for anything else.
 """
 from __future__ import annotations
@@ -40,7 +46,7 @@ from evidencebook._gojson import go_json_indent
 from evidencebook._random import deterministic_stream
 from evidencebook.cadence import CadenceConfig, WitnessReceipt, WITNESS_VERIFIED
 from evidencebook.errors import NotFoundError
-from evidencebook.shelf import Shelf
+from evidencebook.shelf import SHELF_VERSION_FACTS, Shelf
 from evidencebook.signer import Ed25519Signer
 
 SCRIPT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "script.json").read_text())
@@ -170,6 +176,12 @@ def run(path: str, steps: list[dict]) -> None:
                     check = env.cadence.witnessed(tick.n, mint_receipt(tick.checkpoint))
                     if check.state != WITNESS_VERIFIED:
                         raise RuntimeError(f"tick {tick.n}'s receipt is {check.state}: {check.reason}")
+            elif op == "migrate":
+                env.cadence.migrate(env.clock())
+            elif op == "stamp":
+                at = START + timedelta(seconds=step["at"])
+                env.clock.at = at
+                env.cadence.stamp(at)
             elif op == "plant_pending":
                 plant_pending(path, step["book"], step["subject"], now + timedelta(seconds=step["at"]))
             else:
@@ -259,6 +271,19 @@ def dump(directory: str) -> bytes:
         for log_id, node in db.execute("SELECT log_id, node FROM cll_nodes ORDER BY log_id, position"):
             nodes.setdefault(log_id, bytearray()).extend(bytes(node))
         state["cll_nodes_sha256"] = {log_id: sha(b) for log_id, b in nodes.items()}
+        # A shelf of book facts (version 2) also dumps its entry documents and
+        # its migration row, leaving out the backup's digest (SQLite's own bytes).
+        if state["shelf_meta"]["version"] == SHELF_VERSION_FACTS:
+            blob = lambda b: "" if b is None else bytes(b).decode("utf-8")  # noqa: E731
+            state["shelf_entries"] = [
+                {"entry_seq": q, "kind": k, "book_id": b, "log_id": i, "doc": blob(d), "link_opening": blob(lo),
+                 "status_opening": blob(so), "tick": t}
+                for q, k, b, i, d, lo, so, t in db.execute(
+                    "SELECT entry_seq, kind, book_id, log_id, doc, link_opening, status_opening, tick "
+                    "FROM shelf_entries ORDER BY entry_seq")]
+            state["shelf_migration"] = [
+                {"state": st, "backed_up": bool(b)}
+                for st, b in db.execute("SELECT state, backup_sha256 != '' FROM shelf_migration ORDER BY id")]
         db.close()
         state.update(derive(path))
         return go_json_indent(state).encode("utf-8")
@@ -283,12 +308,18 @@ def derive(path: str) -> dict:
         anchors, roots, chains = [], [], {}
         for n in range(1, last.n + 1):
             tick = env.cadence.get(n)
-            roots.append(tick.leaves.tree(tick.leaves.filler_index)[0].hex())
+            if tick.leaves.stamp is not None:
+                # A stamp has no tree root: its last entry, the stamp entry, ends it.
+                roots.append("stamp:" + hashlib.sha256(tick.leaves.stamp.entries[-1].doc).hexdigest())
+            else:
+                roots.append(tick.leaves.tree(tick.leaves.filler_index)[0].hex())
             anchor = env.cadence.standard_history_anchor(n)
             anchors.append({"tick": anchor.tick.n, "anchor": anchor.anchor, "anchor_time": anchor.anchor_time,
                             "first_checkpoint_time": anchor.first_checkpoint_time, "extents": anchor.extents})
             for log_id in sorted(tick.leaves.deals):
                 statement = tick.leaves.deals[log_id].statement
+                if not statement:
+                    continue  # a fact whose checkpoint did not grow carries no new one
                 statement = base64.urlsafe_b64decode(statement + "=" * (-len(statement) % 4))
                 try:
                     chains[f"{n} {log_id}"] = env.cadence.chain(statement)
@@ -301,7 +332,7 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|dump|hold|try DIR [ARG]", file=sys.stderr)
+        print("usage: shelf.py write|continue|migrate|recover|dump|hold|try DIR [ARG]", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
     path = os.path.join(directory, FILE)
@@ -312,6 +343,10 @@ def main(args: list[str]) -> int:
         run(path, SCRIPT["write_phase"])
     elif command == "continue":
         run(path, SCRIPT["continue_phase"])
+    elif command == "migrate":
+        run(path, SCRIPT["migrate_phase"])
+    elif command == "recover":
+        run(path, SCRIPT["recover_phase"])
     elif command == "dump":
         sys.stdout.buffer.write(dump(directory))
     elif command in ("hold", "try"):

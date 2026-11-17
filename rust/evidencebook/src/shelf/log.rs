@@ -141,6 +141,10 @@ pub(crate) struct Log {
     pub(crate) log_id: String,
     pub(crate) store: Arc<SqliteStore>,
     runner: CheckpointRunner<SqliteStore, SigningKey>,
+    /// Indexes pending entries into the log's MMR and never checkpoints (its
+    /// cadence is never due), so [`Log::checkpoint_whole`] cuts one
+    /// checkpoint over a batch longer than one runner scan.
+    indexer: CheckpointRunner<SqliteStore, SigningKey>,
     /// Held while a checkpoint is cut, and by a host log's write.
     pub(crate) mu: Mutex<()>,
 }
@@ -183,12 +187,19 @@ impl Log {
         config.cadence_age = Duration::from_secs(3600);
         config.scan_limit = MAX_SCAN_LIMIT;
         config.witness_ids = witness_ids.to_vec();
+        let mut index_config = config.clone();
+        index_config.cadence_entries = u64::MAX;
+        index_config.cadence_age = Duration::MAX;
+        index_config.witness_ids = Vec::new();
         let runner = CheckpointRunner::new(config, store.clone(), key.clone())
+            .map_err(|e| ShelfError::Log(e.to_string()))?;
+        let indexer = CheckpointRunner::new(index_config, store.clone(), key.clone())
             .map_err(|e| ShelfError::Log(e.to_string()))?;
         Ok(Self {
             log_id: log_id.to_string(),
             store,
             runner,
+            indexer,
             mu: Mutex::new(()),
         })
     }
@@ -242,6 +253,21 @@ impl Log {
     /// checkpoint only if the log grew, and return the latest one.
     pub(crate) fn checkpoint(&self, at: Time) -> Result<Checkpoint, ShelfError> {
         let _guard = self.mu.lock().unwrap_or_else(|p| p.into_inner());
+        self.checkpoint_held(at)
+    }
+
+    /// [`Log::checkpoint`] over everything the log holds, as one checkpoint
+    /// (Go `CheckpointWhole`): every pending entry is indexed first, without
+    /// a checkpoint, so a batch longer than one runner scan
+    /// ([`MAX_SCAN_LIMIT`] entries) is never covered in part
+    /// (evidencebook#461, a stamp's batch).
+    pub(crate) fn checkpoint_whole(&self, at: Time) -> Result<Checkpoint, ShelfError> {
+        let _guard = self.mu.lock().unwrap_or_else(|p| p.into_inner());
+        while self
+            .indexer
+            .run_once(timestamp(at))
+            .map_err(|e| ShelfError::Log(format!("CLL index: {e}")))?
+        {}
         self.checkpoint_held(at)
     }
 

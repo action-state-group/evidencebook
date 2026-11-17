@@ -124,7 +124,7 @@ fn check_last_received(v: &Value) -> Result<(), Invalid> {
     Ok(())
 }
 
-fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Invalid> {
+pub(crate) fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Invalid> {
     if let Some(l) = &last {
         check_last_received(l)?;
     }
@@ -138,8 +138,9 @@ fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Inval
     Ok(json!({"last_received": last.unwrap_or(Value::Null), "checked_over": over}))
 }
 
-/// A book fact; `salts` gives the link salt, then the status salt.
-pub fn book_fact(input: FactInput, salts: [&[u8]; 2]) -> Result<Fact, Invalid> {
+/// Every check [`book_fact`] makes before it commits, so a caller can refuse
+/// an input before drawing its salts (Go's `newBookFact` validates first).
+pub(crate) fn check_book_fact(input: &FactInput) -> Result<(), Invalid> {
     if input.profile.is_empty()
         || input.book_id.is_empty()
         || input.log_id.is_empty()
@@ -157,10 +158,17 @@ pub fn book_fact(input: FactInput, salts: [&[u8]; 2]) -> Result<Fact, Invalid> {
             "a fact's book id and checkpoint digest are 64 lowercase hex",
         ));
     }
-    let status = input.status.unwrap_or_else(|| json!({}));
-    if !status.is_object() {
+    if input.status.as_ref().is_some_and(|s| !s.is_object()) {
         return Err(invalid("a fact's status is a JSON object"));
     }
+    link_value(input.last_received.clone(), input.checked_over.clone())?;
+    Ok(())
+}
+
+/// A book fact; `salts` gives the link salt, then the status salt.
+pub fn book_fact(input: FactInput, salts: [&[u8]; 2]) -> Result<Fact, Invalid> {
+    check_book_fact(&input)?;
+    let status = input.status.unwrap_or_else(|| json!({}));
     let link = link_value(input.last_received, input.checked_over)?;
     let (lc, lo) = commit(salts[0], &link)?;
     let (sc, so) = commit(salts[1], &status)?;

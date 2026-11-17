@@ -403,6 +403,52 @@ jobs:
               echo "written by $writer, continued by $continuer: every dump is the vector's"
             done
           done
+      - name: Migrate a shelf another language wrote, and compare, in every pair of languages
+        # evidencebook#461: Migrate and stamps (the script's migrate phase) on a
+        # shelf written and continued by one language, every dump equal to
+        # testdata/shelf/after-migrate.json.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for writer in $langs; do
+            for migrator in $langs; do
+              dir="$work/$writer-$migrator"
+              "$RUNNER_TEMP/shelf-$writer" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$writer" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$migrator" migrate "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-migrate.$reader.json" < /dev/null
+                cmp testdata/shelf/after-migrate.json "$dir/after-migrate.$reader.json"
+              done
+              echo "written by $writer, migrated by $migrator: every dump is the vector's"
+            done
+          done
+      - name: Finish a crash Go planted, in every language
+        # evidencebook#461 §7: a tree tick stored but not finished beside an
+        # empty host log, and a migration stopped in its step 4; each language
+        # recovers it (Migrate, then a stamp), every dump equal to the vector.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          # A migration stopped after its checkpoint is cut recovers to the same
+          # shelf as one stopped after two appends.
+          for scenario in tick:tick migration:migration migration-checkpointed:migration; do
+            plant="${scenario%%:*}" vector="${scenario##*:}"
+            for recoverer in $langs; do
+              dir="$work/$plant-$recoverer"
+              "$RUNNER_TEMP/shelf-go" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" "plant-$plant" "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$recoverer" recover "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after.$reader.json" < /dev/null
+                cmp "testdata/shelf/after-recover-$vector.json" "$dir/after.$reader.json"
+              done
+              echo "$plant planted by go, recovered by $recoverer: every dump is the vector's"
+            done
+          done
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
           langs="go py rs"

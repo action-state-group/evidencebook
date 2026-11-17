@@ -4,6 +4,7 @@ package shelfscript
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -103,6 +104,29 @@ func Dump(ctx context.Context, dir string) ([]byte, error) {
 			err := r.Scan(&id, &seq, &value, &at)
 			return map[string]any{"log_id": id, "seq": seq, "value": hex.EncodeToString(value), "appended_at": at}, err
 		}},
+	}
+	// A shelf of book facts (version 2) also dumps its entry documents and
+	// its migration row; the backup's digest is left out, since the backup
+	// file is SQLite's own bytes, which no contract fixes.
+	if version == evidencebook.ShelfVersionFacts {
+		tables = append(tables, []struct {
+			name, query string
+			row         func(*sql.Rows) (any, error)
+		}{
+			{"shelf_entries", `SELECT entry_seq, kind, book_id, log_id, doc, link_opening, status_opening, tick FROM shelf_entries ORDER BY entry_seq`, func(r *sql.Rows) (any, error) {
+				var seq, tick int64
+				var kind, book, log string
+				var doc, lo, so []byte
+				err := r.Scan(&seq, &kind, &book, &log, &doc, &lo, &so, &tick)
+				return map[string]any{"entry_seq": seq, "kind": kind, "book_id": book, "log_id": log, "doc": string(doc), "link_opening": string(lo), "status_opening": string(so), "tick": tick}, err
+			}},
+			{"shelf_migration", `SELECT state, backup_sha256 != '' FROM shelf_migration ORDER BY id`, func(r *sql.Rows) (any, error) {
+				var state string
+				var backedUp bool
+				err := r.Scan(&state, &backedUp)
+				return map[string]any{"state": state, "backed_up": backedUp}, err
+			}},
+		}...)
 	}
 	for _, table := range tables {
 		rows, err := query(ctx, db, table.query, table.row)
@@ -211,11 +235,17 @@ func (e *env) derive(ctx context.Context) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		root, _, err := tick.Leaves.Tree(tick.Leaves.FillerIndex)
-		if err != nil {
-			return nil, err
+		if stamp := tick.Leaves.Stamp; stamp != nil {
+			// A stamp has no tree root: its last entry, the stamp entry, ends it.
+			sum := sha256.Sum256(stamp.Entries[len(stamp.Entries)-1].Doc)
+			roots = append(roots, "stamp:"+hex.EncodeToString(sum[:]))
+		} else {
+			root, _, err := tick.Leaves.Tree(tick.Leaves.FillerIndex)
+			if err != nil {
+				return nil, err
+			}
+			roots = append(roots, hex.EncodeToString(root))
 		}
-		roots = append(roots, hex.EncodeToString(root))
 		anchor, err := e.cadence.StandardHistoryAnchor(ctx, n)
 		if err != nil {
 			return nil, err
@@ -230,6 +260,9 @@ func (e *env) derive(ctx context.Context) (map[string]any, error) {
 		}
 		sort.Strings(ids)
 		for _, id := range ids {
+			if tick.Leaves.Deals[id].Statement == "" {
+				continue // a fact whose checkpoint did not grow carries no new one
+			}
 			statement, err := base64.RawURLEncoding.DecodeString(tick.Leaves.Deals[id].Statement)
 			if err != nil {
 				return nil, err

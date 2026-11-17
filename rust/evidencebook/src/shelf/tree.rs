@@ -129,6 +129,12 @@ pub struct TickLeaves {
     pub filler_seed: String,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub filler_count: u64,
+    /// Set on a tick cut after the shelf's format switch (evidencebook#461):
+    /// the tick is a stamp, its entries are entry documents and not a tree
+    /// root, and `deals` holds, for each fact, the log's size and
+    /// checkpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stamp: Option<super::stamp::StampBatch>,
 }
 
 fn is_zero(n: &u64) -> bool {
