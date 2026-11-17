@@ -285,6 +285,39 @@ def ard_seller_activity() -> None:
     print(f"now: {sel.card_line()}")
 
 
+def _own_node():
+    """This window's own node, and its label."""
+    if ROLE in SELLERS:
+        sel = seller()
+        return sel.node, sel.label
+    s = session()
+    return s.run.maya, "Maya"
+
+
+@_tool("maya", "alder", "kestrel")
+def ard_show_card() -> None:
+    """Show THIS window's own History card (standard_history/1), computed from its own sealed records: its deals
+    counted, held, did not hold. Call it before the deal and again after it: a sale counts after the party's next
+    checkpoint. Each window shows only its own card."""
+    node, label = _own_node()
+    print(parties.card_view(node, label))
+
+
+@_tool("maya", "alder", "kestrel")
+def ard_show_receipt() -> None:
+    """Show THIS window's own receipt for the deal it took part in, read from its own sealed deal book: terms,
+    steps, the payment's commitment, how it closed and its check of the other party's half."""
+    node, label = _own_node()
+    if ROLE in SELLERS:
+        ids = seller().deal_ids
+    else:
+        ids = sorted(b[len("deal/"):] for b in node.shelf.books() if b.startswith("deal/") and b.count("/") == 1)
+    if not ids:
+        print(f"{label}: no deal yet, so no receipt")
+        return
+    print(parties.receipt_view(node, label, ids[-1]))
+
+
 def main() -> None:
     if ROLE in SELLERS:
         seller()  # a seller's agent runs from the moment its window opens, so the buyer finds it

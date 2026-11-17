@@ -39,7 +39,7 @@ import mailbox_exchange as mx  # noqa: E402
 import nostr_mailbox as mb  # noqa: E402
 import responder  # noqa: E402
 import screens  # noqa: E402
-from demo_node import DemoNode  # noqa: E402
+from demo_node import RECONCILED, DemoNode  # noqa: E402
 from world import RELAY_NAME, SAMPLE_COUNTS, SELLERS, World  # noqa: E402
 
 RELAY_PORT = int(os.environ.get("ARD_RELAY_PORT", "47480"))
@@ -236,6 +236,7 @@ class Seller:
         self.dir = world.home / "stage"
         self.log: list[str] = []
         self.handled: set[str] = set()
+        self.deal_ids: list[str] = []
         self._lock = threading.Lock()
         world.sample_card = {"kestrel": True} if kestrel_card == "sample" else {}
         doc = world.advertise(name)
@@ -295,6 +296,7 @@ class Seller:
         deals.admit(node, maya, reason="buyer who picked this seller (demo)")
         verified = node.verify_peer_half(m1)
         schain = node.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
+        self.deal_ids.append(deal_id)
         node.open_deal(schain, schain.respond(now(), f"sell {terms.item} at the listed price", verified["records"][-1]["digest"]))
         write_atomic(outbox / f"{deal_id}.s1.json", json.dumps(node.half(deal_id)).encode())
         self.say("deal opened: its terms checked, its first half sent")
@@ -321,6 +323,59 @@ class Seller:
         o = self.node.standard_history()["deals"]
         held = sum(1 for d in o if d["outcome"] == "held")
         return f"{self.label}'s card counts {len(o)} deals ({held} held)"
+
+
+
+# -- what each party shows of its own records --------------------------------------------------------------
+
+def card_view(node: gn.Node, label: str) -> str:
+    """The party's own ``standard_history/1`` card, computed from its own sealed records as of its newest
+    checkpoint (a sale counts only after that party's next checkpoint)."""
+    node.tick(datetime.now(timezone.utc))  # takes the checkpoint if one is due; otherwise a no-op
+    h = node.standard_history()
+    card = json.loads(h["card"])
+    o, when = card["outcomes"], h["as_of"]["anchor_time"]
+    lines = [f"{label}: its own History card, computed from its own sealed records (checkpoint {h['tick']} at {when})",
+             f"  deals counted {o['of']}: held {o['held']}, did not hold {o['did_not_hold']}, undecided {o['undecided']}"]
+    both = card.get("happened", {}).get("stamped_by_both")
+    if both is not None:
+        lines.append(f"  deals stamped by both parties: {both} of {card['happened']['of']}")
+    return "\n".join(lines)
+
+
+_MILESTONES = {"offer": "offer", "commit": "commit (agreement accepted)", "pay": "payment"}
+
+
+def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
+    """The party's receipt for one deal, read from its own deal book and its own notes: the terms, the steps it
+    sealed, the payment's commitment, how it closed and what it checked against the other party's half."""
+    payloads = [json.loads(p) for p in node.deal_payloads(deal_id)]
+    first = payloads[0]["body"]
+    t = first["terms"]
+    lines = [f"{label}: its receipt for {deal_id}, from its own sealed deal book ({len(payloads)} records)",
+             f"  terms: {t['item']} at {t['price_minor']} msat, rail {first['recourse']['rail']}"]
+    for d in payloads:
+        body = d.get("body", {})
+        meta = d.get("x-deal-v0")
+        if meta is not None:
+            kind, at = meta["record_type"], meta["at"]
+        else:
+            kind, at = d.get("type", "record"), d.get("at", "")
+        action = body.get("action")
+        if kind in ("close",):
+            lines.append(f"  {at}  close: outcome {body.get('outcome')}")
+        elif action == "pay" and "reference_commitment" in body:  # the act, not the check before it
+            lines.append(f"  {at}  payment of {body['amount_minor']} msat sent; its reference is sealed as a commitment "
+                         f"{body['reference_commitment'][:12]}…")
+        elif action in _MILESTONES and action != "pay" and meta is None and d.get("type", "").startswith("action"):
+            lines.append(f"  {at}  {_MILESTONES[action]}, {body.get('amount_minor')} msat")
+        elif d.get("type") == "action-outcome/v0":
+            lines.append(f"  {at}  outcome: {body.get('status')}")
+    ok = [s for r, s in node.notes(RECONCILED) if s["deal_id"] == deal_id]
+    got = [s for r, s in node.notes(gn.HALF_RECEIVED) if s["deal_id"] == deal_id]
+    lines.append(f"  the other party's half held {len(got)} time(s); the two closes name "
+                 + (f"the same amount ({ok[-1]['amount_minor']} msat): {'MET' if ok[-1]['met'] else 'NOT MET'}" if ok else "no comparison yet"))
+    return "\n".join(lines)
 
 
 # -- Maya's half of the deal ----------------------------------------------------------------------

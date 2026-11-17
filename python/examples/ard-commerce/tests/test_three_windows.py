@@ -65,9 +65,11 @@ def test_three_windows_run_the_story(stage_env):
                 await s.initialize()
                 sessions[role] = s
             tools = {r: sorted(t.name for t in (await s.list_tools()).tools) for r, s in sessions.items()}
-            assert tools["alder"] == tools["kestrel"] == ["ard_seller_activity"]
-            assert "ard_pay" in tools["maya"] and "ard_seller_activity" not in tools["maya"]
+            assert tools["alder"] == tools["kestrel"] == ["ard_seller_activity", "ard_show_card", "ard_show_receipt"]
+            assert "ard_pay" in tools["maya"] and "ard_show_card" in tools["maya"] and "ard_seller_activity" not in tools["maya"]
             maya = sessions["maya"]
+            for role in ("maya", "alder", "kestrel"):  # before the deal: each party's own card, from its own records
+                out[f"card0_{role}"] = await _call(sessions[role], "ard_show_card")
             out["find"] = await _call(maya, "ard_find_sellers")
             out["history"] = await _call(maya, "ard_show_history")
             out["assess"] = await _call(maya, "ard_assess", max_adverse_permille=50)
@@ -77,6 +79,16 @@ def test_three_windows_run_the_story(stage_env):
             out["pay"] = await _call(maya, "ard_pay", seller="alder")
             await asyncio.sleep(1)
             out["alder_side"] = await _call(sessions["alder"], "ard_seller_activity")
+            for role in ("maya", "alder"):
+                out[f"receipt_{role}"] = await _call(sessions[role], "ard_show_receipt")
+            out["receipt_kestrel"] = await _call(sessions["kestrel"], "ard_show_receipt")
+            # After the deal: each party's card counts the sale after its next checkpoint (a minute here).
+            for role, want in (("alder", "deals counted 49"), ("maya", "deals counted 1")):
+                for _ in range(30):
+                    out[f"card1_{role}"] = await _call(sessions[role], "ard_show_card")
+                    if want in out[f"card1_{role}"]:
+                        break
+                    await asyncio.sleep(5)
         return out
 
     out = asyncio.run(run())
@@ -87,3 +99,14 @@ def test_three_windows_run_the_story(stage_env):
     assert "answered a signed evidence request" in out["kestrel_side"] and "a buyer asks to buy" not in out["kestrel_side"]
     assert "approval gate off" in out["pay"] and "invoice 289 msat" in out["pay"] and "deal closed with Alder Print Co." in out["pay"]
     assert "a buyer asks to buy" in out["alder_side"] and "deal closed: both closes name 289 msat" in out["alder_side"]
+    # Each party shows only its own card and receipt, from its own records.
+    assert "deals counted 0" in out["card0_maya"] and "deals counted 48: held 48, did not hold 0" in out["card0_alder"]
+    assert "deals counted 48: held 45, did not hold 3" in out["card0_kestrel"]
+    assert "deals counted 49" in out["card1_alder"] and "deals counted 1: held 1" in out["card1_maya"]
+    for who in ("maya", "alder"):
+        r = out[f"receipt_{who}"]
+        assert "at 289 msat, rail lightning" in r and "close: outcome completed" in r
+        # The payment is the buyer's act: only Maya's own book holds it, and the seller's receipt says what it sealed.
+        assert ("payment of 289 msat sent" in r) == (who == "maya")
+        assert "the two closes name the same amount (289 msat): MET" in r
+    assert "no deal yet" in out["receipt_kestrel"]

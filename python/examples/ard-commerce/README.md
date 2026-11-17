@@ -96,8 +96,8 @@ Maya's evidence requests and deal halves on their own, as the sellers do in the 
 
 | Window | Tools | What it shows |
 |---|---|---|
-| Maya | `ard_find_sellers`, `ard_show_history`, `ard_assess`, `ard_pick`, `ard_pay` | the steps of the script demo; `ard_pay` is the one tool that moves money |
-| Alder, Kestrel | `ard_seller_activity` | what that seller's agent did: requests answered, any deal, the sale and payment it receives, its card now |
+| Maya | `ard_find_sellers`, `ard_show_history`, `ard_assess`, `ard_pick`, `ard_pay`, `ard_show_card`, `ard_show_receipt` | the steps of the script demo; `ard_pay` is the one tool that moves money; her own card and receipt |
+| Alder, Kestrel | `ard_seller_activity`, `ard_show_card`, `ard_show_receipt` | what that seller's agent did; its own History card; its own receipt for the deal |
 
 Set up (once): seed the demo home as above, then
 
@@ -110,6 +110,12 @@ It opens one `goose://recipe?config=…` link per party (sellers first); Goose D
 Trust and Execute. Tile the windows with Window, Move & Resize. Keep the global (Settings) copy of any
 `ard_demo` extension off. `ARD_ROLE=all` (the default of `desktop_server.py`) runs the whole story in one
 process and one window, with Maya's five tools.
+
+Cards and receipts. In every window `ard_show_card` prints that party's own `standard_history/1` card and `ard_show_receipt`
+its own receipt for the deal, both computed from that party's own sealed records (Maya's from her book, Alder's from
+his); a window never shows another party's. Before the deal Maya's card counts 0 deals, Alder's 48 and Kestrel's 48 (3 did
+not hold); after it Alder's counts 49 and Maya's 1 once each takes its next checkpoint (about a minute). The seller's
+receipt holds no payment step: the payment is the buyer's act, so only Maya's receipt shows it.
 
 The payment gate. `ard_pay` never pays on the agent's word: before it moves anything it shows a native macOS dialog on
 the presenter's screen (payee, amount, real or simulated rail; Cancel is the default) and pays only if the presenter
