@@ -24,7 +24,7 @@ deal profile still gives no *did not hold* from records ([#212](https://github.c
 | 4b the on-stage edit: `max_adverse_permille` 100 → 50, version 1.0.0 → 1.1.0, recompiled with evidencebook-skills' `pack_compile.py`, both sellers re-assessed on the saved evidence | `Run.edit` |
 | 5 the popup and the pick, sealed before any payment | `popup.html`, `buyer.seal_pick` |
 | 6 deal opened from the pick; Shockley's wallet issues an invoice for the picked price, Brattain's wallet pays it | `buyer.open_deal`, `pay.py` |
-| 7 both halves compared, deal closed, Alder's card after the next checkpoint | `deals.py`, `demo_node.py` |
+| 7 both parties' records compared, deal closed, Alder's card after the next checkpoint | `deals.py`, `demo_node.py` |
 
 The demo pack is a fork of `admission-baseline`: pack id `demo/ard_admission/<version>` (never
 `asg/`), `claims-held` removed (no card carries claims yet), trust roots naming the demo operator,
@@ -65,6 +65,16 @@ One payment per run, for the picked price in msat; the screen shows the invoice 
 balance difference (Shockley's wallet keeps a flat 100 msat receive fee, a presenter note, not on
 screen). Preimages are never printed or kept. You need `gcloud` signed in to the project.
 
+### The local rail
+
+`--rail local` (script) or `ARD_RAIL=local` (Goose windows) pays between two local Lexe wallets with
+[ln-pay-local](https://github.com/action-state-group/ln-pay-local), with no gcloud and no mesh-llm. Real
+Lightning on mainnet, so use small amounts and wallets made for this. Set `ARD_WALLET_BUYER` and
+`ARD_WALLET_SELLER` to two wallet directories (`ln-pay-local init --wallet <dir>` makes one; fund the buyer), install the
+program (`cargo install --locked --git https://github.com/action-state-group/ln-pay-local`, or set `ARD_PAY_LOCAL` to the
+binary), then run as for `--rail lightning`. For the Goose windows, export the two wallet variables (and `ARD_PAY_LOCAL`
+if the program is not on the PATH) and run `goose/open-windows.py --rail local`; only Maya's window gets them. The Brattain and Shockley rail stays the default for `--rail lightning`.
+
 ### The one switch
 
 `--kestrel-card sentinel` (the default; `seed` writes it) reads Kestrel's card from its own book: three
@@ -73,6 +83,51 @@ which the card counts as did not hold. `--kestrel-card sample` is the fallback: 
 sample card (45 held, 3 did not hold), for a package without that record. Use the same value for `seed`
 and `run`. The card does not show who wrote the note, and the screen says it is the seller's own
 note, not confirmed by the buyer or a ruling.
+
+## In Goose Desktop
+
+The same story, run by each party's own Goose in three Goose Desktop windows side by side: Maya (the
+buyer), Alder and Kestrel (the sellers). Each window is a recipe with its own embedded extension,
+`desktop_server.py` with `ARD_ROLE` set, so each party has its own process, keys and book (its own
+directory under the demo home) and sees only its own records. They meet only through the *stage*
+(`stage.py`: one private relay and the ARD catalogue on localhost, started by the first window that needs
+it) and a wire directory where the parties leave deal halves for each other; the sellers' agents answer
+Maya's evidence requests and deal halves on their own, as the sellers do in the script demo.
+
+| Window | Tools | What it shows |
+|---|---|---|
+| Maya | `ard_find_sellers`, `ard_show_history`, `ard_assess`, `ard_pick`, `ard_pay`, `ard_show_card`, `ard_show_receipt` | the steps of the script demo; `ard_pay` is the one tool that moves money; her own card and receipt |
+| Alder, Kestrel | `ard_seller_activity`, `ard_show_card`, `ard_show_receipt` | what that seller's agent did; its own History card; its own receipt for the deal |
+
+Set up (once): seed the demo home as above, then
+
+```bash
+export CAPSULE_ENGINE=... ARD_SKILLS=...
+python/.venv/bin/python python/examples/ard-commerce/goose/open-windows.py --rail fake   # or lightning
+```
+
+It opens one `goose://recipe?config=…` link per party (sellers first); Goose Desktop asks once per recipe,
+Trust and Execute. Tile the windows with Window, Move & Resize. Keep the global (Settings) copy of any
+`ard_demo` extension off. `ARD_ROLE=all` (the default of `desktop_server.py`) runs the whole story in one
+process and one window, with Maya's tools.
+
+Cards and receipts. In every window `ard_show_card` prints that party's own `standard_history/1` card and `ard_show_receipt`
+its own receipt for the deal, both computed from that party's own sealed records (Maya's from her book, Alder's from
+his); a window never shows another party's. Before the deal Maya's card counts 0 deals, Alder's 48 and Kestrel's 48 (3 did
+not hold); after it Alder's counts 49 and Maya's 1: `ard_pay` takes Maya's checkpoint over her own records as part of closing (waiting up to a minute if her last one was that recent) and Alder's agent takes its own right after the close, so both cards show the sale within seconds in the demo's story. The seller's
+receipt holds no payment step: the payment is the buyer's act, so only Maya's receipt shows it.
+
+The payment gate. `ard_pay` never pays on the agent's word: before it moves anything it shows a native macOS dialog on
+the presenter's screen (payee, amount, real or simulated rail; Cancel is the default) and pays only if the presenter
+clicks Pay. The agent neither sees nor answers that dialog, so it cannot pay in one turn; Cancel, a timeout or no screen
+refuses and pays nothing. Stated limit: it stops the agent, not an agent that has computer-use tools and clicks the dialog
+itself; the demo agent is told to use only the `ard_*` tools, but that is a prompt, not enforcement: Goose's extension manager stays on, so before a show confirm in each window that only its own extension is enabled. On the real rails the money settles to one node or wallet the two sellers share (the dialog says so). `ARD_APPROVAL=none` in the extension command turns the gate off (tests only; the tool says so).
+
+Things to know. Goose Desktop keeps environment values of a custom extension as secrets it does not pass
+to the server, so the recipes put them in the command (`/usr/bin/env`). One Goose chat per party and home:
+a second chat's server refuses to start. A Claude-backed provider (Claude Code ACP) reads the account's own
+instructions (language, tools, other sessions); ask it for English in the first message, or use a clean
+provider. The script demo above is unchanged and is the fallback.
 
 ## What differs from the design note
 

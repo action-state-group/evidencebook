@@ -8,13 +8,17 @@ from __future__ import annotations
 
 from buyer import Assessment, Evidence
 
-BANNER = ("DEMO · sample history, run by the demo operator · test nodes with real Lightning (Brattain pays, "
-          "Shockley receives; both sellers settle to the one test node Shockley)")
+BANNER = ("DEMO · sample history, run by the demo operator · test nodes with real Lightning (the buyer's node pays, "
+          "the sellers' node receives; both sellers settle to the one test node)")
 BANNER_FAKE = "DEMO · sample history, run by the demo operator · SIMULATED payment: no money moves"
 
 
+BANNER_LOCAL = ("DEMO · sample history, run by the demo operator · real Lightning (real money, mainnet) between two demo wallets "
+                "(the buyer's wallet pays, the seller's wallet receives; both sellers settle to the one test wallet)")
+
+
 def banner(rail: str) -> str:
-    return BANNER if rail == "lightning" else BANNER_FAKE
+    return {"lightning": BANNER, "local": BANNER_LOCAL}.get(rail, BANNER_FAKE)
 PACK_NOTE = "demo copy, not published · placeholder thresholds, for this demo only"
 CLAIMS_NOTE = "claims-held is not read today: no card carries claims yet"
 ASSESSMENT_NOTE = ("the agent's assessment of each seller; the presenter's pick decides who is paid, "
@@ -47,9 +51,9 @@ def decision_line(a: Assessment, ev: Evidence, max_permille: int, ceiling_msat_f
         within = f" ({a.tier}, under {msat(ceiling_msat_for_tier)})" if ceiling_msat_for_tier else ""
         return f"GO: {msat(a.price_msat)} is within this pack's limit for it{within}"
     if a.verdict == "LIMIT" and a.cap_msat is not None:
-        why = (f"; the pack allows at most {max_permille} in every 1,000 deals not holding (placeholder)"
+        why = (f"; the pack lets at most {max_permille} of every 1,000 deals not hold (placeholder)"
                if "band-history" in a.reasons else "")
-        return f"LIMIT: deals under {msat(a.cap_msat)}; {msat(a.price_msat)} is outside it{why}"
+        return f"LIMIT: this history supports deals under {msat(a.cap_msat)}; the {msat(a.price_msat)} price is over that{why}"
     return f"{a.verdict}: see the assessment rows"
 
 
