@@ -20,6 +20,6 @@ tempfile = "3"
 # `inference-history` (added in 0.9.0), which tests/mesh_history.rs runs.
 agent-action-capsule = { version = "0.11.0", default-features = false, features = ["strict", "inference-history"] }
 base64 = "0.22"
-capsule-emit-artifact = { version = "0.0.3", features = ["sqlite"] }
+capsule-emit-artifact = { version = "0.0.4", features = ["sqlite"] }
 cll = { package = "checkpointed-local-log", version = "0.6.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }
