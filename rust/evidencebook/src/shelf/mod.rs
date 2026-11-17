@@ -46,6 +46,9 @@ mod cadence;
 mod chain;
 mod gojson;
 mod handover;
+mod handover_tie;
+#[cfg(test)]
+mod handover_tie_tests;
 mod history;
 mod import;
 mod lock;
@@ -74,6 +77,7 @@ pub use handover::{
     verify_handover, ConsistencyEvidence, Handover, HandoverConsistency, HandoverDocument,
     HandoverLatest, HandoverResult,
 };
+pub use handover_tie::HandoverTie;
 pub use history::StandardHistoryAnchor;
 
 /// The log id of the shelf's journal ([`Shelf::journal`]).

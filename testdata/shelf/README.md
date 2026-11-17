@@ -106,8 +106,12 @@ directory, both in the dump's encoding. Byte strings (`doc`, the statements,
 `anchor`, a receipt's `receipt`) are standard base64 with padding, as Go's
 `encoding/json` writes `[]byte`; a consistency proof is
 `ConsistencyEvidence`'s JSON. `latest` and `untied` are in book id order. A
-genesis fact's tie to the old witnessed tree is not handed over yet, so every
-book is untied. Every language hands the shelf over to `handover.json` and
+genesis fact comes with its tie to the old witnessed tree (`ties`, in book id
+order: the tick's leaf, its 16-hash `path` in lowercase hex, the root's
+`entry_seq`, the `cadence_checkpoint` and its `receipts`, the `old_checkpoint`,
+and a `consistency` proof to the genesis checkpoint unless the two are of one
+size), taken from the witnessed tree tick with the log's largest size not past
+the genesis size; after the migrate phase every book is tied. Every language hands the shelf over to `handover.json` and
 replays every language's handover to `handover-result.json` (the
 `shelf-interlock` job); the commands are `handover DIR` and
 `verify-handover FILE`.

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The whole-shelf handover and its replay (evidencebook#461 §2.7), as Go's
-shelf_handover_test.go checks them, and testdata/shelf/handover.json replayed
-to handover-result.json byte for byte."""
+shelf_handover_test.go and shelf_handover_tie_test.go check them, and
+testdata/shelf/handover.json replayed to handover-result.json byte for byte."""
 from __future__ import annotations
 
 import dataclasses
@@ -18,7 +18,7 @@ from evidencebook._cll import read_checkpoint
 from evidencebook._gojson import Ordered
 from evidencebook.shelf_handover import Handover, canonical_document, check_fact_chain, verify_handover
 
-from test_shelf_stamp import START, VECTORS, fx, obs, script, stamp_cadence  # noqa: F401  (fx is a fixture)
+from test_shelf_stamp import START, VECTORS, Fixture, fx, obs, script, stamp_cadence  # noqa: F401  (fx is a fixture)
 
 KEY = script.CHECKPOINT_KEY.public_key().hex()
 
@@ -67,7 +67,7 @@ def test_a_handover_verifies_and_returns_the_latest_facts(fx):
     assert got.recomputed and got.witnessed
     assert got.coverage_start
     assert len(got.latest) == 2
-    assert len(got.untied) == 2, "no genesis fact carries a tie yet"
+    assert len(got.untied) == 2, "no witnessed tree tick held either log"
     by_log = {x.fact["log_id"]: x for x in got.latest}
     assert by_log["deal/a"].fact["size"] > by_log["deal/a"].fact["prev_fact_size"], "deal/a grew after migration"
     assert by_log["deal/b"].fact["size"] == by_log["deal/b"].fact["prev_fact_size"], "deal/b changed only its values"
@@ -225,3 +225,161 @@ def test_a_value_nested_too_deeply_is_refused(fx):
         Handover.loads(go_json(h.value()).replace('"value":{}', '"value":' + "[" * deeper + "]" * deeper, 1))
     with pytest.raises(InvalidError):
         canonical_document(b"[" * deeper + b"]" * deeper, FACT_KIND_BOOK)
+
+
+# -- ties (Go shelf_handover_tie_test.go) ---------------------------------------------
+
+
+def tied_handover(fx) -> tuple[Handover, dict[str, str]]:
+    """A shelf whose deal/a grew after its witnessed tree tick (a tie with a
+    consistency proof), whose deal/b did not (a tie of one size), and whose
+    deal/c was never in a witnessed tick (untied), migrated, stamped and
+    handed over (Go ``tiedHandover``). Returns the handover and each log's
+    book id."""
+    with fx.open() as shelf:
+        c, _ = stamp_cadence(shelf)
+        a = shelf.open("deal/a")
+        a.append(obs("a", "1"))
+        shelf.open("deal/b").append(obs("b", "1"))
+        tree = c.tick(START).tick
+        assert c.witnessed(tree.n, script.mint_receipt(tree.checkpoint)).state == "VERIFIED"
+        a.append(obs("a", "2"))
+        shelf.open("deal/c").append(obs("c", "1"))
+        c.migrate(START + timedelta(minutes=1))
+        last = c.stamp(START + timedelta(minutes=2)).tick
+        iat = int((START + timedelta(minutes=3)).timestamp())
+        assert c.witnessed(last.n, script.mint_receipt(last.checkpoint, iat)).state == "VERIFIED"
+        h = c.handover(0)
+    books = {}
+    for d in h.documents:
+        f = json.loads(d.doc)
+        if f["kind"] == FACT_KIND_BOOK:
+            books[f["log_id"]] = f["book_id"]
+    return h, books
+
+
+def test_a_genesis_fact_with_its_tie_is_tied(fx):
+    """A genesis fact handed over with its tie verifies and is not untied;
+    one whose log no witnessed tick held is untied."""
+    h, books = tied_handover(fx)
+    assert len(h.ties) == 2
+    by_log = {t.log_id: t for t in h.ties}
+    assert by_log["deal/a"].consistency is not None, "deal/a grew after its witnessed tick"
+    assert by_log["deal/b"].consistency is None, "deal/b did not"
+    assert [t.book_id for t in h.ties] == sorted(t.book_id for t in h.ties), "ties are in book id order"
+    got = verify_handover(h, KEY, script.DIRECTORY)
+    assert got.untied == [books["deal/c"]]
+    # Round trip: the ties are JSON a reader in another language reads.
+    again = copy_of(h)
+    assert go_json(again.value()) == go_json(h.value())
+    assert go_json(verify_handover(again, KEY, script.DIRECTORY).value()) == go_json(got.value())
+
+    # Without its ties every genesis fact is untied, and still recomputed.
+    got = verify_handover(dataclasses.replace(h, ties=[]), KEY, script.DIRECTORY)
+    assert len(got.untied) == 3
+
+
+def _flip(s: str) -> str:
+    return ("1" if s[0] == "0" else "0") + s[1:]
+
+
+def test_a_tie_that_does_not_verify_fails_the_handover(fx):
+    """Each change to a tie fails the handover, naming the tie."""
+    h, books = tied_handover(fx)
+    index = {t.log_id: i for i, t in enumerate(h.ties)}
+    a, b = index["deal/a"], index["deal/b"]
+    ta, tb = h.ties[a], h.ties[b]
+    changes = {
+        "salt": (a, {"salt": _flip(ta.salt)}),
+        "index": (a, {"index": ta.index ^ 1}),
+        "path": (a, {"path": ta.path[:3] + [_flip(ta.path[3])] + ta.path[4:]}),
+        "short path": (a, {"path": ta.path[1:]}),
+        "entry": (a, {"entry_seq": ta.entry_seq + 1}),
+        "size": (b, {"size": tb.size + 1}),
+        "old checkpoint": (a, {"old_checkpoint": tb.old_checkpoint}),
+        "no consistency": (a, {"consistency": None}),
+        "consistency on a size": (b, {"consistency": ta.consistency}),
+        "cadence checkpoint": (a, {"cadence_checkpoint": h.anchor}),
+        "no receipt": (a, {"receipts": []}),
+        "another book": (a, {"book_id": books["deal/b"]}),
+        "no genesis": (a, {"book_id": "no-such-book"}),
+    }
+    for name, (i, change) in changes.items():
+        ties = list(h.ties)
+        ties[i] = dataclasses.replace(ties[i], **change)
+        with pytest.raises(InvalidError, match="tie"):
+            verify_handover(dataclasses.replace(h, ties=ties), KEY, script.DIRECTORY)
+            pytest.fail(name)
+    # A reader whose directory names no witness verifies no tie.
+    with pytest.raises(InvalidError, match="tie"):
+        verify_handover(h, KEY, {"witnesses": []})
+
+
+@pytest.mark.parametrize("member,value", [("ties", 1), ("ties", [1]), ("consistency", 1), ("path", "00"),
+                                          ("size", -1), ("cadence_checkpoint", "not base64!")])
+def test_a_tie_of_the_wrong_type_is_refused(fx, member, value):
+    h, _ = tied_handover(fx)
+    raw = json.loads(go_json(h.value()))
+    if member == "ties":
+        raw["ties"] = value
+    else:
+        raw["ties"][0][member] = value
+    with pytest.raises(InvalidError, match="handover"):
+        Handover.loads(json.dumps(raw))
+
+
+def test_a_tie_path_in_uppercase_hex_is_malformed(fx):
+    """Go decodes the path's hex and requires it to re-encode as given."""
+    h, _ = tied_handover(fx)
+    ties = list(h.ties)
+    ties[0] = dataclasses.replace(ties[0], path=[ties[0].path[0].upper()] + ties[0].path[1:])
+    with pytest.raises(InvalidError, match="a malformed path"):
+        verify_handover(dataclasses.replace(h, ties=ties), KEY, script.DIRECTORY)
+
+
+def test_a_tie_under_another_historys_checkpoint_fails(fx, tmp_path):
+    """A cadence checkpoint the holder signed and a named witness witnessed,
+    but of another shelf history (another root at the tie's position), fails
+    the tie on its root, not on its receipts."""
+    h, _ = tied_handover(fx)
+    # Another shelf under the same checkpoint key and cadence log id, whose
+    # first tick is witnessed.
+    (tmp_path / "other").mkdir()
+    other = Fixture(tmp_path / "other")
+    try:
+        with other.open() as shelf:
+            c, _ = stamp_cadence(shelf)
+            shelf.open("deal/z").append(obs("z", "1"))
+            forged = c.tick(START).tick
+    finally:
+        other.close()
+    assert read_checkpoint(forged.checkpoint).entries >= h.ties[0].entry_seq
+    ties = list(h.ties)
+    ties[0] = dataclasses.replace(ties[0], cadence_checkpoint=forged.checkpoint,
+                                  receipts=[script.mint_receipt(forged.checkpoint)])
+    with pytest.raises(InvalidError, match="do not recompute the cadence checkpoint"):
+        verify_handover(dataclasses.replace(h, ties=ties), KEY, script.DIRECTORY)
+
+
+def test_a_leaf_with_no_statement_leaves_its_book_untied(fx):
+    """A witnessed tree tick whose leaf kept no checkpoint statement (as a
+    released capsule-cli build stored it) gives that book no tie: it is
+    untied, and the handover verifies."""
+    with fx.open() as shelf:
+        c, _ = stamp_cadence(shelf)
+        shelf.open("deal/a").append(obs("a", "1"))
+        shelf.open("deal/b").append(obs("b", "1"))
+        tree = c.tick(START).tick
+        assert c.witnessed(tree.n, script.mint_receipt(tree.checkpoint)).state == "VERIFIED"
+        with shelf._tx() as db:
+            db.execute("""UPDATE cadence_ticks SET leaves = json_remove(leaves, '$.deals."deal/b".statement')"""
+                       " WHERE tick = ?", (tree.n,))
+        c.migrate(START + timedelta(minutes=1))
+        c.stamp(START + timedelta(minutes=2))
+        h = c.handover(0)
+        with shelf._read() as db:
+            book_b = db.execute("SELECT book_id FROM shelf_entries WHERE log_id = 'deal/b' LIMIT 1").fetchone()[0]
+    assert len(h.ties) == 1
+    assert h.ties[0].log_id == "deal/a"
+    got = verify_handover(h, read_checkpoint(h.anchor).key_id, script.DIRECTORY)
+    assert got.untied == [book_b]

@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-const TEST_WITNESS_URL: &str = "https://witness.test";
+pub(super) const TEST_WITNESS_URL: &str = "https://witness.test";
 const OTHER_WITNESS_URL: &str = "https://other-witness.test";
 const CADENCE_LOG: &str = "deal-cadence/0123456789abcdef";
 
@@ -37,11 +37,11 @@ fn witness_key(url: &str) -> SigningKey {
     })
 }
 
-fn tick_time() -> Time {
+pub(super) fn tick_time() -> Time {
     Time::parse("2026-10-31T12:00:30Z").unwrap()
 }
 
-fn minutes(n: u64) -> Time {
+pub(super) fn minutes(n: u64) -> Time {
     tick_time().plus(Duration::from_secs(60 * n))
 }
 
@@ -50,7 +50,7 @@ fn seconds(t: Time) -> i64 {
 }
 
 /// A directory listing both witnesses.
-fn directory() -> Value {
+pub(super) fn directory() -> Value {
     let row = |url: &str| {
         json!({"name": url, "endpoint": url,
             "key_ids": [hex::encode(witness_key(url).verifying_key().to_bytes())]})
@@ -58,7 +58,7 @@ fn directory() -> Value {
     json!({"witnesses": [row(TEST_WITNESS_URL), row(OTHER_WITNESS_URL)]})
 }
 
-fn open(path: &Path) -> Shelf {
+pub(super) fn open(path: &Path) -> Shelf {
     let signer = key("signer");
     let conn = Connection::open(path).unwrap();
     conn.busy_timeout(Duration::from_secs(5)).unwrap();
@@ -83,7 +83,7 @@ fn open(path: &Path) -> Shelf {
     .unwrap()
 }
 
-fn config(witnesses: Value) -> CadenceConfig {
+pub(super) fn config(witnesses: Value) -> CadenceConfig {
     CadenceConfig {
         log_id: CADENCE_LOG.into(),
         interval: Duration::from_secs(300),
@@ -97,7 +97,7 @@ fn config(witnesses: Value) -> CadenceConfig {
     }
 }
 
-fn append(shelf: &Shelf, book: &str, payload: &str) {
+pub(super) fn append(shelf: &Shelf, book: &str, payload: &str) {
     let mut entry = BookEntry::new("observation", EpistemicType::ObservedEvent);
     entry.subject_ref = Some(book.into());
     entry.payloads = vec![payload.as_bytes().to_vec()];
@@ -126,7 +126,7 @@ fn leaves_of(shelf: &Shelf, log_id: &str) -> u64 {
     ) as u64
 }
 
-fn book_id_of(shelf: &Shelf, log_id: &str) -> String {
+pub(super) fn book_id_of(shelf: &Shelf, log_id: &str) -> String {
     shelf
         .shared()
         .db()
@@ -193,7 +193,7 @@ fn receipt_at(statement: &[u8], url: &str, iat: Option<Time>) -> WitnessReceipt 
     }
 }
 
-fn witness_at(c: &Cadence, tick: &CadenceTick, url: &str, iat: Option<Time>) {
+pub(super) fn witness_at(c: &Cadence, tick: &CadenceTick, url: &str, iat: Option<Time>) {
     let check = c
         .witnessed(tick.n, receipt_at(&tick.checkpoint, url, iat))
         .unwrap();

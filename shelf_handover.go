@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -23,10 +22,10 @@ import (
 // format switch, each book fact's status opening, the book checkpoints the
 // facts carry and the consistency proofs between a book's facts, and checks
 // that nothing was held back, left out, changed or replaced. Counting a card
-// from the latest facts is standard_history/3's (AAC). A genesis fact's tie
-// to the old witnessed tree (§2.7) is not handed over yet: every genesis fact
-// is reported untied, which claims nothing about a log before the coverage
-// start.
+// from the latest facts is standard_history/3's (AAC). A genesis fact comes
+// with its tie to the old witnessed tree when the holder has one
+// (shelf_handover_tie.go); one without is reported untied, which claims
+// nothing about a log before the coverage start.
 
 // Handover is the material a whole-shelf reader is handed (§2.7).
 type Handover struct {
@@ -50,6 +49,9 @@ type Handover struct {
 	// witness in witness URL order.
 	Anchor   []byte           `json:"anchor"`
 	Receipts []WitnessReceipt `json:"receipts,omitempty"`
+	// Ties ties each genesis fact the holder can tie to the old witnessed
+	// tree (shelf_handover_tie.go), in book id order.
+	Ties []HandoverTie `json:"ties"`
 }
 
 // HandoverDocument is one entry document and, for a book fact, its status
@@ -122,27 +124,13 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 	if err != nil {
 		return Handover{}, err
 	}
-	out := Handover{V: 1, LogID: c.cfg.LogID, Anchor: tick.Checkpoint, Entries: []string{}, Documents: []HandoverDocument{}, BookCheckpoints: [][]byte{}, Consistency: []HandoverConsistency{}}
-	sum := sha256.Sum256(tick.Checkpoint)
-	rows, err := s.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id`, hex.EncodeToString(sum[:]))
+	out := Handover{V: 1, LogID: c.cfg.LogID, Anchor: tick.Checkpoint, Entries: []string{}, Documents: []HandoverDocument{}, BookCheckpoints: [][]byte{}, Consistency: []HandoverConsistency{}, Ties: []HandoverTie{}}
+	receipts, err := c.receiptsLocked(ctx, tick.Checkpoint)
 	if err != nil {
-		return Handover{}, err
+		return Handover{}, fmt.Errorf("tick %d: %w", n, err)
 	}
-	for rows.Next() {
-		var raw string
-		var r WitnessReceipt
-		if err := rows.Scan(&raw); err != nil {
-			rows.Close()
-			return Handover{}, err
-		}
-		if err := json.Unmarshal([]byte(raw), &r); err != nil {
-			rows.Close()
-			return Handover{}, fmt.Errorf("%w: a stored receipt of tick %d: %v", ErrCorrupt, n, err)
-		}
-		out.Receipts = append(out.Receipts, r)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return Handover{}, err
+	if len(receipts) > 0 {
+		out.Receipts = receipts
 	}
 	for after := uint64(0); after < anchor.Entries; {
 		entries, err := c.log.Entries(ctx, after, int(min(1000, anchor.Entries-after)))
@@ -162,12 +150,13 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 			after = e.Seq
 		}
 	}
-	rows, err = s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT entry_seq, kind, log_id, doc, status_opening FROM shelf_entries WHERE entry_seq <= ? ORDER BY entry_seq`, anchor.Entries)
 	if err != nil {
 		return Handover{}, err
 	}
 	type fact struct {
+		book string
 		log  string
 		size uint64
 		sum  string
@@ -188,7 +177,7 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 				_ = rows.Close()
 				return Handover{}, fmt.Errorf("%w: stored fact %d: %v", ErrCorrupt, d.Seq, err)
 			}
-			facts = append(facts, fact{log: f.LogID, size: f.Size, sum: f.CheckpointSHA256})
+			facts = append(facts, fact{book: f.BookID, log: f.LogID, size: f.Size, sum: f.CheckpointSHA256})
 		}
 		out.Documents = append(out.Documents, d)
 	}
@@ -264,6 +253,27 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 			out.Consistency = append(out.Consistency, HandoverConsistency{LogID: f.log, FromSize: prev.size, ToSize: f.size, Proof: proof})
 		}
 		last[f.log] = f
+	}
+	// Each book's genesis fact (its first) with its tie, when the holder has
+	// one, in book id order.
+	genesis := map[string]fact{}
+	var books []string
+	for _, f := range facts {
+		if _, ok := genesis[f.book]; !ok {
+			genesis[f.book] = f
+			books = append(books, f.book)
+		}
+	}
+	sort.Strings(books)
+	for _, book := range books {
+		f := genesis[book]
+		tie, ok, err := c.tieLocked(ctx, book, f.log, statements[f.sum])
+		if err != nil {
+			return Handover{}, err
+		}
+		if ok {
+			out.Ties = append(out.Ties, tie)
+		}
 	}
 	return out, nil
 }
@@ -366,6 +376,13 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	for _, p := range h.Consistency {
 		proofs[fmt.Sprintf("%s %d %d", p.LogID, p.FromSize, p.ToSize)] = p.Proof
 	}
+	ties := map[string]HandoverTie{}
+	for _, t := range h.Ties {
+		if _, dup := ties[t.BookID]; dup {
+			return bad("two ties of %s", t.BookID)
+		}
+		ties[t.BookID] = t
+	}
 	result := HandoverResult{Recomputed: true, Latest: []HandoverLatest{}, Untied: []string{}}
 	latest := map[string]HandoverLatest{}
 	var coverage uint64
@@ -416,7 +433,12 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 			if f.PrevFactSize != 0 {
 				return bad("the first fact of %s at %d names a previous size", f.BookID, seq)
 			}
-			result.Untied = append(result.Untied, f.BookID)
+			if t, tied := ties[f.BookID]; !tied {
+				result.Untied = append(result.Untied, f.BookID)
+			} else if err := verifyTie(t, f, cp, h, tree, marker, pinnedKey, witnesses); err != nil {
+				return bad("the tie of %s: %v", f.BookID, err)
+			}
+			delete(ties, f.BookID)
 		} else if err := checkFactChain(prev.Fact, f, statements, proofs); err != nil {
 			return bad("the fact of %s at %d: %v", f.BookID, seq, err)
 		}
@@ -424,6 +446,14 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	}
 	if coverage == 0 {
 		return bad("the migration's stamp is not in the handover")
+	}
+	if len(ties) > 0 {
+		orphans := make([]string, 0, len(ties))
+		for id := range ties {
+			orphans = append(orphans, id)
+		}
+		sort.Strings(orphans)
+		return bad("a tie of %s, which has no genesis fact in the handover", orphans[0])
 	}
 	result.CoverageStart = coverage
 	ids := make([]string, 0, len(latest))

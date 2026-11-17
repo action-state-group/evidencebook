@@ -223,7 +223,13 @@ the coverage start
   leaf for that log (its log id, size, checkpoint digest and salt), its path to that tick's tree
   root, that root's entry in the cadence log under a cadence checkpoint with a receipt from a named
   witness, the old book checkpoint's COSE bytes, and the consistency proof from it to the genesis
-  fact's checkpoint. A genesis fact with no tie is reported untied: nothing is claimed about the
+  fact's checkpoint (none when the two are of one size: their roots are then equal). The holder
+  builds it at handover time from the old tick with the log's largest witnessed size, which the
+  shelf keeps (`cadence_ticks`, `cadence_witnessed`); a leaf that kept no checkpoint statement (a
+  tick a released capsule-cli build stored) gives no tie. The verifier checks the root against the
+  handed-over entry at its position before the marker, and that the handed-over entries recompute
+  the cadence checkpoint at its size, so the receipt over that checkpoint witnessed the root. A
+  genesis fact with no tie is reported untied: nothing is claimed about the
   log's continuity before the coverage start, which is all the coverage start already says.
 
 It does not check the journal's chain or ask for its openings, and the journal counts toward no
@@ -299,10 +305,15 @@ count over the returned facts.
     those whose records gained coverage or a registration time from an accepted proof or receipt,
     so the profile recomputes every row of each (acceptance 4). A restart recomputes from the
     store.
-- **The `seen` field** is a record member the library fills, when asked, with the digest of the
-  last record of the counted prefix held from the other side of that book.
-- **The storage interface**: the shelf, the stamp and the card anchor take a `ShelfStore`
-  interface; SQLite stays the default and the only implementation in this item.
+- **The `seen` field** is a record member carrying the digest of the last record of the counted
+  prefix held from the other side of that book. The library gives that value,
+  `Shelf.CountedPrefix(senderKey, logID).Last`; which records carry the member, and which sender
+  is the other side, are the deal profile's (step 5, evidencebook-deal#212), since no book names
+  its counterparty to the library
+  (https://github.com/action-state-group/evidencebook/issues/461#issuecomment-6949048721).
+- **No storage interface in this item.** SQLite is the shelf's only store, and no second backend
+  or consumer of one exists, so a `ShelfStore` interface would only add an abstraction; it is
+  revisited in the item that adds a second backend (same comment).
 
 ## 4. Migration (4b)
 
@@ -331,7 +342,8 @@ is one-way, and recoverable at every step:
    current size and checkpoint, `prev_fact_size` 0, profile `"none"` for a host log in the cadence
    (the Mesh node's own log is not one: a host log that witnesses itself is outside the cadence,
    `rust/evidencebook/src/shelf/mod.rs:467-470`, and stays so until step 8), and for a log with a
-   witnessed size (`cadence_witnessed`) the batch keeps the tie of 2.7 from the largest one. A log listed with size 0 gets its first fact when it first has an entry. In
+   witnessed size (`cadence_witnessed`) a tie of 2.7 from the largest one, which a handover builds
+   from the old ticks the shelf keeps. A log listed with size 0 gets its first fact when it first has an entry. In
    the same shelf transaction as the batch, `shelf_migration.state` becomes `migrating`.
 4. **Append and checkpoint.** The marker, then the genesis facts in `book_id` order, then a stamp
    entry, are appended through the cadence log's own CLL handle; then the shelf checkpoint is cut

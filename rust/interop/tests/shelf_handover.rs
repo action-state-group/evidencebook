@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The whole-shelf handover and its replay (evidencebook#461 §2.7), Go's
 //! `shelf_handover_test.go` case for case on the scripted shelf after its
-//! migrate phase (two books grown after migration, a witnessed stamp), and
+//! migrate phase (two books grown after migration, a witnessed stamp, every
+//! genesis fact tied to the old witnessed tree), and
 //! the vectors `testdata/shelf/handover.json` and `handover-result.json`.
 
 use evidencebook::shelf::{verify_handover, Handover, HandoverResult, ShelfError};
@@ -63,7 +64,10 @@ fn a_handover_verifies_and_returns_the_latest_facts() {
     let mut sorted = logs.clone();
     sorted.sort();
     assert_eq!(sorted, ["deal/a", "deal/b", "deal/c", "legacy/old"]);
-    assert_eq!(got.untied.len(), 4, "no genesis fact carries a tie yet");
+    // Every book's log was in a witnessed tree tick before the migration,
+    // so every genesis fact carries its tie (evidencebook#461 §2.7).
+    assert_eq!(h.ties.len(), 4, "a tie per book");
+    assert!(got.untied.is_empty(), "every genesis fact is tied");
     let a = got
         .latest
         .iter()
