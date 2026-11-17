@@ -699,6 +699,18 @@ class Cadence:
             self._shelf._check_open()
             return shelf_stamp.stamp_locked(self, now)
 
+    def handover(self, n: int = 0) -> Any:
+        """Hand the shelf over up to tick ``n``'s checkpoint, the newest
+        finished tick when ``n`` is 0, which must be a stamp's (Go
+        ``Cadence.Handover``, evidencebook#461 §2.7): the
+        :class:`~evidencebook.shelf_handover.Handover` a reader the holder
+        chooses replays with :func:`~evidencebook.shelf_handover.verify_handover`."""
+        from . import shelf_handover
+
+        with self._shelf._mu:
+            self._shelf._check_open()
+            return shelf_handover.handover_locked(self, n)
+
     # -- witnessing ---------------------------------------------------------------------
 
     def witnessed(self, n: int, receipt: WitnessReceipt) -> WitnessCheck:

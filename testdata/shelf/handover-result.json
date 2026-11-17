@@ -1,0 +1,85 @@
+{
+  "recomputed": true,
+  "witnessed": true,
+  "coverage_start": 26,
+  "latest": [
+    {
+      "fact": {
+        "v": 1,
+        "kind": "book_fact",
+        "profile": "none",
+        "book_id": "1aa60ed643cc112e7cb09e40a56170417c17cfe64b8227355d4c8616d1fab1e9",
+        "log_id": "deal/c",
+        "size": 4,
+        "checkpoint_sha256": "e215737b56d0c0610515acee76de24b99de5c5ed9930ea9c256943edc149d2a3",
+        "prev_fact_size": 0,
+        "link_commitment": "4231aa853be4c3c9cf7ddde6d4c25bc5272b2b5cb680c717d145ecb18e3a13d5",
+        "status_commitment": "38826723edd902466f591d559710481bc53a991d3c2c9f6f5611a548adf0c025"
+      },
+      "status_opening": {
+        "salt": "aacae3373db778ada2950219b637165e782154c766ba26c4d75bd363d10435fe",
+        "value": {}
+      }
+    },
+    {
+      "fact": {
+        "v": 1,
+        "kind": "book_fact",
+        "profile": "none",
+        "book_id": "5a8852443eb94c7e6fa2bd3eb5351603290b0469992a39e25e5df9ff316fcba2",
+        "log_id": "deal/b",
+        "size": 10,
+        "checkpoint_sha256": "f407f80d5a815a162c3113e85e093846d928d75eb6577f2ad5160ed89a045e60",
+        "prev_fact_size": 0,
+        "link_commitment": "146d5f7b2c705a686c8ac5030a9aede9c930d356d7c0481a55843b60f2828c4e",
+        "status_commitment": "3439d672854f741576db64ecff0f9bc59bd02fbe3de936de369859b8a0636b44"
+      },
+      "status_opening": {
+        "salt": "de1257322eab48fc6048c28841f5e23ad4caf59103a147385c46ffb6bd39dfef",
+        "value": {}
+      }
+    },
+    {
+      "fact": {
+        "v": 1,
+        "kind": "book_fact",
+        "profile": "none",
+        "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+        "log_id": "deal/a",
+        "size": 32,
+        "checkpoint_sha256": "50145a86dc3d715945f9536b84f77395d2c1197873d824c6ea990c824a86441f",
+        "prev_fact_size": 25,
+        "link_commitment": "de1d029878a3c9dae98be93f9b0cda64545f16f300e6f3ea137db3c7dee18875",
+        "status_commitment": "488a8d01b42e09dda19376ea1f7aa81545e23d1bbcd4cb906e3ed686656e8da2"
+      },
+      "status_opening": {
+        "salt": "e338e3c93307dd186f2bf9937080acde66b58463ad80ddd9956b1c36b83ae24e",
+        "value": {}
+      }
+    },
+    {
+      "fact": {
+        "v": 1,
+        "kind": "book_fact",
+        "profile": "none",
+        "book_id": "998eedf8e2c8ee68a291e970e1f34b84c6627e8801392bf114520e9c9ae1d1d5",
+        "log_id": "legacy/old",
+        "size": 8,
+        "checkpoint_sha256": "4fb895b5c460d4af9488a34b6c45bb0d3dfa3da43edf0b676d56add194095f68",
+        "prev_fact_size": 7,
+        "link_commitment": "787fbfb1fc8f2c4ae4b65a7337f3ec8b883db4cf203e91d630ca8477f4784107",
+        "status_commitment": "d84dc7662d235fd04aaf41ebbfa8a9bfd521f34fd014b4fb623222a19404043d"
+      },
+      "status_opening": {
+        "salt": "a4f6accff5e278ec8c2236b3db73f6bb4f2d9fde12871ba859655d7c02f92ad3",
+        "value": {}
+      }
+    }
+  ],
+  "untied": [
+    "1aa60ed643cc112e7cb09e40a56170417c17cfe64b8227355d4c8616d1fab1e9",
+    "5a8852443eb94c7e6fa2bd3eb5351603290b0469992a39e25e5df9ff316fcba2",
+    "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+    "998eedf8e2c8ee68a291e970e1f34b84c6627e8801392bf114520e9c9ae1d1d5"
+  ]
+}
