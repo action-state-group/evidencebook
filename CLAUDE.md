@@ -42,6 +42,8 @@ WORK=$(mktemp -d) EB_DIR=$PWD test/cleanroom/run.sh
 EB_WRITE_SHELF_VECTORS=1 go test -run 'TestShelfTreeVectors|TestShelfVectors|TestShelfCorrelationVectors|TestShelfFactVectors' . ./internal/shelfscript
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/interop/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
+# The migrate phase (evidencebook#461): any language migrates a shelf another wrote
+go run ./test/interop/shelf migrate "$dir/s" && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-migrate.json -
 # The Rust side (feature `shelf`): Go writes, Rust continues; the interlock job runs every pair of Go, Python and Rust
 (cd rust && cargo build --locked -p evidencebook-interop --bin shelf)
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/debug/shelf continue "$dir/s" \

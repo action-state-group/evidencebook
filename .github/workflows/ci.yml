@@ -403,6 +403,27 @@ jobs:
               echo "written by $writer, continued by $continuer: every dump is the vector's"
             done
           done
+      - name: Migrate a shelf another language wrote, and compare, in every pair of languages
+        # evidencebook#461: Migrate and stamps (the script's migrate phase) on a
+        # shelf written and continued by one language, every dump equal to
+        # testdata/shelf/after-migrate.json.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for writer in $langs; do
+            for migrator in $langs; do
+              dir="$work/$writer-$migrator"
+              "$RUNNER_TEMP/shelf-$writer" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$writer" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$migrator" migrate "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-migrate.$reader.json" < /dev/null
+                cmp testdata/shelf/after-migrate.json "$dir/after-migrate.$reader.json"
+              done
+              echo "written by $writer, migrated by $migrator: every dump is the vector's"
+            done
+          done
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
           langs="go py rs"
