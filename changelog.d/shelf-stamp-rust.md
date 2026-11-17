@@ -1,2 +1,0 @@
-<!-- changelog: rust/evidencebook/CHANGELOG.md -->
-- `shelf` (feature): Go's shelf log of book facts (#461), byte for byte. `Cadence::migrate`, `Cadence::stamp` and `Shelf::openings` are added, and shelf file versions 1 and 2 are opened. Breaking: `CadenceConfig` gains `status: Option<BookStatus>`, the values each book's fact commits to; a caller that builds the struct literally adds `status: None`.

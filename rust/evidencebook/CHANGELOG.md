@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.0.18 (2026-11-17)
+
+Tag `crates/evidencebook-v0.0.18`. Pull requests since 0.0.17 that touch `rust/`: [#466](https://github.com/action-state-group/evidencebook/pull/466) (`row_status`), [#469](https://github.com/action-state-group/evidencebook/pull/469) (`shelf_facts`), [#471](https://github.com/action-state-group/evidencebook/pull/471) (shelf migration and stamps), [#472](https://github.com/action-state-group/evidencebook/pull/472) (the whole-shelf handover) and [#453](https://github.com/action-state-group/evidencebook/pull/453) (checkpointed-local-log 0.6, evidence-request 0.6 and agent-action-capsule 0.11).
+
+- `row_status` (new module, no feature): the Go package `rowstatus`'s term row status, result for result over `testdata/row-status/vectors.json` (evidencebook#461, acceptance 6). Additive.
+
+### Changed: Rust crate on checkpointed-local-log 0.6.0, evidence-request 0.6.0 and agent-action-capsule 0.11.0 (#452)
+
+- The `evidencebook` crate and the interop crate depend on checkpointed-local-log 0.6.0 (CLL 0.9.0, -02 checkpoints whose `sub` is the bare log id), evidence-request 0.6.0 and agent-action-capsule 0.11.0, so one copy of each new version is in the graph again, except agent-action-capsule, which `capsule-emit-artifact` 0.0.3 still brings at 0.10.0. The pinned answer envelopes are rewritten: each envelope's anchor digest, request digest, signature and embedded checkpoint change, and so do the artifact bytes and digest wherever the artifact carries that anchor or checkpoint.
+- The crate now signs checkpoints with the bare-log-id `sub`. A verifier that insists on `<log id>#<size>`, such as capsule-anchor's witness check before capsule-anchor#94 (merged 2026-11-16, not yet released), rejects them: run a capsule-anchor release that includes #94 before adopting this crate version.
+- The interop `responder` and `personal-history` programs write each log key identity with the bare log id as `sub`, matching the checkpoints it signs and the Go responder.
+
+- `shelf_facts` (new module, no feature): the Go package's shelf log entry documents, commitments, openings and audiences, byte for byte over `testdata/shelf/facts/vectors.json` (#461). Additive.
+
+- `shelf` (feature): Go's whole-shelf handover and its replay (#461 §2.7), byte for byte. `Cadence::handover` hands the shelf log over up to a finished stamp (the newest when `n` is 0) with its entry documents, status openings, book checkpoints and consistency proofs, and `verify_handover` replays it under the holder's checkpoint key and a witness directory: it refuses a handover of another version, an entry held back or changed, a document left out or not its canonical JSON, a changed or missing opening, a book checkpoint left out or not the holder's, and a replaced book, and returns the coverage start, whether a receipt verifies, each book's latest fact and the untied books. `shelf_facts::BookFact` is added, and `shelf_facts::Opening` gains serde (`{salt, value}`).
+
+- `shelf` (feature): Go's shelf log of book facts (#461), byte for byte. `Cadence::migrate`, `Cadence::stamp` and `Shelf::openings` are added, and shelf file versions 1 and 2 are opened. Breaking: `CadenceConfig` gains `status: Option<BookStatus>`, the values each book's fact commits to; a caller that builds the struct literally adds `status: None`.
+
 ## 0.0.17 (2026-11-16)
 
 Tag `crates/evidencebook-v0.0.17`. Pull request since 0.0.16 that touches `rust/`: [#464](https://github.com/action-state-group/evidencebook/pull/464) (the temporary `outcome_note` record).
