@@ -136,7 +136,7 @@ impl Cadence {
     }
 
     /// Every receipt `shelf_receipts` holds for the checkpoint `statement`,
-    /// in witness URL order (Go `receiptsLocked`).
+    /// in witness URL and then key id order (Go `receiptsLocked`).
     pub(crate) fn receipts_locked(
         &self,
         statement: &[u8],

@@ -120,20 +120,27 @@ func TestTwoKeysOfOneWitnessKeepTheirReceipts(t *testing.T) {
 }
 
 // A shelf written before #492 keyed shelf_receipts by checkpoint and URL
-// alone; opening it rebuilds the table, keeps every row, and from then on a
-// second key of the same witness keeps its receipt.
+// alone; opening it rebuilds the table and keeps every row. The tick keeps
+// the first receipt it got (the old key's), while the old table kept only
+// the new key's, the earlier: the backfill at the cadence's open restores
+// the old key's beside it, which a skip by URL alone missed.
 func TestAShelfReceiptsTableKeyedByURLIsMigrated(t *testing.T) {
 	ctx := context.Background()
 	f, shelf, c, bookID, tick := twoKeyShelf(t)
 	key, _ := testWitness()
-	late := tickTime.Add(20 * time.Minute)
-	check, err := c.Witnessed(ctx, tick.N, receiptUnder(t, tick.Checkpoint, testWitnessURL, key, late))
-	require.NoError(t, err)
-	require.Equal(t, WitnessVerified, check.State)
-	// Put the table back in its layout before #492, rows and all.
+	early, late := tickTime.Add(10*time.Minute), tickTime.Add(20*time.Minute)
+	for _, s := range []struct {
+		key ed25519.PrivateKey
+		at  time.Time
+	}{{key, late}, {rotatedWitnessKey(), early}} {
+		check, err := c.Witnessed(ctx, tick.N, receiptUnder(t, tick.Checkpoint, testWitnessURL, s.key, s.at))
+		require.NoError(t, err)
+		require.Equal(t, WitnessVerified, check.State)
+	}
+	// Put the table back in its layout before #492, with the one row it held.
 	for _, statement := range []string{
 		`CREATE TABLE old_receipts (checkpoint_sha256 TEXT NOT NULL, witness_id TEXT NOT NULL, key_id TEXT NOT NULL, receipt TEXT NOT NULL, registered_at INTEGER, ` + receiptsKeyedByURL + `)`,
-		`INSERT INTO old_receipts SELECT * FROM shelf_receipts`,
+		`INSERT INTO old_receipts SELECT * FROM shelf_receipts WHERE key_id = '` + keyHexOf(rotatedWitnessKey()) + `'`,
 		`DROP TABLE shelf_receipts`,
 		`ALTER TABLE old_receipts RENAME TO shelf_receipts`,
 	} {
@@ -147,19 +154,20 @@ func TestAShelfReceiptsTableKeyedByURLIsMigrated(t *testing.T) {
 	require.NoError(t, shelf.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'`).Scan(&ddl))
 	assert.Contains(t, ddl, "PRIMARY KEY (checkpoint_sha256, witness_id, key_id)")
 	assert.Equal(t, 1, countRows(t, shelf, `SELECT COUNT(*) FROM shelf_receipts`), "the row is kept")
-	got, ok, err := shelf.RecordTimeByKey(ctx, bookID, 1, []string{keyHexOf(key)})
+	got, ok, err := shelf.RecordTimeByKey(ctx, bookID, 1, []string{keyHexOf(rotatedWitnessKey())})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, early, got)
+
+	values := &statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}
+	_, err = shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: twoKeyWitnesses(t), Status: values})
+	require.NoError(t, err)
+	assert.Equal(t, 2, countRows(t, shelf, `SELECT COUNT(*) FROM shelf_receipts`), "the old key's receipt is backfilled beside it")
+	got, ok, err = shelf.RecordTimeByKey(ctx, bookID, 1, []string{keyHexOf(key)})
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, late, got)
-
-	values := &statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}
-	c, err = shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
-		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: twoKeyWitnesses(t), Status: values})
-	require.NoError(t, err)
-	check, err = c.Witnessed(ctx, tick.N, receiptUnder(t, tick.Checkpoint, testWitnessURL, rotatedWitnessKey(), tickTime.Add(10*time.Minute)))
-	require.NoError(t, err)
-	require.Equal(t, WitnessVerified, check.State)
-	assert.Equal(t, 2, countRows(t, shelf, `SELECT COUNT(*) FROM shelf_receipts`), "the other key's receipt is kept beside it")
 
 	// Opening again changes nothing.
 	require.NoError(t, shelf.Release())

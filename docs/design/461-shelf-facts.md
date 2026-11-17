@@ -205,7 +205,8 @@ entries before the marker as the opaque ids they are), every entry document afte
 each book fact's status opening, no journal opening and no link opening, the COSE bytes of every
 book checkpoint a book fact carries, the consistency proof between each pair of consecutive book
 facts whose size grew, each genesis fact's tie when the holder has one (below), the anchor
-checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL order), every
+checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL and then key id
+order), every
 earlier shelf checkpoint within the anchor for which `shelf_receipts` holds a receipt, with all of
 them (`Handover.Witnessed`, in tick order; invariant C of `461-deal-profile.md` §8.1: a record's
 time is the earliest named registration of any checkpoint that covers it, not only the anchor's),

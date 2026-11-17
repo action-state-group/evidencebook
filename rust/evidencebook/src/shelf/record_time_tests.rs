@@ -634,8 +634,9 @@ fn two_keys_of_one_witness_keep_their_receipts() {
 }
 
 // A shelf written before #492 keyed shelf_receipts by checkpoint and URL
-// alone; opening it rebuilds the table, keeps every row, and from then on a
-// second key of the same witness keeps its receipt (Go
+// alone; opening it rebuilds the table and keeps every row. The tick keeps
+// the old key's receipt, the old table only the new key's: the backfill at
+// the cadence's open restores the old key's beside it (Go
 // TestAShelfReceiptsTableKeyedByURLIsMigrated).
 #[test]
 fn a_shelf_receipts_table_keyed_by_url_is_migrated() {
@@ -643,12 +644,14 @@ fn a_shelf_receipts_table_keyed_by_url_is_migrated() {
     let path = dir.path().join("shelf.db");
     let (shelf, c, book_id, stamp) = two_key_shelf(&path);
     witness_under(&c, &stamp, &witness_key(TEST_WITNESS_URL), minutes(20));
+    witness_under(&c, &stamp, &rotated_key(), minutes(10));
+    let rotated_hex = hex::encode(rotated_key().verifying_key().to_bytes());
     shelf
         .shared()
         .db()
         .execute_batch(&format!(
             "CREATE TABLE old_receipts (checkpoint_sha256 TEXT NOT NULL, witness_id TEXT NOT NULL, key_id TEXT NOT NULL, receipt TEXT NOT NULL, registered_at INTEGER, {});
-             INSERT INTO old_receipts SELECT * FROM shelf_receipts;
+             INSERT INTO old_receipts SELECT * FROM shelf_receipts WHERE key_id = '{rotated_hex}';
              DROP TABLE shelf_receipts;
              ALTER TABLE old_receipts RENAME TO shelf_receipts;",
             super::store::RECEIPTS_KEYED_BY_URL
@@ -670,10 +673,19 @@ fn a_shelf_receipts_table_keyed_by_url_is_migrated() {
     assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 1);
     assert_eq!(
         record_time(&shelf, &book_id, 1, &[TEST_WITNESS_URL]),
-        Some(minutes(20))
+        Some(minutes(10))
     );
-    let c = shelf.cadence(config(two_key_directory())).unwrap();
-    witness_under(&c, &stamp, &rotated_key(), minutes(10));
+    shelf.cadence(config(two_key_directory())).unwrap();
+    let old_hex = hex::encode(witness_key(TEST_WITNESS_URL).verifying_key().to_bytes());
+    assert_eq!(
+        count(
+            &shelf,
+            "SELECT COUNT(*) FROM shelf_receipts WHERE key_id = ? AND registered_at = ?",
+            rusqlite::params![old_hex, seconds(minutes(20))]
+        ),
+        1,
+        "the old key's receipt is backfilled beside it"
+    );
     assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 2);
     shelf.release().unwrap();
 

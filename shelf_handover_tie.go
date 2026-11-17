@@ -120,7 +120,7 @@ func (c *Cadence) tieLocked(ctx context.Context, bookID, logID string, genesis [
 }
 
 // receiptsLocked is every receipt shelf_receipts holds for the checkpoint
-// statement, in witness URL order.
+// statement, in witness URL and then key id order.
 func (c *Cadence) receiptsLocked(ctx context.Context, statement []byte) ([]WitnessReceipt, error) {
 	sum := sha256.Sum256(statement)
 	rows, err := c.shelf.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id, key_id`, hex.EncodeToString(sum[:]))

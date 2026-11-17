@@ -163,7 +163,7 @@ class HandoverTie:
     tick's root (``CADENCE_DEPTH`` hashes, lowercase hex, from the leaf up);
     ``entry_seq``, the position from 1 of that root in the shelf log before
     the format switch; ``cadence_checkpoint``, the statement the tick cut, and
-    ``receipts``, the witness receipts held for it in witness URL order;
+    ``receipts``, the witness receipts held for it in witness URL and then key order;
     ``old_checkpoint``, the book checkpoint statement the leaf commits to;
     and ``consistency``, Go's ``ConsistencyEvidence`` from it to the genesis
     fact's checkpoint, ``None`` when the two are of one size (their roots
@@ -543,7 +543,7 @@ def _witnessed_before_locked(c: Any, n: int, anchor: Checkpoint, anchor_statemen
 
 def _receipts_locked(c: Any, statement: bytes) -> list[Any]:
     """Every receipt ``shelf_receipts`` holds for the checkpoint statement, in
-    witness URL order (Go ``receiptsLocked``)."""
+    witness URL and then key id order (Go ``receiptsLocked``)."""
     from .cadence import WitnessReceipt
 
     digest = hashlib.sha256(statement).hexdigest()

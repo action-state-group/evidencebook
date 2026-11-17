@@ -350,28 +350,32 @@ def test_two_keys_of_one_witness_keep_their_receipts(fx, new_key_first):
 
 def test_a_shelf_receipts_table_keyed_by_url_is_migrated(fx):
     """A shelf written before #492 keyed shelf_receipts by checkpoint and URL
-    alone; opening it rebuilds the table, keeps every row, and from then on a
-    second key of the same witness keeps its receipt (Go
+    alone; opening it rebuilds the table and keeps every row. The tick keeps
+    the old key's receipt, the old table only the new key's: the backfill at
+    the cadence's open restores the old key's beside it (Go
     TestAShelfReceiptsTableKeyedByURLIsMigrated)."""
     from evidencebook.shelf import RECEIPTS_KEYED_BY_URL
 
     with fx.open() as shelf:
         c, book_id, stamp = two_key_shelf(shelf)
         witness_under(c, stamp, script.WITNESS_KEY, at(20))
+        witness_under(c, stamp, ROTATED_KEY, at(10))
         with shelf._tx() as db:
             db.execute("CREATE TABLE old_receipts (checkpoint_sha256 TEXT NOT NULL, witness_id TEXT NOT NULL, "
                        "key_id TEXT NOT NULL, receipt TEXT NOT NULL, registered_at INTEGER, "
                        f"{RECEIPTS_KEYED_BY_URL})")
-            db.execute("INSERT INTO old_receipts SELECT * FROM shelf_receipts")
+            db.execute("INSERT INTO old_receipts SELECT * FROM shelf_receipts WHERE key_id = ?",
+                       (ROTATED_KEY.public_key().hex(),))
             db.execute("DROP TABLE shelf_receipts")
             db.execute("ALTER TABLE old_receipts RENAME TO shelf_receipts")
     with fx.open() as shelf:
         ddl = scalar(shelf, "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'")
         assert "PRIMARY KEY (checkpoint_sha256, witness_id, key_id)" in ddl
         assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 1, "the row is kept"
-        assert shelf.record_time(book_id, 1, [WITNESS_URL]) == unix(at(20))
-        c = cadence(shelf, TWO_KEYS)
-        witness_under(c, stamp, ROTATED_KEY, at(10))
-        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 2, "the other key's receipt is kept beside it"
+        assert shelf.record_time(book_id, 1, [WITNESS_URL]) == unix(at(10))
+        cadence(shelf, TWO_KEYS)
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE key_id = ? AND registered_at = ?",
+                      script.KEYS["witness_public"], unix(at(20))) == 1, "the old key's receipt is backfilled beside it"
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 2
     with fx.open() as shelf:
         assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 2
