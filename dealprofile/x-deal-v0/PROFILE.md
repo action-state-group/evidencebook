@@ -309,7 +309,7 @@ Field details:
 - **expect_close_by** (on `baseline`, optional): the day the deal is expected to close
   (YYYY-MM-DD). capsulectl seals one on every deal (by default 14 days for a purchase, 1 for a
   booking, 7 for a rental, 30 for a service) so an open deal can be listed against it.
-- **Late records.** A record sealed after a final close is an `evidence` record, or the party's one `rules_verdict`, whose Capsule
+- **Late records.** A record sealed after a final close is an `evidence` record, the party's one `rules_verdict`, or the owner's one TEMPORARY `outcome_note`, whose Capsule
   chains to the close with the registered `chain.relation` `confirms` (non-terminal: it records
   an outcome of the close, whose state stands), never `follows` (ordering only), and whose
   `confirms` ref commits to the close record's digest, so it cannot be reattached to another
@@ -624,7 +624,7 @@ A verifier holding one deal's records in `seq` order checks:
    other side was not chosen, one buyer of several for example, and nothing was done: no `action`
    precedes it. `called_off` (status, outcome and reason alike, actor `user`) says the user dropped
    the errand, with nothing done, and never reads as nothing delivered. A terminal close:
-   after it, only `evidence` records and the deal's `rules_verdict` that `confirms` that close may follow. A close with `open`
+   after it, only `evidence` records, the deal's `rules_verdict` and its TEMPORARY `outcome_note` that `confirm` that close may follow. A close with `open`
    MAY be followed by later `outcome` and `close` records. Each `carried_obligations` entry names
    an earlier record holding that `cancel_by`, or that `due_by`.
 8. **Reversals.** An `action` with `direction: "in"` and an `amount_minor` returns money the user paid: it carries
@@ -1232,7 +1232,7 @@ parties' capsulectl (DR-1). Only a final close whose status is `received` commit
 the delivered price and currency, or the agreed ones where the close names none. Every other step,
 and a received close with no known price or currency, commits the empty text. So the two halves
 match only where both parties closed as received, and every other pair is `INSUFFICIENT` (DR §6
-rule 5). A finally closed deal takes later evidence, and the party's `rules_verdict`, only, chained `confirms` to the close, so the
+rule 5). A finally closed deal takes later evidence, the party's `rules_verdict` and its TEMPORARY `outcome_note`, only, chained `confirms` to the close, so the
 final close is the deal's last step chained `follows`.
 
 **Admission (DR §4.1).** A half is admitted only after these checks; any failure refuses the
