@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"github.com/action-state-group/capsule-cli/cli"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/spf13/cobra"
 )
 
 func dealSaleCommands() *cobra.Command {
 	sale := &cobra.Command{Use: "sale", Short: "A sale to one of several buyers: one item, one task authority, a thread per buyer"}
-	sale.AddCommand(dealSaleNewCommand(), dealSaleExportCommand(), dealSaleBundleCommand(), dealSaleCloseCommand())
+	sale.AddCommand(dealSaleNewCommand(), dealSaleExportCommand(), dealSaleBundleCommand(), dealSaleUnpostCommand(), dealSaleCloseCommand())
 	return sale
 }
 
@@ -97,6 +98,52 @@ func dealSaleNewCommand() *cobra.Command {
 	return cmd
 }
 
+// dealSaleUnpostCommand records that a listing was taken down. The agent runs
+// it after taking the listing down, or after the user confirms it is down:
+// the record says the listing is down, so it is never sealed before that.
+func dealSaleUnpostCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "unpost", Short: "Record that a listing of the sale was taken down on a platform (after it is down, or the user confirms it is)", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		saleID, _ := c.Flags().GetString("sale")
+		platform, _ := c.Flags().GetString("platform")
+		if !cli.SaleIDPattern.MatchString(saleID) {
+			return cli.InputError("--sale (a sale id as printed by `deal sale new`) is required")
+		}
+		platform, err := dealprofile.Normalize("domain", strings.TrimSpace(platform))
+		if err != nil {
+			return cli.InputError("--platform is the site the listing was on, by its domain (for example \"marketplace.example\")")
+		}
+		return runDeal(c, false, func(ctx context.Context, s *dealSession, _ string, _ []sealedEvent) error {
+			if _, _, err := s.saleOf(ctx, saleID); err != nil {
+				return err
+			}
+			if err := s.useDeal(ctx, saleID, false); err != nil {
+				return err
+			}
+			events, err := s.load(ctx, saleID)
+			if err != nil {
+				return err
+			}
+			se, err := s.sealUnpost(ctx, saleID, platform, events)
+			if err != nil {
+				return err
+			}
+			cp, err := s.milestone(ctx)
+			if err != nil {
+				return err
+			}
+			out := stepOutput(saleID, se)
+			out["sale_id"] = saleID
+			out["platform"] = platform
+			out["checkpoint"] = cp
+			out["live_platforms"] = livePlatforms(append(events, se))
+			return cli.Output(c, out)
+		})
+	}}
+	cmd.Flags().String("sale", "", "Sale ID from `deal sale new`")
+	cmd.Flags().String("platform", "", "The platform (site domain) whose live listing was taken down")
+	return cmd
+}
+
 func dealSaleCloseCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "close", Short: "End a sale: no buyer's thread opens on it after this; a thread already open goes on", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		saleID, _ := c.Flags().GetString("sale")
@@ -115,6 +162,13 @@ func dealSaleCloseCommand() *cobra.Command {
 	}}
 	cmd.Flags().String("sale", "", "Sale ID from `deal sale new`")
 	return cmd
+}
+
+// liveListingsRefusal is why a sale does not close while a listing is up: it
+// names each platform and says how to go on.
+func liveListingsRefusal(saleID string, live []string) string {
+	return "the sale " + saleID + " still has a live listing on " + strings.Join(live, ", ") +
+		": take each one down (or have the user confirm it is down), run `deal sale unpost --sale " + saleID + " --platform <platform>` for it, then close the sale"
 }
 
 // saleClosedStatus is the line `deal sale close` prints: the sale takes no
@@ -149,6 +203,12 @@ func (s *dealSession) closeSale(ctx context.Context, saleID string) (sealedEvent
 	}
 	if saleClosed(events) {
 		return sealedEvent{}, nil, 0, cli.InputError("the sale " + saleID + " is already closed")
+	}
+	// A listing still up keeps the sale open: a takedown never follows the
+	// close, and close never seals one itself, since that would record a
+	// takedown that may not have happened.
+	if live := livePlatforms(events); len(live) > 0 {
+		return sealedEvent{}, nil, 0, cli.InputError(liveListingsRefusal(saleID, live))
 	}
 	type registration struct{ digest, thread string }
 	var registrations []registration
@@ -206,32 +266,42 @@ func soldSale(events []sealedEvent) string {
 }
 
 // closeSoldSale closes a sold thread's sale in a session of its own and
-// reports whether it sealed the close.
-func closeSoldSale(c *cobra.Command, saleID string) (closed bool, err error) {
+// reports whether it sealed the close. A sale with a live listing stays open:
+// it returns the platforms still up, and the sale closes with `deal sale
+// close` once each is taken down.
+func closeSoldSale(c *cobra.Command, saleID string) (closed bool, live []string, err error) {
 	p, err := cli.Selected(c)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	s, err := openDealSession(c.Context(), p)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	defer func() { err = errors.Join(err, s.close()) }()
 	return s.closeSaleOnce(c.Context(), saleID)
 }
 
-// closeSaleOnce closes a sale unless it is already closed, and leaves the
-// session on the sale's log. It reports whether it sealed the close.
-func (s *dealSession) closeSaleOnce(ctx context.Context, saleID string) (bool, error) {
+// closeSaleOnce closes a sale unless it is already closed or still has a live
+// listing, and leaves the session on the sale's log. It reports whether it
+// sealed the close, and the platforms with a live listing when it did not.
+func (s *dealSession) closeSaleOnce(ctx context.Context, saleID string) (bool, []string, error) {
 	closed, err := s.index.steps(ctx, stepFilter{DealID: saleID, Kinds: []string{"sale_close"}})
 	if err != nil || len(closed) > 0 {
-		return false, err
+		return false, nil, err
+	}
+	live, err := s.liveListings(ctx, saleID)
+	if err != nil {
+		return false, nil, err
+	}
+	if len(live) > 0 {
+		return false, live, nil
 	}
 	if err = dealSaleCloseStops(); err != nil {
-		return false, err
+		return false, nil, err
 	}
 	_, _, _, err = s.closeSale(ctx, saleID)
-	return err == nil, err
+	return err == nil, nil, err
 }
 
 // threadState is whether a buyer's thread has opened (its task authority
@@ -257,6 +327,27 @@ func (s *dealSession) threadState(ctx context.Context, threadID string) (opened,
 		}
 	}
 	return opened, opened && !closed, nil
+}
+
+// threadSold is whether a buyer's thread finally closed with the item handed
+// over (completed, or received with differences), read from its sealed steps
+// like soldSale reads its events: the latest close whose outcome is not open.
+func (s *dealSession) threadSold(ctx context.Context, threadID string) (bool, error) {
+	steps, err := s.index.steps(ctx, stepFilter{DealID: threadID, Kinds: []string{"close"}})
+	if err != nil {
+		return false, err
+	}
+	sold := false
+	for _, st := range steps {
+		var ev dealEvent
+		if err := json.Unmarshal([]byte(st.Local), &ev); err != nil {
+			return false, cli.ErrConflict
+		}
+		if c := ev.Close; c != nil && c.Outcome != "open" {
+			sold = c.Outcome == "completed" || c.Outcome == "mismatch"
+		}
+	}
+	return sold, nil
 }
 
 func dealSaleExportCommand() *cobra.Command {
@@ -441,6 +532,24 @@ func (s *dealSession) registerThread(ctx context.Context, saleID, threadID strin
 	// already open goes on after its sale closes.
 	if saleClosed(events) {
 		return "", "", cli.InputError("the sale " + saleID + " is closed: no buyer's thread opens on it")
+	}
+	// A sold sale takes no new buyer either, though it stays open while a
+	// listing is up (a takedown never follows the close): the one item is
+	// gone, as soldSale reads a thread's final close.
+	for _, se := range events {
+		if th := se.Event.Thread; th != nil {
+			sold, err := s.threadSold(ctx, th.ThreadID)
+			if err != nil {
+				return "", "", err
+			}
+			if sold {
+				msg := "the sale " + saleID + "'s item is sold: no buyer's thread opens on it"
+				if live, err := s.liveListings(ctx, saleID); err == nil && len(live) > 0 {
+					msg += "; its listing is still up on " + strings.Join(live, ", ") + ": take it down, `deal sale unpost` it, then close the sale"
+				}
+				return "", "", cli.InputError(msg)
+			}
+		}
 	}
 	for _, se := range events {
 		th := se.Event.Thread

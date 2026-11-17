@@ -273,8 +273,17 @@ explained once where they are defined; this is the order to follow.
     `not_selected` closes a buyer the user passed over and `called_off` a sale
     the user dropped. Send the thread's receipt as "What you say" describes.
 12. **Close the sale** with `deal sale close --sale SALE_ID` when the user
-    stops selling. A thread closed `received` (outcome `completed` or `mismatch`) closes
-    its sale on its own, since the one item is gone: do not close the sale again,
+    stops selling. A sale with a live listing does not close: take each
+    listing down (or have the user confirm it is down) and run `deal sale
+    unpost --sale SALE_ID --platform SITE` for it first. Close never records a
+    takedown itself; its refusal names the sites still up. A thread closed
+    `received` (outcome `completed` or `mismatch`) closes
+    its sale on its own, since the one item is gone, unless a listing is still
+    up: the result then lists `sale_open_listings` and the sale stays open
+    until you take them down, record them and run `deal sale close`. Take them
+    down promptly: buyers can still see them, and `deal open --sale` refuses a
+    new buyer on a sold sale ("item is sold"). Otherwise
+    do not close the sale again,
     and open no other deal for it. If the close reports that closing the sale
     failed, run the same `deal close` again: it finishes the sale and prints
     `sale_closed`. It takes no new buyer; a thread already
@@ -931,6 +940,15 @@ or reword it ("comes with its original box" becomes "comes with its box").
 `authenticity` goes in `classes` only with such a sentence, and always with
 one.
 A later post on the same site replaces the listing there.
+
+When a listing comes down, take it down on the site (or have the user confirm
+it is down), then record it: `deal sale unpost --sale SALE_ID --platform
+SITE`, the site named as the post named it. It needs no check or approval,
+and it is refused for a site with no live listing. Seal it only once the
+listing is down: it says the listing is down, and nothing else checks that.
+From then on that site's listing no longer counts toward a thread's
+`listing_classes`; a later post on the site makes it live again. Never
+describe a listing as down before this is sealed.
 
 Seal an `intent` whenever the user changes what they asked (for example,
 "go ahead and share my number"), picks from options you offered (see "The

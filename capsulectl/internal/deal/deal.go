@@ -2577,11 +2577,17 @@ func dealCloseCommand() *cobra.Command {
 			return err
 		}
 		if sale != "" {
-			closed, err := closeSoldSale(c, sale)
+			closed, live, err := closeSoldSale(c, sale)
 			if err != nil {
 				return fmt.Errorf("the deal is closed, but closing its sale failed; run this `deal close` again to finish the sale: %w", err)
 			}
-			if closed {
+			if len(live) > 0 {
+				// The item is sold but a listing is still up: the sale stays
+				// open until each is taken down, and close never seals a
+				// takedown that may not have happened.
+				printed["sale_open_listings"] = live
+				printed["next"] = liveListingsRefusal(sale, live)
+			} else if closed {
 				printed["sale_closed"] = sale
 			} else if retried {
 				return cli.InputError("this deal is closed and takes no more steps; start a new one with `deal open`")

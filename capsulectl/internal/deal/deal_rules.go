@@ -740,6 +740,9 @@ type dealEvent struct {
 	// SaleCut is, on a sale's own log, the cut a sale bundle is made at: the
 	// last record of each opened thread then, each as a commitment.
 	SaleCut *dealSaleCut `json:"sale_cut,omitempty"`
+	// SaleUnpost is, on a sale's own log, a listing taken down: its platform
+	// and the record digest of the live post act it takes down.
+	SaleUnpost *dealSaleUnpost `json:"sale_unpost,omitempty"`
 	// Confirms is set on a record sealed after the deal was closed: the
 	// capsule id of that close. Its Capsule chains to the close with the
 	// registered relation `confirms`, never `follows`, and its record
