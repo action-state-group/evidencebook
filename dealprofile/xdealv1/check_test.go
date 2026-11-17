@@ -417,5 +417,11 @@ func TestForums(t *testing.T) {
 	none := acceptorAgreement(offer)
 	nab := none.Body.(*AgreeBody)
 	nab.Adjudicator, nab.Forums = NullOf[Adjudicator](), []string{}
-	assert.Equal(t, StageAgreement, stageOf(CheckDispute(dispute, none)), "no adjudicator, no dispute")
+	nd, err := Digest(none)
+	require.NoError(t, err)
+	toNone := dispute
+	toNone.Block.AgreementRef = &Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: nd}
+	err = CheckDispute(toNone, none)
+	assert.Equal(t, StageAgreement, stageOf(err))
+	assert.ErrorContains(t, err, "names no adjudicator", "no adjudicator, no dispute")
 }
