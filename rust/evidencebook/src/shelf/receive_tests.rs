@@ -1464,3 +1464,116 @@ fn a_failed_proof_commit_reports_no_proof_changes() {
     );
     assert_eq!(proof_rows(&s), 0);
 }
+
+// Round 4: a position past SQLite's signed 64-bit range is refused as
+// invalid before anything is stored; i64::MAX is a position like another.
+#[test]
+fn a_position_past_i64_max_is_refused() {
+    let (_f, s) = fx();
+    let at = |pos: u64, name: &str| {
+        rec(Rec {
+            digest: dg(name),
+            sender: "alice",
+            log: "deal/far",
+            pos,
+            prev: dg("before"),
+            deal: "deal-far",
+            ..Default::default()
+        })
+    };
+    let got = must_record(&s, &at(i64::MAX as u64, "max")).record.unwrap();
+    assert!(got.stored && !got.counted && got.ask_for_book);
+    assert_eq!(
+        s.received_record_of(&dg("max")).unwrap().received.position,
+        i64::MAX as u64
+    );
+    for (pos, name) in [(1u64 << 63, "past"), (u64::MAX, "last")] {
+        let e = s.receive(Some(&at(pos, name)), None).unwrap_err();
+        assert!(
+            matches!(&e.result.record.as_ref().unwrap().refused, Some(ShelfError::Invalid(m)) if m.contains("2^63 - 1")),
+            "{pos}: {e}"
+        );
+        assert!(!held(&s, name), "{pos}: nothing is stored");
+    }
+    assert_eq!(received_count(&s), 1);
+}
+
+// Round 4: an inclusion proof's members read null as Go reads it, the zero
+// value: leaf_index 0, absent and null verify alike.
+#[test]
+fn an_inclusion_member_reads_null_as_zero() {
+    let h = holder(&["1"]);
+    let outcome = |leaf_index: Option<Value>| {
+        let mut p = h.proof("counterparty");
+        let proof = p.inclusion.proof.as_object_mut().unwrap();
+        match leaf_index {
+            Some(v) => proof.insert("leaf_index".into(), v),
+            None => proof.remove("leaf_index"),
+        };
+        // Through the JSON encoding, as a reader in another language gets it.
+        let p: StampProof = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
+        verify_stamp_proof(&p)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    };
+    let zero = outcome(Some(json!(0)));
+    assert_eq!(outcome(None), zero, "absent");
+    assert_eq!(outcome(Some(Value::Null)), zero, "null");
+    // A real fact is never the shelf log's first entry, so leaf 0 does not
+    // place it; the refusal is the inclusion's, not the decoding's.
+    let e = zero.unwrap_err();
+    assert!(e.contains("is not included"), "{e}");
+    // seq reads null as 0 as well: no entry the checkpoint covers.
+    let mut p = serde_json::to_value(h.proof("counterparty")).unwrap();
+    p["inclusion"]["seq"] = Value::Null;
+    let p: StampProof = serde_json::from_value(p).unwrap();
+    let e = verify_stamp_proof(&p).unwrap_err().to_string();
+    assert!(e.contains("covers"), "{e}");
+}
+
+// Round 4: the holder's books keep changing while room is made for an
+// offer: three plans, then a busy refusal; nothing dropped, nothing stored.
+#[test]
+fn receive_refuses_busy_when_the_mark_keeps_moving() {
+    let (f, s) = Fx::new(
+        ReceiveBounds {
+            max_offers_per_sender: 1,
+            ..Default::default()
+        },
+        Duration::ZERO,
+    );
+    let values: Values = Arc::default();
+    let c = stamp_cadence(&s, &values);
+    s.open("deal/ours")
+        .unwrap()
+        .append(&observation("a", "1"))
+        .unwrap();
+    c.tick(tick_time()).unwrap();
+    c.migrate(minutes(1)).unwrap();
+    let journal = s.journal().unwrap();
+
+    must_record(&s, &offer("bob", "o1", 0));
+    let asked = Arc::new(Mutex::new(0));
+    let counter = asked.clone();
+    *f.profile.after_answered.lock().unwrap() = Some(Arc::new(move |_: &ReceivedRecord| {
+        let mut n = counter.lock().unwrap();
+        *n += 1;
+        journal
+            .append(&observation("busy", &n.to_string()))
+            .unwrap();
+    }));
+    let shelf = s.clone();
+    let e = within_time(move || {
+        shelf
+            .receive(Some(&offer("bob", "o2", 0)), None)
+            .unwrap_err()
+    });
+    assert!(fails(&e, |e| matches!(e, ShelfError::Busy(_))));
+    assert!(matches!(
+        e.result.record.as_ref().unwrap().refused,
+        Some(ShelfError::Busy(_))
+    ));
+    assert_eq!(*asked.lock().unwrap(), 3, "three plans, then the refusal");
+    assert!(held(&s, "o1"), "nothing was dropped");
+    assert!(!held(&s, "o2"), "nothing was stored");
+}

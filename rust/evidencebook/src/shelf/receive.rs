@@ -333,6 +333,18 @@ fn parse_received_time(text: &str, what: &str) -> Result<Time, ShelfError> {
     Time::parse(text).ok_or_else(|| ShelfError::Corrupt(format!("{what}'s time {text:?}")))
 }
 
+/// A position, size or count as SQLite stores it: a signed 64-bit integer.
+/// One past `i64::MAX` is refused, never wrapped.
+pub(super) fn sql_int(v: u64) -> Result<i64, ShelfError> {
+    i64::try_from(v).map_err(|_| ShelfError::Invalid(format!("{v} is past 2^63 - 1")))
+}
+
+/// An unsigned column: a negative value is out of range, never wrapped.
+pub(super) fn unsigned(r: &rusqlite::Row<'_>, i: usize) -> rusqlite::Result<u64> {
+    let v: i64 = r.get(i)?;
+    u64::try_from(v).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(i, v))
+}
+
 fn is_digest(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
 }
@@ -497,7 +509,7 @@ impl ReceivedRow {
             digest: r.get(0)?,
             sender: r.get(1)?,
             log: r.get(2)?,
-            position: r.get::<_, i64>(3)? as u64,
+            position: unsigned(r, 3)?,
             prev: r.get(4)?,
             deal: r.get(5)?,
             offer: r.get(6)?,
@@ -564,13 +576,13 @@ pub(super) fn received_prefix(conn: &Connection, k: &LogKey) -> Result<PrefixSta
         let rows = stmt.query_map(params![k.0, k.1], ReceivedRow::from_row)?;
         rows.collect::<Result<_, _>>()?
     };
-    let recorded: i64 = conn.query_row(
+    let recorded: u64 = conn.query_row(
         "SELECT COALESCE(MIN(at), 0) FROM shelf_received_conflicts WHERE sender_key = ? AND log_id = ? AND kind = ?",
         params![k.0, k.1, EVIDENCE_FORK],
-        |r| r.get(0),
+        |r| unsigned(r, 0),
     )?;
     let mut out = PrefixState {
-        fork_at: recorded as u64,
+        fork_at: recorded,
         ..Default::default()
     };
     let mut at: BTreeMap<u64, Vec<&ReceivedRow>> = BTreeMap::new();
@@ -625,18 +637,18 @@ fn fork_evidence(tx: &Transaction<'_>, r: &ReceivedRecord) -> Result<Vec<HeldFor
     for (position, digest) in checks {
         // The records that claim a digest at `position`: those held there,
         // and those at the next position, by the predecessor they name.
+        // The next position, -1 (no row) when it is past SQLite's range.
+        let next = position
+            .checked_add(1)
+            .and_then(|n| i64::try_from(n).ok())
+            .unwrap_or(-1);
         type Row = (String, String, i64, String, Vec<u8>);
         let rows: Vec<Row> = {
             let mut stmt = tx.prepare(
                 "SELECT digest, prev, position, deal_id, record FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position IN (?, ?) ORDER BY position, digest",
             )?;
             let rows = stmt.query_map(
-                params![
-                    r.sender_key,
-                    r.log_id,
-                    position as i64,
-                    (position + 1) as i64
-                ],
+                params![r.sender_key, r.log_id, sql_int(position)?, next],
                 |row| {
                     Ok((
                         row.get(0)?,
@@ -650,7 +662,7 @@ fn fork_evidence(tx: &Transaction<'_>, r: &ReceivedRecord) -> Result<Vec<HeldFor
             rows.collect::<Result<_, _>>()?
         };
         let mut found = rows.into_iter().find_map(|(d, prev, at, deal, b)| {
-            let claimed = if at as u64 == position + 1 { prev } else { d };
+            let claimed = if at == next { prev } else { d };
             (claimed != digest).then_some(HeldFork {
                 position,
                 held: b,
@@ -661,7 +673,7 @@ fn fork_evidence(tx: &Transaction<'_>, r: &ReceivedRecord) -> Result<Vec<HeldFor
             found = tx
                 .query_row(
                     "SELECT digest, deal_id FROM shelf_received_vacated WHERE sender_key = ? AND log_id = ? AND position = ? AND digest != ? ORDER BY digest LIMIT 1",
-                    params![r.sender_key, r.log_id, position as i64, digest],
+                    params![r.sender_key, r.log_id, sql_int(position)?, digest],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 )
                 .optional()?
@@ -711,7 +723,7 @@ pub(super) fn note_conflict(
 ) -> Result<bool, ShelfError> {
     let n: i64 = tx.query_row(
         "SELECT COUNT(*) FROM shelf_received_conflicts WHERE sender_key = ? AND log_id = ? AND kind = ? AND at = ?",
-        params![k.0, k.1, kind, at as i64],
+        params![k.0, k.1, kind, sql_int(at)?],
         |r| r.get(0),
     )?;
     if n > 0 {
@@ -727,7 +739,7 @@ pub(super) fn note_conflict(
     let id = tx.last_insert_rowid();
     tx.execute(
         "INSERT INTO shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id, offer) VALUES (?, ?, ?, ?, ?, ?)",
-        params![k.0, k.1, kind, at as i64, id, offers],
+        params![k.0, k.1, kind, sql_int(at)?, id, offers],
     )?;
     Ok(true)
 }
@@ -756,7 +768,7 @@ fn vacate(
         if keep {
             tx.execute(
                 "INSERT OR IGNORE INTO shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer) VALUES (?, ?, ?, ?, ?, ?)",
-                params![r.sender, r.log, r.position as i64, r.digest, r.deal, offers],
+                params![r.sender, r.log, sql_int(r.position)?, r.digest, r.deal, offers],
             )?;
         }
         let low = lowest
@@ -765,20 +777,20 @@ fn vacate(
         *low = (*low).min(r.position);
     }
     for (k, position) in lowest {
-        let sizes: Vec<i64> = {
+        let sizes: Vec<u64> = {
             let mut stmt = tx.prepare(
                 "SELECT DISTINCT size FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? AND verified = ?",
             )?;
-            let rows = stmt.query_map(params![k.0, k.1, PROOF_RECOMPUTED], |r| r.get(0))?;
+            let rows = stmt.query_map(params![k.0, k.1, PROOF_RECOMPUTED], |r| unsigned(r, 0))?;
             rows.collect::<Result<_, _>>()?
         };
         for size in sizes {
             // Go's LeafCount reports 0 for a size that is no complete MMR.
-            let leaves = mmr::leaf_count(size as u64).unwrap_or(0);
+            let leaves = mmr::leaf_count(size).unwrap_or(0);
             if leaves >= position {
                 tx.execute(
                     "UPDATE shelf_received_proofs SET verified = ? WHERE sender_key = ? AND log_id = ? AND size = ?",
-                    params![PROOF_UNCHECKED, k.0, k.1, size],
+                    params![PROOF_UNCHECKED, k.0, k.1, sql_int(size)?],
                 )?;
             }
         }
@@ -797,12 +809,12 @@ fn check_held_proofs(
     now: &str,
     changes: &mut ChangeSet,
 ) -> Result<(), ShelfError> {
-    let proofs: Vec<(i64, Vec<u8>)> = {
+    let proofs: Vec<(u64, Vec<u8>)> = {
         let mut stmt = tx.prepare(
             "SELECT DISTINCT size, book_checkpoint FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? AND verified = ? ORDER BY size",
         )?;
         let rows = stmt.query_map(params![k.0, k.1, PROOF_UNCHECKED], |r| {
-            Ok((r.get(0)?, r.get(1)?))
+            Ok((unsigned(r, 0)?, r.get(1)?))
         })?;
         rows.collect::<Result<_, _>>()?
     };
@@ -819,7 +831,7 @@ fn check_held_proofs(
                 tx,
                 k,
                 EVIDENCE_CHECKPOINT_RECORDS,
-                size as u64,
+                size,
                 &statement,
                 &over,
                 now,
@@ -832,7 +844,7 @@ fn check_held_proofs(
         }
         tx.execute(
             "UPDATE shelf_received_proofs SET verified = ? WHERE sender_key = ? AND log_id = ? AND size = ?",
-            params![state, k.0, k.1, size],
+            params![state, k.0, k.1, sql_int(size)?],
         )?;
     }
     Ok(())
@@ -841,12 +853,12 @@ fn check_held_proofs(
 /// How many counted records of `k` a held proof whose root they recomputed
 /// covers.
 fn verified_coverage(conn: &Connection, k: &LogKey, p: &PrefixState) -> Result<u64, ShelfError> {
-    let size: i64 = conn.query_row(
+    let size: u64 = conn.query_row(
         "SELECT COALESCE(MAX(size), 0) FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? AND verified = ?",
         params![k.0, k.1, PROOF_RECOMPUTED],
-        |r| r.get(0),
+        |r| unsigned(r, 0),
     )?;
-    let leaves = mmr::leaf_count(size as u64).map_err(|_| {
+    let leaves = mmr::leaf_count(size).map_err(|_| {
         ShelfError::Corrupt(format!("a held proof's size {size} is not a complete MMR"))
     })?;
     Ok(leaves.min(p.counted.len() as u64))
@@ -1190,7 +1202,7 @@ impl Shelf {
             let forks = fork_evidence(tx, r)?;
             tx.execute(
                 "INSERT INTO shelf_received (digest, sender_key, log_id, position, prev, deal_id, offer, record, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![r.digest, r.sender_key, r.log_id, r.position as i64, r.prev, r.deal_id, r.offer, record, now],
+                params![r.digest, r.sender_key, r.log_id, sql_int(r.position)?, r.prev, r.deal_id, r.offer, record, now],
             )?;
             // A conflict in a log of offers alone counts under the offer
             // bounds; one in a log that holds, or held, any other record is
@@ -1273,7 +1285,7 @@ impl Shelf {
             let rows = stmt.query_map([], |r| {
                 Ok(Held {
                     row: ReceivedRow::from_row(r)?,
-                    size: r.get::<_, i64>(7)? as u64,
+                    size: unsigned(r, 7)?,
                     gone: false,
                 })
             })?;
@@ -1489,6 +1501,11 @@ fn validate(r: &ReceivedRecord) -> Result<(), &'static str> {
     }
     if r.position == 0 {
         return Err("its position is 0; the first is 1");
+    }
+    if i64::try_from(r.position).is_err() {
+        // SQLite stores a signed 64-bit integer; every language refuses a
+        // position past it as invalid.
+        return Err("its position is past 2^63 - 1");
     }
     if r.position == 1 && !r.prev.is_empty() {
         return Err("the first record names a predecessor");

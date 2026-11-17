@@ -11,8 +11,8 @@
 use super::cadence::Cadence;
 use super::log::Checkpoint;
 use super::receive::{
-    before_commit, note_conflict, read_log_state, report, root_recomputes, ChangeSet, LogKey,
-    ProofOutcome, ReceiveBounds, ReceiveProfile, TxError, EVIDENCE_CHECKPOINT,
+    before_commit, note_conflict, read_log_state, report, root_recomputes, sql_int, unsigned,
+    ChangeSet, LogKey, ProofOutcome, ReceiveBounds, ReceiveProfile, TxError, EVIDENCE_CHECKPOINT,
     EVIDENCE_CHECKPOINT_RECORDS, PROOF_RECOMPUTED, PROOF_UNCHECKED,
 };
 use super::stamp::bytes_b64;
@@ -59,7 +59,7 @@ pub struct StampProof {
 pub struct InclusionEvidence {
     #[serde(default, deserialize_with = "nullable")]
     pub kind: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     pub seq: u64,
     #[serde(default)]
     pub proof: Value,
@@ -83,13 +83,13 @@ fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de> + Default>(d: D) -> R
 /// The portable JSON of a CLL inclusion proof (Go `MMRInclusion`).
 #[derive(Deserialize)]
 struct MmrInclusion {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     v: u64,
     #[serde(default, deserialize_with = "nullable")]
     kind: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     size: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     leaf_index: u64,
     #[serde(default, deserialize_with = "nullable")]
     witness: Vec<String>,
@@ -214,12 +214,11 @@ impl Cadence {
         let (_, with_status) = openings_for(FACT_KIND_BOOK, audience)
             .map_err(|e| ShelfError::Invalid(e.to_string()))?;
         let n = if n == 0 {
-            let max: i64 = self.shelf.shared().db().query_row(
+            self.shelf.shared().db().query_row(
                 "SELECT COALESCE(MAX(tick), 0) FROM cadence_ticks WHERE checkpoint_size > 0",
                 [],
-                |r| r.get(0),
-            )?;
-            max as u64
+                |r| unsigned(r, 0),
+            )?
         } else {
             n
         };
@@ -230,15 +229,15 @@ impl Cadence {
             )));
         }
         let anchor = Checkpoint::from_statement(&tick.checkpoint)?;
-        type Row = (i64, String, Vec<u8>, Option<Vec<u8>>);
+        type Row = (u64, String, Vec<u8>, Option<Vec<u8>>);
         let row: Option<Row> = self
             .shelf
             .shared()
             .db()
             .query_row(
                 "SELECT entry_seq, kind, doc, status_opening FROM shelf_entries WHERE book_id = ? AND kind IN (?, ?) AND entry_seq <= ? ORDER BY entry_seq DESC LIMIT 1",
-                params![book_id, FACT_KIND_BOOK, FACT_KIND_JOURNAL, anchor.entries as i64],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                params![book_id, FACT_KIND_BOOK, FACT_KIND_JOURNAL, sql_int(anchor.entries)?],
+                |r| Ok((unsigned(r, 0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()?;
         let Some((seq, kind, doc, so)) = row else {
@@ -290,14 +289,14 @@ impl Cadence {
                 f.log_id, f.checkpoint_sha256
             ))
         })?;
-        let proof = self.log.prove_inclusion(seq as u64, &anchor)?;
+        let proof = self.log.prove_inclusion(seq, &anchor)?;
         Ok(StampProof {
             fact: doc,
             status_opening,
             book_checkpoint,
             inclusion: InclusionEvidence {
                 kind: INCLUSION_KIND_CLL.into(),
-                seq: seq as u64,
+                seq,
                 proof,
             },
             shelf_checkpoint: tick.checkpoint,
@@ -360,7 +359,7 @@ impl Shelf {
                 let mut stmt = tx.prepare(
                     "SELECT shelf_checkpoint_sha256, book_checkpoint FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? AND size = ? ORDER BY received_at, shelf_checkpoint_sha256",
                 )?;
-                let rows = stmt.query_map(params![sender, v.fact.log_id, size as i64], |r| {
+                let rows = stmt.query_map(params![sender, v.fact.log_id, sql_int(size)?], |r| {
                     Ok((r.get(0)?, r.get(1)?))
                 })?;
                 rows.collect::<Result<_, _>>()?
@@ -421,7 +420,7 @@ impl Shelf {
             }
             tx.execute(
                 "INSERT INTO shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint, fact, status_opening, inclusion_proof, shelf_checkpoint, received_at, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                params![sender, v.fact.log_id, size as i64, shelf_digest, p.book_checkpoint, p.fact, opening, inclusion, p.shelf_checkpoint, now, state],
+                params![sender, v.fact.log_id, sql_int(size)?, shelf_digest, p.book_checkpoint, p.fact, opening, inclusion, p.shelf_checkpoint, now, state],
             )?;
             out.accepted = true;
             let after = read_log_state(tx, &key)?;
