@@ -1,0 +1,3081 @@
+{
+ "about": "Row status vectors (evidencebook#461, acceptance 6): each case's expect is the status of one term row as of input.at, written by hand from the rule in rowstatus/rowstatus.go's package comment; Go, Rust and Python must give exactly expect for every case and refuse every invalid input.",
+ "cases": [
+  {
+   "name": "r6-not-due-at-due-date",
+   "why": "no statement, T is the due date itself: not_due (up to and including)",
+   "input": {
+    "at": "2026-11-01T23:59:59Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "status": "not_due",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r6-no-statement-after-due",
+   "why": "no statement, T one second after the due date",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "status": "no_statement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r6-cannot-tell-is-none",
+   "why": "cannot_tell counts as no statement",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "cannot_tell",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "no_statement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r6-record-after-T-not-held",
+   "why": "a statement whose time is after T does not exist yet",
+   "input": {
+    "at": "2026-11-01T11:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "not_due",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r5-waiting",
+   "why": "one side met, inside the window",
+   "input": {
+    "at": "2026-11-01T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "waiting",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r5-waiting-at-window-end",
+   "why": "T is the window end itself: still inside",
+   "input": {
+    "at": "2026-11-04T23:59:59Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "waiting",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r5-uncontested",
+   "why": "one side met, one second after the window end",
+   "input": {
+    "at": "2026-11-05T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "uncontested",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r5-latest-cannot-tell-clears",
+   "why": "the side's latest in-time statement is cannot_tell, so it has none; the other side's met stands alone",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "cannot_tell",
+      "time": "2026-11-01T13:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "waiting",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r5-late-statement-ignored",
+   "why": "a statement after the window does not count and is not a concession (it is not the other side's value)",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "uncontested",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r4-agreed-so-far",
+   "why": "Appendix A, 1 Nov: both say row 1 met, inside the window",
+   "input": {
+    "at": "2026-11-01T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed_so_far",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r4-agreed",
+   "why": "Appendix A: row 1 agreed from 5 Nov",
+   "input": {
+    "at": "2026-11-05T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r4-agreed-not-met",
+   "why": "short case 2: both say not met, after the window: agreed, value not_met",
+   "input": {
+    "at": "2026-11-19T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-11T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "not_met",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r3-disagreement",
+   "why": "Appendix A, 10 Nov: buyer not met, seller met, both in time",
+   "input": {
+    "at": "2026-11-10T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r3-failed-check-overrides-agreement",
+   "why": "short case 1: both say met, the recomputed check (legs match) fails",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     },
+     "recomputed": true
+    },
+    "check": "fail",
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r3-failed-check-one-statement",
+   "why": "a failed recomputed check with one statement is still in disagreement",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     },
+     "recomputed": true
+    },
+    "check": "fail",
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r4-passed-check",
+   "why": "a passing check changes nothing",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     },
+     "recomputed": true
+    },
+    "check": "pass",
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed_so_far",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-before-window-end-is-a-change",
+   "why": "inside the window a new statement simply replaces the side's own",
+   "input": {
+    "at": "2026-11-03T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-03T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed_so_far",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-disagreement-after-window",
+   "why": "the in-time values differ after the window",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-concession-counts",
+   "why": "after the window the seller gives the buyer's in-time value: agreed",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-concession-from-none",
+   "why": "a side with no in-time statement concedes to the other's value",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-cannot-tell-is-not-a-concession",
+   "why": "a late cannot_tell concedes nothing",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "cannot_tell",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-only-first-counts",
+   "why": "the buyer concedes first; the seller's later concession does not count",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-06T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T11:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "not_met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-simultaneous-count-none",
+   "why": "both concede at the same record time: neither counts",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-06T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "cn-no-concession-profile",
+   "why": "a profile with no concession (Mesh): the late statement does not count",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "no_concession": true,
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-in-dispute",
+   "why": "Appendix A, 12 Nov: the buyer's dispute",
+   "input": {
+    "at": "2026-11-12T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r2-withdrawn",
+   "why": "the claimant withdraws: the rules below apply",
+   "input": {
+    "at": "2026-11-12T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r2-withdrawal-before-dispute",
+   "why": "a withdrawal is final for its side whichever was sealed first",
+   "input": {
+    "at": "2026-11-12T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T09:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_disagreement",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r2-other-side-withdrawal-no-effect",
+   "why": "only the claimant can withdraw its dispute",
+   "input": {
+    "at": "2026-11-12T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "seller",
+      "time": "2026-11-12T12:30:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r2-nonfinal-ruling",
+   "why": "Appendix A, 13 Nov: a ruling not yet final leaves the row in dispute",
+   "input": {
+    "at": "2026-11-13T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": false,
+      "value": "not_met",
+      "time": "2026-11-13T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute",
+   "why": "after the window, on an agreed row, by a claimant that had seen the statement in time: late, no effect",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute-unseen",
+   "why": "the claimant had not named the statement before the window ended: not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": false
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute-failed-check",
+   "why": "a row whose check fails can always be disputed",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     },
+     "recomputed": true
+    },
+    "check": "fail",
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute-on-disagreement",
+   "why": "in-time statements that differ are neither agreed nor uncontested: not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute-uncontested",
+   "why": "after the window, on an uncontested row: late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "uncontested",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-late-dispute-ignores-concession",
+   "why": "lateness reads the in-time statements alone: a later concession does not make a dispute late",
+   "input": {
+    "at": "2026-11-08T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-07T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "r2-conflicting-final-rulings",
+   "why": "two forks of the case book with different first final rulings: no ruling applies, in dispute",
+   "input": {
+    "at": "2026-11-22T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "rulings": [
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-21T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ],
+    "conflicting_final_rulings": true
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-ruled-remedy-due",
+   "why": "Appendix A, 21 Nov: final ruling, remedy due by 27 Nov",
+   "input": {
+    "at": "2026-11-21T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": false,
+      "value": "not_met",
+      "time": "2026-11-13T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     },
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-21T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "not_met",
+    "remedy": "due",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-ruled-remedy-made",
+   "why": "Appendix A, 25 Nov: the refund is made",
+   "input": {
+    "at": "2026-11-25T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": false,
+      "value": "not_met",
+      "time": "2026-11-13T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     },
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-21T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ],
+    "remedies": [
+     {
+      "time": "2026-11-25T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "not_met",
+    "remedy": "made",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-ruled-not-honoured",
+   "why": "the remedy date passed without one",
+   "input": {
+    "at": "2026-11-28T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": false,
+      "value": "not_met",
+      "time": "2026-11-13T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     },
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-21T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "not_met",
+    "remedy": "not_honoured",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-ruled-late-remedy",
+   "why": "a remedy after its date: the date passed without one",
+   "input": {
+    "at": "2026-11-29T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": false,
+      "value": "not_met",
+      "time": "2026-11-13T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     },
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-21T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ],
+    "remedies": [
+     {
+      "time": "2026-11-28T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "not_met",
+    "remedy": "not_honoured",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-first-final-wins",
+   "why": "of the named adjudicator's rulings only the first marked final counts",
+   "input": {
+    "at": "2026-11-23T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-12T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": true,
+      "value": "met",
+      "time": "2026-11-21T10:00:00Z"
+     },
+     {
+      "final": true,
+      "value": "not_met",
+      "time": "2026-11-22T10:00:00Z",
+      "remedy_due": "2026-11-27T23:59:59Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "met",
+    "remedy": "none",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "r1-ruled-without-dispute",
+   "why": "a final ruling decides the row whatever else holds",
+   "input": {
+    "at": "2026-11-23T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-10T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-10T11:00:00Z"
+     }
+    ],
+    "rulings": [
+     {
+      "final": true,
+      "value": "met",
+      "time": "2026-11-21T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "ruled",
+    "local": false,
+    "value": "met",
+    "remedy": "none",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "d-not-due-until-named-record",
+   "why": "Appendix A, 4 Nov: the seller said met, but row 3 is not due until the receipt record has a time",
+   "input": {
+    "at": "2026-11-04T14:30:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "not_due",
+    "local": false
+   }
+  },
+  {
+   "name": "d-waiting-after-receipt",
+   "why": "Appendix A, 4 Nov: once the receipt has a time, row 3 waits for the buyer, window to 18 Nov",
+   "input": {
+    "at": "2026-11-04T16:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "waiting",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "d-sound-item-uncontested",
+   "why": "the item arrived sound and nobody wrote again: uncontested after 18 Nov",
+   "input": {
+    "at": "2026-11-18T15:00:01Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": "2026-11-04T15:00:00Z",
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "uncontested",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-04T15:00:00Z",
+    "window_end": "2026-11-18T15:00:00Z"
+   }
+  },
+  {
+   "name": "d-row2-agreed-so-far",
+   "why": "Appendix A, 4 Nov: row 2 due 5 Nov (4 days after the payment record), agreed so far",
+   "input": {
+    "at": "2026-11-04T16:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    },
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-01T12:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-04T15:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed_so_far",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-05T12:00:00Z",
+    "window_end": "2026-11-08T12:00:00Z"
+   }
+  },
+  {
+   "name": "d-row2-agreed",
+   "why": "row 2 agreed once its window, 3 days after its due date, has ended",
+   "input": {
+    "at": "2026-11-08T12:00:01Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    },
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-01T12:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-04T15:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-05T12:00:00Z",
+    "window_end": "2026-11-08T12:00:00Z"
+   }
+  },
+  {
+   "name": "d-unset-up-to-latest",
+   "why": "no receipt record yet, T is the latest date: not due",
+   "input": {
+    "at": "2026-12-01T23:59:59Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": null,
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "status": "not_due",
+    "local": false
+   }
+  },
+  {
+   "name": "d-not-reached",
+   "why": "no receipt record by its latest date: not reached",
+   "input": {
+    "at": "2026-12-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": null,
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "not_reached",
+    "local": false
+   }
+  },
+  {
+   "name": "d-named-after-latest",
+   "why": "a payment record whose time is after its latest date does not set the dates",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    },
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-05T10:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "status": "not_reached",
+    "local": false
+   }
+  },
+  {
+   "name": "d-named-after-T",
+   "why": "the named record exists only from its time: as of an earlier T the date is unset",
+   "input": {
+    "at": "2026-11-01T11:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    },
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-01T12:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "status": "not_due",
+    "local": false
+   }
+  },
+  {
+   "name": "l-untimed-statement",
+   "why": "a statement with no time counts, and the result is local",
+   "input": {
+    "at": "2026-11-01T13:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "status": "waiting",
+    "local": true,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "l-untimed-after-late",
+   "why": "an untimed statement after one of the same side that is already late is late too",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "status": "uncontested",
+    "local": false,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "l-untimed-dispute",
+   "why": "a dispute with no time is never late and makes the result local",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": null,
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": true,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  }
+ ],
+ "invalid": [
+  {
+   "name": "unknown-party",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "carol",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   }
+  },
+  {
+   "name": "bad-value",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "yes",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   }
+  },
+  {
+   "name": "fractional-second",
+   "input": {
+    "at": "2026-11-02T00:00:00.5Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "offset-time",
+   "input": {
+    "at": "2026-11-02T01:00:00+01:00",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "lowercase-z",
+   "input": {
+    "at": "2026-11-02T00:00:00z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "leap-second",
+   "input": {
+    "at": "2026-12-31T23:59:60Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "bad-day",
+   "input": {
+    "at": "2026-02-29T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "negative-offset",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-01T12:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    },
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": -1
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    }
+   }
+  },
+  {
+   "name": "named-bad-latest",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "named": {
+     "buyer_payment": {
+      "time": null,
+      "latest": "soon"
+     }
+    },
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    }
+   }
+  },
+  {
+   "name": "three-parties",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller",
+     "carol"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "member-case",
+   "input": {
+    "At": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "null-check",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "check": null
+   }
+  },
+  {
+   "name": "null-statements",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": null
+   }
+  },
+  {
+   "name": "null-row",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": null
+   }
+  },
+  {
+   "name": "string-final",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "rulings": [
+     {
+      "final": "yes",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   }
+  },
+  {
+   "name": "fractional-offset",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "named": {
+     "buyer_payment": {
+      "time": "2026-11-01T12:00:00Z",
+      "latest": "2026-11-04T23:59:59Z"
+     }
+    },
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 1.5
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    }
+   }
+  },
+  {
+   "name": "same-parties",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "buyer"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "window-before-due",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-01T00:00:00Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "date-both-forms",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z",
+      "after": "buyer_payment",
+      "seconds": 1
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "unnamed-record",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "delivered",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_payment",
+      "seconds": 345600
+     },
+     "window_end": {
+      "after": "buyer_payment",
+      "seconds": 604800
+     }
+    }
+   }
+  },
+  {
+   "name": "unknown-member",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "status": "agreed"
+   }
+  },
+  {
+   "name": "bad-check",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "check": "maybe"
+   }
+  },
+  {
+   "name": "ruling-cannot-tell",
+   "input": {
+    "at": "2026-11-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "rulings": [
+     {
+      "final": true,
+      "value": "cannot_tell",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ]
+   }
+  }
+ ]
+}
