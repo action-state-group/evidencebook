@@ -381,7 +381,7 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
 
 # -- Maya's half of the deal ----------------------------------------------------------------------
 
-def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_wait: float = 120) -> object:
+def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_wait: float = 120, on_paid=None) -> object:
     """Maya's half of :func:`deals.run_deal`: open, wait for the seller's half, pay, exchange halves, close.
     Returns the payment."""
     wire = peer.home / "stage" / "wire"
@@ -391,6 +391,8 @@ def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_w
     s1 = wait_file(wire / "maya" / f"{deal_id}.s1.json", seller_wait)
     deals._reconcile(maya, s1, peer)
     payment = rail.pay(price_msat)
+    if on_paid is not None:
+        on_paid(payment)  # at once: what follows (the seller's half, the close) can fail after the money moved
     maya.seal(maya.deal(deal_id), maya.deal(deal_id).check_and_pay(now(), payment.reference))
     maya.ask_half(deal_id)
     write_atomic(wire / peer.id / f"{deal_id}.m2.json", json.dumps(maya.half(deal_id)).encode())

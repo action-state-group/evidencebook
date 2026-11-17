@@ -14,7 +14,8 @@ tool returns the text that run prints, so the screen says what the script demo s
     ard_pay            ->  the deal and the payment; the one tool that moves money (the presenter approves in a dialog)
 ``alder`` / ``kestrel``     a seller's window, its own node and keys:
     ard_seller_activity  ->  what its agent did: requests answered, the deal, the sale, its card
-``all`` (default)     the whole story in one process, the five buyer tools (one window).
+    ard_show_card / ard_show_receipt  ->  its own History card and its own receipt (every window has these two)
+``all`` (default)     the whole story in one process, Maya's tools (one window).
 
 Environment: ``CAPSULE_ENGINE``, ``ARD_SKILLS`` and ``ARD_HOME`` as for ``demo.py``; ``ARD_RAIL``
 (``fake`` or ``lightning``, default ``fake``) and ``ARD_KESTREL_CARD`` (``sentinel`` or ``sample``, the
@@ -86,6 +87,7 @@ class Session:
         self.pack: packs.Pack | None = None
         self.picked: dict[str, str] = {}
         self.paid: set[str] = set()       # payments the rail reported succeeded
+        self.deal_ids: list[str] = []     # this run's deals, oldest first (the receipt shows the latest)
         self.attempted: set[str] = set()  # payments started: a failure mid-way is not a retry
         self.pay_lock = threading.Lock()  # one check, approval and payment at a time
         rail: pay.Rail = pay.from_env(os.environ.get("ARD_RAIL", "fake"))
@@ -256,7 +258,7 @@ def ard_pay(seller: str) -> None:
     key = _seller_key(seller)
     if key not in s.picked:
         raise RuntimeError(f"no sealed pick of {SELLERS[key]['label']} within its limit: call ard_pick first")
-    with s.pay_lock:  # a second call waits here, then sees the seller paid
+    with s.pay_lock:  # a second call waits here, then sees the seller attempted or paid
         if key in s.paid:
             raise RuntimeError(f"{SELLERS[key]['label']} was already paid in this run")
         if key in s.attempted:
@@ -271,7 +273,7 @@ def ard_pay(seller: str) -> None:
             print("(approval gate off: ARD_APPROVAL=none)")
         elif not approve_payment(summary):
             raise RuntimeError("the presenter did not approve this payment (the approval dialog was cancelled, timed out or "
-                               "could not be shown): nothing was paid. Ask the presenter to try again.")
+                               "could not be shown): nothing was paid. Do not retry on your own; if Maya asks again, confirm with her first.")
         s.attempted.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
     if ROLE == "all":
         s.run.pay_deal(s.assessed, key, s.picked[key])
@@ -280,7 +282,9 @@ def ard_pay(seller: str) -> None:
     a, peer, run = s.assessed[key], s.bworld.nodes[key], s.run
     chain = buyer.open_deal(run.maya, peer, s.picked[key], a, demo.ASK)
     print(f"deal opened with {SELLERS[key]['label']}: waiting for its agent's half")
-    payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
+    s.deal_ids.append(chain.deal_id)
+    payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat,
+                                 on_paid=lambda p: s.paid.add(key) if p.status == "succeeded" else None)
     who = ("the buyer's test node paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status}"
           + (f" (fee {payment.fee_msat} msat)" if payment.fee_msat is not None else ""))
@@ -290,7 +294,7 @@ def ard_pay(seller: str) -> None:
     # Maya's checkpoint over her own records, taken now so her card shows this deal right away. The profile allows one a
     # minute at the soonest, so this waits for it if the last one is that recent (it is due in the demo's story).
     waited = 0
-    while waited <= 70:
+    while waited < 60:
         if run.maya.tick(datetime.now(timezone.utc)).ticked:
             print("Maya's checkpoint taken over her records: her History card now counts this deal.")
             break
@@ -337,10 +341,10 @@ def ard_show_receipt() -> None:
     """Show THIS window's own receipt for the deal it took part in, read from its own sealed deal book: terms,
     steps, the payment's commitment, how it closed and its check of the other party's half."""
     node, label = _own_node()
-    if ROLE in SELLERS:
-        ids = seller().deal_ids
-    else:
-        ids = sorted(b[len("deal/"):] for b in node.shelf.books() if b.startswith("deal/") and b.count("/") == 1)
+    stored = sorted(b[len("deal/"):] for b in node.shelf.books() if b.startswith("deal/") and b.count("/") == 1)
+    # This run's deals in order. A seller's book also holds its 48 sample deals, so a seller shows only deals made since
+    # its window opened (a restarted window shows none); the buyer's book holds only its own deals.
+    ids = seller().deal_ids if ROLE in SELLERS else (session().deal_ids or stored)
     if not ids:
         print(f"{label}: no deal yet, so no receipt")
         return

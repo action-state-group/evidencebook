@@ -109,7 +109,7 @@ python/.venv/bin/python python/examples/ard-commerce/goose/open-windows.py --rai
 It opens one `goose://recipe?config=…` link per party (sellers first); Goose Desktop asks once per recipe,
 Trust and Execute. Tile the windows with Window, Move & Resize. Keep the global (Settings) copy of any
 `ard_demo` extension off. `ARD_ROLE=all` (the default of `desktop_server.py`) runs the whole story in one
-process and one window, with Maya's five tools.
+process and one window, with Maya's tools.
 
 Cards and receipts. In every window `ard_show_card` prints that party's own `standard_history/1` card and `ard_show_receipt`
 its own receipt for the deal, both computed from that party's own sealed records (Maya's from her book, Alder's from
