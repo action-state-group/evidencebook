@@ -4,7 +4,11 @@ package evidencebook
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,5 +182,85 @@ func TestAnEntryDocumentMustBeCanonical(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			assert.Error(t, canonicalDocument([]byte(changed), &BookFact{}))
 		})
+	}
+}
+
+// The chain of one book's facts (§2.7), on deal/a's two facts of a real
+// handover: each break is a replaced book.
+func TestAFactChainRefusesAReplacedBook(t *testing.T) {
+	_, h, key := handedOver(t)
+	_, err := VerifyHandover(h, key, testWitnesses(t))
+	require.NoError(t, err)
+	statements := map[string]Checkpoint{}
+	for _, b := range h.BookCheckpoints {
+		cp, err := checkpointFromStatement(b)
+		require.NoError(t, err)
+		sum := sha256.Sum256(b)
+		statements[hex.EncodeToString(sum[:])] = cp
+	}
+	proofs := map[string]ConsistencyEvidence{}
+	for _, p := range h.Consistency {
+		proofs[fmt.Sprintf("%s %d %d", p.LogID, p.FromSize, p.ToSize)] = p.Proof
+	}
+	var a []BookFact
+	for _, d := range h.Documents {
+		var f BookFact
+		require.NoError(t, json.Unmarshal(d.Doc, &f))
+		if f.Kind == FactKindBook && f.LogID == "deal/a" {
+			a = append(a, f)
+		}
+	}
+	require.Len(t, a, 2)
+	prev, next := a[0], a[1]
+	require.Greater(t, next.Size, prev.Size)
+	require.NoError(t, checkFactChain(prev, next, statements, proofs))
+	same := next
+	same.PrevFactSize = next.Size
+	require.NoError(t, checkFactChain(next, same, statements, proofs), "a later fact at the same size and checkpoint (a changed value)")
+
+	wrongProof := map[string]ConsistencyEvidence{}
+	for k, p := range proofs {
+		wrongProof[k] = p
+	}
+	key2 := fmt.Sprintf("deal/a %d %d", prev.Size, next.Size)
+	forged := proofs[key2]
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(forged.Proof, &wire))
+	peaks := wire["old_peaks"].([]any)
+	peaks[0] = strings.Repeat("00", 32)
+	forged.Proof, err = json.Marshal(wire)
+	require.NoError(t, err)
+	wrongProof[key2] = forged
+
+	for name, c := range map[string]struct {
+		p, f   BookFact
+		proofs map[string]ConsistencyEvidence
+	}{
+		"another log":           {prev, func() BookFact { f := next; f.LogID = "deal/b"; return f }(), proofs},
+		"a wrong previous size": {prev, func() BookFact { f := next; f.PrevFactSize = prev.Size + 1; return f }(), proofs},
+		"a shrinking book":      {next, func() BookFact { f := prev; f.PrevFactSize = next.Size; return f }(), proofs},
+		"the same size, another checkpoint": {prev, func() BookFact {
+			f := prev
+			f.PrevFactSize = prev.Size
+			f.CheckpointSHA256 = next.CheckpointSHA256
+			return f
+		}(), proofs},
+		"no proof":      {prev, next, map[string]ConsistencyEvidence{}},
+		"a wrong proof": {prev, next, wrongProof},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := checkFactChain(c.p, c.f, statements, c.proofs)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "a replaced book")
+		})
+	}
+}
+
+func TestAHandoverOfAnotherVersionIsRefused(t *testing.T) {
+	_, h, key := handedOver(t)
+	for _, v := range []int{0, 2} {
+		h.V = v
+		_, err := VerifyHandover(h, key, testWitnesses(t))
+		assert.ErrorIs(t, err, ErrInvalid, "version %d", v)
 	}
 }

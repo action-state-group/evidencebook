@@ -261,6 +261,9 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	if err != nil {
 		return bad("the anchor does not verify: %v", err)
 	}
+	if h.V != 1 {
+		return bad("a handover of version %d", h.V)
+	}
 	if anchor.KeyID != pinnedKey || anchor.LogID != h.LogID {
 		return bad("the anchor is not the holder's shelf log")
 	}
@@ -393,26 +396,8 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 				return bad("the first fact of %s at %d names a previous size", f.BookID, seq)
 			}
 			result.Untied = append(result.Untied, f.BookID)
-		} else {
-			p := prev.Fact
-			switch {
-			case f.LogID != p.LogID:
-				return bad("the facts of %s at %d name two logs (a replaced book)", f.BookID, seq)
-			case f.PrevFactSize != p.Size:
-				return bad("the fact of %s at %d names previous size %d, its previous fact %d (a replaced book)", f.BookID, seq, f.PrevFactSize, p.Size)
-			case f.Size < p.Size:
-				return bad("the fact of %s at %d shrinks the book (a replaced book)", f.BookID, seq)
-			case f.Size == p.Size && f.CheckpointSHA256 != p.CheckpointSHA256:
-				return bad("the fact of %s at %d keeps the size with another checkpoint (a replaced book)", f.BookID, seq)
-			case f.Size > p.Size:
-				proof, ok := proofs[fmt.Sprintf("%s %d %d", f.LogID, p.Size, f.Size)]
-				if !ok {
-					return bad("no consistency proof for %s from %d to %d (a replaced book)", f.LogID, p.Size, f.Size)
-				}
-				if err := verifyCLLConsistency(statements[p.CheckpointSHA256], cp, proof); err != nil {
-					return bad("%s from %d to %d: %v (a replaced book)", f.LogID, p.Size, f.Size, err)
-				}
-			}
+		} else if err := checkFactChain(prev.Fact, f, statements, proofs); err != nil {
+			return bad("the fact of %s at %d: %v", f.BookID, seq, err)
 		}
 		latest[f.BookID] = HandoverLatest{Fact: f, StatusOpening: *d.StatusOpening}
 	}
@@ -436,6 +421,41 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 		}
 	}
 	return result, nil
+}
+
+// checkFactChain checks two consecutive facts of one book (§2.7): one log,
+// prev_fact_size the previous size, no shrinking, the same checkpoint at the
+// same size, and a consistency proof that verifies when the size grew. A
+// break is a replaced book. statements maps a checkpoint statement's SHA-256
+// to the checkpoint, and proofs "<log> <from> <to>" to its proof.
+func checkFactChain(p, f BookFact, statements map[string]Checkpoint, proofs map[string]ConsistencyEvidence) error {
+	replaced := func(format string, args ...any) error {
+		return fmt.Errorf("%s (a replaced book)", fmt.Sprintf(format, args...))
+	}
+	switch {
+	case f.LogID != p.LogID:
+		return replaced("names %s, its previous fact %s", f.LogID, p.LogID)
+	case f.PrevFactSize != p.Size:
+		return replaced("names previous size %d, its previous fact %d", f.PrevFactSize, p.Size)
+	case f.Size < p.Size:
+		return replaced("shrinks the book from %d to %d", p.Size, f.Size)
+	case f.Size == p.Size && f.CheckpointSHA256 != p.CheckpointSHA256:
+		return replaced("keeps size %d with another checkpoint", f.Size)
+	case f.Size > p.Size:
+		proof, ok := proofs[fmt.Sprintf("%s %d %d", f.LogID, p.Size, f.Size)]
+		if !ok {
+			return replaced("no consistency proof for %s from %d to %d", f.LogID, p.Size, f.Size)
+		}
+		older, ok1 := statements[p.CheckpointSHA256]
+		newer, ok2 := statements[f.CheckpointSHA256]
+		if !ok1 || !ok2 {
+			return replaced("a checkpoint of %s the handover does not hold", f.LogID)
+		}
+		if err := verifyCLLConsistency(older, newer, proof); err != nil {
+			return replaced("%s from %d to %d: %v", f.LogID, p.Size, f.Size, err)
+		}
+	}
+	return nil
 }
 
 // canonicalDocument decodes an entry document into v and requires the
