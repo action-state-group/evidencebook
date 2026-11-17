@@ -133,7 +133,7 @@ def seller() -> parties.Seller:
     return _seller
 
 
-def _tool(*roles: str):
+def _tool(*roles: str, description: str | None = None):
     """Register a tool for these roles (and for ``all``, which is the buyer's five). A tool returns the text the
     run printed; a refusal is a line starting ``REFUSED:`` and changes nothing."""
     def deco(fn):
@@ -150,7 +150,7 @@ def _tool(*roles: str):
         run.__annotations__ = {**fn.__annotations__, "return": str}
         del run.__wrapped__
         if ROLE in roles or (ROLE == "all" and "maya" in roles):
-            return server.tool()(run)
+            return server.tool(description=description)(run)
         return run
     return deco
 
@@ -217,10 +217,17 @@ def ard_pick(seller: str) -> None:
         print(f"{SELLERS[key]['label']} is within its limit. Call ard_pay to open the deal and pay it.")
 
 
-@_tool("maya")
+if os.environ.get("ARD_RAIL") == "lightning":
+    _PAY = ("Step 6-7: open the deal for the picked seller and pay it over the real Lightning rail (289 msat for Alder). "
+            "THIS MOVES REAL MONEY: only after Maya has said to pay. Refused unless ard_pick sealed this seller.")
+else:
+    _PAY = ("Step 6-7: open the deal for the picked seller and pay it on the SIMULATED rail: no money moves. "
+            "Only after Maya has said to pay. Refused unless ard_pick sealed this seller.")
+
+
+@_tool("maya", description=_PAY)
 def ard_pay(seller: str) -> None:
-    """Step 6-7: open the deal for the picked seller and pay it on the demo's rail. THIS MOVES MONEY (289 msat for
-    Alder on the Lightning rail): the presenter must approve this call. Refused unless ard_pick sealed this seller."""
+    """Step 6-7: open the deal for the picked seller and pay it. Refused unless ard_pick sealed this seller."""
     s = session()
     key = _seller_key(seller)
     if key not in s.picked:
