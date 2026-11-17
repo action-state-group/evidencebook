@@ -124,7 +124,7 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 		out.Receipts = []WitnessReceipt{*tick.Receipt}
 	}
 	for after := uint64(0); after < anchor.Entries; {
-		entries, err := c.log.Entries(ctx, after, 1000)
+		entries, err := c.log.Entries(ctx, after, int(min(1000, anchor.Entries-after)))
 		if err != nil {
 			return Handover{}, err
 		}
@@ -132,8 +132,10 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 			return Handover{}, fmt.Errorf("%w: the shelf log holds %d entries, its checkpoint %d", ErrCorrupt, after, anchor.Entries)
 		}
 		for _, e := range entries {
-			if e.Seq > anchor.Entries {
-				break
+			// A gap, or an entry past the anchor, is a log that breaks its
+			// own contract: stop rather than loop.
+			if e.Seq != after+1 {
+				return Handover{}, fmt.Errorf("%w: the shelf log's entry after %d is %d", ErrCorrupt, after, e.Seq)
 			}
 			out.Entries = append(out.Entries, e.RecordID)
 			after = e.Seq

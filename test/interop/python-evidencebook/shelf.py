@@ -11,6 +11,10 @@ repository's Python package, as test/interop/shelf (Go) runs it.
                                     test/interop/shelf plant-tick or
                                     plant-migration left (#461 §7)
     python shelf.py dump DIR        the file's dump on stdout (it reads a copy)
+    python shelf.py handover DIR    the handover of the shelf at its newest stamp on
+                                    stdout (evidencebook#461 §2.7; it reads a copy)
+    python shelf.py verify-handover FILE
+                                    replay the handover in FILE; its result on stdout
     python shelf.py hold DIR SECS   open the shelf, print "held", keep it SECS seconds
     python shelf.py try DIR MS      open the shelf, waiting at most MS ms for its
                                     lock: exit 0 if it opened, 3 if another
@@ -18,7 +22,9 @@ repository's Python package, as test/interop/shelf (Go) runs it.
 
 Each language writes or continues the other's file, and every dump must
 equal testdata/shelf/after-write.json, after-continue.json, after-migrate.json
-or a recovery scenario's after-recover-*.json byte for byte.
+or a recovery scenario's after-recover-*.json byte for byte, and every
+language's handover must equal testdata/shelf/handover.json and replay to
+handover-result.json.
 The keys are test keys. Never use them for anything else.
 """
 from __future__ import annotations
@@ -47,6 +53,7 @@ from evidencebook._random import deterministic_stream
 from evidencebook.cadence import CadenceConfig, WitnessReceipt, WITNESS_VERIFIED
 from evidencebook.errors import NotFoundError
 from evidencebook.shelf import SHELF_VERSION_FACTS, Shelf
+from evidencebook.shelf_handover import Handover, verify_handover
 from evidencebook.signer import Ed25519Signer
 
 SCRIPT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "script.json").read_text())
@@ -291,6 +298,34 @@ def dump(directory: str) -> bytes:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def handover(directory: str) -> bytes:
+    """The handover of the shelf at its newest finished stamp, in the dump's
+    encoding, as Go's shelfscript.HandoverJSON writes it. It reads a copy, as
+    dump does: a handover opens the books whose consistency it proves."""
+    scratch = tempfile.mkdtemp(prefix="shelf-handover-")
+    try:
+        path = os.path.join(scratch, FILE)
+        original = open_db(os.path.join(directory, FILE))
+        original.execute("VACUUM INTO ?", (path,))
+        original.close()
+        env = Env(path, "evidencebook shelf vectors/handover", START + timedelta(hours=3))
+        try:
+            h = env.cadence.handover(0)
+        finally:
+            env.release()
+        return go_json_indent(h.value()).encode("utf-8")
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def verify_handover_file(path: str) -> bytes:
+    """Replay the handover in ``path`` under the script's checkpoint key and
+    witness directory; its result in the dump's encoding."""
+    h = Handover.loads(Path(path).read_bytes())
+    result = verify_handover(h, CHECKPOINT_KEY.public_key().hex(), DIRECTORY)
+    return go_json_indent(result.value()).encode("utf-8")
+
+
 def derive(path: str) -> dict:
     """What the shelf derives, on the dump's copy: Records first, so a
     pending record is listed before a chain's book open recovers it."""
@@ -332,7 +367,8 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|recover|dump|hold|try DIR [ARG]", file=sys.stderr)
+        print("usage: shelf.py write|continue|migrate|recover|dump|handover|hold|try DIR [ARG] | verify-handover FILE",
+              file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
     path = os.path.join(directory, FILE)
@@ -349,6 +385,10 @@ def main(args: list[str]) -> int:
         run(path, SCRIPT["recover_phase"])
     elif command == "dump":
         sys.stdout.buffer.write(dump(directory))
+    elif command == "handover":
+        sys.stdout.buffer.write(handover(directory))
+    elif command == "verify-handover":
+        sys.stdout.buffer.write(verify_handover_file(directory))
     elif command in ("hold", "try"):
         n = int(args[2])
         try:
