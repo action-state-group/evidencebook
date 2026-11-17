@@ -240,12 +240,19 @@ count over the returned facts.
   on its own, so a record sent again with a proof it lacked the first time still delivers the
   proof:
   - who may push: an offer may come from any key (a listing invites them, and admission judges
-    it); every other record is taken only from a key that a book on the shelf names as its
-    counterparty or its adjudicator, whose offer the store holds, or to which an offer in the
-    journal was sent (the reply to our own offer, before our deal book exists); any other sender is refused
-    and nothing is stored. A record over the store's size bound (the host's, default
-    1 MiB) or past a per-book count bound is refused. How long the store keeps what it holds is
-    not ruled (the How ack names it as an open product door); until it is, nothing is deleted;
+    it). Every other record is taken only from a key that a book on the shelf names as its
+    counterparty or its adjudicator, or whose offer our side has answered (a journal reply or our
+    agreement), or to which an offer in the journal was sent (the reply to our own offer, before our
+    deal book exists). Holding someone's offer grants nothing. Any other sender is refused and
+    nothing is stored.
+  - bounds: a record over the store's size bound (the host's, default 1 MiB), or past a per-book
+    count bound, is refused. Unsolicited offers, which belong to no book, have their own bounds,
+    per sender and in total, in count and bytes, and the oldest unanswered offer is dropped first
+    when one is reached: dropping an offer nobody answered is not a retention decision, since it
+    was never part of a deal.
+  - retention: how long the store keeps the other side's records of a deal is a product decision
+    for Steven (the How ack names it as an open door), asked before the `Receive` pull request
+    (section 6, part 4) lands. Until it is ruled, nothing of a deal is deleted.
   - the record: its signature is checked, and, when its predecessor is held, that it follows it;
     one already held is acknowledged and not stored again;
     one whose position is past the sender's **counted prefix** (the longest run of positions from
