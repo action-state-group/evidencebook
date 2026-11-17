@@ -441,6 +441,62 @@ impl Cadence {
     }
 }
 
+/// A handover's consistency proofs by `(log id, from size, to size)`.
+type Proofs = HashMap<(String, u64, u64), ConsistencyEvidence>;
+
+/// Check two consecutive facts `p` then `f` of one book (§2.7; Go
+/// `checkFactChain`): one log, `prev_fact_size` the previous size, no
+/// shrinking, the same checkpoint at the same size, and a consistency proof
+/// that verifies when the size grew. A break is a replaced book.
+/// `statements` maps a checkpoint statement's SHA-256 to the checkpoint.
+pub(crate) fn check_fact_chain(
+    p: &BookFact,
+    f: &BookFact,
+    statements: &HashMap<String, Checkpoint>,
+    proofs: &Proofs,
+) -> Result<(), String> {
+    let replaced = |m: String| Err(format!("{m} (a replaced book)"));
+    if f.log_id != p.log_id {
+        return replaced(format!(
+            "names {}, its previous fact {}",
+            f.log_id, p.log_id
+        ));
+    }
+    if f.prev_fact_size != p.size {
+        return replaced(format!(
+            "names previous size {}, its previous fact {}",
+            f.prev_fact_size, p.size
+        ));
+    }
+    if f.size < p.size {
+        return replaced(format!("shrinks the book from {} to {}", p.size, f.size));
+    }
+    if f.size == p.size && f.checkpoint_sha256 != p.checkpoint_sha256 {
+        return replaced(format!("keeps size {} with another checkpoint", f.size));
+    }
+    if f.size > p.size {
+        let Some(proof) = proofs.get(&(f.log_id.clone(), p.size, f.size)) else {
+            return replaced(format!(
+                "no consistency proof for {} from {} to {}",
+                f.log_id, p.size, f.size
+            ));
+        };
+        let (Some(older), Some(newer)) = (
+            statements.get(&p.checkpoint_sha256),
+            statements.get(&f.checkpoint_sha256),
+        ) else {
+            return replaced(format!(
+                "a checkpoint of {} the handover does not hold",
+                f.log_id
+            ));
+        };
+        if let Err(e) = verify_cll_consistency(older, newer, proof) {
+            return replaced(format!("{} from {} to {}: {e}", f.log_id, p.size, f.size));
+        }
+    }
+    Ok(())
+}
+
 /// Replay a handover (§2.7; Go `VerifyHandover`) under the holder's
 /// checkpoint key `pinned_key` (hex) and the reader's witness directory
 /// (AAC's directory JSON, as [`super::CadenceConfig::witnesses`]). It fails
@@ -461,6 +517,9 @@ pub fn verify_handover(
         Ok(a) => a,
         Err(e) => return bad(format!("the anchor does not verify: {e}")),
     };
+    if h.v != 1 {
+        return bad(format!("a handover of version {}", h.v));
+    }
     if anchor.key_id != pinned_key || anchor.log_id != h.log_id {
         return bad("the anchor is not the holder's shelf log".into());
     }
@@ -554,10 +613,10 @@ pub fn verify_handover(
         }
         statements.insert(hex::encode(Sha256::digest(b)), cp);
     }
-    let proofs: HashMap<(String, u64, u64), &ConsistencyEvidence> = h
+    let proofs: Proofs = h
         .consistency
         .iter()
-        .map(|p| ((p.log_id.clone(), p.from_size, p.to_size), &p.proof))
+        .map(|p| ((p.log_id.clone(), p.from_size, p.to_size), p.proof.clone()))
         .collect();
     let mut untied = Vec::new();
     let mut latest: BTreeMap<String, HandoverLatest> = BTreeMap::new();
@@ -614,43 +673,8 @@ pub fn verify_handover(
                 untied.push(f.book_id.clone());
             }
             Some(prev) => {
-                let p = &prev.fact;
-                if f.log_id != p.log_id {
-                    return bad(format!(
-                        "the facts of {} at {seq} name two logs (a replaced book)",
-                        f.book_id
-                    ));
-                } else if f.prev_fact_size != p.size {
-                    return bad(format!(
-                        "the fact of {} at {seq} names previous size {}, its previous fact {} (a replaced book)",
-                        f.book_id, f.prev_fact_size, p.size
-                    ));
-                } else if f.size < p.size {
-                    return bad(format!(
-                        "the fact of {} at {seq} shrinks the book (a replaced book)",
-                        f.book_id
-                    ));
-                } else if f.size == p.size && f.checkpoint_sha256 != p.checkpoint_sha256 {
-                    return bad(format!(
-                        "the fact of {} at {seq} keeps the size with another checkpoint (a replaced book)",
-                        f.book_id
-                    ));
-                } else if f.size > p.size {
-                    let Some(proof) = proofs.get(&(f.log_id.clone(), p.size, f.size)) else {
-                        return bad(format!(
-                            "no consistency proof for {} from {} to {} (a replaced book)",
-                            f.log_id, p.size, f.size
-                        ));
-                    };
-                    // The previous fact's checkpoint was checked to be held
-                    // when that fact was read.
-                    let older = &statements[&p.checkpoint_sha256];
-                    if let Err(e) = verify_cll_consistency(older, cp, proof) {
-                        return bad(format!(
-                            "{} from {} to {}: {e} (a replaced book)",
-                            f.log_id, p.size, f.size
-                        ));
-                    }
+                if let Err(e) = check_fact_chain(&prev.fact, &f, &statements, &proofs) {
+                    return bad(format!("the fact of {} at {seq}: {e}", f.book_id));
                 }
             }
         }
@@ -682,6 +706,7 @@ pub fn verify_handover(
 mod tests {
     use super::*;
     use crate::shelf_facts::{book_fact, FactInput};
+    use serde_json::json;
 
     fn fact_doc() -> Vec<u8> {
         let f = book_fact(
@@ -718,6 +743,106 @@ mod tests {
             assert!(
                 canonical_document::<BookFact>(changed.as_bytes()).is_err(),
                 "{name}"
+            );
+        }
+    }
+
+    /// `testdata/shelf/handover.json`, the scripted shelf's handover.
+    fn vector() -> Handover {
+        let path = format!(
+            "{}/../../testdata/shelf/handover.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    // Go's TestAFactChainRefusesAReplacedBook, on deal/a's two facts of the
+    // scripted handover: each break is a replaced book.
+    #[test]
+    fn a_fact_chain_refuses_a_replaced_book() {
+        let h = vector();
+        let statements: HashMap<String, Checkpoint> = h
+            .book_checkpoints
+            .iter()
+            .map(|b| {
+                (
+                    hex::encode(Sha256::digest(b)),
+                    Checkpoint::from_statement(b).unwrap(),
+                )
+            })
+            .collect();
+        let proofs: Proofs = h
+            .consistency
+            .iter()
+            .map(|p| ((p.log_id.clone(), p.from_size, p.to_size), p.proof.clone()))
+            .collect();
+        let a: Vec<BookFact> = h
+            .documents
+            .iter()
+            .filter_map(|d| serde_json::from_slice::<BookFact>(&d.doc).ok())
+            .filter(|f| f.kind == FACT_KIND_BOOK && f.log_id == "deal/a")
+            .collect();
+        assert_eq!(a.len(), 2);
+        let (prev, next) = (&a[0], &a[1]);
+        assert!(next.size > prev.size);
+        check_fact_chain(prev, next, &statements, &proofs).unwrap();
+        let mut same = next.clone();
+        same.prev_fact_size = next.size;
+        check_fact_chain(next, &same, &statements, &proofs)
+            .expect("a later fact at the same size and checkpoint (a changed value)");
+
+        let mut wrong_proof = proofs.clone();
+        let key = ("deal/a".to_string(), prev.size, next.size);
+        wrong_proof.get_mut(&key).unwrap().proof["old_peaks"][0] = json!("00".repeat(32));
+
+        let another_log = BookFact {
+            log_id: "deal/b".into(),
+            ..next.clone()
+        };
+        let wrong_previous = BookFact {
+            prev_fact_size: prev.size + 1,
+            ..next.clone()
+        };
+        let shrinking = BookFact {
+            prev_fact_size: next.size,
+            ..prev.clone()
+        };
+        let another_checkpoint = BookFact {
+            prev_fact_size: prev.size,
+            checkpoint_sha256: next.checkpoint_sha256.clone(),
+            ..prev.clone()
+        };
+        let none = Proofs::new();
+        for (name, p, f, proofs) in [
+            ("another log", prev, &another_log, &proofs),
+            ("a wrong previous size", prev, &wrong_previous, &proofs),
+            ("a shrinking book", next, &shrinking, &proofs),
+            (
+                "the same size, another checkpoint",
+                prev,
+                &another_checkpoint,
+                &proofs,
+            ),
+            ("no proof", prev, next, &none),
+            ("a wrong proof", prev, next, &wrong_proof),
+        ] {
+            let err = check_fact_chain(p, f, &statements, proofs).expect_err(name);
+            assert!(err.contains("a replaced book"), "{name}: {err}");
+        }
+    }
+
+    // Go's TestAHandoverOfAnotherVersionIsRefused (the anchor parses first;
+    // the key is the anchor's own, so only the version is wrong).
+    #[test]
+    fn a_handover_of_another_version_is_refused() {
+        let mut h = vector();
+        let key = Checkpoint::from_statement(&h.anchor).unwrap().key_id;
+        for v in [0, 2] {
+            h.v = v;
+            let err = verify_handover(&h, &key, None).expect_err("another version");
+            assert!(
+                matches!(&err, ShelfError::Invalid(m) if m.contains("version")),
+                "version {v}: {err}"
             );
         }
     }
