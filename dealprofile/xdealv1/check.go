@@ -432,8 +432,14 @@ func checkBody(r Record) error {
 	bad := func(format string, args ...any) error { return stageErr(StageRecord, format, args...) }
 	switch body := r.Body.(type) {
 	case *ProposeBody:
+		if err := checkWitnesses(body.Witnesses); err != nil {
+			return err
+		}
 		return checkRows(body.TermsRows)
 	case *AgreeBody:
+		if err := checkWitnesses(body.Witnesses); err != nil {
+			return err
+		}
 		if body.Kind == KindAgreement {
 			layer := body.CounterpartyLayer != nil && *body.CounterpartyLayer
 			if !layer && (!r.Block.Seen.IsNull() || !body.CounterpartyKey.IsNull()) {
@@ -549,6 +555,19 @@ func CheckSealed(record any, ctx SealContext) error {
 	if has != want {
 		return stageErr(StageRecord, "a %s record sealed here carries deal_id only %s", t,
 			map[bool]string{true: "when its offer exists", false: "between the two parties of a deal"}[slices.Contains(journeyTypes, t)])
+	}
+	return nil
+}
+
+// checkWitnesses refuses a witness named twice: one key id is one witness,
+// whatever URLs it is found at.
+func checkWitnesses(ws []Witness) error {
+	seen := map[string]bool{}
+	for _, w := range ws {
+		if seen[w.KeyID] {
+			return stageErr(StageRecord, "witness %s is named twice", w.KeyID)
+		}
+		seen[w.KeyID] = true
 	}
 	return nil
 }

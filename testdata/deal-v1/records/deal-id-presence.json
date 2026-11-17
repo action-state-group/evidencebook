@@ -105,7 +105,7 @@
           "offer": {
             "type": "deal-record",
             "digest_alg": "SHA-256",
-            "digest": "1e4006e2750d17e2053ccd83e3f922936e75c590d1361aa01f1778fbc3450854"
+            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb"
           },
           "rows_digest": "726379c6fb72dd74af34d73ef8bde99523a5d1dad4954063accb9fb37c0ad2a7",
           "side": "acceptor",
@@ -116,7 +116,10 @@
             "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
           },
           "witnesses": [
-            "https://witness.test"
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
           ],
           "adjudicator": {
             "key_id": "adjudicator-key",
@@ -150,7 +153,7 @@
           "counterparty_layer": true,
           "kind": "agreement",
           "offer": {
-            "digest": "1e4006e2750d17e2053ccd83e3f922936e75c590d1361aa01f1778fbc3450854",
+            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb",
             "digest_alg": "SHA-256",
             "type": "deal-record"
           },
@@ -159,7 +162,10 @@
           "shelf_log_id": "seller-shelf",
           "side": "acceptor",
           "witnesses": [
-            "https://witness.test"
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
           ]
         },
         "x-deal-v1": {
@@ -1220,7 +1226,10 @@
             "rules_url": "https://rules.test/r"
           },
           "witnesses": [
-            "https://witness.test"
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
           ]
         }
       },
@@ -1283,7 +1292,10 @@
           },
           "to": "seller-key",
           "witnesses": [
-            "https://witness.test"
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
           ]
         },
         "x-deal-v1": {

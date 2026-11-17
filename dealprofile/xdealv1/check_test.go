@@ -184,11 +184,17 @@ func TestPlacementRules(t *testing.T) {
 		"an hour past 23":                  {"propose", func(_, body map[string]any) { body["agree_by"] = "2026-11-02T24:00:00Z" }},
 		"a block time that does not exist": {"admit", func(b, _ map[string]any) { b["at"] = "2026-13-01T00:00:00Z" }},
 		"year zero":                        {"admit", func(b, _ map[string]any) { b["at"] = "0000-01-01T00:00:00Z" }},
-		"a dispute with no forum":          {"dispute/dispute", func(_, body map[string]any) { delete(body, "forum") }},
-		"a ruling with no forum":           {"ruling", func(_, body map[string]any) { delete(body, "forum") }},
-		"an unknown forum class":           {"ruling", func(_, body map[string]any) { body["forum"] = "court:x" }},
-		"a forum with no id":               {"dispute/dispute", func(_, body map[string]any) { body["forum"] = "network:" }},
-		"a withdrawal with a forum":        {"dispute/withdrawal", func(_, body map[string]any) { body["forum"] = ForumAutoRef }},
+		"a witness named twice": {"propose", func(_, body map[string]any) {
+			w := body["witnesses"].([]any)[0]
+			body["witnesses"] = []any{w, map[string]any{"key_id": w.(map[string]any)["key_id"], "url": "https://moved.test"}}
+		}},
+		"a witness named by URL alone": {"propose", func(_, body map[string]any) { body["witnesses"] = []any{"https://witness.test"} }},
+		"a witness key id not hex":     {"agree/agreement", func(_, body map[string]any) { body["witnesses"] = []any{map[string]any{"key_id": "witness"}} }},
+		"a dispute with no forum":      {"dispute/dispute", func(_, body map[string]any) { delete(body, "forum") }},
+		"a ruling with no forum":       {"ruling", func(_, body map[string]any) { delete(body, "forum") }},
+		"an unknown forum class":       {"ruling", func(_, body map[string]any) { body["forum"] = "court:x" }},
+		"a forum with no id":           {"dispute/dispute", func(_, body map[string]any) { body["forum"] = "network:" }},
+		"a withdrawal with a forum":    {"dispute/withdrawal", func(_, body map[string]any) { body["forum"] = ForumAutoRef }},
 	} {
 		raw := edit(t, records[c.base], c.f)
 		err := Check(raw)
@@ -213,9 +219,11 @@ func TestCheckAgreement(t *testing.T) {
 		"another offer":       func(_ *Record, o *Record) { o.Body.(*ProposeBody).PackDigest = hex('0') },
 		"another deal":        func(a *Record, _ *Record) { a.Block.DealID = "deal-fedcba9876543210" },
 		"another rows digest": func(a *Record, _ *Record) { a.Body.(*AgreeBody).RowsDigest = hex('0') },
-		"other witnesses":     func(a *Record, _ *Record) { a.Body.(*AgreeBody).Witnesses = []string{"https://other.test"} },
-		"no adjudicator":      func(a *Record, _ *Record) { a.Body.(*AgreeBody).Adjudicator = NullOf[Adjudicator]() },
-		"the offer's role":    func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
+		"other witnesses": func(a *Record, _ *Record) {
+			a.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('5'), URL: "https://witness.test"}}
+		},
+		"no adjudicator":   func(a *Record, _ *Record) { a.Body.(*AgreeBody).Adjudicator = NullOf[Adjudicator]() },
+		"the offer's role": func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
 		"not citing an offer": func(_ *Record, o *Record) {
 			o.Block.RecordType = TypeCheck
 			o.Body = &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}}

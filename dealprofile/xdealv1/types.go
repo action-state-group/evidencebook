@@ -138,6 +138,14 @@ type Adjudicator struct {
 	RulesURL    string `json:"rules_url"`
 }
 
+// Witness names a witness by its verified key id, with its URL only as a
+// hint where to find it (Steven, #482 Q1, u604): a moved witness stays the
+// same witness, and two URLs of one witness are one witness.
+type Witness struct {
+	KeyID string `json:"key_id"`
+	URL   string `json:"url,omitzero"`
+}
+
 // AskAddress is how to ask the offerer for evidence: its evidence
 // commitment's address and digest.
 type AskAddress struct {
@@ -158,7 +166,7 @@ type ProposeBody struct {
 	AgreeBy       string            `json:"agree_by"`
 	TermsRows     TermsRows         `json:"terms_rows"`
 	Adjudicator   Null[Adjudicator] `json:"adjudicator"`
-	Witnesses     []string          `json:"witnesses"`
+	Witnesses     []Witness         `json:"witnesses"`
 	Ask           *AskAddress       `json:"ask,omitzero"`
 	Profiles      []string          `json:"profiles,omitzero"`
 	ListingDigest string            `json:"listing_digest,omitzero"`
@@ -177,7 +185,7 @@ type AgreeBody struct {
 	Role              string            `json:"role,omitzero"`
 	Admit             *Ref              `json:"admit,omitzero"`
 	Intent            *Ref              `json:"intent,omitzero"`
-	Witnesses         []string          `json:"witnesses,omitzero"`
+	Witnesses         []Witness         `json:"witnesses,omitzero"`
 	Adjudicator       Null[Adjudicator] `json:"adjudicator,omitzero"`
 	CounterpartyLayer *bool             `json:"counterparty_layer,omitzero"`
 	CounterpartyKey   Null[string]      `json:"counterparty_key,omitzero"`

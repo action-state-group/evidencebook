@@ -760,11 +760,10 @@
     },
     "witnesses": {
       "type": "array",
-      "uniqueItems": true,
       "items": {
-        "type": "string",
-        "minLength": 1
-      }
+        "$ref": "#/$defs/witness"
+      },
+      "description": "The witnesses, each key id once; possibly empty (u186)."
     },
     "remedy_for": {
       "type": "object",
@@ -1537,6 +1536,25 @@
       "type": "string",
       "pattern": "^(auto:(twin|ref)|(network|rail|external):[a-z0-9][a-z0-9._-]{0,63})$",
       "description": "The process that resolves a dispute (evidencebook#404, Steven 2026-11-05; carried on dispute and ruling records per Steven's AAC#626 ruling, u603): auto:twin, auto:ref, network:<id>, rail:<program> or external:<class>. Its prefix is the class standard_history/3 counts by_forum (auto, network, rail, external)."
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key_id"
+      ],
+      "properties": {
+        "key_id": {
+          "$ref": "#/$defs/hex64",
+          "description": "The witness's verified key id: the directory key its receipts verify under, lowercase hex."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where to find the witness: a hint only. A moved witness is the same witness."
+        }
+      },
+      "description": "A witness, named by its verified key id with its URL as a hint (Steven, #482 Q1, u604)."
     }
   }
 }
