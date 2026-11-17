@@ -275,8 +275,12 @@ class Seller:
                 if f.name in self.handled:
                     continue
                 self.handled.add(f.name)
+                deal_id = f.name[: -len(".m1.json")]
+                # `handled` is lost when the window is reopened; the first answer file says this seller already took the deal.
+                if (self.dir / "wire" / "maya" / f"{deal_id}.s1.json").exists():
+                    continue
                 try:
-                    self.deal(f.name[: -len(".m1.json")], json.loads(f.read_bytes()))
+                    self.deal(deal_id, json.loads(f.read_bytes()))
                 except Exception as exc:
                     self.say(f"deal refused or failed: {exc}")
             self.w._stop.wait(0.5)
