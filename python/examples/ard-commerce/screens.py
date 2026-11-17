@@ -37,19 +37,20 @@ def card_line(ev: Evidence, sample_card: bool) -> str:
     label = ("sample card, written for this demo; not recomputed from records" if sample_card
              else "sample history, run by the demo operator")
     if bad and not sample_card:  # the owner's own outcome_note: not confirmed by the buyer or by a ruling
-        label += "; marked by the seller itself, not confirmed by the buyer or a ruling"
+        label += "; did not hold counted from the seller's own note, not confirmed by the buyer or a ruling"
     return f"{bad} of {of} deals did not hold ({label})"
 
 
 def decision_line(a: Assessment, ev: Evidence, max_permille: int, ceiling_msat_for_tier: int | None = None) -> str:
     """One line: the decision and why, for this seller and this price."""
     if a.verdict == "GO":
-        return f"GO: {msat(a.price_msat)} is within this pack's limit for it ({a.tier}, under {msat(ceiling_msat_for_tier or 0)})"
+        within = f" ({a.tier}, under {msat(ceiling_msat_for_tier)})" if ceiling_msat_for_tier else ""
+        return f"GO: {msat(a.price_msat)} is within this pack's limit for it{within}"
     if a.verdict == "LIMIT" and a.cap_msat is not None:
         why = (f"; the pack's limit is {max_permille} in every 1,000 deals did not hold (placeholder)"
                if "band-history" in a.reasons else "")
         return f"LIMIT: deals under {msat(a.cap_msat)}; {msat(a.price_msat)} is outside it{why}"
-    return f"{a.verdict}: {', '.join(a.reasons) or 'see the rows'}"
+    return f"{a.verdict}: see the assessment rows"
 
 
 def limit_outcome(a: Assessment) -> str:

@@ -54,6 +54,7 @@ def test_screen_lines_say_assessment_and_never_score_or_blame():
     for word in ("lost", "failed", "dishonest", "usd", "$"):
         assert word not in text
     assert "3 of 48 deals did not hold (sample card, written for this demo; not recomputed from records)" in text
+    assert "did not hold counted from the seller's own note" in screens.card_line(card(45, 3), False)
     assert "sample" in text and "test nodes" in text
 
 

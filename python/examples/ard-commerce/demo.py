@@ -131,11 +131,10 @@ class Run:
         opts = []
         for e in self.entries:
             a, ev = made[e["id"]], self.evidence[e["id"]]
-            band = ev.card["bands"][0]
             ceiling = p.ceiling_msat(a.tier) if a.tier else None
             opts.append({"id": e["id"], "name": e["name"], "price": "Listed price " + screens.msat(a.price_msat), "verdict": a.verdict,
                          "decision": screens.decision_line(a, ev, p.max_adverse_permille, ceiling),
-                         "card": f"{band['held'] + band['did_not_hold']} deals · " + screens.card_line(ev, ev.sample_card),
+                         "card": screens.card_line(ev, ev.sample_card),
                          "rulings": "Shown, not scored.", "button": f"Pay {e['name']} {screens.msat(a.price_msat)}"})
         return opts
 
@@ -196,7 +195,7 @@ class Run:
         live = len(o) - 48
         summary = f"{name}'s card now counts {len(o)} deals: 48 sample, {live} run live ({sum(1 for d in o if d['outcome'] == 'held')} held)"
         print(summary)
-        self.srv.finish(f"Paid {name} {screens.msat(a.price_msat)}. {summary}.")
+        self.srv.finish(f"Paid {name} {screens.msat(paid[0].invoice_msat)} (the invoice amount). {summary}.")
 
 
 def prepare(args) -> tuple[World, Server]:
