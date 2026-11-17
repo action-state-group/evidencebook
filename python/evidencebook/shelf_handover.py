@@ -8,9 +8,10 @@ anchor, with the documents after the format switch, each book fact's status
 opening, the book checkpoints the facts carry and the consistency proofs
 between a book's facts, and checks that nothing was held back, left out,
 changed or replaced. Counting a card from the latest facts is
-standard_history/3's (AAC). A genesis fact's tie to the old witnessed tree
-(§2.7) is not handed over yet: every genesis fact is reported untied, which
-claims nothing about a log before the coverage start.
+standard_history/3's (AAC). A genesis fact comes with its tie to the old
+witnessed tree when the holder has one (:class:`HandoverTie`, Go
+``shelf_handover_tie.go``); one without is reported untied, which claims
+nothing about a log before the coverage start.
 
 The JSON form is Go's ``encoding/json`` of its types: byte strings are
 standard base64 with padding, and an opening's value and a consistency
@@ -33,7 +34,7 @@ from ._gojson import Ordered
 from .errors import CorruptError, InvalidError
 
 __all__ = ["Handover", "HandoverConsistency", "HandoverDocument", "HandoverLatest", "HandoverResult",
-           "canonical_document", "check_fact_chain", "handover_locked", "verify_handover"]
+           "HandoverTie", "canonical_document", "check_fact_chain", "handover_locked", "verify_handover"]
 
 
 def _b64(data: bytes) -> str:
@@ -136,13 +137,87 @@ class HandoverConsistency:
                    _uint(value.get("from_size", 0), "from_size"), _uint(value.get("to_size", 0), "to_size"), proof)
 
 
+def _receipt_value(r: Any) -> Ordered:
+    """Go's JSON of a ``WitnessReceipt``."""
+    return Ordered(ts_url=r.ts_url, entry_hash=r.entry_hash, receipt=_b64(r.receipt), leaf_index=r.leaf_index,
+                   tree_size=r.tree_size)
+
+
+def _receipt_from(r: Any) -> Any:
+    from .cadence import WitnessReceipt
+
+    if not isinstance(r, dict):
+        raise InvalidError("handover: a receipt is an object")
+    return WitnessReceipt(_str(r.get("ts_url", ""), "a receipt's ts_url"),
+                          _str(r.get("entry_hash", ""), "a receipt's entry_hash"),
+                          _unb64(r.get("receipt", ""), "a receipt"),
+                          _uint(r.get("leaf_index", 0), "a receipt's leaf_index"),
+                          _uint(r.get("tree_size", 0), "a receipt's tree_size"))
+
+
+@dataclass(frozen=True)
+class HandoverTie:
+    """A genesis fact's tie to the old witnessed tree (§2.7; Go
+    ``HandoverTie``): the old witnessed tick's leaf for the fact's log (its
+    log, size, checkpoint digest, salt and position) and its ``path`` to that
+    tick's root (``CADENCE_DEPTH`` hashes, lowercase hex, from the leaf up);
+    ``entry_seq``, the position from 1 of that root in the shelf log before
+    the format switch; ``cadence_checkpoint``, the statement the tick cut, and
+    ``receipts``, the witness receipts held for it in witness URL order;
+    ``old_checkpoint``, the book checkpoint statement the leaf commits to;
+    and ``consistency``, Go's ``ConsistencyEvidence`` from it to the genesis
+    fact's checkpoint, ``None`` when the two are of one size (their roots
+    are then equal)."""
+
+    book_id: str
+    log_id: str
+    size: int
+    checkpoint_sha256: str
+    salt: str
+    index: int
+    path: list[str]
+    entry_seq: int
+    cadence_checkpoint: bytes
+    receipts: list[Any]
+    old_checkpoint: bytes
+    consistency: Any = None
+
+    def value(self) -> Ordered:
+        out = Ordered(book_id=self.book_id, log_id=self.log_id, size=self.size,
+                      checkpoint_sha256=self.checkpoint_sha256, salt=self.salt, index=self.index,
+                      path=list(self.path), entry_seq=self.entry_seq,
+                      cadence_checkpoint=_b64(self.cadence_checkpoint),
+                      receipts=[_receipt_value(r) for r in self.receipts], old_checkpoint=_b64(self.old_checkpoint))
+        if self.consistency is not None:
+            out["consistency"] = self.consistency
+        return out
+
+    @classmethod
+    def from_value(cls, value: Any) -> HandoverTie:
+        if not isinstance(value, dict):
+            raise InvalidError("handover: a tie is an object")
+        consistency = value.get("consistency")
+        if consistency is not None and not isinstance(consistency, dict):
+            raise InvalidError("handover: a tie's consistency proof is an object")
+        return cls(_str(value.get("book_id", ""), "a tie's book_id"), _str(value.get("log_id", ""), "a tie's log_id"),
+                   _uint(value.get("size", 0), "a tie's size"),
+                   _str(value.get("checkpoint_sha256", ""), "a tie's checkpoint_sha256"),
+                   _str(value.get("salt", ""), "a tie's salt"), _uint(value.get("index", 0), "a tie's index"),
+                   [_str(p, "a tie's path") for p in _list(value.get("path"), "a tie's path")],
+                   _uint(value.get("entry_seq", 0), "a tie's entry_seq"),
+                   _unb64(value.get("cadence_checkpoint", ""), "a tie's cadence checkpoint"),
+                   [_receipt_from(r) for r in _list(value.get("receipts"), "a tie's receipts")],
+                   _unb64(value.get("old_checkpoint", ""), "a tie's old checkpoint"), consistency)
+
+
 @dataclass(frozen=True)
 class Handover:
     """The material a whole-shelf reader is handed (§2.7). ``entries`` is
     every entry of the shelf log up to the anchor, 32-byte ids in lowercase
     hex; ``anchor`` the shelf checkpoint it runs to and ``receipts`` the
     witness receipts the holder holds for it (``shelf_receipts``), one per
-    witness in witness URL order."""
+    witness in witness URL order; ``ties`` each genesis fact's tie the
+    holder can give (:class:`HandoverTie`), in book id order."""
 
     v: int
     log_id: str
@@ -152,6 +227,7 @@ class Handover:
     consistency: list[HandoverConsistency]
     anchor: bytes
     receipts: list[Any] = field(default_factory=list)
+    ties: list[HandoverTie] = field(default_factory=list)
 
     def value(self) -> Ordered:
         out = Ordered(v=self.v, log_id=self.log_id, entries=list(self.entries),
@@ -159,34 +235,25 @@ class Handover:
                       book_checkpoints=[_b64(b) for b in self.book_checkpoints],
                       consistency=[c.value() for c in self.consistency], anchor=_b64(self.anchor))
         if self.receipts:
-            out["receipts"] = [Ordered(ts_url=r.ts_url, entry_hash=r.entry_hash, receipt=_b64(r.receipt),
-                                       leaf_index=r.leaf_index, tree_size=r.tree_size) for r in self.receipts]
+            out["receipts"] = [_receipt_value(r) for r in self.receipts]
+        out["ties"] = [t.value() for t in self.ties]
         return out
 
     @classmethod
     def from_value(cls, value: Any) -> Handover:
-        from .cadence import WitnessReceipt
-
         if not isinstance(value, dict):
             raise InvalidError("handover: not a JSON object")
         v = value.get("v", 0)
         if isinstance(v, bool) or not isinstance(v, int):
             raise InvalidError("handover: v is an integer")
-        receipts = []
-        for r in _list(value.get("receipts"), "receipts"):
-            if not isinstance(r, dict):
-                raise InvalidError("handover: a receipt is an object")
-            receipts.append(WitnessReceipt(_str(r.get("ts_url", ""), "a receipt's ts_url"),
-                                           _str(r.get("entry_hash", ""), "a receipt's entry_hash"),
-                                           _unb64(r.get("receipt", ""), "a receipt"),
-                                           _uint(r.get("leaf_index", 0), "a receipt's leaf_index"),
-                                           _uint(r.get("tree_size", 0), "a receipt's tree_size")))
+        receipts = [_receipt_from(r) for r in _list(value.get("receipts"), "receipts")]
         return cls(v, _str(value.get("log_id", ""), "log_id"),
                    [_str(e, "an entry") for e in _list(value.get("entries"), "entries")],
                    [HandoverDocument.from_value(d) for d in _list(value.get("documents"), "documents")],
                    [_unb64(b, "a book checkpoint") for b in _list(value.get("book_checkpoints"), "book_checkpoints")],
                    [HandoverConsistency.from_value(c) for c in _list(value.get("consistency"), "consistency")],
-                   _unb64(value.get("anchor", ""), "the anchor"), receipts)
+                   _unb64(value.get("anchor", ""), "the anchor"), receipts,
+                   [HandoverTie.from_value(t) for t in _list(value.get("ties"), "ties")])
 
     @classmethod
     def loads(cls, text: str | bytes) -> Handover:
@@ -360,6 +427,7 @@ def handover_locked(c: Any, n: int) -> Handover:
                           "ORDER BY entry_seq", (anchor.entries,)).fetchall()
     documents: list[HandoverDocument] = []
     facts: list[tuple[str, int, str]] = []
+    books: list[str] = []
     for seq, kind, _, doc, so in rows:
         doc, opening = bytes(doc), None
         if kind == shelf_facts.FACT_KIND_BOOK:
@@ -368,6 +436,7 @@ def handover_locked(c: Any, n: int) -> Handover:
                 f = json.loads(doc)
                 opening = shelf_facts.Opening(stored["salt"], stored["value"])
                 facts.append((f["log_id"], int(f["size"]), f["checkpoint_sha256"]))
+                books.append(f["book_id"])
             except (ValueError, TypeError, KeyError) as exc:
                 raise CorruptError(f"stored fact {seq}: {exc}") from None
         documents.append(HandoverDocument(seq, doc, opening))
@@ -406,7 +475,72 @@ def handover_locked(c: Any, n: int) -> Handover:
             consistency.append(HandoverConsistency(log_id, prev[1], size,
                                                    Ordered(kind="cll-mmr-consistency", proof=proof)))
         last[log_id] = f
-    return Handover(1, c._cfg.log_id, entries, documents, book_checkpoints, consistency, tick.checkpoint, receipts)
+    # Each book's genesis fact (its first) with its tie, when the holder has
+    # one, in book id order.
+    genesis: dict[str, tuple[str, int, str]] = {}
+    for book, f in zip(books, facts):
+        genesis.setdefault(book, f)
+    ties: list[HandoverTie] = []
+    for book in sorted(genesis, key=lambda s: s.encode()):
+        log_id, _, sum_ = genesis[book]
+        tie = _tie_locked(c, book, log_id, statements[sum_])
+        if tie is not None:
+            ties.append(tie)
+    return Handover(1, c._cfg.log_id, entries, documents, book_checkpoints, consistency, tick.checkpoint, receipts,
+                    ties)
+
+
+def _receipts_locked(c: Any, statement: bytes) -> list[Any]:
+    """Every receipt ``shelf_receipts`` holds for the checkpoint statement, in
+    witness URL order (Go ``receiptsLocked``)."""
+    from .cadence import WitnessReceipt
+
+    digest = hashlib.sha256(statement).hexdigest()
+    with c._shelf._read() as db:
+        held = [r for (r,) in db.execute("SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? "
+                                         "ORDER BY witness_id", (digest,))]
+    out = []
+    for raw in held:
+        try:
+            out.append(WitnessReceipt.decode(raw))
+        except CorruptError as exc:
+            raise CorruptError(f"a stored receipt of checkpoint {digest}: {exc}") from None
+    return out
+
+
+def _tie_locked(c: Any, book_id: str, log_id: str, genesis: bytes) -> HandoverTie | None:
+    """Go ``tieLocked``: the tie of the genesis fact of ``log_id`` (book
+    ``book_id``) whose checkpoint statement is ``genesis``, from the witnessed
+    tree tick with the log's largest size not past the genesis size. ``None``
+    when the log has no such tick, or its leaf keeps no checkpoint statement
+    (a tick a released capsule-cli build stored): the fact is then untied."""
+    shelf = c._shelf
+    cp = _checkpoint(genesis)
+    with shelf._read() as db:
+        row = db.execute("SELECT tick FROM cadence_witnessed WHERE log_id = ? AND mmr_size <= ? "
+                         "ORDER BY mmr_size DESC, tick DESC LIMIT 1", (log_id, cp.tree_size)).fetchone()
+    if row is None:
+        return None
+    n = row[0]
+    tick = c._tick_locked(n)
+    leaf = tick.leaves.deals.get(log_id)
+    if tick.leaves.stamp is not None or leaf is None:
+        raise CorruptError(f"witnessed tick {n} holds no tree leaf of {log_id}")
+    if not leaf.statement:
+        return None
+    try:
+        old = base64.urlsafe_b64decode(leaf.statement + "=" * (-len(leaf.statement) % 4))
+    except (binascii.Error, ValueError) as exc:
+        raise CorruptError(f"tick {n}'s statement of {log_id}: {exc}") from None
+    _, path = tick.leaves.tree(leaf.index)
+    receipts = _receipts_locked(c, tick.checkpoint)
+    consistency = None
+    if leaf.size < cp.tree_size:
+        older = _checkpoint(old)
+        proof = shelf._cadence_log_locked(log_id).substrate.consistency(older, cp)
+        consistency = Ordered(kind="cll-mmr-consistency", proof=proof)
+    return HandoverTie(book_id, log_id, leaf.size, leaf.checkpoint_sha256, leaf.salt, leaf.index,
+                       [p.hex() for p in path], tick.entry_seq, tick.checkpoint, receipts, old, consistency)
 
 
 # -- the replay -----------------------------------------------------------------------
@@ -477,6 +611,76 @@ def check_fact_chain(p: dict, f: dict, statements: dict[str, Checkpoint], proofs
             _verify_consistency(older, newer, proof)
         except InvalidError as exc:
             raise replaced(f"{f['log_id']} from {p['size']} to {f['size']}: {exc}") from None
+
+
+def _verify_tie(t: HandoverTie, f: dict, genesis: Checkpoint, h: Handover, nodes: _Nodes, marker: int,
+                pinned_key: str, witnesses: Any) -> None:
+    """Go ``verifyTie``: check a genesis fact's tie (§2.7) against the
+    handover's entries (``nodes``, the tree of them) before the format switch
+    at ``marker``, under the holder's key and the reader's witness
+    directory. Raises :class:`InvalidError`."""
+    from .cadence import CADENCE_DEPTH, WITNESS_VERIFIED, cadence_fold, cadence_leaf, verify_witness_receipt
+
+    if t.log_id != f["log_id"] or t.size > f["size"]:
+        raise InvalidError(f"the tie names {t.log_id} at {t.size}, the genesis fact {f['log_id']} at {f['size']}")
+    # The old book checkpoint: the holder's, of the log at the leaf's size,
+    # hashing to the leaf's digest, and a prefix of the genesis checkpoint.
+    try:
+        old = read_checkpoint(t.old_checkpoint)
+    except InvalidError as exc:
+        raise InvalidError(f"the old checkpoint does not verify: {exc}") from None
+    if old.key_id != pinned_key or old.log_id != t.log_id or old.tree_size != t.size or \
+            hashlib.sha256(t.old_checkpoint).hexdigest() != t.checkpoint_sha256:
+        raise InvalidError("the old checkpoint is not the leaf's")
+    if t.size == f["size"]:
+        if t.consistency is not None or old.root != genesis.root:
+            raise InvalidError("the old checkpoint is not the genesis checkpoint's root")
+    elif t.consistency is None:
+        raise InvalidError("no consistency proof from the old checkpoint")
+    else:
+        try:
+            _verify_consistency(old, genesis, t.consistency)
+        except InvalidError as exc:
+            raise InvalidError(f"the genesis checkpoint does not extend the old one: {exc}") from None
+    # The leaf and its path recompute the tick's root.
+    if t.index >= 1 << CADENCE_DEPTH or t.salt == "" or len(t.path) != CADENCE_DEPTH:
+        raise InvalidError("a malformed leaf")
+    path = [_hex32(p) for p in t.path]
+    if any(p is None for p in path):
+        raise InvalidError("a malformed path")
+    try:
+        leaf = cadence_leaf(t.log_id, t.size, t.checkpoint_sha256, t.salt)
+    except (ValueError, TypeError) as exc:  # a string JCS cannot encode
+        raise InvalidError(f"the tie's leaf: {exc}") from None
+    root = cadence_fold(leaf, t.index, path)
+    # The root is a handed-over entry before the format switch, and the
+    # cadence checkpoint is the holder's checkpoint of the shelf log the
+    # handed-over entries recompute at its size, so the receipts over it
+    # witnessed that root.
+    if t.entry_seq < 1 or t.entry_seq >= marker or h.entries[t.entry_seq - 1] != root.hex():
+        raise InvalidError(f"the tick's root is not the shelf log's entry at {t.entry_seq}")
+    try:
+        cadence = read_checkpoint(t.cadence_checkpoint)
+    except InvalidError as exc:
+        raise InvalidError(f"the cadence checkpoint does not verify: {exc}") from None
+    if cadence.key_id != pinned_key or cadence.log_id != h.log_id or cadence.entries < t.entry_seq:
+        raise InvalidError("the cadence checkpoint is not the holder's shelf log at the tick's root")
+    try:
+        if cadence.tree_size > nodes.size():
+            raise ValueError("past the handed-over entries")
+        recomputed = core.root_from_peaks([nodes.node(p) for p in core.peaks(cadence.tree_size)])
+    except ValueError:  # cll's InvalidArgumentError, a size that is no MMR's
+        recomputed = None
+    if recomputed is None or recomputed.hex() != cadence.root:
+        raise InvalidError("the handed-over entries do not recompute the cadence checkpoint")
+    for r in t.receipts:
+        try:
+            check, _ = verify_witness_receipt(t.cadence_checkpoint, r, witnesses)
+        except Exception:  # Go skips a receipt whose check errs
+            continue
+        if check.state == WITNESS_VERIFIED:
+            return
+    raise InvalidError("no receipt from a named witness verifies for the tick's checkpoint")
 
 
 def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverResult:
@@ -561,6 +765,11 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
             raise bad(f"a book checkpoint of {cp.log_id} is not the holder's")
         statements[hashlib.sha256(b).hexdigest()] = cp
     proofs = {(p.log_id, p.from_size, p.to_size): p.proof for p in h.consistency}
+    ties: dict[str, HandoverTie] = {}
+    for t in h.ties:
+        if t.book_id in ties:
+            raise bad(f"two ties of {t.book_id}")
+        ties[t.book_id] = t
     latest: dict[str, HandoverLatest] = {}
     untied: list[str] = []
     coverage = 0
@@ -599,7 +808,14 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
         if prev is None:
             if f["prev_fact_size"] != 0:
                 raise bad(f"the first fact of {book} at {seq} names a previous size")
-            untied.append(book)
+            tie = ties.pop(book, None)
+            if tie is None:
+                untied.append(book)
+            else:
+                try:
+                    _verify_tie(tie, f, cp, h, nodes, marker, pinned_key, witnesses)
+                except InvalidError as exc:
+                    raise bad(f"the tie of {book}: {exc}") from None
         else:
             try:
                 check_fact_chain(prev.fact, f, statements, proofs)
@@ -608,6 +824,9 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
         latest[book] = HandoverLatest(f, d.status_opening)
     if not coverage:
         raise bad("the migration's stamp is not in the handover")
+    if ties:
+        # The lowest book id, as Go and Rust name it.
+        raise bad(f"a tie of {min(ties)}, which has no genesis fact in the handover")
     witnessed = False
     for r in h.receipts:
         try:
