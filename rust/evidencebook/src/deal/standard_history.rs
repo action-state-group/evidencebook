@@ -21,6 +21,10 @@
 //!   deal whose records carry it on two or more records, on a record that is
 //!   no pay check, or with another value, lacks it.
 //! * `outcome` is the newest verified `ec:deal-reconcile@1` Result's claims.
+//!   TEMPORARY exception (evidencebook#462, until evidencebook#461's computed
+//!   row status): a deal log holding the owner's own `outcome_note`
+//!   (`did_not_hold`) that confirms a close on that log is `did_not_hold`,
+//!   over any Result.
 //! * `happened` is `stamped_by_both` only when the counterparty's half is
 //!   received and verifies; else `receipt_only` when the holder's own final
 //!   close observed a `received` outcome; else `no_record`.
@@ -239,7 +243,10 @@ pub fn standard_history_deal(input: &HistoryInput) -> Result<Option<Value>, Erro
     }
     entry.insert("role".into(), deal_role(&records).into());
     entry.insert("amount".into(), amount);
-    entry.insert("outcome".into(), reconcile_outcome(&input.results).into());
+    entry.insert(
+        "outcome".into(),
+        deal_outcome(&records, &by_digest, &input.results).into(),
+    );
     entry.insert(
         "happened".into(),
         happened(&records, &by_digest, input.counterparty_half_verified).into(),
@@ -419,6 +426,26 @@ fn deal_role(records: &[Rec]) -> &'static str {
         }
     }
     "bought"
+}
+
+/// `did_not_hold` when the deal's own log holds the owner's `outcome_note`
+/// confirming one of its closes (TEMPORARY, evidencebook#462), else the
+/// Result's reading.
+fn deal_outcome(
+    records: &[Rec],
+    by_digest: &HashMap<String, usize>,
+    results: &[HistoryResult],
+) -> &'static str {
+    for r in records {
+        if r.kind == TYPE_OUTCOME_NOTE && r.str("outcome") == "did_not_hold" {
+            if let Some(&i) = by_digest.get(r.reference("confirms")) {
+                if records[i].kind == TYPE_CLOSE {
+                    return "did_not_hold";
+                }
+            }
+        }
+    }
+    reconcile_outcome(results)
 }
 
 /// The newest verified Result's claims.

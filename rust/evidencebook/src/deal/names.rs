@@ -42,6 +42,8 @@ pub const TYPE_SALE_CLOSE: &str = "sale_close";
 pub const TYPE_SALE_UNPOST: &str = "sale_unpost";
 pub const TYPE_AGENT_MOVE: &str = "agent_move";
 pub const TYPE_RULES_VERDICT: &str = "rules_verdict";
+/// TEMPORARY (evidencebook#462): the book owner's note that the deal did not hold.
+pub const TYPE_OUTCOME_NOTE: &str = "outcome_note";
 
 /// The x-deal-v0 record types, in the schema's order.
 pub fn record_types() -> &'static [&'static str] {
@@ -68,6 +70,7 @@ pub fn record_types() -> &'static [&'static str] {
         TYPE_SALE_UNPOST,
         TYPE_AGENT_MOVE,
         TYPE_RULES_VERDICT,
+        TYPE_OUTCOME_NOTE,
     ]
 }
 
