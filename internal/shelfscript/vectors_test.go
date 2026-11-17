@@ -42,6 +42,9 @@ func TestShelfVectors(t *testing.T) {
 	afterRecordTime, err := Dump(ctx, dir)
 	require.NoError(t, err)
 	files["record-time.json"], files["after-record-time.json"] = recordTime, afterRecordTime
+	earliestReceipt, err := EarliestReceiptJSON(ctx, dir)
+	require.NoError(t, err)
+	files[filepath.Join("handover", "earliest-receipt-not-anchor.json")] = earliestReceipt
 	// The recovery scenarios: Go plants a crash on the shelf after
 	// ContinuePhase, and RecoverPhase finishes it (evidencebook#461 §7).
 	for name, plant := range map[string]func(context.Context, string) error{

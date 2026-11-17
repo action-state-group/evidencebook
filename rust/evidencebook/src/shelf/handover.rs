@@ -68,10 +68,32 @@ pub struct Handover {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub receipts: Vec<WitnessReceipt>,
+    /// The shelf checkpoints before the anchor, within it, for which the
+    /// holder holds receipts, each with every receipt held, in tick order
+    /// (invariant C, `docs/design/461-deal-profile.md` §8.1; Go
+    /// `Handover.Witnessed`): a reader resolves the record times the
+    /// holder's `record_time` gives from them ([`super::HandoverTimes`]).
+    #[serde(
+        default,
+        deserialize_with = "nullable",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub witnessed: Vec<HandoverCheckpoint>,
     /// Ties each genesis fact the holder can tie to the old witnessed tree
     /// ([`HandoverTie`]), in book id order.
     #[serde(default, deserialize_with = "nullable")]
     pub ties: Vec<HandoverTie>,
+}
+
+/// A shelf checkpoint before a handover's anchor and the witness receipts
+/// held for it, one per witness in witness URL order (Go
+/// `HandoverCheckpoint`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HandoverCheckpoint {
+    #[serde(default, with = "bytes_b64")]
+    pub checkpoint: Vec<u8>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub receipts: Vec<WitnessReceipt>,
 }
 
 /// One entry document and, for a book fact, its status opening (Go
@@ -331,9 +353,11 @@ impl Cadence {
             consistency: Vec::new(),
             anchor: tick.checkpoint.clone(),
             receipts: Vec::new(),
+            witnessed: Vec::new(),
             ties: Vec::new(),
         };
         out.receipts = self.receipts_locked(&tick.checkpoint)?;
+        out.witnessed = self.witnessed_before_locked(n, &anchor, &tick.checkpoint)?;
         let mut after = 0;
         while after < anchor.entries {
             let want = (anchor.entries - after).min(1000) as usize;
@@ -463,6 +487,88 @@ impl Cadence {
         }
         Ok(out)
     }
+}
+
+impl Cadence {
+    /// Every shelf checkpoint of a tick before tick `n`, within the anchor,
+    /// for which `shelf_receipts` holds a receipt, with those receipts, in
+    /// tick order (Go `witnessedBeforeLocked`). Two ticks that cut one
+    /// checkpoint give it once.
+    fn witnessed_before_locked(
+        &self,
+        n: u64,
+        anchor: &Checkpoint,
+        anchor_statement: &[u8],
+    ) -> Result<Vec<HandoverCheckpoint>, ShelfError> {
+        let statements: Vec<Vec<u8>> = {
+            let db = self.shelf.shared().db();
+            let mut stmt = db.prepare(
+                "SELECT checkpoint FROM cadence_ticks WHERE tick < ? AND checkpoint_size > 0 AND checkpoint_size <= ? ORDER BY tick",
+            )?;
+            let rows = stmt.query_map(params![n as i64, anchor.tree_size as i64], |r| {
+                r.get::<_, Vec<u8>>(0)
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for b in statements {
+            if b == anchor_statement || !seen.insert(Sha256::digest(&b).to_vec()) {
+                continue;
+            }
+            let receipts = self.receipts_locked(&b)?;
+            if !receipts.is_empty() {
+                out.push(HandoverCheckpoint {
+                    checkpoint: b,
+                    receipts,
+                });
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Check a handover's earlier witnessed checkpoints (invariant C; Go
+/// `verifyWitnessedCheckpoints`): each is the holder's checkpoint of the
+/// shelf log, within the anchor and not the anchor, held once, carries a
+/// receipt, and its root is the one the handed-over entries recompute at its
+/// size. Whether a receipt verifies is the reader's to judge, as for the
+/// anchor's.
+fn verify_witnessed_checkpoints(
+    h: &Handover,
+    anchor: &Checkpoint,
+    tree: &mmr::MemoryNodeStore,
+    pinned_key: &str,
+) -> Result<(), String> {
+    let mut seen: HashSet<&[u8]> = HashSet::new();
+    seen.insert(&h.anchor);
+    for (i, w) in h.witnessed.iter().enumerate() {
+        let i = i + 1;
+        let cp = Checkpoint::from_statement(&w.checkpoint)
+            .map_err(|e| format!("witnessed checkpoint {i} does not verify: {e}"))?;
+        if cp.key_id != pinned_key || cp.log_id != h.log_id {
+            return Err(format!(
+                "witnessed checkpoint {i} is not the holder's shelf log"
+            ));
+        }
+        if !seen.insert(&w.checkpoint) {
+            return Err(format!(
+                "witnessed checkpoint {i} is the anchor or given twice"
+            ));
+        }
+        if cp.tree_size > anchor.tree_size || cp.entries > anchor.entries {
+            return Err(format!("witnessed checkpoint {i} is past the anchor"));
+        }
+        if w.receipts.is_empty() {
+            return Err(format!("witnessed checkpoint {i} carries no receipt"));
+        }
+        if root_at(tree, cp.tree_size).as_deref() != Some(cp.root.as_str()) {
+            return Err(format!(
+                "the handed-over entries do not recompute witnessed checkpoint {i}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The root of the MMR `tree` at `size` (Go `PeakHashesAt` then
@@ -737,6 +843,9 @@ pub fn verify_handover(
     }
     if coverage == 0 {
         return bad("the migration's stamp is not in the handover".into());
+    }
+    if let Err(e) = verify_witnessed_checkpoints(h, &anchor, &tree, pinned_key) {
+        return bad(e);
     }
     if let Some(id) = ties.keys().next() {
         return bad(format!(

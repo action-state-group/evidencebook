@@ -201,9 +201,14 @@ entries before the marker as the opaque ids they are), every entry document afte
 each book fact's status opening, no journal opening and no link opening, the COSE bytes of every
 book checkpoint a book fact carries, the consistency proof between each pair of consecutive book
 facts whose size grew, each genesis fact's tie when the holder has one (below), the anchor
-checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL order), and
-the coverage start
-(section 4).
+checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL order), every
+earlier shelf checkpoint within the anchor for which `shelf_receipts` holds a receipt, with all of
+them (`Handover.Witnessed`, in tick order; invariant C of `461-deal-profile.md` §8.1: a record's
+time is the earliest named registration of any checkpoint that covers it, not only the anchor's),
+and the coverage start
+(section 4). `VerifyHandoverTimes` replays the handover and resolves a book position's record time
+from those checkpoints and the anchor as `RecordTime` does (2.6); a checkpoint after the anchor is
+not handed over, and journal positions get no time, since their sizes are never handed over.
 
 `VerifyHandover(material, witnesses)` fails when:
 
@@ -219,6 +224,10 @@ the coverage start
   `size` has the same `checkpoint_sha256`; and a fact whose size grew has a consistency proof from
   the previous one that verifies (a replaced book). Whether a fact was due under the write rule
   needs the profile's inputs, so the verifier does not judge it;
+- an earlier witnessed checkpoint is not the holder's checkpoint of the shelf log, is the anchor
+  or given twice, is past the anchor, carries no receipt, or has a root the handed-over entries do
+  not recompute at its size (whether each receipt verifies is the reader's to judge, as for the
+  anchor's);
 - a genesis fact that comes with a tie fails to verify it. A **tie** is the old witnessed tick's
   leaf for that log (its log id, size, checkpoint digest and salt), its path to that tick's tree
   root, that root's entry in the cadence log under a cadence checkpoint with a receipt from a named

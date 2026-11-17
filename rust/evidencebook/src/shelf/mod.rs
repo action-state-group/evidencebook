@@ -49,6 +49,7 @@ mod handover;
 mod handover_tie;
 #[cfg(test)]
 mod handover_tie_tests;
+mod handover_times;
 mod history;
 mod import;
 mod lock;
@@ -74,10 +75,11 @@ pub use cadence::{
 };
 pub use chain::CADENCE_EXTENSION;
 pub use handover::{
-    verify_handover, ConsistencyEvidence, Handover, HandoverConsistency, HandoverDocument,
-    HandoverLatest, HandoverResult,
+    verify_handover, ConsistencyEvidence, Handover, HandoverCheckpoint, HandoverConsistency,
+    HandoverDocument, HandoverLatest, HandoverResult,
 };
 pub use handover_tie::HandoverTie;
+pub use handover_times::{verify_handover_times, HandoverTimes};
 pub use history::StandardHistoryAnchor;
 
 /// The log id of the shelf's journal ([`Shelf::journal`]).

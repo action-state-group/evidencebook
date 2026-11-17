@@ -211,12 +211,37 @@ class HandoverTie:
 
 
 @dataclass(frozen=True)
+class HandoverCheckpoint:
+    """A shelf checkpoint before a handover's anchor and the witness
+    receipts held for it, one per witness in witness URL order (Go
+    ``HandoverCheckpoint``)."""
+
+    checkpoint: bytes
+    receipts: list[Any]
+
+    def value(self) -> Ordered:
+        return Ordered(checkpoint=_b64(self.checkpoint), receipts=[_receipt_value(r) for r in self.receipts])
+
+    @classmethod
+    def from_value(cls, value: Any) -> HandoverCheckpoint:
+        if not isinstance(value, dict):
+            raise InvalidError("handover: a witnessed checkpoint is an object")
+        return cls(_unb64(value.get("checkpoint", ""), "a witnessed checkpoint"),
+                   [_receipt_from(r) for r in _list(value.get("receipts"), "a witnessed checkpoint's receipts")])
+
+
+@dataclass(frozen=True)
 class Handover:
     """The material a whole-shelf reader is handed (§2.7). ``entries`` is
     every entry of the shelf log up to the anchor, 32-byte ids in lowercase
     hex; ``anchor`` the shelf checkpoint it runs to and ``receipts`` the
     witness receipts the holder holds for it (``shelf_receipts``), one per
-    witness in witness URL order; ``ties`` each genesis fact's tie the
+    witness in witness URL order; ``witnessed`` the shelf checkpoints before
+    the anchor, within it, for which the holder holds receipts, each with
+    every receipt held, in tick order (invariant C,
+    ``docs/design/461-deal-profile.md`` §8.1), from which a reader resolves
+    the record times the holder's ``record_time`` gives
+    (:func:`verify_handover_times`); ``ties`` each genesis fact's tie the
     holder can give (:class:`HandoverTie`), in book id order."""
 
     v: int
@@ -228,6 +253,7 @@ class Handover:
     anchor: bytes
     receipts: list[Any] = field(default_factory=list)
     ties: list[HandoverTie] = field(default_factory=list)
+    witnessed: list[HandoverCheckpoint] = field(default_factory=list)
 
     def value(self) -> Ordered:
         out = Ordered(v=self.v, log_id=self.log_id, entries=list(self.entries),
@@ -236,6 +262,8 @@ class Handover:
                       consistency=[c.value() for c in self.consistency], anchor=_b64(self.anchor))
         if self.receipts:
             out["receipts"] = [_receipt_value(r) for r in self.receipts]
+        if self.witnessed:
+            out["witnessed"] = [w.value() for w in self.witnessed]
         out["ties"] = [t.value() for t in self.ties]
         return out
 
@@ -253,7 +281,8 @@ class Handover:
                    [_unb64(b, "a book checkpoint") for b in _list(value.get("book_checkpoints"), "book_checkpoints")],
                    [HandoverConsistency.from_value(c) for c in _list(value.get("consistency"), "consistency")],
                    _unb64(value.get("anchor", ""), "the anchor"), receipts,
-                   [HandoverTie.from_value(t) for t in _list(value.get("ties"), "ties")])
+                   [HandoverTie.from_value(t) for t in _list(value.get("ties"), "ties")],
+                   [HandoverCheckpoint.from_value(w) for w in _list(value.get("witnessed"), "witnessed")])
 
     @classmethod
     def loads(cls, text: str | bytes) -> Handover:
@@ -487,7 +516,29 @@ def handover_locked(c: Any, n: int) -> Handover:
         if tie is not None:
             ties.append(tie)
     return Handover(1, c._cfg.log_id, entries, documents, book_checkpoints, consistency, tick.checkpoint, receipts,
-                    ties)
+                    ties, _witnessed_before_locked(c, n, anchor, tick.checkpoint))
+
+
+def _witnessed_before_locked(c: Any, n: int, anchor: Checkpoint, anchor_statement: bytes) -> list[HandoverCheckpoint]:
+    """Every shelf checkpoint of a tick before tick ``n``, within the anchor,
+    for which ``shelf_receipts`` holds a receipt, with those receipts, in tick
+    order (Go ``witnessedBeforeLocked``). Two ticks that cut one checkpoint
+    give it once."""
+    with c._shelf._read() as db:
+        statements = [bytes(b) for (b,) in db.execute(
+            "SELECT checkpoint FROM cadence_ticks WHERE tick < ? AND checkpoint_size > 0 AND checkpoint_size <= ? "
+            "ORDER BY tick", (n, anchor.tree_size))]
+    out: list[HandoverCheckpoint] = []
+    seen: set[bytes] = set()
+    for b in statements:
+        digest = hashlib.sha256(b).digest()
+        if b == anchor_statement or digest in seen:
+            continue
+        seen.add(digest)
+        receipts = _receipts_locked(c, b)
+        if receipts:
+            out.append(HandoverCheckpoint(b, receipts))
+    return out
 
 
 def _receipts_locked(c: Any, statement: bytes) -> list[Any]:
@@ -824,6 +875,7 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
         latest[book] = HandoverLatest(f, d.status_opening)
     if not coverage:
         raise bad("the migration's stamp is not in the handover")
+    _verify_witnessed_checkpoints(h, anchor, nodes, pinned_key, bad)
     if ties:
         # The lowest book id, as Go and Rust name it.
         raise bad(f"a tie of {min(ties)}, which has no genesis fact in the handover")
@@ -843,6 +895,33 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
                           sorted(untied, key=by_id))
 
 
+def _verify_witnessed_checkpoints(h: Handover, anchor: Checkpoint, nodes: _Nodes, pinned_key: str, bad: Any) -> None:
+    """Check a handover's earlier witnessed checkpoints (invariant C; Go
+    ``verifyWitnessedCheckpoints``): each is the holder's checkpoint of the
+    shelf log, within the anchor and not the anchor, held once, carries a
+    receipt, and its root is the one the handed-over entries recompute at its
+    size. Whether a receipt verifies is the reader's to judge, as for the
+    anchor's."""
+    seen = {h.anchor}
+    for i, w in enumerate(h.witnessed, start=1):
+        try:
+            cp = read_checkpoint(w.checkpoint)
+        except InvalidError as exc:
+            raise bad(f"witnessed checkpoint {i} does not verify: {exc}") from None
+        if cp.key_id != pinned_key or cp.log_id != h.log_id:
+            raise bad(f"witnessed checkpoint {i} is not the holder's shelf log")
+        if w.checkpoint in seen:
+            raise bad(f"witnessed checkpoint {i} is the anchor or given twice")
+        seen.add(w.checkpoint)
+        if cp.tree_size > anchor.tree_size or cp.entries > anchor.entries:
+            raise bad(f"witnessed checkpoint {i} is past the anchor")
+        if not w.receipts:
+            raise bad(f"witnessed checkpoint {i} carries no receipt")
+        if cp.tree_size > nodes.size() or \
+                core.root_from_peaks([nodes.node(p) for p in core.peaks(cp.tree_size)]).hex() != cp.root:
+            raise bad(f"the handed-over entries do not recompute witnessed checkpoint {i}")
+
+
 class _Nodes:
     """An MMR's nodes in memory (cll's ``NodeAppender``)."""
 
@@ -857,3 +936,66 @@ class _Nodes:
 
     def append_nodes(self, hashes: list[bytes]) -> None:
         self.hashes.extend(hashes)
+
+
+class HandoverTimes:
+    """Record times from a verified handover (invariant C,
+    ``docs/design/461-deal-profile.md`` §8.1; Go ``HandoverTimes``): a reader
+    handed the whole shelf resolves the record time of a book's position as
+    the holder's ``record_time`` does, from the anchor and the earlier
+    witnessed checkpoints the handover carries with their receipts. A
+    checkpoint after the anchor is not handed over, so a time only a later
+    checkpoint gives is not resolved. The journal's sizes are never handed
+    over, so its records get no time here."""
+
+    def __init__(self, facts: list[tuple[int, str, int]], checkpoints: list[tuple[int, dict[str, int]]]) -> None:
+        self._facts = facts
+        self._checkpoints = checkpoints
+
+    def record_time(self, book_id: str, position: int, witnesses: list[str]) -> int | None:
+        """The record time, in Unix seconds, of the record at ``position``
+        (from 1) of the book ``book_id``, from the witnesses named (their
+        URLs), as ``Shelf.record_time`` computes it; ``None`` when there is
+        none. Position 0 raises :class:`InvalidError`."""
+        if position == 0:
+            raise InvalidError("a record position counts from 1")
+        from .shelf_receive import _leaf_count
+
+        seq = next((s for s, book, size in self._facts
+                    if book == book_id and (_leaf_count(size) or 0) >= position), None)
+        if seq is None:
+            return None
+        times = [at[w] for entries, at in self._checkpoints if entries >= seq for w in witnesses if w in at]
+        return min(times) if times else None
+
+
+def verify_handover_times(h: Handover, pinned_key: str, witnesses: Any) -> HandoverTimes:
+    """Replay ``h`` with :func:`verify_handover`, then read the registration
+    times its receipts give under the reader's directory (Go
+    ``VerifyHandoverTimes``): a receipt that does not verify, or gives no
+    registration time, gives none."""
+    from .cadence import WITNESS_VERIFIED, verify_witness_receipt
+
+    verify_handover(h, pinned_key, witnesses)
+    facts: list[tuple[int, str, int]] = []
+    for d in h.documents:
+        if d.status_opening is None:
+            continue
+        f = json.loads(d.doc)
+        if f.get("kind") == shelf_facts.FACT_KIND_BOOK:
+            facts.append((d.seq, f["book_id"], f["size"]))
+    facts.sort(key=lambda f: f[0])
+    checkpoints: list[tuple[int, dict[str, int]]] = []
+    for w in [HandoverCheckpoint(h.anchor, h.receipts), *h.witnessed]:
+        cp = read_checkpoint(w.checkpoint)
+        at: dict[str, int] = {}
+        for r in w.receipts:
+            try:
+                check, verified = verify_witness_receipt(w.checkpoint, r, witnesses)
+            except Exception:  # Go skips a receipt whose check errs
+                continue
+            if check.state != WITNESS_VERIFIED or verified.registered_at is None:
+                continue
+            at[r.ts_url] = min(at.get(r.ts_url, verified.registered_at), verified.registered_at)
+        checkpoints.append((cp.entries, at))
+    return HandoverTimes(facts, checkpoints)
