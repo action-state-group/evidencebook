@@ -119,6 +119,7 @@ fn cadence_config(ended: &'static [&'static str]) -> CadenceConfig {
         witnesses: None,
         pad_bucket: 4,
         ended: Arc::new(move |id| Ok(ended.contains(&id))),
+        status: None,
     }
 }
 
@@ -403,7 +404,7 @@ fn a_file_version_this_build_does_not_know_is_refused() {
         })
         .unwrap();
     assert_eq!(version, SHELF_VERSION);
-    conn.execute("UPDATE shelf_meta SET version = 2", [])
+    conn.execute("UPDATE shelf_meta SET version = 3", [])
         .unwrap();
     drop(conn);
     assert!(matches!(

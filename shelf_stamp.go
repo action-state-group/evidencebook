@@ -458,11 +458,12 @@ func (c *Cadence) buildStampLocked(ctx context.Context, n uint64, at, now time.T
 		if err != nil {
 			return CadenceTick{}, err
 		}
-		loB, err := json.Marshal(lo)
+		// Openings are stored as their RFC 8785 bytes, as every entry document is.
+		loB, err := canonicalJSON(lo)
 		if err != nil {
 			return CadenceTick{}, err
 		}
-		soB, err := json.Marshal(so)
+		soB, err := canonicalJSON(so)
 		if err != nil {
 			return CadenceTick{}, err
 		}
@@ -575,6 +576,9 @@ func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, e
 func (c *Cadence) finishStampLocked(ctx context.Context, tick CadenceTick) (TickResult, error) {
 	s := c.shelf
 	batch := tick.Leaves.Stamp
+	if batch == nil || len(batch.Entries) == 0 {
+		return TickResult{}, fmt.Errorf("%w: tick %d is not a stamp", ErrCorrupt, tick.N)
+	}
 	var after uint64
 	if tick.N > 1 {
 		previous, err := c.tickLocked(ctx, tick.N-1)
@@ -643,6 +647,9 @@ func (s *Shelf) Openings(ctx context.Context, bookID string, audience Audience) 
 	defer s.mu.Unlock()
 	if s.released {
 		return nil, ErrReleased
+	}
+	if _, _, err := OpeningsFor(FactKindBook, audience); err != nil {
+		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT entry_seq, kind, doc, link_opening, status_opening FROM shelf_entries WHERE book_id = ? AND kind IN (?, ?) ORDER BY entry_seq`,

@@ -283,6 +283,8 @@ func TestEachAudienceGetsExactlyItsOpenings(t *testing.T) {
 	}
 	_, err = shelf.Openings(ctx, last.fact.BookID, "stranger")
 	assert.ErrorIs(t, err, ErrInvalid)
+	_, err = shelf.Openings(ctx, "no-such-book", "stranger")
+	assert.ErrorIs(t, err, ErrInvalid, "an unknown audience is refused even for a book with no facts")
 }
 
 func TestNoTickWhileAMigrationIsUnderWay(t *testing.T) {

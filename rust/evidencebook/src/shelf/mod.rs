@@ -19,7 +19,8 @@
 //!   into book records ([`Shelf::host_log`], [`Shelf::legacy`]).
 //! - [`Cadence`] runs the heartbeat ticks that commit every live log's
 //!   checkpoint as a salted leaf of a sparse tree whose root alone reaches
-//!   the witness.
+//!   the witness; after [`Cadence::migrate`] each tick is a stamp that
+//!   appends book facts to the cadence log instead (evidencebook#461).
 //!
 //! **Readers without the lock.** Another process may read the file while a
 //! writer holds the shelf: the file is in WAL mode, so a reader that opens
@@ -47,6 +48,7 @@ mod lock;
 mod log;
 mod random;
 mod records;
+mod stamp;
 mod store;
 mod time;
 mod tree;
@@ -62,7 +64,8 @@ pub use import::LegacyCadence;
 pub use log::{Checkpoint, SUBSTRATE_KIND_CLL};
 pub use random::{RandomSource, SeededStream, SystemRandom};
 pub use records::{ShelfRecord, ShelfRecords};
-pub use store::{StoredRecord, SHELF_VERSION};
+pub use stamp::{AudienceFact, BatchEntry, BookStatus, StampBatch, StatusValues};
+pub use store::{StoredRecord, SHELF_VERSION, SHELF_VERSION_FACTS};
 pub use time::Time;
 pub use tree::{
     cadence_empty, cadence_filler_leaf, cadence_fold, cadence_leaf, cadence_tree, derived_fillers,

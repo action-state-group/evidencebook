@@ -5,6 +5,7 @@
 //! ```text
 //! shelf write DIR       the writer phase, on a new DIR/shelf.db
 //! shelf continue DIR    the continuer phase, on DIR/shelf.db
+//! shelf migrate DIR     the migrate phase (a log of book facts), on DIR/shelf.db
 //! shelf dump DIR        the file's dump on stdout (it reads a copy)
 //! shelf hold DIR SECS   open the shelf, print "held", keep it open SECS seconds
 //! shelf try DIR MS      open the shelf, waiting at most MS milliseconds for
@@ -35,7 +36,7 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<(), shelf::Error> {
     let [verb, dir, rest @ ..] = args else {
-        return Err("usage: shelf write|continue|dump|hold|try DIR [ARG]".into());
+        return Err("usage: shelf write|continue|migrate|dump|hold|try DIR [ARG]".into());
     };
     let dir = Path::new(dir);
     let n = || -> Result<u64, shelf::Error> {
@@ -50,6 +51,7 @@ fn run(args: &[String]) -> Result<(), shelf::Error> {
             shelf::write(dir)
         }
         "continue" => shelf::continue_(dir),
+        "migrate" => shelf::migrate(dir),
         "dump" => {
             std::io::stdout().write_all(shelf::dump(dir)?.as_bytes())?;
             Ok(())

@@ -124,7 +124,7 @@ fn check_last_received(v: &Value) -> Result<(), Invalid> {
     Ok(())
 }
 
-fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Invalid> {
+pub(crate) fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Invalid> {
     if let Some(l) = &last {
         check_last_received(l)?;
     }

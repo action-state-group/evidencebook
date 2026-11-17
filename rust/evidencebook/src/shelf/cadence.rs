@@ -51,6 +51,10 @@ pub struct CadenceConfig {
     /// most 1024; zero is 1 (no padding).
     pub pad_bucket: u64,
     pub ended: Ended,
+    /// Each book's profile and fact values once the shelf is a log of book
+    /// facts ([`Cadence::migrate`]); `None` gives every book profile
+    /// `none`.
+    pub status: Option<super::stamp::BookStatus>,
 }
 
 impl CadenceConfig {
@@ -353,6 +357,9 @@ impl Cadence {
         let last = self.last_locked()?;
         if let Some(last) = &last {
             if last.checkpoint_size == 0 {
+                if last.leaves.stamp.is_some() {
+                    return self.finish_stamp_locked(last.clone());
+                }
                 return self.finish_locked(&mut state, last.clone());
             }
             if now < last.due_next {
@@ -362,6 +369,18 @@ impl Cadence {
                     due_next: last.due_next,
                 });
             }
+        }
+        // After the format switch every tick is a stamp (evidencebook#461);
+        // while a migration is under way no tick is cut, so no tree root
+        // ever follows the marker.
+        let migration = super::stamp::migration_state(&self.shelf.shared().db())?;
+        if migration == super::stamp::MIGRATION_DONE {
+            return self.stamp_locked(&mut state, now);
+        }
+        if !migration.is_empty() {
+            return Err(ShelfError::Invalid(
+                "a migration is in progress; call migrate".into(),
+            ));
         }
         let n = last.as_ref().map_or(1, |l| l.n + 1);
         // Times leaving this device are coarsened to the minute.
@@ -454,7 +473,7 @@ impl Cadence {
     /// Put a stored tick's root in the cadence log (once), pad the log to
     /// the bucket, checkpoint it, and complete the tick's row (Go
     /// `finishLocked`).
-    fn finish_locked(
+    pub(crate) fn finish_locked(
         &self,
         state: &mut ShelfState,
         mut tick: CadenceTick,
@@ -553,6 +572,17 @@ impl Cadence {
         if check.state != WITNESS_VERIFIED {
             return Ok(check);
         }
+        if tick.leaves.stamp.is_some() {
+            // A witnessed stamp is the tick's own state only:
+            // cadence_witnessed and the live set index the tree's ticks,
+            // which a cadence chain proves a checkpoint by; a stamp's proof
+            // is the stamp proof (evidencebook#461).
+            self.shelf.shared().db().execute(
+                "UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
+                params![receipt.to_json(), n as i64],
+            )?;
+            return Ok(check);
+        }
         let mut ended = BTreeMap::new();
         for id in tick.leaves.deals.keys() {
             ended.insert(
@@ -633,6 +663,11 @@ impl Cadence {
         let n =
             n.ok_or_else(|| ShelfError::NotFound(format!("no witnessed tick carries {log_id}")))?;
         let tick = self.tick_locked(n as u64)?;
+        if tick.leaves.stamp.is_some() {
+            return Err(ShelfError::Corrupt(format!(
+                "tick {n} is a stamp, whose proof is a stamp proof, not a cadence chain"
+            )));
+        }
         let leaf = tick.leaves.deals.get(log_id).cloned().ok_or_else(|| {
             ShelfError::Corrupt(format!("witnessed tick {n} holds no leaf of {log_id}"))
         })?;

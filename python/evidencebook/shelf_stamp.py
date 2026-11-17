@@ -319,18 +319,10 @@ def _changed(f: _PendingFact, last: _LastFact) -> bool:
     return (_jcs(_link_value(f.link)) != _jcs(last.link)) or (_jcs(_status_value(f.status)) != _jcs(last.status))
 
 
-def _html_escape(text: str) -> str:
-    """What Go's ``json.Marshal`` does to a ``json.RawMessage``'s text: it
-    escapes ``<``, ``>``, ``&``, U+2028 and U+2029, nothing else."""
-    return (text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
-
-
 def _opening_json(opening: shelf_facts.Opening) -> bytes:
-    """Go's ``json.Marshal`` of a ``FactOpening`` (salt, then the value's
-    canonical JSON as a raw message)."""
-    raw = _jcs(opening.value).decode("utf-8")
-    return ('{"salt":"' + opening.salt + '","value":' + _html_escape(raw) + "}").encode("utf-8")
+    """An opening as stored: the RFC 8785 bytes of ``{"salt", "value"}``, as
+    every entry document is."""
+    return _jcs(opening.to_json())
 
 
 def _build_stamp_locked(c: Any, n: int, at: datetime, now: datetime, facts: list[_PendingFact],
@@ -474,6 +466,10 @@ def openings(shelf: Any, book_id: str, audience: str) -> list[AudienceFact]:
     """Every fact of a book (by its book id) with the openings ``audience``
     may have, as :func:`shelf_facts.openings_for` says (Go
     ``Shelf.Openings``). It is the only call that hands openings out."""
+    try:  # an unknown audience is refused first, whatever the book holds
+        shelf_facts.openings_for(shelf_facts.FACT_KIND_BOOK, audience)
+    except shelf_facts.Invalid as exc:
+        raise InvalidError(str(exc)) from None
     with shelf._mu:
         shelf._check_open()
         with shelf._read() as db:
