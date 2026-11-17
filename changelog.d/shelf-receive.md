@@ -8,12 +8,15 @@
   once per position), and bounds record size, records per book and unanswered unsolicited offers (dropping the
   oldest first). Before an offer is dropped the profile's `Answered` is asked, outside the write transaction,
   under a mark of the holder's own books; a mark that moved before the transaction plans the drop again
-  (`ErrBusy` after three tries). Evidence unsolicited offers make is bounded per sender and in total
-  (`ReceiveBounds`); past the bound a fork still ends the prefix. A record arriving where a deleted record was
-  (`Forget`, or a dropped offer) is a fork there, and a deletion returns the proofs reaching it to unchecked. A
-  proof is refused, and its evidence kept, when it contradicts a held proof at the same size or the records
-  held; every accepted proof is kept. `Cadence.StampProof` builds a proof for an audience and `VerifyStampProof`
-  checks one. `Shelf.Forget` deletes a settled deal's records under the holder's `Retention` (by default the
-  life of the shelf, so never), leaving tombstones that read as `ErrDeleted`. `CountedPrefix`,
-  `ReceivedRecordOf` and `Evidence` read the store without the shelf's lock, so a `StatusProvider` may call them
-  during a stamp; the shelf's handle now keeps four connections. Works on version 1 and 2 shelves.
+  (`ErrBusy` after three tries). What unsolicited offers leave behind (the positions of dropped offers, and
+  conflicts with their evidence in logs of offers alone) is bounded per sender and in total
+  (`ReceiveBounds.MaxOfferEvidencePerSender`, `MaxOfferEvidence`); an offer belongs to no deal, so past the
+  bound no row is kept and such a position may later be forgotten. What `Forget` leaves, and conflicts in logs
+  holding other records, are kept for good. A record arriving where a deleted record was (`Forget`, or a dropped
+  offer) is a fork there, and a deletion returns the proofs reaching it to unchecked. A proof is refused, and
+  its evidence kept, when it contradicts a held proof at the same size or the records held; every accepted proof
+  is kept. `Cadence.StampProof` builds a proof for an audience and `VerifyStampProof` checks one. `Shelf.Forget`
+  deletes a settled deal's records under the holder's `Retention` (by default the life of the shelf, so never),
+  leaving tombstones that read as `ErrDeleted`. `CountedPrefix`, `ReceivedRecordOf` and `Evidence` read the
+  store without the shelf's lock, so a `StatusProvider` may call them during a stamp; the shelf's handle now
+  keeps four connections. Works on version 1 and 2 shelves.

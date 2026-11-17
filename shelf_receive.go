@@ -119,10 +119,15 @@ type ReceiveBounds struct {
 	MaxOfferBytesPerSender int64
 	MaxOffers              int64
 	MaxOfferBytes          int64
-	// Evidence of forks an unsolicited offer makes, per sender (16) and in
-	// total (1024) rows, each at most two records' bytes. Past either the
-	// fork is still recorded, and ends the counted prefix, but its records
-	// are not kept as evidence.
+	// What unsolicited offers leave behind, per sender (16) and in total
+	// (1024) rows: the position of each dropped offer
+	// (shelf_received_vacated) and each conflict in a log that holds only
+	// offers (shelf_received_conflicts, with its evidence, at most two
+	// records' bytes). An offer belongs to no deal, so past either bound no
+	// row is kept: such a position may later be forgotten, and a fork there
+	// ends the counted prefix only while both its records are held. Rows
+	// Forget leaves and conflicts in a log holding any other record are
+	// kept for good and not counted.
 	MaxOfferEvidencePerSender int64
 	MaxOfferEvidence          int64
 }
@@ -555,7 +560,7 @@ func (s *Shelf) receiveRecordTx(ctx context.Context, r ReceivedRecord, record []
 				return err
 			}
 		}
-		if err := vacate(ctx, tx, plan.drop); err != nil {
+		if err := vacate(ctx, tx, plan.drop, true, bounds); err != nil {
 			return err
 		}
 		forks, err := forkEvidence(ctx, tx, r)
@@ -567,8 +572,20 @@ func (s *Shelf) receiveRecordTx(ctx context.Context, r ReceivedRecord, record []
 			r.Digest, r.SenderKey, r.LogID, r.Position, r.Prev, r.DealID, r.Offer, record, now); err != nil {
 			return err
 		}
+		// A conflict in a log of offers alone counts under the offer bounds;
+		// one in a log that holds, or held, any other record is kept for good.
+		offersOnly := false
+		if len(forks) > 0 && r.Offer {
+			var others int
+			if err := tx.QueryRowContext(ctx,
+				`SELECT (SELECT COUNT(*) FROM shelf_received WHERE sender_key = ? AND log_id = ? AND offer = 0) + (SELECT COUNT(*) FROM shelf_received_vacated WHERE sender_key = ? AND log_id = ? AND offer = 0)`,
+				r.SenderKey, r.LogID, r.SenderKey, r.LogID).Scan(&others); err != nil {
+				return err
+			}
+			offersOnly = others == 0
+		}
 		for _, f := range forks {
-			fresh, err := noteConflict(ctx, tx, key, EvidenceFork, f.position, f.held, record, now, r.Offer || f.offer, bounds)
+			fresh, err := noteConflict(ctx, tx, key, EvidenceFork, f.position, f.held, record, now, offersOnly, bounds)
 			if err != nil {
 				return err
 			}
@@ -732,14 +749,25 @@ func planOfferRoom(ctx context.Context, q queryer, profile ReceiveProfile, b Rec
 // vacate remembers the positions deleted records held (dropped offers, or
 // records Forget deleted), so another record arriving there later is a fork,
 // and returns every proof of their logs that reaches a deleted position to
-// unchecked: its coverage needs the records again.
-func vacate(ctx context.Context, tx *sql.Tx, rows []receivedRow) error {
+// unchecked: its coverage needs the records again. A dropped offer's row
+// (offers) counts under the offer bounds, and past them is not kept; a row
+// Forget leaves is kept for good.
+func vacate(ctx context.Context, tx *sql.Tx, rows []receivedRow, offers bool, bounds ReceiveBounds) error {
 	lowest := map[logKey]uint64{}
 	for _, r := range rows {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer) VALUES (?, ?, ?, ?, ?, ?)`,
-			r.sender, r.log, r.position, r.digest, r.deal, r.offer); err != nil {
-			return err
+		keep := true
+		if offers {
+			var err error
+			if keep, err = offerRoom(ctx, tx, r.sender, bounds); err != nil {
+				return err
+			}
+		}
+		if keep {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer) VALUES (?, ?, ?, ?, ?, ?)`,
+				r.sender, r.log, r.position, r.digest, r.deal, offers); err != nil {
+				return err
+			}
 		}
 		k := logKey{r.sender, r.log}
 		if p, ok := lowest[k]; !ok || r.position < p {
@@ -856,9 +884,8 @@ func receivedPrefix(ctx context.Context, q queryer, k logKey) (receivedPrefixSta
 type heldFork struct {
 	position uint64
 	// held is the held record, or the digest of a deleted one.
-	held  []byte
-	deal  string
-	offer bool
+	held []byte
+	deal string
 }
 
 // forkEvidence finds the held records r contradicts (§3): another record at
@@ -881,7 +908,7 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 		// The records that claim a digest at c.position: those held there,
 		// and those at the next position, by the predecessor they name.
 		rows, err := tx.QueryContext(ctx,
-			`SELECT digest, prev, position, deal_id, offer, record FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position IN (?, ?) ORDER BY position, digest`,
+			`SELECT digest, prev, position, deal_id, record FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position IN (?, ?) ORDER BY position, digest`,
 			r.SenderKey, r.LogID, c.position, c.position+1)
 		if err != nil {
 			return nil, err
@@ -890,9 +917,8 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 		for rows.Next() {
 			var digest, prev, deal string
 			var position uint64
-			var offer bool
 			var b []byte
-			if err := rows.Scan(&digest, &prev, &position, &deal, &offer, &b); err != nil {
+			if err := rows.Scan(&digest, &prev, &position, &deal, &b); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}
@@ -901,7 +927,7 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 				claimed = prev
 			}
 			if claimed != c.digest && found == nil {
-				found = &heldFork{position: c.position, held: b, deal: deal, offer: offer}
+				found = &heldFork{position: c.position, held: b, deal: deal}
 			}
 		}
 		if err := firstErr(rows.Err(), rows.Close()); err != nil {
@@ -909,15 +935,14 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 		}
 		if found == nil {
 			var digest, deal string
-			var offer bool
 			switch err := tx.QueryRowContext(ctx,
-				`SELECT digest, deal_id, offer FROM shelf_received_vacated WHERE sender_key = ? AND log_id = ? AND position = ? AND digest != ? ORDER BY digest LIMIT 1`,
-				r.SenderKey, r.LogID, c.position, c.digest).Scan(&digest, &deal, &offer); {
+				`SELECT digest, deal_id FROM shelf_received_vacated WHERE sender_key = ? AND log_id = ? AND position = ? AND digest != ? ORDER BY digest LIMIT 1`,
+				r.SenderKey, r.LogID, c.position, c.digest).Scan(&digest, &deal); {
 			case errors.Is(err, sql.ErrNoRows):
 			case err != nil:
 				return nil, err
 			default:
-				found = &heldFork{position: c.position, held: []byte(digest), deal: deal, offer: offer}
+				found = &heldFork{position: c.position, held: []byte(digest), deal: deal}
 			}
 		}
 		if found != nil {
@@ -927,39 +952,45 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 	return out, nil
 }
 
+// offerRoom reports whether one more row an unsolicited offer leaves
+// behind fits the offer bounds: the dropped offers' positions and the
+// conflicts in logs of offers alone, per sender and in total.
+func offerRoom(ctx context.Context, tx *sql.Tx, sender string, bounds ReceiveBounds) (bool, error) {
+	var mine, all int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(sender_key = ?), 0), COUNT(*) FROM (
+		SELECT sender_key FROM shelf_received_vacated WHERE offer = 1
+		UNION ALL SELECT sender_key FROM shelf_received_conflicts WHERE offer = 1)`, sender).Scan(&mine, &all); err != nil {
+		return false, err
+	}
+	return mine < bounds.MaxOfferEvidencePerSender && all < bounds.MaxOfferEvidence, nil
+}
+
 // noteConflict records a conflict of one kind at a position or size of a
 // sender's log the first time only, with its evidence: a sender sending ever
-// new conflicts at one place adds no evidence. Evidence an unsolicited offer
-// makes (offer) is bounded per sender and in total (ReceiveBounds): past
-// either bound the conflict is recorded, so the counted prefix still ends
-// there, but its evidence is not kept. It reports whether this call
-// recorded the conflict.
-func noteConflict(ctx context.Context, tx *sql.Tx, k logKey, kind string, at uint64, a, b []byte, now string, offer bool, bounds ReceiveBounds) (bool, error) {
+// new conflicts at one place adds no evidence. A conflict in a log of
+// unsolicited offers alone (offers) counts under the offer bounds; past
+// them neither the conflict nor its evidence is kept, so the counted prefix
+// ends there only while both records are held. It reports whether the
+// conflict is new: recorded by this call, or past the bounds.
+func noteConflict(ctx context.Context, tx *sql.Tx, k logKey, kind string, at uint64, a, b []byte, now string, offers bool, bounds ReceiveBounds) (bool, error) {
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM shelf_received_conflicts WHERE sender_key = ? AND log_id = ? AND kind = ? AND at = ?`, k.sender, k.log, kind, at).Scan(&n); err != nil || n > 0 {
 		return false, err
 	}
-	keep := true
-	if offer {
-		var mine, all int64
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(SUM(sender_key = ?), 0), COUNT(*) FROM shelf_received_conflicts WHERE offer = 1 AND evidence_id IS NOT NULL`, k.sender).Scan(&mine, &all); err != nil {
-			return false, err
+	if offers {
+		if keep, err := offerRoom(ctx, tx, k.sender, bounds); err != nil || !keep {
+			return err == nil, err
 		}
-		keep = mine < bounds.MaxOfferEvidencePerSender && all < bounds.MaxOfferEvidence
 	}
-	var id sql.NullInt64
-	if keep {
-		result, err := tx.ExecContext(ctx, `INSERT INTO shelf_evidence (kind, a, b, noted_at) VALUES (?, ?, ?, ?)`, kind, a, b, now)
-		if err != nil {
-			return false, err
-		}
-		if id.Int64, err = result.LastInsertId(); err != nil {
-			return false, err
-		}
-		id.Valid = true
+	result, err := tx.ExecContext(ctx, `INSERT INTO shelf_evidence (kind, a, b, noted_at) VALUES (?, ?, ?, ?)`, kind, a, b, now)
+	if err != nil {
+		return false, err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id, offer) VALUES (?, ?, ?, ?, ?, ?)`, k.sender, k.log, kind, at, id, offer)
+	id, err := result.LastInsertId()
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id, offer) VALUES (?, ?, ?, ?, ?, ?)`, k.sender, k.log, kind, at, id, offers)
 	return err == nil, err
 }
 
@@ -1202,7 +1233,7 @@ func (s *Shelf) Forget(ctx context.Context, dealID string, now time.Time, settle
 			}
 			deleted = append(deleted, r.digest)
 		}
-		return vacate(ctx, tx, gone)
+		return vacate(ctx, tx, gone, false, ReceiveBounds{})
 	})
 	if err != nil {
 		return nil, err

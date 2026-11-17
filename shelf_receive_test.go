@@ -946,7 +946,8 @@ func TestReceiveAProofDoesNotCoverRecordsReplacingDeletedOnes(t *testing.T) {
 	assert.Contains(t, forked, "deal-2")
 	assert.Equal(t, uint64(1), prefixOf(t, s, "alice", "deal/a").ForkAt, "another record at a deleted position is a fork")
 
-	// A dropped offer's position is remembered the same way.
+	// A dropped offer's position is remembered the same way, within the
+	// offer bounds (here the defaults).
 	_, s2 := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 1}})
 	mustReceive(t, s2, rec(t, testRecord{Digest: dg("o1"), Sender: "bob", Log: "offers/x", Pos: 1, Deal: "offer-o1", Offer: true}), nil)
 	mustReceive(t, s2, offer(t, "bob", "o2", 0), nil) // drops o1
@@ -982,6 +983,25 @@ func TestReceiveOfferForksAcrossRotatedLogsKeepBoundedEvidence(t *testing.T) {
 		bytes += len(e.A) + len(e.B)
 	}
 	assert.LessOrEqual(t, bytes, 3*2*600)
+
+	// What offers leave behind, the dropped offers' positions and the
+	// conflicts in logs of offers alone, stays within the same bounds: two
+	// rows for bob, three in all.
+	var vacated, conflicts, bobs int
+	require.NoError(t, s.db.QueryRow(`SELECT COUNT(*) FROM shelf_received_vacated`).Scan(&vacated))
+	require.NoError(t, s.db.QueryRow(`SELECT COUNT(*) FROM shelf_received_conflicts`).Scan(&conflicts))
+	require.NoError(t, s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM shelf_received_vacated WHERE sender_key = 'bob') + (SELECT COUNT(*) FROM shelf_received_conflicts WHERE sender_key = 'bob')`).Scan(&bobs))
+	assert.LessOrEqual(t, vacated+conflicts, 3)
+	assert.LessOrEqual(t, bobs, 2)
+	// A fork kept within the bounds ends its log's prefix for good, though
+	// both its offers were dropped; one past them is forgotten once its
+	// offers are dropped.
+	_, err = s.ReceivedRecordOf(ctx, dg("offers/rot-a-1"))
+	require.ErrorIs(t, err, ErrNotFound)
+	assert.Equal(t, uint64(1), prefixOf(t, s, "bob", "offers/rot-a").ForkAt)
+	_, err = s.ReceivedRecordOf(ctx, dg("offers/rot-c-2"))
+	require.ErrorIs(t, err, ErrNotFound)
+	assert.Zero(t, prefixOf(t, s, "bob", "offers/rot-c").ForkAt)
 }
 
 // R2-3: Answered never runs inside Receive's transaction. A journal reply
