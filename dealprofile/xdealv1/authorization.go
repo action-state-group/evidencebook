@@ -224,10 +224,21 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 	var lim limits
 	confirmed := map[int]bool{}
 	var confirmations []int
+	var last time.Time
 	for i, r := range journal {
 		bad := func(format string, args ...any) error {
 			return stageErr(StageAuthorization, "journal record %d: %s", i+1, fmt.Sprintf(format, args...))
 		}
+		// at never decreases (v0 rule 3), so a record the act relies on is
+		// never sealed after a later record that predates the act.
+		at, err := parseAt(r)
+		if err != nil {
+			return nil, bad("%v", err)
+		}
+		if at.Before(last) {
+			return nil, bad("its at is earlier than the record before it: at never decreases")
+		}
+		last = at
 		// one is the one earlier record r cites with rel, of type t.
 		one := func(rel, t string) (int, error) {
 			var js []int
@@ -371,13 +382,19 @@ func (w *journalWalk) changesDetails(k int) bool {
 	return false
 }
 
-// limits are the limits in force (v0 rule 6): the first intent's, narrowed
-// by later intents, and widened only by a confirmed proposal.
+// limits are the limits in force (v0 rule 6; dealprofile chain.go
+// limitsInForce): the first intent's, narrowed by later intents, and
+// widened only by a confirmed proposal. A floor is held only as its
+// commitment (bounds), and an intent that states another one makes the floor
+// in force unknown (boundsKnown false) until a confirmation states it.
 type limits struct {
-	seen     bool
-	allowed  []string
-	set      bool
-	maxTotal *int64
+	seen        bool
+	allowed     []string
+	set         bool
+	maxTotal    *int64
+	delegated   []string
+	bounds      string
+	boundsKnown bool
 }
 
 func (l *limits) narrow(b *dealprofile.IntentBody) {
@@ -385,9 +402,16 @@ func (l *limits) narrow(b *dealprofile.IntentBody) {
 		return
 	}
 	if !l.seen {
-		l.seen = true
+		l.seen, l.boundsKnown = true, true
 		l.allowed, l.set, l.maxTotal = slices.Clone(b.Allowed), b.Allowed != nil, b.MaxTotalMinor
+		l.delegated, l.bounds = slices.Clone(b.Delegated), b.BoundsCommitment
 		return
+	}
+	if b.MaxTotalMinor != nil && (l.maxTotal == nil || *b.MaxTotalMinor < *l.maxTotal) {
+		l.maxTotal = b.MaxTotalMinor
+	}
+	if b.BoundsCommitment != "" && b.BoundsCommitment != l.bounds {
+		l.boundsKnown = false
 	}
 	if b.Allowed != nil {
 		next := []string{}
@@ -398,12 +422,36 @@ func (l *limits) narrow(b *dealprofile.IntentBody) {
 		}
 		l.allowed, l.set = next, true
 	}
-	if b.MaxTotalMinor != nil && (l.maxTotal == nil || *b.MaxTotalMinor < *l.maxTotal) {
-		l.maxTotal = b.MaxTotalMinor
+	// Naming the item, or picking an option, takes the item back from the
+	// agent's delegation.
+	if (b.Asked != nil && b.Asked.Item != "") || b.Move == "picked" {
+		l.delegated = slices.DeleteFunc(slices.Clone(l.delegated), func(d string) bool { return d == "item" })
 	}
 }
 
 func (l *limits) allows(action string) bool { return !l.set || slices.Contains(l.allowed, action) }
+
+// inForce is the limits in force as a confirmation's limits.previous states
+// them.
+func (l *limits) inForce() dealprofile.LimitSet {
+	out := dealprofile.LimitSet{MaxTotalMinor: l.maxTotal, Allowed: l.allowedOrNil()}
+	if len(l.delegated) > 0 {
+		out.Delegated = l.delegated
+	}
+	if l.boundsKnown {
+		out.BoundsCommitment = l.bounds
+	}
+	return out
+}
+
+// withoutUnknownBounds drops a stated floor while the floor in force is
+// unknown: it cannot be compared.
+func (l *limits) withoutUnknownBounds(set dealprofile.LimitSet) dealprofile.LimitSet {
+	if !l.boundsKnown {
+		set.BoundsCommitment = ""
+	}
+	return set
+}
 
 // confirm applies a confirm_limits approval of the proposal prop (v0
 // chain_steps.go confirmLimits): a late answer (the proposal replaced or
@@ -423,25 +471,46 @@ func (l *limits) confirm(b *dealprofile.ApprovalBody, prop *dealprofile.IntentBo
 	if b.Limits == nil || prop == nil {
 		return fmt.Errorf("a confirmation states the limits it replaces and puts in force")
 	}
-	if !sameJSON(b.Limits.Previous, dealprofile.LimitSet{MaxTotalMinor: l.maxTotal, Allowed: l.allowedOrNil()}) {
+	if !sameJSON(l.withoutUnknownBounds(b.Limits.Previous), l.inForce()) {
 		return fmt.Errorf("limits.previous is not the limits in force")
 	}
-	next := dealprofile.LimitSet{MaxTotalMinor: l.maxTotal, Allowed: l.allowedOrNil()}
+	next := l.inForce()
 	if prop.MaxTotalMinor != nil {
 		next.MaxTotalMinor = prop.MaxTotalMinor
 	}
 	if prop.Allowed != nil {
 		next.Allowed = prop.Allowed
 	}
-	if !sameJSON(dealprofile.LimitSet{MaxTotalMinor: b.Limits.New.MaxTotalMinor, Allowed: b.Limits.New.Allowed}, next) {
+	if prop.BoundsCommitment != "" {
+		next.BoundsCommitment = prop.BoundsCommitment
+	}
+	var added []string
+	for _, d := range prop.Delegated {
+		if !slices.Contains(l.delegated, d) {
+			added = append(added, d)
+		}
+	}
+	if len(added) > 0 {
+		next.Delegated = append(slices.Clone(l.delegated), added...)
+	}
+	got := b.Limits.New
+	if prop.BoundsCommitment == "" {
+		got = l.withoutUnknownBounds(got)
+	}
+	got.OrderedRepresentations = nil
+	if !sameJSON(got, next) {
 		return fmt.Errorf("limits.new is not what the intent proposed")
 	}
 	more := (prop.MaxTotalMinor != nil && l.maxTotal != nil && *prop.MaxTotalMinor > *l.maxTotal) ||
-		(prop.Allowed != nil && l.set && !subset(prop.Allowed, l.allowed))
+		(prop.Allowed != nil && l.set && !subset(prop.Allowed, l.allowed)) ||
+		(prop.BoundsCommitment != "" && prop.BoundsCommitment != l.bounds) ||
+		len(added) > 0
 	if !more {
 		return fmt.Errorf("the intent asks for no higher limit and no new action: nothing to confirm")
 	}
 	l.maxTotal, l.allowed, l.set = next.MaxTotalMinor, slices.Clone(next.Allowed), next.Allowed != nil
+	l.delegated = slices.Clone(next.Delegated)
+	l.bounds, l.boundsKnown = b.Limits.New.BoundsCommitment, true
 	return nil
 }
 

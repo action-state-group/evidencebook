@@ -107,6 +107,13 @@ func (f *authFlow) confirm(intent Ref, previous, next []string) Ref {
 	return f.seal(TypeApproval, false, a, rel("approves", intent))
 }
 
+// confirmSets is confirm with whole limit sets.
+func (f *authFlow) confirmSets(intent Ref, previous, next dealprofile.LimitSet) Ref {
+	a := &dealprofile.ApprovalBody{Choice: ChoiceConfirm, Proceed: true, Approver: "user", SaidCommitment: hx('f'),
+		Limits: &dealprofile.ApprovalBodyLimits{Previous: previous, New: next}}
+	return f.seal(TypeApproval, false, a, rel("approves", intent))
+}
+
 func (f *authFlow) perform(check Ref) {
 	b := inBook(TypePerform, int64(len(f.acts)+2))
 	b.At = f.at()
@@ -333,6 +340,36 @@ func TestApprovalMigration(t *testing.T) {
 	run("approval-of-another-deal", "an approval answers a verdict of its own deal", f, false)
 
 	f = newFlow()
+	f.intent("pay")
+	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), BoundsCommitment: hx('b')})
+	p = f.journal[len(f.journal)-1].digestRef(t)
+	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, BoundsCommitment: hx('b')})
+	c = f.check("pay")
+	f.approve(f.verdict(c, "pass"), "standing_intent", true)
+	f.pay(c)
+	run("floor-confirmed", "a proposal of another floor (bounds_commitment) is confirmed as v0 confirms one", f, true)
+
+	f = newFlow()
+	f.intent("pay")
+	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), Delegated: []string{"item"}, DelegatedCommitment: hx('d')})
+	p = f.journal[len(f.journal)-1].digestRef(t)
+	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, Delegated: []string{"item"}})
+	c = f.check("pay")
+	f.approve(f.verdict(c, "pass"), "standing_intent", true)
+	f.pay(c)
+	run("delegation-confirmed", "a proposal that hands the agent another choice is confirmed with the delegation in force", f, true)
+
+	f = newFlow()
+	c = f.check("pay")
+	v = f.verdict(c, "pass")
+	ab := &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}
+	back := blk(TypeApproval)
+	back.At, back.Refs = "2026-11-01T10:00:30Z", []RelRef{rel("approves", v)}
+	f.journal = append(f.journal, record(back, ab))
+	f.pay(c)
+	run("at-goes-back", "a journal record's at never decreases, so nothing it relies on is sealed after the act", f, false)
+
+	f = newFlow()
 	f.pay(RefTo(hx('9')))
 	run("check-not-held", "an act citing a check the journal does not hold is refused", f, false)
 
@@ -397,4 +434,12 @@ func TestCheckAuthorizationsTakesValueBodies(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.True(t, got[0].NeedsPersonSignature)
+}
+
+// digestRef is the digest reference to r.
+func (r Record) digestRef(t *testing.T) Ref {
+	t.Helper()
+	d, err := Digest(r)
+	require.NoError(t, err)
+	return RefTo(d)
 }
