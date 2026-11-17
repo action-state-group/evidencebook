@@ -411,12 +411,16 @@ def test_the_earliest_receipt_vector_replays():
         assert got == want, (q["log_id"], q["position"])
         differs = differs or without.record_time(q["book_id"], q["position"], q["witnesses"]) != got
     assert differs, "some record's time comes from a checkpoint before the anchor"
-    with pytest.raises(InvalidError):
-        times.record_time("any", 0, [])
+    for position in (0, -1, True, 1.5, 2**64):
+        with pytest.raises(InvalidError):
+            times.record_time(raw["queries"][0]["book_id"], position, [script.CADENCE["witness_url"]])
 
 
 def test_a_bad_witnessed_checkpoint_is_refused():
-    _, h = _earliest_vector()
+    from evidencebook.shelf_handover import HandoverCheckpoint, verify_handover_times
+
+    raw, h = _earliest_vector()
+    forked = HandoverCheckpoint.from_value(raw["forked"])
     verify_handover(h, KEY, script.DIRECTORY)
     assert len(h.witnessed) >= 2
     w = h.witnessed
@@ -425,6 +429,10 @@ def test_a_bad_witnessed_checkpoint_is_refused():
         "one checkpoint twice": [w[0], w[0], *w[2:]],
         "no receipt": [dataclasses.replace(w[0], receipts=[]), *w[1:]],
         "not a checkpoint": [dataclasses.replace(w[0], checkpoint=b"x"), *w[1:]],
+        "another root at a size within the anchor": [forked, *w[1:]],
+        "the holder's key, another log": [dataclasses.replace(w[0], checkpoint=h.book_checkpoints[0]), *w[1:]],
     }.items():
         with pytest.raises(InvalidError):
             verify_handover(dataclasses.replace(h, witnessed=bad), KEY, script.DIRECTORY)
+        with pytest.raises(InvalidError):
+            verify_handover_times(dataclasses.replace(h, witnessed=bad), KEY, script.DIRECTORY)

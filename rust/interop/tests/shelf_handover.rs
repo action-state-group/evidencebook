@@ -221,7 +221,8 @@ fn the_earliest_receipt_vector_replays() {
 }
 
 /// A witnessed checkpoint that is the anchor, given twice, carries no
-/// receipt, or is not a checkpoint is refused (Go
+/// receipt, is not a checkpoint, or has a root the entries do not recompute
+/// (the vector's `forked`) is refused (Go
 /// `TestAHandoverRefusesABadWitnessedCheckpoint`).
 #[test]
 fn a_bad_witnessed_checkpoint_is_refused() {
@@ -230,6 +231,8 @@ fn a_bad_witnessed_checkpoint_is_refused() {
     let h: Handover = serde_json::from_value(v["handover"].clone()).unwrap();
     assert!(verify(&h).is_ok());
     assert!(h.witnessed.len() >= 2);
+    let forked: evidencebook::shelf::HandoverCheckpoint =
+        serde_json::from_value(v["forked"].clone()).unwrap();
     type Edit = Box<dyn Fn(&mut Handover)>;
     let edits: Vec<(&str, Edit)> = vec![
         (
@@ -244,6 +247,14 @@ fn a_bad_witnessed_checkpoint_is_refused() {
         (
             "not a checkpoint",
             Box::new(|h| h.witnessed[0].checkpoint = b"x".to_vec()),
+        ),
+        (
+            "another root at a size within the anchor",
+            Box::new(move |h| h.witnessed[0] = forked.clone()),
+        ),
+        (
+            "the holder's key, another log",
+            Box::new(|h| h.witnessed[0].checkpoint = h.book_checkpoints[0].clone()),
         ),
     ];
     for (name, edit) in edits {

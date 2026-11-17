@@ -25,7 +25,8 @@ import (
 // each book position the time the holder's RecordTime gives. Every language
 // reads testdata/shelf/handover/earliest-receipt-not-anchor.json, replays its
 // handover under the script's checkpoint key and directory, and gets every
-// query's time.
+// query's time; and it refuses the handover with its forked checkpoint in
+// place of a witnessed one.
 
 // EarliestStream is the random stream of the earliest-receipt step.
 const EarliestStream = "evidencebook shelf vectors/earliest-receipt"
@@ -41,50 +42,82 @@ type EarliestQuery struct {
 }
 
 // EarliestReceiptJSON builds the vector from the shelf at dir/shelf.db
-// (after RecordTimePhase), which it leaves as it was.
+// (after RecordTimePhase), which it leaves as it was. Its forked member is
+// the witnessed checkpoint of the same step on a second copy that appends
+// another record: the holder's key, the shelf log and the anchor's size,
+// with another root, which a handover must refuse as a witnessed checkpoint.
 func EarliestReceiptJSON(ctx context.Context, dir string) ([]byte, error) {
 	scratch, err := os.MkdirTemp("", "shelf-earliest-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(scratch)
-	path := filepath.Join(scratch, FileName)
 	original, err := openDB(filepath.Join(dir, FileName))
 	if err != nil {
 		return nil, err
 	}
-	_, err = original.ExecContext(ctx, `VACUUM INTO ?`, path)
-	if err := errors.Join(err, original.Close()); err != nil {
-		return nil, err
+	var envs []*env
+	for _, name := range []string{"main", "forked"} {
+		path := filepath.Join(scratch, name, FileName)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, errors.Join(err, original.Close())
+		}
+		if _, err := original.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
+			return nil, errors.Join(err, original.Close())
+		}
+		e, err := open(ctx, path, EarliestStream, Start.Add(14600*time.Second))
+		if err != nil {
+			return nil, errors.Join(err, original.Close())
+		}
+		envs = append(envs, e)
 	}
-	e, err := open(ctx, path, EarliestStream, Start.Add(14600*time.Second))
+	release := func(err error) error {
+		for _, e := range envs {
+			err = errors.Join(err, e.release())
+		}
+		return errors.Join(err, original.Close())
+	}
+	forked, _, err := earliestStep(ctx, envs[1], "a9-forked")
 	if err != nil {
-		return nil, err
+		return nil, release(err)
 	}
-	out, err := earliest(ctx, e)
-	return out, errors.Join(err, e.release())
+	out, err := earliest(ctx, envs[0], forked)
+	return out, release(err)
 }
 
-func earliest(ctx context.Context, e *env) ([]byte, error) {
-	if err := e.append(ctx, "deal/a", observation("a", "a9")); err != nil {
-		return nil, err
+// earliestStep appends payload to deal/a, stamps, and witnesses the stamp
+// later than every receipt before it.
+func earliestStep(ctx context.Context, e *env, payload string) (evidencebook.HandoverCheckpoint, time.Time, error) {
+	if err := e.append(ctx, "deal/a", observation("a", payload)); err != nil {
+		return evidencebook.HandoverCheckpoint{}, time.Time{}, err
 	}
 	at := Start.Add(14640 * time.Second)
 	e.clock.set(at)
 	if _, err := e.cadence.Stamp(ctx, at); err != nil {
-		return nil, err
+		return evidencebook.HandoverCheckpoint{}, time.Time{}, err
 	}
 	tick, ok, err := e.cadence.Last(ctx)
 	if err != nil || !ok {
-		return nil, errors.Join(err, errors.New("no tick to witness"))
+		return evidencebook.HandoverCheckpoint{}, time.Time{}, errors.Join(err, errors.New("no tick to witness"))
 	}
 	anchorTime := Start.Add(14700 * time.Second)
 	receipt, err := MintReceiptAt(tick.Checkpoint, anchorTime)
 	if err != nil {
-		return nil, err
+		return evidencebook.HandoverCheckpoint{}, time.Time{}, err
 	}
 	if _, err := e.cadence.Witnessed(ctx, tick.N, receipt); err != nil {
+		return evidencebook.HandoverCheckpoint{}, time.Time{}, err
+	}
+	return evidencebook.HandoverCheckpoint{Checkpoint: tick.Checkpoint, Receipts: []evidencebook.WitnessReceipt{receipt}}, anchorTime, nil
+}
+
+func earliest(ctx context.Context, e *env, forked evidencebook.HandoverCheckpoint) ([]byte, error) {
+	anchor, anchorTime, err := earliestStep(ctx, e, "a9")
+	if err != nil {
 		return nil, err
+	}
+	if string(anchor.Checkpoint) == string(forked.Checkpoint) {
+		return nil, errors.New("the forked copy cut the same checkpoint")
 	}
 	h, err := e.cadence.Handover(ctx, 0)
 	if err != nil {
@@ -141,9 +174,10 @@ func earliest(ctx context.Context, e *env) ([]byte, error) {
 		return nil, errors.New("no record's earliest receipt is before the anchor's")
 	}
 	return marshal(map[string]any{
-		"description": "The earliest-receipt-not-anchor vector of evidencebook#461 (docs/design/461-deal-profile.md §8.1, invariant C), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Replay handover under pinned_key and the script's witness directory, then each query's record time (book_id, position, witnesses, which are receipt URLs) from the handover must equal time, the holder's RecordTime: most records' earliest receipt belongs to a witnessed checkpoint before the anchor.",
+		"description": "The earliest-receipt-not-anchor vector of evidencebook#461 (docs/design/461-deal-profile.md §8.1, invariant C), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Replay handover under pinned_key and the script's witness directory, then each query's record time (book_id, position, witnesses, which are receipt URLs) from the handover must equal time, the holder's RecordTime: most records' earliest receipt belongs to a witnessed checkpoint before the anchor. forked is a checkpoint by the same key, of the same shelf log and at the anchor's size, cut on a copy that appended another record: a handover with it in place of a witnessed checkpoint must be refused, since the handed-over entries do not recompute its root.",
 		"pinned_key":  hex.EncodeToString(CheckpointKey.Public().(ed25519.PublicKey)),
 		"handover":    h,
 		"queries":     queries,
+		"forked":      forked,
 	})
 }

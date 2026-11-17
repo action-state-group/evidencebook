@@ -96,11 +96,12 @@ func TestAHandoverRefusesABadWitnessedCheckpoint(t *testing.T) {
 	require.NotEmpty(t, foreign.Witnessed)
 
 	for name, edit := range map[string]func(h *Handover){
-		"the anchor again":     func(h *Handover) { h.Witnessed[0].Checkpoint = h.Anchor },
-		"one checkpoint twice": func(h *Handover) { h.Witnessed[1] = h.Witnessed[0] },
-		"no receipt":           func(h *Handover) { h.Witnessed[0].Receipts = nil },
-		"another holder's":     func(h *Handover) { h.Witnessed[0] = foreign.Witnessed[0] },
-		"not a checkpoint":     func(h *Handover) { h.Witnessed[0].Checkpoint = []byte("x") },
+		"the anchor again":              func(h *Handover) { h.Witnessed[0].Checkpoint = h.Anchor },
+		"one checkpoint twice":          func(h *Handover) { h.Witnessed[1] = h.Witnessed[0] },
+		"no receipt":                    func(h *Handover) { h.Witnessed[0].Receipts = nil },
+		"another holder's":              func(h *Handover) { h.Witnessed[0] = foreign.Witnessed[0] },
+		"not a checkpoint":              func(h *Handover) { h.Witnessed[0].Checkpoint = []byte("x") },
+		"the holder's key, another log": func(h *Handover) { h.Witnessed[0].Checkpoint = h.BookCheckpoints[0] },
 	} {
 		bad := h
 		bad.Witnessed = append([]HandoverCheckpoint{}, h.Witnessed...)

@@ -1,5 +1,17 @@
 {
-  "description": "The earliest-receipt-not-anchor vector of evidencebook#461 (docs/design/461-deal-profile.md §8.1, invariant C), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Replay handover under pinned_key and the script's witness directory, then each query's record time (book_id, position, witnesses, which are receipt URLs) from the handover must equal time, the holder's RecordTime: most records' earliest receipt belongs to a witnessed checkpoint before the anchor.",
+  "description": "The earliest-receipt-not-anchor vector of evidencebook#461 (docs/design/461-deal-profile.md §8.1, invariant C), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Replay handover under pinned_key and the script's witness directory, then each query's record time (book_id, position, witnesses, which are receipt URLs) from the handover must equal time, the holder's RecordTime: most records' earliest receipt belongs to a witnessed checkpoint before the anchor. forked is a checkpoint by the same key, of the same shelf log and at the anchor's size, cut on a copy that appended another record: a handover with it in place of a witnessed checkpoint must be refused, since the handed-over entries do not recompute its root.",
+  "forked": {
+    "checkpoint": "0oRYiqQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDtVKWfsaw6USOTUTYpQbho6Fpg49eySF2CiCHcemnCeQ+iAXgdZGVhbC1jYWRlbmNlLzAxMjM0NTY3ODlhYmNkZWYCeB1kZWFsLWNhZGVuY2UvMDEyMzQ1Njc4OWFiY2RlZqBZArGnZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUYR2lpc3N1ZWRfYXR0MjAyNi0xMC0zMVQxNjowNDowMFppcHJldl9zaXplGENqY29tbWl0bWVudFhng1ggUFmRVd68kVE9jW1MU6NiWLWbZ8mx87VFEwj/V8wccqhYIJzPO7tByrALjGLQqI2vD+dCfJtRLCUMJ7lejLEdAThEWCD3K99MCbi+OjzO9KHvUwlSH9mJ8nhi8O/gNPbzj/vsc29wcmV2X2NvbW1pdG1lbnRYZ4NYIFBZkVXevJFRPY1tTFOjYli1m2fJsfO1RRMI/1fMHHKoWCD/qUMgzs88gfaJF1fNpMvtne/LCUCJ7t17L+OAX//YA1gg49QbJ+jIrM8J1fxvZ/8gBrsZ4zoIcPqAYEwYr7ztFDpxY29uc2lzdGVuY3lfcHJvb2alZnNpemVfYRhDZnNpemVfYhhHZ3dpdG5lc3ODgIFYINvzIZE2QY4kCbL4bz0UI4+iPJ14d0/IzlXhV3Xuam1TglggyS1a7NZ0JCD2FcnI1xAeFfOIwDc6mHZL2maD9C2gPwJYIP+pQyDOzzyB9okXV82ky+2d78sJQInu3Xsv44Bf/9gDaW5ld19wZWFrc4NYIFBZkVXevJFRPY1tTFOjYli1m2fJsfO1RRMI/1fMHHKoWCCczzu7QcqwC4xi0KiNrw/nQnybUSwlDCe5XoyxHQE4RFgg9yvfTAm4vjo8zvSh71MJUh/ZifJ4YvDv4DT284/77HNpb2xkX3BlYWtzg1ggUFmRVd68kVE9jW1MU6NiWLWbZ8mx87VFEwj/V8wccqhYIP+pQyDOzzyB9okXV82ky+2d78sJQInu3Xsv44Bf/9gDWCDj1Bsn6MiszwnV/G9n/yAGuxnjOghw+oBgTBivvO0UOlhA5QytABlYQSoV/NwNrjViMwZCIw03gFDHp6h4ffx8ybCvSHnPmBITsIoVlPRHsZpO/noA+oCWhhfLPZdkTFUoAw==",
+    "receipts": [
+      {
+        "ts_url": "https://witness.test",
+        "entry_hash": "411f3f6495506364b85bda8823c0d330ecfac067747b5d2a6002a1734fc39d17",
+        "receipt": "0oRPowEnD6EGGmrmEawZAYsBoRkBjKEggUSDAQCA9lhAvNa0iEzTAPcrzIisAjWQ/J8H/Gi7Xi9fy5mlmtykYfsB8e9jiV5TTUV/EZCd0J11Gena5vUrUXxbuM3/yfj+Dg==",
+        "leaf_index": 0,
+        "tree_size": 1
+      }
+    ]
+  },
   "handover": {
     "v": 1,
     "log_id": "deal-cadence/0123456789abcdef",

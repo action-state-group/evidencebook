@@ -21,9 +21,10 @@ func TestEarliestReceiptVectorReplays(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(vectorDir, "handover", "earliest-receipt-not-anchor.json"))
 	require.NoError(t, err)
 	var v struct {
-		PinnedKey string                `json:"pinned_key"`
-		Handover  evidencebook.Handover `json:"handover"`
-		Queries   []EarliestQuery       `json:"queries"`
+		PinnedKey string                          `json:"pinned_key"`
+		Handover  evidencebook.Handover           `json:"handover"`
+		Queries   []EarliestQuery                 `json:"queries"`
+		Forked    evidencebook.HandoverCheckpoint `json:"forked"`
 	}
 	require.NoError(t, json.Unmarshal(raw, &v))
 	directory, err := Directory()
@@ -49,4 +50,14 @@ func TestEarliestReceiptVectorReplays(t *testing.T) {
 		differs = differs || !ok || !anchorTime.Equal(got)
 	}
 	assert.True(t, differs, "some record's time comes from a checkpoint before the anchor")
+
+	// The holder's key, the shelf log, a size within the anchor and a
+	// receipt, but another root: refused.
+	forked := v.Handover
+	forked.Witnessed = append([]evidencebook.HandoverCheckpoint{v.Forked}, v.Handover.Witnessed[1:]...)
+	_, err = evidencebook.VerifyHandover(forked, v.PinnedKey, directory)
+	assert.ErrorIs(t, err, evidencebook.ErrInvalid)
+	assert.ErrorContains(t, err, "do not recompute witnessed checkpoint", "refused for its root, not an earlier check")
+	_, err = evidencebook.VerifyHandoverTimes(forked, v.PinnedKey, directory)
+	assert.ErrorIs(t, err, evidencebook.ErrInvalid)
 }

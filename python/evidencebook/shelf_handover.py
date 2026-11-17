@@ -956,9 +956,12 @@ class HandoverTimes:
         """The record time, in Unix seconds, of the record at ``position``
         (from 1) of the book ``book_id``, from the witnesses named (their
         URLs), as ``Shelf.record_time`` computes it; ``None`` when there is
-        none. Position 0 raises :class:`InvalidError`."""
-        if position == 0:
-            raise InvalidError("a record position counts from 1")
+        none. A position that is not an integer from 1 to 2^64 - 1 raises
+        :class:`InvalidError`."""
+        # Go and Rust take an unsigned 64-bit position, as the holder's
+        # record_time does.
+        if isinstance(position, bool) or not isinstance(position, int) or not 1 <= position <= 2**64 - 1:
+            raise InvalidError("a record position counts from 1, to 2^64 - 1")
         from .shelf_receive import _leaf_count
 
         seq = next((s for s, book, size in self._facts
