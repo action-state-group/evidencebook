@@ -154,3 +154,29 @@ func TestAHandoverNeedsAFinishedStamp(t *testing.T) {
 	_, err := c.Handover(ctx, old.N)
 	assert.ErrorIs(t, err, ErrInvalid, "a tree tick is not a stamp")
 }
+
+// A document the holder signed must be its canonical JSON, so no language
+// reads a member another does not: a duplicate, an unknown member or another
+// spelling is refused.
+func TestAnEntryDocumentMustBeCanonical(t *testing.T) {
+	_, h, _ := handedOver(t)
+	var doc []byte
+	for _, d := range h.Documents {
+		if d.StatusOpening != nil {
+			doc = d.Doc
+			break
+		}
+	}
+	require.NotNil(t, doc)
+	require.NoError(t, canonicalDocument(doc, &BookFact{}))
+	body := string(doc[1 : len(doc)-1])
+	for name, changed := range map[string]string{
+		"a duplicate member": `{"v":2,` + body + `}`,
+		"an unknown member":  `{"extra":1,` + body + `}`,
+		"whitespace":         `{ ` + body + `}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Error(t, canonicalDocument([]byte(changed), &BookFact{}))
+		})
+	}
+}

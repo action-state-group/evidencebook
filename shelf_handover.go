@@ -3,6 +3,7 @@
 package evidencebook
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -344,21 +345,32 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	var coverage uint64
 	for seq := marker; seq <= anchor.Entries; seq++ {
 		d := docs[seq]
-		var f BookFact
-		if err := json.Unmarshal(d.Doc, &f); err != nil {
+		var head struct {
+			Kind string `json:"kind"`
+		}
+		if err := json.Unmarshal(d.Doc, &head); err != nil {
 			return bad("the document at %d: %v", seq, err)
 		}
-		switch f.Kind {
+		var f BookFact
+		var err error
+		switch head.Kind {
 		case EntryKindStamp:
+			err = canonicalDocument(d.Doc, &StampEntry{})
 			if coverage == 0 {
 				coverage = seq
 			}
-			continue
-		case FactKindJournal, EntryKindFormatSwitch:
-			continue
-		case FactKindBook:
+		case EntryKindFormatSwitch:
+			err = canonicalDocument(d.Doc, &FormatSwitch{})
+		case FactKindJournal, FactKindBook:
+			err = canonicalDocument(d.Doc, &f)
 		default:
-			return bad("the document at %d is a %q", seq, f.Kind)
+			return bad("the document at %d is a %q", seq, head.Kind)
+		}
+		if err != nil {
+			return bad("the document at %d: %v", seq, err)
+		}
+		if head.Kind != FactKindBook {
+			continue
 		}
 		if d.StatusOpening == nil {
 			return bad("the fact at %d has no status opening", seq)
@@ -422,6 +434,24 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 		}
 	}
 	return result, nil
+}
+
+// canonicalDocument decodes an entry document into v and requires the
+// document to be v's canonical JSON, so every language reads the same
+// members: a duplicate, an unknown member or another spelling of a value
+// changes the bytes.
+func canonicalDocument(doc []byte, v any) error {
+	if err := json.Unmarshal(doc, v); err != nil {
+		return err
+	}
+	_, canonical, err := EntryID(v)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(canonical, doc) {
+		return fmt.Errorf("not its canonical JSON")
+	}
+	return nil
 }
 
 func firstErr(errs ...error) error {
