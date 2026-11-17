@@ -1531,9 +1531,10 @@ change.
 **Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): name each witness by its verified key id, with the URL as a hint:
 `{"key_id": "…", "url": "…"}`. The library's `RecordTime` gains naming by key id (11.1, PR 1).
 
-**Steven's one ask for AAC#626.** Q4 and Q12 gate AAC#626's exact-head approval (the `/3` card's
+**Steven's one ask for AAC#626.** Q4 and Q12 gated AAC#626's exact-head approval (the `/3` card's
 `forum` and `by_forum`, and its line for a `not_reached` row and for a deal with no witnessed time),
-and Q5 decides a line of the same card. They go to Steven in one ask, with Sherlock2's
+and Q5 decided a line of the same card. Steven answered all three on 2026-11-17 (each is marked
+**Answered** below). They went to Steven in one ask, with Sherlock2's
 recommendations below (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dab78e4530acd8dc56936d22778547b3cfce4ef95b62a3beca0b66fffc5e66c9&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6, relayed by the coordinator on 2026-11-17).
 
 **Q2. When is `rules_verdict` sealed now that there is no close?** v0 seals it after the final close
