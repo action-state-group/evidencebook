@@ -1,5 +1,5 @@
 {
-  "fixture": "settled/seller-journal/02-check-cancel.json",
+  "fixture": "settled/seller-journal/03-check-cancel.json",
   "expect": "valid",
   "appendix_a_line": "s1",
   "story": "Its own rules check the act before it: cancel 60 dollars under payment reference refund-ref-7731.",

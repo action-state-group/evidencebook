@@ -190,8 +190,9 @@ adjudicator, `adjudicator` is that adjudicator's key id, and `forum` is one of t
 `forums`. Kind `withdrawal`: `row`. Kind `challenge`: `ruling` and `grounds_commitment`.
 
 **`ruling`.** `row`, `keys` (`buyer`, `seller`), `against` (`buyer`, `seller` or `null`), `value`
-(`met` or `not_met`), `remedy` (`kind`, `amount_minor` and `currency` together, `due`), `read` (the
-last record id of each deal book the adjudicator read), `forum`, `rules_digest`, `final`. Read
+(`met` or `not_met`), `remedy` (`kind`, `amount_minor` and `currency` together, `due`), `read` (per
+side, the last record id of that side's deal book the adjudicator read, or `null` for a book it did
+not read), `forum`, `rules_digest`, `final`. Read
 against the deal's agreement (`xdealv1.CheckRuling`): `forum` is one of the agreement's `forums`.
 That the agreement's adjudicator signed it is the reader's, from the ruling's Capsule.
 
@@ -218,8 +219,8 @@ in the journal and `ruling` carry no `seen`.
 
 An offer, a decline and a cancellation leave the shelf whole. Each is sealed twice: as a journal
 book record whose payload commitment is the record digest, and as a standalone Capsule appended to
-no log, with `action_id` `"<deal_id>/sent"`, `action_type` `fyi`, no chain, no
-`evidence_record_header`, and the record as its payload, so its `agent_input_digest` is the
+no log, with `action_id` `"<deal_id>/sent"`, `action_type` `fyi`, no chain, no `references`,
+no `evidence_record_header`, and the record as its payload, so its `agent_input_digest` is the
 record digest. It travels as `{"record": <the Capsule>, "agent_input": <the record>}`.
 
 `xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
@@ -238,9 +239,19 @@ that `reverses`, `commit` for a `perform`) and serves the act's deal; its verdic
 the verdict's first approval proceeds, is not a `confirm_limits` and was sealed no later than the
 act; one approval authorizes one act; no journal record between the check and the act changes the
 details; and the limits in force are those the journal's intents and confirmed proposals set, in
-journal order. `xdealv1.CheckAuthorizations(journal, acts)` checks them and returns, per act,
-whether its approval is the person's own (approver `user` or `agent_card`) and so needs the
-person's signature over the approval's record digest, beside the record.
+journal order. The journal is read in order and its `at` never decreases: a journal record whose
+`at` is earlier than the record before it is refused.
+
+`xdealv1.CheckAuthorizations(journal, acts)` checks them, refusing at the `authorization` stage,
+and returns per act what must be signed by the person, beside the records, before the act is
+relied on:
+
+- the approval, when it is the person's own (approver `user` or `agent_card`): the person's
+  signature over the approval's record digest. The record's Capsule is signed by the holder's
+  record key, the agent's, which never stands for the person's.
+- every `confirm_limits` approval whose confirmed proposal put in force the `allowed` a
+  `standing_intent` approval relied on (`LimitApprovals`): the person's signature over each one's
+  record digest. Without it the agent could widen its own limits and then approve its own act.
 
 ## 9. Checks, stages and fixtures
 
@@ -263,8 +274,8 @@ digest and refuse each negative at its stage. The vectors in `testdata/deal-v1/`
 `deal_id` presence (`records/`), the decline and cancellation pairs (`decline/`) and the
 authorization of acts (`authorization/`).
 
-A reference checker for v1 in Python (`check_profile.py`, as v0 has) is not yet here; it follows
-in its own pull request (design note §11.1, PR 2).
+A reference checker for v1 in Python (`check_profile.py`, as v0 has), which design note §11.1
+item 2 lists with this profile, is not yet here; it follows in a later pull request of this step.
 
 ## 10. Not defined here yet
 

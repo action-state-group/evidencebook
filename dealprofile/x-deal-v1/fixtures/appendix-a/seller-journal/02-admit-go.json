@@ -1,5 +1,5 @@
 {
-  "fixture": "appendix-a/seller-journal/01-admit-go.json",
+  "fixture": "appendix-a/seller-journal/02-admit-go.json",
   "expect": "valid",
   "appendix_a_line": "14",
   "story": "The seller's admission decision: GO; the buyer pays first.",

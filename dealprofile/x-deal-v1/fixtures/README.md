@@ -9,7 +9,7 @@ give way and the buyer goes to the adjudicator. Each positive fixture is one rec
 |---|---|
 | `appendix-a/buyer-journal/` | the owner's intent, the two admission decisions, the evidence request, the offer, and the check, verdict and approval the payment rests on |
 | `appendix-a/buyer-book/` | the buyer's deal book, eight records: its agreement, the payment, the receipt, the not-as-described statement, the dispute, the two ruling received records and the refund received record |
-| `appendix-a/seller-journal/` | the seller's admission decision, and the check, verdict and approval its refund rests on |
+| `appendix-a/seller-journal/` | the seller's answer to the buyer's evidence request, its admission decision, and the check, verdict and approval its refund rests on |
 | `appendix-a/seller-book/` | the seller's deal book, seven records: its agreement, the payment received record, the delivery, the reply, the two ruling received records and the refund |
 | `appendix-a/case-book/` | the adjudicator's case book: the ruling, then the same ruling sealed again as final |
 | `settled/` | the same deal settled without a ruling (Appendix A's last table, lines s1 to s12): it leaves the main path after the buyer's dispute and the seller's reply, so its books continue from those records at `seq` 5 and 6 |

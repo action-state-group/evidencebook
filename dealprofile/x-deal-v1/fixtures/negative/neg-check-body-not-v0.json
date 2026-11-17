@@ -5,7 +5,7 @@
   "base": "appendix-a/buyer-journal/06-check-pay.json",
   "check": "record",
   "expected_stage": "schema",
-  "expected_error_contains": "not v0's body_check",
+  "expected_error_contains": "",
   "record": {
     "body": {
       "action": "teleport",

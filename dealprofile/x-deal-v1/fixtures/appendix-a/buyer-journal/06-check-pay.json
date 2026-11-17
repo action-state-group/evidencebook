@@ -1,7 +1,7 @@
 {
   "fixture": "appendix-a/buyer-journal/06-check-pay.json",
   "expect": "valid",
-  "appendix_a_line": "10",
+  "appendix_a_line": "23",
   "story": "Its own rules check the act before it: pay 60 dollars under payment reference pay-ref-7731.",
   "placement": "journal",
   "record": {

@@ -1,7 +1,7 @@
 {
   "fixture": "appendix-a/buyer-journal/08-approval-proceed.json",
   "expect": "valid",
-  "appendix_a_line": "10",
+  "appendix_a_line": "23",
   "story": "The owner's standing intent answers the passing verdict: proceed.",
   "placement": "journal",
   "record": {

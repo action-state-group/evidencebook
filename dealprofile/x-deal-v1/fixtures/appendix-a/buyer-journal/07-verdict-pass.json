@@ -1,7 +1,7 @@
 {
   "fixture": "appendix-a/buyer-journal/07-verdict-pass.json",
   "expect": "valid",
-  "appendix_a_line": "10",
+  "appendix_a_line": "23",
   "story": "The verdict on that one check: pass.",
   "placement": "journal",
   "record": {

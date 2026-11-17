@@ -251,8 +251,12 @@ func buildAppendixA(t *testing.T) *appendixA {
 	offer := a.add(fixture{Path: bj + "/05-offer.json", Line: "11", Story: "The offer: the deal id, the lamp at 60 dollars, the pack digest, agree by 2 Nov, the adjudicator and witness taken from the listing, and the three rows.",
 		Record: Record{Block: journalBlock(TypePropose, "2026-11-01T09:30:00Z", true), Body: fxOffer()}})
 
-	// The seller's admission and agreement (lines 14 and 15).
-	sellerAdmit := a.add(fixture{Path: sj + "/01-admit-go.json", Line: "14", Story: "The seller's admission decision: GO; the buyer pays first.",
+	// The seller answers the buyer's evidence request (line 9d), then
+	// admits the buyer and agrees (lines 14 and 15).
+	a.add(fixture{Path: sj + "/01-answer.json", Line: "9d", Story: "The seller's answer to the buyer's evidence request, with what it shared; an answer of an admission carries no deal_id.",
+		Record:  Record{Block: journalBlock(TypeAnswer, "2026-11-01T09:10:00Z", false), Body: &AnswerBody{Request: requestDoc, Outcome: "evidence", Answer: answerDoc}},
+		Context: &SealContext{Admission: true}})
+	sellerAdmit := a.add(fixture{Path: sj + "/02-admit-go.json", Line: "14", Story: "The seller's admission decision: GO; the buyer pays first.",
 		Record: Record{Block: journalBlock(TypeAdmit, "2026-11-01T09:40:00Z", false),
 			Body: &AdmitBody{Outcome: "GO", Tier: "buyer_pays_first", Rows: []string{}, Asks: []Ref{}, PackDigest: label("seller admission pack"), CardDigest: label("buyer card"), Answers: []Ref{}}}})
 	a.add(fixture{Path: sb + "/01-agreement.json", Line: "15", Story: "The acceptor's agreement opens the seller's deal book; it names nothing held from the buyer.",
@@ -262,7 +266,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 	a.add(fixture{Path: bb + "/01-agreement.json", Line: "18", Story: "The offerer's agreement opens the buyer's deal book and names the seller's agreement in seen; the deal starts with it.",
 		Record: Record{Block: a.bookBlock(bb, TypeAgree, "2026-11-01T10:00:00Z", 1, a.id(sb+"/01-agreement.json")),
 			Body: fxAgreement(&offer, &admitGo, &intent, SideOfferer, RoleBuyer, fxSellerKey)}})
-	payCheck := a.approvedCheck(bj, "06", "10", "pay", "pay-ref-7731", "standing_intent", clock(1, 10, 10))
+	payCheck := a.approvedCheck(bj, "06", "23", "pay", "pay-ref-7731", "standing_intent", clock(1, 10, 10))
 	pay := a.bookBlock(bb, TypeSettle, "2026-11-01T10:15:00Z", 2, a.id(sb+"/01-agreement.json"))
 	pay.Marks = []string{"paid"}
 	a.add(fixture{Path: bb + "/02-payment.json", Line: "24", Story: "The payment record: the payer leg, row 1 met, citing its check; it is the named record paid.",
@@ -319,7 +323,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 		Record: Record{Block: a.bookBlock(sb, TypeStatement, "2026-11-21T14:00:00Z", 6, a.id(bb+"/07-final-ruling-received.json")), Body: names(r2)}})
 
 	// 25 Nov, the refund (lines 69 and 72).
-	refundCheck := a.approvedCheck(sj, "02", "68", "cancel", "refund-ref-7731", "user", clock(25, 9, 0))
+	refundCheck := a.approvedCheck(sj, "03", "68", "cancel", "refund-ref-7731", "user", clock(25, 9, 0))
 	a.add(fixture{Path: sb + "/07-refund.json", Line: "69", Story: "The refund: a payer leg that reverses the payment received record and remedies row 3 under the final ruling.",
 		Record: Record{Block: a.bookBlock(sb, TypeSettle, "2026-11-25T10:00:00Z", 7, a.id(bb+"/07-final-ruling-received.json")),
 			Body: &SettleBody{Leg: LegPayer, Statements: statements(), Check: refundCheck, Reverses: a.ref(sb + "/02-payment-received.json"), RemedyFor: &RemedyFor{Row: "as_described", Ruling: &r2}}}})
@@ -334,7 +338,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 		ssb = "settled/seller-book"
 		sbb = "settled/buyer-book"
 	)
-	concession := a.approvedCheck(ssj, "02", "s1", "cancel", "refund-ref-7731", "user", clock(20, 9, 0))
+	concession := a.approvedCheck(ssj, "03", "s1", "cancel", "refund-ref-7731", "user", clock(20, 9, 0))
 	a.add(fixture{Path: ssb + "/05-refund.json", Line: "s2", Story: "The seller gives way: it refunds and states row 3 not met, a concession after the window.",
 		Record: Record{Block: a.bookBlock(ssb, TypeSettle, "2026-11-20T10:00:00Z", 5, a.id(bb+"/05-dispute.json")),
 			Body: &SettleBody{Leg: LegPayer, Statements: statements(item("as_described", ValueNotMet)), Check: concession, Reverses: a.ref(sb + "/02-payment-received.json"), RemedyFor: &RemedyFor{Row: "as_described"}}}})

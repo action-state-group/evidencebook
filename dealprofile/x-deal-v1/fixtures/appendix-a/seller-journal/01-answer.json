@@ -1,0 +1,33 @@
+{
+  "fixture": "appendix-a/seller-journal/01-answer.json",
+  "expect": "valid",
+  "appendix_a_line": "9d",
+  "story": "The seller's answer to the buyer's evidence request, with what it shared; an answer of an admission carries no deal_id.",
+  "placement": "journal",
+  "seal_context": {
+    "offer_exists": false,
+    "admission": true
+  },
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "answer",
+      "at": "2026-11-01T09:10:00Z"
+    },
+    "body": {
+      "request": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "1913b98c35e7a01fdbf36e93e345f8b68b73543e697911ce2a1f7830bfa25f47"
+      },
+      "outcome": "evidence",
+      "answer": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "b9a9e0d7d59a638baa1a770d324e66621f5fe79ed683385e4658f37d44ba445e"
+      }
+    }
+  },
+  "expected_digest": "0a93e670662441f8417f83d283258db93c701c39c214f6f970d71f98062432d4"
+}

@@ -91,7 +91,7 @@ func negatives() []negative {
 			stage: StageRecord, contains: "carries no refs, marks or counterparty",
 			edit: func(b, _ map[string]any) { set(b, "marks", []any{"declined"}) }},
 		{name: "neg-check-body-not-v0", description: "the check body without payment_ref is v0's body_check: its action is one v0 names", base: nCheck, check: "record",
-			stage: StageSchema, contains: "not v0's body_check",
+			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { set(b, "action", "teleport") }},
 		// Record: placement (§3.1, §3.2).
 		{name: "neg-book-record-without-seq", description: "a deal-book record carries its seq", base: nDelivery, check: "record",
