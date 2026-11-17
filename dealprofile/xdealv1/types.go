@@ -232,7 +232,8 @@ type StatementBody struct {
 }
 
 // DisputeBody is a dispute record's body: a dispute, a withdrawal or a
-// challenge, told apart by Kind (§3.3).
+// challenge, told apart by Kind (§3.3). A dispute names its Forum, the
+// process that resolves it (Steven's AAC#626 ruling, #482 Q4).
 type DisputeBody struct {
 	Kind string `json:"kind"`
 	// A dispute's and a withdrawal's.
@@ -240,6 +241,7 @@ type DisputeBody struct {
 	// A dispute's.
 	Statements  []Ref  `json:"statements,omitzero"`
 	Adjudicator string `json:"adjudicator,omitzero"`
+	Forum       string `json:"forum,omitzero"`
 	// A challenge's.
 	Ruling            *Ref   `json:"ruling,omitzero"`
 	GroundsCommitment string `json:"grounds_commitment,omitzero"`
@@ -267,7 +269,8 @@ type RulingRead struct {
 }
 
 // RulingBody is a ruling record's body (§3.3; design §8). Against is
-// REQUIRED and is buyer, seller or null.
+// REQUIRED and is buyer, seller or null. Forum is the process that ruled
+// (#482 Q4).
 type RulingBody struct {
 	Row         string        `json:"row"`
 	Keys        RulingKeys    `json:"keys"`
@@ -275,6 +278,7 @@ type RulingBody struct {
 	Value       string        `json:"value"`
 	Remedy      *RulingRemedy `json:"remedy,omitzero"`
 	Read        RulingRead    `json:"read"`
+	Forum       string        `json:"forum"`
 	RulesDigest string        `json:"rules_digest"`
 	Final       bool          `json:"final"`
 }

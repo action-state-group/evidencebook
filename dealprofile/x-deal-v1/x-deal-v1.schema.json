@@ -1245,7 +1245,8 @@
             "kind",
             "row",
             "statements",
-            "adjudicator"
+            "adjudicator",
+            "forum"
           ],
           "properties": {
             "kind": {
@@ -1263,6 +1264,9 @@
             "adjudicator": {
               "type": "string",
               "minLength": 1
+            },
+            "forum": {
+              "$ref": "#/$defs/forum"
             }
           }
         },
@@ -1313,6 +1317,7 @@
         "against",
         "value",
         "read",
+        "forum",
         "rules_digest",
         "final"
       ],
@@ -1417,6 +1422,9 @@
         },
         "final": {
           "type": "boolean"
+        },
+        "forum": {
+          "$ref": "#/$defs/forum"
         }
       }
     },
@@ -1524,6 +1532,11 @@
         }
       },
       "description": "v0's body_check and payment_ref. The record checks validate the body without payment_ref against v0's body_check, which is closed, so the two are not merged here."
+    },
+    "forum": {
+      "type": "string",
+      "pattern": "^(auto:(twin|ref)|(network|rail|external):[a-z0-9][a-z0-9._-]{0,63})$",
+      "description": "The process that resolves a dispute (evidencebook#404, Steven 2026-11-05; carried on dispute and ruling records per Steven's AAC#626 ruling, u603): auto:twin, auto:ref, network:<id>, rail:<program> or external:<class>. Its prefix is the class standard_history/3 counts by_forum (auto, network, rail, external)."
     }
   }
 }

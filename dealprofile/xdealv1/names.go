@@ -101,3 +101,11 @@ const (
 	ReasonOther   = "other"
 	ChoiceConfirm = "confirm_limits"
 )
+
+// Forums (evidencebook#404; #482 Q4): the process that resolves a dispute.
+// A forum is one of auto:twin and auto:ref, or network:<id>, rail:<program>
+// or external:<class>; its prefix is the class standard_history/3 counts.
+const (
+	ForumAutoTwin = "auto:twin"
+	ForumAutoRef  = "auto:ref"
+)

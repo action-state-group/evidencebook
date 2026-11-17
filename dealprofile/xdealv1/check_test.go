@@ -153,6 +153,11 @@ func TestPlacementRules(t *testing.T) {
 		}},
 		"an hour past 23":                  {"propose", func(_, body map[string]any) { body["agree_by"] = "2026-11-02T24:00:00Z" }},
 		"a block time that does not exist": {"admit", func(b, _ map[string]any) { b["at"] = "2026-13-01T00:00:00Z" }},
+		"a dispute with no forum":          {"dispute/dispute", func(_, body map[string]any) { delete(body, "forum") }},
+		"a ruling with no forum":           {"ruling", func(_, body map[string]any) { delete(body, "forum") }},
+		"an unknown forum class":           {"ruling", func(_, body map[string]any) { body["forum"] = "court:x" }},
+		"a forum with no id":               {"dispute/dispute", func(_, body map[string]any) { body["forum"] = "network:" }},
+		"a withdrawal with a forum":        {"dispute/withdrawal", func(_, body map[string]any) { body["forum"] = ForumAutoRef }},
 	} {
 		raw := edit(t, records[c.base], c.f)
 		err := Check(raw)

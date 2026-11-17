@@ -620,7 +620,8 @@
               "digest": "4444444444444444444444444444444444444444444444444444444444444444"
             }
           ],
-          "adjudicator": "adjudicator-key"
+          "adjudicator": "adjudicator-key",
+          "forum": "auto:ref"
         }
       },
       "valid": true
@@ -630,6 +631,7 @@
       "record": {
         "body": {
           "adjudicator": "adjudicator-key",
+          "forum": "auto:ref",
           "kind": "dispute",
           "row": "delivered",
           "statements": [
@@ -1109,6 +1111,7 @@
             "buyer": "6666666666666666666666666666666666666666666666666666666666666666",
             "seller": null
           },
+          "forum": "auto:ref",
           "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "final": true
         }
@@ -1121,6 +1124,7 @@
         "body": {
           "against": "seller",
           "final": true,
+          "forum": "auto:ref",
           "keys": {
             "buyer": "buyer-key",
             "seller": "seller-key"
