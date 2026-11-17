@@ -41,9 +41,8 @@ import (
 
 // ReceiveProfile is what a profile (today x-deal-v0's records) tells the
 // store about received records. The store calls it outside the shelf's
-// mutex, so it may read the shelf; it must not call Receive or Forget, and
-// must not write the shelf's file: Answered runs inside Receive's write
-// transaction.
+// mutex and outside any transaction of its own, so it may read the shelf; it
+// must not call Receive or Forget.
 type ReceiveProfile interface {
 	// Read checks a received record's signature and returns what the store
 	// needs of it. An error refuses the record as invalid.
@@ -56,9 +55,11 @@ type ReceiveProfile interface {
 	Admit(ctx context.Context, r ReceivedRecord) (bool, error)
 	// Answered reports whether our side has answered a stored offer (a
 	// journal reply or our agreement). The store asks about each offer it
-	// would drop, inside its write transaction, so an answer committed
-	// before is seen and one committed after comes after the drop. An
-	// answered offer leaves the offer bounds and is never dropped.
+	// would drop before its write transaction, under a mark of the holder's
+	// own books (their records and log entries); if the mark moved by the
+	// time the transaction holds the write lock, an answer may have been
+	// committed in between, so it asks again (ErrBusy after three tries).
+	// An answered offer leaves the offer bounds and is never dropped.
 	Answered(ctx context.Context, offer ReceivedRecord) (bool, error)
 	// ProofSender relates a stamp proof's key (the checkpoint key id that
 	// signed both its checkpoints) and the book log it names to the sender
@@ -118,6 +119,12 @@ type ReceiveBounds struct {
 	MaxOfferBytesPerSender int64
 	MaxOffers              int64
 	MaxOfferBytes          int64
+	// Evidence of forks an unsolicited offer makes, per sender (16) and in
+	// total (1024) rows, each at most two records' bytes. Past either the
+	// fork is still recorded, and ends the counted prefix, but its records
+	// are not kept as evidence.
+	MaxOfferEvidencePerSender int64
+	MaxOfferEvidence          int64
 }
 
 // DefaultReceiveBounds are the store's bounds when none is set.
@@ -125,6 +132,7 @@ var DefaultReceiveBounds = ReceiveBounds{
 	MaxRecordBytes: 1 << 20, MaxRecordsPerLog: 100000,
 	MaxOffersPerSender: 16, MaxOfferBytesPerSender: 4 << 20,
 	MaxOffers: 1024, MaxOfferBytes: 64 << 20,
+	MaxOfferEvidencePerSender: 16, MaxOfferEvidence: 1024,
 }
 
 func (b ReceiveBounds) withDefaults() ReceiveBounds {
@@ -133,6 +141,7 @@ func (b ReceiveBounds) withDefaults() ReceiveBounds {
 		{&b.MaxRecordBytes, &d.MaxRecordBytes}, {&b.MaxRecordsPerLog, &d.MaxRecordsPerLog},
 		{&b.MaxOffersPerSender, &d.MaxOffersPerSender}, {&b.MaxOfferBytesPerSender, &d.MaxOfferBytesPerSender},
 		{&b.MaxOffers, &d.MaxOffers}, {&b.MaxOfferBytes, &d.MaxOfferBytes},
+		{&b.MaxOfferEvidencePerSender, &d.MaxOfferEvidencePerSender}, {&b.MaxOfferEvidence, &d.MaxOfferEvidence},
 	} {
 		if *m.v <= 0 {
 			*m.v = *m.def
@@ -221,6 +230,14 @@ func newChangeSet() changeSet {
 	return changeSet{grew: map[string]bool{}, shrank: map[string]bool{}, forked: map[string]bool{}, covered: map[string]bool{}}
 }
 
+func (c changeSet) merge(o changeSet) {
+	for _, pair := range [][2]map[string]bool{{c.grew, o.grew}, {c.shrank, o.shrank}, {c.forked, o.forked}, {c.covered, o.covered}} {
+		for id := range pair[1] {
+			pair[0][id] = true
+		}
+	}
+}
+
 func (c changeSet) result() ReceiveChanges {
 	list := func(m map[string]bool) []string {
 		out := make([]string, 0, len(m))
@@ -267,29 +284,45 @@ func (s *Shelf) Receive(ctx context.Context, record []byte, proof *StampProof) (
 	if err := s.live(); err != nil {
 		return ReceiveResult{}, err
 	}
+	// Each part writes its changes to its own set, merged only once that
+	// part's transaction committed.
 	changes := newChangeSet()
 	var result ReceiveResult
 	var refusals []error
 	if record != nil {
-		out, err := s.receiveRecord(ctx, profile, record, changes)
+		part := newChangeSet()
+		out, err := s.receiveRecord(ctx, profile, record, part)
 		if err != nil {
 			return ReceiveResult{}, err
 		}
+		changes.merge(part)
 		result.Record = &out
 		refusals = append(refusals, out.Refused)
 	}
 	if proof != nil {
-		out, err := s.receiveProof(ctx, profile, *proof, changes)
+		part := newChangeSet()
+		out, err := s.receiveProof(ctx, profile, *proof, part)
 		if err != nil {
 			// The record part, if any, is committed: report it.
 			result.Changes = changes.result()
 			return result, err
 		}
+		changes.merge(part)
 		result.Proof = &out
 		refusals = append(refusals, out.Refused)
 	}
 	result.Changes = changes.result()
 	return result, errors.Join(refusals...)
+}
+
+// receiveBeforeCommit, when set (tests), runs at the end of each part's
+// transaction, before its commit.
+var receiveBeforeCommit func(ctx context.Context, part string)
+
+func beforeCommit(ctx context.Context, part string) {
+	if receiveBeforeCommit != nil {
+		receiveBeforeCommit(ctx, part)
+	}
 }
 
 // live is the released check of the received store, without the shelf's
@@ -418,7 +451,78 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 		return refuse(fmt.Errorf("%w: %s may not push this record", ErrRefused, r.SenderKey))
 	}
 	now := s.receiveNow()
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	for attempt := 1; ; attempt++ {
+		var plan offerPlan
+		var mark ownMark
+		if r.Offer {
+			// The profile is asked about the offers to drop before the
+			// transaction, never inside it, under a mark of the holder's own
+			// books: an answer committed after the mark changes it.
+			if mark, err = readOwnMark(ctx, s.db); err != nil {
+				return RecordOutcome{}, err
+			}
+			var refusal error
+			if plan, refusal, err = planOfferRoom(ctx, s.db, profile, bounds, r.SenderKey, int64(len(record))); err != nil {
+				return RecordOutcome{}, err
+			} else if refusal != nil {
+				return refuse(refusal)
+			}
+		}
+		err = s.receiveRecordTx(ctx, r, record, bounds, plan, mark, now, &out, changes)
+		if !errors.Is(err, errStaleMark) {
+			break
+		}
+		if attempt == offerAttempts {
+			return refuse(fmt.Errorf("%w: the holder's books kept changing while an offer was being made room for", ErrBusy))
+		}
+	}
+	var refusal errRefusal
+	if errors.As(err, &refusal) {
+		out.Stored, out.Counted, out.AskForBook = false, false, false
+		return refuse(refusal.err)
+	}
+	if err != nil {
+		return RecordOutcome{}, err
+	}
+	return out, nil
+}
+
+// offerAttempts is how many times Receive makes room for an offer while the
+// holder's books change under it before it refuses (ErrBusy).
+const offerAttempts = 3
+
+// errStaleMark rolls back a transaction whose offer plan an answer
+// committed since may have changed.
+var errStaleMark = errors.New("the holder's books changed")
+
+// ownMark is a monotonic mark of the holder's own books (the journal and
+// every deal book): their records and log entries. Received records are not
+// among them.
+type ownMark struct{ records, entries int64 }
+
+func readOwnMark(ctx context.Context, q queryer) (ownMark, error) {
+	var m ownMark
+	var logs int
+	if err := q.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM book_records), (SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'cll_entries')`).Scan(&m.records, &logs); err != nil || logs == 0 {
+		// A file whose logs have no table yet has no entry.
+		return m, err
+	}
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM cll_entries WHERE log_id IN (SELECT log_id FROM shelf_logs WHERE kind IN ('book', 'journal'))`).Scan(&m.entries)
+	return m, err
+}
+
+// receiveRecordTx stores an admitted record in one write transaction, with
+// the offer plan's drops; changes are written to the part's own set.
+func (s *Shelf) receiveRecordTx(ctx context.Context, r ReceivedRecord, record []byte, bounds ReceiveBounds, plan offerPlan, mark ownMark, now string, out *RecordOutcome, changes changeSet) error {
+	key := logKey{r.SenderKey, r.LogID}
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if r.Offer {
+			if got, err := readOwnMark(ctx, tx); err != nil {
+				return err
+			} else if got != mark {
+				return errStaleMark
+			}
+		}
 		var count int64
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM shelf_received WHERE sender_key = ? AND log_id = ?`, r.SenderKey, r.LogID).Scan(&count); err != nil {
 			return err
@@ -438,12 +542,21 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 		if err := remember(key); err != nil {
 			return err
 		}
-		if r.Offer {
-			if err := makeRoomForOffer(ctx, tx, profile, bounds, r.SenderKey, int64(len(record)), func(row receivedRow) error {
-				return remember(logKey{row.sender, row.log})
-			}); err != nil {
+		for _, digest := range plan.answered {
+			if _, err := tx.ExecContext(ctx, `UPDATE shelf_received SET offer = 0 WHERE digest = ?`, digest); err != nil {
 				return err
 			}
+		}
+		for _, row := range plan.drop {
+			if err := remember(logKey{row.sender, row.log}); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM shelf_received WHERE digest = ?`, row.digest); err != nil {
+				return err
+			}
+		}
+		if err := vacate(ctx, tx, plan.drop); err != nil {
+			return err
 		}
 		forks, err := forkEvidence(ctx, tx, r)
 		if err != nil {
@@ -455,13 +568,15 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 			return err
 		}
 		for _, f := range forks {
-			fresh, err := noteConflict(ctx, tx, key, EvidenceFork, f.position, f.held, record, now)
+			fresh, err := noteConflict(ctx, tx, key, EvidenceFork, f.position, f.held, record, now, r.Offer || f.offer, bounds)
 			if err != nil {
 				return err
 			}
 			if fresh {
 				changes.forked[r.DealID] = true
-				changes.forked[f.deal] = true
+				if f.deal != "" {
+					changes.forked[f.deal] = true
+				}
 			}
 		}
 		keys := make([]logKey, 0, len(before))
@@ -491,17 +606,9 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 		}
 		out.Stored = true
 		out.AskForBook = !out.Counted
+		beforeCommit(ctx, "record")
 		return nil
 	})
-	var refusal errRefusal
-	if errors.As(err, &refusal) {
-		out.Stored, out.Counted, out.AskForBook = false, false, false
-		return refuse(refusal.err)
-	}
-	if err != nil {
-		return RecordOutcome{}, err
-	}
-	return out, nil
 }
 
 type queryer interface {
@@ -541,57 +648,125 @@ func scanReceived(rows *sql.Rows) ([]receivedRow, error) {
 	return out, rows.Err()
 }
 
-// makeRoomForOffer drops the oldest unanswered offers until one more of
-// size bytes from sender fits both its sender's bounds and the total ones
-// (§3). Each offer it would drop is first put to the profile's Answered,
-// inside the write transaction: an answered one leaves the bounds instead.
-// Dropping an offer nobody answered is not a retention decision, so it
-// leaves no tombstone. An offer larger than a byte bound alone is refused.
-func makeRoomForOffer(ctx context.Context, tx *sql.Tx, profile ReceiveProfile, b ReceiveBounds, sender string, size int64, dropping func(receivedRow) error) error {
+// offerPlan is what making room for an offer does: the offers the profile
+// said were answered, which leave the offer bounds, and the unanswered ones
+// to drop, oldest first.
+type offerPlan struct {
+	answered []string
+	drop     []receivedRow
+}
+
+// planOfferRoom plans the room for one more offer of size bytes from sender
+// (§3): the oldest unanswered offers are dropped until it fits its sender's
+// bounds and the total ones. Each offer it would drop is first put to the
+// profile's Answered, outside any transaction; an answered one leaves the
+// bounds instead. Dropping an offer nobody answered is not a retention
+// decision, so it leaves no tombstone. An offer larger than a byte bound
+// alone is refused. Receive serializes every writer of the store, so the
+// plan holds until its transaction applies it.
+func planOfferRoom(ctx context.Context, q queryer, profile ReceiveProfile, b ReceiveBounds, sender string, size int64) (offerPlan, error, error) {
 	if size > b.MaxOfferBytesPerSender || size > b.MaxOfferBytes {
-		return errRefusal{fmt.Errorf("%w: an offer of %d bytes, over the store's offer bound", ErrOverLimit, size)}
+		return offerPlan{}, fmt.Errorf("%w: an offer of %d bytes, over the store's offer bound", ErrOverLimit, size), nil
 	}
+	rows, err := q.QueryContext(ctx, `SELECT `+receivedColumns+`, length(record) FROM shelf_received WHERE offer = 1 ORDER BY received_at, rowid`)
+	if err != nil {
+		return offerPlan{}, nil, err
+	}
+	type held struct {
+		row  receivedRow
+		size int64
+		gone bool
+	}
+	var offers []*held
+	for rows.Next() {
+		h := &held{}
+		if err := rows.Scan(&h.row.digest, &h.row.sender, &h.row.log, &h.row.position, &h.row.prev, &h.row.deal, &h.row.offer, &h.size); err != nil {
+			_ = rows.Close()
+			return offerPlan{}, nil, err
+		}
+		offers = append(offers, h)
+	}
+	if err := firstErr(rows.Err(), rows.Close()); err != nil {
+		return offerPlan{}, nil, err
+	}
+	var plan offerPlan
 	for _, scope := range []struct {
-		where         string
-		args          []any
+		of            func(*held) bool
 		count, nbytes int64
 	}{
-		{`offer = 1 AND sender_key = ?`, []any{sender}, b.MaxOffersPerSender, b.MaxOfferBytesPerSender},
-		{`offer = 1`, nil, b.MaxOffers, b.MaxOfferBytes},
+		{func(h *held) bool { return h.row.sender == sender }, b.MaxOffersPerSender, b.MaxOfferBytesPerSender},
+		{func(*held) bool { return true }, b.MaxOffers, b.MaxOfferBytes},
 	} {
 		for {
-			var count, held int64
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(length(record)), 0) FROM shelf_received WHERE `+scope.where, scope.args...).Scan(&count, &held); err != nil {
-				return err
+			var count, bytes int64
+			var oldest *held
+			for _, h := range offers {
+				if !h.gone && scope.of(h) {
+					count, bytes = count+1, bytes+h.size
+					if oldest == nil {
+						oldest = h
+					}
+				}
 			}
-			if count+1 <= scope.count && held+size <= scope.nbytes {
+			if count+1 <= scope.count && bytes+size <= scope.nbytes {
 				break
 			}
-			rows, err := tx.QueryContext(ctx, `SELECT `+receivedColumns+` FROM shelf_received WHERE `+scope.where+` ORDER BY received_at, rowid LIMIT 1`, scope.args...)
-			if err != nil {
-				return err
+			if oldest == nil {
+				return offerPlan{}, nil, fmt.Errorf("%w: the offer bounds count offers the store does not list", ErrCorrupt)
 			}
-			oldest, err := scanReceived(rows)
+			oldest.gone = true
+			answered, err := profile.Answered(ctx, oldest.row.record())
 			if err != nil {
-				return err
-			}
-			if len(oldest) == 0 {
-				return fmt.Errorf("%w: the offer bounds count offers the store does not list", ErrCorrupt)
-			}
-			answered, err := profile.Answered(ctx, oldest[0].record())
-			if err != nil {
-				return err
+				return offerPlan{}, nil, err
 			}
 			if answered {
-				if _, err := tx.ExecContext(ctx, `UPDATE shelf_received SET offer = 0 WHERE digest = ?`, oldest[0].digest); err != nil {
-					return err
-				}
-				continue
+				plan.answered = append(plan.answered, oldest.row.digest)
+			} else {
+				plan.drop = append(plan.drop, oldest.row)
 			}
-			if err := dropping(oldest[0]); err != nil {
+		}
+	}
+	return plan, nil, nil
+}
+
+// vacate remembers the positions deleted records held (dropped offers, or
+// records Forget deleted), so another record arriving there later is a fork,
+// and returns every proof of their logs that reaches a deleted position to
+// unchecked: its coverage needs the records again.
+func vacate(ctx context.Context, tx *sql.Tx, rows []receivedRow) error {
+	lowest := map[logKey]uint64{}
+	for _, r := range rows {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer) VALUES (?, ?, ?, ?, ?, ?)`,
+			r.sender, r.log, r.position, r.digest, r.deal, r.offer); err != nil {
+			return err
+		}
+		k := logKey{r.sender, r.log}
+		if p, ok := lowest[k]; !ok || r.position < p {
+			lowest[k] = r.position
+		}
+	}
+	for k, position := range lowest {
+		sizes, err := tx.QueryContext(ctx, `SELECT DISTINCT size FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? AND verified = ?`, k.sender, k.log, proofRecomputed)
+		if err != nil {
+			return err
+		}
+		var reset []uint64
+		for sizes.Next() {
+			var size uint64
+			if err := sizes.Scan(&size); err != nil {
+				_ = sizes.Close()
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM shelf_received WHERE digest = ?`, oldest[0].digest); err != nil {
+			if leaves, _ := mmr.LeafCount(size); leaves >= position {
+				reset = append(reset, size)
+			}
+		}
+		if err := firstErr(sizes.Err(), sizes.Close()); err != nil {
+			return err
+		}
+		for _, size := range reset {
+			if _, err := tx.ExecContext(ctx, `UPDATE shelf_received_proofs SET verified = ? WHERE sender_key = ? AND log_id = ? AND size = ?`, proofUnchecked, k.sender, k.log, size); err != nil {
 				return err
 			}
 		}
@@ -680,14 +855,18 @@ func receivedPrefix(ctx context.Context, q queryer, k logKey) (receivedPrefixSta
 // heldFork is a held record a new one forks from, at a position.
 type heldFork struct {
 	position uint64
-	held     []byte
-	deal     string
+	// held is the held record, or the digest of a deleted one.
+	held  []byte
+	deal  string
+	offer bool
 }
 
 // forkEvidence finds the held records r contradicts (§3): another record at
 // its position, or a record at the next position naming another
 // predecessor; and, at the position before, a record other than the
-// predecessor r names, or another record there naming another one.
+// predecessor r names, or another record there naming another one. A
+// record deleted at either position (shelf_received_vacated) claims its
+// digest there still, so another record arriving there is a fork.
 func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork, error) {
 	type claim struct {
 		position uint64
@@ -702,7 +881,7 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 		// The records that claim a digest at c.position: those held there,
 		// and those at the next position, by the predecessor they name.
 		rows, err := tx.QueryContext(ctx,
-			`SELECT digest, prev, position, deal_id, record FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position IN (?, ?) ORDER BY position, digest`,
+			`SELECT digest, prev, position, deal_id, offer, record FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position IN (?, ?) ORDER BY position, digest`,
 			r.SenderKey, r.LogID, c.position, c.position+1)
 		if err != nil {
 			return nil, err
@@ -711,8 +890,9 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 		for rows.Next() {
 			var digest, prev, deal string
 			var position uint64
+			var offer bool
 			var b []byte
-			if err := rows.Scan(&digest, &prev, &position, &deal, &b); err != nil {
+			if err := rows.Scan(&digest, &prev, &position, &deal, &offer, &b); err != nil {
 				_ = rows.Close()
 				return nil, err
 			}
@@ -721,11 +901,24 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 				claimed = prev
 			}
 			if claimed != c.digest && found == nil {
-				found = &heldFork{position: c.position, held: b, deal: deal}
+				found = &heldFork{position: c.position, held: b, deal: deal, offer: offer}
 			}
 		}
 		if err := firstErr(rows.Err(), rows.Close()); err != nil {
 			return nil, err
+		}
+		if found == nil {
+			var digest, deal string
+			var offer bool
+			switch err := tx.QueryRowContext(ctx,
+				`SELECT digest, deal_id, offer FROM shelf_received_vacated WHERE sender_key = ? AND log_id = ? AND position = ? AND digest != ? ORDER BY digest LIMIT 1`,
+				r.SenderKey, r.LogID, c.position, c.digest).Scan(&digest, &deal, &offer); {
+			case errors.Is(err, sql.ErrNoRows):
+			case err != nil:
+				return nil, err
+			default:
+				found = &heldFork{position: c.position, held: []byte(digest), deal: deal, offer: offer}
+			}
 		}
 		if found != nil {
 			out = append(out, *found)
@@ -735,23 +928,38 @@ func forkEvidence(ctx context.Context, tx *sql.Tx, r ReceivedRecord) ([]heldFork
 }
 
 // noteConflict records a conflict of one kind at a position or size of a
-// sender's log, with its evidence, the first time only: a sender sending
-// ever new conflicts at one place adds no evidence (§3's store stays
-// bounded). It reports whether this call recorded it.
-func noteConflict(ctx context.Context, tx *sql.Tx, k logKey, kind string, at uint64, a, b []byte, now string) (bool, error) {
+// sender's log the first time only, with its evidence: a sender sending ever
+// new conflicts at one place adds no evidence. Evidence an unsolicited offer
+// makes (offer) is bounded per sender and in total (ReceiveBounds): past
+// either bound the conflict is recorded, so the counted prefix still ends
+// there, but its evidence is not kept. It reports whether this call
+// recorded the conflict.
+func noteConflict(ctx context.Context, tx *sql.Tx, k logKey, kind string, at uint64, a, b []byte, now string, offer bool, bounds ReceiveBounds) (bool, error) {
 	var n int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM shelf_received_conflicts WHERE sender_key = ? AND log_id = ? AND kind = ? AND at = ?`, k.sender, k.log, kind, at).Scan(&n); err != nil || n > 0 {
 		return false, err
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO shelf_evidence (kind, a, b, noted_at) VALUES (?, ?, ?, ?)`, kind, a, b, now)
-	if err != nil {
-		return false, err
+	keep := true
+	if offer {
+		var mine, all int64
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COALESCE(SUM(sender_key = ?), 0), COUNT(*) FROM shelf_received_conflicts WHERE offer = 1 AND evidence_id IS NOT NULL`, k.sender).Scan(&mine, &all); err != nil {
+			return false, err
+		}
+		keep = mine < bounds.MaxOfferEvidencePerSender && all < bounds.MaxOfferEvidence
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return false, err
+	var id sql.NullInt64
+	if keep {
+		result, err := tx.ExecContext(ctx, `INSERT INTO shelf_evidence (kind, a, b, noted_at) VALUES (?, ?, ?, ?)`, kind, a, b, now)
+		if err != nil {
+			return false, err
+		}
+		if id.Int64, err = result.LastInsertId(); err != nil {
+			return false, err
+		}
+		id.Valid = true
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id) VALUES (?, ?, ?, ?, ?)`, k.sender, k.log, kind, at, id)
+	_, err := tx.ExecContext(ctx, `INSERT INTO shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id, offer) VALUES (?, ?, ?, ?, ?, ?)`, k.sender, k.log, kind, at, id, offer)
 	return err == nil, err
 }
 
@@ -803,7 +1011,7 @@ func checkHeldProofs(ctx context.Context, tx *sql.Tx, k logKey, p receivedPrefix
 		state := proofRecomputed
 		if !match {
 			state = proofContradicted
-			fresh, err := noteConflict(ctx, tx, k, EvidenceCheckpointRecords, h.size, h.cp, over, now)
+			fresh, err := noteConflict(ctx, tx, k, EvidenceCheckpointRecords, h.size, h.cp, over, now, false, ReceiveBounds{})
 			if err != nil {
 				return err
 			}
@@ -937,7 +1145,9 @@ func (s *Shelf) ReceivedRecordOf(ctx context.Context, digest string) (HeldRecord
 // Retention before now. Each deleted record leaves a tombstone, so reading
 // it reports it deleted, not missing. The deal's proofs, evidence and the
 // forks found stay: a fork's position still ends its sender's counted
-// prefix. It returns the digests deleted. A call racing Release may fail
+// prefix, another record arriving at a deleted position is a fork there,
+// and a proof reaching a deleted position grants no coverage until the
+// records it was checked against are held again. It returns the digests deleted. A call racing Release may fail
 // with database/sql's closed-database error rather than ErrReleased.
 func (s *Shelf) Forget(ctx context.Context, dealID string, now time.Time, settled func(ctx context.Context, dealID string) (bool, error)) ([]string, error) {
 	if dealID == "" || settled == nil {
@@ -961,19 +1171,24 @@ func (s *Shelf) Forget(ctx context.Context, dealID string, now time.Time, settle
 	deletedAt := s.receiveNow()
 	var deleted []string
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT digest, sender_key, received_at FROM shelf_received WHERE deal_id = ? AND received_at <= ? ORDER BY digest`, dealID, cutoff)
+		rows, err := tx.QueryContext(ctx, `SELECT `+receivedColumns+`, received_at FROM shelf_received WHERE deal_id = ? AND received_at <= ? ORDER BY digest`, dealID, cutoff)
 		if err != nil {
 			return err
 		}
-		type row struct{ digest, sender, at string }
+		type row struct {
+			receivedRow
+			at string
+		}
 		var all []row
+		var gone []receivedRow
 		for rows.Next() {
 			var r row
-			if err := rows.Scan(&r.digest, &r.sender, &r.at); err != nil {
+			if err := rows.Scan(&r.digest, &r.sender, &r.log, &r.position, &r.prev, &r.deal, &r.offer, &r.at); err != nil {
 				_ = rows.Close()
 				return err
 			}
 			all = append(all, r)
+			gone = append(gone, r.receivedRow)
 		}
 		if err := firstErr(rows.Err(), rows.Close()); err != nil {
 			return err
@@ -987,7 +1202,7 @@ func (s *Shelf) Forget(ctx context.Context, dealID string, now time.Time, settle
 			}
 			deleted = append(deleted, r.digest)
 		}
-		return nil
+		return vacate(ctx, tx, gone)
 	})
 	if err != nil {
 		return nil, err

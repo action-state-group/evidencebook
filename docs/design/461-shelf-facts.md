@@ -242,8 +242,12 @@ count over the returned facts.
   a fork (`fork`), a contradicting checkpoint (`checkpoint`), or a book checkpoint whose root the
   records held do not recompute (`checkpoint_records`), kept for the first conflict at each position
   or size only, which `shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id)` records
-  so that no later deletion undoes a fork. A proof grants coverage only once the records held reach
-  its size and recompute its root (`shelf_received_proofs.verified`).
+  so that no later deletion undoes a fork; evidence unsolicited offers make is bounded per sender and
+  in total, past which the conflict row is kept without its evidence. A proof grants coverage only once
+  the records held reach its size and recompute its root (`shelf_received_proofs.verified`).
+  `shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer)` keeps where each
+  deleted record was, so another record arriving there is a fork, and a deletion returns the proofs
+  that reach it to unchecked.
   Nothing in the store is appended to a book.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the

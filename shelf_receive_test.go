@@ -43,7 +43,9 @@ type testReceiveProfile struct {
 	// shelf would.
 	onAdmit    func(ReceivedRecord)
 	onAnswered func(ReceivedRecord)
-	proofErr   error
+	// afterAnswered runs once Answered has decided, before it returns.
+	afterAnswered func(ReceivedRecord)
+	proofErr      error
 }
 
 func newTestReceiveProfile(senders ...string) *testReceiveProfile {
@@ -82,8 +84,12 @@ func (p *testReceiveProfile) Answered(_ context.Context, r ReceivedRecord) (bool
 		p.onAnswered(r)
 	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.answered[r.Digest], nil
+	answered := p.answered[r.Digest]
+	p.mu.Unlock()
+	if p.afterAnswered != nil {
+		p.afterAnswered(r)
+	}
+	return answered, nil
 }
 
 func (p *testReceiveProfile) ProofSender(_ context.Context, keyID, _ string) (string, bool, error) {
@@ -912,4 +918,130 @@ func TestReceiveGrewNamesOnlyDealsWhoseRecordsWereCounted(t *testing.T) {
 	got := mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
 	assert.Equal(t, []string{"deal-1", "deal-2"}, got.Changes.Grew, "deal-3 is past the next gap")
 	assert.Empty(t, got.Changes.Shrank)
+}
+
+// R2-1: a proof verified against records Forget deleted grants no coverage
+// to other records arriving at the deleted positions: they are a fork.
+func TestReceiveAProofDoesNotCoverRecordsReplacingDeletedOnes(t *testing.T) {
+	ctx := context.Background()
+	h := newProofHolder(t, "1", "2")
+	other := newProofHolder(t, "x", "y")
+	f, s := newReceiveFixture(t, ReceiveConfig{Retention: time.Hour})
+	p := h.proof(t, AudienceCounterparty)
+	f.profile.proofKeys[keyOf(t, p)] = "alice"
+	for _, r := range h.records(t, "alice", "deal-1") {
+		mustReceive(t, s, r, nil)
+	}
+	require.Equal(t, []string{"deal-1"}, mustReceive(t, s, nil, &p).Changes.Covered)
+	_, err := s.Forget(ctx, "deal-1", f.clock.t.Add(2*time.Hour), func(context.Context, string) (bool, error) { return true, nil })
+	require.NoError(t, err)
+
+	var covered, forked []string
+	for _, r := range other.records(t, "alice", "deal-2") {
+		got := mustReceive(t, s, r, nil)
+		covered = append(covered, got.Changes.Covered...)
+		forked = append(forked, got.Changes.Forked...)
+	}
+	assert.Empty(t, covered, "the proof was checked against records no longer held")
+	assert.Contains(t, forked, "deal-2")
+	assert.Equal(t, uint64(1), prefixOf(t, s, "alice", "deal/a").ForkAt, "another record at a deleted position is a fork")
+
+	// A dropped offer's position is remembered the same way.
+	_, s2 := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 1}})
+	mustReceive(t, s2, rec(t, testRecord{Digest: dg("o1"), Sender: "bob", Log: "offers/x", Pos: 1, Deal: "offer-o1", Offer: true}), nil)
+	mustReceive(t, s2, offer(t, "bob", "o2", 0), nil) // drops o1
+	mustReceive(t, s2, rec(t, testRecord{Digest: dg("o1-other"), Sender: "bob", Log: "offers/x", Pos: 1, Deal: "offer-o3", Offer: true}), nil)
+	assert.Equal(t, uint64(1), prefixOf(t, s2, "bob", "offers/x").ForkAt)
+}
+
+// R2-2: a sender rotating log ids, each with two conflicting offers at
+// position 1, keeps no more evidence than the offer evidence bounds allow;
+// each fork still ends its log's counted prefix.
+func TestReceiveOfferForksAcrossRotatedLogsKeepBoundedEvidence(t *testing.T) {
+	ctx := context.Background()
+	_, s := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 4, MaxOfferEvidencePerSender: 2, MaxOfferEvidence: 3}})
+	push := func(sender, log, name string) {
+		mustReceive(t, s, rec(t, testRecord{Digest: dg(name), Sender: sender, Log: log, Pos: 1, Deal: "offer-" + name, Offer: true, Pad: strings.Repeat("x", 100)}), nil)
+	}
+	for i := 0; i < 6; i++ {
+		log := "offers/rot-" + string(rune('a'+i))
+		push("bob", log, log+"-1")
+		push("bob", log, log+"-2")
+		assert.Equal(t, uint64(1), prefixOf(t, s, "bob", log).ForkAt)
+	}
+	for i := 0; i < 3; i++ {
+		log := "offers/carol-" + string(rune('a'+i))
+		push("carol", log, log+"-1")
+		push("carol", log, log+"-2")
+	}
+	evidence, err := s.Evidence(ctx)
+	require.NoError(t, err)
+	assert.Len(t, evidence, 3, "two of bob's, one of carol's, then the total bound")
+	var bytes int
+	for _, e := range evidence {
+		bytes += len(e.A) + len(e.B)
+	}
+	assert.LessOrEqual(t, bytes, 3*2*600)
+}
+
+// R2-3: Answered never runs inside Receive's transaction. A journal reply
+// appended after Answered said no, and before the transaction, moves the
+// mark: the drop is planned again, keeps the answered offer, and the
+// append does not wait on Receive's write lock.
+func TestReceiveRetriesTheDropWhenTheJournalChangesUnderIt(t *testing.T) {
+	ctx := context.Background()
+	f := &receiveFixture{shelfFixture: newShelfFixture(t), profile: newTestReceiveProfile("alice")}
+	f.cfg.Receive = ReceiveConfig{Profile: f.profile, Bounds: ReceiveBounds{MaxOffersPerSender: 1}}
+	s := f.open(t)
+	c, _ := newStampCadence(t, s)
+	mustAppend(t, mustOpenBook(t, s, "deal/ours"), observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	journal, err := s.Journal(ctx)
+	require.NoError(t, err)
+
+	mustReceive(t, s, offer(t, "bob", "o1", 0), nil)
+	asked := 0
+	var appendErr error
+	f.profile.afterAnswered = func(r ReceivedRecord) {
+		asked++
+		if asked == 1 {
+			// Our reply to o1, committed after Answered said no.
+			_, appendErr = journal.Append(ctx, observation("reply", r.Digest))
+			f.profile.mu.Lock()
+			f.profile.answered[r.Digest] = true
+			f.profile.mu.Unlock()
+		}
+	}
+	withinTime(t, func() { mustReceive(t, s, offer(t, "bob", "o2", 0), nil) })
+	require.NoError(t, appendErr, "the journal append does not wait on Receive")
+	assert.Equal(t, 2, asked, "the drop was planned again")
+	_, err = s.ReceivedRecordOf(ctx, dg("o1"))
+	assert.NoError(t, err, "the answered offer is kept")
+}
+
+// R2-4: a proof part whose transaction does not commit adds no changes;
+// the committed record part's changes stay.
+func TestReceiveAFailedProofCommitReportsNoProofChanges(t *testing.T) {
+	h := newProofHolder(t, "1", "2")
+	f, s := newReceiveFixture(t, ReceiveConfig{})
+	p := h.proof(t, AudienceCounterparty)
+	f.profile.proofKeys[keyOf(t, p)] = "alice"
+	records := h.records(t, "alice", "deal-1")
+	for _, r := range records[:len(records)-1] {
+		mustReceive(t, s, r, nil)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	receiveBeforeCommit = func(_ context.Context, part string) {
+		if part == "proof" {
+			cancel()
+		}
+	}
+	t.Cleanup(func() { receiveBeforeCommit = nil })
+	got, err := s.Receive(ctx, records[len(records)-1], &p)
+	require.Error(t, err)
+	assert.Equal(t, []string{"deal-1"}, got.Changes.Grew, "the record part committed")
+	assert.Empty(t, got.Changes.Covered, "the proof part did not")
+	assert.Zero(t, proofRows(t, s))
 }

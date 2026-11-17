@@ -41,4 +41,8 @@ var (
 	// ErrDeleted reports a received record deleted under the holder's
 	// retention: the store keeps its tombstone, so it is deleted, not missing.
 	ErrDeleted = errors.New("evidencebook: deleted")
+	// ErrBusy reports a received offer refused because the holder's books
+	// kept changing while room was made for it (Shelf.Receive): sending it
+	// again later may succeed.
+	ErrBusy = errors.New("evidencebook: busy; try again")
 )

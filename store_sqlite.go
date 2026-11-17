@@ -85,9 +85,11 @@ CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1
 -- accepted, and whether the records held recomputed its root (0 not yet, 1
 -- recomputed, 2 contradicted); the tombstone a deleted record leaves; the
 -- evidence of a fork, a contradicting checkpoint or a checkpoint the records
--- do not recompute; and each conflict found, once per position (a fork) or
--- size (a checkpoint), which no deletion undoes. Nothing here is appended to
--- a book.
+-- do not recompute; each conflict found, once per position (a fork) or
+-- size (a checkpoint), which no deletion undoes (its evidence_id is null when
+-- the offer evidence bound kept no evidence); and the position and digest of
+-- every deleted record, so another record arriving there is a fork. Nothing
+-- here is appended to a book.
 CREATE TABLE IF NOT EXISTS shelf_received (
 	digest      TEXT    PRIMARY KEY,
 	sender_key  TEXT    NOT NULL,
@@ -133,8 +135,18 @@ CREATE TABLE IF NOT EXISTS shelf_received_conflicts (
 	log_id      TEXT    NOT NULL,
 	kind        TEXT    NOT NULL,
 	at          INTEGER NOT NULL,
-	evidence_id INTEGER NOT NULL,
+	evidence_id INTEGER,
+	offer       INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (sender_key, log_id, kind, at)
+);
+CREATE TABLE IF NOT EXISTS shelf_received_vacated (
+	sender_key TEXT    NOT NULL,
+	log_id     TEXT    NOT NULL,
+	position   INTEGER NOT NULL,
+	digest     TEXT    NOT NULL,
+	deal_id    TEXT    NOT NULL,
+	offer      INTEGER NOT NULL,
+	PRIMARY KEY (sender_key, log_id, position, digest)
 );
 `
 

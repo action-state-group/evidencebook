@@ -284,7 +284,7 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 			if cp.Root != v.BookCheckpoint.Root {
 				// Refused, and the evidence kept: the transaction commits.
 				out.Refused = fmt.Errorf("%w: the book checkpoint of %s at %d contradicts one held from %s", ErrInvalid, v.Fact.LogID, v.Fact.Size, sender)
-				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpoint, v.Fact.Size, h.book, p.BookCheckpoint, now)
+				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpoint, v.Fact.Size, h.book, p.BookCheckpoint, now, false, ReceiveBounds{})
 				forked(fresh)
 				return err
 			}
@@ -297,7 +297,7 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 			}
 			if !match {
 				out.Refused = fmt.Errorf("%w: the records held from %s in %s do not recompute the book checkpoint at %d", ErrInvalid, sender, v.Fact.LogID, v.Fact.Size)
-				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpointRecords, v.Fact.Size, p.BookCheckpoint, over, now)
+				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpointRecords, v.Fact.Size, p.BookCheckpoint, over, now, false, ReceiveBounds{})
 				forked(fresh)
 				return err
 			}
@@ -320,6 +320,7 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 			return err
 		}
 		report(before, after, changes)
+		beforeCommit(ctx, "proof")
 		return nil
 	})
 	if err != nil {

@@ -6,8 +6,12 @@
   store acknowledges a duplicate, stores a gap without counting it until it is filled, keeps both records of a
   fork as evidence and ends the counted prefix before it for good (a deletion never undoes it; evidence is kept
   once per position), and bounds record size, records per book and unanswered unsolicited offers (dropping the
-  oldest first). An offer is put to the profile's `Answered` inside the write transaction before it is dropped.
-  A proof is refused, and its evidence kept, when it contradicts a held proof at the same size or the records
+  oldest first). Before an offer is dropped the profile's `Answered` is asked, outside the write transaction,
+  under a mark of the holder's own books; a mark that moved before the transaction plans the drop again
+  (`ErrBusy` after three tries). Evidence unsolicited offers make is bounded per sender and in total
+  (`ReceiveBounds`); past the bound a fork still ends the prefix. A record arriving where a deleted record was
+  (`Forget`, or a dropped offer) is a fork there, and a deletion returns the proofs reaching it to unchecked. A
+  proof is refused, and its evidence kept, when it contradicts a held proof at the same size or the records
   held; every accepted proof is kept. `Cadence.StampProof` builds a proof for an audience and `VerifyStampProof`
   checks one. `Shelf.Forget` deletes a settled deal's records under the holder's `Retention` (by default the
   life of the shelf, so never), leaving tombstones that read as `ErrDeleted`. `CountedPrefix`,
