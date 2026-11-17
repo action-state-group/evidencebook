@@ -168,7 +168,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Python CLL, the AAC bundle verifier and capsule-emit
-        run: python -m pip install "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0"
+        run: python -m pip install "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0"
       - name: Verify a Go-produced bundle with the Python reference
         shell: bash
         run: |
@@ -375,7 +375,7 @@ jobs:
       - name: Build the Go side and install the Python side
         run: |
           go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
-          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5"
+          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5"
           printf '#!/bin/sh\nexec python "%s/test/interop/python-evidencebook/shelf.py" "$@"\n' "$PWD" > "$RUNNER_TEMP/shelf-py"
           chmod +x "$RUNNER_TEMP/shelf-py"
       - name: Write, continue and compare, in every pair of languages
@@ -518,7 +518,7 @@ jobs:
           go build -o "$RUNNER_TEMP/row-status-go" ./test/interop/row-status
           cargo build --locked --manifest-path rust/Cargo.toml -p evidencebook-interop --bin row-status
           cp rust/target/debug/row-status "$RUNNER_TEMP/row-status-rs"
-          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5"
+          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5"
       - name: Compare on random inputs
         run: |
           for seed in 1 2 3 4 5; do
@@ -666,7 +666,7 @@ jobs:
       # jsonschema 4.23.0 is the reference checker's, whose wording the
       # profile's negative fixtures quote (the deal-profile job pins it too).
       - name: Install the package and its pinned dependencies
-        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5" "jsonschema==4.23.0"
+        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5" "jsonschema==4.23.0"
       # evidence.evaluate runs capsule-engine go/v0.3.0's `admission evaluate`
       # (capsule-engine#278); build it and hold it to the shared admission vectors.
       - name: Check out capsule-engine at go/v0.3.0

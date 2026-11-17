@@ -86,7 +86,7 @@ def main(directory: str, out_path: str, profile: str = eb.PROFILE) -> None:
     out: dict = {} if profile == eb.PROFILE else {"profile": profile}
     out |= {
         "responder_key": seeded(RESPONDER_LABEL).public_key().hex(),
-        "log_keys": [{"iss": cp.log_id, "kid": cp.key_id, "sub": f"{cp.log_id}#{cp.tree_size}"}
+        "log_keys": [{"iss": cp.log_id, "kid": cp.key_id, "sub": cp.log_id}
                      for cp in book.checkpoints()],
         "exchanges": {},
         "invariance_artifacts_hex": {},
