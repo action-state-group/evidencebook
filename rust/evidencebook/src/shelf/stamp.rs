@@ -496,9 +496,13 @@ impl Cadence {
     ) -> Result<PendingFact, ShelfError> {
         let log_id = log.log().log_id.clone();
         let book_id = self.shelf.book_id_of(log)?;
-        let values = match &self.cfg.status {
-            Some(status) => status(&book_id, &log_id).map_err(ShelfError::Invalid)?,
-            None => None,
+        // Only a book is described by a profile; a host log's fact is always
+        // profile `none` with the empty link value and {} (§2.4, §4).
+        let values = match (&self.cfg.status, log) {
+            (Some(status), CadenceLog::Book(_)) => {
+                status(&book_id, &log_id).map_err(ShelfError::Invalid)?
+            }
+            _ => None,
         };
         let values = values.unwrap_or_else(|| StatusValues {
             profile: PROFILE_NONE.into(),
@@ -554,23 +558,23 @@ impl Cadence {
         };
         let mut leaves = TickLeaves::default();
         for f in &facts {
+            let input = FactInput {
+                profile: &f.profile,
+                book_id: &f.book_id,
+                log_id: &f.log_id,
+                size: f.size,
+                checkpoint_sha256: &f.checkpoint_sha256,
+                prev_fact_size: f.prev_fact_size,
+                last_received: f.last_received.clone(),
+                checked_over: f.checked_over.clone(),
+                status: f.status.clone(),
+            };
+            // Checked before its salts are drawn, as Go's newBookFact does,
+            // so a refused input consumes no random bytes.
+            shelf_facts::check_book_fact(&input).map_err(invalid)?;
             let link_salt = state.random.bytes(32)?;
             let status_salt = state.random.bytes(32)?;
-            let fact = book_fact(
-                FactInput {
-                    profile: &f.profile,
-                    book_id: &f.book_id,
-                    log_id: &f.log_id,
-                    size: f.size,
-                    checkpoint_sha256: &f.checkpoint_sha256,
-                    prev_fact_size: f.prev_fact_size,
-                    last_received: f.last_received.clone(),
-                    checked_over: f.checked_over.clone(),
-                    status: f.status.clone(),
-                },
-                [&link_salt, &status_salt],
-            )
-            .map_err(invalid)?;
+            let fact = book_fact(input, [&link_salt, &status_salt]).map_err(invalid)?;
             let (_, doc) = entry_id(&fact.doc).map_err(invalid)?;
             batch.entries.push(BatchEntry {
                 kind: FACT_KIND_BOOK.into(),
@@ -725,7 +729,8 @@ impl Cadence {
             )?;
             last_seq = seq;
         }
-        let cp = self.log.checkpoint(tick.at)?;
+        // One checkpoint over the whole batch, however long.
+        let cp = self.log.checkpoint_whole(tick.at)?;
         tick.entry_seq = last_seq;
         tick.checkpoint_size = cp.tree_size;
         tick.checkpoint = cp.statement;
@@ -1150,6 +1155,132 @@ mod tests {
             shelf.openings(&book_id, "stranger"),
             Err(ShelfError::Invalid(_))
         ));
+        shelf.release().unwrap();
+    }
+
+    #[test]
+    fn checkpoint_whole_cuts_one_checkpoint_over_a_long_batch() {
+        use cll::log::WitnessStateStore as _;
+        let dir = tempfile::tempdir().unwrap();
+        let log = crate::shelf::log::Log::open(
+            &dir.path().join("log.db"),
+            "deal-cadence/0123456789abcdef",
+            &key("checkpoint"),
+            &["https://witness.example".to_string()],
+            true,
+        )
+        .unwrap();
+        for i in 0..2500u64 {
+            let mut value = [0u8; 32];
+            value[24..].copy_from_slice(&(i + 1).to_be_bytes());
+            log.append(&value, tick_time()).unwrap();
+        }
+        let cp = log.checkpoint_whole(tick_time()).unwrap();
+        assert_eq!(cp.tree_size, crate::shelf::cadence::mmr_size(2500));
+        let pending = log
+            .store
+            .pending_witnesses(crate::shelf::log::timestamp(minutes(60)), 1)
+            .unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            pending[0].checkpoint_size, cp.tree_size,
+            "the first delivery queued is the whole batch's checkpoint, not one over part of it"
+        );
+        log.release().unwrap();
+    }
+
+    #[test]
+    fn a_refused_fact_draws_no_salt() {
+        let a = tempfile::tempdir().unwrap();
+        let shelf = open(&a.path().join("shelf.db"));
+        let expected = shelf.lock().random.bytes(32).unwrap();
+        shelf.release().unwrap();
+
+        let b = tempfile::tempdir().unwrap();
+        let shelf = open(&b.path().join("shelf.db"));
+        let (c, _) = stamp_cadence(&shelf);
+        let refused = PendingFact {
+            profile: "deal".into(),
+            book_id: "not a digest".into(),
+            log_id: "deal/a".into(),
+            size: 1,
+            checkpoint_sha256: "00".repeat(32),
+            prev_fact_size: 0,
+            last_received: None,
+            checked_over: Vec::new(),
+            status: None,
+            statement: None,
+            grown: true,
+        };
+        let mut state = shelf.lock();
+        let built = c.build_stamp_locked(
+            &mut state,
+            1,
+            tick_time(),
+            tick_time(),
+            vec![refused],
+            Vec::new(),
+        );
+        assert!(matches!(built, Err(ShelfError::Invalid(_))));
+        assert_eq!(
+            state.random.bytes(32).unwrap(),
+            expected,
+            "the stream is where it was"
+        );
+        drop(state);
+        shelf.release().unwrap();
+    }
+
+    #[test]
+    fn a_host_log_is_never_asked_for_its_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let shelf = open(&dir.path().join("shelf.db"));
+        let (c, values) = stamp_cadence(&shelf);
+        append(&shelf, "deal/a", "1");
+        let host = shelf.host_log("legacy/old", true).unwrap();
+        host.write(|stores| -> Result<(), ShelfError> {
+            use cll::log::EntryStore as _;
+            stores
+                .log
+                .append(&cll::log::AppendInput {
+                    value: Sha256::digest(b"legacy").to_vec(),
+                    appended_at: crate::shelf::log::timestamp(tick_time()),
+                })
+                .map_err(|e| ShelfError::Log(e.to_string()))?;
+            Ok(())
+        })
+        .unwrap();
+        // The status function answers for every log, the host log included.
+        for id in ["deal/a", "legacy/old"] {
+            values
+                .lock()
+                .unwrap()
+                .insert(id.into(), json!({"rows": [{"id": "x"}]}));
+        }
+        c.migrate(tick_time()).unwrap();
+        let fact_of = |log_id: &str| -> (Value, Value, Value) {
+            let (doc, lo, so): (Vec<u8>, Vec<u8>, Vec<u8>) = shelf
+                .shared()
+                .db()
+                .query_row(
+                    "SELECT doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind = ?",
+                    params![log_id, FACT_KIND_BOOK],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .unwrap();
+            (
+                serde_json::from_slice(&doc).unwrap(),
+                opening_value(&lo).unwrap(),
+                opening_value(&so).unwrap(),
+            )
+        };
+        let (book, _, book_status) = fact_of("deal/a");
+        assert_eq!(book["profile"], "deal");
+        assert_eq!(book_status, json!({"rows": [{"id": "x"}]}));
+        let (host_fact, link, status) = fact_of("legacy/old");
+        assert_eq!(host_fact["profile"], PROFILE_NONE);
+        assert_eq!(link, json!({"checked_over": [], "last_received": null}));
+        assert_eq!(status, json!({}));
         shelf.release().unwrap();
     }
 

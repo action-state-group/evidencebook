@@ -251,6 +251,12 @@ class SqliteSubstrate(CLLSubstrate):
         # entry is due the moment the book asks.
         self._runner = CheckpointRunner(backend, _RunnerSigner(checkpoint_key), log_id, witness_ids=tuple(witness_ids),
                                         cadence_entries=1, cadence_age=timedelta(hours=1), scan_limit=MAX_SCAN_LIMIT)
+        # Indexes pending entries into the log's MMR and never checkpoints (its
+        # cadence is never due, and it has no witnesses), so checkpoint_whole
+        # cuts one checkpoint over a batch longer than one runner scan.
+        self._indexer = CheckpointRunner(backend, _RunnerSigner(checkpoint_key), log_id, witness_ids=(),
+                                         cadence_entries=2**64 - 1, cadence_age=timedelta.max,
+                                         scan_limit=MAX_SCAN_LIMIT)
         self._sync()
         self._latest = self._stored_checkpoint()
 
@@ -352,6 +358,16 @@ class SqliteSubstrate(CLLSubstrate):
                 raise NotFoundError(f"log {self.log_id} has no checkpoint yet")
             self._latest = latest
             return latest
+
+    def checkpoint_whole(self, now: datetime) -> Checkpoint:
+        """:meth:`checkpoint` over everything the log holds, as one checkpoint
+        (Go ``CheckpointWhole``): every pending entry is indexed first, without
+        a checkpoint, so a batch longer than one runner scan (``MAX_SCAN_LIMIT``
+        entries) is never covered in part (evidencebook#461, a stamp's batch)."""
+        with self._mirror:
+            while self._indexer.run_once(utc(now)):
+                pass
+        return self.checkpoint(now)
 
     def inclusion_proof(self, seq: int, at: Checkpoint) -> bytes:
         with self._mirror:

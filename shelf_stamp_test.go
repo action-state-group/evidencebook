@@ -6,7 +6,11 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
+
+	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"sync"
 	"testing"
 	"time"
@@ -301,4 +305,28 @@ func TestNoTickWhileAMigrationIsUnderWay(t *testing.T) {
 	require.NoError(t, c.Migrate(ctx, tickTime))
 	beat := mustTick(t, c, tickTime.Add(2*time.Hour))
 	assert.NotNil(t, beat.Leaves.Stamp)
+}
+
+// A batch longer than one runner scan (cll.MaxScanLimit) gets one
+// checkpoint, never one over part of it: one pending witness delivery, at the
+// full size.
+func TestCheckpointWholeCutsOneCheckpointOverALongBatch(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "log.db")
+	log, err := openCLLSQLite(path, "deal-cadence/0123456789abcdef", seededKey(11), []string{"https://witness.example"})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = log.Release() })
+	for i := 0; i < 2500; i++ {
+		_, err := log.Append(ctx, fmt.Sprintf("%064x", i+1), tickTime)
+		require.NoError(t, err)
+	}
+	cp, err := log.CheckpointWhole(ctx, tickTime)
+	require.NoError(t, err)
+	assert.Equal(t, mmrSize(2500), cp.TreeSize)
+	pending, err := log.log.(interface {
+		PendingWitnesses(context.Context, time.Time, int) ([]cll.WitnessState, error)
+	}).PendingWitnesses(ctx, tickTime.Add(time.Hour), 1)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, cp.TreeSize, pending[0].CheckpointSize, "the first delivery queued is the whole batch's checkpoint, not one over part of it")
 }

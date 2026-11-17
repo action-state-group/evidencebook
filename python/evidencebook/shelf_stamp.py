@@ -271,7 +271,11 @@ def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None) -> _Pendin
     shelf = c._shelf
     book_id = _book_id_of(shelf, log)
     profile, link, status = shelf_facts.PROFILE_NONE, None, None
-    if c._cfg.status is not None:
+    # Only a book is described by a profile; a host log's fact is always
+    # profile "none" with the empty link value and {} (§2.4, §4).
+    from .shelf import _BookLog
+
+    if isinstance(log, _BookLog) and c._cfg.status is not None:
         claimed = c._cfg.status(book_id, log.log_id)
         if claimed is not None:
             profile, link, status = claimed
@@ -440,7 +444,8 @@ def finish_stamp_locked(c: Any, tick: Any) -> Any:
                        (seq, e.kind, e.book_id, e.log_id, e.doc, e.link_opening or None, e.status_opening or None,
                         tick.n))
         last_seq = seq
-    cp = c._log.checkpoint(tick.at)
+    # One checkpoint over the whole batch, however long (Go CheckpointWhole).
+    cp = c._log.checkpoint_whole(tick.at)
     with shelf._tx() as db:
         db.execute("UPDATE cadence_ticks SET entry_seq = ?, checkpoint_size = ?, checkpoint = ? WHERE tick = ?",
                    (last_seq, cp.tree_size, cp.statement, tick.n))

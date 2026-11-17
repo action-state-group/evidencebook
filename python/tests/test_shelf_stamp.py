@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 from capsule_emit.artifact.sqlite import SqliteArtifactStore
+from cll.log import AppendInput
 
 from evidencebook import Entry, OBSERVED_EVENT
 from evidencebook import shelf_stamp
@@ -350,3 +351,55 @@ def test_no_tick_while_a_migration_is_under_way(fx):
         c.migrate(START)
         beat = c.tick(START + timedelta(hours=2))
         assert beat.ticked and beat.tick.leaves.stamp is not None
+
+
+def test_checkpoint_whole_cuts_one_checkpoint_over_a_long_batch(tmp_path):
+    """A batch longer than one runner scan (MAX_SCAN_LIMIT) gets one
+    checkpoint, never one over part of it: the first pending witness delivery
+    is at the full size (Go TestCheckpointWholeCutsOneCheckpointOverALongBatch)."""
+    from cll.log import MAX_SCAN_LIMIT
+
+    from evidencebook.shelf import SqliteSubstrate, mmr_size
+
+    log = SqliteSubstrate.open(str(tmp_path / "log.db"), "deal-cadence/0123456789abcdef", script.CHECKPOINT_KEY,
+                               ["test-witness"])
+    try:
+        n = 2500
+        assert n > 2 * MAX_SCAN_LIMIT
+        for i in range(n):
+            log.append(f"{i + 1:064x}", START)
+        cp = log.checkpoint_whole(START)
+        assert cp.tree_size == mmr_size(n)
+        pending = log.backend.pending_witnesses(START + timedelta(hours=1), 1)
+        assert len(pending) == 1
+        assert pending[0].checkpoint_size == cp.tree_size, \
+            "the first delivery queued is the whole batch's checkpoint, not one over part of it"
+    finally:
+        log.close()
+
+
+def test_only_a_book_is_asked_for_its_status(fx):
+    """A status function that answers for every log changes a book's fact and
+    never a host log's: profile "none", the empty link value and {}."""
+    asked = []
+
+    def every(book_id: str, log_id: str):
+        asked.append(log_id)
+        return "deal", {"last_received": None, "checked_over": ["ab" * 32]}, {"rows": [{"id": "x"}]}
+
+    with fx.open() as shelf:
+        c = shelf.cadence(CadenceConfig(log_id="deal-cadence/0123456789abcdef", ended=lambda _: False,
+                                        witnesses=script.DIRECTORY, status=every))
+        shelf.open("deal/a").append(obs("a", "1"))
+        shelf.host_log("legacy/x", True).write(
+            lambda stores: stores.log.append(AppendInput(hashlib.sha256(b"x").digest(), START)))
+        c.migrate(START)
+        assert asked == ["deal/a"]
+        book, host = shelf_stamp._last_fact_of(shelf, "deal/a"), shelf_stamp._last_fact_of(shelf, "legacy/x")
+        assert book.fact["profile"] == "deal" and book.status == {"rows": [{"id": "x"}]}
+        assert book.link == {"last_received": None, "checked_over": ["ab" * 32]}
+        assert host.fact["profile"] == "none"
+        assert host.link == {"last_received": None, "checked_over": []} and host.status == {}
+        # The same answers again: no new fact for either.
+        quiet = c.stamp(START + timedelta(minutes=1)).tick
+        assert FACT_KIND_BOOK not in entries_of_tick(shelf, quiet.n)

@@ -364,7 +364,9 @@ func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, las
 		return pendingFact{}, err
 	}
 	profile, link, status := ProfileNone, LinkValue{}, json.RawMessage(nil)
-	if c.cfg.Status != nil {
+	// Only a book is described by a profile; a host log's fact is always
+	// profile "none" with the empty link value and {} (§2.4, §4).
+	if _, isBook := log.(bookLog); isBook && c.cfg.Status != nil {
 		p, l, st, ok, err := c.cfg.Status.Values(ctx, bookID, log.LogID())
 		if err != nil {
 			return pendingFact{}, err
@@ -617,7 +619,7 @@ func (c *Cadence) finishStampLocked(ctx context.Context, tick CadenceTick) (Tick
 		}
 		lastSeq = seq
 	}
-	cp, err := c.log.Checkpoint(ctx, tick.At)
+	cp, err := c.log.CheckpointWhole(ctx, tick.At)
 	if err != nil {
 		return TickResult{}, err
 	}
