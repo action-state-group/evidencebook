@@ -125,4 +125,6 @@ expects `{"witnessed": <bool>}`. The phase covers a record whose only covering r
 registration time, the plain case, a witness not named, a position no fact covers, position 0,
 the journal, a later checkpoint covering an earlier fact, the same witness again with an
 earlier time (kept) and with none (ignored), and a handover witnessed once its anchor's receipt
-has a time.
+has a time. Each runner's `record-time DIR` runs the phase on a shelf after the migrate phase
+and fails on any outcome that is not the vector's; the `shelf-interlock` job runs it in every
+pair of languages and compares every dump afterwards.

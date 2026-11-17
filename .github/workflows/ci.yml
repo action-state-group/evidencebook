@@ -443,6 +443,30 @@ jobs:
             done
             echo "handed over by $holder: every replay is the vector's"
           done
+      - name: Run the record time phase on a shelf another language migrated, and compare, in every pair of languages
+        # evidencebook#461 §2.6: each language runs testdata/shelf/record-time.json
+        # (witness receipts with and without a registration time, RecordTime
+        # and a handover) on a shelf another language migrated, every step's
+        # outcome the vector's and every dump after it equal to
+        # testdata/shelf/after-record-time.json.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for migrator in $langs; do
+            for runner in $langs; do
+              dir="$work/$migrator-$runner"
+              "$RUNNER_TEMP/shelf-$migrator" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$migrator" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$migrator" migrate "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$runner" record-time "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-record-time.$reader.json" < /dev/null
+                cmp testdata/shelf/after-record-time.json "$dir/after-record-time.$reader.json"
+              done
+              echo "migrated by $migrator, record time run by $runner: every outcome and dump is the vector's"
+            done
+          done
       - name: Finish a crash Go planted, in every language
         # evidencebook#461 §7: a tree tick stored but not finished beside an
         # empty host log, and a migration stopped in its step 4; each language

@@ -58,6 +58,7 @@ from evidencebook.shelf_handover import Handover, verify_handover
 from evidencebook.signer import Ed25519Signer
 
 SCRIPT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "script.json").read_text())
+RECORD_TIME = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "record-time.json").read_text())
 HOST = SCRIPT["host_parameters"]
 CADENCE = HOST["cadence"]
 KEYS = SCRIPT["keys"]
@@ -442,7 +443,7 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|recover|dump|handover|hold|try DIR [ARG]\n"
+        print("usage: shelf.py write|continue|migrate|recover|dump|handover|record-time|hold|try DIR [ARG]\n"
               "       shelf.py verify-handover FILE", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
@@ -462,6 +463,12 @@ def main(args: list[str]) -> int:
         sys.stdout.buffer.write(dump(directory))
     elif command == "handover":
         sys.stdout.buffer.write(handover(directory))
+    elif command == "record-time":
+        steps = RECORD_TIME["steps"]
+        for i, (step, got) in enumerate(zip(steps, run_record_time(path, steps)), start=1):
+            if got != step.get("expect"):
+                print(f"record time step {i} ({step['op']}): got {got!r}, the vector expects {step.get('expect')!r}", file=sys.stderr)
+                return 1
     elif command == "verify-handover":
         sys.stdout.buffer.write(verify_handover_file(directory))
     elif command in ("hold", "try"):

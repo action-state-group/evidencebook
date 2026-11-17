@@ -243,15 +243,18 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if book || host || kind != "" {
 		return nil, fmt.Errorf("%w: %s is a %s log, not the cadence log", ErrInvalid, cfg.LogID, map[bool]string{true: "book", false: "host"}[book || kind == logKindBook])
 	}
+	// Receipts held before shelf_receipts existed are kept first, so a
+	// failed backfill leaves no cadence log open.
+	c := &Cadence{shelf: s, cfg: cfg}
+	if err := c.backfillReceiptsLocked(ctx); err != nil {
+		return nil, err
+	}
 	log, err := openCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
 	if err != nil {
 		return nil, err
 	}
 	s.cadenceLogs = append(s.cadenceLogs, log)
-	c := &Cadence{shelf: s, cfg: cfg, log: log}
-	if err := c.backfillReceiptsLocked(ctx); err != nil {
-		return nil, err
-	}
+	c.log = log
 	s.cadence = c
 	return s.cadence, nil
 }

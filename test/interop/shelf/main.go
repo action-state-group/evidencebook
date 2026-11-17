@@ -25,10 +25,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -50,7 +52,7 @@ type lockHeld struct{ error }
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|dump|handover|hold|try DIR [ARG], or shelf verify-handover FILE")
+		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|dump|handover|record-time|hold|try DIR [ARG], or shelf verify-handover FILE")
 	}
 	ctx := context.Background()
 	dir := args[1]
@@ -79,6 +81,22 @@ func run(args []string) error {
 		}
 		_, err = os.Stdout.Write(out)
 		return err
+	case "record-time":
+		// The record time phase on a shelf after the migrate phase: its
+		// receipts and outcomes must be testdata/shelf/record-time.json's
+		// (run from the repository root), byte for byte.
+		got, err := shelfscript.RecordTimeJSON(ctx, dir)
+		if err != nil {
+			return err
+		}
+		want, err := os.ReadFile(filepath.Join("testdata", "shelf", "record-time.json"))
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(got, want) {
+			return fmt.Errorf("the record time phase differs from testdata/shelf/record-time.json")
+		}
+		return nil
 	case "verify-handover":
 		raw, err := os.ReadFile(dir)
 		if err != nil {
