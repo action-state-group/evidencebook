@@ -32,6 +32,21 @@ func TestShelfVectors(t *testing.T) {
 	afterMigrate, err := Dump(ctx, dir)
 	require.NoError(t, err)
 	files := map[string][]byte{"script.json": script, "after-write.json": afterWrite, "after-continue.json": afterContinue, "after-migrate.json": afterMigrate}
+	// The recovery scenarios: Go plants a crash on the shelf after
+	// ContinuePhase, and RecoverPhase finishes it (evidencebook#461 §7).
+	for name, plant := range map[string]func(context.Context, string) error{
+		"after-recover-tick.json":      PlantTick,
+		"after-recover-migration.json": func(ctx context.Context, dir string) error { return PlantMigration(ctx, dir, 2) },
+	} {
+		dir := t.TempDir()
+		require.NoError(t, Write(ctx, dir))
+		require.NoError(t, Continue(ctx, dir))
+		require.NoError(t, plant(ctx, dir))
+		require.NoError(t, Recover(ctx, dir))
+		got, err := Dump(ctx, dir)
+		require.NoError(t, err)
+		files[name] = got
+	}
 	for name, got := range files {
 		path := filepath.Join(vectorDir, name)
 		if os.Getenv("EB_WRITE_SHELF_VECTORS") == "1" {

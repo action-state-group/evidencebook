@@ -424,6 +424,28 @@ jobs:
               echo "written by $writer, migrated by $migrator: every dump is the vector's"
             done
           done
+      - name: Finish a crash Go planted, in every language
+        # evidencebook#461 §7: a tree tick stored but not finished beside an
+        # empty host log, and a migration stopped in its step 4; each language
+        # recovers it (Migrate, then a stamp), every dump equal to the vector.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for scenario in tick migration; do
+            for recoverer in $langs; do
+              dir="$work/$scenario-$recoverer"
+              "$RUNNER_TEMP/shelf-go" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" "plant-$scenario" "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$recoverer" recover "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after.$reader.json" < /dev/null
+                cmp "testdata/shelf/after-recover-$scenario.json" "$dir/after.$reader.json"
+              done
+              echo "$scenario planted by go, recovered by $recoverer: every dump is the vector's"
+            done
+          done
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
           langs="go py rs"

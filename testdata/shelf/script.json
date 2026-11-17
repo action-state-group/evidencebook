@@ -122,6 +122,23 @@
       "op": "release"
     }
   ],
+  "recover_phase": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/recover",
+      "at": 14400
+    },
+    {
+      "op": "migrate"
+    },
+    {
+      "op": "stamp",
+      "at": 14460
+    },
+    {
+      "op": "release"
+    }
+  ],
   "start": "2026-10-31T12:00:00Z",
   "write_phase": [
     {

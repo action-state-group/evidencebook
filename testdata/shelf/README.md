@@ -10,7 +10,7 @@ implementation and read by every other. Each file is regenerated only with
 | `tree.json` | cadence leaves, fillers, derived fillers, empty roots, trees with every path, padding record ids, and draws from the shelf's random source | `shelf_vectors_test.go` |
 | `script.json` | the scripted shelf: its host parameters, keys and two phases of steps | `internal/shelfscript` |
 | `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
-| `after-write.json`, `after-continue.json`, `after-migrate.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
+| `after-write.json`, `after-continue.json`, `after-migrate.json`, `after-recover-tick.json`, `after-recover-migration.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
 
 ## The random source
 
@@ -71,3 +71,20 @@ for each fact it writes, then the jitter. A version 2 dump adds two tables:
 which covers SQLite's own bytes. A stamp's `tick_roots` entry is
 `stamp:<SHA-256 of its stamp entry>`, and a fact whose checkpoint did not grow
 has no chain.
+
+## The recovery scenarios (evidencebook#461 §7)
+
+On the shelf after the continue phase, Go plants a crash and any language finishes it
+with the recover phase (`Migrate`, then a stamp):
+
+- `after-recover-tick.json`: an empty host log in the cadence and a tree tick stored but
+  not finished (`plant-tick`). `Migrate` finishes the tick first, lists the empty log in
+  the marker at size 0 and gives it no fact.
+- `after-recover-migration.json`: a migration that stopped in its step 4 (`plant-migration`):
+  version 2, state `migrating`, its backup recorded and in place, its batch stored, and the
+  batch's first two entries appended. `Migrate` resumes it, reusing the backup and appending
+  only the missing entries.
+
+A plant runs the interrupted operation on a copy and copies back only what the crash would
+have left; after the continue phase every book is checkpointed at its size, so no book
+checkpoint is involved.

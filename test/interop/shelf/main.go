@@ -60,6 +60,12 @@ func run(args []string) error {
 		return shelfscript.Continue(ctx, dir)
 	case "migrate":
 		return shelfscript.Migrate(ctx, dir)
+	case "recover":
+		return shelfscript.Recover(ctx, dir)
+	case "plant-tick":
+		return shelfscript.PlantTick(ctx, dir)
+	case "plant-migration":
+		return shelfscript.PlantMigration(ctx, dir, 2)
 	case "dump":
 		out, err := shelfscript.Dump(ctx, dir)
 		if err != nil {

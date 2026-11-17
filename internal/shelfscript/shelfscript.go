@@ -501,6 +501,7 @@ func Script() ([]byte, error) {
 		"write_phase":    WritePhase,
 		"continue_phase": ContinuePhase,
 		"migrate_phase":  MigratePhase,
+		"recover_phase":  RecoverPhase,
 	})
 }
 

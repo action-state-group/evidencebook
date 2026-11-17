@@ -330,3 +330,37 @@ func TestCheckpointWholeCutsOneCheckpointOverALongBatch(t *testing.T) {
 	require.Len(t, pending, 1)
 	assert.Equal(t, cp.TreeSize, pending[0].CheckpointSize, "the first delivery queued is the whole batch's checkpoint, not one over part of it")
 }
+
+// A crash after the backup's digest is recorded and before its rename: the
+// next Migrate renames the matching temporary file and goes on; a recorded
+// backup already renamed is reused as it is.
+func TestMigrateReusesABackupItRecorded(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf := f.open(t)
+	c, _ := newStampCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	// Steps 1 and 2 by hand, stopping before the rename.
+	_, err := shelf.db.Exec(`UPDATE shelf_meta SET version = ? WHERE id = 1`, ShelfVersionFacts)
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`INSERT INTO shelf_migration (id, state, backup_sha256) VALUES (1, ?, '')`, migrationBackingUp)
+	require.NoError(t, err)
+	tmp := f.path + ".v1.bak.tmp"
+	_, err = shelf.db.Exec(`VACUUM INTO ?`, tmp)
+	require.NoError(t, err)
+	require.NoError(t, resetBackup(ctx, tmp))
+	digest, err := fileSHA256(tmp)
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`UPDATE shelf_migration SET backup_sha256 = ? WHERE id = 1`, digest)
+	require.NoError(t, err)
+
+	require.NoError(t, c.Migrate(ctx, tickTime))
+	got, err := fileSHA256(f.path + ".v1.bak")
+	require.NoError(t, err)
+	assert.Equal(t, digest, got, "the recorded backup is the one in place")
+	_, err = os.Stat(tmp)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	migrated, err := c.Migrated(ctx)
+	require.NoError(t, err)
+	assert.True(t, migrated)
+}
