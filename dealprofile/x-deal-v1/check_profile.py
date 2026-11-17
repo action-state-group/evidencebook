@@ -22,6 +22,7 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -129,17 +130,25 @@ def _validators():
     global SCHEMA_MODE
     if not _VALIDATORS:
         try:
-            from jsonschema import Draft202012Validator
+            from jsonschema import Draft202012Validator, ValidationError
             from referencing import Registry, Resource
         except ImportError:
             SCHEMA_MODE = "skipped (jsonschema not installed)"
             _VALIDATORS["record"] = None
             return _VALIDATORS
+        from jsonschema import validators
         v1s = json.loads(SCHEMA_PATH.read_text())
         v0s = json.loads(v0.SCHEMA_PATH.read_text())
         registry = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in (v1s, v0s)])
-        _VALIDATORS["record"] = Draft202012Validator(v1s, registry=registry)
-        _VALIDATORS["body_check"] = Draft202012Validator({"$ref": v0s["$id"] + "#/$defs/body_check"}, registry=registry)
+        # ECMA 262 and Go read a "$" outside multiline mode as the end of the
+        # text; Python's re also matches it before a final newline, which would
+        # admit "deal-...\n". The schemas hold no escaped "$".
+        def pattern(validator, patrn, instance, schema):
+            if validator.is_type(instance, "string") and not re.search(patrn.replace("$", r"\Z"), instance):
+                yield ValidationError(f"{instance!r} does not match {patrn!r}")
+        Strict = validators.extend(Draft202012Validator, {"pattern": pattern})
+        _VALIDATORS["record"] = Strict(v1s, registry=registry)
+        _VALIDATORS["body_check"] = Strict({"$ref": v0s["$id"] + "#/$defs/body_check"}, registry=registry)
         SCHEMA_MODE = "jsonschema (Draft 2020-12)"
     return _VALIDATORS
 
@@ -152,12 +161,6 @@ def stage_schema(rec):
     if errs:
         e = errs[0]
         raise bad("schema", "/" + "/".join(str(p) for p in e.absolute_path) + ": " + e.message)
-    blk = rec[PROFILE]
-    if blk["record_type"] == "check":
-        body = {k: x for k, x in rec["body"].items() if k != "payment_ref"}
-        errs = list(_validators()["body_check"].iter_errors(body))
-        if errs:
-            raise bad("schema", f"the check body is not v0's body_check: {errs[0].message}")
     return True
 
 
@@ -270,6 +273,14 @@ def check_body(rec):
                 raise bad("record", "an agreement with a counterparty that runs the layer names its record key in counterparty_key")
             if body["side"] == "acceptor" and blk.get("seen") is not None:
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
+    elif t == "check":
+        # v0's body_check is closed, so the body without payment_ref is
+        # checked against it here, after the record checks, as Go's checkBody.
+        v = _validators().get("body_check")
+        if v is not None:
+            errs = list(v.iter_errors({k: x for k, x in body.items() if k != "payment_ref"}))
+            if errs:
+                raise bad("schema", f"the check body is not v0's body_check: {errs[0].message}")
 
 
 def stage_record(rec):
@@ -311,7 +322,14 @@ def check_record(rec, seal_context=None) -> bool:
     False when the schema stage was skipped."""
     stage_canonicalization(rec)
     full = stage_schema(rec)
-    stage_record(rec)
+    try:
+        stage_record(rec)
+    except (KeyError, TypeError, AttributeError) as e:
+        if full:
+            raise
+        # Only a record the schema would refuse is shaped so; without
+        # jsonschema, say so rather than fail.
+        raise bad("schema", f"malformed record ({type(e).__name__}: {e}); the schema stage was skipped") from None
     if seal_context is not None and placement(rec) == "journal":
         t, has = rec[PROFILE]["record_type"], bool(rec[PROFILE].get("deal_id"))
         if t in JOURNEY_TYPES or t in ASK_TYPES:
@@ -414,7 +432,9 @@ def check_book(records):
 # --- runs -------------------------------------------------------------------
 
 def _load(path: Path):
-    return json.loads(path.read_text())
+    """A fixture file, read as strictly as a record: a member given twice in it
+    would be lost before the record's own text is checked."""
+    return parse(path.read_bytes())
 
 
 def run_fixtures() -> int:
@@ -521,12 +541,15 @@ def run_fixtures() -> int:
 
 
 def check_files(paths) -> int:
+    """Each file's record on its own: a record, or a fixture file's record."""
     bad_files = 0
     for p in paths:
         try:
             doc = parse(Path(p).read_bytes())
-            check_record(doc.get("record", doc) if "record" in doc and PROFILE not in doc else doc)
-            print(f"OK   {p}")
+            if isinstance(doc, dict) and "record" in doc and PROFILE not in doc:
+                doc = doc["record"]
+            full = check_record(doc)
+            print(f"OK   {p}" if full else f"OK   {p} (schema stage skipped: jsonschema not installed)")
         except StageError as e:
             bad_files += 1
             print(f"FAIL {p}: {e}")

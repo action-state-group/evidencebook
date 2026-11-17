@@ -33,7 +33,9 @@ A record is a JSON object with exactly two members: the profile block, named `x-
 Records are closed: a member the schema does not name fails the schema. Numbers are integers;
 a number written with a fraction or an exponent is refused before the schema. Text is read as
 written: invalid UTF-8, an escaped surrogate outside a pair and an object member given twice are
-refused, since a decoder would read them otherwise than the digest covers.
+refused, since a decoder would read them otherwise than the digest covers. An OPTIONAL member is
+absent rather than holding its type's zero value (`false`, `0`, `""`): a row's `recomputed` is
+present only as `true`. A text that names one record two ways would give it two digests.
 
 **Versions** (design note §2.3). A record carries exactly one top-level member whose name matches
 `^x-deal-v[0-9]+$`, and its block's `profile` equals that name. A typed v0 record (one whose
