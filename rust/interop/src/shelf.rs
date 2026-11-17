@@ -148,6 +148,7 @@ pub fn open(
         // correlation subject is answered as Go's book answers it
         // (`correlationOf`: exchange_id, else subject_ref).
         correlation_members: CORRELATION_MEMBERS.iter().map(|m| m.to_string()).collect(),
+        receive: Default::default(),
     })?;
     let ended: Vec<String> = v
         .pointer(&hp("/cadence/ended"))
