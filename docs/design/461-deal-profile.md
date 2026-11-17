@@ -137,7 +137,8 @@ dispatch function of 2.3.
 A v1 deal is not on a `/1` or `/2` card. `readHistoryRecord` skips a record with no `x-deal-v0`
 block (`standard_history.go:150-151`), and `StandardHistoryDeal` needs a v0 `commit` or `pay`
 action to call a log a deal (`standard_history.go:190-199`). Until `/3` (AAC#620) is served, a
-host that seals new deals as v1 stops growing its `/1` card. Section 12, Q7.
+host that seals new deals as v1 stops growing its `/1` card. So new deals stay v0 by default
+until `/3` is served, and v1 is selected by a setting (Q7, decided).
 
 ## 3. The record types
 
@@ -192,6 +193,14 @@ key. This is v0's standalone report form applied to records (`PROFILE.md:141-160
 standalone Capsule is what travels. Its record digest is the journal record's, so an agreement
 that cites the offer's record digest cites the same record on both sides.
 
+**One library call seals it (Proposed).** No call does both today. The library gains
+`Shelf.SealSent(ctx, entry) (journalRecord, standalone []byte, err)`: it appends the record to the
+journal and returns, beside the journal record, the standalone Capsule bytes, signed by the same
+key, in one call, so neither the profile nor the plugin builds the standalone form itself. It
+is profile-neutral: it takes the record's bytes and its `action_id`. Sending is not the
+library's: the standalone bytes go out through the MCP or A2A entry once AAC#621's bindings land,
+and until then through the host's own channel (11.1, PR 1).
+
 **Signatures.** Every record is signed by its author's record key. A deal-book record verifies
 under the key of the book's agreement. A ruling verifies under the adjudicator key the agreement
 names (3.3, `ruling`).
@@ -228,8 +237,21 @@ library keeps them today. The decision is Steven's (section 12, Q3).
 3.3). The consumer journey records Muse uses (`message`, `claim`, `evidence`, `detail_change`,
 `agent_move`, `disclosure`, `sale`, `thread`, `thread_opened`, `sale_cut`, `sale_close`,
 `sale_unpost`, `counterparty_profile`, `baseline`, `verdict`, `action`, `outcome`, `close`,
-`outcome_note`) are not v1 types. They stay v0 (design §7: "moves the consumer journey records
-that Muse uses into an optional overlay"; §14, row 7).
+`outcome_note`) are not among the ten.
+
+**Proposed: the x-deal-v1 journey overlay.** Design §7 "moves the consumer journey records that
+Muse uses into an optional overlay" (§14, row 7). So a v1 deal book may also hold these overlay
+types, each carrying the `x-deal-v1` block like any v1 record (2.3 rule 2 holds: one version per
+book), with v0's bodies unchanged: `message`, `claim`, `evidence`, `detail_change`, `agent_move`,
+`disclosure`, `sale`, `thread`, `thread_opened`, `sale_cut`, `sale_unpost`, `counterparty_profile`.
+They are sealed in the deal book as today, are no input to start (5), statements, row status, the
+status value or a card, and a reader that does not know an overlay type keeps the record and
+ignores it. Six v0 journey types have no v1 counterpart because v1 replaces what they did:
+`baseline` (the book now opens with `agree`), `action` (an act is `perform` or `settle`),
+`verdict` (`rules_verdict`, 3.3), and `close`, `outcome`, `outcome_note`, `sale_close` (there is no
+close: a deal is settled by computation, design §4.2). A Muse flow that seals one of those on a
+v0 deal keeps doing so; on a v1 deal it seals the v1 record named. One book per deal, so no v0
+side book. The overlay's names are part of the vocabulary trim Steven decides (Q3).
 
 ### 3.3 Each type's body
 
@@ -399,7 +421,7 @@ buyer. The losing buyer's copy is the decline.
                "producer": {...}?, "commit_alg": "sha256-jcs-nonce256"?},
  "body": {"kind": "decline",
           "offer": {"type": "deal-record", "digest_alg": "SHA-256", "digest": "<64 hex>"},
-          "reason": "not_selected" | "terms" | "unavailable" | "other",
+          "reason": "not_selected" | "other",
           "reason_commitment": "<64 hex>"?}}
 ```
 
@@ -409,7 +431,7 @@ buyer. The losing buyer's copy is the decline.
 | `record_type` (block) | REQUIRED | `agree`. Decided: design §7 |
 | `kind` | REQUIRED | `"decline"` or `"cancellation"`. This marker tells the record from an agreement (`"agreement"`) and from each other. A record check refuses a body whose members do not match its `kind`: an agreement's members on a decline, say |
 | `offer` | REQUIRED | digest ref of the offer record it answers (decline) or withdraws (cancellation), with the record digest of 3.1. Decided: design §4.2, "cites the offer by digest" |
-| `reason` | OPTIONAL | one closed token. `not_selected` is the seller's "we went with another buyer". On a cancellation the tokens are `changed_mind`, `terms`, `other` |
+| `reason` | OPTIONAL | one closed token. On a decline: `not_selected` (the seller's "we went with another buyer", `PRD_SELLER.md:303-305`) or `other`. A cancellation carries no reason token. No other token until Sherlock2 words and approves it (Q11) |
 | `reason_commitment` | OPTIONAL | any free-text reason, committed with `sha256-jcs-nonce256`, never in the clear. The opening goes only to the side the record is sent to |
 
 - **No other members.** There is no `seq`, `prev`, `agreement_ref`, `marks` or `seen` (3.4: journal
@@ -1028,6 +1050,25 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
   (shelf note §2.2; AAC `spec/shelf-forms-v0.md` §4.3): `keep` and `counterparty` get `listed`;
   `adjudicator` gets `withheld`, since an adjudicator computes from both books it is handed, not
   from a party's statement of the result. Part of the door question (Q11).
+- **What each audience's copy holds** (proposed; the door question, Q11). Statements, disputes and
+  rulings are both sides' own records, so a counterparty's copy shows it nothing it does not hold.
+  What is new is what says what the holder holds: `relied_on` (each record's time and whether it
+  is witnessed), `check`, and `rests_on` (how much of the other side's book the holder counted,
+  and `fork_at`).
+
+  | Member | `keep` | `counterparty` | `adjudicator` |
+  |---|---|---|---|
+  | `start`, `settled`, `as_of`, `deal_checkpoint`, `pack_digest` | yes | yes | yes |
+  | `rows` (status, value, remedy, dates, `owed`, `ruling`, `late`) | yes | yes | no (`rows_state` `withheld`) |
+  | row `check`, row `relied_on` | yes | yes | no |
+  | `rests_on.own` | yes | yes | yes |
+  | `rests_on.counterparty`, `rests_on.witnesses` | yes | yes | no |
+
+  A copy for anyone else (a third party the holder shows a receipt page to) is the holder's own
+  share decision, as for v0 (capsule-viewer README: what a relying party gets is the share
+  builder's decision); the profile defines no fourth audience.
+- **No rules verdict in the report.** The verdict word stays a record in the party's own book,
+  never a member a report adds (u195 condition 3); the payload has no such member.
 - **The deal-level line.** A v1 report's `report` text body has no `lifecycle` member, and a page
   never reads `report.lifecycle.state` for a v1 deal. Its deal-level line is `start.state`, and,
   for a started deal, `settled`: true shows "settled", false shows nothing (a v1 deal is never
@@ -1147,16 +1188,20 @@ verified under (`shelf_record_time.go:20-25`; `461-shelf-facts.md:117-125`).
   hint where to find it: `{"key_id": "…", "url": "…"}`. A URL is a locator, and the key is what
   signs the receipt, so a moved witness stays the same witness, and two URLs of one witness are
   not counted as two.
-- *Alternative (the twin's):* an opaque id, where one URL is one witness, which is the library's
-  default today.
+- *The library's engineering default today:* an opaque id, the receipt URL, where one URL is one
+  witness. That is how the library stores a witness, not a proposal for how the agreement names
+  one; the agreement's rule is Steven's.
 - An empty list is allowed under u186; every status is then local.
 
 Key-id naming needs `RecordTime` to filter by key id (11.1, PR 1). URL naming needs no library
 change.
 
 **Q2. When is `rules_verdict` sealed now that there is no close?** v0 seals it after the final close
-(`PROFILE.md:220`). Proposed: once the holder computes the deal settled. u195's other conditions
-are kept as they are (3.3).
+(`PROFILE.md:220`). Proposed: once the holder computes the deal settled. A consequence to rule on: a
+deal that is never settled then never gets a verdict. u195's other conditions are kept as they
+are (3.3), condition 1 (shared under the holder's share policy: a node shares by default, a
+person does not) and condition 4 among them, and the verdict word stays a record in the party's
+own book, never a member of a report (u195 condition 3; section 9).
 
 **Q3. The intent, the check before an act and the approval.** Design §7 says they need "types of
 their own or a place in the overlay; no source settles which". Proposed: a journal-only overlay
@@ -1168,11 +1213,22 @@ kinds: `dispute`, `dispute_response`, `adjudication` and `revocation`, plus a fo
 card count by forum. Design §7 and §8 map recourse onto `dispute` (dispute, withdrawal,
 challenge), `ruling`, and a `statement` that names a ruling that arrived. There is no
 `dispute_response`, `revocation` or forum. This note follows the design. Which shape stands needs
-Steven's word, since #404 flags the record shape as hard to reverse.
+Steven's word, since #404 flags the record shape as hard to reverse. A consequence for the card:
+AAC#620's `/3` table has `dispute_entry` with a `forum` and `disputes.by_forum`, and today's card
+counts disputes by forum (AAC SH §4). With no forum in v1, a `/3` card has nothing to fill
+`by_forum` with: either v1 keeps a forum on `dispute`, or `/3` drops `by_forum`, which is a card
+change.
+
+**Q12. A row that is not reached, and a deal with no witnessed time, on a card.** The design says a
+`not_reached` row is "left out" when a card is counted (design §4.2, "Dates that hang on a
+record"); this note has no rule for it, and AAC#620's `/3` draft treats it as undecided. And
+acceptance 9 says a deal whose records have no time from the named witnesses is "tallied as not
+counted", while the design calls such a status "a local result" only. Both need one answer
+before v1's vectors pin them.
 
 **Q11. What a decline and a cancellation disclose to the other side.** This belongs to Sherlock2's
 door question. Proposed (3.5): the signer's key, the cited offer's digest, the deal id, one closed
-reason token (`not_selected` among them), the author's own time `at`, and optionally a committed
+reason token (`not_selected` or `other`), the author's own time `at`, and optionally a committed
 free-text reason opened only to that side. It discloses nothing about other offers or the winning
 terms, and nothing about its place in the journal. The questions: whether `not_selected` may be
 told to the losing buyer at all (Muse's PRD says the copy "says so", `PRD_SELLER.md:303-305`);
@@ -1187,13 +1243,16 @@ where it is his door.
   window is open.
 - **Q6. Does `/3` count v0 books?** v0 books carry profile `"none"` facts (2.4). Whether `/3` reads
   them, maps them, or leaves them to `/1` and `/2` is AAC#620's.
-- **Q7. The gap until `/3`.** v1 deals are on no `/1` or `/2` card (2.5). Whether hosts keep sealing
-  v0 until `/3` is served is a rollout decision for evidencebook-deal#212.
+- **Q7. The gap until `/3`.** v1 deals are on no `/1` or `/2` card (2.5). Decision (coordinator,
+  2026-11-17): new deals stay v0 by default until `/3` is served; v1 is selected by a setting.
+  Reason: the 2026-11-19 demo and the `/1` card stay untouched. The plugin applies it
+  (evidencebook-deal#212).
 - **Q8. The witnessed follow-up message** (receipts and the shelf consistency proof, design §4.2,
   "The stamp-proof message") has no form in Forms or in the library. That is AAC#621's.
 - **Q9. Late statements and disputes in the report.** Decision (coordinator, 2026-11-17): additive
   rowstatus output; reason: the sealed report needs it, nothing existing changes. Existing callers
-  and every existing result stay unchanged (section 9).
+  and every existing result stay unchanged, and every existing rowstatus vector
+  (`testdata/row-status/`) passes unchanged; the new output gets vectors of its own (section 9).
 - **Q10. The grades of `perform.observed`.** Design §7 says an act is "graded by how directly it was
   observed" and lists no grades.
 - **Mesh** period books (profile `mesh_period`) are step 8, not this note.
