@@ -282,10 +282,11 @@ def ard_pay(seller: str) -> None:
     print(f"deal opened with {SELLERS[key]['label']}: waiting for its agent's half")
     payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
     who = ("the buyer's test node paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
-    print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
+    print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status}"
+          + (f" (fee {payment.fee_msat} msat)" if payment.fee_msat is not None else ""))
     if payment.status == "succeeded":
         s.paid.add(key)
-    print(f"deal closed with {SELLERS[key]['label']}: both halves compared.")
+    print(f"deal closed with {SELLERS[key]['label']}: both parties' records of the deal compared.")
     # Maya's checkpoint over her own records, taken now so her card shows this deal right away. The profile allows one a
     # minute at the soonest, so this waits for it if the last one is that recent (it is due in the demo's story).
     waited = 0

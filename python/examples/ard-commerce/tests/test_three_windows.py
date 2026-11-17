@@ -110,5 +110,5 @@ def test_three_windows_run_the_story(stage_env):
         assert "at 289 msat, rail lightning" in r and "close: outcome completed" in r
         # The payment is the buyer's act: only Maya's own book holds it, and the seller's receipt says what it sealed.
         assert ("payment of 289 msat sent" in r) == (who == "maya")
-        assert "the two closes name the same amount (289 msat): MET" in r
+        assert "both parties' closing records state 289 msat: match" in r
     assert "no deal yet" in out["receipt_kestrel"]

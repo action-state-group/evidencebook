@@ -13,7 +13,7 @@ BANNER = ("DEMO · sample history, run by the demo operator · test nodes with r
 BANNER_FAKE = "DEMO · sample history, run by the demo operator · SIMULATED payment: no money moves"
 
 
-BANNER_LOCAL = ("DEMO · sample history, run by the demo operator · real Lightning (real sats, mainnet) between two local demo wallets "
+BANNER_LOCAL = ("DEMO · sample history, run by the demo operator · real Lightning (real money, mainnet) between two demo wallets "
                 "(the buyer's wallet pays, the seller's wallet receives; both sellers settle to the one test wallet)")
 
 

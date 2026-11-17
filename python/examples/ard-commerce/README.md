@@ -24,7 +24,7 @@ deal profile still gives no *did not hold* from records ([#212](https://github.c
 | 4b the on-stage edit: `max_adverse_permille` 100 → 50, version 1.0.0 → 1.1.0, recompiled with evidencebook-skills' `pack_compile.py`, both sellers re-assessed on the saved evidence | `Run.edit` |
 | 5 the popup and the pick, sealed before any payment | `popup.html`, `buyer.seal_pick` |
 | 6 deal opened from the pick; Shockley's wallet issues an invoice for the picked price, Brattain's wallet pays it | `buyer.open_deal`, `pay.py` |
-| 7 both halves compared, deal closed, Alder's card after the next checkpoint | `deals.py`, `demo_node.py` |
+| 7 both parties' records compared, deal closed, Alder's card after the next checkpoint | `deals.py`, `demo_node.py` |
 
 The demo pack is a fork of `admission-baseline`: pack id `demo/ard_admission/<version>` (never
 `asg/`), `claims-held` removed (no card carries claims yet), trust roots naming the demo operator,

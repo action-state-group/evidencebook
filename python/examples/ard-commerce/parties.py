@@ -302,7 +302,7 @@ class Seller:
         self.say("deal opened: its terms checked, its first half sent")
         m2 = wait_file(inbox / f"{deal_id}.m2.json", 180)
         deals._reconcile(node, m2, maya)
-        self.say("the buyer's signed copy after payment checked and stored")
+        self.say("the buyer's records after payment checked and stored")
         node.ask_half(deal_id)
         write_atomic(outbox / f"{deal_id}.s2.json", json.dumps(node.half(deal_id)).encode())
         deals._reconcile(node, m2, maya)
@@ -310,7 +310,7 @@ class Seller:
         write_atomic(outbox / f"{deal_id}.s3.json", json.dumps(node.half(deal_id)).encode())
         m3 = wait_file(inbox / f"{deal_id}.m3.json", 180)
         deals._reconcile(node, m3, maya)
-        self.say(f"deal closed: both closes name {screens.msat(terms.price_minor)}; the sale is sealed in this book")
+        self.say(f"deal closed: both closes name {screens.msat(terms.price_minor)}; the sale is recorded in this seller's own records")
         while not self.w._stop.is_set():  # the card counts the sale after the next checkpoint
             tick = node.tick(now())
             if tick.ticked:
@@ -354,6 +354,7 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
     t = first["terms"]
     lines = [f"{label}: its receipt for {deal_id}, from its own sealed deal book ({len(payloads)} records)",
              f"  terms: {t['item']} at {t['price_minor']} msat, rail {first['recourse']['rail']}"]
+    simulated = " (simulated rail: no money moved)" if os.environ.get("ARD_RAIL", "fake") == "fake" else ""
     for d in payloads:
         body = d.get("body", {})
         meta = d.get("x-deal-v0")
@@ -365,7 +366,7 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
         if kind in ("close",):
             lines.append(f"  {at}  close: outcome {body.get('outcome')}")
         elif action == "pay" and "reference_commitment" in body:  # the act, not the check before it
-            lines.append(f"  {at}  payment of {body['amount_minor']} msat sent; the payment reference is kept only as a hash "
+            lines.append(f"  {at}  payment of {body['amount_minor']} msat sent{simulated}; the payment reference is kept only as a hash "
                          f"{body['reference_commitment'][:12]}…")
         elif action in _MILESTONES and action != "pay" and meta is None and d.get("type", "").startswith("action"):
             lines.append(f"  {at}  {_MILESTONES[action]}, {body.get('amount_minor')} msat")
@@ -373,8 +374,8 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
             lines.append(f"  {at}  outcome: {body.get('status')}")
     ok = [s for r, s in node.notes(RECONCILED) if s["deal_id"] == deal_id]
     got = [s for r, s in node.notes(gn.HALF_RECEIVED) if s["deal_id"] == deal_id]
-    lines.append(f"  the other party's signed copy checked {len(got)} time(s); the two closes name "
-                 + (f"the same amount ({ok[-1]['amount_minor']} msat): {'MET' if ok[-1]['met'] else 'NOT MET'}" if ok else "no comparison yet"))
+    lines.append(f"  the other party's records checked {len(got)} time(s); both parties' closing records state "
+                 + (f"{ok[-1]['amount_minor']} msat: {'match' if ok[-1]['met'] else 'do NOT match'}" if ok else "no comparison yet"))
     return "\n".join(lines)
 
 
