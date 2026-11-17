@@ -906,6 +906,20 @@
   "shelf_meta": {
     "version": 1
   },
+  "shelf_receipts": [
+    {
+      "checkpoint_sha256": "326cdd4aec7765f77215a05d16c37fd7fa8736a0bba4fde0e9afbc04d4c92b02",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"d6da1cb6f0a77faa756844d12e8a0ca1767f58fdd049b9eaaf188c40e357e1c3\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQAks7LhuqQN/GOsuifd1u0AAP2j3JFHWOnR1Vf1kRa/y3fzmMonSGou4DV3OQmsms9iznsi3A5kd2OHXL96UoQU=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    },
+    {
+      "checkpoint_sha256": "5cb97b0c78b803c9144d80319316ccf27d095f36b1f74bdc4636fd93cb3cc076",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"d627435a35810c44506b82483fdc55ff318bb18179ac7a634469677d48f92b82\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQAAE8TK2woaieGeRu9pnB9qcQSr1zZYIivA1m4jEQokwlyiP9n8PzCdvgjopTB2quInqEXa5om5as6NOVQcJmgY=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    }
+  ],
   "standard_history_anchors": [
     {
       "anchor": "5cb97b0c78b803c9144d80319316ccf27d095f36b1f74bdc4636fd93cb3cc076",

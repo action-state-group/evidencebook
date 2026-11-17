@@ -13,6 +13,7 @@ implementation and read by every other. Each file is regenerated only with
 | `after-write.json`, `after-continue.json`, `after-migrate.json`, `after-recover-tick.json`, `after-recover-migration.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
 | `receive/script.json`, `receive/after.json` | the received store's script of pushes, proofs, forgets and a reopen, each step's expected outcome, and the store's dump after it (evidencebook#461 §3, §7; `receive/README.md`) | `shelf_receive_vectors_test.go` |
 | `handover.json`, `handover-result.json` | the whole-shelf handover of the shelf after the migrate phase, at its newest stamp, and its replay (evidencebook#461 §2.7) | `internal/shelfscript` |
+| `record-time.json`, `after-record-time.json` | the record time phase run on the shelf after the migrate phase, each step's receipt and expected outcome, and the dump after it (evidencebook#461 §2.6) | `internal/shelfscript` |
 
 ## The random source
 
@@ -74,6 +75,11 @@ which covers SQLite's own bytes. A stamp's `tick_roots` entry is
 `stamp:<SHA-256 of its stamp entry>`, and a fact whose checkpoint did not grow
 has no chain.
 
+Every dump lists `shelf_receipts` (evidencebook#461 §2.3) by `checkpoint_sha256` then
+`witness_id`: each verified receipt as the stored text `cadence_ticks.receipt` holds,
+`registered_at` in Unix seconds or null. The scripted receipts carry no registration time,
+so after the migrate phase the handover replays as recomputed and unwitnessed.
+
 ## The recovery scenarios (evidencebook#461 §7)
 
 On the shelf after the continue phase, Go plants a crash and any language finishes it
@@ -105,3 +111,18 @@ book is untied. Every language hands the shelf over to `handover.json` and
 replays every language's handover to `handover-result.json` (the
 `shelf-interlock` job); the commands are `handover DIR` and
 `verify-handover FILE`.
+
+## Record time (evidencebook#461 §2.6)
+
+`record-time.json` holds the record time phase: run its steps on the shelf after the migrate
+phase, in order, and every step's `expect` must match; the dump afterwards is
+`after-record-time.json`. A `witness` step reports its `receipt` (as the handover encodes one)
+for the newest finished tick and expects that tick and the check's state; a `record_time` step
+calls `RecordTime(book_id, position, witnesses)`, witnesses being receipt URLs, and expects
+`{"time": <RFC 3339 UTC or null>}` or `{"error": "invalid"}`; a `handover` step hands the shelf
+over at its newest stamp, verifies it under the script's checkpoint key and directory, and
+expects `{"witnessed": <bool>}`. The phase covers a record whose only covering receipt has no
+registration time, the plain case, a witness not named, a position no fact covers, position 0,
+the journal, a later checkpoint covering an earlier fact, the same witness again with an
+earlier time (kept) and with none (ignored), and a handover witnessed once its anchor's receipt
+has a time.

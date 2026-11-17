@@ -148,9 +148,17 @@ type WitnessCheck struct {
 // verifier of its own. An error means the checkpoint statement itself does
 // not verify; the caller says whether that is stored state or input.
 func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, error) {
+	check, _, err := verifyWitnessReceipt(statement, receipt, directory)
+	return check, err
+}
+
+// verifyWitnessReceipt is checkWitnessReceipt with the registration time a
+// verified receipt gives (the iat of its protected CWT claims, in Unix
+// seconds), nil when it gives none.
+func verifyWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, *int64, error) {
 	signed, err := aacwitness.ParseSignedCheckpoint(statement)
 	if err != nil {
-		return WitnessCheck{}, fmt.Errorf("the cadence checkpoint statement does not verify: %v", err)
+		return WitnessCheck{}, nil, fmt.Errorf("the cadence checkpoint statement does not verify: %v", err)
 	}
 	record := map[string]interface{}{
 		"ts_url":      receipt.TSURL,
@@ -167,11 +175,15 @@ func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aac
 	reason := strings.Join(parts, ": ")
 	switch status {
 	case aacwitness.StatusPass:
-		return WitnessCheck{State: WitnessVerified, Reason: reason}, nil
+		var registeredAt *int64
+		if len(results) == 1 {
+			registeredAt = results[0].RegistrationTime
+		}
+		return WitnessCheck{State: WitnessVerified, Reason: reason}, registeredAt, nil
 	case aacwitness.StatusWithheld:
-		return WitnessCheck{State: WitnessNotChecked, Reason: reason}, nil
+		return WitnessCheck{State: WitnessNotChecked, Reason: reason}, nil, nil
 	}
-	return WitnessCheck{State: WitnessInvalid, Reason: reason}, nil
+	return WitnessCheck{State: WitnessInvalid, Reason: reason}, nil, nil
 }
 
 // TickResult is what one Tick call did.
@@ -220,7 +232,11 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 		return nil, err
 	}
 	s.cadenceLogs = append(s.cadenceLogs, log)
-	s.cadence = &Cadence{shelf: s, cfg: cfg, log: log}
+	c := &Cadence{shelf: s, cfg: cfg, log: log}
+	if err := c.backfillReceiptsLocked(ctx); err != nil {
+		return nil, err
+	}
+	s.cadence = c
 	return s.cadence, nil
 }
 
@@ -737,7 +753,7 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	if tick.CheckpointSize == 0 {
 		return WitnessCheck{}, fmt.Errorf("%w: tick %d is not finished, so no witness has seen its root", ErrInvalid, n)
 	}
-	check, err := checkWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
+	check, registeredAt, err := verifyWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
 	switch {
 	case err != nil:
 		return WitnessCheck{}, fmt.Errorf("%w: tick %d: %v", ErrCorrupt, n, err)
@@ -751,7 +767,12 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 		// and the live set index the tree's ticks, which a cadence chain
 		// (Chain) proves a checkpoint by; a stamp's proof is the stamp proof
 		// (evidencebook#461).
-		_, err := s.db.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n)
+		err := s.inTx(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
+				return err
+			}
+			return keepReceipt(ctx, tx, tick.Checkpoint, receipt, string(encodedReceipt), registeredAt)
+		})
 		if err != nil {
 			return WitnessCheck{}, err
 		}
@@ -765,6 +786,9 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
+			return err
+		}
+		if err := keepReceipt(ctx, tx, tick.Checkpoint, receipt, string(encodedReceipt), registeredAt); err != nil {
 			return err
 		}
 		for id, leaf := range tick.Leaves.Deals {

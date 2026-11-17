@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"time"
 
 	"github.com/action-state-group/checkpointed-local-log/go/checkpoint"
 	"github.com/fxamacker/cbor/v2"
@@ -20,6 +21,13 @@ import (
 // the receipt's bytes depend on the statement alone; the vector carries them
 // for implementations that do not mint receipts.
 func MintReceipt(statement []byte) (evidencebook.WitnessReceipt, error) {
+	return MintReceiptAt(statement, time.Time{})
+}
+
+// MintReceiptAt is MintReceipt with the witness's registration time: the
+// iat (6) of the protected CWT claims (15), left out when iat is the zero
+// time.
+func MintReceiptAt(statement []byte, iat time.Time) (evidencebook.WitnessReceipt, error) {
 	record, err := checkpoint.ParseRecord(statement)
 	if err != nil {
 		return evidencebook.WitnessReceipt{}, err
@@ -36,6 +44,9 @@ func MintReceipt(statement []byte) (evidencebook.WitnessReceipt, error) {
 	message := cose.NewSign1Message()
 	message.Headers.Protected.SetAlgorithm(cose.AlgorithmEdDSA)
 	message.Headers.Protected[int64(395)] = int64(1)
+	if !iat.IsZero() {
+		message.Headers.Protected[int64(15)] = map[any]any{int64(6): iat.Unix()}
+	}
 	message.Headers.Unprotected[int64(396)] = map[any]any{int64(-1): []any{proof}}
 	message.Payload = leaf[:]
 	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, WitnessKey)

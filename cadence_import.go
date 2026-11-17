@@ -135,7 +135,7 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 			return err
 		}
 	}
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		var last, lastEntry uint64
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(tick), 0), COALESCE(MAX(entry_seq), 0) FROM cadence_ticks`).Scan(&last, &lastEntry); err != nil {
 			return err
@@ -262,4 +262,9 @@ func (c *Cadence) ImportLegacy(ctx context.Context, legacy LegacyCadence) error 
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// The witnessed ticks imported keep their receipts in shelf_receipts too.
+	return c.backfillReceiptsLocked(ctx)
 }

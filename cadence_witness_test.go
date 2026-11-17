@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	aacwitness "github.com/action-state-group/agent-action-capsule/go/witness"
 )
@@ -43,11 +44,18 @@ func testWitnesses(t *testing.T) aacwitness.Directory {
 // witness's key for any other URL.
 func receiptFor(t *testing.T, statement []byte, url string) WitnessReceipt {
 	t.Helper()
+	return receiptAt(t, statement, url, time.Time{})
+}
+
+// receiptAt is receiptFor with the witness's registration time iat (none
+// when it is the zero time).
+func receiptAt(t *testing.T, statement []byte, url string, iat time.Time) WitnessReceipt {
+	t.Helper()
 	key, _ := testWitness()
 	if url != testWitnessURL {
 		key = otherWitnessKey()
 	}
-	minted := mintReceipt(t, statement, key)
+	minted := mintReceiptAt(t, statement, key, iat)
 	raw, err := base64.StdEncoding.DecodeString(minted["receipt_b64"].(string))
 	if err != nil {
 		t.Fatal(err)

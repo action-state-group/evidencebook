@@ -78,6 +78,16 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 	tick           INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
+-- Every witness receipt that verified for a shelf checkpoint, one per
+-- witness (its receipt's URL), with the registration time it gives in Unix
+-- seconds or null (shelf_record_time.go).
+CREATE TABLE IF NOT EXISTS shelf_receipts (
+	checkpoint_sha256 TEXT    NOT NULL,
+	witness_id        TEXT    NOT NULL,
+	receipt           TEXT    NOT NULL,
+	registered_at     INTEGER,
+	PRIMARY KEY (checkpoint_sha256, witness_id)
+);
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 -- The store of what the other side pushes (evidencebook#461 §3,
 -- shelf_receive.go): its records, by digest, with the predecessor each names
