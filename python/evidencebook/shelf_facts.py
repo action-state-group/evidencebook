@@ -198,7 +198,11 @@ def format_switch(last_tick: int, logs: list[tuple[str, int]]) -> dict[str, Any]
 
 def entry_id(doc: dict[str, Any]) -> tuple[bytes, bytes]:
     """A shelf log entry: SHA-256 of the document's RFC 8785 bytes, and those bytes."""
-    body = jcs(doc)
+    _check_text(doc)
+    try:
+        body = jcs(doc)
+    except Exception as e:  # the AAC canonicalizer's own refusals
+        raise Invalid(f"an entry document: {e}") from None
     return hashlib.sha256(body).digest(), body
 
 
@@ -220,7 +224,10 @@ def openings_for(kind: str, audience: str) -> tuple[bool, bool]:
 
 def verify_openings(fact: dict[str, Any], link: Optional[Opening] = None, status: Optional[Opening] = None) -> None:
     """Checks the openings a reader was handed for a fact (Go ``VerifyOpenings``)."""
-    if link is not None:
-        link.verify(fact["link_commitment"])
-    if status is not None:
-        status.verify(fact["status_commitment"])
+    for opening, key in ((link, "link_commitment"), (status, "status_commitment")):
+        if opening is None:
+            continue
+        commitment = fact.get(key) if isinstance(fact, dict) else None
+        if not isinstance(commitment, str):
+            raise Invalid(f"a fact without {key}")
+        opening.verify(commitment)

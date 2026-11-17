@@ -222,7 +222,8 @@
       "note": "café ☕ 😀",
       "😀key": 1,
       "zkey": 2,
-      "ékey": 3
+      "ékey": 3,
+      "key": 4
      }
     },
     "salts": [
@@ -239,10 +240,10 @@
     "prev_fact_size": 9007199254740990,
     "profile": "deal",
     "size": 9007199254740991,
-    "status_commitment": "4302452a464d77171c8b3298ad24643a59ca605c3c1543ac0155a54f8bdbcbd8",
+    "status_commitment": "d5017ea79301b0682a410f9a0a73628149e3eee21e90bd8ffb1bc4dba3ed62c1",
     "v": 1
    },
-   "entry_id": "6298a3f98d39c19890f3254f968d5fa583ddac7e5ab2c8d2f0af90960be285c5",
+   "entry_id": "06e18f830b1ee35d99966bebe07e4f5372725c167f913e7c07c4767454e3ba7c",
    "link_opening": {
     "salt": "2b97d29449ceed90c30fe8be898e2c537f1cc4495c1feb927f729f1683b4412d",
     "value": {
@@ -256,7 +257,8 @@
      "note": "café ☕ 😀",
      "zkey": 2,
      "ékey": 3,
-     "😀key": 1
+     "😀key": 1,
+     "key": 4
     }
    }
   },

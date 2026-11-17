@@ -202,6 +202,10 @@ func TestFactErrors(t *testing.T) {
 	_, _, _, err = newBookFact(ok, newRandomSource(bytes.NewReader(make([]byte, 32))))
 	require.Error(t, err, "a random source that runs dry after the link salt")
 	assert.NotErrorIs(t, err, ErrInvalid, "the failure is the random source, not the input")
+	in = ok
+	in.LogID = "deal/\xed\xa0\x80" // U+D800 as CESU-8: not UTF-8
+	_, _, _, err = newBookFact(in, salts())
+	assert.ErrorIs(t, err, ErrInvalid, "a log id that is not UTF-8")
 	r := salts()
 	_, err = newFormatSwitch(1, []LoggedSize{{LogID: "a", Size: 1}, {LogID: "a", Size: 2}})
 	assert.ErrorIs(t, err, ErrInvalid, "a log listed twice")

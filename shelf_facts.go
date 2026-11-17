@@ -165,6 +165,9 @@ func newBookFact(in FactInput, random randomSource) (BookFact, FactOpening, Fact
 	if in.Size < in.PrevFactSize {
 		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a fact's size is below its previous fact's", ErrInvalid)
 	}
+	if !utf8.ValidString(in.Profile) || !utf8.ValidString(in.LogID) {
+		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a fact's profile and log id are valid UTF-8", ErrInvalid)
+	}
 	if !isDigest(in.BookID) || !isDigest(in.CheckpointSHA256) {
 		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a fact's book id and checkpoint digest are 64 lowercase hex", ErrInvalid)
 	}
@@ -189,7 +192,7 @@ func newBookFact(in FactInput, random randomSource) (BookFact, FactOpening, Fact
 // journal's log id, and its size, checkpoint digest and previous size are
 // inside its status commitment only.
 func newJournalFact(logID string, status JournalStatus, random randomSource) (BookFact, FactOpening, FactOpening, error) {
-	if logID == "" || !isDigest(status.CheckpointSHA256) || status.Size < status.PrevFactSize {
+	if logID == "" || !utf8.ValidString(logID) || !isDigest(status.CheckpointSHA256) || status.Size < status.PrevFactSize {
 		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a journal fact needs its log, checkpoint and sizes", ErrInvalid)
 	}
 	sum := sha256.Sum256([]byte(logID))
@@ -251,7 +254,7 @@ func statusValue(raw json.RawMessage) (any, error) {
 func linkValue(l LinkValue) (LinkValue, error) {
 	// A record held from the other side means its log has at least one entry,
 	// so a size of 0 (also what a missing size reads as in Go) is refused.
-	if r := l.LastReceived; r != nil && (r.LogID == "" || r.Size == 0 || !isDigest(r.RecordDigest)) {
+	if r := l.LastReceived; r != nil && (r.LogID == "" || !utf8.ValidString(r.LogID) || r.Size == 0 || !isDigest(r.RecordDigest)) {
 		return LinkValue{}, fmt.Errorf("%w: last_received needs its log id, a size of at least 1 and a SHA-256 record digest", ErrInvalid)
 	}
 	over := append([]string{}, l.CheckedOver...)
@@ -285,7 +288,7 @@ func newFormatSwitch(lastTick uint64, logs []LoggedSize) (FormatSwitch, error) {
 	sorted := append([]LoggedSize{}, logs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].LogID < sorted[j].LogID })
 	for i := range sorted {
-		if sorted[i].LogID == "" || (i > 0 && sorted[i].LogID == sorted[i-1].LogID) {
+		if sorted[i].LogID == "" || !utf8.ValidString(sorted[i].LogID) || (i > 0 && sorted[i].LogID == sorted[i-1].LogID) {
 			return FormatSwitch{}, fmt.Errorf("%w: the marker lists each log once, by its id", ErrInvalid)
 		}
 	}

@@ -100,3 +100,10 @@ def test_journal_errors():
             sf.journal_fact(*args, z)
     with pytest.raises(sf.Invalid):
         sf.book_fact(profile="deal", book_id="a" * 64, log_id="l", size=1, checkpoint_sha256="b" * 64, prev_fact_size=0, status=[1], salts=z)
+
+
+def test_text_and_missing_commitments():
+    with pytest.raises(sf.Invalid):
+        sf.entry_id({"log_id": "deal/\ud800"})
+    with pytest.raises(sf.Invalid):
+        sf.verify_openings({}, status=sf.Opening("00" * 32, {}))
