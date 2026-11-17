@@ -29,6 +29,22 @@ import (
 // ordered (confirm_limits). On a sale every thread is its own deal, so each
 // thread states it to its own buyer.
 
+// representationRuleWords say, in the seller's own terms, why an agent's
+// claim was sealed unchecked: the closed set of rules authorizeClaim returns
+// (a test holds the table to it). The seller's Receipt shows them beside the
+// claim's words (capsule-cli#333), in the seller's terms: an approval they gave
+// or did not give, never "the check".
+var representationRuleWords = map[string]string{
+	"no_check":            "you weren't asked about it",
+	"not_approved":        "you hadn't approved it",
+	"denied":              "you or your rules said no to it",
+	"differs_from_check":  "it isn't what you approved",
+	"changed_after_check": "details changed after you approved it",
+	"check_expired":       "your approval had expired",
+	"authority_changed":   "what you allowed the agent to say changed after you approved it",
+	"approval_used":       "that approval was already used for an earlier claim",
+}
+
 // representAction is the check a seller's agent runs before it tells the
 // buyer something. It is a check action only: never an act, never in
 // intent.allowed.

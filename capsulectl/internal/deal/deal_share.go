@@ -1228,8 +1228,13 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 		return nil
 	}
 	items := func(list []dealReportItem, anomalies bool) []interface{} {
-		out := make([]interface{}, len(list))
-		for i, item := range list {
+		out := make([]interface{}, 0, len(list))
+		for _, item := range list {
+			// What the seller's agent said without the seller's authority
+			// is the seller's own matter: no shared copy carries it.
+			if item.Kind == "unapproved_representation" && audience != cli.DealAudienceKeep {
+				continue
+			}
 			ids := make([]interface{}, len(item.Steps))
 			for j, id := range item.Steps {
 				ids[j] = id
@@ -1290,7 +1295,7 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			if item.At != "" {
 				m["at"] = item.At
 			}
-			out[i] = m
+			out = append(out, m)
 		}
 		return out
 	}

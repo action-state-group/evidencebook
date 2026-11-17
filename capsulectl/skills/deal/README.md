@@ -360,7 +360,8 @@ user's own and is never sent by default.
   - `unapproved_disclosure`: a disclosure no approval covered.
   - `unapproved_representation`: something the agent told a buyer about the
     sale that no check or approval covered (sealed anyway, since the words
-    may already be said). `deal report` does not list these as anomalies.
+    may already be said). The seller's own `deal report` lists each as an
+    agent-side anomaly of this kind; a shared copy carries none.
 
   Each act, disclosure or claim counts once, in the range it was sealed in. A
   check's pauses are in its verdict, and steps the other party took are not
@@ -432,7 +433,9 @@ the array it always was):
    - agent side: `asked_vs_did` (tried something not asked, or did something
      other than what was checked), `skipped_check`, `unsealed_approval`
      (went ahead without a sealed proceed), `unapproved_disclosure` (told
-     someone about the user with no covering approval);
+     someone about the user with no covering approval),
+     `unapproved_representation` (the agent told a buyer something no check
+     or approval covered; the seller's own report only);
    - counterparty side: `changed_identifier`, `channel_hop`,
      `deadline_pressure`, `code_request`, `domain_recent`,
      `unverified_claim`, `delivered_differs`.
