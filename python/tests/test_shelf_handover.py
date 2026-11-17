@@ -18,7 +18,7 @@ from evidencebook._cll import read_checkpoint
 from evidencebook._gojson import Ordered
 from evidencebook.shelf_handover import Handover, canonical_document, check_fact_chain, verify_handover
 
-from test_shelf_stamp import START, VECTORS, fx, obs, script, stamp_cadence  # noqa: F401  (fx is a fixture)
+from test_shelf_stamp import START, VECTORS, Fixture, fx, obs, script, stamp_cadence  # noqa: F401  (fx is a fixture)
 
 KEY = script.CHECKPOINT_KEY.public_key().hex()
 
@@ -335,3 +335,51 @@ def test_a_tie_path_in_uppercase_hex_is_malformed(fx):
     ties[0] = dataclasses.replace(ties[0], path=[ties[0].path[0].upper()] + ties[0].path[1:])
     with pytest.raises(InvalidError, match="a malformed path"):
         verify_handover(dataclasses.replace(h, ties=ties), KEY, script.DIRECTORY)
+
+
+def test_a_tie_under_another_historys_checkpoint_fails(fx, tmp_path):
+    """A cadence checkpoint the holder signed and a named witness witnessed,
+    but of another shelf history (another root at the tie's position), fails
+    the tie on its root, not on its receipts."""
+    h, _ = tied_handover(fx)
+    # Another shelf under the same checkpoint key and cadence log id, whose
+    # first tick is witnessed.
+    (tmp_path / "other").mkdir()
+    other = Fixture(tmp_path / "other")
+    try:
+        with other.open() as shelf:
+            c, _ = stamp_cadence(shelf)
+            shelf.open("deal/z").append(obs("z", "1"))
+            forged = c.tick(START).tick
+    finally:
+        other.close()
+    assert read_checkpoint(forged.checkpoint).entries >= h.ties[0].entry_seq
+    ties = list(h.ties)
+    ties[0] = dataclasses.replace(ties[0], cadence_checkpoint=forged.checkpoint,
+                                  receipts=[script.mint_receipt(forged.checkpoint)])
+    with pytest.raises(InvalidError, match="do not recompute the cadence checkpoint"):
+        verify_handover(dataclasses.replace(h, ties=ties), KEY, script.DIRECTORY)
+
+
+def test_a_leaf_with_no_statement_leaves_its_book_untied(fx):
+    """A witnessed tree tick whose leaf kept no checkpoint statement (as a
+    released capsule-cli build stored it) gives that book no tie: it is
+    untied, and the handover verifies."""
+    with fx.open() as shelf:
+        c, _ = stamp_cadence(shelf)
+        shelf.open("deal/a").append(obs("a", "1"))
+        shelf.open("deal/b").append(obs("b", "1"))
+        tree = c.tick(START).tick
+        assert c.witnessed(tree.n, script.mint_receipt(tree.checkpoint)).state == "VERIFIED"
+        with shelf._tx() as db:
+            db.execute("""UPDATE cadence_ticks SET leaves = json_remove(leaves, '$.deals."deal/b".statement')"""
+                       " WHERE tick = ?", (tree.n,))
+        c.migrate(START + timedelta(minutes=1))
+        c.stamp(START + timedelta(minutes=2))
+        h = c.handover(0)
+        with shelf._read() as db:
+            book_b = db.execute("SELECT book_id FROM shelf_entries WHERE log_id = 'deal/b' LIMIT 1").fetchone()[0]
+    assert len(h.ties) == 1
+    assert h.ties[0].log_id == "deal/a"
+    got = verify_handover(h, read_checkpoint(h.anchor).key_id, script.DIRECTORY)
+    assert got.untied == [book_b]

@@ -176,3 +176,60 @@ fn a_tie_that_does_not_verify_fails_the_handover() {
     let got = verify_handover(&h, &key, Some(&json!({"witnesses": []})));
     assert!(matches!(got, Err(ShelfError::Invalid(_))), "{got:?}");
 }
+
+// A cadence checkpoint the holder signed and a named witness witnessed, but
+// of another shelf history (another root at the tie's position), fails the
+// tie on its root, not on its receipts.
+#[test]
+fn a_tie_under_another_historys_checkpoint_fails() {
+    let Tied { mut h, key, .. } = tied_handover();
+    // Another shelf under the same checkpoint key and cadence log id, whose
+    // first tick is witnessed.
+    let dir = tempfile::tempdir().unwrap();
+    let other = open(&dir.path().join("shelf.db"));
+    let c = other.cadence(config(directory())).unwrap();
+    append(&other, "deal/z", "1");
+    let forged = c.tick(tick_time()).unwrap().tick.unwrap();
+    let cp = Checkpoint::from_statement(&forged.checkpoint).unwrap();
+    assert!(cp.entries >= h.ties[0].entry_seq);
+    witness_at(&c, &forged, TEST_WITNESS_URL, None);
+    let receipt = c.get(forged.n).unwrap().receipt.unwrap();
+    h.ties[0].cadence_checkpoint = forged.checkpoint.clone();
+    h.ties[0].receipts = vec![receipt];
+    match verify_handover(&h, &key, Some(&directory())) {
+        Err(ShelfError::Invalid(m)) => {
+            assert!(m.contains("do not recompute the cadence checkpoint"), "{m}")
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+// A witnessed tree tick whose leaf kept no checkpoint statement (as a
+// released capsule-cli build stored it) gives that book no tie: it is
+// untied, and the handover verifies.
+#[test]
+fn a_leaf_with_no_statement_leaves_its_book_untied() {
+    let dir = tempfile::tempdir().unwrap();
+    let shelf = open(&dir.path().join("shelf.db"));
+    let c = shelf.cadence(config(directory())).unwrap();
+    append(&shelf, "deal/a", "1");
+    append(&shelf, "deal/b", "1");
+    let tree = c.tick(tick_time()).unwrap().tick.unwrap();
+    witness_at(&c, &tree, TEST_WITNESS_URL, None);
+    shelf
+        .shared()
+        .db()
+        .execute(
+            r#"UPDATE cadence_ticks SET leaves = json_remove(leaves, '$.deals."deal/b".statement') WHERE tick = ?"#,
+            [tree.n as i64],
+        )
+        .unwrap();
+    c.migrate(minutes(1)).unwrap();
+    c.stamp(minutes(2)).unwrap();
+    let h = c.handover(0).unwrap();
+    assert_eq!(h.ties.len(), 1);
+    assert_eq!(h.ties[0].log_id, "deal/a");
+    let key = Checkpoint::from_statement(&h.anchor).unwrap().key_id;
+    let got = verify_handover(&h, &key, Some(&directory())).unwrap();
+    assert_eq!(got.untied, [book_id_of(&shelf, "deal/b")]);
+}
