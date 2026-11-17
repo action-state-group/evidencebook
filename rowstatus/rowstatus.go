@@ -30,7 +30,10 @@
 // cannot_tell counts as none. Once the window has ended, a later statement
 // that gives its author the other side's in-time value is a concession, and
 // only the first concession on a row counts; two at the same time count as
-// none. A record with no time still counts, and the result is then local.
+// none. A record with no time still counts, and the result is then local; an
+// untimed statement is never a concession, since it cannot be shown to be
+// after the window (it is late only when an earlier timed statement of the
+// same side already is).
 package rowstatus
 
 import (

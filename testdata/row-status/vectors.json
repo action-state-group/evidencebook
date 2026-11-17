@@ -3470,6 +3470,96 @@
    }
   },
   {
+   "name": "l-untimed-is-never-a-concession",
+   "why": "an untimed statement after the window cannot be shown late, so it is the side's latest in-time statement (local), never a concession",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": true,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "l-concession-to-untimed-value",
+   "why": "a timed concession to the other side's untimed in-time value counts, and the result rests on that untimed statement: local",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": null
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "status": "agreed",
+    "local": true,
+    "value": "met",
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
    "name": "l-untimed-after-future",
    "why": "an untimed statement after one of the same side dated after T is not held as of T",
    "input": {

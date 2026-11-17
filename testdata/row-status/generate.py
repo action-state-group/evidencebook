@@ -185,6 +185,10 @@ case("l-untimed-withdrawal-not-relied-on", "another dispute counts on its own, s
      statements=AGR1, disputes=WD_D, withdrawals=[{"side": "seller", "time": None}])
 case("l-untimed-withdrawal-not-relied-on-reordered", "the same with the disputes in the other order", "2026-11-04T00:00:00Z", ROW1, res("in_dispute", R1D),
      statements=AGR1, disputes=list(reversed(WD_D)), withdrawals=[{"side": "seller", "time": None}])
+case("l-untimed-is-never-a-concession", "an untimed statement after the window cannot be shown late, so it is the side's latest in-time statement (local), never a concession", "2026-11-07T00:00:00Z", ROW1,
+     res("agreed", R1D, "met", local=True), statements=DIS1 + [st("seller", "met", None)])
+case("l-concession-to-untimed-value", "a timed concession to the other side's untimed in-time value counts, and the result rests on that untimed statement: local", "2026-11-07T00:00:00Z", ROW1,
+     res("agreed", R1D, "met", local=True), statements=[st("buyer", "met", None), st("seller", "not_met", "2026-11-02T10:00:00Z"), st("seller", "met", "2026-11-06T10:00:00Z")])
 case("l-untimed-after-future", "an untimed statement after one of the same side dated after T is not held as of T", "2026-11-05T05:00:00Z", ROW1, res("uncontested", R1D, "met"),
      statements=[st("seller", "met", "2026-11-01T12:30:00Z"), st("buyer", "not_met", "2026-11-05T10:00:00Z"), st("buyer", "met", None)])
 # A final ruling shows while a date it does not need is unset (Sherlock2's recommendation; a product call recorded on #466).
