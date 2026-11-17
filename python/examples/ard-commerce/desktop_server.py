@@ -85,7 +85,8 @@ class Session:
         self.assessed: dict | None = None
         self.pack: packs.Pack | None = None
         self.picked: dict[str, str] = {}
-        self.paid: set[str] = set()
+        self.paid: set[str] = set()       # payments the rail reported succeeded
+        self.attempted: set[str] = set()  # payments started: a failure mid-way is not a retry
         self.pay_lock = threading.Lock()  # one check, approval and payment at a time
         rail: pay.Rail = pay.from_env(os.environ.get("ARD_RAIL", "fake"))
         kestrel_card = os.environ.get("ARD_KESTREL_CARD", "sentinel")
@@ -258,25 +259,32 @@ def ard_pay(seller: str) -> None:
     with s.pay_lock:  # a second call waits here, then sees the seller paid
         if key in s.paid:
             raise RuntimeError(f"{SELLERS[key]['label']} was already paid in this run")
+        if key in s.attempted:
+            raise RuntimeError(f"a payment to {SELLERS[key]['label']} was already attempted in this run and is not confirmed: "
+                               "check the wallet before trying again")
         rail_name = os.environ.get("ARD_RAIL", "fake")
         real = rail_name in ("lightning", "local")
         summary = (f"Pay {SELLERS[key]['label']} {screens.msat(s.assessed[key].price_msat)} on the "
-                   + ("REAL Lightning rail: this moves real money." if real else "simulated rail: no money moves."))
+                   + ("REAL Lightning rail: this moves real money, and it settles to the demo's shared test node or wallet."
+                      if real else "simulated rail: no money moves."))
         if os.environ.get("ARD_APPROVAL") == "none":
             print("(approval gate off: ARD_APPROVAL=none)")
         elif not approve_payment(summary):
             raise RuntimeError("the presenter did not approve this payment (the approval dialog was cancelled, timed out or "
                                "could not be shown): nothing was paid. Ask the presenter to try again.")
-        s.paid.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
+        s.attempted.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
     if ROLE == "all":
         s.run.pay_deal(s.assessed, key, s.picked[key])
+        s.paid.add(key)
         return
     a, peer, run = s.assessed[key], s.bworld.nodes[key], s.run
     chain = buyer.open_deal(run.maya, peer, s.picked[key], a, demo.ASK)
     print(f"deal opened with {SELLERS[key]['label']}: waiting for its agent's half")
     payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
-    who = ("Brattain's wallet paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
+    who = ("the buyer's test node paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
+    if payment.status == "succeeded":
+        s.paid.add(key)
     print(f"deal closed with {SELLERS[key]['label']}: both halves compared.")
     # Maya's checkpoint over her own records, taken now so her card shows this deal right away. The profile allows one a
     # minute at the soonest, so this waits for it if the last one is that recent (it is due in the demo's story).

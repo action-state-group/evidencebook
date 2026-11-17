@@ -66,6 +66,12 @@ def test_the_story_find_history_assess_limit_then_pay(tools, monkeypatch):
     assert "invoice 289 msat" in paid and "Alder Print Co.'s card now counts 49 deals" in paid
     assert tools._session.run.rail.paid == [289]
     assert "REFUSED: Alder Print Co. was already paid" in tools.ard_pay("alder")
+    # An attempt that the rail did not confirm is not "paid": the next try says so and sends the presenter to the wallet.
+    sess = tools._session
+    sess.paid.discard("alder")
+    unconfirmed = tools.ard_pay("alder")
+    assert "already attempted in this run and is not confirmed" in unconfirmed and "was already paid" not in unconfirmed
+    assert tools._session.run.rail.paid == [289]
 
 
 def test_an_unknown_seller_is_refused(tools):

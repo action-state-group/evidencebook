@@ -292,7 +292,7 @@ class Seller:
         listed = SELLERS[self.name]["price_msat"]
         if terms.price_minor != listed:
             raise gn.Refused(f"asked {terms.price_minor} msat, not the listed {listed}: no deal")
-        self.say(f"a buyer asks to buy {terms.item} at {screens.msat(terms.price_minor)}: admitted for this deal")
+        self.say(f"a buyer asks to buy {terms.item} at {screens.msat(terms.price_minor)}: accepted for this deal")
         deals.admit(node, maya, reason="buyer who picked this seller (demo)")
         verified = node.verify_peer_half(m1)
         schain = node.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
@@ -302,7 +302,7 @@ class Seller:
         self.say("deal opened: its terms checked, its first half sent")
         m2 = wait_file(inbox / f"{deal_id}.m2.json", 180)
         deals._reconcile(node, m2, maya)
-        self.say("the buyer's half after payment checked and held")
+        self.say("the buyer's signed copy after payment checked and stored")
         node.ask_half(deal_id)
         write_atomic(outbox / f"{deal_id}.s2.json", json.dumps(node.half(deal_id)).encode())
         deals._reconcile(node, m2, maya)
@@ -365,7 +365,7 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
         if kind in ("close",):
             lines.append(f"  {at}  close: outcome {body.get('outcome')}")
         elif action == "pay" and "reference_commitment" in body:  # the act, not the check before it
-            lines.append(f"  {at}  payment of {body['amount_minor']} msat sent; its reference is sealed as a commitment "
+            lines.append(f"  {at}  payment of {body['amount_minor']} msat sent; the payment reference is kept only as a hash "
                          f"{body['reference_commitment'][:12]}…")
         elif action in _MILESTONES and action != "pay" and meta is None and d.get("type", "").startswith("action"):
             lines.append(f"  {at}  {_MILESTONES[action]}, {body.get('amount_minor')} msat")
@@ -373,7 +373,7 @@ def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
             lines.append(f"  {at}  outcome: {body.get('status')}")
     ok = [s for r, s in node.notes(RECONCILED) if s["deal_id"] == deal_id]
     got = [s for r, s in node.notes(gn.HALF_RECEIVED) if s["deal_id"] == deal_id]
-    lines.append(f"  the other party's half held {len(got)} time(s); the two closes name "
+    lines.append(f"  the other party's signed copy checked {len(got)} time(s); the two closes name "
                  + (f"the same amount ({ok[-1]['amount_minor']} msat): {'MET' if ok[-1]['met'] else 'NOT MET'}" if ok else "no comparison yet"))
     return "\n".join(lines)
 

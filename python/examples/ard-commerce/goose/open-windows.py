@@ -54,7 +54,7 @@ PARTIES = {
         "Before calling ard_pay, stop and ask Maya to confirm, in one sentence that names the seller and the amount and says {PAYS}. "
         "Call ard_pay only after she answers yes in her next message, only for the seller she named, and never in the same message as ard_pick. "
         "If a tool answers REFUSED, say so in one sentence and do not retry it.",
-        "prompt": "Reply in English only. I am Maya. I need 200 conference badges by Friday, under 300 msat. Find sellers for me.",
+        "prompt": "Reply in English only. I am Maya. I need 200 conference badges by Friday, under 300 msat (a msat is a thousandth of a satoshi: a token amount for this demo). Find sellers for me.",
     },
 }
 

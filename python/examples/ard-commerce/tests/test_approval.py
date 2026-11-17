@@ -56,4 +56,4 @@ def test_the_dialog_gives_up_after_three_minutes(monkeypatch):
 def test_summary_wording_names_the_rail():
     # the text the presenter reads: real money on the real rails, none on the simulated one
     src = open(ds.__file__).read()
-    assert "REAL Lightning rail: this moves real money." in src and "simulated rail: no money moves." in src
+    assert "REAL Lightning rail: this moves real money, and it settles to the demo's shared test node or wallet." in src and "simulated rail: no money moves." in src
