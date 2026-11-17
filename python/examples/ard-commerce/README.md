@@ -72,7 +72,8 @@ screen). Preimages are never printed or kept. You need `gcloud` signed in to the
 Lightning on mainnet, so use small amounts and wallets made for this. Set `ARD_WALLET_BUYER` and
 `ARD_WALLET_SELLER` to two wallet directories (`ln-pay-local init --wallet <dir>` makes one; fund the buyer), install the
 program (`cargo install --locked --git https://github.com/action-state-group/ln-pay-local`, or set `ARD_PAY_LOCAL` to the
-binary), then run as for `--rail lightning`. The Brattain and Shockley rail stays the default for `--rail lightning`.
+binary), then run as for `--rail lightning`. For the Goose windows, export the two wallet variables (and `ARD_PAY_LOCAL`
+if the program is not on the PATH) and run `goose/open-windows.py --rail local`; only Maya's window gets them. The Brattain and Shockley rail stays the default for `--rail lightning`.
 
 ### The one switch
 

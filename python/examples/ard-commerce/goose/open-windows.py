@@ -7,7 +7,8 @@
 Each window is a recipe with its own embedded extension (``desktop_server.py`` with ``ARD_ROLE``), so each
 party's Goose has its own keys and data directory. It opens ``goose://recipe?config=...`` links, which
 Goose Desktop answers with one window each (it asks once per recipe: Trust and Execute). Open the sellers
-first. Environment: ``CAPSULE_ENGINE``, ``ARD_SKILLS`` (as for ``demo.py``), ``ARD_HOME`` (optional).
+first. Environment: ``CAPSULE_ENGINE``, ``ARD_SKILLS`` (as for ``demo.py``), ``ARD_HOME`` (optional); for ``--rail local``
+``ARD_WALLET_BUYER`` and ``ARD_WALLET_SELLER`` (wallet directories) and optionally ``ARD_PAY_LOCAL`` (the ln-pay-local binary).
 ``--print`` prints the links instead of opening them."""
 from __future__ import annotations
 
@@ -63,8 +64,12 @@ def link(role: str, rail: str) -> str:
            f"CAPSULE_ENGINE={os.environ['CAPSULE_ENGINE']}", f"ARD_SKILLS={os.environ['ARD_SKILLS']}"]
     if os.environ.get("ARD_HOME"):
         env.append(f"ARD_HOME={os.environ['ARD_HOME']}")
+    if rail == "local" and role == "maya":  # only the buyer's window pays
+        for var in ("ARD_WALLET_BUYER", "ARD_WALLET_SELLER", "ARD_PAY_LOCAL"):
+            if os.environ.get(var):
+                env.append(f"{var}={os.environ[var]}")
     p = PARTIES[role]
-    pays = "that this moves real money over Lightning" if rail == "lightning" else "that no money moves, the rail is simulated"
+    pays = "that this moves real money over Lightning" if rail in ("lightning", "local") else "that no money moves, the rail is simulated"
     p = {**p, "instructions": p["instructions"].replace("{PAYS}", pays)}
     recipe = {"version": "1.0.0", "title": p["title"], "description": f"The ARD two-seller demo: {role}.",
               "instructions": p["instructions"], "prompt": p["prompt"],
@@ -75,11 +80,12 @@ def link(role: str, rail: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--rail", choices=["fake", "lightning"], default="fake")
+    ap.add_argument("--rail", choices=["fake", "lightning", "local"], default="fake")
     ap.add_argument("--print", action="store_true", dest="show")
     ap.add_argument("--only", choices=["alder", "kestrel", "maya"], help="open one window only")
     args = ap.parse_args(argv)
-    for var in ("CAPSULE_ENGINE", "ARD_SKILLS"):
+    needed = ["CAPSULE_ENGINE", "ARD_SKILLS"] + (["ARD_WALLET_BUYER", "ARD_WALLET_SELLER"] if args.rail == "local" else [])
+    for var in needed:
         if not os.environ.get(var):
             print(f"set {var} (see README.md)", file=sys.stderr)
             return 2
