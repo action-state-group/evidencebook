@@ -403,3 +403,111 @@ def test_only_a_book_is_asked_for_its_status(fx):
         # The same answers again: no new fact for either.
         quiet = c.stamp(START + timedelta(minutes=1)).tick
         assert FACT_KIND_BOOK not in entries_of_tick(shelf, quiet.n)
+
+
+# -- the recovery scenarios (testdata/shelf/after-recover-*.json, #461 §7) --------------
+#
+# Go's test/interop/shelf plants these for the cross-language interlock; the
+# plants are ported here (internal/shelfscript/recover.go, step for step) so the
+# vectors are checked without Go. A plant runs the interrupted operation on a
+# copy and copies back only what the crash would have left.
+
+PLANT_STREAM, PLANT_AT = "evidencebook shelf vectors/plant", script.START + timedelta(seconds=10800)
+
+
+def _on_copy(path: str, act, apply) -> None:
+    scratch = Path(path).parent / "plant"
+    scratch.mkdir()
+    copy = str(scratch / script.FILE)
+    original = script.open_db(path)
+    try:
+        original.execute("VACUUM INTO ?", (copy,))
+        act(copy)
+        copied = script.open_db(copy)
+        try:
+            apply(original, copied)
+        finally:
+            copied.close()
+    finally:
+        original.close()
+
+
+def _copy_last_tick(path: str, original: sqlite3.Connection, copied: sqlite3.Connection, appended: int) -> None:
+    from cll.log import sqlite as cllsqlite
+
+    n, at, due, leaves = copied.execute("SELECT tick, at, due_next, leaves FROM cadence_ticks ORDER BY tick DESC "
+                                        "LIMIT 1").fetchone()
+    original.execute("INSERT INTO cadence_ticks (tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves) "
+                     "VALUES (?, ?, ?, 0, 0, x'', ?)", (n, at, due, leaves))
+    if appended == 0:
+        return
+    entries = copied.execute("SELECT entry_seq, kind, book_id, log_id, doc, link_opening, status_opening FROM "
+                             "shelf_entries WHERE tick = ? ORDER BY entry_seq LIMIT ?", (n, appended)).fetchall()
+    when = datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    log = cllsqlite.open(path, script.CADENCE["log_id"])
+    try:
+        for seq, kind, book, log_id, doc, lo, so in entries:
+            result = log.append(AppendInput(hashlib.sha256(bytes(doc)).digest(), when))
+            assert result.entry.seq == seq, f"planted entry {seq} landed at {result.entry.seq}"
+            original.execute("INSERT INTO shelf_entries (entry_seq, kind, book_id, log_id, doc, link_opening, "
+                             "status_opening, tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             (seq, kind, book, log_id, doc, lo, so, n))
+    finally:
+        log.close()
+
+
+def plant_tick(path: str) -> None:
+    """An empty host log in the cadence and a tree tick stored but not finished."""
+    env = script.Env(path, PLANT_STREAM, PLANT_AT)
+    try:
+        env.shelf.host_log("legacy/empty", True)
+    finally:
+        env.release()
+
+    def act(copy: str) -> None:
+        c = script.Env(copy, PLANT_STREAM, PLANT_AT)
+        try:
+            c.tick()
+        finally:
+            c.release()
+
+    _on_copy(path, act, lambda original, copied: _copy_last_tick(path, original, copied, 0))
+
+
+def plant_migration(path: str, appended: int = 2) -> None:
+    """A migration stopped in its step 4: version 2, state migrating, its
+    backup recorded and in place, its batch stored, its first entries appended."""
+    def act(copy: str) -> None:
+        c = script.Env(copy, PLANT_STREAM, PLANT_AT)
+        try:
+            c.cadence.migrate(c.clock())
+        finally:
+            c.release()
+        with open(copy + ".v1.bak", "rb") as src, open(path + ".v1.bak", "xb") as dst:
+            dst.write(src.read())
+
+    def apply(original: sqlite3.Connection, copied: sqlite3.Connection) -> None:
+        digest = copied.execute("SELECT backup_sha256 FROM shelf_migration WHERE id = 1").fetchone()[0]
+        original.execute("UPDATE shelf_meta SET version = 2 WHERE id = 1")
+        original.execute("INSERT INTO shelf_migration (id, state, backup_sha256) VALUES (1, 'migrating', ?)", (digest,))
+        _copy_last_tick(path, original, copied, appended)
+
+    _on_copy(path, act, apply)
+
+
+@pytest.mark.parametrize("scenario,plant", [("tick", plant_tick), ("migration", plant_migration)])
+def test_a_planted_crash_recovers_to_the_vector(tmp_path, scenario, plant):
+    path = str(tmp_path / script.FILE)
+    script.run(path, script.SCRIPT["write_phase"])
+    script.run(path, script.SCRIPT["continue_phase"])
+    plant(path)
+    db = sqlite3.connect(path)
+    try:
+        unfinished = db.execute("SELECT COUNT(*) FROM cadence_ticks WHERE checkpoint_size = 0").fetchone()[0]
+        state = db.execute("SELECT state FROM shelf_migration").fetchall()
+    finally:
+        db.close()
+    assert unfinished == 1
+    assert state == ([("migrating",)] if scenario == "migration" else [])
+    script.run(path, script.SCRIPT["recover_phase"])
+    assert script.dump(str(tmp_path)) == (VECTORS / f"after-recover-{scenario}.json").read_bytes()

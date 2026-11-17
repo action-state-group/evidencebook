@@ -343,6 +343,12 @@ pub fn migrate(dir: &Path) -> Result<(), Error> {
     run(&file(dir), script()["migrate_phase"].as_array().unwrap())
 }
 
+/// Run the recover phase on `dir/shelf.db`: finish whatever a crash left
+/// (Go's `plant-tick` or `plant-migration`) with a migration, then a stamp.
+pub fn recover(dir: &Path) -> Result<(), Error> {
+    run(&file(dir), script()["recover_phase"].as_array().unwrap())
+}
+
 /// Run `steps` on the shelf file at `path`, as Go's `shelfscript.Run`.
 pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
     let mut env: Option<Env> = None;

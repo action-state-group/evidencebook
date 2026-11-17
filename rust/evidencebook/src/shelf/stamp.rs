@@ -1232,6 +1232,50 @@ mod tests {
     }
 
     #[test]
+    fn migrate_reuses_a_backup_it_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shelf.db");
+        let shelf = open(&path);
+        let (c, _) = stamp_cadence(&shelf);
+        append(&shelf, "deal/a", "1");
+        // Steps 1 and 2 by hand, stopping before the rename.
+        let tmp = with_suffix(&path, ".v1.bak.tmp");
+        let digest = {
+            let db = shelf.shared().db();
+            db.execute(
+                "UPDATE shelf_meta SET version = ? WHERE id = 1",
+                [SHELF_VERSION_FACTS],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO shelf_migration (id, state, backup_sha256) VALUES (1, ?, '')",
+                [MIGRATION_BACKING_UP],
+            )
+            .unwrap();
+            db.execute("VACUUM INTO ?", [tmp.to_str().unwrap()])
+                .unwrap();
+            reset_backup(&tmp).unwrap();
+            let digest = file_sha256(&tmp).unwrap();
+            db.execute(
+                "UPDATE shelf_migration SET backup_sha256 = ? WHERE id = 1",
+                [&digest],
+            )
+            .unwrap();
+            digest
+        };
+
+        c.migrate(tick_time()).unwrap();
+        assert_eq!(
+            file_sha256(&with_suffix(&path, ".v1.bak")).unwrap(),
+            digest,
+            "the recorded backup is the one in place"
+        );
+        assert!(!tmp.exists());
+        assert!(c.migrated().unwrap());
+        shelf.release().unwrap();
+    }
+
+    #[test]
     fn a_host_log_is_never_asked_for_its_status() {
         let dir = tempfile::tempdir().unwrap();
         let shelf = open(&dir.path().join("shelf.db"));

@@ -7,6 +7,9 @@ repository's Python package, as test/interop/shelf (Go) runs it.
     python shelf.py continue DIR    the continuer phase, on DIR/shelf.db
     python shelf.py migrate DIR     the migrate phase (a shelf log of book facts,
                                     evidencebook#461), on DIR/shelf.db
+    python shelf.py recover DIR     the recover phase: finish a crash Go's
+                                    test/interop/shelf plant-tick or
+                                    plant-migration left (#461 §7)
     python shelf.py dump DIR        the file's dump on stdout (it reads a copy)
     python shelf.py hold DIR SECS   open the shelf, print "held", keep it SECS seconds
     python shelf.py try DIR MS      open the shelf, waiting at most MS ms for its
@@ -14,8 +17,8 @@ repository's Python package, as test/interop/shelf (Go) runs it.
                                     writer holds the lock
 
 Each language writes or continues the other's file, and every dump must
-equal testdata/shelf/after-write.json, after-continue.json or
-after-migrate.json byte for byte.
+equal testdata/shelf/after-write.json, after-continue.json, after-migrate.json
+or a recovery scenario's after-recover-*.json byte for byte.
 The keys are test keys. Never use them for anything else.
 """
 from __future__ import annotations
@@ -329,7 +332,7 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|dump|hold|try DIR [ARG]", file=sys.stderr)
+        print("usage: shelf.py write|continue|migrate|recover|dump|hold|try DIR [ARG]", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
     path = os.path.join(directory, FILE)
@@ -342,6 +345,8 @@ def main(args: list[str]) -> int:
         run(path, SCRIPT["continue_phase"])
     elif command == "migrate":
         run(path, SCRIPT["migrate_phase"])
+    elif command == "recover":
+        run(path, SCRIPT["recover_phase"])
     elif command == "dump":
         sys.stdout.buffer.write(dump(directory))
     elif command in ("hold", "try"):
