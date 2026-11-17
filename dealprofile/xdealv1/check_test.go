@@ -149,7 +149,7 @@ func TestPlacementRules(t *testing.T) {
 		"an agreement past seq 1":              {"agree/agreement", func(b, _ map[string]any) { b["seq"], b["prev"], b["agreement_ref"] = 2, *ref('1'), *ref('2') }},
 		"a deal book opened by another record": {"perform", func(b, _ map[string]any) { b["seq"] = 1; delete(b, "prev"); delete(b, "agreement_ref") }},
 		"a ruling with seen":                   {"ruling", func(b, _ map[string]any) { b["seen"] = nil }},
-		"an acceptor's agreement that saw":     {"agree/agreement", func(b, _ map[string]any) { b["seen"] = hex('1') }},
+		"an acceptor's agreement that saw":     {"agree/agreement", func(b, _ map[string]any) { b["seen"] = hx('1') }},
 		"no layer and a counterparty key":      {"agree/agreement", func(_, body map[string]any) { body["counterparty_layer"] = false }},
 		"a row given twice": {"propose", func(_, body map[string]any) {
 			tr := body["terms_rows"].(map[string]any)
@@ -158,7 +158,7 @@ func TestPlacementRules(t *testing.T) {
 		}},
 		"a date on a record not named":       {"propose", func(_, body map[string]any) { body["terms_rows"].(map[string]any)["named"] = map[string]any{} }},
 		"a check body v0 refuses":            {"check", func(_, body map[string]any) { body["action"] = "fly" }},
-		"a decline with an agreement member": {"agree/decline", func(_, body map[string]any) { body["rows_digest"] = hex('1') }},
+		"a decline with an agreement member": {"agree/decline", func(_, body map[string]any) { body["rows_digest"] = hx('1') }},
 		"a cancellation with a reason":       {"agree/cancellation", func(_, body map[string]any) { body["reason"] = "other" }},
 		"a decline with an unknown reason":   {"agree/decline", func(_, body map[string]any) { body["reason"] = "too_slow" }},
 		"a payer leg with no check":          {"settle/payer", func(_, body map[string]any) { delete(body, "check") }},
@@ -172,7 +172,7 @@ func TestPlacementRules(t *testing.T) {
 		"a layered counterparty with no key": {"agree/agreement", func(_, body map[string]any) { body["counterparty_key"] = nil }},
 		"a decline with marks":               {"agree/decline", func(b, _ map[string]any) { b["marks"] = []any{"paid"} }},
 		"a cancellation with a fingerprint": {"agree/cancellation", func(b, _ map[string]any) {
-			b["counterparty"] = map[string]any{"fp_alg": FPAlg, "ids": map[string]any{"payee": hex('1')}}
+			b["counterparty"] = map[string]any{"fp_alg": FPAlg, "ids": map[string]any{"payee": hx('1')}}
 		}},
 		"a decline with refs": {"agree/decline", func(b, _ map[string]any) { b["refs"] = []any{} }},
 		"a date that does not exist": {"propose", func(_, body map[string]any) {
@@ -207,7 +207,7 @@ func TestCheckAgreement(t *testing.T) {
 	offer := record(blk(TypePropose), offerBody())
 	acc := acceptorAgreement(offer)
 	require.NoError(t, CheckAgreement(acc, offer, ""))
-	accID := hex('9')
+	accID := hx('9')
 	offerer := acceptorAgreement(offer)
 	ob := offerer.Body.(*AgreeBody)
 	ob.Side, ob.Role, ob.CounterpartyKey = SideOfferer, RoleBuyer, Some("seller-key")
@@ -216,11 +216,11 @@ func TestCheckAgreement(t *testing.T) {
 	require.NoError(t, CheckAgreement(offerer, offer, accID))
 
 	for name, f := range map[string]func(a *Record, o *Record){
-		"another offer":       func(_ *Record, o *Record) { o.Body.(*ProposeBody).PackDigest = hex('0') },
+		"another offer":       func(_ *Record, o *Record) { o.Body.(*ProposeBody).PackDigest = hx('0') },
 		"another deal":        func(a *Record, _ *Record) { a.Block.DealID = "deal-fedcba9876543210" },
-		"another rows digest": func(a *Record, _ *Record) { a.Body.(*AgreeBody).RowsDigest = hex('0') },
+		"another rows digest": func(a *Record, _ *Record) { a.Body.(*AgreeBody).RowsDigest = hx('0') },
 		"other witnesses": func(a *Record, _ *Record) {
-			a.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('5'), URL: "https://witness.test"}}
+			a.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hx('5'), URL: "https://witness.test"}}
 		},
 		"no adjudicator":   func(a *Record, _ *Record) { a.Body.(*AgreeBody).Adjudicator = NullOf[Adjudicator]() },
 		"the offer's role": func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
@@ -237,14 +237,14 @@ func TestCheckAgreement(t *testing.T) {
 	// A witness is its key id: another URL hint, or another order, is the
 	// same list.
 	hinted := acceptorAgreement(offer)
-	hinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('4'), URL: "https://moved.test"}}
+	hinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hx('4'), URL: "https://moved.test"}}
 	assert.NoError(t, CheckAgreement(hinted, offer, ""))
 	unhinted := acceptorAgreement(offer)
-	unhinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('4')}}
+	unhinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hx('4')}}
 	assert.NoError(t, CheckAgreement(unhinted, offer, ""))
 
 	// The offerer's agreement names the acceptor's agreement it holds.
-	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(offerer, offer, hex('8'))))
+	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(offerer, offer, hx('8'))))
 	offerer.Body.(*AgreeBody).Role = RoleSeller
 	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(offerer, offer, accID)), "the offerer's role is the offer's")
 }
@@ -282,7 +282,7 @@ func TestVersionsDoNotCross(t *testing.T) {
 	v1, err := json.Marshal(validRecords(t)["propose"])
 	require.NoError(t, err)
 	assert.Error(t, dealprofile.Decode(v1, &dealprofile.Record{}))
-	_, err = Decode([]byte(`{"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": "deal-0123456789abcdef", "record_type": "intent", "seq": 1, "at": "2026-11-01T10:00:00Z"}, "body": {"verbatim_commitment": "` + hex('a') + `"}}`))
+	_, err = Decode([]byte(`{"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": "deal-0123456789abcdef", "record_type": "intent", "seq": 1, "at": "2026-11-01T10:00:00Z"}, "body": {"verbatim_commitment": "` + hx('a') + `"}}`))
 	assert.Error(t, err)
 }
 
