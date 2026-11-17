@@ -358,3 +358,45 @@ func TestABTCAndAFiatDealMakeSeparateCurrencyRows(t *testing.T) {
 	assert.Equal(t, map[string]int{"USD": 1, "BTC": 1}, got)
 	assert.Len(t, doc.Bands, 2)
 }
+
+// TEMPORARY (evidencebook#462): the owner's outcome_note that confirms a
+// close makes the deal did_not_hold, over a met Result; a note that confirms
+// no close, or says another outcome, changes nothing.
+func TestAnOutcomeNoteMakesTheDealDidNotHold(t *testing.T) {
+	build := func(note func(c *classic)) []HistoryRecord {
+		c := classicDeal(t, "seller", map[string]any{"action": "commit", "amount_minor": 1500, "currency": "USD"})
+		c.add("outcome", TypeOutcome, nil, map[string]any{"status": "not_received", "outcome": "mismatch"})
+		c.add("close", TypeClose, map[string]string{"outcome": "outcome"}, map[string]any{"outcome": "mismatch"})
+		if note != nil {
+			note(c)
+		}
+		return c.records
+	}
+	for name, tc := range map[string]struct {
+		note func(c *classic)
+		want string
+	}{
+		"no note": {nil, "held"},
+		"a note on the close": {func(c *classic) {
+			c.add("note", TypeOutcomeNote, map[string]string{"confirms": "close"}, map[string]any{"outcome": "did_not_hold", "reason": "dispute_lost"})
+		}, "did_not_hold"},
+		"a note on no close": {func(c *classic) {
+			c.add("note", TypeOutcomeNote, map[string]string{"confirms": "outcome"}, map[string]any{"outcome": "did_not_hold", "reason": "other"})
+		}, "held"},
+		"a note with no ref": {func(c *classic) {
+			c.add("note", TypeOutcomeNote, nil, map[string]any{"outcome": "did_not_hold", "reason": "other"})
+		}, "held"},
+		"a note that says something else": {func(c *classic) {
+			c.add("note", TypeOutcomeNote, map[string]string{"confirms": "close"}, map[string]any{"outcome": "held", "reason": "other"})
+		}, "held"},
+	} {
+		deal, ok, err := StandardHistoryDeal(HistoryInput{Records: build(tc.note), Results: []HistoryResult{result(true, "met")}})
+		require.NoError(t, err, name)
+		require.True(t, ok, name)
+		assert.Equal(t, tc.want, deal.Outcome, name)
+	}
+	// Without a note, a not_met Result stays undecided (evidencebook#212).
+	deal, _, err := StandardHistoryDeal(HistoryInput{Records: build(nil), Results: []HistoryResult{result(true, "not_met")}})
+	require.NoError(t, err)
+	assert.Equal(t, "undecided", deal.Outcome)
+}

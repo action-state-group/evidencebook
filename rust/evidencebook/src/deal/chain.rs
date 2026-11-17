@@ -296,7 +296,7 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "task_authority" => &["source", "approves", "registration"],
         "check" => &["supersedes", "source"],
         "counterparty_profile" => &["about"],
-        "rules_verdict" => &["confirms"],
+        "rules_verdict" | "outcome_note" => &["confirms"],
         _ => &[],
     }
 }
@@ -685,6 +685,7 @@ struct Chain {
     verdict_for_check: HashSet<usize>,
     profile_for_check: HashSet<usize>,
     rules_verdict: bool,
+    outcome_note: bool,
     reversed: HashSet<usize>,
     first_answer: HashMap<usize, usize>,
     last_outcome: Option<usize>,
@@ -1029,6 +1030,7 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         verdict_for_check: HashSet::new(),
         profile_for_check: HashSet::new(),
         rules_verdict: false,
+        outcome_note: false,
         reversed: HashSet::new(),
         first_answer: HashMap::new(),
         last_outcome: None,
@@ -1145,8 +1147,8 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         if let Some(cf) = c.closed_final {
             // Close is terminal: after it, only later evidence that confirms
             // that close (and commits to its digest) may follow; the party's one
-            // rules_verdict is such a record.
-            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT)
+            // rules_verdict and outcome_note are such records.
+            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT && t != TYPE_OUTCOME_NOTE)
                 || confirms.len() != 1
                 || !string_is(g(confirms[0], "digest"), &c.digests[cf])
             {
@@ -1545,6 +1547,20 @@ impl Chain {
                 bail!(self, "a deal has at most one rules_verdict record");
             }
             self.rules_verdict = true;
+        } else if t == TYPE_OUTCOME_NOTE {
+            // TEMPORARY (evidencebook#462): the owner's note that the deal did not
+            // hold, sealed once after the final close, which it confirms.
+            if self.closed_final.is_none() {
+                bail!(
+                    self,
+                    "an outcome_note is sealed after the deal's final close"
+                );
+            }
+            self.one("confirms", &[TYPE_CLOSE], true)?;
+            if self.outcome_note {
+                bail!(self, "a deal has at most one outcome_note record");
+            }
+            self.outcome_note = true;
         } else if t == TYPE_EVIDENCE {
             self.one("about", &[TYPE_CLAIM, TYPE_BASELINE], true)?;
             self.one("confirms", &[TYPE_CLOSE], false)?;

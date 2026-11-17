@@ -47,6 +47,8 @@ const (
 	TypeSaleUnpost          = "sale_unpost"
 	TypeAgentMove           = "agent_move"
 	TypeRulesVerdict        = "rules_verdict"
+	// TypeOutcomeNote is temporary (evidencebook#462): see OutcomeNoteBody.
+	TypeOutcomeNote = "outcome_note"
 )
 
 // RecordTypes are the x-deal-v0 record types, in the schema's order.
@@ -56,7 +58,7 @@ var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
 	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeSaleUnpost, TypeAgentMove,
-	TypeRulesVerdict,
+	TypeRulesVerdict, TypeOutcomeNote,
 }
 
 // The typed action records and contract types (PROFILE.md §9).

@@ -510,6 +510,17 @@ func parityHistories(t *testing.T) []parityHistory {
 		c.add("close", TypeClose, map[string]string{"outcome": "outcome"}, map[string]any{"outcome": "completed"})
 		add("a seller's received close", c.records, []HistoryResult{result(true, "met")}, false)
 	}
+	// TEMPORARY (evidencebook#462): the owner's outcome_note, on the close, on
+	// no close, and saying another outcome.
+	for _, nc := range []struct {
+		name, confirms, outcome string
+	}{{"on the close", "close", "did_not_hold"}, {"on no close", "outcome", "did_not_hold"}, {"saying held", "close", "held"}} {
+		c := classicDeal(t, "seller", map[string]any{"action": "commit", "amount_minor": 1500, "currency": "USD"})
+		c.add("outcome", TypeOutcome, nil, map[string]any{"status": "not_received", "outcome": "mismatch"})
+		c.add("close", TypeClose, map[string]string{"outcome": "outcome"}, map[string]any{"outcome": "mismatch"})
+		c.add("note", TypeOutcomeNote, map[string]string{"confirms": nc.confirms}, map[string]any{"outcome": nc.outcome, "reason": "dispute_lost"})
+		add("outcome_note "+nc.name, c.records, []HistoryResult{result(true, "met")}, false)
+	}
 	return out
 }
 

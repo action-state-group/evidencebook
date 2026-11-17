@@ -232,6 +232,17 @@ func (c *dealChain) step(typed bool) {
 			c.fail("a deal has at most one rules_verdict record")
 		}
 		c.rulesVerdict = true
+	case t == TypeOutcomeNote:
+		// TEMPORARY (evidencebook#462): the owner's note that the deal did not
+		// hold, sealed once after the final close, which it confirms.
+		if c.closedFinal < 0 {
+			c.fail("an outcome_note is sealed after the deal's final close")
+		}
+		asOne("confirms", TypeClose)
+		if c.outcomeNote {
+			c.fail("a deal has at most one outcome_note record")
+		}
+		c.outcomeNote = true
 	case t == TypeEvidence:
 		asOne("about", TypeClaim, TypeBaseline)
 		asOpt("confirms", TypeClose)

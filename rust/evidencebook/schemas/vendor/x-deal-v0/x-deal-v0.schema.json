@@ -31,6 +31,8 @@
       "then": { "properties": { "body": { "$ref": "#/$defs/body_sale_unpost" }, "x-deal-v0": { "required": ["refs"], "properties": { "deal_id": { "pattern": "^sale-[0-9a-f]{16}$" }, "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "unposts" } } } } }, "not": { "required": ["counterparty"] } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "rules_verdict" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_rules_verdict" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
+    { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "outcome_note" } } } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_outcome_note" }, "x-deal-v0": { "not": { "required": ["counterparty"] }, "required": ["refs"], "properties": { "refs": { "minItems": 1, "maxItems": 1, "items": { "properties": { "rel": { "const": "confirms" } } } } } } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "intent" } } } } },
       "then": { "properties": { "body": { "$ref": "#/$defs/body_intent" } } } },
     { "if": { "properties": { "x-deal-v0": { "properties": { "record_type": { "const": "agent_move" } } } } },
@@ -77,7 +79,7 @@
     },
     "short_text": { "type": "string", "minLength": 1, "maxLength": 200 },
     "record_type": {
-      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "agent_move", "rules_verdict"]
+      "enum": ["intent", "baseline", "message", "claim", "evidence", "detail_change", "check", "verdict", "approval", "action", "outcome", "close", "disclosure", "sale", "counterparty_profile", "thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "agent_move", "rules_verdict", "outcome_note"]
     },
     "point_of_no_return": { "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer"] },
     "check_action": { "description": "What a check is of: a point of no return, represent (where the user sells: what the agent is about to tell the buyer), or post (on a sale's own log: a listing about to be posted). represent is a check only: never an act, never in allowed. post is never in allowed: every post check asks.", "enum": ["pay", "sign", "commit", "cancel", "share_contact", "share_credentials", "offer", "represent", "post"] },
@@ -148,6 +150,14 @@
         "word": { "enum": ["met", "not_met", "unknown", "out_of_scope"] },
         "pack_digest": { "$ref": "#/$defs/hex64" },
         "pack_id": { "$ref": "#/$defs/pack_id" }
+      }
+    },
+    "body_outcome_note": {
+      "description": "TEMPORARY (evidencebook#462, superseded by the computed row status of evidencebook#461). The book owner's own note that an outcome arrived against it: the deal did not hold. outcome is did_not_hold; reason is dispute_lost, settled_against, not_delivered or other. It is sealed once, after the final close, which it confirms (one confirms ref); a counterparty never writes one into this book.",
+      "type": "object", "additionalProperties": false, "required": ["outcome", "reason"],
+      "properties": {
+        "outcome": { "const": "did_not_hold" },
+        "reason": { "enum": ["dispute_lost", "settled_against", "not_delivered", "other"] }
       }
     },
     "body_counterparty_profile": { "type": "object", "additionalProperties": false, "maxProperties": 0 },

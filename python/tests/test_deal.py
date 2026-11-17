@@ -157,7 +157,7 @@ def test_positive_fixtures(chain, path):
 
 
 def test_positive_corpus_size():
-    assert len(POSITIVE) == 65
+    assert len(POSITIVE) == 66
 
 
 # Schema-stage negatives whose expected text is the reference validator's own
@@ -484,7 +484,7 @@ PARITY = load(TESTDATA / "parity-vectors.json")
 
 
 def test_parity_corpus_sizes():
-    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (135, 95, 78)
+    assert (len(PARITY["normalize"]), len(PARITY["check"]), len(PARITY["history"])) == (135, 95, 81)
 
 
 @pytest.mark.parametrize("x", PARITY["normalize"], ids=[f"{x['kind']}:{x['raw']!r}" for x in PARITY["normalize"]])

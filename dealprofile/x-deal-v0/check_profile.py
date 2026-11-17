@@ -865,7 +865,7 @@ def check_chain(records):
                     "close": {"outcome"}, "disclosure": {"authorized_by"}, "claim": {"authorized_by"},
                     "task_authority": {"source", "approves", "registration"}, "platform_approval": set(), "policy_change": set(),
                     "check": {"supersedes", "source"}, "counterparty_acceptance": set(),
-                    "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}}
+                    "counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"}}
     # The user's limits in force. Absent allowed = no restriction; present and
     # empty = nothing allowed. An intent may narrow them; only the user's
     # confirm_limits answer to an intent that asks for more puts a new version
@@ -915,6 +915,7 @@ def check_chain(records):
     latest_offer, accepted = None, None
     closed_final = None  # index of the final close, once there is one
     rules_verdict_seen = False
+    outcome_note_seen = False
     for i, rec in enumerate(records):
         b, body = rec["x-deal-v0"], rec["body"]
         t = b["record_type"]
@@ -941,8 +942,8 @@ def check_chain(records):
         if closed_final is not None:
             # Close is terminal: after it, only later evidence that confirms
             # that close (and commits to its digest) may follow; the party's one
-            # rules_verdict is such a record.
-            if t not in ("evidence", "rules_verdict") or len(confirms) != 1 or confirms[0]["digest"] != digests[closed_final]:
+            # rules_verdict and outcome_note are such records.
+            if t not in ("evidence", "rules_verdict", "outcome_note") or len(confirms) != 1 or confirms[0]["digest"] != digests[closed_final]:
                 fail(i, "record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): "
                         "only an evidence record or the rules_verdict that confirms that close may follow")
         elif confirms:
@@ -1265,6 +1266,15 @@ def check_chain(records):
             if rules_verdict_seen:
                 fail(i, "a deal has at most one rules_verdict record")
             rules_verdict_seen = True
+        elif t == "outcome_note":
+            # TEMPORARY (evidencebook#462): the owner's note that the deal did not
+            # hold, sealed once after the final close, which it confirms.
+            if closed_final is None:
+                fail(i, "an outcome_note is sealed after the deal's final close")
+            one("confirms", ("close",))
+            if outcome_note_seen:
+                fail(i, "a deal has at most one outcome_note record")
+            outcome_note_seen = True
         elif t == "evidence":
             one("about", ("claim", "baseline"))
             one("confirms", ("close",), required=False)
@@ -1758,7 +1768,7 @@ def regen():
                   "2026-10-01T16:20:06Z", "2026-10-01T16:20:06Z", "2026-10-01T16:20:30Z",
                   "2026-10-01T18:41:00Z", "2026-10-01T18:41:20Z", "2026-10-01T18:43:00Z",
                   "2026-10-01T18:43:01Z", "2026-10-01T18:44:30Z", "2026-10-01T18:52:00Z", "2026-10-03T08:30:00Z",
-                  "2026-10-04T09:00:00Z", "2026-10-04T09:00:05Z", "2026-10-04T09:00:09Z"])
+                  "2026-10-04T09:00:00Z", "2026-10-04T09:00:05Z", "2026-10-04T09:00:09Z", "2026-10-04T09:00:11Z"])
 
     def cp(*keys):
         return {"fp_alg": "hmac-sha256-deal-key", "ids": {k[0]: fps[k] for k in keys}}
@@ -1842,6 +1852,7 @@ def regen():
                            "differences": [{"question": "delivered", "rule": "not_delivered"}]}, refs=[("outcome", o)])
     add("rules-verdict", "rules_verdict", {"word": "not_met", "pack_digest": "ab" * 32,
                                            "pack_id": "example/travel-deal/1.2.0"}, refs=[("confirms", closed)])
+    add("outcome-note", "outcome_note", {"outcome": "did_not_hold", "reason": "not_delivered"}, refs=[("confirms", closed)])
     assert a2 and b == 0
 
     for d in (FIX / "positive", FIX / "negative"):
@@ -1870,6 +1881,8 @@ def regen():
         "close": "The deal closes on mismatch, citing the outcome.",
         "rules_verdict": "After the close, the party seals its own overall rules word, confirming the close, under the pack whose digest "
                          "it names (and whose published id it may name): one word, never re-run, counted or combined.",
+        "outcome_note": "TEMPORARY (evidencebook#462): after the close, the book's owner seals its own note that the outcome did not "
+                        "hold, confirming the close: the History card counts the deal did_not_hold.",
         "agent_move": "Saturday morning the agent cannot reach the marina office: a Couldn't (an agent move whose "
                       "label the record type fixes), its reason a closed token and its detail a commitment.",
         "disclosure": "After the Hold, the agent texts the user's phone and the pickup spot to the new number with no "
@@ -2486,6 +2499,25 @@ def regen():
     r = copy.deepcopy(records[19]); r["body"]["findings"] = []
     neg("neg-rules-verdict-extra-member", "schema", "findings", r, 19,
         "A rules_verdict carrying a member beyond word, pack_digest and pack_id: no per-rule result rides on it.")
+
+    r = copy.deepcopy(records[20]); r["x-deal-v0"]["seq"] = 22; r["x-deal-v0"]["at"] = "2026-10-04T09:00:13Z"
+    r["x-deal-v0"]["prev"] = _ref(record_digest(records[20]))
+    neg("neg-second-outcome-note", "chain", "at most one outcome_note", r, 21,
+        "A second outcome_note on a deal that already holds one.")
+
+    r = copy.deepcopy(records[20]); r["x-deal-v0"]["seq"] = 19
+    r["x-deal-v0"]["prev"] = _ref(record_digest(records[17]))
+    r["x-deal-v0"]["refs"] = [{"rel": "confirms", **_ref(record_digest(records[17]))}]
+    neg("neg-outcome-note-before-close", "chain", "this deal is not closed", r, 18,
+        "An outcome_note sealed while the deal is still open: a confirms ref names the final close, and there is none yet.")
+
+    r = copy.deepcopy(records[20]); r["body"]["reason"] = "unhappy"
+    neg("neg-outcome-note-unknown-reason", "schema", "reason", r, 20,
+        "An outcome_note whose reason is not one of dispute_lost, settled_against, not_delivered, other.")
+
+    r = copy.deepcopy(records[20]); r["body"]["amount_minor"] = 1
+    neg("neg-outcome-note-extra-member", "schema", "amount_minor", r, 20,
+        "An outcome_note carrying a member beyond outcome and reason.")
 
     r = copy.deepcopy(records[4]); r["body"]["party_role"] = "seller"
     neg("neg-intent-changes-party-role", "chain", "cannot change the deal's party_role", r, 4,

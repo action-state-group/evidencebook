@@ -39,6 +39,7 @@ pub enum Body {
     SaleUnpost(SaleUnpostBody),
     AgentMove(AgentMoveBody),
     RulesVerdict(RulesVerdictBody),
+    OutcomeNote(OutcomeNoteBody),
 }
 
 impl Body {
@@ -67,6 +68,7 @@ impl Body {
             Body::SaleUnpost(_) => TYPE_SALE_UNPOST,
             Body::AgentMove(_) => TYPE_AGENT_MOVE,
             Body::RulesVerdict(_) => TYPE_RULES_VERDICT,
+            Body::OutcomeNote(_) => TYPE_OUTCOME_NOTE,
         }
     }
 
@@ -94,6 +96,7 @@ impl Body {
             TYPE_SALE_UNPOST => Body::SaleUnpost(serde_json::from_value(body)?),
             TYPE_AGENT_MOVE => Body::AgentMove(serde_json::from_value(body)?),
             TYPE_RULES_VERDICT => Body::RulesVerdict(serde_json::from_value(body)?),
+            TYPE_OUTCOME_NOTE => Body::OutcomeNote(serde_json::from_value(body)?),
             other => {
                 return Err(<serde_json::Error as serde::de::Error>::custom(format!(
                     "record type {other:?} has no body type"
@@ -128,6 +131,7 @@ impl Serialize for Body {
             Body::SaleUnpost(b) => b.serialize(s),
             Body::AgentMove(b) => b.serialize(s),
             Body::RulesVerdict(b) => b.serialize(s),
+            Body::OutcomeNote(b) => b.serialize(s),
         }
     }
 }

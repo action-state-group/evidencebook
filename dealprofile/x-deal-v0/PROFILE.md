@@ -170,7 +170,7 @@ when or how often the deal was shared:
 | `profile` | `"x-deal-v0"` | REQUIRED | Profile and version. |
 | `canonicalization` | `"jcs"` | REQUIRED | Pinned: RFC 8785. Any other value fails closed (section 5). |
 | `deal_id` | string `^deal-[0-9a-f]{16,64}$` | REQUIRED | Random, opaque, and the same on every record of the deal. Never derived from any identifier. |
-| `record_type` | enum (section 3) | REQUIRED | One of the 22 record types. |
+| `record_type` | enum (section 3) | REQUIRED | One of the 23 record types. |
 | `seq` | integer ≥ 1 | REQUIRED | Position in the deal: 1, 2, 3, … with no gaps (section 6). |
 | `at` | string `YYYY-MM-DDThh:mm:ssZ` | REQUIRED | The seal time in UTC, whole seconds. |
 | `prev` | digest ref | REQUIRED iff `seq` > 1 | The record digest of record `seq − 1`. |
@@ -192,7 +192,7 @@ never against a later change.
 
 ## 3. Record types (action-type conventions)
 
-Twenty-two record types. The set is closed: an unknown `record_type` fails the schema.
+Twenty-three record types. The set is closed: an unknown `record_type` fails the schema.
 
 | record_type | What it records | Required body fields | Required refs / block fields |
 |---|---|---|---|
@@ -218,6 +218,7 @@ Twenty-two record types. The set is closed: an unknown `record_type` fails the s
 | `sale_close` | On a sale's own log: the end of the sale, sealed by `deal sale close` after every opened thread's `thread_opened` (section 6, rule 10). No buyer's thread opens on the sale after it; a thread already open goes on and ends at its own close. | nothing: `body` is empty | `deal_id` `sale-…`; follows the sale's previous record. No `counterparty`, no `refs`. At most one per sale, and only `sale_cut` records follow it, since every later sale bundle cuts the threads' heads again. |
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
 | `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal, sealed only after the final `close` (the verdict is on the finished deal): a late record like `evidence` (Late records, section 3), with exactly one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
+| `outcome_note` | TEMPORARY (evidencebook#462; evidencebook#461's computed row status supersedes it; this bridge fits today's layout only, which has a final `close`, and #461's target has none). The book owner's own note that the deal did not hold, against the owner: each `reason` is the owner's own failure (`dispute_lost`: it lost a dispute; `settled_against`: a dispute settled against it; `not_delivered`: it did not deliver; `other`: any other way the deal did not hold for the owner). A buyer whose seller failed does not write it, since the History card counts it on the writer's own card. It is the owner's own statement, not checked against any ruling or the other side, and no card or UI wording calls it a ruling. Written only by the owner into its own book, never a counterparty's signature appended to it. evidencebook-deal's share path leaves it out of every shared copy (the holder's own record, no share policy applies; a producer rule with its own test, not a check of this profile). Migration: a deal book that holds an `outcome_note` stays readable under this profile version, which keeps the type read-only forever (old logs are never rewritten); #461's new layout either maps a held note to its did-not-hold line or ignores it, and names which when it lands. | `outcome` (`did_not_hold`), `reason` (`dispute_lost`\|`settled_against`\|`not_delivered`\|`other`); no `counterparty` block. | At most one per deal, sealed only after the final `close`, like a `rules_verdict`: exactly one `confirms` ref → the final `close`. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (section 11). |
 
 ### Action classes
 
@@ -308,7 +309,7 @@ Field details:
 - **expect_close_by** (on `baseline`, optional): the day the deal is expected to close
   (YYYY-MM-DD). capsulectl seals one on every deal (by default 14 days for a purchase, 1 for a
   booking, 7 for a rental, 30 for a service) so an open deal can be listed against it.
-- **Late records.** A record sealed after a final close is an `evidence` record, or the party's one `rules_verdict`, whose Capsule
+- **Late records.** A record sealed after a final close is an `evidence` record, the party's one `rules_verdict`, or the owner's one TEMPORARY `outcome_note`, whose Capsule
   chains to the close with the registered `chain.relation` `confirms` (non-terminal: it records
   an outcome of the close, whose state stands), never `follows` (ordering only), and whose
   `confirms` ref commits to the close record's digest, so it cannot be reattached to another
@@ -623,7 +624,7 @@ A verifier holding one deal's records in `seq` order checks:
    other side was not chosen, one buyer of several for example, and nothing was done: no `action`
    precedes it. `called_off` (status, outcome and reason alike, actor `user`) says the user dropped
    the errand, with nothing done, and never reads as nothing delivered. A terminal close:
-   after it, only `evidence` records and the deal's `rules_verdict` that `confirms` that close may follow. A close with `open`
+   after it, only `evidence` records, the deal's `rules_verdict` and its TEMPORARY `outcome_note` that `confirm` that close may follow. A close with `open`
    MAY be followed by later `outcome` and `close` records. Each `carried_obligations` entry names
    an earlier record holding that `cancel_by`, or that `due_by`.
 8. **Reversals.** An `action` with `direction: "in"` and an `amount_minor` returns money the user paid: it carries
@@ -1231,7 +1232,7 @@ parties' capsulectl (DR-1). Only a final close whose status is `received` commit
 the delivered price and currency, or the agreed ones where the close names none. Every other step,
 and a received close with no known price or currency, commits the empty text. So the two halves
 match only where both parties closed as received, and every other pair is `INSUFFICIENT` (DR §6
-rule 5). A finally closed deal takes later evidence, and the party's `rules_verdict`, only, chained `confirms` to the close, so the
+rule 5). A finally closed deal takes later evidence, the party's `rules_verdict` and its TEMPORARY `outcome_note`, only, chained `confirms` to the close, so the
 final close is the deal's last step chained `follows`.
 
 **Admission (DR §4.1).** A half is admitted only after these checks; any failure refuses the
@@ -1349,7 +1350,7 @@ of that book that any tick up to the anchor carries, never one sealed after the 
 | `role` | the baseline intent's `party_role`: `seller` is `provided`; `buyer` or absent is `bought` |
 | `amount` | the `amount_minor` and `currency` of the check the step rests on (`authorized_by` → `approval` → `approves` → `verdict` → `checks` → `check`; for a typed step, `evaluation_ref` → `action-evaluation/v0` → `proposed_action_digest` → `proposed-action/v0`), with `assetScale` the currency's ISO 4217 minor units, or 11 for `BTC` (`amount_minor` counts millisatoshi, section 3) |
 | `counterparty_class` | the `counterparty_class` member of the deal's one pay check that carries it (section 1), when it is one of SH's three values. A deal whose records carry the member on two or more records, on a record that is no pay check, or with another value, lacks it: the entry has no `counterparty_class`, the deal is counted, and `class_missing.count` counts it (SH §5.2, §7) |
-| `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; anything else is `undecided`: a claim `not_met` (the two halves disagree), no claim, any other claim verdict, and no verified Result. This profile never gives `did_not_hold`: halves that disagree do not show which side failed, and it seals no record that says a side failed (evidencebook#212). A deal whose close has no Result or no claim is still counted, as `undecided` |
+| `outcome` | the newest Result in the deal's results book under the anchor (section 10) whose record signature and seal verify: at least one claim, every claim `met`, is `held`; anything else is `undecided`: a claim `not_met` (the two halves disagree), no claim, any other claim verdict, and no verified Result. A Result never gives `did_not_hold`: halves that disagree do not show which side failed (evidencebook#212). TEMPORARY exception (evidencebook#462): a deal whose own log holds the owner's `outcome_note` (`did_not_hold`) confirming one of its closes is `did_not_hold`, over any Result; a deal without one counts as before. A deal whose close has no Result or no claim is still counted, as `undecided` |
 | `happened` | (every input bounded by the anchor, as above) `stamped_by_both` only when the counterparty's half is received and its signature verifies; otherwise `receipt_only` when the holder's final close refs an outcome whose `status` is `received`; otherwise `no_record` |
 | `disputes` | empty: this profile seals no IP §11.2 `disputes` statement |
 
