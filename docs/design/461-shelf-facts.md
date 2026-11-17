@@ -263,14 +263,18 @@ is one-way, and recoverable at every step:
    (the Mesh node's own log is not one: a host log that witnesses itself is outside the cadence,
    `rust/evidencebook/src/shelf/mod.rs:467-470`, and stays so until step 8), and in the
    handover material the consistency proof from its largest witnessed size (`cadence_witnessed`)
-   when one exists. A log listed with size 0 gets its first fact when it first has an entry.
+   when one exists. A log listed with size 0 gets its first fact when it first has an entry. In
+   the same shelf transaction as the batch, `shelf_meta.version` becomes 2 and
+   `shelf_migration.state` `migrating`, so from here an older build refuses the file and can
+   never tick a tree root after the marker.
 4. **Append and checkpoint.** The marker, then the genesis facts in `book_id` order, then a stamp
    entry, are appended through the cadence log's own CLL handle; then the shelf checkpoint is cut
    and queued for the shelf's witnesses, as every stamp's is. This checkpoint is the **coverage
    start**.
-5. **Switch.** `shelf_meta.version` becomes 2 and `shelf_migration.state` `done`, in one shelf
-   transaction. A restart before this repeats step 4 from the stored batch, appending only what is
-   missing, as a stamp is finished (2.5).
+5. **Finish.** `shelf_migration.state` becomes `done`. A new build that opens a file in state
+   `migrating` repeats step 4 from the stored batch, appending only what is missing, as a stamp is
+   finished (2.5), before anything else; a crash before step 3's transaction leaves a version 1
+   file with nothing after its last tick, which an older build still opens as before.
 
 The coverage start is that checkpoint, or the shelf log's first entry when the holder also hands
 over the old ticks' material (their leaves, salts, positions and fillers) and it verifies, which
