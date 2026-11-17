@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"time"
 
-	evidencebook "github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/checkpointed-local-log/go/mmr"
+	evidencebook "github.com/action-state-group/evidencebook"
 )
 
 // The earliest-receipt-not-anchor vector (evidencebook#461,
