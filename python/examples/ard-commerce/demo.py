@@ -53,7 +53,7 @@ class Run:
     def __init__(self, world: World, server: Server, rail: pay.Rail, auto: bool, open_browser: bool):
         self.w, self.srv, self.rail, self.auto, self.open_browser = world, server, rail, auto, open_browser
         self.maya = world.nodes["maya"]
-        self.banner = screens.banner("lightning" if isinstance(rail, pay.LightningRail) else "fake")
+        self.banner = screens.banner("lightning" if isinstance(rail, pay.LightningRail) else "local" if isinstance(rail, pay.LocalRail) else "fake")
         self.started_payment = False
         self.entries: list[dict] = []
         self.evidence: dict[str, buyer.Evidence] = {}
@@ -186,7 +186,7 @@ class Run:
             self.started_payment = True
             payment = self.rail.pay(a.price_msat)
             paid.append(payment)
-            who = "Brattain's wallet paid it" if self.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
+            who = ("Brattain's wallet paid it" if self.banner == screens.BANNER else "the buyer's wallet paid it") if self.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
             print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
             return payment.reference
 
@@ -245,7 +245,7 @@ def cmd_run(args) -> int:
         if any(sum(1 for b in world.nodes[n].shelf.books() if b.startswith("deal/") and b.count("/") == 1) < 48 for n in SELLERS):
             print("no sample history yet: run `python demo.py seed` first")
             return 2
-        rail: pay.Rail = pay.LightningRail() if args.rail == "lightning" else pay.FakeRail()
+        rail: pay.Rail = pay.from_env(args.rail)
         run = Run(world, server, rail, args.auto, not args.no_browser)
         run.discover()
         pause("Enter: collect the evidence", args.auto)
@@ -275,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["seed", "run", "reset"])
     ap.add_argument("--home", default=DEFAULT_HOME)
-    ap.add_argument("--rail", choices=["fake", "lightning"], default="fake")
+    ap.add_argument("--rail", choices=["fake", "lightning", "local"], default="fake")
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--auto", action="store_true", help="no pauses and the default edit (tests)")
     ap.add_argument("--no-browser", action="store_true", help="print the popup URL, do not open it")

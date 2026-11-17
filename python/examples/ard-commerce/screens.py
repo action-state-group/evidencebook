@@ -13,8 +13,12 @@ BANNER = ("DEMO · sample history, run by the demo operator · test nodes with r
 BANNER_FAKE = "DEMO · sample history, run by the demo operator · SIMULATED payment: no money moves"
 
 
+BANNER_LOCAL = ("DEMO · sample history, run by the demo operator · real Lightning between two local test wallets "
+                "(the buyer's wallet pays, the seller's wallet receives; both sellers settle to the one test wallet)")
+
+
 def banner(rail: str) -> str:
-    return BANNER if rail == "lightning" else BANNER_FAKE
+    return {"lightning": BANNER, "local": BANNER_LOCAL}.get(rail, BANNER_FAKE)
 PACK_NOTE = "demo copy, not published · placeholder thresholds, for this demo only"
 CLAIMS_NOTE = "claims-held is not read today: no card carries claims yet"
 ASSESSMENT_NOTE = ("the agent's assessment of each seller; the presenter's pick decides who is paid, "

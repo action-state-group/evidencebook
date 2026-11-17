@@ -84,7 +84,7 @@ class Session:
         self.pack: packs.Pack | None = None
         self.picked: dict[str, str] = {}
         self.paid: set[str] = set()
-        rail: pay.Rail = pay.LightningRail() if os.environ.get("ARD_RAIL") == "lightning" else pay.FakeRail()
+        rail: pay.Rail = pay.from_env(os.environ.get("ARD_RAIL", "fake"))
         kestrel_card = os.environ.get("ARD_KESTREL_CARD", "sentinel")
         if ROLE == "maya":
             self.world = parties.ProcessWorld(_home(), ("maya",)).open()
@@ -217,7 +217,7 @@ def ard_pick(seller: str) -> None:
         print(f"{SELLERS[key]['label']} is within its limit. Call ard_pay to open the deal and pay it.")
 
 
-if os.environ.get("ARD_RAIL") == "lightning":
+if os.environ.get("ARD_RAIL") in ("lightning", "local"):
     _PAY = ("Step 6-7: open the deal for the picked seller and pay it over the real Lightning rail (289 msat for Alder). "
             "THIS MOVES REAL MONEY: only after Maya has said to pay. Refused unless ard_pick sealed this seller.")
 else:
@@ -242,7 +242,7 @@ def ard_pay(seller: str) -> None:
     chain = buyer.open_deal(run.maya, peer, s.picked[key], a, demo.ASK)
     print(f"deal opened with {SELLERS[key]['label']}: waiting for its agent's half")
     payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
-    who = "Brattain's wallet paid it" if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
+    who = ("Brattain's wallet paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
     print(f"deal closed with {SELLERS[key]['label']}: both halves compared. Its card counts the sale after its next checkpoint.")
     run.maya.tick(datetime.now(timezone.utc))

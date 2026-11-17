@@ -114,6 +114,70 @@ class LightningRail(Rail):
         return Payment(amount_msat, ref, status, sent.get("fee_msat"), {"fund": made, "send": sent})
 
 
+class LocalRail(Rail):
+    """Two local Lexe wallets and the ``ln-pay-local`` program (action-state-group/ln-pay-local): the seller's wallet makes the invoice for
+    the picked price and the buyer's wallet pays it. No gcloud and no mesh-llm; mainnet, real money.
+
+    ``program`` is the built binary; each wallet is a directory the Lexe SDK keeps (with its ``seedphrase.txt``). The
+    program is given only the directory: this module never reads a wallet's files."""
+
+    def __init__(self, program: str, buyer_wallet: str, seller_wallet: str, max_fee_msat: int = MAX_FEE_MSAT):
+        self.program, self.buyer, self.seller, self.max_fee_msat = program, buyer_wallet, seller_wallet, max_fee_msat
+
+    def _run(self, *args: str, timeout: int = 150) -> dict:
+        run = subprocess.run([self.program, *args], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=timeout)
+        out = run.stdout.strip()
+        if run.returncode != 0 or not out:
+            raise RailError(f"{args[0]}: exit {run.returncode}: {redact((run.stderr or 'no output').strip())}")
+        try:
+            return scrub(json.loads(out))
+        except ValueError:
+            raise RailError(f"{args[0]}: unreadable answer") from None
+
+    def balances(self) -> dict[str, dict]:
+        return {"seller": self._run("balance", "--wallet", self.seller), "buyer": self._run("balance", "--wallet", self.buyer)}
+
+    def pay(self, amount_msat: int) -> Payment:
+        made = self._run("invoice", str(amount_msat), "--wallet", self.seller)
+        invoice = made.get("invoice")
+        if not isinstance(invoice, str):
+            raise RailError("the seller's wallet returned no invoice")
+        stated = invoice_msat(invoice)  # the invoice itself, not the program's account of it
+        if stated != amount_msat:
+            raise RailError(f"the invoice is for {stated} msat, not {amount_msat}: not paying it")
+        sent = self._run("pay", invoice, "--wallet", self.buyer, "--max-fee-msat", str(self.max_fee_msat), timeout=180)
+        status = str(sent.get("status", ""))
+        if status != "succeeded":
+            raise RailError(f"the buyer's wallet did not pay: status {status or 'unknown'}")
+        if int(sent.get("amount_msat", amount_msat)) != amount_msat:
+            raise RailError(f"the wallet paid {sent['amount_msat']} msat, not {amount_msat}")
+        ref = str(sent.get("payment_hash") or hashlib.sha256(invoice.encode()).hexdigest())
+        return Payment(amount_msat, ref, status, sent.get("fee_msat"), {"local": True})
+
+
+def from_env(name: str) -> Rail:
+    """The rail ``name`` names (``fake``, ``lightning`` or ``local``). ``local`` reads ``ARD_WALLET_BUYER`` and
+    ``ARD_WALLET_SELLER`` (wallet directories) and ``ARD_PAY_LOCAL`` (the program; default ``ln-pay-local`` on the PATH)."""
+    if name == "fake":
+        return FakeRail()
+    if name == "lightning":
+        return LightningRail()
+    if name == "local":
+        import os
+        import shutil
+
+        wallets = {k: os.environ.get(k) for k in ("ARD_WALLET_BUYER", "ARD_WALLET_SELLER")}
+        missing = [k for k, v in wallets.items() if not v]
+        if missing:
+            raise RailError("the local rail needs " + ", ".join(missing))
+        program = os.environ.get("ARD_PAY_LOCAL") or shutil.which("ln-pay-local")
+        if not program:
+            raise RailError("the local rail needs the ln-pay-local program: cargo install --locked --git "
+                            "https://github.com/action-state-group/ln-pay-local, or set ARD_PAY_LOCAL")
+        return LocalRail(program, wallets["ARD_WALLET_BUYER"], wallets["ARD_WALLET_SELLER"])  # type: ignore[arg-type]
+    raise RailError(f"unknown rail {name!r}")
+
+
 def _find_invoice(doc: Any) -> str | None:
     found = _INVOICE.search(json.dumps(doc))
     return found.group(0) if found else None

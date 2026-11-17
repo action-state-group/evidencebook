@@ -65,6 +65,15 @@ One payment per run, for the picked price in msat; the screen shows the invoice 
 balance difference (Shockley's wallet keeps a flat 100 msat receive fee, a presenter note, not on
 screen). Preimages are never printed or kept. You need `gcloud` signed in to the project.
 
+### The local rail
+
+`--rail local` (script) or `ARD_RAIL=local` (Goose windows) pays between two local Lexe wallets with
+[ln-pay-local](https://github.com/action-state-group/ln-pay-local), with no gcloud and no mesh-llm. Real
+Lightning on mainnet, so use small amounts and wallets made for this. Set `ARD_WALLET_BUYER` and
+`ARD_WALLET_SELLER` to two wallet directories (`ln-pay-local init --wallet <dir>` makes one; fund the buyer), install the
+program (`cargo install --locked --git https://github.com/action-state-group/ln-pay-local`, or set `ARD_PAY_LOCAL` to the
+binary), then run as for `--rail lightning`. The Brattain and Shockley rail stays the default for `--rail lightning`.
+
 ### The one switch
 
 `--kestrel-card sentinel` (the default; `seed` writes it) reads Kestrel's card from its own book: three
