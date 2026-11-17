@@ -805,6 +805,9 @@ type dealEvent struct {
 	// RulesVerdict is a rules_verdict step: the party's own overall rules word
 	// for the finished deal (deal_rules_verdict.go).
 	RulesVerdict *dealRulesVerdict `json:"rules_verdict,omitempty"`
+	// OutcomeNote is an outcome_note step: the holder's own note that the deal
+	// did not hold (deal_outcome_note.go; TEMPORARY, evidencebook#462).
+	OutcomeNote *dealOutcomeNote `json:"outcome_note,omitempty"`
 }
 
 // dealCounterpartyProfile names a check by capsule id and its payee's
@@ -2198,6 +2201,8 @@ func trailLine(e dealEvent) string {
 			line = "⚠️ " + line + " without your approval (" + e.Disclosure.Reason + ")"
 		}
 		return line
+	case "outcome_note":
+		return "your own note sealed: this deal did not hold (" + strings.ReplaceAll(e.OutcomeNote.Reason, "_", " ") + ")"
 	case "rules_verdict":
 		return "your own rules verdict sealed: " + strings.ReplaceAll(e.RulesVerdict.Word, "_", " ")
 	default:
