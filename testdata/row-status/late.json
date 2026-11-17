@@ -1,0 +1,1039 @@
+{
+ "about": "Late statement and late dispute vectors (evidencebook#461, Q9): each expect lists, by index into the input, the statements and disputes the rule sets aside as late as of input.at, written by hand from the rule in testdata/row-status/generate.py; each implementation's late output must give exactly expect.",
+ "cases": [
+  {
+   "name": "r5-late-statement-ignored",
+   "why": "the buyer's statement after the window end is late",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     1
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "cn-concession-counts",
+   "why": "a concession is late, though it counts",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     2
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "cn-only-first-counts",
+   "why": "both concessions are late, the counted one and the other",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-06T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T11:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     2,
+     3
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "l-untimed-after-late",
+   "why": "an untimed statement after a late one of its side is late too",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     1,
+     2
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "l-untimed-is-never-a-concession",
+   "why": "an untimed statement whose side has no late timed one is not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "l-untimed-after-future",
+   "why": "statements not held as of T are never listed",
+   "input": {
+    "at": "2026-11-05T05:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T10:00:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "b-statement-at-window-end-in-time",
+   "why": "a statement at the window end itself is in time",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "no_concession": true,
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T23:59:59Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "b-statement-one-second-after-late",
+   "why": "one second after the window end: late",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "no_concession": true,
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-05T00:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     2
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "r2-late-dispute",
+   "why": "a late dispute on an agreed row",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "r2-late-dispute-unseen",
+   "why": "a dispute whose claimant had not seen the statement in time is not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": false
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "r2-late-dispute-failed-check",
+   "why": "a dispute on a row whose check failed is not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     },
+     "recomputed": true
+    },
+    "check": "fail",
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "r2-late-dispute-on-disagreement",
+   "why": "a dispute on a row whose in-time statements differ is not late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "r2-late-dispute-uncontested",
+   "why": "a late dispute on an uncontested row",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "r2-late-dispute-ignores-concession",
+   "why": "the concession is late; the dispute, read against the in-time statements, is not",
+   "input": {
+    "at": "2026-11-08T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "not_met",
+      "time": "2026-11-02T10:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-06T10:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-07T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [
+     2
+    ],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "b-dispute-at-window-end-not-late",
+   "why": "a dispute at the window end itself is not late",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-04T23:59:59Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "b-dispute-one-second-after-late",
+   "why": "one second after the window end: late",
+   "input": {
+    "at": "2026-11-06T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-05T00:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "l-untimed-dispute",
+   "why": "a dispute with no time is never late",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": null,
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "d-not-reached",
+   "why": "a row not reached lists nothing",
+   "input": {
+    "at": "2026-12-02T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": null,
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-04T14:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "d-unset-up-to-latest",
+   "why": "a row whose dates are unset lists nothing",
+   "input": {
+    "at": "2026-12-01T23:59:59Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "as_described",
+     "owed_by": "seller",
+     "due": {
+      "after": "buyer_receipt",
+      "seconds": 0
+     },
+     "window_end": {
+      "after": "buyer_receipt",
+      "seconds": 1209600
+     }
+    },
+    "named": {
+     "buyer_receipt": {
+      "time": null,
+      "latest": "2026-12-01T23:59:59Z"
+     }
+    }
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  },
+  {
+   "name": "late-dispute-ruled",
+   "why": "a late dispute is listed on a ruled row too",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "rulings": [
+     {
+      "final": true,
+      "value": "met",
+      "time": "2026-11-06T12:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "late-dispute-withdrawn",
+   "why": "a late dispute is listed though withdrawn",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "seller",
+      "time": "2026-11-06T11:00:00Z"
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     0
+    ]
+   }
+  },
+  {
+   "name": "late-index-order",
+   "why": "indices are into the input: the second dispute is the late one",
+   "input": {
+    "at": "2026-11-07T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-06T09:00:00Z",
+      "seen_in_time": false
+     },
+     {
+      "side": "seller",
+      "time": "2026-11-06T10:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": [
+     1
+    ]
+   }
+  },
+  {
+   "name": "late-after-T-not-held",
+   "why": "a statement and a dispute dated after T are not held, so not listed",
+   "input": {
+    "at": "2026-11-05T12:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     },
+     {
+      "side": "buyer",
+      "value": "not_met",
+      "time": "2026-11-05T13:00:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-05T14:00:00Z",
+      "seen_in_time": true
+     }
+    ]
+   },
+   "expect": {
+    "late_statements": [],
+    "late_disputes": []
+   }
+  }
+ ]
+}

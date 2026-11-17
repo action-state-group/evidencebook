@@ -83,3 +83,49 @@ func TestRawRefused(t *testing.T) {
 	_, err := ParseInput([]byte(`{"at": "2026-11-02T00:00:00Z", "parties": ["\ud83d\ude00", "b"], "row": {}}`))
 	assert.NoError(t, err, "a surrogate pair is a character")
 }
+
+func TestLateVectors(t *testing.T) {
+	b, err := os.ReadFile("../testdata/row-status/late.json")
+	require.NoError(t, err)
+	var v struct {
+		Cases []struct {
+			Name   string          `json:"name"`
+			Input  json.RawMessage `json:"input"`
+			Expect Late            `json:"expect"`
+		} `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(b, &v))
+	require.NotEmpty(t, v.Cases)
+	for _, c := range v.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			in, err := ParseInput(c.Input)
+			require.NoError(t, err)
+			got, err := ComputeLate(in)
+			require.NoError(t, err)
+			assert.Equal(t, c.Expect, got)
+		})
+	}
+}
+
+// TestLateLeavesResults checks that the late output is beside Compute's: every
+// status vector's result is the same, and ComputeLate refuses what Compute
+// refuses.
+func TestLateLeavesResults(t *testing.T) {
+	v := load(t)
+	for _, c := range v.Cases {
+		in, err := ParseInput(c.Input)
+		require.NoError(t, err)
+		_, err = ComputeLate(in)
+		require.NoError(t, err, c.Name)
+		got, err := Compute(in)
+		require.NoError(t, err)
+		assert.Equal(t, c.Expect, got, c.Name)
+	}
+	for _, c := range v.Invalid {
+		in, err := ParseInput(c.Input)
+		if err == nil {
+			_, err = ComputeLate(in)
+		}
+		assert.ErrorIs(t, err, ErrInvalid, c.Name)
+	}
+}

@@ -209,6 +209,8 @@ func ParseInput(b []byte) (Input, error) {
 }
 
 type stmt struct {
+	// idx is the statement's index in Input.Statements.
+	idx   int
 	side  int
 	value string
 	t     *time.Time
@@ -235,6 +237,7 @@ type calc struct {
 	local     bool
 	stmts     []stmt
 	disputes  []Dispute
+	dIdx      []int
 	dTimes    []*time.Time
 	rulings   []Ruling
 	rTimes    []*time.Time
@@ -273,7 +276,7 @@ func newCalc(in Input) (*calc, error) {
 		return nil, fmt.Errorf("%w: the contest window ends before the due date", ErrInvalid)
 	}
 	var floors [2]*time.Time
-	for _, s := range in.Statements {
+	for k, s := range in.Statements {
 		i, err := c.side(s.Side)
 		if err != nil {
 			return nil, err
@@ -297,7 +300,7 @@ func newCalc(in Input) (*calc, error) {
 		if (t != nil && t.After(at)) || (t == nil && floor != nil && floor.After(at)) {
 			continue
 		}
-		c.stmts = append(c.stmts, stmt{side: i, value: s.Value, t: t, floor: floor})
+		c.stmts = append(c.stmts, stmt{idx: k, side: i, value: s.Value, t: t, floor: floor})
 	}
 	for _, w := range in.Withdrawals {
 		i, err := c.side(w.Side)
@@ -311,7 +314,7 @@ func newCalc(in Input) (*calc, error) {
 			c.wTimed[i] = c.wTimed[i] || t != nil
 		}
 	}
-	for _, d := range in.Disputes {
+	for k, d := range in.Disputes {
 		if _, err := c.side(d.Side); err != nil {
 			return nil, err
 		}
@@ -321,6 +324,7 @@ func newCalc(in Input) (*calc, error) {
 		}
 		if ok {
 			c.disputes = append(c.disputes, d)
+			c.dIdx = append(c.dIdx, k)
 			c.dTimes = append(c.dTimes, t)
 		}
 	}
@@ -598,6 +602,50 @@ func (c *calc) compute() Result {
 	default:
 		return finish(NotDue, "")
 	}
+}
+
+// Late is what the rule set aside as late on a row as of T (evidencebook#461,
+// docs/design/461-deal-profile.md section 9, Q9): indices into the input's
+// Statements and Disputes, in input order. It is an output beside Compute's
+// and changes no Result.
+type Late struct {
+	// Statements are the statements held as of T that are after the end of
+	// the contest window: a statement whose time is after it, or an untimed
+	// one after a timed statement of the same side that already is. A late
+	// statement that counts as a concession is listed too: it is late, and
+	// Compute's result says what it changed.
+	Statements []int `json:"late_statements"`
+	// Disputes are the disputes held as of T that rule 2 does not count
+	// because they are late (disputeLate below), whether or not a ruling or a
+	// withdrawal also applies.
+	Disputes []int `json:"late_disputes"`
+}
+
+// ComputeLate is the late statements and late disputes of one row as of
+// in.At. Both are empty while the row is not reached or either of its dates
+// is unset, since lateness is read against the contest window's end.
+func ComputeLate(in Input) (Late, error) {
+	c, err := newCalc(in)
+	if err != nil {
+		return Late{}, err
+	}
+	out := Late{Statements: []int{}, Disputes: []int{}}
+	if !c.reached || c.unset {
+		return out, nil
+	}
+	for _, s := range c.stmts {
+		if c.late(s) {
+			out.Statements = append(out.Statements, s.idx)
+		}
+	}
+	inTime := c.values(c.inTime())
+	failed := c.in.Check == checkFail
+	for i, d := range c.disputes {
+		if c.disputeLate(d, c.dTimes[i], inTime, failed) {
+			out.Disputes = append(out.Disputes, c.dIdx[i])
+		}
+	}
+	return out, nil
 }
 
 // disputeLate reports a late dispute: its time is after the contest window;

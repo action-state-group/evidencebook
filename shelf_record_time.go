@@ -136,6 +136,49 @@ func (s *Shelf) RecordTime(ctx context.Context, bookID string, position uint64, 
 	if err != nil || !found {
 		return time.Time{}, false, err
 	}
+	return earliestNamedTime(ctx, tx, seq, witnesses)
+}
+
+// ReceivedRecordTime is the record time the holder's own stamps give a
+// record it received (docs/design/461-deal-profile.md §4.3): the record at
+// position (from 1) of the other side's log receivedLogID, as the holder's
+// book bookID names it. Its time is the earliest registration time, among
+// the receipts held from the witnesses named, of a shelf checkpoint that
+// covers the first fact of bookID whose link value's last_received names
+// receivedLogID at a size (a record count) that reaches the position. ok is
+// false when there is none, as for RecordTime. The other side's own stamps
+// may give an earlier time; the profile takes the earlier of the two.
+//
+// It takes no lock and reads in one transaction, as RecordTime does.
+func (s *Shelf) ReceivedRecordTime(ctx context.Context, bookID, receivedLogID string, position uint64, witnesses []string) (t time.Time, ok bool, err error) {
+	if err := s.live(); err != nil {
+		return time.Time{}, false, err
+	}
+	if position == 0 {
+		return time.Time{}, false, fmt.Errorf("%w: a record position counts from 1", ErrInvalid)
+	}
+	if receivedLogID == "" {
+		return time.Time{}, false, fmt.Errorf("%w: a received record names its log", ErrInvalid)
+	}
+	if len(witnesses) == 0 {
+		return time.Time{}, false, nil
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	seq, found, err := firstLinkingFact(ctx, tx, bookID, receivedLogID, position)
+	if err != nil || !found {
+		return time.Time{}, false, err
+	}
+	return earliestNamedTime(ctx, tx, seq, witnesses)
+}
+
+// earliestNamedTime is the earliest registration time, among the receipts
+// from the witnesses named, of a shelf checkpoint whose tree holds the entry
+// at seq.
+func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []string) (t time.Time, ok bool, err error) {
 	// A shelf checkpoint covers the fact's entry when its tree holds that
 	// entry: its MMR size is at least the size of seq leaves.
 	cps, err := tx.QueryContext(ctx, `SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick`, mmrSize(seq))
@@ -182,6 +225,36 @@ func (s *Shelf) RecordTime(ctx context.Context, bookID string, position uint64, 
 		return time.Time{}, false, nil
 	}
 	return time.Unix(earliest, 0).UTC(), true, nil
+}
+
+// firstLinkingFact is the entry position of the first book fact of bookID
+// whose link value's last_received names logID at a size that reaches
+// position.
+func firstLinkingFact(ctx context.Context, tx *sql.Tx, bookID, logID string, position uint64) (seq uint64, found bool, err error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT entry_seq, link_opening FROM shelf_entries WHERE book_id = ? AND kind = ? ORDER BY entry_seq`, bookID, FactKindBook)
+	if err != nil {
+		return 0, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var lo []byte
+		if err := rows.Scan(&seq, &lo); err != nil {
+			return 0, false, err
+		}
+		if lo == nil {
+			continue
+		}
+		var opening FactOpening
+		var link LinkValue
+		if err := errors.Join(json.Unmarshal(lo, &opening), json.Unmarshal(opening.Value, &link)); err != nil {
+			return 0, false, fmt.Errorf("%w: stored fact %d's link opening: %v", ErrCorrupt, seq, err)
+		}
+		if r := link.LastReceived; r != nil && r.LogID == logID && r.Size >= position {
+			return seq, true, nil
+		}
+	}
+	return 0, false, rows.Err()
 }
 
 // firstCoveringFact is the entry position of the first fact of bookID whose
