@@ -594,6 +594,61 @@ def test_cards_over_python_entries_are_go_cards():
     assert jcs(card).decode() == c["card"]
 
 
+def _with_steps(h: dict, *sources: str) -> deal.HistoryInput:
+    """The history h's records and, after them, one evidence step per source token."""
+    inp = history_input(h)
+    deal_id = json.loads(inp.records[0].payload)["x-deal-v0"]["deal_id"]
+    at = inp.records[-1].committed_at
+    extra = tuple(
+        deal.HistoryRecord(json.dumps({"x-deal-v0": {"record_type": "evidence", "deal_id": deal_id},
+                                       "body": {"source": src, "about": "price_as_offered"}}).encode(), at)
+        for src in sources)
+    return deal.HistoryInput(inp.records + extra, inp.results, inp.counterparty_half_verified)
+
+
+def test_disputes_are_counted_as_go_counts_them():
+    """The cases of evidencebook-deal's TestDisputesOfReadsTheRecordsUnderTheAnchor, per role."""
+    by_role = {}
+    for h in PARITY["history"]:
+        if h.get("error") or not h["entry"]:
+            continue
+        by_role.setdefault(h["entry"]["role"], h)
+    assert set(by_role) == {"bought", "provided"}
+    bought, provided = by_role["bought"], by_role["provided"]
+
+    def got(h, *sources):
+        return deal.standard_history_deal(_with_steps(h, *sources))["disputes"]
+
+    def one(side, outcome):
+        return [{"side": side, "outcome": outcome, "forum": "external"}]
+
+    assert got(provided, "ruling_for_buyer") == one("received", "against")
+    assert got(provided, "ruling_for_seller") == one("received", "for")
+    assert got(bought, "dispute", "ruling_for_buyer") == one("raised", "for")
+    assert got(bought, "dispute", "ruling_for_seller") == one("raised", "against")
+    assert got(bought, "dispute") == one("raised", "open")
+    assert got(provided, "dispute") == [], "a seller's store holds no dispute of its own"
+    assert got(bought) == []
+    assert got(bought, "other") == []
+    # only an evidence record counts
+    inp = _with_steps(bought)
+    msg = deal.HistoryRecord(json.dumps({"x-deal-v0": {"record_type": "message", "deal_id": "deal-x"},
+                                         "body": {"source": "ruling_for_buyer"}}).encode(), inp.records[-1].committed_at)
+    assert deal.standard_history_deal(
+        deal.HistoryInput(inp.records + (msg,), inp.results, inp.counterparty_half_verified))["disputes"] == []
+
+
+def test_the_card_counts_a_ruling_against_the_seller():
+    from agent_action_capsule.standard_history import derive_card
+    h = next(h for h in PARITY["history"] if not h.get("error") and h["entry"] and h["entry"]["role"] == "provided")
+    c = next(c for c in PARITY["cards"] if c["name"] == "every entry, all time")
+    entry = deal.standard_history_deal(_with_steps(h, "ruling_for_buyer"))
+    card = derive_card(holder_kind="person", controller_class="holder", anchor=c["as_of"]["anchor"],
+                       anchor_time=c["as_of"]["anchor_time"],
+                       first_checkpoint_time=c["as_of"]["first_checkpoint_time"], policy=c["policy"], deals=[entry])
+    assert "against" in jcs(card).decode()
+
+
 def test_the_counterparty_class_seam():
     # The profile records no SH §7 class yet: the entry has no member for it.
     entry = deal.standard_history_deal(history_input(PARITY["history"][0]))
