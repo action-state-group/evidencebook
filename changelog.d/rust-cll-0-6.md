@@ -1,0 +1,3 @@
+### Changed: Rust crate on checkpointed-local-log 0.6.0, evidence-request 0.6.0 and agent-action-capsule 0.11.0 (#452)
+
+- The `evidencebook` crate and the interop crate depend on checkpointed-local-log 0.6.0 (CLL 0.9.0, -02 checkpoints whose `sub` is the bare log id), evidence-request 0.6.0 and agent-action-capsule 0.11.0, so one copy of each is in the graph again (`capsule-emit-artifact` 0.0.3 still brings agent-action-capsule 0.10.0). The pinned answer envelopes are rewritten: only each envelope's anchor digest, request digest, signature and embedded checkpoint change.
