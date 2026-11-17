@@ -510,10 +510,10 @@ func checkDates(r Record) error {
 type SealContext struct {
 	// OfferExists says the offer of the deal the record serves exists (sent
 	// or received) when the record is sealed.
-	OfferExists bool
+	OfferExists bool `json:"offer_exists"`
 	// Admission says an ask or answer is of an admission decision, not
 	// between the two parties of a deal.
-	Admission bool
+	Admission bool `json:"admission"`
 }
 
 // CheckSealed is Check, and then §3.1's deal_id rule for the journal

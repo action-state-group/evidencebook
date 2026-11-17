@@ -61,8 +61,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -82,8 +82,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -284,8 +284,8 @@
         }
       },
       "context": {
-        "OfferExists": false,
-        "Admission": true
+        "offer_exists": false,
+        "admission": true
       },
       "valid": true
     },
@@ -314,8 +314,8 @@
         }
       },
       "context": {
-        "OfferExists": false,
-        "Admission": true
+        "offer_exists": false,
+        "admission": true
       },
       "valid": false,
       "stage": "record"
@@ -490,8 +490,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -514,8 +514,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -570,8 +570,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -590,8 +590,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -646,8 +646,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -672,8 +672,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -944,8 +944,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -964,8 +964,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -1018,8 +1018,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": true
     },
@@ -1038,8 +1038,8 @@
         }
       },
       "context": {
-        "OfferExists": true,
-        "Admission": false
+        "offer_exists": true,
+        "admission": false
       },
       "valid": false,
       "stage": "record"
@@ -1059,8 +1059,8 @@
         }
       },
       "context": {
-        "OfferExists": false,
-        "Admission": true
+        "offer_exists": false,
+        "admission": true
       },
       "valid": true
     },
@@ -1080,8 +1080,8 @@
         }
       },
       "context": {
-        "OfferExists": false,
-        "Admission": true
+        "offer_exists": false,
+        "admission": true
       },
       "valid": false,
       "stage": "record"
