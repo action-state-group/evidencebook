@@ -223,3 +223,33 @@ func TestARecordTimeOnAReleasedShelf(t *testing.T) {
 	_, _, err := shelf.RecordTime(context.Background(), bookID, 1, []string{testWitnessURL})
 	assert.ErrorIs(t, err, ErrReleased)
 }
+
+// ImportLegacy keeps each imported witnessed tick's receipt in
+// shelf_receipts, as the cadence's next open would.
+func TestImportLegacyKeepsTheWitnessedTicksReceipt(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyFixture(t, "deal/a")
+	require.Equal(t, 0, countRows(t, l.shelf, `SELECT COUNT(*) FROM shelf_receipts`))
+	require.NoError(t, l.c.ImportLegacy(ctx, LegacyCadence{Logs: l.logs(), Ticks: l.ticks}))
+	sum := sha256.Sum256(l.ticks[0].Checkpoint)
+	assert.Equal(t, 1, countRows(t, l.shelf, `SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ? AND registered_at IS NULL`,
+		hex.EncodeToString(sum[:]), testWitnessURL))
+	assert.Equal(t, 1, countRows(t, l.shelf, `SELECT COUNT(*) FROM shelf_receipts`), "only the witnessed tick")
+}
+
+// A witnessed tick's stored receipt that does not decode is corrupt: the
+// cadence does not open over it.
+func TestACorruptStoredReceiptFailsTheCadenceOpen(t *testing.T) {
+	f, shelf, c, _, _, second := recordTimeShelf(t)
+	witnessAt(t, c, second, testWitnessURL, tickTime.Add(time.Hour))
+	_, err := shelf.db.Exec(`DELETE FROM shelf_receipts`)
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`UPDATE cadence_ticks SET receipt = 'not json' WHERE tick = ?`, second.N)
+	require.NoError(t, err)
+	require.NoError(t, shelf.Release())
+	shelf = f.open(t)
+	_, err = shelf.Cadence(context.Background(), CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t)})
+	require.ErrorIs(t, err, ErrCorrupt)
+	assert.Empty(t, shelf.cadenceLogs, "a failed backfill leaves no cadence log open")
+}

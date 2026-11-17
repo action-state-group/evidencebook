@@ -377,7 +377,7 @@ def run_record_time(path: str, steps: list[dict]) -> list[dict]:
                 except InvalidError:
                     got = {"error": "invalid"}
                 else:
-                    got = {"time": None if t is None else t.strftime("%Y-%m-%dT%H:%M:%SZ")}
+                    got = {"time": None if t is None else datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
             elif op == "handover":
                 h = env.cadence.handover(0)
                 got = {"witnessed": verify_handover(h, CHECKPOINT_KEY.public_key().hex(), DIRECTORY).witnessed}

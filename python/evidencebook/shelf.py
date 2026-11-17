@@ -1162,14 +1162,16 @@ class Shelf:
             book = config.log_id in self._books or kind == _KIND_BOOK
             if book or config.log_id in self._hosts or kind:
                 raise InvalidError(f"{config.log_id} is a {'book' if book else 'host'} log, not the cadence log")
+            # A witnessed tick whose receipt shelf_receipts lacks gets it here
+            # (evidencebook#461 §2.3), before the cadence log is opened, so a
+            # failed backfill leaves no cadence log open (as Go).
+            from .shelf_record_time import backfill_receipts_locked
+
+            c = Cadence(self, config, None)
+            backfill_receipts_locked(c)
             log = SqliteSubstrate.open(self._path, config.log_id, self._checkpoint_key, config.witness_ids)
             self._cadence_logs.append(log)
             c = Cadence(self, config, log)
-            # A witnessed tick whose receipt shelf_receipts lacks gets it here
-            # (evidencebook#461 §2.3).
-            from .shelf_record_time import backfill_receipts_locked
-
-            backfill_receipts_locked(c)
             self._cadence = c
             return self._cadence
 
@@ -1266,11 +1268,13 @@ class Shelf:
         ``Shelf.RecordTime``: the earliest registration time, among the
         receipts held from the witnesses named (their receipt URLs), of a
         shelf checkpoint that covers the first fact of that book whose size
-        covers the position, in UTC. ``None`` when there is none: no fact
+        covers the position, in Unix seconds (a registration time may lie
+        past ``datetime``'s range). ``None`` when there is none: no fact
         covers the position yet, no checkpoint covering that fact has a
         receipt from a named witness, or every such receipt gives no
         registration time. A status resting on a record with no time is
-        local, never witnessed. Position 0 is :class:`InvalidError`.
+        local, never witnessed. A position that is not an integer from 1 to
+        2^64 - 1 is :class:`InvalidError`.
 
         It takes no lock of the shelf's, so a status provider or a receive
         profile may call it, and reads in one transaction, so a stamp being

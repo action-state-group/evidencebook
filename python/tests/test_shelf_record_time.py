@@ -90,20 +90,22 @@ def test_a_record_time_is_the_earliest_named_registration(fx):
         assert shelf.record_time(book_id, in_first, [WITNESS_URL]) is None, "no receipt yet"
         witness_at(c, second, WITNESS_URL, t2)
         got = shelf.record_time(book_id, in_first, [WITNESS_URL])
-        assert got == t2 and got.tzinfo == timezone.utc, "the second stamp's checkpoint covers the first fact"
-        assert shelf.record_time(book_id, last, [WITNESS_URL]) == t2
+        assert got == unix(t2), "the second stamp's checkpoint covers the first fact"
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == unix(t2)
 
         witness_at(c, first, OTHER_URL, t1)
-        assert shelf.record_time(book_id, in_first, [WITNESS_URL, OTHER_URL]) == t1, "the earliest named"
-        assert shelf.record_time(book_id, in_first, [WITNESS_URL]) == t2, "a witness not named gives nothing"
+        assert shelf.record_time(book_id, in_first, [WITNESS_URL, OTHER_URL]) == unix(t1), "the earliest named"
+        assert shelf.record_time(book_id, in_first, [WITNESS_URL]) == unix(t2), "a witness not named gives nothing"
         assert shelf.record_time(book_id, last, [OTHER_URL]) is None, \
             "the first stamp's checkpoint does not cover the second fact"
         assert shelf.record_time(book_id, in_first, ["https://unnamed.test"]) is None
         assert shelf.record_time(book_id, in_first, []) is None, "no witness named"
         assert shelf.record_time(book_id, last + 1, [WITNESS_URL]) is None, "no fact covers the position"
         assert shelf.record_time("no-such-book", 1, [WITNESS_URL]) is None
-        with pytest.raises(InvalidError):
-            shelf.record_time(book_id, 0, [WITNESS_URL])
+        for bad in (0, -1, 2**64, True, 1.0):
+            for named in ([WITNESS_URL], []):
+                with pytest.raises(InvalidError):
+                    shelf.record_time(book_id, bad, named)
 
 
 def test_a_record_time_needs_a_registration_time(fx):
@@ -118,11 +120,11 @@ def test_a_record_time_needs_a_registration_time(fx):
 
         later, earlier = at(30), at(20)
         witness_at(c, second, WITNESS_URL, later)
-        assert shelf.record_time(book_id, last, [WITNESS_URL]) == later
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == unix(later)
         witness_at(c, second, WITNESS_URL, earlier)
         witness_at(c, second, WITNESS_URL, later + timedelta(hours=1))
         witness_at(c, second, WITNESS_URL, None)
-        assert shelf.record_time(book_id, last, [WITNESS_URL]) == earlier, "the witness's earliest is kept"
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == unix(earlier), "the witness's earliest is kept"
         assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ?", cp) == 1, \
             "one row per witness"
         # The row holds the earliest receipt itself, and the directory key it verified under.
@@ -143,7 +145,7 @@ def test_a_record_time_covers_the_journal(fx):
         iat = at(60)
         witness_at(c, stamp, WITNESS_URL, iat)
         held = leaves_of(shelf, JOURNAL_LOG_ID)
-        assert shelf.record_time(book_id, held, [WITNESS_URL]) == iat
+        assert shelf.record_time(book_id, held, [WITNESS_URL]) == unix(iat)
         assert shelf.record_time(book_id, held + 1, [WITNESS_URL]) is None
 
 
@@ -213,6 +215,50 @@ def test_a_corrupt_stored_fact_or_receipt_is_corrupt(fx):
             db.execute("UPDATE shelf_entries SET doc = CAST('{\"size\": -1}' AS BLOB) WHERE book_id = ?", (book_id,))
         with pytest.raises(CorruptError, match="stored fact"):
             shelf.record_time(book_id, 1, [WITNESS_URL])
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_entries SET doc = CAST('{\"size\": 18446744073709551616}' AS BLOB) WHERE book_id = ?", (book_id,))
+        with pytest.raises(CorruptError, match="stored fact"):
+            shelf.record_time(book_id, 1, [WITNESS_URL])
+
+
+# Go decodes a stored fact of JSON null, or a missing or null size, as size 0,
+# and so does a journal status value of null: no fact covers, no time.
+@pytest.mark.parametrize("doc", ["null", "{}", '{"size": null}'])
+def test_a_stored_fact_with_no_size_covers_nothing(fx, doc):
+    with fx.open() as shelf:
+        c, book_id, _, second = record_time_shelf(shelf)
+        witness_at(c, second, WITNESS_URL, at(5))
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_entries SET doc = CAST(? AS BLOB) WHERE book_id = ?", (doc, book_id))
+        assert shelf.record_time(book_id, 1, [WITNESS_URL]) is None
+
+
+def test_a_journal_status_with_no_size_covers_nothing(fx):
+    with fx.open() as shelf:
+        c, _, _, _ = record_time_shelf(shelf)
+        shelf.journal().append(obs("journal", "1"))
+        stamp = c.stamp(at(4)).tick
+        witness_at(c, stamp, WITNESS_URL, at(60))
+        book_id = scalar(shelf, "SELECT book_id FROM shelf_entries WHERE log_id = 'journal' LIMIT 1")
+        assert shelf.record_time(book_id, 1, [WITNESS_URL]) == unix(at(60))
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_entries SET status_opening = CAST('{\"salt\": \"00\", \"value\": null}' AS BLOB) WHERE log_id = 'journal'")
+        assert shelf.record_time(book_id, 1, [WITNESS_URL]) is None
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_entries SET status_opening = CAST('{\"salt\": \"00\"}' AS BLOB) WHERE log_id = 'journal'")
+        with pytest.raises(CorruptError, match="stored journal fact"):
+            shelf.record_time(book_id, 1, [WITNESS_URL])
+
+
+# A registration time past datetime's year 9999 is returned as Rust and Go
+# return it, in Unix seconds.
+def test_a_registration_time_past_year_9999(fx):
+    with fx.open() as shelf:
+        c, book_id, _, second = record_time_shelf(shelf)
+        far = 2**53 - 1
+        receipt = script.mint_receipt(second.checkpoint, far, script.WITNESS_KEY, WITNESS_URL)
+        assert c.witnessed(second.n, receipt).state == WITNESS_VERIFIED
+        assert shelf.record_time(book_id, 1, [WITNESS_URL]) == far
 
 
 def test_a_record_time_on_a_released_shelf(fx):

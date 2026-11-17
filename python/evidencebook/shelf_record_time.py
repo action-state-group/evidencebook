@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from . import shelf_facts
@@ -77,8 +76,11 @@ def backfill_receipts_locked(cadence: Any) -> None:
 
 
 def _size(value: Any) -> int:
-    """A stored size, as Go's uint64 field reads it."""
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    """A stored size, as Go's uint64 field reads it: absent or null is 0,
+    and anything not an integer from 0 to 2^64 - 1 is corrupt."""
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**64 - 1:
         raise ValueError(f"size {value!r} is not a count")
     return value
 
@@ -94,14 +96,27 @@ def _first_covering_fact(db: sqlite3.Connection, book_id: str, position: int) ->
     for seq, kind, doc, so in rows:
         try:
             fact = json.loads(bytes(doc))
+            # JSON null decodes into Go's struct as all zero, as here.
+            if fact is None:
+                fact = {}
             if not isinstance(fact, dict):
                 raise ValueError("not a JSON object")
-            size = _size(fact.get("size", 0))
+            size = _size(fact.get("size"))
         except (ValueError, TypeError) as exc:
             raise CorruptError(f"stored fact {seq}: {exc}") from None
         if kind == shelf_facts.FACT_KIND_JOURNAL:
             try:
-                size = _size(json.loads(bytes(so))["value"]["size"])
+                # As Go decodes it: the opening must carry a value; a null
+                # value, or a missing or null size, reads as 0.
+                opening = json.loads(bytes(so))
+                if not isinstance(opening, dict):
+                    raise ValueError("the status opening is not a JSON object")
+                value = opening["value"]
+                if value is None:
+                    value = {}
+                if not isinstance(value, dict):
+                    raise ValueError("the journal status is not a JSON object")
+                size = _size(value.get("size"))
             except (ValueError, TypeError, KeyError) as exc:
                 raise CorruptError(f"stored journal fact {seq}: {exc}") from None
         leaves = _leaf_count(size)
@@ -110,14 +125,15 @@ def _first_covering_fact(db: sqlite3.Connection, book_id: str, position: int) ->
     return None
 
 
-def record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str]) -> datetime | None:
+def record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str]) -> int | None:
     """Go ``Shelf.RecordTime``; see :meth:`evidencebook.shelf.Shelf.record_time`."""
     from .shelf import mmr_size
     from .shelf_receive import _live, _reader
 
     _live(shelf)
-    if position == 0:
-        raise InvalidError("a record position counts from 1")
+    # Go and Rust take an unsigned 64-bit position.
+    if isinstance(position, bool) or not isinstance(position, int) or not 1 <= position <= 2**64 - 1:
+        raise InvalidError("a record position counts from 1, to 2^64 - 1")
     if not witnesses:
         return None
     named = set(witnesses)
@@ -139,6 +155,6 @@ def record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str
                     earliest = at
         finally:
             db.execute("ROLLBACK")
-    if earliest is None:
-        return None
-    return datetime.fromtimestamp(earliest, tz=timezone.utc)
+    # Unix seconds, not a datetime: a registration time may be any integer
+    # to 2^53 - 1 (AAC's receipt verifier), past datetime's year 9999.
+    return earliest

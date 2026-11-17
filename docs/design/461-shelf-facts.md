@@ -116,8 +116,8 @@ New tables, all in the same file:
   `shelf_book_checkpoints` table; the tick row and its leaves hold the same data.)
 - `shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt TEXT, registered_at, PRIMARY KEY
   (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, with its
-  registration time or null; it lands with `RecordTime` (part 5), until which a tick keeps the
-  receipt `Witnessed` stores today. A witness is named by its receipt's URL (`ts_url`), the name
+  registration time or null. `Witnessed` writes it (part 5, with `RecordTime`, which reads it), and
+  a tick still keeps the first receipt in `cadence_ticks.receipt` for the readers that use it. A witness is named by its receipt's URL (`ts_url`), the name
   its directory row is found by, so one URL is one witness (a witness serving receipts from two URLs
   is two witnesses to the library) and the library treats the name as an opaque string; how an
   agreement names its witnesses is the profile's (step 5). `key_id` is the directory key the receipt verified under (the key the directory
