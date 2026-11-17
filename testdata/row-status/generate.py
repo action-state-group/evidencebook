@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Usage: python3 testdata/row-status/generate.py testdata/row-status/vectors.json
-# Writes testdata/row-status/vectors.json. Every "expect" below is written by hand from the rule
+# Writes testdata/row-status/vectors.json and, beside it, late.json. Every "expect" below is written by hand from the rule
 # (evidencebook#461 acceptance 6; the design's section 4.2), never computed by an implementation.
 import json, sys, copy
 P = ["buyer", "seller"]

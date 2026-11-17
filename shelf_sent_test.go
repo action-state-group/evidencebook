@@ -86,3 +86,27 @@ func TestSealSentNeedsTheJournal(t *testing.T) {
 	_, _, err = shelf.SealSent(context.Background(), sentEntry(sentRecord), "a/sent")
 	assert.ErrorIs(t, err, ErrReleased)
 }
+
+// A record stored whose log append fails is pending in the journal, which
+// commits it on its next write: SealSent returns it and its Capsule with the
+// error, so the caller sends it rather than seal it again.
+func TestSealSentReturnsAPendingRecordWithItsCapsule(t *testing.T) {
+	ctx := context.Background()
+	shelf, _, journal := migratedWithJournal(t)
+	before := journal.Size()
+	journal.commitments = &flakySubstrate{Substrate: journal.commitments, failures: 1}
+
+	record, sent, err := shelf.SealSent(ctx, sentEntry(sentRecord), "deal-0123456789abcdef/sent")
+	require.Error(t, err)
+	require.NotEmpty(t, record.RecordID, "the stored record is returned")
+	require.NotEmpty(t, sent.CapsuleID, "with its Capsule")
+	assert.Equal(t, sentRecord, string(sent.Payload))
+	assert.Equal(t, before, journal.Size(), "not committed yet")
+
+	// The next write commits it first, at the position it was given.
+	next := mustAppend(t, journal, observation("journal", "next"))
+	assert.Equal(t, record.Seq+1, next.Seq)
+	got, err := journal.Get(ctx, record.RecordID)
+	require.NoError(t, err)
+	assert.Equal(t, record.Seq, got.Seq)
+}
