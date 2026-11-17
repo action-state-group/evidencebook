@@ -113,7 +113,9 @@ func PlantMigration(ctx context.Context, dir string, appended int) error {
 }
 
 // onCopy runs act on a copy of the shelf at path, then apply on the original
-// and the copy, in one transaction on the original.
+// and the copy. apply's writes are not one transaction: a plant is test
+// tooling that runs to completion, and a torn one is refused by the next
+// run (the backup is created exclusively, and the rows hit their keys).
 func onCopy(ctx context.Context, path string, act func(copyPath string) error, apply func(ctx context.Context, original, copied *sql.DB) error) error {
 	scratch, err := os.MkdirTemp(filepath.Dir(path), "plant-")
 	if err != nil {
