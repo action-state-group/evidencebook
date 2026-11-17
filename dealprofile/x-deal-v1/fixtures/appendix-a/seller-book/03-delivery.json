@@ -1,0 +1,45 @@
+{
+  "fixture": "appendix-a/seller-book/03-delivery.json",
+  "expect": "valid",
+  "appendix_a_line": "37",
+  "story": "The delivery record: delivered, the tracking number committed; rows 2 and 3 met.",
+  "placement": "deal_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "perform",
+      "at": "2026-11-04T10:00:00Z",
+      "seq": 3,
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "7e10e5522f262be479de638acae89ba718fe300e87a17c8bbe8c92e9b1fd698b"
+      },
+      "agreement_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "bf8a5223864ca07681d022c237adfb09f9c3fba1477edfbcf1b67cab6eebeb9e"
+      },
+      "seen": "9537b0fd2baeceb03be99a57146a481e76eb08919d14731047c6a83a2e6fd0c2"
+    },
+    "body": {
+      "act": "deliver",
+      "observed": "carrier_scan",
+      "detail_commitment": "dc90b5a1930ddf57acbe8125227636e58610a99d362721a24be4b9ead9151ad9",
+      "statements": [
+        {
+          "row": "delivered",
+          "value": "met"
+        },
+        {
+          "row": "as_described",
+          "value": "met"
+        }
+      ]
+    }
+  },
+  "expected_digest": "7991dea463c40b279da89d377ab70655cf544040ead690d29cec876a47e1d24d",
+  "record_id": "788cd522efb043b7448a388cf7ae55aea4827aa9185636a453267e0eb724e9aa"
+}

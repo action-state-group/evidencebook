@@ -1,0 +1,30 @@
+{
+  "fixture": "neg-admission-ask-with-deal-id",
+  "expect": "invalid",
+  "description": "an ask of an admission carries no deal_id",
+  "base": "appendix-a/buyer-journal/03-ask.json",
+  "check": "record",
+  "seal_context": {
+    "offer_exists": false,
+    "admission": true
+  },
+  "expected_stage": "record",
+  "expected_error_contains": "carries deal_id only",
+  "record": {
+    "body": {
+      "request": {
+        "digest": "1913b98c35e7a01fdbf36e93e345f8b68b73543e697911ce2a1f7830bfa25f47",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "to": "counterparty"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:06:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "ask"
+    }
+  }
+}

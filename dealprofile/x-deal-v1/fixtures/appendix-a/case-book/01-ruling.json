@@ -1,0 +1,41 @@
+{
+  "fixture": "appendix-a/case-book/01-ruling.json",
+  "expect": "valid",
+  "appendix_a_line": "58",
+  "story": "The ruling, not final: row 3 not met; the seller refunds 60 dollars by 27 Nov.",
+  "placement": "case_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "ruling",
+      "at": "2026-11-13T10:00:00Z",
+      "seq": 1
+    },
+    "body": {
+      "row": "as_described",
+      "keys": {
+        "buyer": "232935bcfec4f81878f57637a9c5db1b71b180b9c11ec4e87365db9723f3ba52",
+        "seller": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353"
+      },
+      "against": "seller",
+      "value": "not_met",
+      "remedy": {
+        "kind": "refund",
+        "amount_minor": 6000,
+        "currency": "USD",
+        "due": "2026-11-27T23:59:59Z"
+      },
+      "read": {
+        "buyer": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2",
+        "seller": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2"
+      },
+      "forum": "auto:ref",
+      "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+      "final": false
+    }
+  },
+  "expected_digest": "0ae9e19fd31fd841de15d65a3ba0287850d1abbecfb42b4c91d5a7e11e25fbe5",
+  "record_id": "14104718c940c3e46cd7c9206501a0a08297c1971e902a0c7df63a53de1afd22"
+}

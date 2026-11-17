@@ -1,0 +1,47 @@
+{
+  "fixture": "appendix-a/buyer-book/08-refund-received.json",
+  "expect": "valid",
+  "appendix_a_line": "72",
+  "story": "The refund received record: a payee leg that reverses the payment record and points at the ruling.",
+  "placement": "deal_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "settle",
+      "at": "2026-11-25T15:00:00Z",
+      "seq": 8,
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "7ea336f122e5f6ed83d4ed3f37dd6c9101c1934eaf6d08561b27c601f814ffdd"
+      },
+      "agreement_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+      },
+      "seen": "3d7bfee0a6fb508dd326d9daf408e93344c15f93351f24d19843ecab16433dd6"
+    },
+    "body": {
+      "leg": "payee",
+      "statements": [],
+      "reverses": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "aa095eb54c7d4e519704a6fe250d88e481930103b1626cb91290bea3dadde34e"
+      },
+      "remedy_for": {
+        "row": "as_described",
+        "ruling": {
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "2649094302993395ae966118b1a326c1785bc1d6440be43a4f2c44e207d9e2e6"
+        }
+      }
+    }
+  },
+  "expected_digest": "bc84b7177ec030d59408c60f93de6959bb7ddac236f409ad1d61d65bdf484673",
+  "record_id": "f3e62e9964f99e7f797bac2ad22e4248364613f60a18b3e936a070e2682167b8"
+}

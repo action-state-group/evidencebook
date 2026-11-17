@@ -1,0 +1,26 @@
+{
+  "fixture": "neg-intent-with-deal-id",
+  "expect": "invalid",
+  "description": "an intent spans deals: no deal_id",
+  "base": "appendix-a/buyer-journal/01-intent.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "carries no deal_id",
+  "record": {
+    "body": {
+      "allowed": [
+        "pay"
+      ],
+      "max_total_minor": 6000,
+      "party_role": "buyer",
+      "verbatim_commitment": "dc9e42c89b2b53de42954f5126f5204c79d3bb4a2d225dfeb27271eb1d956cd6"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "intent"
+    }
+  }
+}

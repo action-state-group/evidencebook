@@ -1,0 +1,38 @@
+{
+  "fixture": "appendix-a/buyer-book/04-not-as-described.json",
+  "expect": "valid",
+  "appendix_a_line": "43",
+  "story": "Row 3 not met.",
+  "placement": "deal_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "statement",
+      "at": "2026-11-10T09:00:00Z",
+      "seq": 4,
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "2736da94e93b972a72988f8ee7b28eb67f512ec2835d6ab6ac20b04d1ba17293"
+      },
+      "agreement_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+      },
+      "seen": "788cd522efb043b7448a388cf7ae55aea4827aa9185636a453267e0eb724e9aa"
+    },
+    "body": {
+      "statements": [
+        {
+          "row": "as_described",
+          "value": "not_met"
+        }
+      ]
+    }
+  },
+  "expected_digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74",
+  "record_id": "64d29873f5b27701f88aa750133a699cf3d2d98a5a92374f7da44a287aa9901e"
+}

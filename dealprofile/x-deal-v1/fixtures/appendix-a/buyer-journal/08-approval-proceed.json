@@ -1,0 +1,30 @@
+{
+  "fixture": "appendix-a/buyer-journal/08-approval-proceed.json",
+  "expect": "valid",
+  "appendix_a_line": "10",
+  "story": "The owner's standing intent answers the passing verdict: proceed.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "approval",
+      "at": "2026-11-01T10:12:00Z",
+      "refs": [
+        {
+          "rel": "approves",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "4772111bd8b08c186526648c87d56e401e622d7e9ebc6864fabee19daa4bbdb1"
+        }
+      ]
+    },
+    "body": {
+      "choice": "proceed",
+      "proceed": true,
+      "approver": "standing_intent"
+    }
+  },
+  "expected_digest": "cc1ed33a8de643e9865b483fd1cfee34a8122b0074cf73a6fc19f1da0fe03836"
+}

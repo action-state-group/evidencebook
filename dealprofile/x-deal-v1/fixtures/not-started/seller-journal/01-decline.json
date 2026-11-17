@@ -1,0 +1,26 @@
+{
+  "fixture": "not-started/seller-journal/01-decline.json",
+  "expect": "valid",
+  "appendix_a_line": "last paragraph",
+  "story": "The seller does not want the deal: it declines the offer, citing it; the buyer keeps no deal book.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "agree",
+      "at": "2026-11-01T09:40:00Z"
+    },
+    "body": {
+      "kind": "decline",
+      "offer": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+      },
+      "reason": "other"
+    }
+  },
+  "expected_digest": "c31f6c58740c552b9cd5e30ffb753f98d03c135315dfcbb77a122e3550a78657"
+}

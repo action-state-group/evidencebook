@@ -1,0 +1,108 @@
+{
+  "fixture": "appendix-a/buyer-journal/05-offer.json",
+  "expect": "valid",
+  "appendix_a_line": "11",
+  "story": "The offer: the deal id, the lamp at 60 dollars, the pack digest, agree by 2 Nov, the adjudicator and witness taken from the listing, and the three rows.",
+  "placement": "journal",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "propose",
+      "at": "2026-11-01T09:30:00Z"
+    },
+    "body": {
+      "role": "buyer",
+      "to": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+      "terms": {
+        "item": "ceramic lamp",
+        "quantity": 1,
+        "price_minor": 6000,
+        "currency": "USD"
+      },
+      "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+      "stated_at": "2026-11-01T09:30:00Z",
+      "agree_by": "2026-11-02T23:59:59Z",
+      "terms_rows": {
+        "rows": [
+          {
+            "id": "paid_as_agreed",
+            "owed_by": "buyer",
+            "owed": {
+              "amount_minor": 6000,
+              "currency": "USD"
+            },
+            "due": {
+              "at": "2026-11-01T23:59:59Z"
+            },
+            "window_end": {
+              "at": "2026-11-04T23:59:59Z"
+            },
+            "recomputed": true
+          },
+          {
+            "id": "delivered",
+            "owed_by": "seller",
+            "owed": {
+              "item": "ceramic lamp",
+              "quantity": 1
+            },
+            "due": {
+              "after": "paid",
+              "seconds": 345600
+            },
+            "window_end": {
+              "after": "paid",
+              "seconds": 604800
+            }
+          },
+          {
+            "id": "as_described",
+            "owed_by": "seller",
+            "owed": {
+              "listing": "as published"
+            },
+            "due": {
+              "after": "received",
+              "seconds": 0
+            },
+            "window_end": {
+              "after": "received",
+              "seconds": 1209600
+            }
+          }
+        ],
+        "named": {
+          "paid": {
+            "side": "buyer",
+            "latest": "2026-11-04T23:59:59Z"
+          },
+          "received": {
+            "side": "buyer",
+            "latest": "2026-12-01T23:59:59Z"
+          }
+        }
+      },
+      "adjudicator": {
+        "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+        "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+        "rules_url": "https://adjudicator.example/rules"
+      },
+      "forums": [
+        "auto:ref"
+      ],
+      "witnesses": [
+        {
+          "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+          "url": "https://witness.example"
+        }
+      ],
+      "ask": {
+        "url": "https://buyer.example/ask",
+        "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159"
+      }
+    }
+  },
+  "expected_digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737"
+}

@@ -1,0 +1,61 @@
+{
+  "fixture": "neg-offerer-seen-not-held",
+  "expect": "invalid",
+  "description": "the offerer's agreement names the acceptor's agreement it holds",
+  "base": "appendix-a/buyer-book/01-agreement.json",
+  "check": "agreement",
+  "with": "appendix-a/buyer-journal/05-offer.json",
+  "held_acceptor_agreement": "65c144472537ff0a16ef07e67b939ac25899c2a245b6a93133d06938f5dcef74",
+  "expected_stage": "agreement",
+  "expected_error_contains": "names the acceptor's agreement",
+  "record": {
+    "body": {
+      "adjudicator": {
+        "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+        "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+        "rules_url": "https://adjudicator.example/rules"
+      },
+      "admit": {
+        "digest": "bb70c70a22a41b2f09d25c78be93d81e150eac4a5f147b29fe27529a70556972",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "checkpoint_key": "6f4dbcf3a4757c293c0e092ec650786b19ec40e5e44376c7a9f50bcfc1a54b6b",
+      "counterparty_key": "7aed120cea31516c35af0a8e13bfde77c4365ed00556aba1afbb3223fceb6353",
+      "counterparty_layer": true,
+      "forums": [
+        "auto:ref"
+      ],
+      "intent": {
+        "digest": "b77b53a74c6910c1e3193b2f6746e849bac40abab0367d234acf5dcb0358f454",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "kind": "agreement",
+      "offer": {
+        "digest": "c6a4d8dcff09e51ade5b664d89ad0a564a665e4992b5d06c52d70c8d57d6b737",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "role": "buyer",
+      "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+      "shelf_log_id": "03b24c18cc9277dbaeaec74dc765c63a992e1c46013f3195dfb2c86d3794e56b",
+      "side": "offerer",
+      "witnesses": [
+        {
+          "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+          "url": "https://witness.example"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "agree",
+      "seen": "94d3aa95afd43444b59b2ace273873daebbef1af4afbd9b64e6e8bf0b6bc0fe4",
+      "seq": 1
+    }
+  }
+}

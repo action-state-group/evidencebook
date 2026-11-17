@@ -1,0 +1,28 @@
+{
+  "fixture": "appendix-a/buyer-journal/03-ask.json",
+  "expect": "valid",
+  "appendix_a_line": "9a",
+  "story": "The evidence request, sealed before it is sent; an ask of an admission carries no deal_id.",
+  "placement": "journal",
+  "seal_context": {
+    "offer_exists": false,
+    "admission": true
+  },
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "record_type": "ask",
+      "at": "2026-11-01T09:06:00Z"
+    },
+    "body": {
+      "request": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "1913b98c35e7a01fdbf36e93e345f8b68b73543e697911ce2a1f7830bfa25f47"
+      },
+      "to": "counterparty"
+    }
+  },
+  "expected_digest": "b68c65d286586eb8e067ee025ac2748b5a5875a41d4d1cd0730071c41920a085"
+}

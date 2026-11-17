@@ -1,0 +1,52 @@
+{
+  "fixture": "settled/seller-book/05-refund.json",
+  "expect": "valid",
+  "appendix_a_line": "s2",
+  "story": "The seller gives way: it refunds and states row 3 not met, a concession after the window.",
+  "placement": "deal_book",
+  "record": {
+    "x-deal-v1": {
+      "profile": "x-deal-v1",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "record_type": "settle",
+      "at": "2026-11-20T10:00:00Z",
+      "seq": 5,
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "e4fe7027d0f5cc905d0c969fd40dcc9c5a6e5d435ab2e1c03b808560fa1f6d05"
+      },
+      "agreement_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "bf8a5223864ca07681d022c237adfb09f9c3fba1477edfbcf1b67cab6eebeb9e"
+      },
+      "seen": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2"
+    },
+    "body": {
+      "leg": "payer",
+      "statements": [
+        {
+          "row": "as_described",
+          "value": "not_met"
+        }
+      ],
+      "check": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "e80f1dfb1b93772374feabe8ec4aae34d431026806687751a8a60f2c8e9215ae"
+      },
+      "reverses": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "7e10e5522f262be479de638acae89ba718fe300e87a17c8bbe8c92e9b1fd698b"
+      },
+      "remedy_for": {
+        "row": "as_described"
+      }
+    }
+  },
+  "expected_digest": "c8063206b186ce7202c87056fb5deecedcad76703235f197d24c63b6c4afd3e1",
+  "record_id": "63d000510f6b7a727abcc4c0f303dc1a99fe910f969e6dcd962a05dc66e58c23"
+}

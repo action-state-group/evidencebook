@@ -1,0 +1,49 @@
+{
+  "fixture": "neg-dispute-other-agreement",
+  "expect": "invalid",
+  "description": "the dispute is bound to its book's agreement",
+  "base": "appendix-a/buyer-book/05-dispute.json",
+  "check": "dispute",
+  "with": "appendix-a/buyer-book/01-agreement.json",
+  "expected_stage": "agreement",
+  "expected_error_contains": "bound to another agreement",
+  "record": {
+    "body": {
+      "adjudicator": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+      "forum": "auto:ref",
+      "kind": "dispute",
+      "row": "as_described",
+      "statements": [
+        {
+          "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74",
+          "digest_alg": "SHA-256",
+          "type": "deal-record"
+        },
+        {
+          "digest": "e4fe7027d0f5cc905d0c969fd40dcc9c5a6e5d435ab2e1c03b808560fa1f6d05",
+          "digest_alg": "SHA-256",
+          "type": "deal-record"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "agreement_ref": {
+        "digest": "1712fb98cf58eaf8aeac8901ae71d08033b5ab0c8a0675c0bc92df93a10e352a",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "at": "2026-11-12T09:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "prev": {
+        "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "profile": "x-deal-v1",
+      "record_type": "dispute",
+      "seen": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2",
+      "seq": 5
+    }
+  }
+}
