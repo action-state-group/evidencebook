@@ -74,6 +74,35 @@ sample card (45 held, 3 did not hold), for a package without that record. Use th
 and `run`. The card does not show who wrote the note, and the screen says it is the seller's own
 note, not confirmed by the buyer or a ruling.
 
+## In Goose Desktop
+
+The same story, run by the buyer's Goose in Goose Desktop instead of the script and the popup.
+`desktop_server.py` is a Goose extension (an MCP server over stdio) that drives the same `demo.Run`
+and returns the text the script prints:
+
+| Tool | Step |
+|---|---|
+| `ard_find_sellers` | Maya's ask and ARD discovery |
+| `ard_show_history` | each seller's signed answers, checked, and the History cards |
+| `ard_assess` | the assessment under the pack, then with the rule tightened (`max_adverse_permille`, default 50) |
+| `ard_pick` | seals the pick; a seller over its limit ends here: no deal opens, nothing is paid |
+| `ard_pay` | opens the deal and pays on the rail (`ARD_RAIL=lightning` moves 289 msat); the one tool that moves money |
+
+Set up (once): seed the home as above, then in Goose Desktop open Extensions, Add custom extension
+(type STDIO) with the command below. Goose Desktop keeps environment values of a custom extension as
+secrets it does not pass to the server, so put them in the command:
+
+```text
+/usr/bin/env CAPSULE_ENGINE=<engine> ARD_SKILLS=<skills checkout> ARD_RAIL=fake CAPSULE_WITNESS=off <python/.venv/bin/python> <this directory>/desktop_server.py
+```
+
+Use `ARD_RAIL=lightning` for the real payment (needs `gcloud`, as for the script). Import
+`goose/maya-buyer.recipe.yaml` (Recipes, Import Recipe) for the buyer's instructions, and turn
+Settings, Chat, Show Thinking off. One Goose chat at a time: a second chat's server refuses to start
+on the same home. A Claude-backed Goose provider reads the account's own instructions, so ask it for
+English in the first message if those say otherwise. The script demo above is unchanged and is the
+fallback.
+
 ## What differs from the design note
 
 - The sellers answer `standard_history/1` themselves: the book answers that card only to an

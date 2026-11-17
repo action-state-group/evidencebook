@@ -154,6 +154,12 @@ class Run:
     # -- 6-7 deal, payment, close, card -----------------------------------------------------
 
     def settle(self, p: packs.Pack, made: dict[str, buyer.Assessment], chosen: str) -> None:
+        pick = self.seal(made, chosen)
+        if pick is not None:
+            self.pay_deal(made, chosen, pick)
+
+    def seal(self, made: dict[str, buyer.Assessment], chosen: str) -> str | None:
+        """Seal the pick. A seller that is not GO ends the run here (nothing opens, nothing is paid) and returns ``None``."""
         a = made[chosen]
         seller = self.w.nodes[chosen]
         name = SELLERS[chosen]["label"]
@@ -164,7 +170,13 @@ class Run:
             line = screens.limit_outcome(a)
             print(line)
             self.srv.finish(line)
-            return
+            return None
+        return pick
+
+    def pay_deal(self, made: dict[str, buyer.Assessment], chosen: str, pick: str) -> None:
+        a = made[chosen]
+        seller = self.w.nodes[chosen]
+        name = SELLERS[chosen]["label"]
         deals.admit(seller, self.maya, reason="buyer Maya, picked by the presenter")
         chain = buyer.open_deal(self.maya, seller, pick, a, ASK)
         before = self.rail.balances()
