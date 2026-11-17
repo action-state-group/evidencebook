@@ -748,6 +748,13 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
 			return err
 		}
+		// cadence_witnessed and the live set index the tree's ticks, which a
+		// cadence chain (Chain) proves a checkpoint by; a stamp has no tree
+		// and its proof is the stamp proof (evidencebook#461), so a witnessed
+		// stamp is the tick's own state and touches neither.
+		if tick.Leaves.Stamp != nil {
+			return nil
+		}
 		for id, leaf := range tick.Leaves.Deals {
 			if _, err := tx.ExecContext(ctx,
 				indexWitnessed,
@@ -828,6 +835,9 @@ func (c *Cadence) witnessedTickLocked(ctx context.Context, logID, checkpointSHA2
 	}
 	if tick, err = c.tickLocked(ctx, n); err != nil {
 		return "", CadenceTick{}, TickLeaf{}, err
+	}
+	if tick.Leaves.Stamp != nil {
+		return "", CadenceTick{}, TickLeaf{}, fmt.Errorf("%w: tick %d is a stamp, whose proof is a stamp proof, not a cadence chain", ErrCorrupt, n)
 	}
 	return extent, tick, tick.Leaves.Deals[logID], nil
 }

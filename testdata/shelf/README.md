@@ -10,7 +10,7 @@ implementation and read by every other. Each file is regenerated only with
 | `tree.json` | cadence leaves, fillers, derived fillers, empty roots, trees with every path, padding record ids, and draws from the shelf's random source | `shelf_vectors_test.go` |
 | `script.json` | the scripted shelf: its host parameters, keys and two phases of steps | `internal/shelfscript` |
 | `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
-| `after-write.json`, `after-continue.json` | the dump of the scripted shelf after each phase | `internal/shelfscript` |
+| `after-write.json`, `after-continue.json`, `after-migrate.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
 
 ## The random source
 
@@ -59,3 +59,15 @@ processes: Go's `test/interop/shelf`, Python's
   `rust/interop/tests/shelf_vectors.rs` reads `correlation.json`, and runs
   `script.json` and compares the script's dumps with `after-write.json` and
   `after-continue.json`.
+
+## The migrate phase (evidencebook#461)
+
+The migrate phase runs `Migrate`, then stamps on demand and on the heartbeat.
+Migration draws, for each genesis fact in book id order, its link salt then
+its status salt (32 bytes each), then the jitter; every stamp draws the same
+for each fact it writes, then the jitter. A version 2 dump adds two tables:
+`shelf_entries` row for row (`doc` and both openings as their stored text) and
+`shelf_migration` as `{state, backed_up}`, leaving out the backup's digest,
+which covers SQLite's own bytes. A stamp's `tick_roots` entry is
+`stamp:<SHA-256 of its stamp entry>`, and a fact whose checkpoint did not grow
+has no chain.

@@ -87,6 +87,41 @@
     "witness_public": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
     "witness_seed": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"
   },
+  "migrate_phase": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/migrate",
+      "at": 10800
+    },
+    {
+      "op": "migrate"
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a7"
+    },
+    {
+      "op": "stamp",
+      "at": 10860
+    },
+    {
+      "op": "stamp",
+      "at": 10920
+    },
+    {
+      "op": "host_append",
+      "n": 5
+    },
+    {
+      "op": "tick",
+      "witness": true
+    },
+    {
+      "op": "release"
+    }
+  ],
   "start": "2026-10-31T12:00:00Z",
   "write_phase": [
     {

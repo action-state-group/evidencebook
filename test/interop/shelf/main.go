@@ -58,6 +58,8 @@ func run(args []string) error {
 		return shelfscript.Write(ctx, dir)
 	case "continue":
 		return shelfscript.Continue(ctx, dir)
+	case "migrate":
+		return shelfscript.Migrate(ctx, dir)
 	case "dump":
 		out, err := shelfscript.Dump(ctx, dir)
 		if err != nil {

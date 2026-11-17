@@ -28,7 +28,10 @@ func TestShelfVectors(t *testing.T) {
 	require.NoError(t, Continue(ctx, dir))
 	afterContinue, err := Dump(ctx, dir)
 	require.NoError(t, err)
-	files := map[string][]byte{"script.json": script, "after-write.json": afterWrite, "after-continue.json": afterContinue}
+	require.NoError(t, Migrate(ctx, dir))
+	afterMigrate, err := Dump(ctx, dir)
+	require.NoError(t, err)
+	files := map[string][]byte{"script.json": script, "after-write.json": afterWrite, "after-continue.json": afterContinue, "after-migrate.json": afterMigrate}
 	for name, got := range files {
 		path := filepath.Join(vectorDir, name)
 		if os.Getenv("EB_WRITE_SHELF_VECTORS") == "1" {

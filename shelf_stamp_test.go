@@ -255,7 +255,7 @@ func TestAStampIsWitnessedLikeATick(t *testing.T) {
 	leaf := stamp.Tick.Leaves.Deals["deal/a"]
 	var n int
 	require.NoError(t, shelf.db.QueryRow(`SELECT COUNT(*) FROM cadence_witnessed WHERE log_id = ? AND checkpoint_sha256 = ?`, "deal/a", leaf.CheckpointSHA256).Scan(&n))
-	assert.Equal(t, 1, n, "the fact's checkpoint is indexed as witnessed")
+	assert.Zero(t, n, "a stamp leaves the tree's witnessed index alone")
 }
 
 // Acceptance 2: each audience gets exactly the openings OpeningsFor gives it,

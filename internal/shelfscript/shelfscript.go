@@ -310,6 +310,28 @@ var ContinuePhase = []Step{
 	{Op: "release"},
 }
 
+// MigratePhase continues the shelf after ContinuePhase: it switches it to a
+// log of book facts (evidencebook#461) and stamps it, on demand and on the
+// heartbeat, with a quiet stamp between.
+var MigratePhase = []Step{
+	{Op: "open", Stream: MigrateStream, At: 10800},
+	{Op: "migrate"},
+	{Op: "append", Book: "deal/a", Subject: "a", Payload: "a7"},
+	{Op: "stamp", At: 10860},
+	{Op: "stamp", At: 10920},
+	{Op: "host_append", N: 5},
+	{Op: "tick", Witness: true},
+	{Op: "release"},
+}
+
+// MigrateStream is the random stream of MigratePhase.
+const MigrateStream = "evidencebook shelf vectors/migrate"
+
+// Migrate runs MigratePhase on dir/shelf.db.
+func Migrate(ctx context.Context, dir string) error {
+	return Run(ctx, filepath.Join(dir, FileName), MigratePhase)
+}
+
 // Write runs WritePhase on a new dir/shelf.db.
 func Write(ctx context.Context, dir string) error {
 	path := filepath.Join(dir, FileName)
@@ -353,6 +375,13 @@ func Run(ctx context.Context, path string, steps []Step) error {
 					return err
 				}
 				return e.witness(ctx, tick)
+			case "migrate":
+				return e.cadence.Migrate(ctx, e.clock.Now())
+			case "stamp":
+				at := Start.Add(time.Duration(step.At) * time.Second)
+				e.clock.set(at)
+				_, err := e.cadence.Stamp(ctx, at)
+				return err
 			case "plant_pending":
 				return plantPending(ctx, path, step.Book, pendingEntry(step.Subject), now.Add(time.Duration(step.At)*time.Second))
 			}
@@ -471,6 +500,7 @@ func Script() ([]byte, error) {
 		},
 		"write_phase":    WritePhase,
 		"continue_phase": ContinuePhase,
+		"migrate_phase":  MigratePhase,
 	})
 }
 
