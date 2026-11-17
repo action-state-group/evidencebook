@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.14.2 (2026-11-16)
+
+Go module only. Pull request since v0.14.1: #464 (the temporary `outcome_note` record; entry cites its issue #462). Cut for the 2026-11-19 Goose ARD demo.
+
+- **TEMPORARY** x-deal-v0 `outcome_note` record (evidencebook#462; evidencebook#461's computed row status supersedes it): the book owner's own note, sealed after the final close, that the deal did not hold. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (`dealprofile.StandardHistoryDeal`).
+
 ## v0.14.1 (2026-11-16)
 
 Go module only. Pull request since v0.14.0: #454 (the `sale_unpost` record; entry cites its issue #451).
