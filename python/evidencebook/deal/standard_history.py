@@ -27,12 +27,17 @@ never guessed:
   least one claim and every claim met is "held", and anything else (a not_met
   claim, no claim, met with undecided, no verified Result) is "undecided": a
   not_met claim says the halves disagree, which does not show which side
-  failed, so the profile never gives "did_not_hold".
+  failed, so a Result never gives "did_not_hold". TEMPORARY exception
+  (evidencebook#462, until evidencebook#461's computed row status): a deal log
+  holding the owner's own ``outcome_note`` (did_not_hold) that confirms a close
+  on that log is "did_not_hold", over any Result.
 * ``happened`` is "stamped_by_both" only when the counterparty's half is
   received and verifies (the host's check, as the deal view's); else
   "receipt_only" when the holder's own final close observed a "received"
   outcome; else "no_record".
-* ``disputes`` is empty: the profile seals no IP §11.2 disputes statement.
+* ``disputes`` is what the deal's evidence steps state, as the deal plugin's
+  ``disputesOf`` counts them (:func:`_disputes`): the profile seals no IP §11.2
+  disputes statement, so the dispute and ruling steps stand in.
 
 The entry is the dict ``agent_action_capsule.standard_history.derive_card``
 takes in ``deals``. Records are read with ``json``: a member name is matched
@@ -48,7 +53,7 @@ from typing import Any
 from .check import _float, _go_quote, _refuse_constant, digest
 from .names import (
     TYPE_ACTION, TYPE_ACTION_EVALUATION, TYPE_ACTION_OUTCOME, TYPE_ACTION_RECORD, TYPE_APPROVAL, TYPE_BASELINE,
-    TYPE_CHECK, TYPE_CLOSE, TYPE_OUTCOME, TYPE_PROPOSED_ACTION, TYPE_SALE, TYPE_VERDICT,
+    TYPE_CHECK, TYPE_CLOSE, TYPE_OUTCOME, TYPE_OUTCOME_NOTE, TYPE_PROPOSED_ACTION, TYPE_SALE, TYPE_VERDICT,
 )
 
 __all__ = ["HistoryRecord", "HistoryResult", "HistoryInput", "Unpriced", "standard_history_deal", "minor_units"]
@@ -238,15 +243,45 @@ def standard_history_deal(inp: HistoryInput) -> dict[str, Any] | None:
         "agreed_at": _minute(agreed.committed_at),
         "role": _deal_role(records),
         "amount": amount,
-        "outcome": _reconcile_outcome(inp.results),
+        "outcome": _deal_outcome(records, by_digest, inp.results),
         "happened": _happened(records, by_digest, inp.counterparty_half_verified),
         "disputes": [],
     }
+    entry["disputes"] = _disputes(records, entry["role"])
     cls = _counterparty_class(records)
     if cls is not None:
         entry = {**{k: entry[k] for k in ("deal", "agreed_at")}, "counterparty_class": cls,
                  **{k: v for k, v in entry.items() if k not in ("deal", "agreed_at")}}
     return entry
+
+
+_SOURCE_DISPUTE = "dispute"
+_SOURCE_RULING_BUYER = "ruling_for_buyer"
+_SOURCE_RULING_SELLER = "ruling_for_seller"
+
+
+def _disputes(records: list[_Rec], role: str) -> list[dict[str, str]]:
+    """The deal's SH §5.4 disputes as its records state them. The source token of an
+    evidence record carries the step: a ruling ends the dispute at once, for or against
+    the holder; a dispute with no ruling is open, and only a buyer's store holds one;
+    no ruling and no dispute is none."""
+    disputed, ruled = False, ""
+    for r in records:
+        if r.kind != "evidence":
+            continue
+        source = r.str("source")
+        if source == _SOURCE_DISPUTE:
+            disputed = True
+        elif source in (_SOURCE_RULING_BUYER, _SOURCE_RULING_SELLER):
+            ruled = source
+    bought = role == "bought"
+    if ruled:
+        outcome = "for" if (ruled == _SOURCE_RULING_BUYER) == bought else "against"
+    elif disputed and bought:
+        outcome = "open"
+    else:
+        return []
+    return [{"side": "raised" if bought else "received", "outcome": outcome, "forum": "external"}]
 
 
 def _minute(at: datetime) -> str:
@@ -299,6 +334,17 @@ def _deal_role(records: list[_Rec]) -> str:
                 return "provided"
             return "bought"
     return "bought"
+
+
+def _deal_outcome(records: list[_Rec], by_digest: dict[str, _Rec], results: tuple[HistoryResult, ...]) -> str:
+    """"did_not_hold" when the log holds the owner's outcome_note confirming one
+    of its closes (TEMPORARY, evidencebook#462), else the Result's reading."""
+    for r in records:
+        if r.kind == TYPE_OUTCOME_NOTE and r.str("outcome") == "did_not_hold":
+            closed = by_digest.get(r.ref("confirms"))
+            if closed is not None and closed.kind == TYPE_CLOSE:
+                return "did_not_hold"
+    return _reconcile_outcome(results)
 
 
 def _reconcile_outcome(results: tuple[HistoryResult, ...]) -> str:

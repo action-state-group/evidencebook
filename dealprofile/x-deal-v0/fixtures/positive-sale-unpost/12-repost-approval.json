@@ -1,0 +1,38 @@
+{
+  "fixture": "12-repost-approval.json",
+  "expect": "valid",
+  "story": "The user's own \"post it\", in their words, on the card that quoted the listing.",
+  "record": {
+    "type": "action-approval/v0",
+    "canonicalization": "jcs",
+    "chain_id": "sale-3c9e1a7b5d2f8064",
+    "seq": 12,
+    "at": "2026-10-06T08:00:00Z",
+    "prev": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "4c50ddab64580989f8a447e6c498b5360b5e52e85663b92dca63938ba05484e1"
+    },
+    "chain_root": {
+      "type": "record",
+      "digest_alg": "SHA-256",
+      "digest": "902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f"
+    },
+    "refs": [
+      {
+        "rel": "approves",
+        "type": "record",
+        "digest_alg": "SHA-256",
+        "digest": "4c50ddab64580989f8a447e6c498b5360b5e52e85663b92dca63938ba05484e1"
+      }
+    ],
+    "body": {
+      "authority": "user_approval",
+      "choice": "proceed",
+      "proceed": true,
+      "said_commitment": "bb0d765f0534b05c0fb4b256654052c954e573f2e762cf8dd69ea4f66f351f25",
+      "rendering_commitment": "a2f11231a20fdae65b20e06d105fd810687c6a480e12609d11823c13279885fd"
+    }
+  },
+  "expected_digest": "2887412a9564effe9bb9abb7977878cf81575a9bf019ffc5779ff8c5be6b6b49"
+}

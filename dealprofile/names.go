@@ -44,8 +44,11 @@ const (
 	TypeThreadOpened        = "thread_opened"
 	TypeSaleCut             = "sale_cut"
 	TypeSaleClose           = "sale_close"
+	TypeSaleUnpost          = "sale_unpost"
 	TypeAgentMove           = "agent_move"
 	TypeRulesVerdict        = "rules_verdict"
+	// TypeOutcomeNote is temporary (evidencebook#462): see OutcomeNoteBody.
+	TypeOutcomeNote = "outcome_note"
 )
 
 // RecordTypes are the x-deal-v0 record types, in the schema's order.
@@ -54,8 +57,8 @@ func RecordTypes() []string { return append([]string(nil), recordTypes...) }
 var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
-	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeAgentMove,
-	TypeRulesVerdict,
+	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeSaleUnpost, TypeAgentMove,
+	TypeRulesVerdict, TypeOutcomeNote,
 }
 
 // The typed action records and contract types (PROFILE.md §9).

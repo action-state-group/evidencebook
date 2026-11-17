@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.0.17 (2026-11-16)
+
+Tag `crates/evidencebook-v0.0.17`. Pull request since 0.0.16 that touches `rust/`: [#464](https://github.com/action-state-group/evidencebook/pull/464) (the temporary `outcome_note` record).
+
+- **TEMPORARY** `deal::TYPE_OUTCOME_NOTE` and `OutcomeNoteBody`, the x-deal-v0 `outcome_note` record (evidencebook#462), checked by the chain and counted `did_not_hold` by `standard_history_deal`.
+
+## 0.0.16 (2026-11-16)
+
+Tag `crates/evidencebook-v0.0.16`. Pull requests since 0.0.15 that touch `rust/`: [#454](https://github.com/action-state-group/evidencebook/pull/454) (the `sale_unpost` record), [#445](https://github.com/action-state-group/evidencebook/pull/445) (the `rules_verdict` record, described in the root CHANGELOG's v0.14.0 entry; the crate carries `RulesVerdictBody`), [#448](https://github.com/action-state-group/evidencebook/pull/448) (clippy 1.100 fix, internal) and [#450](https://github.com/action-state-group/evidencebook/pull/450) (a test change only, internal).
+
+- Internal: the shelf commit loop iterates the records instead of indexing them, so `cargo clippy -- -D warnings` passes on Rust 1.100 (#446). No behaviour change.
+
+- `deal`: the sale-log chain stage and the record types follow x-deal-v0's new `sale_unpost` record (a listing taken down; PROFILE.md section 6, rule 15), with `SaleUnpostBody` and `TYPE_SALE_UNPOST`. The vendored schemas are updated to match (#451).
+
 ## 0.0.15 (2026-11-09)
 
 Tag `crates/evidencebook-v0.0.15`. Pull request [#442](https://github.com/action-state-group/evidencebook/pull/442): chore(rust): move evidence-request to 0.5.0.

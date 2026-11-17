@@ -373,6 +373,11 @@ func checkSaleChain(docs []obj) {
 	firstAnswer := map[int]int{}
 	used, stale := map[int]bool{}, map[int]bool{}
 	latestVerdict, latestCheck := -1, -1
+	// A listing taken down (rule 15): a platform's live post is its latest post
+	// action not yet taken down; platformOf reads a post's platform from its own check.
+	checkOf := map[int]int{}
+	livePost := map[string]int{}
+	platformOf := map[int]string{}
 	for i := 2; i < len(docs); i++ {
 		r := docs[i]
 		var b, body obj
@@ -385,9 +390,9 @@ func checkSaleChain(docs []obj) {
 			b, body = block(r), mp(r["body"])
 			t = str(b["record_type"])
 		}
-		if !slices.Contains([]string{"thread", "thread_opened", "sale_cut", "sale_close", "post_check", "post_verdict", "post_approval", "post_action"}, t) {
-			fail(i, "after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, "+
-				"and a listing post's check, evaluation, approval and action")
+		if !slices.Contains([]string{"thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "post_check", "post_verdict", "post_approval", "post_action"}, t) {
+			fail(i, "after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, "+
+				"a listing post's check, evaluation, approval and action, and a listing's takedown")
 		}
 		if closed && t != "sale_cut" {
 			fail(i, "after a sale's close, its log holds only cuts")
@@ -446,6 +451,7 @@ func checkSaleChain(docs []obj) {
 				fail(i, "no rules checker runs on a post: its evaluation says rules_status not_applicable")
 			}
 			latestVerdict = i
+			checkOf[i] = j
 		case "post_approval":
 			j := refTo("approves", "post_verdict")
 			// What the user was shown is what the post check rendered, as on a
@@ -477,6 +483,8 @@ func checkSaleChain(docs []obj) {
 				fail(i, "a post rests on the first answer to its check, and an approval posts once")
 			}
 			used[ja] = true
+			platformOf[i] = str(mp(mp(docs[checkOf[jv]]["body"])["posting"])["platform"])
+			livePost[platformOf[i]] = i
 			if until := str(mp(docs[jv]["body"])["valid_until"]); str(b["at"]) > until {
 				fail(i, "the post check was valid until %s: a post after that needs a new check", until)
 			}
@@ -488,6 +496,12 @@ func checkSaleChain(docs []obj) {
 				mp(basis[1])["type"] != "user_approval" || mp(mp(basis[1])["ref"])["digest"] != digests[ja] {
 				fail(i, "a post's authority_basis is the sale's task authority, then the user's approval")
 			}
+		case "sale_unpost":
+			j := refTo("unposts", "post_action")
+			if p := str(body["platform"]); platformOf[j] != p || livePost[p] != j {
+				fail(i, "a listing's takedown names the live post of its platform: that platform's latest post, not already taken down")
+			}
+			delete(livePost, str(body["platform"]))
 		case "thread_opened":
 			reg := str(mp(sl(b["refs"])[0])["digest"])
 			if !registrations[reg] || opened[reg] {
@@ -538,6 +552,7 @@ type dealChain struct {
 	verdictForChk map[int]bool
 	profileForChk map[int]bool
 	rulesVerdict  bool
+	outcomeNote   bool
 	reversed      map[int]bool
 	firstAnswer   map[int]int
 	lastOutcome   int
@@ -556,7 +571,7 @@ var allowedRels = map[string][]string{
 	"close": {"outcome"}, "disclosure": {"authorized_by"}, "claim": {"authorized_by"},
 	"task_authority": {"source", "approves", "registration"}, "platform_approval": {}, "policy_change": {},
 	"check": {"supersedes", "source"}, "counterparty_acceptance": {},
-	"counterparty_profile": {"about"}, "rules_verdict": {"confirms"},
+	"counterparty_profile": {"about"}, "rules_verdict": {"confirms"}, "outcome_note": {"confirms"},
 }
 
 func (c *dealChain) fail(format string, args ...any) { failAt(c.i, format, args...) }
@@ -890,8 +905,8 @@ func checkDealChain(raw []obj) {
 		if c.closedFinal >= 0 {
 			// Close is terminal: after it, only later evidence that confirms
 			// that close (and commits to its digest) may follow; the party's one
-			// rules_verdict is such a record.
-			if (t != TypeEvidence && t != TypeRulesVerdict) || len(confirms) != 1 || confirms[0]["digest"] != c.digests[c.closedFinal] {
+			// rules_verdict and outcome_note are such records.
+			if (t != TypeEvidence && t != TypeRulesVerdict && t != TypeOutcomeNote) || len(confirms) != 1 || confirms[0]["digest"] != c.digests[c.closedFinal] {
 				c.fail("record after a close whose outcome is final (completed, mismatch, not_selected or called_off; close is terminal): " +
 					"only an evidence record or the rules_verdict that confirms that close may follow")
 			}

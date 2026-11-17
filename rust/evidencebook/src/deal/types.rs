@@ -770,6 +770,19 @@ pub struct RulesVerdictBody {
     pub pack_id: Option<String>,
 }
 
+/// OutcomeNoteBody is `body_outcome_note` in the schema. TEMPORARY
+/// (evidencebook#462; evidencebook#461's computed row status supersedes it):
+/// the book owner's own note, sealed after the final close, that an outcome
+/// arrived against it, so the deal did not hold. `outcome` is always
+/// `did_not_hold`; `reason` is dispute_lost, settled_against, not_delivered or
+/// other.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutcomeNoteBody {
+    pub outcome: String,
+    pub reason: String,
+}
+
 /// ThreadBody is `body_thread` in the schema.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -803,6 +816,13 @@ pub struct SaleCutBody {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaleCloseBody {}
+
+/// SaleUnpostBody is `body_sale_unpost` in the schema.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SaleUnpostBody {
+    pub platform: String,
+}
 
 /// AgentMoveBodyOptionsItem is an item of the `options` member of [`AgentMoveBody`].
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

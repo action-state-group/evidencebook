@@ -36,9 +36,11 @@ func (SaleBody) RecordType() string                { return TypeSale }
 func (CounterpartyProfileBody) RecordType() string { return TypeCounterpartyProfile }
 func (ThreadBody) RecordType() string              { return TypeThread }
 func (RulesVerdictBody) RecordType() string        { return TypeRulesVerdict }
+func (OutcomeNoteBody) RecordType() string         { return TypeOutcomeNote }
 func (ThreadOpenedBody) RecordType() string        { return TypeThreadOpened }
 func (SaleCutBody) RecordType() string             { return TypeSaleCut }
 func (SaleCloseBody) RecordType() string           { return TypeSaleClose }
+func (SaleUnpostBody) RecordType() string          { return TypeSaleUnpost }
 func (AgentMoveBody) RecordType() string           { return TypeAgentMove }
 
 func (IntentBody) isBody()              {}
@@ -58,9 +60,11 @@ func (SaleBody) isBody()                {}
 func (CounterpartyProfileBody) isBody() {}
 func (ThreadBody) isBody()              {}
 func (RulesVerdictBody) isBody()        {}
+func (OutcomeNoteBody) isBody()         {}
 func (ThreadOpenedBody) isBody()        {}
 func (SaleCutBody) isBody()             {}
 func (SaleCloseBody) isBody()           {}
+func (SaleUnpostBody) isBody()          {}
 func (AgentMoveBody) isBody()           {}
 
 // newBody is the zero body of a record type, nil for no record type.
@@ -106,6 +110,10 @@ func newBody(recordType string) Body {
 		return &SaleCutBody{}
 	case TypeSaleClose:
 		return &SaleCloseBody{}
+	case TypeSaleUnpost:
+		return &SaleUnpostBody{}
+	case TypeOutcomeNote:
+		return &OutcomeNoteBody{}
 	case TypeAgentMove:
 		return &AgentMoveBody{}
 	}

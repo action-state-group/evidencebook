@@ -132,7 +132,7 @@ func TestRecordTypesAreTheSchemas(t *testing.T) {
 }
 
 // positiveChains are the fixtures' four positive chains.
-var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-sale"}
+var positiveChains = []string{"positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"}
 
 func TestPositiveFixtures(t *testing.T) {
 	store := localStoreValues(loadFingerprints(t))

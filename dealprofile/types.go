@@ -475,6 +475,17 @@ type RulesVerdictBody struct {
 	PackID     string `json:"pack_id,omitzero"`
 }
 
+// OutcomeNoteBody is body_outcome_note in the schema. TEMPORARY
+// (evidencebook#462; evidencebook#461's computed row status supersedes it):
+// the book owner's own note, sealed after the final close, that an outcome
+// arrived against it, so the deal did not hold. Outcome is always
+// "did_not_hold"; Reason is dispute_lost, settled_against, not_delivered or
+// other.
+type OutcomeNoteBody struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
+}
+
 // ThreadBody is body_thread in the schema.
 type ThreadBody struct {
 	ThreadRefCommitment string `json:"thread_ref_commitment"`
@@ -498,6 +509,11 @@ type SaleCutBody struct {
 
 // SaleCloseBody is body_sale_close in the schema.
 type SaleCloseBody struct {
+}
+
+// SaleUnpostBody is body_sale_unpost in the schema.
+type SaleUnpostBody struct {
+	Platform string `json:"platform"`
 }
 
 // AgentMoveBodyOptionsItem is an item of the options member of AgentMoveBody.

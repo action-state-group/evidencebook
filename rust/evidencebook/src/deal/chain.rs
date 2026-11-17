@@ -296,7 +296,7 @@ fn allowed_rels(t: &str) -> &'static [&'static str] {
         "task_authority" => &["source", "approves", "registration"],
         "check" => &["supersedes", "source"],
         "counterparty_profile" => &["about"],
-        "rules_verdict" => &["confirms"],
+        "rules_verdict" | "outcome_note" => &["confirms"],
         _ => &[],
     }
 }
@@ -443,6 +443,11 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
     let mut first_answer: HashMap<usize, usize> = HashMap::new();
     let (mut used, mut stale) = (HashSet::new(), HashSet::new());
     let (mut latest_verdict, mut latest_check): (Option<usize>, Option<usize>) = (None, None);
+    // A listing taken down (rule 15): a platform's live post is its latest post
+    // action not yet taken down; platform_of reads a post's platform from its own check.
+    let mut check_of: HashMap<usize, usize> = HashMap::new();
+    let mut live_post: HashMap<String, usize> = HashMap::new();
+    let mut platform_of: HashMap<usize, String> = HashMap::new();
     for i in 2..docs.len() {
         let r = &docs[i];
         let view = readable(r);
@@ -452,11 +457,12 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
         } else {
             s(g(b, "record_type")).to_string()
         };
-        const KINDS: [&str; 8] = [
+        const KINDS: [&str; 9] = [
             "thread",
             "thread_opened",
             "sale_cut",
             "sale_close",
+            "sale_unpost",
             "post_check",
             "post_verdict",
             "post_approval",
@@ -465,7 +471,7 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
         if !KINDS.contains(&t.as_str()) {
             bail_at!(
                 i,
-                "after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+                "after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
             );
         }
         if closed && t != "sale_cut" {
@@ -550,6 +556,7 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
                     bail_at!(i, "no rules checker runs on a post: its evaluation says rules_status not_applicable");
                 }
                 latest_verdict = Some(i);
+                check_of.insert(i, j);
             }
             "post_approval" => {
                 let j = ref_to("approves", "post_verdict")?;
@@ -590,6 +597,10 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
                     );
                 }
                 used.insert(ja);
+                let platform =
+                    s(g(g(g(&docs[check_of[&jv]], "body"), "posting"), "platform")).to_string();
+                platform_of.insert(i, platform.clone());
+                live_post.insert(platform, i);
                 let until = s(g(g(&docs[jv], "body"), "valid_until"));
                 if s(g(b, "at")) > until {
                     bail_at!(i, "the post check was valid until {until}: a post after that needs a new check");
@@ -606,6 +617,14 @@ fn check_sale_chain(docs: &[Value], digests: &[String]) -> R<()> {
                 if !basis_ok {
                     bail_at!(i, "a post's authority_basis is the sale's task authority, then the user's approval");
                 }
+            }
+            "sale_unpost" => {
+                let j = ref_to("unposts", "post_action")?;
+                let platform = s(g(body, "platform")).to_string();
+                if platform_of.get(&j) != Some(&platform) || live_post.get(&platform) != Some(&j) {
+                    bail_at!(i, "a listing's takedown names the live post of its platform: that platform's latest post, not already taken down");
+                }
+                live_post.remove(&platform);
             }
             "thread_opened" => {
                 let reg = s(g(gi(g(b, "refs"), 0), "digest")).to_string();
@@ -666,6 +685,7 @@ struct Chain {
     verdict_for_check: HashSet<usize>,
     profile_for_check: HashSet<usize>,
     rules_verdict: bool,
+    outcome_note: bool,
     reversed: HashSet<usize>,
     first_answer: HashMap<usize, usize>,
     last_outcome: Option<usize>,
@@ -1010,6 +1030,7 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         verdict_for_check: HashSet::new(),
         profile_for_check: HashSet::new(),
         rules_verdict: false,
+        outcome_note: false,
         reversed: HashSet::new(),
         first_answer: HashMap::new(),
         last_outcome: None,
@@ -1126,8 +1147,8 @@ fn check_deal_chain(raw: &[Value], digests: Vec<String>) -> R<()> {
         if let Some(cf) = c.closed_final {
             // Close is terminal: after it, only later evidence that confirms
             // that close (and commits to its digest) may follow; the party's one
-            // rules_verdict is such a record.
-            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT)
+            // rules_verdict and outcome_note are such records.
+            if (t != TYPE_EVIDENCE && t != TYPE_RULES_VERDICT && t != TYPE_OUTCOME_NOTE)
                 || confirms.len() != 1
                 || !string_is(g(confirms[0], "digest"), &c.digests[cf])
             {
@@ -1526,6 +1547,20 @@ impl Chain {
                 bail!(self, "a deal has at most one rules_verdict record");
             }
             self.rules_verdict = true;
+        } else if t == TYPE_OUTCOME_NOTE {
+            // TEMPORARY (evidencebook#462): the owner's note that the deal did not
+            // hold, sealed once after the final close, which it confirms.
+            if self.closed_final.is_none() {
+                bail!(
+                    self,
+                    "an outcome_note is sealed after the deal's final close"
+                );
+            }
+            self.one("confirms", &[TYPE_CLOSE], true)?;
+            if self.outcome_note {
+                bail!(self, "a deal has at most one outcome_note record");
+            }
+            self.outcome_note = true;
         } else if t == TYPE_EVIDENCE {
             self.one("about", &[TYPE_CLAIM, TYPE_BASELINE], true)?;
             self.one("confirms", &[TYPE_CLOSE], false)?;

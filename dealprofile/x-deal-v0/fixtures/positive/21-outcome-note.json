@@ -1,0 +1,38 @@
+{
+  "fixture": "21-outcome-note.json",
+  "expect": "valid",
+  "story": "TEMPORARY (evidencebook#462): after the close, the book's owner seals its own note that the outcome did not hold, confirming the close: the History card counts the deal did_not_hold.",
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "deal-3f9c2a7be4d15068",
+      "record_type": "outcome_note",
+      "seq": 21,
+      "at": "2026-10-04T09:00:11Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "68d51ede64b82a08ef2b9bf3b4a120e0582c96e645a4b724f96e7eea08690a31"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "f9c1b032be606cc18fd3741fb5183716c731144322164b246c4d145b71a81f09"
+      },
+      "refs": [
+        {
+          "rel": "confirms",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "5835f5c228b6c810feb9d8b4aa4db0bc0d6c5e678650db4009276c912e17a507"
+        }
+      ]
+    },
+    "body": {
+      "outcome": "did_not_hold",
+      "reason": "not_delivered"
+    }
+  },
+  "expected_digest": "e050262a1c0899e92da95f29ec43dad813f58dc985f52d7f913a9d1a80c12fff"
+}

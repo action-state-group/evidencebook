@@ -47,6 +47,10 @@ import (
 //     does not show which side failed, so it is never "did_not_hold"; the
 //     profile seals no record that says a side failed, so it never gives
 //     "did_not_hold" (evidencebook#212).
+//     TEMPORARY exception (evidencebook#462, until evidencebook#461's computed
+//     row status): a deal log holding the owner's own outcome_note
+//     (did_not_hold) that confirms a close on that log is "did_not_hold",
+//     over any Result. A counterparty never writes one into the holder's book.
 //   - happened is "stamped_by_both" only when the counterparty's half is
 //     received and verifies (the host's check, as the deal view's); else
 //     "receipt_only" when the holder's own final close observed a
@@ -208,7 +212,7 @@ func StandardHistoryDeal(in HistoryInput) (deal standardhistory.Deal, ok bool, e
 		Role:              dealRole(records),
 		Amount:            amount,
 		CounterpartyClass: counterpartyClass(records),
-		Outcome:           reconcileOutcome(in.Results),
+		Outcome:           dealOutcome(records, byDigest, in.Results),
 		Happened:          happened(records, byDigest, in.CounterpartyHalfVerified),
 		Disputes:          []standardhistory.Dispute{},
 	}, true, nil
@@ -268,6 +272,20 @@ func dealRole(records []historyRecord) string {
 		}
 	}
 	return "bought"
+}
+
+// dealOutcome is "did_not_hold" when the deal's own log holds the owner's
+// outcome_note confirming one of its closes (TEMPORARY, evidencebook#462), else
+// the newest verified Result's reading.
+func dealOutcome(records []historyRecord, byDigest map[string]historyRecord, results []HistoryResult) string {
+	for _, r := range records {
+		if r.kind == TypeOutcomeNote && r.str("outcome") == "did_not_hold" {
+			if closed, ok := byDigest[r.ref("confirms")]; ok && closed.kind == TypeClose {
+				return "did_not_hold"
+			}
+		}
+	}
+	return reconcileOutcome(results)
 }
 
 // reconcileOutcome reads the newest verified Result's claims.
