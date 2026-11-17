@@ -125,7 +125,10 @@ New tables, all in the same file:
 
 At each stamp, for each book that has a first record, and for each host log in the cadence
 (`cadence_logs`) that has an entry (profile `"none"`, link value
-`{"last_received": null, "checked_over": []}`), the shelf computes the fact it would write now: the book's current size and checkpoint, and the openings' values as the profile gives them.
+`{"last_received": null, "checked_over": []}`), the shelf computes the fact it would write now: the book's current size and checkpoint, and the openings' values as the profile gives them,
+through one interface the shelf calls for each book at each stamp,
+`StatusProvider.Values(book_id, log_id) -> (profile, link value, status value)`; a book no
+provider claims has profile `"none"`, the empty link value and `{}`.
 It writes a fact when the size grew, or when either opening's value differs from the one in the
 book's last fact (the salts differ every time, so values are compared, never commitments). A book
 whose values are unchanged gets no fact. A grown book's checkpoint is cut at the stamp. No book is
@@ -235,7 +238,13 @@ count over the returned facts.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the
   proof:
-  - the record: its signature is checked; one already held is acknowledged and not stored again;
+  - who may push: a record is taken only from a key that a book on the shelf names as its
+    counterparty or its adjudicator, or that sent an offer the journal holds; any other sender is
+    refused and nothing is stored. A record over the store's size bound (the host's, default
+    1 MiB) or past a per-book count bound is refused. How long the store keeps what it holds is
+    not ruled (the How ack names it as an open product door); until it is, nothing is deleted;
+  - the record: its signature is checked, and, when its predecessor is held, that it follows it;
+    one already held is acknowledged and not stored again;
     one whose position is past the sender's **counted prefix** (the longest run of positions from
     the first with no gap) is stored and not counted, and the result asks for the book; when a gap
     is filled, the stored records after it join the counted prefix up to the next gap;
@@ -245,6 +254,7 @@ count over the returned facts.
     book), and its inclusion proof against its shelf checkpoint; a proof whose book checkpoint
     contradicts one already held for the same key and log at the same size is refused and kept as
     evidence; the same checkpoint again is no contradiction.
+  - Recomputing the rows of a deal that changed is the profile's step, not the store's.
   - Each call returns what changed: the deal ids whose counted prefix grew, shrank or forked, and
     those whose records gained coverage or a registration time from an accepted proof or receipt,
     so the profile recomputes every row of each (acceptance 4). A restart recomputes from the
