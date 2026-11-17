@@ -116,7 +116,8 @@ New tables, all in the same file:
   checkpoint, with its registration time or null.
 - `shelf_book_checkpoints (log_id, size, checkpoint BLOB, PRIMARY KEY (log_id, size))`: the COSE
   bytes of every book checkpoint a fact carries, so a handover can include them.
-- `shelf_received`, `shelf_received_proofs` and `shelf_evidence`: the store (section 3).
+- `shelf_received`, `shelf_received_proofs`, `shelf_received_tombstones` and `shelf_evidence`: the
+  store (section 3).
 - `shelf_migration (id = 1, state, backup_sha256, batch TEXT)`: the migration's progress (section 4).
 
 `cadence_ticks` and the tree tables are kept and no longer written after the marker.
@@ -250,9 +251,13 @@ count over the returned facts.
     per sender and in total, in count and bytes, and the oldest unanswered offer is dropped first
     when one is reached: dropping an offer nobody answered is not a retention decision, since it
     was never part of a deal.
-  - retention: how long the store keeps the other side's records of a deal is a product decision
-    for Steven (the How ack names it as an open door), asked before the `Receive` pull request
-    (section 6, part 4) lands. Until it is ruled, nothing of a deal is deleted.
+  - retention (Steven's ruling, recorded in ops company-oss at `e4c2b41`;
+    buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bdfe3f55f494c754b022ad766a50ba482aff9e464b23d9f3438200d7bef5fe5e&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6):
+    how long received records are kept is the holder's own setting, by default the life of the
+    shelf. Nothing of a deal is deleted until the deal is settled (every row agreed, uncontested,
+    or ruled with its remedy done, as the row status function computes it). A deleted record
+    leaves a tombstone in `shelf_received_tombstones (digest PRIMARY KEY, sender_key, received_at,
+    deleted_at)`, and a handover or an answer that cites it reports it as deleted, not missing.
   - the record: its signature is checked, and, when its predecessor is held, that it follows it;
     one already held is acknowledged and not stored again;
     one whose position is past the sender's **counted prefix** (the longest run of positions from
