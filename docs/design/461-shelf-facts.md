@@ -238,9 +238,10 @@ count over the returned facts.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the
   proof:
-  - who may push: a record is taken only from a key that a book on the shelf names as its
-    counterparty or its adjudicator, or that sent an offer the journal holds; any other sender is
-    refused and nothing is stored. A record over the store's size bound (the host's, default
+  - who may push: an offer may come from any key (a listing invites them, and admission judges
+    it); every other record is taken only from a key that a book on the shelf names as its
+    counterparty or its adjudicator, or whose offer the store holds; any other sender is refused
+    and nothing is stored. A record over the store's size bound (the host's, default
     1 MiB) or past a per-book count bound is refused. How long the store keeps what it holds is
     not ruled (the How ack names it as an open product door); until it is, nothing is deleted;
   - the record: its signature is checked, and, when its predecessor is held, that it follows it;
