@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -138,6 +139,20 @@ func TestPlacementRules(t *testing.T) {
 		"an unknown block member":            {"propose", func(b, _ map[string]any) { b["baseline_ref"] = *ref('1') }},
 		"a float":                            {"admit", func(_, body map[string]any) { body["tier"] = 1.5 }},
 		"another canonicalization":           {"admit", func(b, _ map[string]any) { b["canonicalization"] = "none" }},
+		"a layered counterparty with no key": {"agree/agreement", func(_, body map[string]any) { body["counterparty_key"] = nil }},
+		"a decline with marks":               {"agree/decline", func(b, _ map[string]any) { b["marks"] = []any{"paid"} }},
+		"a cancellation with a fingerprint": {"agree/cancellation", func(b, _ map[string]any) {
+			b["counterparty"] = map[string]any{"fp_alg": FPAlg, "ids": map[string]any{"payee": hex('1')}}
+		}},
+		"a decline with refs": {"agree/decline", func(b, _ map[string]any) { b["refs"] = []any{} }},
+		"a date that does not exist": {"propose", func(_, body map[string]any) {
+			body["terms_rows"].(map[string]any)["rows"].([]any)[0].(map[string]any)["due"] = map[string]any{"at": "2026-02-30T10:00:00Z"}
+		}},
+		"a latest date that does not exist": {"propose", func(_, body map[string]any) {
+			body["terms_rows"].(map[string]any)["named"].(map[string]any)["paid"].(map[string]any)["latest"] = "2026-11-31T00:00:00Z"
+		}},
+		"an hour past 23":                  {"propose", func(_, body map[string]any) { body["agree_by"] = "2026-11-02T24:00:00Z" }},
+		"a block time that does not exist": {"admit", func(b, _ map[string]any) { b["at"] = "2026-13-01T00:00:00Z" }},
 	} {
 		raw := edit(t, records[c.base], c.f)
 		err := Check(raw)
@@ -213,4 +228,53 @@ func TestVersionsDoNotCross(t *testing.T) {
 	assert.Error(t, dealprofile.Decode(v1, &dealprofile.Record{}))
 	_, err = Decode([]byte(`{"x-deal-v0": {"profile": "x-deal-v0", "canonicalization": "jcs", "deal_id": "deal-0123456789abcdef", "record_type": "intent", "seq": 1, "at": "2026-11-01T10:00:00Z"}, "body": {"verbatim_commitment": "` + hex('a') + `"}}`))
 	assert.Error(t, err)
+}
+
+// Text a decoder would read other than as written is refused before
+// anything is read from it.
+func TestRawTextRefused(t *testing.T) {
+	offer, err := json.Marshal(validRecords(t)["propose"])
+	require.NoError(t, err)
+	for name, raw := range map[string]string{
+		"a lone surrogate":     strings.Replace(string(offer), `"lamp"`, `"\ud800"`, 1),
+		"a lone low surrogate": strings.Replace(string(offer), `"lamp"`, `"\udc00x"`, 1),
+		"invalid UTF-8":        strings.Replace(string(offer), `"lamp"`, "\"la\xffmp\"", 1),
+		"a member given twice": strings.Replace(string(offer), `"item":"lamp"`, `"item":"lamp","item":"desk"`, 1),
+		"a block member twice": strings.Replace(string(offer), `"at":"2026-11-01T10:00:00Z"`, `"at":"2026-11-01T10:00:00Z","at":"2026-11-02T10:00:00Z"`, 1),
+	} {
+		require.NotEqual(t, string(offer), raw, name)
+		err := Check([]byte(raw))
+		assert.Equal(t, StageCanonicalization, stageOf(err), "%s: %v", name, err)
+		_, _, err = Encode([]byte(raw))
+		assert.Error(t, err, name)
+		_, err = Digest([]byte(raw))
+		assert.Error(t, err, name)
+	}
+	pair := strings.Replace(string(offer), `"lamp"`, `"\ud83d\ude00"`, 1)
+	assert.NoError(t, Check([]byte(pair)), "a surrogate pair is one character")
+}
+
+// A zero offset and an absent one are two texts, and each round-trips.
+func TestZeroSecondsRoundTrip(t *testing.T) {
+	r := validRecords(t)["propose"]
+	for _, seconds := range []*int64{secs(0), nil} {
+		r.Body.(*ProposeBody).TermsRows.Rows[1].Due.Seconds = seconds
+		raw, err := json.Marshal(r)
+		require.NoError(t, err)
+		payload, _, err := Encode(raw)
+		require.NoError(t, err)
+		got, err := Decode(payload)
+		require.NoError(t, err)
+		assert.Equal(t, seconds, got.Body.(*ProposeBody).TermsRows.Rows[1].Due.Seconds)
+	}
+}
+
+// CheckAgreement reads a body held as a value as it reads one held by
+// pointer.
+func TestCheckAgreementTakesValueBodies(t *testing.T) {
+	offer := record(blk(TypePropose), *offerBody())
+	acc := acceptorAgreement(record(blk(TypePropose), offerBody()))
+	acc.Body = *acc.Body.(*AgreeBody)
+	require.NoError(t, Check(offer))
+	assert.NoError(t, CheckAgreement(acc, offer, ""))
 }

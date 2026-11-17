@@ -11,6 +11,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/evidencebook/dealprofile"
@@ -106,11 +109,110 @@ func decode(record any) (any, []byte, error) {
 			return nil, nil, err
 		}
 	}
+	if err := checkText(raw); err != nil {
+		return nil, nil, err
+	}
 	doc, err := decodeJSON(raw)
 	if err != nil {
 		return nil, nil, stageErr(StageCanonicalization, "not one JSON value: %v", err)
 	}
 	return doc, raw, nil
+}
+
+// checkText refuses JSON text a decoder would read other than as written:
+// invalid UTF-8 or an escaped surrogate outside a pair (which encoding/json
+// replaces with U+FFFD unseen), and an object member given twice (of which
+// it keeps the last). A record's digest is over the bytes as read, so both
+// would let two texts seal as one.
+func checkText(raw []byte) error {
+	if !utf8.Valid(raw) {
+		return stageErr(StageCanonicalization, "invalid UTF-8")
+	}
+	inString := false
+	for i := 0; i < len(raw); i++ {
+		switch {
+		case !inString:
+			inString = raw[i] == '"'
+		case raw[i] == '"':
+			inString = false
+		case raw[i] == '\\' && i+1 < len(raw):
+			i++
+			if raw[i] != 'u' || i+4 >= len(raw) {
+				continue
+			}
+			r := hex4(raw[i+1 : i+5])
+			i += 4
+			if !utf16.IsSurrogate(r) {
+				continue
+			}
+			if r >= 0xdc00 || i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
+				return stageErr(StageCanonicalization, "an escaped surrogate outside a pair")
+			}
+			if lo := hex4(raw[i+3 : i+7]); lo < 0xdc00 || lo > 0xdfff {
+				return stageErr(StageCanonicalization, "an escaped surrogate outside a pair")
+			}
+			i += 6
+		}
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := noRepeats(dec); err != nil {
+		return stageErr(StageCanonicalization, "%v", err)
+	}
+	return nil
+}
+
+// noRepeats walks one JSON value and refuses an object member given twice.
+func noRepeats(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	d, ok := tok.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch d {
+	case '[':
+		for dec.More() {
+			if err := noRepeats(dec); err != nil {
+				return err
+			}
+		}
+	case '{':
+		seen := map[string]bool{}
+		for dec.More() {
+			k, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			name, _ := k.(string)
+			if seen[name] {
+				return fmt.Errorf("member %q given twice", name)
+			}
+			seen[name] = true
+			if err := noRepeats(dec); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = dec.Token() // the closing delimiter
+	return err
+}
+
+func hex4(b []byte) rune {
+	var r rune
+	for _, c := range b {
+		r <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			r |= rune(c - '0')
+		case c >= 'a' && c <= 'f':
+			r |= rune(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			r |= rune(c-'A') + 10
+		}
+	}
+	return r
 }
 
 // decodeJSON reads one JSON value with numbers kept as written.
@@ -227,6 +329,18 @@ func PlacementOf(r Record) Placement {
 	return PlacementJournal
 }
 
+func asPropose(b Body) (ProposeBody, bool) {
+	switch x := b.(type) {
+	case ProposeBody:
+		return x, true
+	case *ProposeBody:
+		if x != nil {
+			return *x, true
+		}
+	}
+	return ProposeBody{}, false
+}
+
 func asAgree(b Body) (AgreeBody, bool) {
 	switch x := b.(type) {
 	case AgreeBody:
@@ -272,6 +386,12 @@ func checkRecord(r Record) error {
 		if b.Seq != 0 || b.Prev != nil || b.AgreementRef != nil || b.Seen.Present {
 			return bad("a journal record carries no seq, prev, agreement_ref or seen, so a record sent whole shows no place in the journal")
 		}
+		if ag, ok := asAgree(r.Body); ok && (b.Refs != nil || b.Marks != nil || b.Counterparty != nil) {
+			return bad("a %s carries no refs, marks or counterparty fingerprint: it names nothing beyond the offer it answers", ag.Kind)
+		}
+	}
+	if err := checkDates(r); err != nil {
+		return err
 	}
 	if err := checkDealID(r, place); err != nil {
 		return err
@@ -323,6 +443,9 @@ func checkBody(r Record) error {
 			if !layer && (!r.Block.Seen.IsNull() || !body.CounterpartyKey.IsNull()) {
 				return bad("an agreement with a counterparty that runs no layer has seen null and counterparty_key null")
 			}
+			if layer && body.CounterpartyKey.IsNull() {
+				return bad("an agreement with a counterparty that runs the layer names its record key in counterparty_key")
+			}
 			if body.Side == SideAcceptor && !r.Block.Seen.IsNull() {
 				return bad("the acceptor's agreement comes first: its seen is null")
 			}
@@ -348,6 +471,38 @@ func checkBody(r Record) error {
 	case *StatementBody:
 		if body.Names != nil && (body.Names.Cancellation == nil) == (body.Names.Ruling == nil) {
 			return bad("a statement names one arrived record: a cancellation or a ruling")
+		}
+	}
+	return nil
+}
+
+// checkDates refuses a time the schema's pattern admits that names no
+// instant: a calendar date that does not exist (2026-02-30), an hour past
+// 23. Every time a record carries is read by rowstatus or compared, so each
+// must parse as RFC 3339 UTC to the second and print back the same.
+func checkDates(r Record) error {
+	times := []string{r.Block.At}
+	switch body := r.Body.(type) {
+	case *ProposeBody:
+		times = append(times, body.StatedAt, body.AgreeBy)
+		for _, row := range body.TermsRows.Rows {
+			times = append(times, row.Due.At, row.WindowEnd.At)
+		}
+		for _, n := range body.TermsRows.Named {
+			times = append(times, n.Latest)
+		}
+	case *RulingBody:
+		if body.Remedy != nil {
+			times = append(times, body.Remedy.Due)
+		}
+	}
+	for _, s := range times {
+		if s == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil || t.UTC().Format(time.RFC3339) != s {
+			return stageErr(StageRecord, "%q is not a UTC time to the second that exists", s)
 		}
 	}
 	return nil
@@ -387,7 +542,7 @@ func CheckAgreement(agreement, offer Record, heldAcceptorAgreement string) error
 	if !ok || ag.Kind != KindAgreement {
 		return bad("not an agreement")
 	}
-	of, ok := offer.Body.(*ProposeBody)
+	of, ok := asPropose(offer.Body)
 	if !ok {
 		return bad("the agreement cites a %s, not an offer", offer.Block.RecordType)
 	}

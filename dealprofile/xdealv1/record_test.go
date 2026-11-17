@@ -19,6 +19,8 @@ const (
 
 func hex(c byte) string { return strings.Repeat(string(c), 64) }
 
+func secs(n int64) *int64 { return &n }
+
 func ref(c byte) *Ref { r := RefTo(hex(c)); return &r }
 
 func jsonRaw(s string) json.RawMessage { return json.RawMessage(s) }
@@ -33,7 +35,7 @@ func offerBody() *ProposeBody {
 				{ID: "paid_as_agreed", OwedBy: RoleBuyer, Owed: jsonRaw(`{"amount_minor":6000,"currency":"USD"}`),
 					Due: Date{At: "2026-11-01T23:59:59Z"}, WindowEnd: Date{At: "2026-11-04T23:59:59Z"}, Recomputed: true},
 				{ID: "delivered", OwedBy: RoleSeller, Owed: jsonRaw(`{}`),
-					Due: Date{After: "paid", Seconds: 345600}, WindowEnd: Date{After: "paid", Seconds: 604800}},
+					Due: Date{After: "paid", Seconds: secs(345600)}, WindowEnd: Date{After: "paid", Seconds: secs(604800)}},
 			},
 			Named: map[string]Named{"paid": {Side: RoleBuyer, Latest: "2026-11-04T23:59:59Z"}},
 		},

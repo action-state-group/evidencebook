@@ -95,7 +95,7 @@ type StatementItem struct {
 type Date struct {
 	At      string `json:"at,omitzero"`
 	After   string `json:"after,omitzero"`
-	Seconds int64  `json:"seconds,omitzero"`
+	Seconds *int64 `json:"seconds,omitzero"`
 }
 
 // RowRemedy is a remedy a row allows, and the seconds it must be made
