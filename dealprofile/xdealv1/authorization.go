@@ -3,6 +3,7 @@
 package xdealv1
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
@@ -11,14 +12,12 @@ import (
 )
 
 // Authorization (design §3.2, invariant D): an act is a deal-book perform or
-// settle that cites, by digest, the passing check in the holder's journal it
-// rests on. v0's authorization conditions hold unchanged (x-deal-v0
-// PROFILE.md §6, rules 5 and 6), with that citation in place of v0's
-// authorized_by: the check has exactly one verdict; the verdict's first
-// approval proceeds; a standing intent answers only a passing verdict, for an
-// action in the allowed in force; one approval authorizes at most one act;
-// and a change of identifiers between the check and the act needs a new
-// check.
+// settle that cites, by digest, the check in the holder's journal it rests
+// on. v0's authorization conditions hold unchanged (x-deal-v0 PROFILE.md §6,
+// rules 5 and 6; dealprofile chain_steps.go and chain.go), with that citation
+// in place of v0's authorized_by. The journal is read in order, as v0 reads a
+// chain: the limits in force change only by an intent that narrows them and
+// by a confirmed proposal, and each approval is judged at its own position.
 
 // StageAuthorization is the authorization of acts (CheckAuthorizations).
 const StageAuthorization = "authorization"
@@ -28,188 +27,438 @@ type ActAuthorization struct {
 	Act, Check, Verdict, Approval Record
 	// ApprovalDigest is the approval's record digest, SHA-256 over its JCS
 	// bytes. It covers the approval's approves ref (the verdict's digest,
-	// which covers its checks ref, the check's digest) and the approval's
-	// card_commitment, which equals the verdict's: a signature over it binds
-	// the check and the card the person answered. A person-key signature
-	// over this digest (Steven db13b75b; its member is AAC#627's) travels
-	// beside the approval record, never inside it, so adding it changes no
-	// record format.
+	// which covers its checks ref, the check's digest) and its
+	// card_commitment, which a person's approval must carry equal to the
+	// verdict's: a signature over it binds the check and the card the person
+	// answered. A person-key signature over this digest (Steven db13b75b,
+	// u599; its member is AAC#627's) travels beside the approval record,
+	// never inside it, so adding it changes no record format.
 	ApprovalDigest string
-	// NeedsPersonSignature says the approval is the person's own (approver
-	// "user"). The approval record's Capsule is signed by the holder's record
-	// key, which is the agent's: that signature never stands for the
-	// person's, so a caller that requires the person's signature refuses the
-	// act until one over ApprovalDigest, from the person's own key, is held.
+	// NeedsPersonSignature says the approval is the person's (approver
+	// "user", or "agent_card": the person answered a card the agent
+	// composed). The approval record's Capsule is signed by the holder's
+	// record key, the agent's: that signature never stands for the person's,
+	// so a caller that requires the person's signature refuses the act until
+	// one over ApprovalDigest, from the person's own key, is held.
 	NeedsPersonSignature bool
+	// LimitApprovals are the record digests of the confirm_limits approvals
+	// whose confirmed proposals put in force the allowed a standing-intent
+	// approval relied on. Each is the person's own approval and needs the
+	// person's signature over its digest, as ApprovalDigest does: otherwise
+	// the agent could widen its own limits.
+	LimitApprovals []string
 }
 
 // CheckAuthorizations checks every act that cites a check. journal is the
 // holder's journal records of the deal's task, in journal order; acts are
 // its deal-book perform and settle records, in book order. A journal record
-// is between a check and an act when it comes after the check in the journal
-// and its at is not after the act's. It returns one ActAuthorization per act
-// that cites a check, in order; an act that cites none is not gated (a payer
-// settle always cites one, which the schema requires).
+// counts for an act when its at is not after the act's. It returns one
+// ActAuthorization per act that cites a check, in order; an act that cites
+// none is not gated (a payer settle always cites one, which the schema
+// requires).
 func CheckAuthorizations(journal, acts []Record) ([]ActAuthorization, error) {
-	bad := func(i int, format string, args ...any) error {
-		return stageErr(StageAuthorization, "act %d: %s", i+1, fmt.Sprintf(format, args...))
+	w, err := walkJournal(journal)
+	if err != nil {
+		return nil, err
 	}
-	digests := make([]string, len(journal))
+	used := map[int]int{}
+	var out []ActAuthorization
+	for i, act := range acts {
+		bad := func(format string, args ...any) error {
+			return stageErr(StageAuthorization, "act %d: %s", i+1, fmt.Sprintf(format, args...))
+		}
+		checkRef, kind, ok := actCheck(act)
+		if !ok {
+			return nil, bad("a %s is not an act", act.Block.RecordType)
+		}
+		if checkRef == nil {
+			continue
+		}
+		actAt, err := parseAt(act)
+		if err != nil {
+			return nil, bad("%v", err)
+		}
+		ci := slices.Index(w.digests, checkRef.Digest)
+		if ci < 0 || journal[ci].Block.RecordType != TypeCheck {
+			return nil, bad("it cites no check the journal holds")
+		}
+		if journal[ci].Block.DealID != act.Block.DealID {
+			return nil, bad("its check serves another deal")
+		}
+		cb := w.check[ci]
+		if want := kind.checkAction(); cb.Action != want {
+			return nil, bad("the act differs from the one checked: a %s rests on a %q check, not %q", kind, want, cb.Action)
+		}
+		vi, ok := w.verdictOf[ci]
+		if !ok {
+			return nil, bad("its check has no verdict")
+		}
+		ai, ok := w.firstAnswer[vi]
+		if !ok {
+			return nil, bad("its verdict has no sealed approval")
+		}
+		ab := w.approval[ai]
+		approvalAt, _ := parseAt(journal[ai])
+		switch {
+		case approvalAt.After(actAt):
+			return nil, bad("its approval was sealed after it")
+		case ab.Choice == ChoiceConfirm:
+			return nil, bad("a confirm_limits approval authorizes no act")
+		case !ab.Proceed:
+			return nil, bad("its verdict's first approval does not proceed")
+		case w.verdict[vi].Result == "deny":
+			return nil, bad("its verdict denies")
+		}
+		if prev, dup := used[ai]; dup {
+			return nil, bad("its approval already authorized act %d", prev+1)
+		}
+		used[ai] = i
+		for k := ci + 1; k < len(journal); k++ {
+			at, _ := parseAt(journal[k])
+			if !at.After(actAt) && w.changesDetails(k) {
+				return nil, bad("journal record %d (%s) changed the details after its check: a new check is needed", k+1, journal[k].Block.RecordType)
+			}
+		}
+		a := ActAuthorization{Act: act, Check: journal[ci], Verdict: journal[vi], Approval: journal[ai],
+			ApprovalDigest: w.digests[ai], NeedsPersonSignature: personApprover(ab.Approver)}
+		if ab.Approver == "standing_intent" {
+			for _, j := range w.limitsAt[ai] {
+				a.LimitApprovals = append(a.LimitApprovals, w.digests[j])
+			}
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// personApprover says an approver is the person: "user" answers in their
+// own words, "agent_card" answers a card the agent composed. A standing
+// intent is the agent applying the person's limits, with no act of the
+// person's at the time.
+func personApprover(approver string) bool { return approver == "user" || approver == "agent_card" }
+
+// actKind is what an act does, and so the action its check names.
+type actKind string
+
+const (
+	actPay     actKind = "payer settle"
+	actRefund  actKind = "refund"
+	actPerform actKind = "perform"
+)
+
+// checkAction is the check action an act rests on: a payer leg on a pay
+// check, a refund (a payer leg that reverses a payment) on a cancel check,
+// and a perform on a commit check.
+func (k actKind) checkAction() string {
+	switch k {
+	case actPay:
+		return "pay"
+	case actRefund:
+		return "cancel"
+	}
+	return "commit"
+}
+
+// actCheck is the check an act cites (nil for none) and its kind; ok is
+// false for a record that is not an act.
+func actCheck(r Record) (check *Ref, kind actKind, ok bool) {
+	if b, isPerform := bodyAs[PerformBody](r.Body); isPerform {
+		return b.Check, actPerform, true
+	}
+	if b, isSettle := bodyAs[SettleBody](r.Body); isSettle {
+		if b.Reverses != nil {
+			return b.Check, actRefund, true
+		}
+		return b.Check, actPay, true
+	}
+	return nil, "", false
+}
+
+// bodyAs is a body of type T, held as a value or a pointer.
+func bodyAs[T any](b Body) (*T, bool) {
+	switch x := any(b).(type) {
+	case T:
+		return &x, true
+	case *T:
+		return x, x != nil
+	}
+	return nil, false
+}
+
+func parseAt(r Record) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, r.Block.At)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("its at %q: %v", r.Block.At, err)
+	}
+	return t, nil
+}
+
+// journalWalk is the journal read in order, as v0 reads a chain.
+type journalWalk struct {
+	journal []Record
+	digests []string
+	check   map[int]*CheckBody
+	verdict map[int]*dealprofile.VerdictBody
+	// approval holds each approval's body.
+	approval map[int]*dealprofile.ApprovalBody
+	// verdictOf is a check's one verdict; firstAnswer a verdict's first
+	// approval.
+	verdictOf, firstAnswer map[int]int
+	// limitsAt is, for each standing-intent approval, the confirm_limits
+	// approvals whose proposals were in force at it.
+	limitsAt map[int][]int
+}
+
+func walkJournal(journal []Record) (*journalWalk, error) {
+	w := &journalWalk{journal: journal, check: map[int]*CheckBody{}, verdict: map[int]*dealprofile.VerdictBody{},
+		approval: map[int]*dealprofile.ApprovalBody{}, verdictOf: map[int]int{}, firstAnswer: map[int]int{}, limitsAt: map[int][]int{}}
+	byDigest := map[string]int{}
 	for i, r := range journal {
 		d, err := Digest(r)
 		if err != nil {
 			return nil, err
 		}
-		digests[i] = d
+		w.digests = append(w.digests, d)
+		byDigest[d] = i
 	}
-	used := map[string]int{}
-	var out []ActAuthorization
-	for i, act := range acts {
-		checkRef, ok := actCheck(act)
-		if !ok {
-			return nil, bad(i, "a %s is not an act", act.Block.RecordType)
+	var lim limits
+	confirmed := map[int]bool{}
+	var confirmations []int
+	for i, r := range journal {
+		bad := func(format string, args ...any) error {
+			return stageErr(StageAuthorization, "journal record %d: %s", i+1, fmt.Sprintf(format, args...))
 		}
-		if checkRef == nil {
-			continue
-		}
-		ci := slices.Index(digests, checkRef.Digest)
-		if ci < 0 || journal[ci].Block.RecordType != TypeCheck {
-			return nil, bad(i, "it cites no check the journal holds")
-		}
-		check := journal[ci]
-		if check.Block.DealID != act.Block.DealID {
-			return nil, bad(i, "its check serves another deal")
-		}
-		cb, _ := check.Body.(*CheckBody)
-		// The check's verdict: exactly one.
-		vi := -1
-		for j, r := range journal {
-			if r.Block.RecordType == TypeVerdict && citesAs(r, "checks", digests[ci]) {
-				if vi >= 0 {
-					return nil, bad(i, "its check has two verdicts")
+		// one is the one earlier record r cites with rel, of type t.
+		one := func(rel, t string) (int, error) {
+			var js []int
+			for _, ref := range r.Block.Refs {
+				if ref.Rel == rel {
+					j, ok := byDigest[ref.Digest]
+					if !ok || j >= i || journal[j].Block.RecordType != t {
+						return 0, bad("its %s ref names no earlier %s", rel, t)
+					}
+					js = append(js, j)
 				}
-				vi = j
 			}
-		}
-		if vi < 0 {
-			return nil, bad(i, "its check has no verdict")
-		}
-		verdict := journal[vi]
-		vb, _ := verdict.Body.(*dealprofile.VerdictBody)
-		// The verdict's first approval decides; a later answer never
-		// authorizes (a changed answer needs a new check).
-		ai := -1
-		for j, r := range journal {
-			if r.Block.RecordType == TypeApproval && citesAs(r, "approves", digests[vi]) {
-				ai = j
-				break
+			if len(js) != 1 {
+				return 0, bad("a %s carries exactly one %s ref", r.Block.RecordType, rel)
 			}
+			return js[0], nil
 		}
-		if ai < 0 {
-			return nil, bad(i, "its verdict has no sealed approval")
-		}
-		approval := journal[ai]
-		ab, _ := approval.Body.(*dealprofile.ApprovalBody)
-		switch {
-		case ab == nil || vb == nil || cb == nil:
-			return nil, bad(i, "its check, verdict or approval is not of its type")
-		case ab.Choice == ChoiceConfirm:
-			return nil, bad(i, "a confirm_limits approval authorizes no act")
-		case !ab.Proceed:
-			return nil, bad(i, "its verdict's first approval does not proceed")
-		case vb.Result == "deny":
-			return nil, bad(i, "its verdict denies")
-		case ab.Approver == "standing_intent" && vb.Result != "pass":
-			return nil, bad(i, "a standing intent answers only a passing verdict")
-		case ab.Approver == "standing_intent" && !allowedInForce(journal, ci, cb.Action):
-			return nil, bad(i, "a standing intent approves only an action in the allowed in force")
-		}
-		if prev, dup := used[digests[ai]]; dup {
-			return nil, bad(i, "its approval already authorized act %d", prev+1)
-		}
-		used[digests[ai]] = i
-		actAt, err := time.Parse(time.RFC3339, act.Block.At)
-		if err != nil {
-			return nil, bad(i, "its at: %v", err)
-		}
-		for _, r := range journal[ci+1:] {
-			if at, err := time.Parse(time.RFC3339, r.Block.At); err == nil && at.After(actAt) {
+		switch r.Block.RecordType {
+		case TypeIntent:
+			b, _ := bodyAs[dealprofile.IntentBody](r.Body)
+			lim.narrow(b)
+		case TypeCheck:
+			b, _ := bodyAs[CheckBody](r.Body)
+			w.check[i] = b
+		case TypeVerdict:
+			j, err := one("checks", TypeCheck)
+			if err != nil {
+				return nil, err
+			}
+			if journal[j].Block.DealID != r.Block.DealID {
+				return nil, bad("a verdict answers a check of its own deal")
+			}
+			if _, dup := w.verdictOf[j]; dup {
+				return nil, bad("a check has one verdict")
+			}
+			w.verdictOf[j] = i
+			w.verdict[i], _ = bodyAs[dealprofile.VerdictBody](r.Body)
+		case TypeApproval:
+			b, _ := bodyAs[dealprofile.ApprovalBody](r.Body)
+			w.approval[i] = b
+			if b.Choice == ChoiceConfirm {
+				j, err := one("approves", TypeIntent)
+				if err != nil {
+					return nil, err
+				}
+				prop, _ := bodyAs[dealprofile.IntentBody](journal[j].Body)
+				if err := lim.confirm(b, prop, confirmed[j] || intentBetween(journal, j, i)); err != nil {
+					return nil, bad("%v", err)
+				}
+				if b.Proceed && !confirmed[j] && !intentBetween(journal, j, i) {
+					confirmed[j] = true
+					confirmations = append(confirmations, i)
+				}
 				continue
 			}
-			if changesIdentifiers(r) {
-				return nil, bad(i, "a %s changed an identifier between its check and it: a new check is needed", r.Block.RecordType)
+			j, err := one("approves", TypeVerdict)
+			if err != nil {
+				return nil, err
+			}
+			if journal[j].Block.DealID != r.Block.DealID {
+				return nil, bad("an approval answers a verdict of its own deal")
+			}
+			if _, answered := w.firstAnswer[j]; !answered {
+				w.firstAnswer[j] = i
+			}
+			v := w.verdict[j]
+			chk := w.checkOfVerdict(j)
+			switch {
+			case b.Approver == "standing_intent":
+				if v.Result != "pass" {
+					return nil, bad("a standing-intent approval needs a passing verdict; a pause needs the person's answer")
+				}
+				if chk != nil && !lim.allows(chk.Action) {
+					return nil, bad("standing-intent approval for an action the limits in force do not allow")
+				}
+				w.limitsAt[i] = slices.Clone(confirmations)
+			case v.Result == "pause" || v.Result == "deny":
+				if !slices.Contains(v.Options, b.Choice) {
+					return nil, bad("the choice is not one of the verdict's options")
+				}
+			}
+			// The card the answer was given on: equal commitments mean the
+			// card shown is the card checked. The person's answer must show
+			// which card it answered.
+			switch {
+			case b.CardCommitment != "" && v.CardCommitment == "":
+				return nil, bad("the approval commits to a shown card, but the verdict it answers rendered none")
+			case b.CardCommitment != "" && b.CardCommitment != v.CardCommitment:
+				return nil, bad("the card shown is not the card checked: the approval's card_commitment differs from the verdict's")
+			case personApprover(b.Approver) && b.CardCommitment == "":
+				return nil, bad("the person's approval commits to the card it answered (card_commitment)")
 			}
 		}
-		out = append(out, ActAuthorization{Act: act, Check: check, Verdict: verdict, Approval: approval,
-			ApprovalDigest: digests[ai], NeedsPersonSignature: ab.Approver == "user"})
 	}
-	return out, nil
+	return w, nil
 }
 
-// actCheck is the check an act cites, nil for none; ok is false for a
-// record that is not an act.
-func actCheck(r Record) (check *Ref, ok bool) {
-	switch b := r.Body.(type) {
-	case *PerformBody:
-		return b.Check, true
-	case PerformBody:
-		return b.Check, true
-	case *SettleBody:
-		return b.Check, true
-	case SettleBody:
-		return b.Check, true
+// checkOfVerdict is the check a verdict answers.
+func (w *journalWalk) checkOfVerdict(vi int) *CheckBody {
+	for ci, v := range w.verdictOf {
+		if v == vi {
+			return w.check[ci]
+		}
 	}
-	return nil, false
+	return nil
 }
 
-// citesAs says r's refs cite digest d with relation rel.
-func citesAs(r Record, rel, d string) bool {
-	for _, ref := range r.Block.Refs {
-		if ref.Rel == rel && ref.Digest == d {
+// intentBetween says an intent was sealed after the proposal at j and
+// before i: the proposal was replaced.
+func intentBetween(journal []Record, j, i int) bool {
+	for k := j + 1; k < i; k++ {
+		if journal[k].Block.RecordType == TypeIntent {
 			return true
 		}
 	}
 	return false
 }
 
-// changesIdentifiers says a journal record changes an identifier of the
-// other side, as v0 rule 5 lists them: a detail_change, or a message or
-// evidence that carries counterparty identifiers.
-func changesIdentifiers(r Record) bool {
+// changesDetails is a journal record after which no earlier check covers an
+// act (v0 §6 rules 5 and 13; dealprofile chain.go changesDetails): a
+// detail_change; a message or evidence carrying counterparty identifiers or
+// counterparty facts; an intent that starts a leg (a counterparty block) or
+// picks the item; an agent's chose move.
+func (w *journalWalk) changesDetails(k int) bool {
+	r := w.journal[k]
 	switch r.Block.RecordType {
 	case TypeDetailChange:
 		return true
-	case TypeMessage, TypeEvidence:
+	case TypeMessage:
 		return r.Block.Counterparty != nil
+	case TypeEvidence:
+		b, _ := bodyAs[dealprofile.EvidenceBody](r.Body)
+		return r.Block.Counterparty != nil || (b != nil && b.CounterpartyFacts != nil)
+	case TypeIntent:
+		b, _ := bodyAs[dealprofile.IntentBody](r.Body)
+		return r.Block.Counterparty != nil || (b != nil && b.Move != "" && b.Asked != nil && b.Asked.Item != "")
+	case TypeAgentMove:
+		b, _ := bodyAs[dealprofile.AgentMoveBody](r.Body)
+		return b != nil && b.Move == "chose"
 	}
 	return false
 }
 
-// allowedInForce says action is in the allowed in force at the check at
-// journal index ci (v0 rule 6): the first intent's allowed (absent places no
-// restriction, present and empty allows nothing); a later intent may only
-// drop actions, and a wider one is a proposal that only a confirm_limits
-// approval with proceed puts in force.
-func allowedInForce(journal []Record, ci int, action string) bool {
-	var allowed []string
-	set, seenIntent := false, false
-	for _, r := range journal[:ci] {
-		switch b := r.Body.(type) {
-		case *dealprofile.IntentBody:
-			if !seenIntent {
-				allowed, set, seenIntent = slices.Clone(b.Allowed), b.Allowed != nil, true
-				continue
-			}
-			if b.Allowed != nil && (!set || subset(b.Allowed, allowed)) {
-				allowed, set = slices.Clone(b.Allowed), true
-			}
-		case *dealprofile.ApprovalBody:
-			if b.Choice == ChoiceConfirm && b.Proceed && b.Limits != nil {
-				allowed, set = slices.Clone(b.Limits.New.Allowed), b.Limits.New.Allowed != nil
+// limits are the limits in force (v0 rule 6): the first intent's, narrowed
+// by later intents, and widened only by a confirmed proposal.
+type limits struct {
+	seen     bool
+	allowed  []string
+	set      bool
+	maxTotal *int64
+}
+
+func (l *limits) narrow(b *dealprofile.IntentBody) {
+	if b == nil {
+		return
+	}
+	if !l.seen {
+		l.seen = true
+		l.allowed, l.set, l.maxTotal = slices.Clone(b.Allowed), b.Allowed != nil, b.MaxTotalMinor
+		return
+	}
+	if b.Allowed != nil {
+		next := []string{}
+		for _, a := range b.Allowed {
+			if !l.set || slices.Contains(l.allowed, a) {
+				next = append(next, a)
 			}
 		}
+		l.allowed, l.set = next, true
 	}
-	return !set || slices.Contains(allowed, action)
+	if b.MaxTotalMinor != nil && (l.maxTotal == nil || *b.MaxTotalMinor < *l.maxTotal) {
+		l.maxTotal = b.MaxTotalMinor
+	}
+}
+
+func (l *limits) allows(action string) bool { return !l.set || slices.Contains(l.allowed, action) }
+
+// confirm applies a confirm_limits approval of the proposal prop (v0
+// chain_steps.go confirmLimits): a late answer (the proposal replaced or
+// already confirmed) does not proceed and changes nothing; otherwise it
+// proceeds, its limits.previous are the limits in force, its limits.new
+// are what the proposal asked, and the proposal asks for more.
+func (l *limits) confirm(b *dealprofile.ApprovalBody, prop *dealprofile.IntentBody, late bool) error {
+	if late {
+		if b.Proceed {
+			return fmt.Errorf("a proposal replaced by a later intent, or already confirmed, cannot be confirmed (proceed must be false)")
+		}
+		return nil
+	}
+	if !b.Proceed {
+		return fmt.Errorf("a confirmation of a standing proposal proceeds")
+	}
+	if b.Limits == nil || prop == nil {
+		return fmt.Errorf("a confirmation states the limits it replaces and puts in force")
+	}
+	if !sameJSON(b.Limits.Previous, dealprofile.LimitSet{MaxTotalMinor: l.maxTotal, Allowed: l.allowedOrNil()}) {
+		return fmt.Errorf("limits.previous is not the limits in force")
+	}
+	next := dealprofile.LimitSet{MaxTotalMinor: l.maxTotal, Allowed: l.allowedOrNil()}
+	if prop.MaxTotalMinor != nil {
+		next.MaxTotalMinor = prop.MaxTotalMinor
+	}
+	if prop.Allowed != nil {
+		next.Allowed = prop.Allowed
+	}
+	if !sameJSON(dealprofile.LimitSet{MaxTotalMinor: b.Limits.New.MaxTotalMinor, Allowed: b.Limits.New.Allowed}, next) {
+		return fmt.Errorf("limits.new is not what the intent proposed")
+	}
+	more := (prop.MaxTotalMinor != nil && l.maxTotal != nil && *prop.MaxTotalMinor > *l.maxTotal) ||
+		(prop.Allowed != nil && l.set && !subset(prop.Allowed, l.allowed))
+	if !more {
+		return fmt.Errorf("the intent asks for no higher limit and no new action: nothing to confirm")
+	}
+	l.maxTotal, l.allowed, l.set = next.MaxTotalMinor, slices.Clone(next.Allowed), next.Allowed != nil
+	return nil
+}
+
+func (l *limits) allowedOrNil() []string {
+	if !l.set {
+		return nil
+	}
+	if l.allowed == nil {
+		return []string{}
+	}
+	return l.allowed
+}
+
+func sameJSON(a, b any) bool {
+	x, err1 := json.Marshal(a)
+	y, err2 := json.Marshal(b)
+	return err1 == nil && err2 == nil && string(x) == string(y)
 }
 
 func subset(a, b []string) bool {
