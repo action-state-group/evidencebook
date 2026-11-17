@@ -148,9 +148,26 @@ type WitnessCheck struct {
 // verifier of its own. An error means the checkpoint statement itself does
 // not verify; the caller says whether that is stored state or input.
 func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, error) {
+	check, _, err := verifyWitnessReceipt(statement, receipt, directory)
+	return check, err
+}
+
+// verifiedReceipt is what a verified receipt gives beside its check: the
+// registration time (the iat of its protected CWT claims, in Unix seconds),
+// nil when it gives none, and the directory key id it verified under (the
+// key the directory row binds to the receipt's URL, never one the receipt
+// carries).
+type verifiedReceipt struct {
+	registeredAt *int64
+	keyID        string
+}
+
+// verifyWitnessReceipt is checkWitnessReceipt with what a verified receipt
+// gives (verifiedReceipt).
+func verifyWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aacwitness.Directory) (WitnessCheck, verifiedReceipt, error) {
 	signed, err := aacwitness.ParseSignedCheckpoint(statement)
 	if err != nil {
-		return WitnessCheck{}, fmt.Errorf("the cadence checkpoint statement does not verify: %v", err)
+		return WitnessCheck{}, verifiedReceipt{}, fmt.Errorf("the cadence checkpoint statement does not verify: %v", err)
 	}
 	record := map[string]interface{}{
 		"ts_url":      receipt.TSURL,
@@ -167,11 +184,22 @@ func checkWitnessReceipt(statement []byte, receipt WitnessReceipt, directory aac
 	reason := strings.Join(parts, ": ")
 	switch status {
 	case aacwitness.StatusPass:
-		return WitnessCheck{State: WitnessVerified, Reason: reason}, nil
+		var v verifiedReceipt
+		if len(results) == 1 {
+			v.registeredAt = results[0].RegistrationTime
+			if results[0].KeyID != nil {
+				v.keyID = *results[0].KeyID
+			}
+		}
+		if v.keyID == "" {
+			// A pass always names the directory key it verified under.
+			return WitnessCheck{}, verifiedReceipt{}, fmt.Errorf("a passing receipt named no directory key")
+		}
+		return WitnessCheck{State: WitnessVerified, Reason: reason}, v, nil
 	case aacwitness.StatusWithheld:
-		return WitnessCheck{State: WitnessNotChecked, Reason: reason}, nil
+		return WitnessCheck{State: WitnessNotChecked, Reason: reason}, verifiedReceipt{}, nil
 	}
-	return WitnessCheck{State: WitnessInvalid, Reason: reason}, nil
+	return WitnessCheck{State: WitnessInvalid, Reason: reason}, verifiedReceipt{}, nil
 }
 
 // TickResult is what one Tick call did.
@@ -215,12 +243,19 @@ func (s *Shelf) Cadence(ctx context.Context, cfg CadenceConfig) (*Cadence, error
 	if book || host || kind != "" {
 		return nil, fmt.Errorf("%w: %s is a %s log, not the cadence log", ErrInvalid, cfg.LogID, map[bool]string{true: "book", false: "host"}[book || kind == logKindBook])
 	}
+	// Receipts held before shelf_receipts existed are kept first, so a
+	// failed backfill leaves no cadence log open.
+	c := &Cadence{shelf: s, cfg: cfg}
+	if err := c.backfillReceiptsLocked(ctx); err != nil {
+		return nil, err
+	}
 	log, err := openCLLSQLite(s.cfg.Path, cfg.LogID, s.cfg.CheckpointKey, cfg.WitnessIDs)
 	if err != nil {
 		return nil, err
 	}
 	s.cadenceLogs = append(s.cadenceLogs, log)
-	s.cadence = &Cadence{shelf: s, cfg: cfg, log: log}
+	c.log = log
+	s.cadence = c
 	return s.cadence, nil
 }
 
@@ -737,7 +772,7 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	if tick.CheckpointSize == 0 {
 		return WitnessCheck{}, fmt.Errorf("%w: tick %d is not finished, so no witness has seen its root", ErrInvalid, n)
 	}
-	check, err := checkWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
+	check, verified, err := verifyWitnessReceipt(tick.Checkpoint, receipt, c.cfg.Witnesses)
 	switch {
 	case err != nil:
 		return WitnessCheck{}, fmt.Errorf("%w: tick %d: %v", ErrCorrupt, n, err)
@@ -751,7 +786,12 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 		// and the live set index the tree's ticks, which a cadence chain
 		// (Chain) proves a checkpoint by; a stamp's proof is the stamp proof
 		// (evidencebook#461).
-		_, err := s.db.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n)
+		err := s.inTx(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
+				return err
+			}
+			return keepReceipt(ctx, tx, tick.Checkpoint, receipt, string(encodedReceipt), verified)
+		})
 		if err != nil {
 			return WitnessCheck{}, err
 		}
@@ -765,6 +805,9 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	}
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
+			return err
+		}
+		if err := keepReceipt(ctx, tx, tick.Checkpoint, receipt, string(encodedReceipt), verified); err != nil {
 			return err
 		}
 		for id, leaf := range tick.Leaves.Deals {

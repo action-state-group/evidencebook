@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -45,7 +46,8 @@ type Handover struct {
 	// size grew, the proof between their checkpoints.
 	Consistency []HandoverConsistency `json:"consistency"`
 	// Anchor is the shelf checkpoint the handover runs to, and Receipts the
-	// witness receipts the holder holds for it.
+	// witness receipts the holder holds for it (shelf_receipts), one per
+	// witness in witness URL order.
 	Anchor   []byte           `json:"anchor"`
 	Receipts []WitnessReceipt `json:"receipts,omitempty"`
 }
@@ -73,8 +75,9 @@ type HandoverResult struct {
 	// it could not recompute.
 	Recomputed bool `json:"recomputed"`
 	// Witnessed says a receipt from a witness in the directory verifies for
-	// the anchor; a shelf with no witness is a supported default and is
-	// unwitnessed.
+	// the anchor and gives a registration time (§2.7); a receipt with no
+	// registration time cannot give the witnessed level. A shelf with no
+	// witness is a supported default and is unwitnessed.
 	Witnessed bool `json:"witnessed"`
 	// CoverageStart is the shelf log size, in entries, at which the facts
 	// begin to be complete: the end of the migration's stamp.
@@ -120,8 +123,26 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 		return Handover{}, err
 	}
 	out := Handover{V: 1, LogID: c.cfg.LogID, Anchor: tick.Checkpoint, Entries: []string{}, Documents: []HandoverDocument{}, BookCheckpoints: [][]byte{}, Consistency: []HandoverConsistency{}}
-	if tick.Receipt != nil {
-		out.Receipts = []WitnessReceipt{*tick.Receipt}
+	sum := sha256.Sum256(tick.Checkpoint)
+	rows, err := s.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id`, hex.EncodeToString(sum[:]))
+	if err != nil {
+		return Handover{}, err
+	}
+	for rows.Next() {
+		var raw string
+		var r WitnessReceipt
+		if err := rows.Scan(&raw); err != nil {
+			rows.Close()
+			return Handover{}, err
+		}
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			rows.Close()
+			return Handover{}, fmt.Errorf("%w: a stored receipt of tick %d: %v", ErrCorrupt, n, err)
+		}
+		out.Receipts = append(out.Receipts, r)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return Handover{}, err
 	}
 	for after := uint64(0); after < anchor.Entries; {
 		entries, err := c.log.Entries(ctx, after, int(min(1000, anchor.Entries-after)))
@@ -141,7 +162,7 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 			after = e.Seq
 		}
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err = s.db.QueryContext(ctx,
 		`SELECT entry_seq, kind, log_id, doc, status_opening FROM shelf_entries WHERE entry_seq <= ? ORDER BY entry_seq`, anchor.Entries)
 	if err != nil {
 		return Handover{}, err
@@ -415,7 +436,7 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	}
 	sort.Strings(result.Untied)
 	for _, r := range h.Receipts {
-		if check, err := checkWitnessReceipt(h.Anchor, r, witnesses); err == nil && check.State == WitnessVerified {
+		if check, verified, err := verifyWitnessReceipt(h.Anchor, r, witnesses); err == nil && check.State == WitnessVerified && verified.registeredAt != nil {
 			result.Witnessed = true
 			break
 		}

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The scripted shelf (testdata/shelf/script.json), run by the Rust shelf:
 //! each phase's dump equals the Go run's vector byte for byte
-//! (`after-write.json`, `after-continue.json`, `after-migrate.json`). CI's `shelf-interlock` job
+//! (`after-write.json`, `after-continue.json`, `after-migrate.json`,
+//! `after-record-time.json`). CI's `shelf-interlock` job
 //! runs the same phases in separate processes, Rust continuing Go's file and
 //! Go continuing Rust's.
 
@@ -13,7 +14,7 @@ fn vector(name: &str) -> String {
 }
 
 #[test]
-fn the_rust_shelf_writes_continues_and_migrates_the_vectors_byte_for_byte() {
+fn the_rust_shelf_writes_continues_migrates_and_records_time_byte_for_byte() {
     let dir = tempfile::tempdir().unwrap();
     shelf::write(dir.path()).unwrap();
     assert!(
@@ -29,6 +30,13 @@ fn the_rust_shelf_writes_continues_and_migrates_the_vectors_byte_for_byte() {
     assert!(
         shelf::dump(dir.path()).unwrap() == vector("after-migrate.json"),
         "after-migrate.json differs"
+    );
+    // The record time phase (evidencebook#461 §2.6): every step's expect
+    // matches, then the dump.
+    shelf::record_time(dir.path()).unwrap();
+    assert!(
+        shelf::dump(dir.path()).unwrap() == vector("after-record-time.json"),
+        "after-record-time.json differs"
     );
     assert!(
         shelf::write(dir.path()).is_err(),

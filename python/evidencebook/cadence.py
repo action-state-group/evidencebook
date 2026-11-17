@@ -35,6 +35,7 @@ from ._cll import read_checkpoint
 from ._gojson import Ordered, go_json
 from ._random import RandomSource
 from ._time import profile_time, utc
+from .shelf_record_time import backfill_receipts_locked, keep_receipt
 from .errors import CorruptError, InvalidError, NotFoundError, OverLimitError
 
 __all__ = [
@@ -381,6 +382,26 @@ def check_witness_receipt(statement: bytes, receipt: WitnessReceipt, directory: 
     under ``directory`` with AAC's verifier, the check a bundle's
     ``checkpoint.witnesses`` gets. Raises :class:`InvalidError` when the
     statement itself does not verify."""
+    return verify_witness_receipt(statement, receipt, directory)[0]
+
+
+@dataclass(frozen=True)
+class VerifiedReceipt:
+    """What a verified receipt gives beside its check (Go ``verifiedReceipt``):
+    the registration time (the ``iat`` of its protected CWT claims, in Unix
+    seconds), ``None`` when it gives none, and the directory key id it
+    verified under (the key the directory row binds to the receipt's URL,
+    never one the receipt carries)."""
+
+    registered_at: int | None = None
+    key_id: str = ""
+
+
+def verify_witness_receipt(statement: bytes, receipt: WitnessReceipt,
+                           directory: Any) -> tuple[WitnessCheck, VerifiedReceipt]:
+    """:func:`check_witness_receipt` with what a verified receipt gives
+    (:class:`VerifiedReceipt`; empty unless VERIFIED), as Go's
+    ``verifyWitnessReceipt``."""
     verified = verify_checkpoint_cose_offline(statement)
     if not verified.ok or verified.decoded is None:
         raise InvalidError("the cadence checkpoint statement does not verify")
@@ -394,10 +415,16 @@ def check_witness_receipt(statement: bytes, receipt: WitnessReceipt, directory: 
         parts.append(results[0].reason)
     reason = ": ".join(parts)
     if status == "pass":
-        return WitnessCheck(WITNESS_VERIFIED, reason)
+        verified = VerifiedReceipt()
+        if len(results) == 1:
+            verified = VerifiedReceipt(results[0].registration_time, results[0].key_id or "")
+        if not verified.key_id:
+            # A pass always names the directory key it verified under.
+            raise InvalidError("a passing receipt named no directory key")
+        return WitnessCheck(WITNESS_VERIFIED, reason), verified
     if status == "withheld":
-        return WitnessCheck(WITNESS_NOT_CHECKED, reason)
-    return WitnessCheck(WITNESS_INVALID, reason)
+        return WitnessCheck(WITNESS_NOT_CHECKED, reason), VerifiedReceipt()
+    return WitnessCheck(WITNESS_INVALID, reason), VerifiedReceipt()
 
 
 # -- the configuration ------------------------------------------------------------------
@@ -743,7 +770,7 @@ class Cadence:
             if tick.checkpoint_size == 0:
                 raise InvalidError(f"tick {n} is not finished, so no witness has seen its root")
             try:
-                check = check_witness_receipt(tick.checkpoint, receipt, self._cfg.witnesses)
+                check, verified = verify_witness_receipt(tick.checkpoint, receipt, self._cfg.witnesses)
             except InvalidError as exc:
                 raise CorruptError(f"tick {n}: {exc}") from None
             if check.state == WITNESS_INVALID:
@@ -751,9 +778,13 @@ class Cadence:
             if check.state != WITNESS_VERIFIED:
                 return check
             ended = {} if tick.leaves.stamp is not None else {log_id: bool(self._cfg.ended(log_id)) for log_id in tick.leaves.deals}
+            encoded = receipt.encode()
             with shelf._tx() as db:
                 db.execute("UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
-                           (receipt.encode(), n))
+                           (encoded, n))
+                # Every verified receipt is kept, one per witness, a stamp's
+                # and a tree tick's alike (evidencebook#461 §2.3).
+                keep_receipt(db, tick.checkpoint, receipt.ts_url, encoded, verified)
                 # cadence_witnessed and the live set index the tree's ticks; a
                 # stamp has no tree and its proof is the stamp proof
                 # (evidencebook#461), so a witnessed stamp touches neither.
@@ -1064,3 +1095,5 @@ class Cadence:
                                            (log_id,)).fetchone()[0]
                     if witnessed and _held_size(db, log_id) <= witnessed:
                         db.execute("DELETE FROM cadence_live WHERE log_id = ?", (log_id,))
+            # The witnessed ticks imported keep their receipts in shelf_receipts too.
+            backfill_receipts_locked(self)

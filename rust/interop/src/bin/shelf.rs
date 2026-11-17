@@ -42,7 +42,7 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<(), shelf::Error> {
     let [verb, dir, rest @ ..] = args else {
-        return Err("usage: shelf write|continue|migrate|recover|dump|handover|verify-handover|hold|try DIR [ARG]".into());
+        return Err("usage: shelf write|continue|migrate|recover|dump|handover|verify-handover|record-time|hold|try DIR [ARG]".into());
     };
     let dir = Path::new(dir);
     let n = || -> Result<u64, shelf::Error> {
@@ -63,6 +63,7 @@ fn run(args: &[String]) -> Result<(), shelf::Error> {
             std::io::stdout().write_all(shelf::handover(dir)?.as_bytes())?;
             Ok(())
         }
+        "record-time" => shelf::record_time(dir),
         "verify-handover" => {
             let raw = std::fs::read(dir)?;
             std::io::stdout().write_all(shelf::verify_handover(&raw)?.as_bytes())?;

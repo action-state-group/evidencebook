@@ -24,7 +24,8 @@ Each language writes or continues the other's file, and every dump must
 equal testdata/shelf/after-write.json, after-continue.json, after-migrate.json
 or a recovery scenario's after-recover-*.json byte for byte, and every
 language's handover must equal testdata/shelf/handover.json and replay to
-handover-result.json.
+handover-result.json. run_record_time runs testdata/shelf/record-time.json
+on the shelf after the migrate phase (python/tests/test_shelf_record_time.py).
 The keys are test keys. Never use them for anything else.
 """
 from __future__ import annotations
@@ -51,12 +52,13 @@ from evidencebook import Entry, OBSERVED_EVENT
 from evidencebook._gojson import go_json_indent
 from evidencebook._random import deterministic_stream
 from evidencebook.cadence import CadenceConfig, WitnessReceipt, WITNESS_VERIFIED
-from evidencebook.errors import NotFoundError
+from evidencebook.errors import InvalidError, NotFoundError
 from evidencebook.shelf import JOURNAL_LOG_ID, SHELF_VERSION_FACTS, Shelf
 from evidencebook.shelf_handover import Handover, verify_handover
 from evidencebook.signer import Ed25519Signer
 
 SCRIPT = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "script.json").read_text())
+RECORD_TIME = json.loads((Path(__file__).resolve().parents[3] / "testdata" / "shelf" / "record-time.json").read_text())
 HOST = SCRIPT["host_parameters"]
 CADENCE = HOST["cadence"]
 KEYS = SCRIPT["keys"]
@@ -138,22 +140,29 @@ class Env:
         return result.tick
 
 
-def mint_receipt(statement: bytes) -> WitnessReceipt:
+def mint_receipt(statement: bytes, iat: int | None = None, key: Ed25519Signer = WITNESS_KEY,
+                 url: str = CADENCE["witness_url"]) -> WitnessReceipt:
     """The script's witness receipt for a cadence checkpoint, as Go's
     shelfscript.MintReceipt makes it: an RFC 9162 COSE receipt from the
     witness key over a one-entry log holding the checkpoint, so its
     inclusion path is empty. Ed25519 is deterministic, so its bytes depend on
-    the statement alone."""
+    the statement alone. ``iat`` (Unix seconds) is the witness's registration
+    time, the iat (6) of the protected CWT claims (15), as Go's
+    shelfscript.MintReceiptAt puts it; none when ``None``. ``key`` and
+    ``url`` make another witness's receipt."""
     decoded = verify_checkpoint_cose_offline(statement).decoded
     signed = {name: getattr(decoded, name) for name in
               ("log_id", "mmr_size", "root", "key_id", "timestamp", "prev_size", "prev_root")}
     entry = hashlib.sha256(bytes.fromhex(checkpoint_digest(signed))).digest()
     leaf = hashlib.sha256(b"\x00" + entry).digest()
-    protected = cbor2.dumps({1: -8, 395: 1}, canonical=True)
+    header: dict = {1: -8, 395: 1}
+    if iat is not None:
+        header[15] = {6: iat}
+    protected = cbor2.dumps(header, canonical=True)
     proof = cbor2.dumps([1, 0, []])
-    signature = WITNESS_KEY.sign(cbor2.dumps(["Signature1", protected, b"", leaf]))
+    signature = key.sign(cbor2.dumps(["Signature1", protected, b"", leaf]))
     receipt = cbor2.dumps(cbor2.CBORTag(18, [protected, {396: {-1: [proof]}}, None, signature]), canonical=True)
-    return WitnessReceipt(CADENCE["witness_url"], entry.hex(), receipt, 0, 1)
+    return WitnessReceipt(url, entry.hex(), receipt, 0, 1)
 
 
 def observation(subject: str, payload: str | None) -> Entry:
@@ -272,6 +281,10 @@ def dump(directory: str) -> bytes:
             for n, a, d, e, s, c, l, w, r in db.execute(
                 "SELECT tick, at, due_next, entry_seq, checkpoint_size, checkpoint, leaves, witnessed, receipt "
                 "FROM cadence_ticks ORDER BY tick")]
+        state["shelf_receipts"] = [
+            {"checkpoint_sha256": c, "witness_id": w, "key_id": k, "receipt": r, "registered_at": at}
+            for c, w, k, r, at in db.execute("SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at "
+                                             "FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id")]
         state["cll_entries"] = [
             {"log_id": i, "seq": s, "value": bytes(v).hex(), "appended_at": a}
             for i, s, v, a in db.execute("SELECT log_id, seq, value, appended_at FROM cll_entries ORDER BY log_id, seq")]
@@ -317,6 +330,68 @@ def handover(directory: str) -> bytes:
         return go_json_indent(h.value()).encode("utf-8")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def run_record_time(path: str, steps: list[dict]) -> list[dict]:
+    """The record time phase (testdata/shelf/record-time.json, Go's
+    shelfscript.RecordTimePhase) on the shelf at ``path`` after the migrate
+    phase. Each witness step reports the receipt it carries for the newest
+    tick, so nothing is minted. Returns every step's outcome, in each step's
+    ``expect`` form (``None`` for a step with none); a record_time step's
+    ``book_id`` is read from the shelf, as Go reads it, and must be the
+    step's."""
+    env, out = None, []
+    for i, step in enumerate(steps, start=1):
+        op = step["op"]
+        try:
+            if (env is None) != (op == "open"):
+                raise RuntimeError(f"{op} with the shelf {'released' if env is None else 'open'}")
+            got = None
+            if op == "open":
+                env = Env(path, step["stream"], START + timedelta(seconds=step.get("at", 0)))
+            elif op == "release":
+                env, closing = None, env
+                closing.release()
+            elif op == "append":
+                env.append(step["book"], observation(step["subject"], step["payload"]))
+            elif op == "stamp":
+                at = START + timedelta(seconds=step["at"])
+                env.clock.at = at
+                env.cadence.stamp(at)
+            elif op == "witness":
+                tick = env.cadence.last()
+                if tick is None:
+                    raise RuntimeError("no tick to witness")
+                r = step["receipt"]
+                receipt = WitnessReceipt(r["ts_url"], r["entry_hash"], base64.b64decode(r["receipt"], validate=True),
+                                         r["leaf_index"], r["tree_size"])
+                check = env.cadence.witnessed(tick.n, receipt)
+                got = {"tick": tick.n, "state": check.state}
+            elif op == "record_time":
+                row = env.db.execute("SELECT book_id FROM shelf_entries WHERE log_id = ? ORDER BY entry_seq LIMIT 1",
+                                     (step["book"],)).fetchone()
+                if row is None or row[0] != step["book_id"]:
+                    raise RuntimeError(f"the book id of {step['book']} is {row and row[0]!r}, not {step['book_id']!r}")
+                try:
+                    t = env.shelf.record_time(row[0], step.get("position", 0), step.get("witnesses", []))
+                except InvalidError:
+                    got = {"error": "invalid"}
+                else:
+                    got = {"time": None if t is None else datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            elif op == "handover":
+                h = env.cadence.handover(0)
+                got = {"witnessed": verify_handover(h, CHECKPOINT_KEY.public_key().hex(), DIRECTORY).witnessed}
+            else:
+                raise RuntimeError(f"unknown step {op!r}")
+            out.append(got)
+        except BaseException as exc:
+            if env is not None:
+                env.release()
+            raise RuntimeError(f"record time step {i} ({op}): {exc}") from exc
+    if env is not None:
+        env.release()
+        raise RuntimeError("the phase left the shelf open")
+    return out
 
 
 def verify_handover_file(path: str) -> bytes:
@@ -368,7 +443,7 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|recover|dump|handover|hold|try DIR [ARG]\n"
+        print("usage: shelf.py write|continue|migrate|recover|dump|handover|record-time|hold|try DIR [ARG]\n"
               "       shelf.py verify-handover FILE", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
@@ -388,6 +463,12 @@ def main(args: list[str]) -> int:
         sys.stdout.buffer.write(dump(directory))
     elif command == "handover":
         sys.stdout.buffer.write(handover(directory))
+    elif command == "record-time":
+        steps = RECORD_TIME["steps"]
+        for i, (step, got) in enumerate(zip(steps, run_record_time(path, steps)), start=1):
+            if got != step.get("expect"):
+                print(f"record time step {i} ({step['op']}): got {got!r}, the vector expects {step.get('expect')!r}", file=sys.stderr)
+                return 1
     elif command == "verify-handover":
         sys.stdout.buffer.write(verify_handover_file(directory))
     elif command in ("hold", "try"):

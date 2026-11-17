@@ -44,6 +44,8 @@ dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
 # The migrate phase (evidencebook#461): any language migrates a shelf another wrote
 go run ./test/interop/shelf migrate "$dir/s" && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-migrate.json -
+# The record time phase (evidencebook#461 §2.6) on the migrated shelf, any language, from the repository root
+go run ./test/interop/shelf record-time "$dir/s" && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-record-time.json -
 # The Rust side (feature `shelf`): Go writes, Rust continues; the interlock job runs every pair of Go, Python and Rust
 (cd rust && cargo build --locked -p evidencebook-interop --bin shelf)
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/debug/shelf continue "$dir/s" \

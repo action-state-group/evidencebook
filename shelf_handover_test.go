@@ -37,7 +37,11 @@ func handedOver(t *testing.T) (*Cadence, Handover, string) {
 	require.NoError(t, err)
 	last, err := c.Stamp(ctx, tickTime.Add(4*time.Minute))
 	require.NoError(t, err)
-	mustWitness(t, c, last.Tick.N)
+	// A receipt with a registration time: only such a receipt gives the
+	// handover the witnessed level (§2.7).
+	check, err := c.Witnessed(ctx, last.Tick.N, receiptAt(t, last.Tick.Checkpoint, testWitnessURL, tickTime.Add(5*time.Minute)))
+	require.NoError(t, err)
+	require.Equal(t, WitnessVerified, check.State)
 	h, err := c.Handover(ctx, 0)
 	require.NoError(t, err)
 	anchor, err := checkpointFromStatement(h.Anchor)

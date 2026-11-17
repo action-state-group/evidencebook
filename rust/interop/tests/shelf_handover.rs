@@ -53,7 +53,11 @@ fn a_handover_verifies_and_returns_the_latest_facts() {
     let h = handed_over();
     let got = verify(&h).unwrap();
     assert!(got.recomputed);
-    assert!(got.witnessed);
+    // The scripted receipts carry no registration time, which alone gives
+    // the witnessed level (§2.7); the record time phase witnesses a stamp
+    // with one (`shelf_vectors.rs`, record-time.json's last handover).
+    assert!(!got.witnessed, "a receipt with no registration time");
+    assert_eq!(h.receipts.len(), 1, "the anchor's receipt is handed over");
     assert_ne!(got.coverage_start, 0);
     let logs: Vec<&str> = got.latest.iter().map(|l| l.fact.log_id.as_str()).collect();
     let mut sorted = logs.clone();

@@ -3,6 +3,7 @@
 use super::cadence::{
     check_witness_receipt, held_size, Cadence, CadenceTick, INDEX_WITNESSED, WITNESS_VERIFIED,
 };
+use super::record_time::backfill_receipts;
 use super::store::{self, KIND_HOST};
 use super::tree::TickLeaves;
 use super::ShelfError;
@@ -251,6 +252,8 @@ impl Cadence {
             }
         }
         tx.commit()?;
-        Ok(())
+        // The witnessed ticks imported keep their receipts in shelf_receipts
+        // too (Go `ImportLegacy`).
+        backfill_receipts(&mut db, self.cfg.witnesses.as_ref())
     }
 }

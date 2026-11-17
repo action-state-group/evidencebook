@@ -1,0 +1,197 @@
+{
+  "description": "The record time vectors of evidencebook#461 (docs/design/461-shelf-facts.md §2.6), written by internal/shelfscript (EB_WRITE_SHELF_VECTORS=1 go test ./internal/shelfscript). Run the steps on the scripted shelf after migrate_phase (script.json); every step's expect must match, and the dump afterwards is after-record-time.json. A witness step reports its receipt for the newest finished tick; a record_time step calls RecordTime(book_id, position, witnesses), witnesses being receipt URLs; a handover step hands the shelf over at its newest stamp and verifies it.",
+  "steps": [
+    {
+      "op": "open",
+      "stream": "evidencebook shelf vectors/record-time",
+      "at": 14400
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 17,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": null
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "journal",
+      "book_id": "81dd6b775afcccb6dbb8a25a58ea844271bbefaeea7cb1d91c1687d7450f850c",
+      "position": 1,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": null
+      }
+    },
+    {
+      "op": "handover",
+      "expect": {
+        "witnessed": false
+      }
+    },
+    {
+      "op": "append",
+      "book": "deal/a",
+      "subject": "a",
+      "payload": "a8"
+    },
+    {
+      "op": "stamp",
+      "at": 14460
+    },
+    {
+      "op": "witness",
+      "receipt": {
+        "ts_url": "https://witness.test",
+        "entry_hash": "51354e66e8a8d6437fa6fa74f5cc43bc8926ebcd1cca2cd137a98d856022af94",
+        "receipt": "0oRPowEnD6EGGmrmEPgZAYsBoRkBjKEggUSDAQCA9lhA6FB+KmIQoa9IAmF5C2ztijJTKlJUtDoNfZNLn6uov4+vPiFqOStmLUX276BWtbUloXS1HTQdr3L3Dz7xkYpnBA==",
+        "leaf_index": 0,
+        "tree_size": 1
+      },
+      "expect": {
+        "state": "VERIFIED",
+        "tick": 10
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 20,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": "2026-10-31T16:02:00Z"
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 17,
+      "witnesses": [
+        "https://unnamed-witness.test",
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": "2026-10-31T16:02:00Z"
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 20,
+      "witnesses": [
+        "https://unnamed-witness.test"
+      ],
+      "expect": {
+        "time": null
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 21,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": null
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "error": "invalid"
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "journal",
+      "book_id": "81dd6b775afcccb6dbb8a25a58ea844271bbefaeea7cb1d91c1687d7450f850c",
+      "position": 6,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": "2026-10-31T16:02:00Z"
+      }
+    },
+    {
+      "op": "witness",
+      "receipt": {
+        "ts_url": "https://witness.test",
+        "entry_hash": "51354e66e8a8d6437fa6fa74f5cc43bc8926ebcd1cca2cd137a98d856022af94",
+        "receipt": "0oRPowEnD6EGGmrmENoZAYsBoRkBjKEggUSDAQCA9lhAB6d0Xvk/EzQk0HGeqXQC/07CJFphKgpo9MW766riqNqD6PdnsWz9WClwySuSlz2dUuIdHcZmppEZbQNnS1N/Bw==",
+        "leaf_index": 0,
+        "tree_size": 1
+      },
+      "expect": {
+        "state": "VERIFIED",
+        "tick": 10
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 20,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": "2026-10-31T16:01:30Z"
+      }
+    },
+    {
+      "op": "witness",
+      "receipt": {
+        "ts_url": "https://witness.test",
+        "entry_hash": "51354e66e8a8d6437fa6fa74f5cc43bc8926ebcd1cca2cd137a98d856022af94",
+        "receipt": "0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQF2MgDSDCsq/z6pKxXFUqbEjMKPgwMBKFIDXMPAhaKUnr+ql/p9hidRSmdOK8phGLm4XMNZWy/a/GbdKVxunJgc=",
+        "leaf_index": 0,
+        "tree_size": 1
+      },
+      "expect": {
+        "state": "VERIFIED",
+        "tick": 10
+      }
+    },
+    {
+      "op": "record_time",
+      "book": "deal/a",
+      "book_id": "990bbe6750b7f43f760fadc1d80cc975f89b201dd0600f625a911eca815afe26",
+      "position": 20,
+      "witnesses": [
+        "https://witness.test"
+      ],
+      "expect": {
+        "time": "2026-10-31T16:01:30Z"
+      }
+    },
+    {
+      "op": "handover",
+      "expect": {
+        "witnessed": true
+      }
+    },
+    {
+      "op": "release"
+    }
+  ]
+}

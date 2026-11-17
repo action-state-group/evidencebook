@@ -114,10 +114,18 @@ New tables, all in the same file:
   numbering, its witnessing (`Witnessed`, `cadence_witnessed`) and the `/1` and `/2` anchor are the
   cadence's own, with no second table. (This note first proposed a `shelf_stamps` table and a
   `shelf_book_checkpoints` table; the tick row and its leaves hold the same data.)
-- `shelf_receipts (checkpoint_sha256, witness_id, receipt TEXT, registered_at, PRIMARY KEY
+- `shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt TEXT, registered_at, PRIMARY KEY
   (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, with its
-  registration time or null; it lands with `RecordTime` (part 5), until which a tick keeps the
-  receipt `Witnessed` stores today.
+  registration time or null. `Witnessed` writes it (part 5, with `RecordTime`, which reads it), and
+  a tick still keeps the first receipt in `cadence_ticks.receipt` for the readers that use it. A witness is named by its receipt's URL (`ts_url`), the name
+  its directory row is found by, so one URL is one witness (a witness serving receipts from two URLs
+  is two witnesses to the library) and the library treats the name as an opaque string; how an
+  agreement names its witnesses is the profile's (step 5). `key_id` is the directory key the receipt verified under (the key the directory
+  row binds to that URL, never one the receipt carries), kept so a later naming by key reads the
+  rows already held; `registered_at` is the receipt's protected `iat` in Unix seconds.
+  The same witness's receipt again replaces the held one only when it gives an earlier time or
+  the held one gives none. A witnessed tick whose receipt is not in the table (a shelf written
+  before it, or an imported tick) gets it at the cadence's next open, when it still verifies.
 - `shelf_received`, `shelf_received_proofs`, `shelf_received_tombstones` and `shelf_evidence`: the
   store (section 3).
 - `shelf_migration (id = 1, state, backup_sha256)`: the migration's progress (section 4); its batch is the migration's tick row, as a stamp's is.
@@ -179,7 +187,9 @@ it in `shelf_receipts`, one per witness, a later receipt from another witness ke
 `RecordTime(book_id, position, witnesses)` returns the earliest registration time, among the
 receipts in `shelf_receipts` from the named witnesses, of a shelf checkpoint that covers the first
 fact of that book whose size covers the position; or "no time". A receipt from a witness not
-named, and a receipt with no registration time, give no time. The library's vectors cover those
+named, and a receipt with no registration time, give no time. A shelf checkpoint covers a fact when its tree holds the
+fact's entry (later checkpoints included); a journal fact's size is its status opening's; position
+0 is invalid. The library's vectors cover those
 two and the plain case. The other two cases of acceptance 3 (the other side's stamp covering our
 record first, and a statement whose in-time state is known only at its first stamp) need the
 counterparty's facts and the profile's status, so they are step 5's vectors, built on this call.
@@ -191,7 +201,8 @@ entries before the marker as the opaque ids they are), every entry document afte
 each book fact's status opening, no journal opening and no link opening, the COSE bytes of every
 book checkpoint a book fact carries, the consistency proof between each pair of consecutive book
 facts whose size grew, each genesis fact's tie when the holder has one (below), the anchor
-checkpoint, its receipts, and the coverage start
+checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL order), and
+the coverage start
 (section 4).
 
 `VerifyHandover(material, witnesses)` fails when:

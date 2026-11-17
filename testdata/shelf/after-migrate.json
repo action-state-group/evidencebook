@@ -2458,6 +2458,36 @@
       "state": "done"
     }
   ],
+  "shelf_receipts": [
+    {
+      "checkpoint_sha256": "075d66725917cdeb362660c91be44e5968946dc9119c189b920424f5449b2428",
+      "key_id": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"2c8f3c76c8e77fb389acb1501bf870869d351dd9a02ac8e6021956287caf4bdd\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQPLmPIVCmFBu8G8XDxNRaqJIk9jXtqfe1dTzfyseUUy2J7pTG9/rZSgt8A7c7yqqGgqah0WbvZTamRMG5uw+FQU=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    },
+    {
+      "checkpoint_sha256": "0e2fdb98a660240ae934782ad53e17b653bf2d225b2ac9c0fbc439f945aa0667",
+      "key_id": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"315df530c2945c667d114c1a72d657867b38d96fdfb3f14f826f80304e6f0a3d\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQC48Wci5MxUCvVvLdPQEjGp4HLWZmysFHrpkaZVWdfln5T6zo/KFp1geMdFVRdSwrbnkMY6SAx/Wq9sJV6IaoQU=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    },
+    {
+      "checkpoint_sha256": "326cdd4aec7765f77215a05d16c37fd7fa8736a0bba4fde0e9afbc04d4c92b02",
+      "key_id": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"d6da1cb6f0a77faa756844d12e8a0ca1767f58fdd049b9eaaf188c40e357e1c3\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQAks7LhuqQN/GOsuifd1u0AAP2j3JFHWOnR1Vf1kRa/y3fzmMonSGou4DV3OQmsms9iznsi3A5kd2OHXL96UoQU=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    },
+    {
+      "checkpoint_sha256": "5cb97b0c78b803c9144d80319316ccf27d095f36b1f74bdc4636fd93cb3cc076",
+      "key_id": "e7f162a10bec559afea195e4dce84b69568d5d2cb0963eb446c0685e2b17f2f0",
+      "receipt": "{\"ts_url\":\"https://witness.test\",\"entry_hash\":\"d627435a35810c44506b82483fdc55ff318bb18179ac7a634469677d48f92b82\",\"receipt\":\"0oRHogEnGQGLAaEZAYyhIIFEgwEAgPZYQAAE8TK2woaieGeRu9pnB9qcQSr1zZYIivA1m4jEQokwlyiP9n8PzCdvgjopTB2quInqEXa5om5as6NOVQcJmgY=\",\"leaf_index\":0,\"tree_size\":1}",
+      "registered_at": null,
+      "witness_id": "https://witness.test"
+    }
+  ],
   "standard_history_anchors": [
     {
       "anchor": "5cb97b0c78b803c9144d80319316ccf27d095f36b1f74bdc4636fd93cb3cc076",

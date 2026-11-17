@@ -4,7 +4,7 @@
 //! The file holds CLL's tables (one log per book id, the cadence log and
 //! every host log), capsule-emit's artifact store (the originals of every
 //! book and the records of every host log, under one namespace) and the
-//! shelf's own tables (`book_*`, `cadence_*`, `shelf_meta`, `shelf_logs`),
+//! shelf's own tables (`book_*`, `cadence_*`, `shelf_*`),
 //! exactly as the Go shelf writes them, so Go, Python and Rust writers
 //! continue each other's files. `testdata/shelf` holds the byte vectors, and
 //! `test/interop/shelf` (Go), `test/interop/python-evidencebook/shelf.py`
@@ -54,6 +54,9 @@ mod random;
 mod receive;
 #[cfg(test)]
 mod receive_tests;
+mod record_time;
+#[cfg(test)]
+mod record_time_tests;
 mod records;
 mod stamp;
 mod stamp_proof;
