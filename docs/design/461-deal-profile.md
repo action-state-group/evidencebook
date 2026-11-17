@@ -997,9 +997,10 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
     `"not_set"`.
   - `check` is 6.3's result: `not_recomputed` for a row the terms do not mark recomputed.
   - `late`: rowstatus does not report late statements or late disputes (its `Result` has six
-    members, `rowstatus.go:180-192`). **Proposed:** an additive rowstatus output, `late_statements`
+    members, `rowstatus.go:180-192`). **Decided (coordinator, Q9):** an additive rowstatus output, `late_statements`
     and `late_disputes` (indices into the input), computed by the same rule in Go, Rust and Python
-    with new vectors, and no change to any existing result. Until it lands, `late` is absent. Q9.
+    with new vectors, and no change to any existing result (decided, Q9). Until it lands, `late` is
+    absent.
   - `ruling` is the first final ruling rowstatus applied, or `null`.
   - `relied_on` lists each record the row's inputs came from, with its record time (4.3) and
     whether that time came from a named witness.
@@ -1148,9 +1149,9 @@ where it is his door.
   v0 until `/3` is served is a rollout decision for evidencebook-deal#212.
 - **Q8. The witnessed follow-up message** (receipts and the shelf consistency proof, design §4.2,
   "The stamp-proof message") has no form in Forms or in the library. That is AAC#621's.
-- **Q9. Late statements and disputes in the report.** rowstatus does not report them. Proposed: an
-  additive rowstatus output (section 9). It changes a merged function's output, though not its
-  rule, so Ethan decides.
+- **Q9. Late statements and disputes in the report.** Decision (coordinator, 2026-11-17): additive
+  rowstatus output; reason: the sealed report needs it, nothing existing changes. Existing callers
+  and every existing result stay unchanged (section 9).
 - **Q10. The grades of `perform.observed`.** Design §7 says an act is "graded by how directly it was
   observed" and lists no grades.
 - **Mesh** period books (profile `mesh_period`) are step 8, not this note.
