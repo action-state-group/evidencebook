@@ -110,24 +110,24 @@ done
 
 step "§6.1 the personal-evidence inputs"
 cd "$WORK"
+AAC_PH=f143a18edb42f499a8837beeef1588fd70f71835 # the regenerated History corpus (§6); §1 to §5 stay on the earlier pin
 for f in spec/personal-agent-history-profile-v0.md spec/evidence-result-v0.md \
   vectors/personal-history-basic-v0/README.md vectors/personal-history-basic-v0/manifest.json \
   vectors/personal-history-basic-v0/vectors.json vectors/personal-history-basic-v0/responder-run.json \
   vectors/personal-history-basic-v0/producer/main.go vectors/personal-history-basic-v0/SHA256SUMS; do
-  fetch action-state-group/agent-action-capsule "$AAC" "$f" "aac/$f"
+  fetch action-state-group/agent-action-capsule "$AAC_PH" "$f" "aac/$f"
 done
 checksums aac/vectors/personal-history-basic-v0 || fail "§6.1 checksums"
-want_sha aac/vectors/personal-history-basic-v0/vectors.json f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9
+want_sha aac/vectors/personal-history-basic-v0/vectors.json 884ca5aaf0751a4beec7c9c2215212f81edbe9c7d3f18c0a4592fdb5896859ad
 
 step "§6.2 reproduce the responder run"
 cd "$EB"
 PH=$WORK/aac/vectors/personal-history-basic-v0
-diff "$PH/producer/main.go" test/interop/personal-history/main.go > run/producer.diff || true
-cmp test/interop/personal-history/producer.diff run/producer.diff ||
-  fail "main.go differs from the corpus producer by more than producer.diff"
+cmp "$PH/producer/main.go" test/interop/personal-history/main.go ||
+  fail "main.go differs from the corpus producer"
 go run ./test/interop/personal-history > run/responder-run.json
 cmp "$PH/responder-run.json" run/responder-run.json || fail "the responder run differs from the corpus"
-want_sha run/responder-run.json f7d77d56d81ca187cb9a8118f8a15aae5407f5a96aca1c5525a5f5d2e827b848
+want_sha run/responder-run.json 8cbf6272ab8f42c534e45e0b1f90358cbb88b5e3cf0263bf79bd92d53d606684
 
 step "§7 a node's bundle (evidence-network/loop $LOOP)"
 cd "$WORK"

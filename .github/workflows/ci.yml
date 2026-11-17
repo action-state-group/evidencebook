@@ -208,7 +208,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
       # evidence-interop/1's vectors (vectors/interop-profile-v1/) and the
       # reference verifier that checks /1, at an AAC main commit that
@@ -273,7 +273,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -292,13 +292,9 @@ jobs:
           corpus=agent-action-capsule/vectors/personal-history-basic-v0
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
-          # main.go is the corpus producer with the book's payload directory
-          # replaced by its originals store (Config.Originals,
-          # capsule-cli#236) and a -correlated mode (#82): exactly the change
-          # producer.diff records, until the corpus pins an evidencebook with
-          # it.
-          diff "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go > "$work/producer.diff" || true
-          cmp evidencebook/test/interop/personal-history/producer.diff "$work/producer.diff"
+          # main.go is the corpus producer, byte for byte (its -correlated mode, #82,
+          # leaves the default run unchanged).
+          cmp "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go
           go -C evidencebook run ./test/interop/personal-history > "$work/responder-run.json"
           want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
           got=$(sha256sum "$work/responder-run.json" | cut -d' ' -f1)
