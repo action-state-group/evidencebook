@@ -157,3 +157,24 @@ def test_popup_buttons_say_what_a_tap_does():
     assert screens.button("Alder", assessment("GO", "T2", 289)) == "Alder".join(["Pay ", " 289 msat"])
     assert "over its limit: nothing is paid" in screens.button("Kestrel", assessment("LIMIT", "T1", 268, 100))
     assert screens.button("Kestrel", assessment("ASK", "T0", 268)) == "Pick Kestrel (ASK: nothing is paid)"
+
+
+def test_the_owners_note_makes_a_real_card_count_did_not_hold(tmp_path):
+    import deal_records as dr
+    import deals
+    from demo_node import DemoNode
+    buyer, seller = DemoNode.open(tmp_path / "b", operator="b"), DemoNode.open(tmp_path / "s", operator="s")
+    try:
+        deals.admit(buyer, seller)
+        deals.admit(seller, buyer)
+        ids = [deals.run_deal(buyer, seller, dr.Terms("badges", 268, "BTC", "lightning", False), "x", deals.SAMPLE_PAYMENT) for _ in range(4)]
+        for deal_id in ids[:3]:
+            deals.note_did_not_hold(seller, deal_id, "other")
+        seller.tick(__import__("datetime").datetime.now(__import__("datetime").timezone.utc))
+        card = json.loads(seller.standard_history()["card"])
+        assert (card["outcomes"]["held"], card["outcomes"]["did_not_hold"]) == (1, 3)
+        with pytest.raises(ValueError):
+            deals.note_did_not_hold(seller, ids[3], "made up")
+    finally:
+        buyer.close()
+        seller.close()

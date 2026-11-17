@@ -9,9 +9,8 @@ Alder, Kestrel and the sample buyer that ran their history), one private relay o
 local web server.
 
 **What it is not.** The sellers' history is *sample history, run by the demo operator*. Kestrel's
-card is a *hand-written sample card* (45 held, 3 did not hold), signed by Kestrel's key, until the
-sentinel record of [#462](https://github.com/action-state-group/evidencebook/issues/462) lets a real
-book show it. The screen says "assessment", never "admission": there is no payment gate, and the
+card comes from its own book: three sample deals carry the owner's temporary `outcome_note`
+([#462](https://github.com/action-state-group/evidencebook/issues/462)); a hand-written sample card is the fallback. The screen says "assessment", never "admission": there is no payment gate, and the
 presenter's pick is the one control (a LIMIT seller can be picked, and then nothing is paid). The
 deal profile still gives no *did not hold* from records ([#212](https://github.com/action-state-group/evidencebook/issues/212)).
 
@@ -68,10 +67,11 @@ screen). Preimages are never printed or kept. You need `gcloud` signed in to the
 
 ### The one switch
 
-`--kestrel-card sample` (the default) serves Kestrel's hand-written card. `--kestrel-card sentinel`
-(`seed --kestrel-card sentinel` first) reads it from Kestrel's own book: three deals carry the book
-owner's `outcome_note` (the temporary record of #462, in evidencebook with #464), which the card counts
-as did not hold. The card does not show who wrote the note, and the screen says it is the seller's own
+`--kestrel-card sentinel` (the default; `seed` writes it) reads Kestrel's card from its own book: three
+deals carry the book owner's `outcome_note` (the temporary record of #462, in evidencebook v0.14.2),
+which the card counts as did not hold. `--kestrel-card sample` is the fallback: Kestrel's hand-written
+sample card (45 held, 3 did not hold), for a package without that record. Use the same value for `seed`
+and `run`. The card does not show who wrote the note, and the screen says it is the seller's own
 note, not confirmed by the buyer or a ruling.
 
 ## What differs from the design note

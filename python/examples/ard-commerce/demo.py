@@ -268,7 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--auto", action="store_true", help="no pauses and the default edit (tests)")
     ap.add_argument("--no-browser", action="store_true", help="print the popup URL, do not open it")
     ap.add_argument("--permille", type=int, default=None, help="the on-stage threshold (default: asked)")
-    ap.add_argument("--kestrel-card", choices=["sample", "sentinel"], default="sample")
+    ap.add_argument("--kestrel-card", choices=["sample", "sentinel"], default="sentinel",
+                    help="sentinel: Kestrel's card from its own book (the owner's outcome_note); sample: the hand-written fallback")
     sys.stdout.reconfigure(line_buffering=True)
     args = ap.parse_args(argv)
     return {"seed": cmd_seed, "run": cmd_run, "reset": cmd_reset}[args.command](args)
