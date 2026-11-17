@@ -11,6 +11,7 @@ implementation and read by every other. Each file is regenerated only with
 | `script.json` | the scripted shelf: its host parameters, keys and two phases of steps | `internal/shelfscript` |
 | `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
 | `after-write.json`, `after-continue.json`, `after-migrate.json`, `after-recover-tick.json`, `after-recover-migration.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
+| `handover.json`, `handover-result.json` | the whole-shelf handover of the shelf after the migrate phase, at its newest stamp, and its replay (evidencebook#461 §2.7) | `internal/shelfscript` |
 
 ## The random source
 
@@ -88,3 +89,18 @@ with the recover phase (`Migrate`, then a stamp):
 A plant runs the interrupted operation on a copy and copies back only what the crash would
 have left; after the continue phase every book is checkpointed at its size, so no book
 checkpoint is involved.
+
+## The handover (evidencebook#461 §2.7)
+
+`handover.json` is `Cadence.Handover` of the shelf after the migrate phase at
+its newest finished stamp (tick 0 asks for it), and `handover-result.json` is
+`VerifyHandover` of it under the script's checkpoint key and witness
+directory, both in the dump's encoding. Byte strings (`doc`, the statements,
+`anchor`, a receipt's `receipt`) are standard base64 with padding, as Go's
+`encoding/json` writes `[]byte`; a consistency proof is
+`ConsistencyEvidence`'s JSON. `latest` and `untied` are in book id order. A
+genesis fact's tie to the old witnessed tree is not handed over yet, so every
+book is untied. Every language hands the shelf over to `handover.json` and
+replays every language's handover to `handover-result.json` (the
+`shelf-interlock` job); the commands are `handover DIR` and
+`verify-handover FILE`.

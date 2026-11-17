@@ -424,6 +424,27 @@ jobs:
               echo "written by $writer, migrated by $migrator: every dump is the vector's"
             done
           done
+      - name: Hand over a migrated shelf, and replay every language's handover, in every pair of languages
+        # evidencebook#461 §2.7: each language hands over the shelf after the
+        # migrate phase to testdata/shelf/handover.json, and replays every
+        # language's handover to testdata/shelf/handover-result.json.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          dir="$work/s"
+          "$RUNNER_TEMP/shelf-go" write "$dir" < /dev/null
+          "$RUNNER_TEMP/shelf-go" continue "$dir" < /dev/null
+          "$RUNNER_TEMP/shelf-go" migrate "$dir" < /dev/null
+          for holder in $langs; do
+            "$RUNNER_TEMP/shelf-$holder" handover "$dir" > "$work/handover.$holder.json" < /dev/null
+            cmp testdata/shelf/handover.json "$work/handover.$holder.json"
+            for reader in $langs; do
+              "$RUNNER_TEMP/shelf-$reader" verify-handover "$work/handover.$holder.json" > "$work/result.$holder.$reader.json" < /dev/null
+              cmp testdata/shelf/handover-result.json "$work/result.$holder.$reader.json"
+            done
+            echo "handed over by $holder: every replay is the vector's"
+          done
       - name: Finish a crash Go planted, in every language
         # evidencebook#461 §7: a tree tick stored but not finished beside an
         # empty host log, and a migration stopped in its step 4; each language

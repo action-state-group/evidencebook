@@ -10,6 +10,10 @@
 //	shelf write DIR       the writer phase, on a new DIR/shelf.db
 //	shelf continue DIR    the continuer phase, on DIR/shelf.db
 //	shelf dump DIR        the file's dump on stdout (it reads a copy)
+//	shelf handover DIR    the handover of the shelf at its newest stamp on stdout
+//	                      (evidencebook#461 §2.7; it reads a copy)
+//	shelf verify-handover FILE
+//	                      replay the handover in FILE; its result on stdout
 //	shelf hold DIR SECS   open the shelf on DIR/shelf.db, print "held", keep
 //	                      it open SECS seconds
 //	shelf try DIR MS      open the shelf, waiting at most MS milliseconds for
@@ -68,6 +72,24 @@ func run(args []string) error {
 		return shelfscript.PlantMigration(ctx, dir, 2)
 	case "plant-migration-checkpointed":
 		return shelfscript.PlantMigrationCheckpointed(ctx, dir)
+	case "handover":
+		out, err := shelfscript.HandoverJSON(ctx, dir)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(out)
+		return err
+	case "verify-handover":
+		raw, err := os.ReadFile(dir)
+		if err != nil {
+			return err
+		}
+		out, err := shelfscript.VerifyHandoverJSON(raw)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(out)
+		return err
 	case "dump":
 		out, err := shelfscript.Dump(ctx, dir)
 		if err != nil {
