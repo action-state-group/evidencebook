@@ -176,10 +176,11 @@ has none to carry.
 
 - **REQUIRED** on every deal-book record, on `ruling`, and on journal records that serve one deal:
   `propose`, `agree` of every kind (agreement, decline, cancellation), the journal overlay's `check`,
-  `verdict` and `approval` (they serve one deal's act), an `ask` or `answer` between the two
+  `verdict`, and an `approval` that answers a verdict (they serve one deal's act), an `ask` or `answer` between the two
   parties, and a journey record (`message`, `claim`, `evidence`, `detail_change`, `agent_move`)
   sealed within one offer's thread, that is, after that offer exists.
-- **Absent** on journal records that predate or span deals: `intent` (Appendix A seals the buyer's
+- **Absent** on journal records that predate or span deals: an `approval` on `confirm_limits`,
+  which approves an intent's limits rather than one act (`PROFILE.md:609-614`); `intent` (Appendix A seals the buyer's
   intent at line 6, before its offer at line 11; an intent's limit spans every deal that cites it,
   design §4.2), `admit`, an `ask` or `answer` of an admission, `sale`, `thread`, `thread_opened`,
   `sale_unpost` (the listing and its threads span its offers; `thread` keeps the offer's deal id
@@ -987,7 +988,8 @@ Forms §6.1). Section 9, PR 1, and Q8.
   one candidate that matches (8.3), and refuses when both match;
 - **`fork-at-position-1`** (REQUIRED, round 3): two different agreements from one sender at
   position 1 of one log; `HeldFirst` returns both, and `ProofSender` refuses the proof rather than
-  pick one (8.3).
+  pick one (8.3), also when the two agreements name different `checkpoint_key`s, so filtering by
+  key would leave one (round 4).
 
 ## 8. The StatusProvider and ReceiveProfile implementations
 
@@ -1169,8 +1171,10 @@ holder chooses. A stamp proof never carries a link opening (`shelf_stamp_proof.g
   `Shelf.HeldFirst(ctx, logID) ([]HeldRecord, error)`, that returns **every** held record at
   position 1 of a log with that id: across senders, and both records of a fork at position 1 from
   one sender, which the store keeps (`shelf_receive.go:571-602`; no uniqueness on sender, log and
-  position, `store_sqlite.go:106-117`). The profile keeps a candidate only when all of
-  these hold: it is a v1 `agree` of kind `agreement`; its `checkpoint_key` is `checkpointKeyID`;
+  position, `store_sqlite.go:106-117`). First, before any filtering, the profile refuses every
+  sender whose log holds two different records at position 1 (a fork at the genesis): such a
+  sender's proofs are refused whatever their `checkpoint_key`. Then it keeps a candidate only when
+  all of these hold: it is a v1 `agree` of kind `agreement`; its `checkpoint_key` is `checkpointKeyID`;
   its `deal_id` is a deal of ours (we hold its offer in our journal, or our own agreement for it);
   and its signer is the key that deal expects (our offer's `to`, or our agreement's
   `counterparty_key`). With exactly one candidate left, it returns that candidate's signer and `ok`
@@ -1460,9 +1464,10 @@ actionstate-muse#378 (pages that read the v1 report).
   8.1 lists it.
 - **Authorization (D; PR 2).** **`approval-migration`** (REQUIRED, review round 3), as 3.2 lists it.
 - **`deal_id` presence (PR 2; review round 3).** `deal-id-presence`: a deal-book record, a
-  `propose`, a decline, a cancellation and a journal `check` without `deal_id` are refused; an
-  `intent`, `admit`, `sale`, `thread`, `counterparty_profile`, `disclosure` and a pre-offer
-  `message` with `deal_id` are refused; each listed record with the presence 3.1 gives is accepted.
+  `propose`, a decline, a cancellation, a journal `check` and an `approval` answering a verdict
+  without `deal_id` are refused; an `intent`, `admit`, `sale`, `thread`, `counterparty_profile`,
+  `disclosure`, a pre-offer `message` and an `approval` on `confirm_limits` (raised before any
+  offer) with `deal_id` are refused; each listed record with the presence 3.1 gives is accepted.
 - **Effective ruling** (review round 2). With two conflicting final rulings held, the row is
   `in_dispute`, `ruling_against` is `null`, and each dispute's outcome is `open`.
 - **Journey overlay placement** (review round 2). `sale`, `thread`, `thread_opened`, `sale_unpost`,
