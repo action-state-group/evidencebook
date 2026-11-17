@@ -229,7 +229,8 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 	key := logKey{sender, v.Fact.LogID}
 	shelfSum := sha256.Sum256(p.ShelfCheckpoint)
 	shelfDigest := hex.EncodeToString(shelfSum[:])
-	inclusion, err := json.Marshal(p.Inclusion)
+	// Stored as its canonical JSON, so every language keeps the same bytes.
+	inclusion, err := canonicalJSON(p.Inclusion)
 	if err != nil {
 		return ProofOutcome{}, err
 	}

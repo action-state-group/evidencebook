@@ -1,0 +1,613 @@
+{
+  "about": "The received store's vectors (evidencebook#461, docs/design/461-shelf-facts.md §3 and §7), written by shelf_receive_vectors_test.go (EB_WRITE_SHELF_VECTORS=1). The profile is a test profile, not a record format; see README.md.",
+  "profile": {
+    "secrets": {
+      "alice": "alice secret",
+      "bob": "bob secret",
+      "mallory": "mallory secret"
+    },
+    "admitted": [
+      "alice"
+    ],
+    "answered": [
+      "2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc"
+    ],
+    "proof_keys": {
+      "debaf7c478bfb3b3f0f8ebc58bf11dc3b373c62aa9250db53d663fca965c36ec": "alice"
+    }
+  },
+  "bounds": {
+    "max_record_bytes": 1048576,
+    "max_records_per_log": 100000,
+    "max_offers_per_sender": 2,
+    "max_offer_bytes_per_sender": 4194304,
+    "max_offers": 1024,
+    "max_offer_bytes": 67108864,
+    "max_offer_evidence_per_sender": 16,
+    "max_offer_evidence": 1024
+  },
+  "retention_seconds": 3600,
+  "records": {
+    "a1": "{\"deal\":\"deal-1\",\"digest\":\"03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549\",\"log\":\"deal/a\",\"offer\":false,\"position\":1,\"prev\":\"\",\"sender\":\"alice\",\"sig\":\"e77f4fde07bd1a6979ce3a845d12f1f6309b0d09e3caae6a8a08f308b44d641a\",\"v\":1}",
+    "a2": "{\"deal\":\"deal-1\",\"digest\":\"7d2160d7149e57f6c5d7748de15326061e7d128739cac5395040127fb1b29554\",\"log\":\"deal/a\",\"offer\":false,\"position\":2,\"prev\":\"03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549\",\"sender\":\"alice\",\"sig\":\"06b04b1b9b9eb8be9295ee7508826d1def5a8eac4c31bae3916a961210f808fe\",\"v\":1}",
+    "a2-fork": "{\"deal\":\"deal-1\",\"digest\":\"19b8a2f51fc55bd92da85cdecd91f39313d308129af1179249bd14e3ed6e3476\",\"log\":\"deal/a\",\"offer\":false,\"position\":2,\"prev\":\"03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549\",\"sender\":\"alice\",\"sig\":\"f32f7aba80cf75dffa8489cfec273badda658ae3c186f7fa86621f68efb4f09a\",\"v\":1}",
+    "a3": "{\"deal\":\"deal-1\",\"digest\":\"c8068f64e95e4204b387a1df97888e5aa7e4f1da9e3d64e795b6d20f449d9cca\",\"log\":\"deal/a\",\"offer\":false,\"position\":3,\"prev\":\"7d2160d7149e57f6c5d7748de15326061e7d128739cac5395040127fb1b29554\",\"sender\":\"alice\",\"sig\":\"15530be7f61dd1bb387063411e9daa104cc7fb84724b8104039e8aebeaa4eab7\",\"v\":1}",
+    "a4": "{\"deal\":\"deal-1\",\"digest\":\"c49d5d80ab7b84d02bfeecead4554aae418444529a1a043f98ee9f92ee386976\",\"log\":\"deal/a\",\"offer\":false,\"position\":4,\"prev\":\"c8068f64e95e4204b387a1df97888e5aa7e4f1da9e3d64e795b6d20f449d9cca\",\"sender\":\"alice\",\"sig\":\"13c42a6debdb34f7893074fbb923687fcc166f21ec267243d7186e1ee5618458\",\"v\":1}",
+    "a5": "{\"deal\":\"deal-1\",\"digest\":\"71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb\",\"log\":\"deal/a\",\"offer\":false,\"position\":5,\"prev\":\"c49d5d80ab7b84d02bfeecead4554aae418444529a1a043f98ee9f92ee386976\",\"sender\":\"alice\",\"sig\":\"642065316f31a1e4d48eb2a5458d2aa930536101f744f69092acf3ccb0dbdfdd\",\"v\":1}",
+    "b1": "{\"deal\":\"deal-2\",\"digest\":\"7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193\",\"log\":\"deal/b\",\"offer\":false,\"position\":1,\"prev\":\"\",\"sender\":\"alice\",\"sig\":\"31a42ea7b48990636d32c4707805d5fa1818188a064a3a2b90dbc8055c376c48\",\"v\":1}",
+    "m1": "{\"deal\":\"deal-m\",\"digest\":\"ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619\",\"log\":\"deal/m\",\"offer\":false,\"position\":1,\"prev\":\"\",\"sender\":\"mallory\",\"sig\":\"3568c25b796d3529ca9a4ee4304bc397b5478375e4eefe01b5115450146617d5\",\"v\":1}",
+    "o1": "{\"deal\":\"offer-o1\",\"digest\":\"2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc\",\"log\":\"offers/o1\",\"offer\":true,\"position\":1,\"prev\":\"\",\"sender\":\"bob\",\"sig\":\"df9807ef8158905d7cedc0a4c21f41b1eba1564a23fbefc0bb8b1fc9df511bd2\",\"v\":1}",
+    "o2": "{\"deal\":\"offer-o2\",\"digest\":\"9250b9912ee91d6b46e23299459ecd6eb8154451d62558a3a0a708a77926ad04\",\"log\":\"offers/o2\",\"offer\":true,\"position\":1,\"prev\":\"\",\"sender\":\"bob\",\"sig\":\"51bcf138508eb7ce1e9e754865f1452efc4a4a50c3b9df2d025ba5b9a3e86819\",\"v\":1}",
+    "o3": "{\"deal\":\"offer-o3\",\"digest\":\"de2d91dc0a2580414e9a70f7dfc76af727b69cac0838f2cbe0a88d12642efcbf\",\"log\":\"offers/o3\",\"offer\":true,\"position\":1,\"prev\":\"\",\"sender\":\"bob\",\"sig\":\"53bddb655411fa0da9f9621ea397e90e0793e703dbb291f54c1a0e4f869c69ca\",\"v\":1}",
+    "o4": "{\"deal\":\"offer-o4\",\"digest\":\"1b2501a20fe1bcd82b48c8db1e0f9dd2da9de58d6b618fa04a81c51c3a86cea2\",\"log\":\"offers/o4\",\"offer\":true,\"position\":1,\"prev\":\"\",\"sender\":\"bob\",\"sig\":\"a10f16553f26c2e0e88c0c145b03897013415e22a61b55f322234e76d5b331f2\",\"v\":1}"
+  },
+  "proofs": {
+    "p1": {
+      "fact": "eyJib29rX2lkIjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImNoZWNrcG9pbnRfc2hhMjU2IjoiMDk3Y2U3YjdkNzk4OGE2ZTI2MDRkMDFlY2Q5NzU0NGFiMDgzOWRjOTZmMjM4M2I4YTIwODczMzBmMzk0NDliNyIsImtpbmQiOiJib29rX2ZhY3QiLCJsaW5rX2NvbW1pdG1lbnQiOiJiYzZjOTAyMjcwZTViZWMzZjE4NTUzN2Y0ZGYxZTc5MjEzMzcyZmNhODFjZGUxNzJmMTc1OGY5Y2M4M2MxMzQ4IiwibG9nX2lkIjoiZGVhbC9hIiwicHJldl9mYWN0X3NpemUiOjAsInByb2ZpbGUiOiJkZWFsIiwic2l6ZSI6OCwic3RhdHVzX2NvbW1pdG1lbnQiOiJlOTcxZjRlMTQ0ODU5NmYyMTUyYmNhYmI2NjhjZTU4YzdiMWM5MGQ3ZTAyMjU0NDI2YzMwMGI3YjBlZmJkNzNhIiwidiI6MX0=",
+      "status_opening": {
+        "salt": "c4831f7a742c27ffe0fa6e42e09ac32102e602a143a10409674a20bfdcb643d2",
+        "value": {
+          "row": "open"
+        }
+      },
+      "book_checkpoint": "0oRYXKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAWZkZWFsL2ECaGRlYWwvYSM4oFispmRraW5kbmNsbC1jaGVja3BvaW50aGxvZ19zaXplCGlpc3N1ZWRfYXR0MjAyNi0xMC0xOVQxMjowMDowMFppcHJldl9zaXplAGpjb21taXRtZW50WEWCWCCZYiKlYaUR42qiqSr78FmwEOfjmUwNV/Jw5RL1vLj/FFgg5WSojmmsSHfRyOfge5t6lUQ/HPn81SMXAb7CEW9tm81vcHJldl9jb21taXRtZW50QFhAn5/2jVPEpoSPi/X6MUEvzwm3zPR1SGd+DuU/82+c1RYTw9x6MlQ6ePWAys9kiz55crfI04+C5rw+tofWY2puDQ==",
+      "inclusion": {
+        "kind": "cll-mmr-inclusion",
+        "seq": 3,
+        "proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 7,
+          "leaf_index": 2,
+          "witness": [
+            "b3e69b41b4e16c58e6bac342bf2c2cb4fdf5dbd5b18da7e9cf48cb2d491f946c",
+            "94d2f71fdc2622a7d9e5d70032a631b86cc26528fed1065c46eb57a333a2be81"
+          ],
+          "peaks_left": [],
+          "peaks_right": []
+        }
+      },
+      "shelf_checkpoint": "0oRYjKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAXgdZGVhbC1jYWRlbmNlLzAxMjM0NTY3ODlhYmNkZWYCeB9kZWFsLWNhZGVuY2UvMDEyMzQ1Njc4OWFiY2RlZiM3oFkBeadka2luZG5jbGwtY2hlY2twb2ludGhsb2dfc2l6ZQdpaXNzdWVkX2F0dDIwMjYtMTAtMTlUMTI6MDE6MDBaaXByZXZfc2l6ZQFqY29tbWl0bWVudFgjgVggZ3P+EKkMGk80zfszJYmqHv3zTyW5RbTKNmVVBNKd9/9vcHJldl9jb21taXRtZW50WCOBWCDZCbCUusl0FT8BdwGz1vDJDrOIgEpFSPqiNZ02T14h5HFjb25zaXN0ZW5jeV9wcm9vZqVmc2l6ZV9hAWZzaXplX2IHZ3dpdG5lc3OBglggFoRdXQrPnc2bVKeBy5R7+P8C8xX1L6Jo2uAQ9LmESPBYIKsjXisuLjtuLBCFAFuXFDWeenqaDsQBEIbZ5lKRnl2NaW5ld19wZWFrc4FYIGdz/hCpDBpPNM37MyWJqh79808luUW0yjZlVQTSnff/aW9sZF9wZWFrc4FYINkJsJS6yXQVPwF3AbPW8MkOs4iASkVI+qI1nTZPXiHkWEADRMU6ZKi3GPnXl8+tGlVb7jYsxWQCVjF9Zk+4yrlHQsHvpqwjcd4foFUQ+FofgiP9p5HAOyKpB1MM2t7rR18L"
+    },
+    "p2": {
+      "fact": "eyJib29rX2lkIjoiMDMxMjI2MTZiZmU0NGM3YjhkZWRjOWYyODk5ZGVjNzNlNmQ4OTJlOGE2MDM2MTc4MTYwZmUzZDlkMTQ3ZTU0OSIsImNoZWNrcG9pbnRfc2hhMjU2IjoiMDk3Y2U3YjdkNzk4OGE2ZTI2MDRkMDFlY2Q5NzU0NGFiMDgzOWRjOTZmMjM4M2I4YTIwODczMzBmMzk0NDliNyIsImtpbmQiOiJib29rX2ZhY3QiLCJsaW5rX2NvbW1pdG1lbnQiOiJlNDJjZjhhYmE5OGEyNDk2ZmIzNDk0N2JlY2IxOTMwZTFlNTg1NjRmYTdiMWU1MmI4YTcwOTI1M2ZlMThlMjMwIiwibG9nX2lkIjoiZGVhbC9hIiwicHJldl9mYWN0X3NpemUiOjgsInByb2ZpbGUiOiJkZWFsIiwic2l6ZSI6OCwic3RhdHVzX2NvbW1pdG1lbnQiOiI4ZWNhNmZiOWM5OWZkMjM0MDg3ODAxZDRkZTA5ZWIwMTc5NGI2Y2RkNmYzZDBjZTY1MzJjZDM0ZDVkNTI3MzUxIiwidiI6MX0=",
+      "status_opening": {
+        "salt": "a834a812e90de5ea03c03fba17d7479b14394fefc9f4ea48321285af6bddfeef",
+        "value": {
+          "row": "agreed"
+        }
+      },
+      "book_checkpoint": "0oRYXKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAWZkZWFsL2ECaGRlYWwvYSM4oFispmRraW5kbmNsbC1jaGVja3BvaW50aGxvZ19zaXplCGlpc3N1ZWRfYXR0MjAyNi0xMC0xOVQxMjowMDowMFppcHJldl9zaXplAGpjb21taXRtZW50WEWCWCCZYiKlYaUR42qiqSr78FmwEOfjmUwNV/Jw5RL1vLj/FFgg5WSojmmsSHfRyOfge5t6lUQ/HPn81SMXAb7CEW9tm81vcHJldl9jb21taXRtZW50QFhAn5/2jVPEpoSPi/X6MUEvzwm3zPR1SGd+DuU/82+c1RYTw9x6MlQ6ePWAys9kiz55crfI04+C5rw+tofWY2puDQ==",
+      "inclusion": {
+        "kind": "cll-mmr-inclusion",
+        "seq": 5,
+        "proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 10,
+          "leaf_index": 4,
+          "witness": [
+            "d97c20072ae5bfb3eaffa8555a2f399181f47c1de93d085d0141e97f763cd47d"
+          ],
+          "peaks_left": [
+            "6773fe10a90c1a4f34cdfb332589aa1efdf34f25b945b4ca36655504d29df7ff"
+          ],
+          "peaks_right": []
+        }
+      },
+      "shelf_checkpoint": "0oRYjaQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAXgdZGVhbC1jYWRlbmNlLzAxMjM0NTY3ODlhYmNkZWYCeCBkZWFsLWNhZGVuY2UvMDEyMzQ1Njc4OWFiY2RlZiMxMKBZAXmnZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUKaWlzc3VlZF9hdHQyMDI2LTEwLTE5VDEyOjAyOjAwWmlwcmV2X3NpemUHamNvbW1pdG1lbnRYRYJYIGdz/hCpDBpPNM37MyWJqh79808luUW0yjZlVQTSnff/WCDteAuiz+aUBnDi96hOmgo0895pQU3QLLZW4GHelbiyhG9wcmV2X2NvbW1pdG1lbnRYI4FYIGdz/hCpDBpPNM37MyWJqh79808luUW0yjZlVQTSnff/cWNvbnNpc3RlbmN5X3Byb29mpWZzaXplX2EHZnNpemVfYgpnd2l0bmVzc4GAaW5ld19wZWFrc4JYIGdz/hCpDBpPNM37MyWJqh79808luUW0yjZlVQTSnff/WCDteAuiz+aUBnDi96hOmgo0895pQU3QLLZW4GHelbiyhGlvbGRfcGVha3OBWCBnc/4QqQwaTzTN+zMliaoe/fNPJblFtMo2ZVUE0p33/1hAMgd2ptGjpNxmu5MUBec2R33jZVZlxSg0+MZWOCIp0hrvarYa5/gkA6UQcf9+U+vax9r3/CRoT7XN0jHEAYp6CA=="
+    },
+    "pc": {
+      "fact": "eyJib29rX2lkIjoiYWU0ZDZjOTg4MzM4ZDU1NTQ3Mzc5MDVjYjg5YjY0OTIxZWE5YmIxYjZhNTVhNjUzOGI5ZTgzNjBlOWYwMjBhZCIsImNoZWNrcG9pbnRfc2hhMjU2IjoiY2FiNWFlMTNjY2VlZDcyOTE1YmY2ZmYxNDAwYTc1ZDU1ZjAwYmYyNWM5ZDBhNGZhMmY4ZTBiMWE0OTg1M2IzNCIsImtpbmQiOiJib29rX2ZhY3QiLCJsaW5rX2NvbW1pdG1lbnQiOiI2ZWFlMTkzYmU1YTQ0NDdkZTcxYjg1YWViMWFkNTcyY2VhM2FkNGQwNDBhYzcwZTI4MTdmMDE3OGFmY2Y0OGFjIiwibG9nX2lkIjoiZGVhbC9hIiwicHJldl9mYWN0X3NpemUiOjAsInByb2ZpbGUiOiJkZWFsIiwic2l6ZSI6OCwic3RhdHVzX2NvbW1pdG1lbnQiOiJiZDVhODU4YTY2ZTc1OGU2MGFkYTRjNjQ4MTFhY2M4OTE4OWY1ODM3Y2YzYmYxNjZlODI1MTllMjY3YWNlZjRjIiwidiI6MX0=",
+      "status_opening": {
+        "salt": "33acfabdab731bf96209077a59f1eae10f1aadd55b376aded119280f61850a8f",
+        "value": {
+          "row": "open"
+        }
+      },
+      "book_checkpoint": "0oRYXKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAWZkZWFsL2ECaGRlYWwvYSM4oFispmRraW5kbmNsbC1jaGVja3BvaW50aGxvZ19zaXplCGlpc3N1ZWRfYXR0MjAyNi0xMC0xOVQxMjowMDowMFppcHJldl9zaXplAGpjb21taXRtZW50WEWCWCAc+NJJo4uajnq+cPu4h+oKbF4XBjBl+bDhtxI67z8N5lggfczb3tKXPyIMjWHDHCLJm0fU+YWfMT8NFhP1yMGFToJvcHJldl9jb21taXRtZW50QFhAfYwQaeLn1jZFlbrrqKL08Nsu9iIjsyPPIY+YtdvU+VvyoepsuJU3gjCCOanIXl2+Qeecxxf7O7erLFEPozWGCw==",
+      "inclusion": {
+        "kind": "cll-mmr-inclusion",
+        "seq": 3,
+        "proof": {
+          "v": 1,
+          "kind": "inclusion",
+          "size": 7,
+          "leaf_index": 2,
+          "witness": [
+            "b3e69b41b4e16c58e6bac342bf2c2cb4fdf5dbd5b18da7e9cf48cb2d491f946c",
+            "ff2a09b9eee251ac6e744ef043dfcfe3a310e052bd1c4dac0f1d8b1baa4a42fc"
+          ],
+          "peaks_left": [],
+          "peaks_right": []
+        }
+      },
+      "shelf_checkpoint": "0oRYjKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDeuvfEeL+zs/D468WL8R3Ds3PGKqklDbU9Zj/Kllw27A+iAXgdZGVhbC1jYWRlbmNlLzAxMjM0NTY3ODlhYmNkZWYCeB9kZWFsLWNhZGVuY2UvMDEyMzQ1Njc4OWFiY2RlZiM3oFkBeadka2luZG5jbGwtY2hlY2twb2ludGhsb2dfc2l6ZQdpaXNzdWVkX2F0dDIwMjYtMTAtMTlUMTI6MDE6MDBaaXByZXZfc2l6ZQFqY29tbWl0bWVudFgjgVggzgfMEtcTGA5eUaW1m2nCGBgc0K7RBjrKut3/CEZd28RvcHJldl9jb21taXRtZW50WCOBWCBUvuwkzSM3oqlQO3auva/GYiou/fUrOZmCPq/JtPwkSXFjb25zaXN0ZW5jeV9wcm9vZqVmc2l6ZV9hAWZzaXplX2IHZ3dpdG5lc3OBglggFoRdXQrPnc2bVKeBy5R7+P8C8xX1L6Jo2uAQ9LmESPBYIES/IKHYwb9sEKVUpoEiCwVk4dFz7ZCz2fZmsuDop7mLaW5ld19wZWFrc4FYIM4HzBLXExgOXlGltZtpwhgYHNCu0QY6yrrd/whGXdvEaW9sZF9wZWFrc4FYIFS+7CTNIzeiqVA7dq69r8ZiKi799Ss5mYI+r8m0/CRJWEDnWKmSaGVELXbGEvgmnNXCO9G1OBdo/a8dE3McnZ3nl5ek4WB4kwGoGVQPnU9O49kk/aM2moTaDVYRJngZwccJ"
+    }
+  },
+  "steps": [
+    {
+      "at": "2026-10-20T00:01:00Z",
+      "op": "receive",
+      "record": "a1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "deal-1"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:02:00Z",
+      "op": "receive",
+      "record": "a1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+          "stored": false,
+          "duplicate": true,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:03:00Z",
+      "op": "receive",
+      "record": "a3",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "c8068f64e95e4204b387a1df97888e5aa7e4f1da9e3d64e795b6d20f449d9cca",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": false,
+          "ask_for_book": true,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:04:00Z",
+      "op": "receive",
+      "record": "a4",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "c49d5d80ab7b84d02bfeecead4554aae418444529a1a043f98ee9f92ee386976",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": false,
+          "ask_for_book": true,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:05:00Z",
+      "op": "receive",
+      "record": "a5",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": false,
+          "ask_for_book": true,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:06:00Z",
+      "op": "receive",
+      "proof": "p1",
+      "expect": {
+        "error": "",
+        "proof": {
+          "accepted": true,
+          "duplicate": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:07:00Z",
+      "op": "receive",
+      "record": "a2",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "7d2160d7149e57f6c5d7748de15326061e7d128739cac5395040127fb1b29554",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "deal-1"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": [
+            "deal-1"
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:08:00Z",
+      "op": "receive",
+      "record": "a5",
+      "proof": "p2",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "71db53839ee90023a82b5d166eceb29c262872e43df0bfe46a21cb8311c67ccb",
+          "stored": false,
+          "duplicate": true,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "proof": {
+          "accepted": true,
+          "duplicate": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:09:00Z",
+      "op": "receive",
+      "proof": "p1",
+      "expect": {
+        "error": "",
+        "proof": {
+          "accepted": false,
+          "duplicate": true,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:10:00Z",
+      "op": "receive",
+      "proof": "pc",
+      "expect": {
+        "error": "invalid",
+        "proof": {
+          "accepted": false,
+          "duplicate": false,
+          "refused": "invalid"
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [
+            "deal-1"
+          ],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:11:00Z",
+      "op": "receive",
+      "record": "a2-fork",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "19b8a2f51fc55bd92da85cdecd91f39313d308129af1179249bd14e3ed6e3476",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": false,
+          "ask_for_book": true,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [
+            "deal-1"
+          ],
+          "forked": [
+            "deal-1"
+          ],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:12:00Z",
+      "op": "receive",
+      "record": "m1",
+      "expect": {
+        "error": "refused",
+        "record": {
+          "digest": "ca0df2c95aa144c1d0ff2ff3c8f967fdc1de9ef0c4120b3726416701b519d619",
+          "stored": false,
+          "duplicate": false,
+          "deleted": false,
+          "counted": false,
+          "ask_for_book": false,
+          "refused": "refused"
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:13:00Z",
+      "op": "receive",
+      "record": "o1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "offer-o1"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:14:00Z",
+      "op": "receive",
+      "record": "o2",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "9250b9912ee91d6b46e23299459ecd6eb8154451d62558a3a0a708a77926ad04",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "offer-o2"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:15:00Z",
+      "op": "receive",
+      "record": "o3",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "de2d91dc0a2580414e9a70f7dfc76af727b69cac0838f2cbe0a88d12642efcbf",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "offer-o3"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:16:00Z",
+      "op": "receive",
+      "record": "o4",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "1b2501a20fe1bcd82b48c8db1e0f9dd2da9de58d6b618fa04a81c51c3a86cea2",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "offer-o4"
+          ],
+          "shrank": [
+            "offer-o2"
+          ],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:17:00Z",
+      "op": "receive",
+      "record": "b1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+          "stored": true,
+          "duplicate": false,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [
+            "deal-2"
+          ],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T00:18:00Z",
+      "op": "forget",
+      "deal": "deal-2",
+      "settled": false,
+      "expect": {
+        "error": "invalid"
+      }
+    },
+    {
+      "at": "2026-10-20T03:00:00Z",
+      "op": "forget",
+      "deal": "deal-2",
+      "settled": true,
+      "expect": {
+        "error": "",
+        "deleted": [
+          "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193"
+        ]
+      }
+    },
+    {
+      "at": "2026-10-20T03:19:00Z",
+      "op": "receive",
+      "record": "b1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "7dc96f776c8423e57a2785489a3f9c43fb6e756876d6ad9a9cac4aa4e72ec193",
+          "stored": false,
+          "duplicate": false,
+          "deleted": true,
+          "counted": false,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    },
+    {
+      "at": "2026-10-20T03:20:00Z",
+      "op": "reopen",
+      "expect": {
+        "error": ""
+      }
+    },
+    {
+      "at": "2026-10-20T03:21:00Z",
+      "op": "receive",
+      "record": "a1",
+      "expect": {
+        "error": "",
+        "record": {
+          "digest": "03122616bfe44c7b8dedc9f2899dec73e6d892e8a6036178160fe3d9d147e549",
+          "stored": false,
+          "duplicate": true,
+          "deleted": false,
+          "counted": true,
+          "ask_for_book": false,
+          "refused": ""
+        },
+        "changes": {
+          "grew": [],
+          "shrank": [],
+          "forked": [],
+          "covered": []
+        }
+      }
+    }
+  ]
+}

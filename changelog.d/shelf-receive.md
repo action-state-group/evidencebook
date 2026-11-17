@@ -19,4 +19,5 @@
   deletes a settled deal's records under the holder's `Retention` (by default the life of the shelf, so never),
   leaving tombstones that read as `ErrDeleted`. `CountedPrefix`, `ReceivedRecordOf` and `Evidence` read the
   store without the shelf's lock, so a `StatusProvider` may call them during a stamp; the shelf's handle now
-  keeps four connections. Works on version 1 and 2 shelves.
+  keeps four connections. Works on version 1 and 2 shelves. `testdata/shelf/receive` holds the store's vectors:
+  a test profile, a script of steps with each step's expected outcome, and the store's dump after it.
