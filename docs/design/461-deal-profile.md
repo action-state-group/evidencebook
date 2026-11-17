@@ -299,7 +299,7 @@ claim on it and relies on the statement").
   and a standing-intent approval outside `allowed`, refused.
 
 A change of rules and the note of what was shared stay where the library keeps them today. The
-decision is Steven's (section 12, Q3).
+decision was Steven's, and he took the recommendation (section 12, Q3, answered).
 
 `rules_verdict` stays, under the same name, as a deal-book overlay type (constraint 4; section
 3.3). The consumer journey records Muse uses (`message`, `claim`, `evidence`, `detail_change`,
@@ -344,7 +344,8 @@ now opens with `agree`), `action` (an act is `perform` or `settle`), `close`, `o
 §4.2), and `sale_cut` (it cuts a sale bundle, and v1 sends the decline instead). `verdict` is not
 among them: it is the journal overlay's per-check verdict above. A Muse flow that seals one of the
 seven on a v0 deal keeps doing so; on a v1 deal it seals the v1 record named. One book per deal, so
-no v0 side book. The overlays' names are part of the vocabulary trim Steven decides (Q3).
+no v0 side book. The overlays' names were part of the vocabulary trim Steven decided (Q3,
+answered: the overlays as proposed).
 
 ### 3.3 Each type's body
 
@@ -372,7 +373,7 @@ chooses a remedy (4.6).
 | `agree_by` | REQUIRED | the agree-by time, RFC 3339 UTC to the second | design §4.2: "it is the `valid_until` that settlement terms already carry" |
 | `terms_rows` | REQUIRED | the rows and the named records they hang on (4.2) | design §4.2 |
 | `adjudicator` | REQUIRED, or `null` | `{"key_id", "rules_digest", "rules_url"}`; `null` is an offer with no adjudicator | design §8, "Who it is, and its rules" |
-| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; naming is Q1 |
+| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; each witness named by its key id with its URL as a hint (Q1, answered) |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
 | `listing_digest` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers. A third digest, distinct from `pack_digest` (the deal terms pack) and from the rows digest (`terms_rows`): it names the feed bytes the buyer read, so the two must not be merged | Proposed (3.2, "A listing and its offers"; review round 2; named per Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6) |
@@ -466,7 +467,8 @@ one word, at most one per deal; carried in the counterparty cut, with its payloa
 the holder's share policy says so ("not shared"); never read by a card, a report row or the row
 status. v0 seals it "only after the final `close`" (`PROFILE.md:220`), and v1 has no close.
 **Proposed:** seal it only once the holder computes the deal settled, as 9 defines `settled`
-(design §4.2, third consequence). A deal that is never settled has no verdict. Q2.
+(design §4.2, third consequence). A deal that is never settled has no verdict. Q2, answered: as
+proposed.
 
 ### 3.4 Which records carry `seen`
 
@@ -608,8 +610,8 @@ The table in 3.3 lists the members.
 
 **Witnesses.** An empty list is allowed (u186, as the How ack records it; design §4.3: "a deal with
 no witness that both accept has no record times"). Then no record of the deal has a time, every
-status is local, and a card tallies the deal as not counted (acceptance 9). How a witness is named
-is Q1, which goes to Steven.
+status is local, and a card tallies the deal as not counted (acceptance 9). A witness is named by
+its verified key id, with its URL only as a hint where to find it (Q1, answered).
 
 **The adjudicator** is `{"key_id", "rules_digest", "rules_url"}` or `null`. An agreement with no
 adjudicator says so (design §8, "Who it is").
@@ -1288,7 +1290,8 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 - **`settled`** (review round 1). It is true when all of these hold at `as_of`: the deal has
   started (`start.state` is `started`); and every row that is not `not_reached` is `agreed`,
   `uncontested`, or `ruled` with remedy `none` (the final ruling ordered nothing) or `made`. A
-  `not_reached` row is left out, as the design says ("it is left out when the deal is settled",
+  `not_reached` row is left out of settlement, as the design says (on the card it is `undecided`,
+  Q12, answered) ("it is left out when the deal is settled",
   design §4.2, "A latest date"; line 372 of the export). A row `ruled` with remedy `due` or
   `not_honoured` keeps the deal unsettled. A started deal whose rows are all `not_reached` is
   settled. The same definition decides when `rules_verdict` may be sealed (3.3), and `settled`
@@ -1415,8 +1418,8 @@ same vectors, each in its own pull request.
 1. **Library, format-free** (Go, then Rust and Python): the record time of a counterparty
    position covered by the holder's own facts (4.3); and, once AAC#621 fixes its form, receiving
    the witnessed follow-up (receipts and the shelf consistency proof) and the record time it
-   gives. If Steven picks key-id naming (Q1), `RecordTime` also takes witnesses by key id,
-   reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
+   gives. Steven picked key-id naming (Q1, answered), so `RecordTime` also takes witnesses by key
+   id, reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
    outputs land here too (Q9, decided), and `Shelf.SealSent`, which seals a sent journal record
    and its standalone Capsule in one call (3.1). Lock-free readers the profile calls from a
    stamp or a `Receive`: one that lets the profile re-check every held proof's bindings against the
@@ -1525,6 +1528,8 @@ verified under (`shelf_record_time.go:20-25`; `461-shelf-facts.md:117-125`).
 
 Key-id naming needs `RecordTime` to filter by key id (11.1, PR 1). URL naming needs no library
 change.
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): name each witness by its verified key id, with the URL as a hint:
+`{"key_id": "…", "url": "…"}`. The library's `RecordTime` gains naming by key id (11.1, PR 1).
 
 **Steven's one ask for AAC#626.** Q4 and Q12 gate AAC#626's exact-head approval (the `/3` card's
 `forum` and `by_forum`, and its line for a `not_reached` row and for a deal with no witnessed time),
@@ -1539,11 +1544,13 @@ since a verdict sealed before settlement would be a close by another name. u195'
 are (3.3), condition 1 (shared under the holder's share policy: a node shares by default, a
 person does not) and condition 4 among them, and the verdict word stays a record in the party's
 own book, never a member of a report (u195 condition 3; section 9).
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): seal at settled; a deal that is never settled has no verdict.
 
 **Q3. The intent, the check before an act, its verdict and the approval.** Design §7 says they need "types of
 their own or a place in the overlay; no source settles which". Proposed: a journal-only overlay
 of four types (`intent`, `check`, the per-check `verdict`, `approval`), reusing v0's bodies and rules (3.2), and the journey overlay placed by phase (3.2). This touches the trim of the public vocabulary that
 design §14, row 7, puts to Steven.
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): the journal overlay as proposed, with `listing_digest` optional on an offer (3.3).
 
 **Q4. evidencebook#404 against the ten types.** #404 (sourced to Steven, 2026-11-05) asks for four
 kinds: `dispute`, `dispute_response`, `adjudication` and `revocation`, plus a forum enum and a
