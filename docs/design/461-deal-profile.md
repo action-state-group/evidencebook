@@ -435,14 +435,16 @@ store and never into the book. A `statement` with empty `statements` and no `nam
 **`dispute`** (deal book). One body type with a `kind`, as design §7 puts all three here.
 
 - `kind: "dispute"`: `row`; `statements`, the record digests of the statements on that row that
-  exist when it is sealed; `adjudicator`, the key id the agreement names (design §8 table).
+  exist when it is sealed; `adjudicator`, the key id the agreement names (design §8 table); `forum`,
+  the process that resolves it (Q4, answered).
 - `kind: "withdrawal"`: `row` (same table).
 - `kind: "challenge"`: `ruling`, digest ref; `grounds_commitment` (same table).
 
 **`ruling`** (the adjudicator's case book; one book per case, design §8). Members are design §8's
 table: `row`; `keys`, `{"buyer", "seller"}`; `against`, `buyer` | `seller` | `null`; `value`,
 `met` | `not_met`; `remedy`, `{"kind", "amount_minor"?, "currency"?, "due"}` or absent; `read`,
-the last record id of each deal book the adjudicator read; `rules_digest`; `final`, a boolean.
+the last record id of each deal book the adjudicator read; `rules_digest`; `forum`, the process that
+ruled (Q4, answered); `final`, a boolean.
 Its block has no `seen` and no `agreement_ref`; `seq` and `prev` are the case book's.
 
 **`ask`, `answer`.** The evidence request interaction already exists in the library and in the
@@ -1100,7 +1102,8 @@ the witness receipts it is handed (A, above).
   The outcome is `withdrawn` after the claimant's withdrawal; `for_claimant` or `against_claimant`
   when the effective ruling is against the other side or the claimant; `no_finding` when it is
   against neither; and `open` otherwise, conflicting final rulings included, so no branch of a
-  forked case book decides a card's dispute outcome. `/3` maps these as 10 says, and `forum` is Q4. The
+  forked case book decides a card's dispute outcome. `/3` maps these as 10 says, and `forum` is the
+  dispute record's (Q4, answered). The
   four did-not-hold splits are AAC#626's (§11.4), and read only row results, owed_by and remedy, so
   the status needs nothing more for them.
 - Disputes, withdrawals, the first final ruling with its date (or the conflicting flag) and
@@ -1387,10 +1390,12 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   the refund made; AAC#626 at 361f7b4b proposes counting that as `did_not_hold` in part `remedied`
   (its SH-16), which Q5 asks Steven to confirm, so the vector pins `remedied` and, if Steven does
   not confirm, `not_remedied`. Either way the status value must carry that a remedy was made on an
-  unruled row (the `settle` record's `remedy_for`, 6.1), so a reader of facts can tell. The buyer's
-  has the same row owed by the counterparty, so `did_not_hold` in part `other_side`. The ruled path (Appendix A lines 43 to 76) gives `did_not_hold` in part
-  `remedied` for the seller and `other_side` for the buyer, and the dispute entries `received`
-  and `against` for the seller, `raised` and `for` for the buyer.
+  unruled row (the `settle` record's `remedy_for`, 6.1), so a reader of facts can tell. Steven has
+  since confirmed `remedied` (Q5, answered), and taken `other_side` out of `did_not_hold` (Q12,
+  answered): the buyer's deal, whose failed row the counterparty owed, is not `did_not_hold`, and
+  where such a deal lands on the card is AAC#626's text. The ruled path (Appendix A
+  lines 43 to 76) gives `did_not_hold` in part `remedied` for the seller, and the dispute entries
+  `received` and `against` for the seller, `raised` and `for` for the buyer.
 
 ## 11. Order of work, and conformance
 
@@ -1543,6 +1548,13 @@ AAC#620's `/3` table has `dispute_entry` with a `forum` and `disputes.by_forum`,
 counts disputes by forum (AAC SH §4). With no forum in v1, a `/3` card has nothing to fill
 `by_forum` with: either v1 keeps a forum on `dispute`, or `/3` drops `by_forum`, which is a card
 change.
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): yes, dispute and ruling records carry a forum. A `dispute` of kind `dispute` and a
+`ruling` carry `forum` (3.3), one of #404's values: `auto:twin`, `auto:ref`, `network:<id>`,
+`rail:<program>` or `external:<class>`. Its prefix is the class `/3` counts in `by_forum`. The spelling
+after the colon (`[a-z0-9][a-z0-9._-]{0,63}`) is syntax with no door, as long as `auto` stays closed to
+`twin` and `ref` and no list of allowed names comes with it (the twin and the real Sherlock2, both
+2026-11-17: buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=96dbf3c6c35ec3ea041f5f1e33cf91ba5b55739bfef443e2fbe99bf3ddfb68e4&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6). Landed in #487. The
+other #404 kinds (`dispute_response`, `revocation`) stay out, as the design maps them.
 
 **Q12. A row that is not reached, and a deal with no witnessed time, on a card.** The design says a
 `not_reached` row is "left out" when a card is counted (design §4.2, "Dates that hang on a
@@ -1557,6 +1569,11 @@ the card, as AAC#626 §11.3 does,
 since "left out" would let a holder drop deals from its card by never timing the named record. The
 `settled` rule of 9 still leaves a `not_reached` row out of settlement, as the design says; that
 decides when a deal is finished, not its card line.
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): any `not_reached` row makes the deal undecided on the card, replacing the design's
+"left out". A deal with no time from a witness its agreement names stays left out (acceptance 9). The
+same ruling sets three card outcomes, `held`, `undecided` and `did_not_hold`, and takes `other_side` out
+of the did-not-hold split: a deal where only the counterparty failed is not `did_not_hold` (10). How the
+card text orders `not_reached` against `did_not_hold` is AAC#626's.
 
 **Q5. A remedy outside a ruling** (moved here from 12.2 in review round 1). Two cases: a remedy
 chosen under the terms (design §4.2, "Remedy rows"), which has no contest window in the design and
@@ -1567,6 +1584,9 @@ proposes counting such a remedy as remedied (its SH-16, Steven's decision 3 in t
 seller who refunded as in Appendix A would be `remedied`. The ask is that Steven confirms #626's
 proposal; the profile then has to carry what the card needs to see a remedy made outside a ruling
 (10). It is part of the one ask above (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6).
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): yes. A refund without a ruling counts as remedied (#626's SH-16), and the counterparty
+answers by disputing the row. The status value carries the `settle` record's `remedy_for` (6.1), so a
+reader of facts sees the remedy; the vectors of 10 pin `remedied`.
 
 **Q11. What a decline and a cancellation disclose to the other side.** This belongs to Sherlock2's
 door question. Proposed (3.5): the signer's key, the cited offer's digest, the deal id, one closed
