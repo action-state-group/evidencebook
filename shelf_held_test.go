@@ -94,6 +94,10 @@ func TestHeldProofsCoverNothingAfterAGenesisFork(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.True(t, got[0].Recomputed, "the proof stays recomputed")
 		assert.Zero(t, got[0].Covers, "but covers nothing once the prefix is empty")
+		// The bindings survive a restart, so a proof over another shelf log
+		// or book stays refusable after it (wrong-shelf-then-restart).
+		assert.Equal(t, h.bookID, got[0].Verified.Fact.BookID)
+		assert.Equal(t, h.cadence.cfg.LogID, got[0].Verified.ShelfCheckpoint.LogID)
 	}
 	check(s)
 	require.NoError(t, s.Release())

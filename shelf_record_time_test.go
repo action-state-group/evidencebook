@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
@@ -252,4 +253,79 @@ func TestACorruptStoredReceiptFailsTheCadenceOpen(t *testing.T) {
 		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t)})
 	require.ErrorIs(t, err, ErrCorrupt)
 	assert.Empty(t, shelf.cadenceLogs, "a failed backfill leaves no cadence log open")
+}
+
+// A received record's time from the holder's own stamps (§4.3 of
+// docs/design/461-deal-profile.md): the first fact of the holder's book whose
+// link value's last_received reaches the record's position in the other
+// side's log, and the earliest named receipt of a checkpoint covering it.
+func TestAReceivedRecordTimeIsTheFirstFactThatLinksIt(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, values := newStampCadence(t, shelf)
+	values.set("deal/a", `{"row":"open"}`)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	link := func(size uint64) {
+		values.mu.Lock()
+		defer values.mu.Unlock()
+		values.link["deal/a"] = LinkValue{LastReceived: &ReceivedPosition{LogID: "deal/theirs", Size: size, RecordDigest: dg(fmt.Sprint("theirs", size))}, CheckedOver: []string{}}
+	}
+	link(2)
+	mustAppend(t, a, observation("a", "2"))
+	s1, err := c.Stamp(ctx, tickTime.Add(2*time.Minute))
+	require.NoError(t, err)
+	link(5)
+	mustAppend(t, a, observation("a", "3"))
+	s2, err := c.Stamp(ctx, tickTime.Add(3*time.Minute))
+	require.NoError(t, err)
+	var bookID string
+	require.NoError(t, shelf.db.QueryRow(`SELECT book_id FROM shelf_entries WHERE log_id = 'deal/a' LIMIT 1`).Scan(&bookID))
+	received := func(log string, position uint64, witnesses ...string) (time.Time, bool) {
+		t.Helper()
+		at, ok, err := shelf.ReceivedRecordTime(ctx, bookID, log, position, witnesses)
+		require.NoError(t, err)
+		return at, ok
+	}
+
+	_, ok := received("deal/theirs", 1, testWitnessURL)
+	assert.False(t, ok, "no receipt yet")
+	t1, t2 := tickTime.Add(30*time.Minute), tickTime.Add(20*time.Minute)
+	witnessAt(t, c, s1.Tick, testWitnessURL, t1)
+	at, ok := received("deal/theirs", 2, testWitnessURL)
+	require.True(t, ok)
+	assert.Equal(t, t1, at, "the first stamp's fact reaches position 2")
+	_, ok = received("deal/theirs", 3, testWitnessURL)
+	assert.False(t, ok, "position 3 is first reached at the second stamp, not yet witnessed")
+
+	// The second stamp's checkpoint covers both facts and registered
+	// earlier, so it gives both positions their time.
+	witnessAt(t, c, s2.Tick, testWitnessURL, t2)
+	for _, p := range []uint64{1, 2, 5} {
+		at, ok = received("deal/theirs", p, testWitnessURL)
+		require.True(t, ok, p)
+		assert.Equal(t, t2, at, p)
+	}
+	for name, got := range map[string]bool{
+		"a position no fact reaches": func() bool { _, ok := received("deal/theirs", 6, testWitnessURL); return ok }(),
+		"another log":                func() bool { _, ok := received("deal/other", 1, testWitnessURL); return ok }(),
+		"a witness not named":        func() bool { _, ok := received("deal/theirs", 1, "https://other.test"); return ok }(),
+		"no witness named":           func() bool { _, ok := received("deal/theirs", 1); return ok }(),
+		"another book": func() bool {
+			_, ok, err := shelf.ReceivedRecordTime(ctx, "no-such-book", "deal/theirs", 1, []string{testWitnessURL})
+			require.NoError(t, err)
+			return ok
+		}(),
+	} {
+		assert.False(t, got, name)
+	}
+	_, _, err = shelf.ReceivedRecordTime(ctx, bookID, "deal/theirs", 0, []string{testWitnessURL})
+	assert.ErrorIs(t, err, ErrInvalid)
+	_, _, err = shelf.ReceivedRecordTime(ctx, bookID, "", 1, []string{testWitnessURL})
+	assert.ErrorIs(t, err, ErrInvalid)
+	require.NoError(t, shelf.Release())
+	_, _, err = shelf.ReceivedRecordTime(ctx, bookID, "deal/theirs", 1, []string{testWitnessURL})
+	assert.ErrorIs(t, err, ErrReleased)
 }
