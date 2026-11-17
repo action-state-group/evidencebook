@@ -418,6 +418,10 @@ func TestTheProfileCheckerRecomputesTheListingClasses(t *testing.T) {
 	dealRun(t, "check", "--deal", thread, "--input", writeJSON(t,
 		`{"action":"commit","amount_minor":190000,"terms":{"item":"example bicycle","quantity":1,"price_minor":190000}}`))
 	setDealClock(t, "2026-09-27T18:07:00Z")
+	_, err := unpost(t, saleID, "marketplace.example")
+	require.NoError(t, err)
+	_, err = unpost(t, saleID, "other-market.example")
+	require.NoError(t, err)
 	dealRun(t, "sale", "close", "--sale", saleID)
 
 	_, salePath := exportSale(t, saleID)
@@ -480,6 +484,8 @@ func TestASameSecondListingIsNotEstablished(t *testing.T) {
 		}
 		_, early := exportSale(t, saleID)
 		setDealClock(t, "2026-09-27T18:02:00Z")
+		_, err := unpost(t, saleID, "marketplace.example")
+		require.NoError(t, err)
 		dealRun(t, "sale", "close", "--sale", saleID)
 		_, salePath := exportSale(t, saleID)
 		_, threadPath := exportRecords(t, thread)
