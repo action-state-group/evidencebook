@@ -57,7 +57,7 @@ func TestAHandoverVerifiesAndReturnsTheLatestFacts(t *testing.T) {
 	assert.True(t, got.Witnessed)
 	assert.NotZero(t, got.CoverageStart)
 	require.Len(t, got.Latest, 2)
-	assert.Len(t, got.Untied, 2, "no genesis fact carries a tie yet")
+	assert.Len(t, got.Untied, 2, "no witnessed tree tick held either log, so neither genesis fact is tied")
 	byLog := map[string]HandoverLatest{}
 	for _, l := range got.Latest {
 		byLog[l.Fact.LogID] = l

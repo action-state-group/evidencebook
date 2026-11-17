@@ -462,8 +462,13 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	if coverage == 0 {
 		return bad("the migration's stamp is not in the handover")
 	}
-	for id := range ties {
-		return bad("a tie of %s, which has no genesis fact in the handover", id)
+	if len(ties) > 0 {
+		orphans := make([]string, 0, len(ties))
+		for id := range ties {
+			orphans = append(orphans, id)
+		}
+		sort.Strings(orphans)
+		return bad("a tie of %s, which has no genesis fact in the handover", orphans[0])
 	}
 	result.CoverageStart = coverage
 	ids := make([]string, 0, len(latest))
