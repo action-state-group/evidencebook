@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.0-rc42
+
+This release pairs with capsulectl `v0.1.0-rc42` (go.mod requires it).
+
+This release carries what merged since `v0.1.0-rc41`: `deal outcome-note seal`, the temporary note that a finished deal did not hold (#210, evidencebook#462; evidencebook v0.14.2), `deal sale unpost` (#209), the answers to a pause as the user's own journey row (#208), the failed-limit card (#205), the seller's view of an unauthorized claim (#206), the seller's offer card wording (#199) and the saved-receipt line (#197).
+
 - TEMPORARY: `deal outcome-note seal --deal ID --reason dispute_lost|settled_against|not_delivered|other` seals the holder's own `outcome_note` record after a deal's final close (evidencebook#462; the target design's computed row status, evidencebook#461, supersedes it). The History card counts a deal holding one `did_not_hold`; it is in no shared copy and a deal takes one. A verifier built before the evidencebook release that carries `outcome_note` refuses such a deal. Per Ethan and Steven's phone agreement (relayed by Ethan, evidencebook#462) for the 2026-11-19 Goose ARD demo.
 
 - `deal sale unpost --sale ID --platform SITE` records that a sale's live listing was taken down: a sealed `sale_unpost` (evidencebook v0.14.1) on the sale's log. It needs no check or approval and is refused for a site with no live listing; the site no longer counts toward a thread's `listing_classes` (absent when no listing is live), and a later post on it makes it live again. `deal sale close` now requires each live listing's takedown first and names the sites still up, per Steven's ruling "requires, not seals": it never seals a takedown itself, since that would record one that may not have happened. A sold thread's close leaves the sale open while a listing is up and prints `sale_open_listings`. `deal open --sale` refuses a new buyer on a sale whose item is already sold, closed or not. A verifier or capsulectl built before evidencebook v0.14.1 refuses a sale that holds a `sale_unpost`. Sales sealed before this verify unchanged. Door: Steven, non-stop decision of 2026-10-24 (company-internal-all#13); ruling (Buzz 2497bf0b; evidencebook-deal#201, capsule-cli#384).
