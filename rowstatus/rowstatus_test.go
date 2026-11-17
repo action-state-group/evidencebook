@@ -75,6 +75,7 @@ func TestRawRefused(t *testing.T) {
 		`{"at": "2026-11-02T00:00:00Z", "parties": ["\ud800", "b"], "row": {}}`,
 		`{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {"id": "\udc00"}}`,
 		"{\"at\": \"2026-11-02T00:00:00Z\", \"parties\": [\"a\xff\", \"b\"], \"row\": {}}",
+		`{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"\ud800": {}}}`,
 	} {
 		_, err := ParseInput([]byte(raw))
 		assert.ErrorIs(t, err, ErrInvalid, raw)

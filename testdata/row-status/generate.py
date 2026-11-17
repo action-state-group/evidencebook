@@ -180,6 +180,11 @@ case("l-untimed-cannot-tell", "an untimed cannot_tell that clears the side's ear
      statements=[st("buyer", "met", "2026-11-01T12:00:00Z"), st("buyer", "cannot_tell", None), st("seller", "met", "2026-11-01T12:30:00Z")])
 case("l-untimed-withdrawal", "an untimed withdrawal that removes a dispute makes the result local", "2026-11-04T00:00:00Z", ROW1, res("agreed_so_far", R1D, "met", local=True),
      statements=AGR1, disputes=[{"side": "seller", "time": "2026-11-03T10:00:00Z", "seen_in_time": True}], withdrawals=[{"side": "seller", "time": None}])
+WD_D = [{"side": "seller", "time": "2026-11-03T10:00:00Z", "seen_in_time": True}, {"side": "buyer", "time": "2026-11-03T11:00:00Z", "seen_in_time": True}]
+case("l-untimed-withdrawal-not-relied-on", "another dispute counts on its own, so the untimed withdrawal of the first is not relied on", "2026-11-04T00:00:00Z", ROW1, res("in_dispute", R1D),
+     statements=AGR1, disputes=WD_D, withdrawals=[{"side": "seller", "time": None}])
+case("l-untimed-withdrawal-not-relied-on-reordered", "the same with the disputes in the other order", "2026-11-04T00:00:00Z", ROW1, res("in_dispute", R1D),
+     statements=AGR1, disputes=list(reversed(WD_D)), withdrawals=[{"side": "seller", "time": None}])
 case("l-untimed-after-future", "an untimed statement after one of the same side dated after T is not held as of T", "2026-11-05T05:00:00Z", ROW1, res("uncontested", R1D, "met"),
      statements=[st("seller", "met", "2026-11-01T12:30:00Z"), st("buyer", "not_met", "2026-11-05T10:00:00Z"), st("buyer", "met", None)])
 # A final ruling shows while a date it does not need is unset (Sherlock2's recommendation; a product call recorded on #466).

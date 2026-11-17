@@ -87,6 +87,7 @@ def mutate(r, text):
         lambda s: s + "]",
         lambda s: s.replace('"id": "r"', '"id": "\\ud800"', 1),
         lambda s: s.replace('"id": "r"', '"id": "r", "id": "q"', 1),
+        lambda s: s.replace('"named": {', '"named": {"\\ud800": {"latest": "2026-11-05T00:00:00Z"}, ', 1),
         lambda s: s.replace('"parties": ["buyer", "seller"]', '"parties": ["buyer", "buyer"]', 1),
         lambda s: s.replace(":00Z", ":60Z", 1),
         lambda s: s.replace("2026-11-0", "2026-02-3", 1),

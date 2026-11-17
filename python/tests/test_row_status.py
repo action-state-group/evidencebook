@@ -46,3 +46,16 @@ def test_raw_refused(raw):
 def test_compute_without_row_is_invalid():
     with pytest.raises(Invalid):
         compute({"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"]})
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}}'.encode("utf-16"),
+        b'{"at": "2026-11-02T00:00:00Z", "parties": ["a\xff", "b"], "row": {}}',
+        b'{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"\\ud800": {}}}',
+    ],
+)
+def test_raw_bytes_refused(raw):
+    with pytest.raises(Invalid):
+        compute(parse_input(raw))

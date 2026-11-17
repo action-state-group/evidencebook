@@ -556,19 +556,23 @@ func (c *calc) compute() Result {
 	if c.in.ConflictingFinalRulings {
 		return finish(InDispute, "")
 	}
+	// A withdrawal with no time is relied on only when no other dispute
+	// counts: it is what keeps the row out of dispute.
+	restsOnUntimedWithdrawal := false
 	for i, d := range c.disputes {
-		side, _ := c.side(d.Side)
-		if c.withdrawn[side] {
-			if !c.wTimed[side] {
-				c.local = true
-			}
+		if c.disputeLate(d, c.dTimes[i], inTime, failed) {
 			continue
 		}
-		if c.disputeLate(d, c.dTimes[i], inTime, failed) {
+		side, _ := c.side(d.Side)
+		if c.withdrawn[side] {
+			restsOnUntimedWithdrawal = restsOnUntimedWithdrawal || !c.wTimed[side]
 			continue
 		}
 		c.use(c.dTimes[i])
 		return finish(InDispute, "")
+	}
+	if restsOnUntimedWithdrawal {
+		c.local = true
 	}
 
 	// Rules 3 to 6.

@@ -113,6 +113,10 @@ def _check(v: Any, shape: Any, where: str) -> None:
 def _no_repeats(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in pairs:
+        try:
+            k.encode("utf-8")
+        except UnicodeEncodeError:
+            raise Invalid("a member name holds an unpaired surrogate") from None
         if k in out:
             raise Invalid(f"member {k!r} repeated")
         out[k] = v
@@ -120,7 +124,12 @@ def _no_repeats(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def parse_input(data: bytes | str) -> dict[str, Any]:
-    """Reads one input as the vectors write it."""
+    """Reads one input as the vectors write it: UTF-8 only, as Go and Rust read it."""
+    if isinstance(data, (bytes, bytearray)):
+        try:
+            data = bytes(data).decode("utf-8")
+        except UnicodeDecodeError:
+            raise Invalid("input is not UTF-8") from None
     try:
         v = json.loads(data, object_pairs_hook=_no_repeats)
     except json.JSONDecodeError as e:
@@ -316,15 +325,19 @@ class _Calc:
         after = self.at > self.end
         if conflicting:
             return finish("in_dispute")
+        # A withdrawal with no time is relied on only when no other dispute
+        # counts: it is what keeps the row out of dispute.
+        rests_on_untimed_withdrawal = False
         for side, t, seen in self.disputes:
-            if self.withdrawn[side]:
-                if not self.w_timed[side]:
-                    self.local = True
-                continue
             if self.dispute_late(t, seen, in_time, failed):
+                continue
+            if self.withdrawn[side]:
+                rests_on_untimed_withdrawal = rests_on_untimed_withdrawal or not self.w_timed[side]
                 continue
             self.use(t)
             return finish("in_dispute")
+        if rests_on_untimed_withdrawal:
+            self.local = True
         a, b = stated
         if failed or (a and b and a != b):
             return finish("in_disagreement")

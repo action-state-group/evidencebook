@@ -3356,6 +3356,120 @@
    }
   },
   {
+   "name": "l-untimed-withdrawal-not-relied-on",
+   "why": "another dispute counts on its own, so the untimed withdrawal of the first is not relied on",
+   "input": {
+    "at": "2026-11-04T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "seller",
+      "time": "2026-11-03T10:00:00Z",
+      "seen_in_time": true
+     },
+     {
+      "side": "buyer",
+      "time": "2026-11-03T11:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "seller",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
+   "name": "l-untimed-withdrawal-not-relied-on-reordered",
+   "why": "the same with the disputes in the other order",
+   "input": {
+    "at": "2026-11-04T00:00:00Z",
+    "parties": [
+     "buyer",
+     "seller"
+    ],
+    "row": {
+     "id": "paid_as_agreed",
+     "owed_by": "buyer",
+     "due": {
+      "at": "2026-11-01T23:59:59Z"
+     },
+     "window_end": {
+      "at": "2026-11-04T23:59:59Z"
+     }
+    },
+    "statements": [
+     {
+      "side": "buyer",
+      "value": "met",
+      "time": "2026-11-01T12:00:00Z"
+     },
+     {
+      "side": "seller",
+      "value": "met",
+      "time": "2026-11-01T12:30:00Z"
+     }
+    ],
+    "disputes": [
+     {
+      "side": "buyer",
+      "time": "2026-11-03T11:00:00Z",
+      "seen_in_time": true
+     },
+     {
+      "side": "seller",
+      "time": "2026-11-03T10:00:00Z",
+      "seen_in_time": true
+     }
+    ],
+    "withdrawals": [
+     {
+      "side": "seller",
+      "time": null
+     }
+    ]
+   },
+   "expect": {
+    "status": "in_dispute",
+    "local": false,
+    "due": "2026-11-01T23:59:59Z",
+    "window_end": "2026-11-04T23:59:59Z"
+   }
+  },
+  {
    "name": "l-untimed-after-future",
    "why": "an untimed statement after one of the same side dated after T is not held as of T",
    "input": {

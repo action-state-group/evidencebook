@@ -500,18 +500,22 @@ impl<'a> Calc<'a> {
             return finish(out, "in_dispute", "", self.local);
         }
         let disputes = self.disputes.clone();
+        // A withdrawal with no time is relied on only when no other dispute
+        // counts: it is what keeps the row out of dispute.
+        let mut rests_on_untimed_withdrawal = false;
         for (side, t, seen) in disputes {
-            if self.withdrawn[side] {
-                if !self.w_timed[side] {
-                    self.local = true;
-                }
+            if self.dispute_late(t, seen, &in_time, failed) {
                 continue;
             }
-            if self.dispute_late(t, seen, &in_time, failed) {
+            if self.withdrawn[side] {
+                rests_on_untimed_withdrawal |= !self.w_timed[side];
                 continue;
             }
             self.use_time(t);
             return finish(out, "in_dispute", "", self.local);
+        }
+        if rests_on_untimed_withdrawal {
+            self.local = true;
         }
         let (a, b) = (&stated[0], &stated[1]);
         let local = self.local;
@@ -689,6 +693,8 @@ mod tests {
         let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"x": {"latest": "2026-11-02T00:00:00Z"}, "x": {"latest": "2026-11-03T00:00:00Z"}}}"#;
         assert!(parse_input(raw).is_err());
         let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["\ud800", "b"], "row": {}}"#;
+        assert!(parse_input(raw).is_err());
+        let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"\ud800": {}}}"#;
         assert!(parse_input(raw).is_err());
     }
 }
