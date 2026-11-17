@@ -62,16 +62,17 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
 -- Every witness receipt that verified for a shelf checkpoint, one per
--- witness (its receipt's URL), with the directory key id it verified under
--- and the registration time it gives in Unix seconds or null
--- (record_time.rs).
+-- witness (its receipt's URL) and directory key id it verified under, with
+-- the registration time it gives in Unix seconds or null
+-- (record_time.rs). A shelf written before evidencebook#492 keyed it by URL
+-- alone; migrate_shelf_receipts rebuilds it.
 CREATE TABLE IF NOT EXISTS shelf_receipts (
 	checkpoint_sha256 TEXT    NOT NULL,
 	witness_id        TEXT    NOT NULL,
 	key_id            TEXT    NOT NULL,
 	receipt           TEXT    NOT NULL,
 	registered_at     INTEGER,
-	PRIMARY KEY (checkpoint_sha256, witness_id)
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 -- The store of what the other side pushes (evidencebook#461 §3,
@@ -227,6 +228,7 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), ShelfError> {
     }
     let has_logs = has_table("shelf_logs")?;
     tx.execute_batch(SCHEMA)?;
+    migrate_shelf_receipts(&tx)?;
     if !versioned {
         tx.execute(
             "INSERT INTO shelf_meta (id, version) VALUES (1, ?)",
@@ -240,6 +242,40 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), ShelfError> {
         )?;
     }
     tx.commit()?;
+    Ok(())
+}
+
+/// The `shelf_receipts` table as shelves before evidencebook#492 created it:
+/// one receipt per checkpoint and witness URL, so a second key of the same
+/// witness lost its receipt (Go `receiptsKeyedByURL`).
+pub(crate) const RECEIPTS_KEYED_BY_URL: &str = "PRIMARY KEY (checkpoint_sha256, witness_id)";
+
+/// Rebuild a `shelf_receipts` table keyed by checkpoint and witness URL alone
+/// into one keyed by checkpoint, URL and key id, in `tx`, keeping every row
+/// (Go `migrateShelfReceipts`): each held one receipt per URL, so no two
+/// collide. It changes no shelf version.
+fn migrate_shelf_receipts(tx: &Transaction<'_>) -> Result<(), ShelfError> {
+    let ddl: String = tx.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'",
+        [],
+        |r| r.get(0),
+    )?;
+    if !ddl.contains(RECEIPTS_KEYED_BY_URL) {
+        return Ok(());
+    }
+    tx.execute_batch(
+        "CREATE TABLE shelf_receipts_492 (
+	checkpoint_sha256 TEXT    NOT NULL,
+	witness_id        TEXT    NOT NULL,
+	key_id            TEXT    NOT NULL,
+	receipt           TEXT    NOT NULL,
+	registered_at     INTEGER,
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
+);
+INSERT INTO shelf_receipts_492 (checkpoint_sha256, witness_id, key_id, receipt, registered_at) SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts;
+DROP TABLE shelf_receipts;
+ALTER TABLE shelf_receipts_492 RENAME TO shelf_receipts;",
+    )?;
     Ok(())
 }
 

@@ -143,6 +143,17 @@ pub(super) fn book_id_of(shelf: &Shelf, log_id: &str) -> String {
 /// checkpoint, with the registration time `iat` in its protected CWT claims,
 /// none when `iat` is `None`.
 fn receipt_at(statement: &[u8], url: &str, iat: Option<Time>) -> WitnessReceipt {
+    receipt_under(statement, url, &witness_key(url), iat)
+}
+
+/// [`receipt_at`] signed by `signer`, one of the keys the witness at `url`
+/// lists (Go `receiptUnder`).
+fn receipt_under(
+    statement: &[u8],
+    url: &str,
+    signer: &SigningKey,
+    iat: Option<Time>,
+) -> WitnessReceipt {
     let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
     let decoded = verified.decoded.filter(|_| verified.ok).unwrap();
     let digest = agent_action_capsule::witness::checkpoint_digest(
@@ -171,7 +182,7 @@ fn receipt_at(statement: &[u8], url: &str, iat: Option<Time>) -> WitnessReceipt 
         Cbor::Bytes(Vec::new()),
         Cbor::Bytes(leaf),
     ]));
-    let signature = witness_key(url).sign(&to_be_signed).to_bytes().to_vec();
+    let signature = signer.sign(&to_be_signed).to_bytes().to_vec();
     let receipt = encode(&Cbor::Tag(
         18,
         Box::new(Cbor::Array(vec![
@@ -551,4 +562,122 @@ fn a_record_time_on_a_released_shelf() {
             .record_time(&f.book_id, 1, &[TEST_WITNESS_URL.to_string()]),
         Err(ShelfError::Released)
     ));
+}
+
+/// A second key the test witness's directory row lists (a key rotation): one
+/// witness, one URL, two keys.
+fn rotated_key() -> SigningKey {
+    key("test witness, rotated")
+}
+
+/// [`directory`] with the test witness listing two keys.
+fn two_key_directory() -> Value {
+    let hex_of = |k: SigningKey| hex::encode(k.verifying_key().to_bytes());
+    json!({"witnesses": [{"name": TEST_WITNESS_URL, "endpoint": TEST_WITNESS_URL,
+        "key_ids": [hex_of(witness_key(TEST_WITNESS_URL)), hex_of(rotated_key())]}]})
+}
+
+/// A migrated shelf under a cadence whose directory lists two keys for the
+/// test witness, with deal/a's book id and the stamp after migration.
+fn two_key_shelf(path: &Path) -> (Shelf, Cadence, String, CadenceTick) {
+    let shelf = open(path);
+    let c = shelf.cadence(config(two_key_directory())).unwrap();
+    append(&shelf, "deal/a", "1");
+    c.tick(tick_time()).unwrap();
+    c.migrate(minutes(1)).unwrap();
+    let stamp = c.stamp(minutes(2)).unwrap().tick.unwrap();
+    let book_id = book_id_of(&shelf, "deal/a");
+    (shelf, c, book_id, stamp)
+}
+
+fn witness_under(c: &Cadence, tick: &CadenceTick, signer: &SigningKey, iat: Time) {
+    let check = c
+        .witnessed(
+            tick.n,
+            receipt_under(&tick.checkpoint, TEST_WITNESS_URL, signer, Some(iat)),
+        )
+        .unwrap();
+    assert_eq!(check.state, WITNESS_VERIFIED, "{}", check.reason);
+}
+
+// evidencebook#492 (Go TestTwoKeysOfOneWitnessKeepTheirReceipts): two keys of
+// one witness that register the same checkpoint both keep their receipts, in
+// either order; the record time by URL is the earliest, and the handover
+// carries both.
+#[test]
+fn two_keys_of_one_witness_keep_their_receipts() {
+    for new_key_first in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (shelf, c, book_id, stamp) = two_key_shelf(&dir.path().join("shelf.db"));
+        let mut steps = vec![
+            (witness_key(TEST_WITNESS_URL), minutes(20)),
+            (rotated_key(), minutes(10)),
+        ];
+        if new_key_first {
+            steps.reverse();
+        }
+        for (signer, at) in &steps {
+            witness_under(&c, &stamp, signer, *at);
+        }
+        assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 2);
+        assert_eq!(
+            record_time(&shelf, &book_id, 1, &[TEST_WITNESS_URL]),
+            Some(minutes(10)),
+            "by URL, the earliest across the witness's keys"
+        );
+        c.stamp(minutes(3)).unwrap();
+        let h = c.handover(0).unwrap();
+        assert_eq!(h.witnessed.len(), 1);
+        assert_eq!(h.witnessed[0].receipts.len(), 2);
+        shelf.release().unwrap();
+    }
+}
+
+// A shelf written before #492 keyed shelf_receipts by checkpoint and URL
+// alone; opening it rebuilds the table, keeps every row, and from then on a
+// second key of the same witness keeps its receipt (Go
+// TestAShelfReceiptsTableKeyedByURLIsMigrated).
+#[test]
+fn a_shelf_receipts_table_keyed_by_url_is_migrated() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shelf.db");
+    let (shelf, c, book_id, stamp) = two_key_shelf(&path);
+    witness_under(&c, &stamp, &witness_key(TEST_WITNESS_URL), minutes(20));
+    shelf
+        .shared()
+        .db()
+        .execute_batch(&format!(
+            "CREATE TABLE old_receipts (checkpoint_sha256 TEXT NOT NULL, witness_id TEXT NOT NULL, key_id TEXT NOT NULL, receipt TEXT NOT NULL, registered_at INTEGER, {});
+             INSERT INTO old_receipts SELECT * FROM shelf_receipts;
+             DROP TABLE shelf_receipts;
+             ALTER TABLE old_receipts RENAME TO shelf_receipts;",
+            super::store::RECEIPTS_KEYED_BY_URL
+        ))
+        .unwrap();
+    shelf.release().unwrap();
+
+    let shelf = open(&path);
+    let ddl: String = shelf
+        .shared()
+        .db()
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(ddl.contains("PRIMARY KEY (checkpoint_sha256, witness_id, key_id)"));
+    assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 1);
+    assert_eq!(
+        record_time(&shelf, &book_id, 1, &[TEST_WITNESS_URL]),
+        Some(minutes(20))
+    );
+    let c = shelf.cadence(config(two_key_directory())).unwrap();
+    witness_under(&c, &stamp, &rotated_key(), minutes(10));
+    assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 2);
+    shelf.release().unwrap();
+
+    let shelf = open(&path);
+    assert_eq!(count(&shelf, "SELECT COUNT(*) FROM shelf_receipts", []), 2);
+    shelf.release().unwrap();
 }

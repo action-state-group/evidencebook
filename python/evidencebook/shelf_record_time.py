@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Record time (evidencebook#461, docs/design/461-shelf-facts.md §2.3 and
 §2.6), as Go's ``shelf_record_time.go``: every receipt that verifies for a
-shelf checkpoint is kept in ``shelf_receipts``, one per witness, with the
-registration time the witness put in it (the ``iat`` of its protected CWT
+shelf checkpoint is kept in ``shelf_receipts``, one per witness and key it
+verified under (evidencebook#492), with the registration time the witness put in it (the ``iat`` of its protected CWT
 claims) or none. A witness is named by its receipt's URL (``ts_url``), the
 name a witness directory row is found by, so a witness an agreement names is
 that URL. Each row also keeps the directory key id the receipt verified
@@ -20,13 +20,13 @@ from .errors import CorruptError, InvalidError
 
 __all__ = ["record_time"]
 
-# A receipt from the same witness replaces the held one only when it gives an
+# A receipt from the same witness under the same key replaces the held one only when it gives an
 # earlier registration time, or the held one gives none: a witness's earliest
 # registration is the one a record time reads (Go upsertReceipt).
 _UPSERT_RECEIPT = (
     "INSERT INTO shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt, registered_at) "
     "VALUES (?, ?, ?, ?, ?) "
-    "ON CONFLICT (checkpoint_sha256, witness_id) DO UPDATE SET key_id = excluded.key_id, receipt = excluded.receipt, "
+    "ON CONFLICT (checkpoint_sha256, witness_id, key_id) DO UPDATE SET receipt = excluded.receipt, "
     "registered_at = excluded.registered_at "
     "WHERE excluded.registered_at IS NOT NULL AND (shelf_receipts.registered_at IS NULL OR "
     "excluded.registered_at < shelf_receipts.registered_at)")
@@ -62,8 +62,11 @@ def backfill_receipts_locked(cadence: Any) -> None:
                 receipt = WitnessReceipt.decode(encoded)
             except CorruptError as exc:
                 raise CorruptError(f"tick {n} receipt: {exc}") from None
-            present = db.execute("SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ?",
-                                 (hashlib.sha256(statement).hexdigest(), receipt.ts_url)).fetchone()[0]
+            # The same receipt already held needs no second verification; a
+            # held receipt of another key of the same witness does not cover it.
+            present = db.execute("SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ? "
+                                 "AND receipt = ?", (hashlib.sha256(statement).hexdigest(), receipt.ts_url,
+                                                     encoded)).fetchone()[0]
             if present:
                 continue
             try:

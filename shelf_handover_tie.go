@@ -43,7 +43,7 @@ type HandoverTie struct {
 	// log, before the format switch.
 	EntrySeq uint64 `json:"entry_seq"`
 	// CadenceCheckpoint is the COSE statement the tick cut, and Receipts the
-	// witness receipts held for it, one per witness in witness URL order.
+	// witness receipts held for it, one per witness and key, in URL order.
 	CadenceCheckpoint []byte           `json:"cadence_checkpoint"`
 	Receipts          []WitnessReceipt `json:"receipts"`
 	// OldCheckpoint is the COSE statement of the book checkpoint the leaf
@@ -123,7 +123,7 @@ func (c *Cadence) tieLocked(ctx context.Context, bookID, logID string, genesis [
 // statement, in witness URL order.
 func (c *Cadence) receiptsLocked(ctx context.Context, statement []byte) ([]WitnessReceipt, error) {
 	sum := sha256.Sum256(statement)
-	rows, err := c.shelf.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id`, hex.EncodeToString(sum[:]))
+	rows, err := c.shelf.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id, key_id`, hex.EncodeToString(sum[:]))
 	if err != nil {
 		return nil, err
 	}

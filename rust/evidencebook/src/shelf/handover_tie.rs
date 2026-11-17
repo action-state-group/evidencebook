@@ -47,7 +47,7 @@ pub struct HandoverTie {
     /// The COSE statement the tick cut.
     #[serde(default, with = "bytes_b64")]
     pub cadence_checkpoint: Vec<u8>,
-    /// The witness receipts held for it, one per witness in witness URL
+    /// The witness receipts held for it, one per witness and key, in URL
     /// order.
     #[serde(default, deserialize_with = "nullable")]
     pub receipts: Vec<WitnessReceipt>,
@@ -144,7 +144,7 @@ impl Cadence {
         let sum = hex::encode(Sha256::digest(statement));
         let db = self.shelf.shared().db();
         let mut stmt = db.prepare(
-            "SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id",
+            "SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id, key_id",
         )?;
         let rows = stmt.query_map([&sum], |r| r.get::<_, String>(0))?;
         let mut out = Vec::new();

@@ -79,16 +79,17 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
 -- Every witness receipt that verified for a shelf checkpoint, one per
--- witness (its receipt's URL), with the directory key id it verified under
--- and the registration time it gives in Unix seconds or null
--- (shelf_record_time.go).
+-- witness (its receipt's URL) and directory key id it verified under, with
+-- the registration time it gives in Unix seconds or null
+-- (shelf_record_time.go). A shelf written before evidencebook#492 keyed it
+-- by URL alone; migrateShelfReceipts rebuilds it.
 CREATE TABLE IF NOT EXISTS shelf_receipts (
 	checkpoint_sha256 TEXT    NOT NULL,
 	witness_id        TEXT    NOT NULL,
 	key_id            TEXT    NOT NULL,
 	receipt           TEXT    NOT NULL,
 	registered_at     INTEGER,
-	PRIMARY KEY (checkpoint_sha256, witness_id)
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 -- The store of what the other side pushes (evidencebook#461 §3,
@@ -229,6 +230,9 @@ func initSQLiteStore(ctx context.Context, db *sql.DB) error {
 	if _, err := tx.ExecContext(ctx, sqliteStoreSchema); err != nil {
 		return err
 	}
+	if err := migrateShelfReceipts(ctx, tx); err != nil {
+		return err
+	}
 	if !versioned {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO shelf_meta (id, version) VALUES (1, ?)`, ShelfVersion); err != nil {
 			return err
@@ -245,6 +249,45 @@ func initSQLiteStore(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// receiptsKeyedByURL is the shelf_receipts table as shelves before
+// evidencebook#492 created it: one receipt per checkpoint and witness URL, so
+// a second key of the same witness lost its receipt.
+const receiptsKeyedByURL = "PRIMARY KEY (checkpoint_sha256, witness_id)"
+
+// migrateShelfReceipts rebuilds a shelf_receipts table keyed by checkpoint
+// and witness URL alone into one keyed by checkpoint, URL and key id, in tx,
+// keeping every row: each held one receipt per URL, so no two collide. It
+// changes no shelf version: a build before #492 still reads the table, and
+// only its own receipt write, whose conflict target no longer matches, fails
+// rather than lose a receipt.
+func migrateShelfReceipts(ctx context.Context, tx *sql.Tx) error {
+	var ddl string
+	if err := tx.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'`).Scan(&ddl); err != nil {
+		return err
+	}
+	if !strings.Contains(ddl, receiptsKeyedByURL) {
+		return nil
+	}
+	for _, statement := range []string{
+		`CREATE TABLE shelf_receipts_492 (
+	checkpoint_sha256 TEXT    NOT NULL,
+	witness_id        TEXT    NOT NULL,
+	key_id            TEXT    NOT NULL,
+	receipt           TEXT    NOT NULL,
+	registered_at     INTEGER,
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
+)`,
+		`INSERT INTO shelf_receipts_492 (checkpoint_sha256, witness_id, key_id, receipt, registered_at) SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts`,
+		`DROP TABLE shelf_receipts`,
+		`ALTER TABLE shelf_receipts_492 RENAME TO shelf_receipts`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("migrate shelf_receipts: %w", err)
+		}
+	}
+	return nil
 }
 
 // logKindOf is logID's kind as shelf_logs records it, empty when it has no

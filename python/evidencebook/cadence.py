@@ -782,7 +782,7 @@ class Cadence:
             with shelf._tx() as db:
                 db.execute("UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
                            (encoded, n))
-                # Every verified receipt is kept, one per witness, a stamp's
+                # Every verified receipt is kept, one per witness and key, a stamp's
                 # and a tree tick's alike (evidencebook#461 §2.3).
                 keep_receipt(db, tick.checkpoint, receipt.ts_url, encoded, verified)
                 # cadence_witnessed and the live set index the tree's ticks; a

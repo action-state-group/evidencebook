@@ -115,7 +115,8 @@ New tables, all in the same file:
   cadence's own, with no second table. (This note first proposed a `shelf_stamps` table and a
   `shelf_book_checkpoints` table; the tick row and its leaves hold the same data.)
 - `shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt TEXT, registered_at, PRIMARY KEY
-  (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, with its
+  (checkpoint_sha256, witness_id, key_id))`: every receipt that verified, one per witness and key
+  it verified under (evidencebook#492; the key was not in the primary key before), with its
   registration time or null. `Witnessed` writes it (part 5, with `RecordTime`, which reads it), and
   a tick still keeps the first receipt in `cadence_ticks.receipt` for the readers that use it. A witness is named by its receipt's URL (`ts_url`), the name
   its directory row is found by, so one URL is one witness (a witness serving receipts from two URLs
@@ -182,7 +183,8 @@ then status salt, in append order; then the jitter of `due_next` (today's tick d
 Times leaving the device stay coarsened to the minute (`cadence.go:498-499`).
 
 `Witnessed(checkpoint, witness_id, receipt)` verifies a receipt for any shelf checkpoint and keeps
-it in `shelf_receipts`, one per witness, a later receipt from another witness kept beside it.
+it in `shelf_receipts`, one per witness and key, a later receipt from another witness or key kept
+beside it.
 
 ### 2.6 Record time
 

@@ -213,7 +213,7 @@ class HandoverTie:
 @dataclass(frozen=True)
 class HandoverCheckpoint:
     """A shelf checkpoint before a handover's anchor and the witness
-    receipts held for it, one per witness in witness URL order (Go
+    receipts held for it, one per witness and key, in URL order (Go
     ``HandoverCheckpoint``)."""
 
     checkpoint: bytes
@@ -236,7 +236,7 @@ class Handover:
     every entry of the shelf log up to the anchor, 32-byte ids in lowercase
     hex; ``anchor`` the shelf checkpoint it runs to and ``receipts`` the
     witness receipts the holder holds for it (``shelf_receipts``), one per
-    witness in witness URL order; ``witnessed`` the shelf checkpoints before
+    witness and key, in URL order; ``witnessed`` the shelf checkpoints before
     the anchor, within it, for which the holder holds receipts, each with
     every receipt held, in tick order (invariant C,
     ``docs/design/461-deal-profile.md`` §8.1), from which a reader resolves
@@ -427,11 +427,11 @@ def handover_locked(c: Any, n: int) -> Handover:
     anchor = _checkpoint(tick.checkpoint)
     from .cadence import WitnessReceipt
 
-    # Every receipt shelf_receipts holds for the anchor, one per witness, in
-    # witness URL order.
+    # Every receipt shelf_receipts holds for the anchor, one per witness and
+    # key, in witness URL and key order.
     with shelf._read() as db:
         held = [r for (r,) in db.execute("SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? "
-                                         "ORDER BY witness_id", (hashlib.sha256(tick.checkpoint).hexdigest(),))]
+                                         "ORDER BY witness_id, key_id", (hashlib.sha256(tick.checkpoint).hexdigest(),))]
     receipts = []
     for raw in held:
         try:
@@ -549,7 +549,7 @@ def _receipts_locked(c: Any, statement: bytes) -> list[Any]:
     digest = hashlib.sha256(statement).hexdigest()
     with c._shelf._read() as db:
         held = [r for (r,) in db.execute("SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? "
-                                         "ORDER BY witness_id", (digest,))]
+                                         "ORDER BY witness_id, key_id", (digest,))]
     out = []
     for raw in held:
         try:
