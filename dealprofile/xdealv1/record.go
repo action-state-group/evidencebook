@@ -114,6 +114,9 @@ func (r Record) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON reads a v1 record, as Decode does.
 func (r *Record) UnmarshalJSON(data []byte) error {
+	if err := checkText(data); err != nil {
+		return err
+	}
 	var raw struct {
 		Block json.RawMessage `json:"x-deal-v1"`
 		Body  json.RawMessage `json:"body"`

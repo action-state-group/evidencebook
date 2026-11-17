@@ -497,7 +497,8 @@ func checkDates(r Record) error {
 			continue
 		}
 		t, err := time.Parse(time.RFC3339, s)
-		if err != nil || t.UTC().Format(time.RFC3339) != s {
+		// rowstatus reads no year before 1 (rowstatus.go parseTime).
+		if err != nil || t.UTC().Format(time.RFC3339) != s || t.Year() < 1 {
 			return stageErr(StageRecord, "%q is not a UTC time to the second that exists", s)
 		}
 	}
