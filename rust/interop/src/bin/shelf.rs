@@ -9,6 +9,10 @@
 //! shelf recover DIR     the recover phase, on a DIR/shelf.db a crash left
 //!                       (Go's plant-tick and plant-migration plant one)
 //! shelf dump DIR        the file's dump on stdout (it reads a copy)
+//! shelf handover DIR    the handover of the shelf at its newest stamp on stdout
+//!                       (evidencebook#461 §2.7; it reads a copy)
+//! shelf verify-handover FILE
+//!                       replay the handover in FILE; its result on stdout
 //! shelf hold DIR SECS   open the shelf, print "held", keep it open SECS seconds
 //! shelf try DIR MS      open the shelf, waiting at most MS milliseconds for
 //!                       its lock: exit 0 if it opened, 3 if another writer
@@ -38,7 +42,7 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<(), shelf::Error> {
     let [verb, dir, rest @ ..] = args else {
-        return Err("usage: shelf write|continue|migrate|recover|dump|hold|try DIR [ARG]".into());
+        return Err("usage: shelf write|continue|migrate|recover|dump|handover|verify-handover|hold|try DIR [ARG]".into());
     };
     let dir = Path::new(dir);
     let n = || -> Result<u64, shelf::Error> {
@@ -55,6 +59,15 @@ fn run(args: &[String]) -> Result<(), shelf::Error> {
         "continue" => shelf::continue_(dir),
         "migrate" => shelf::migrate(dir),
         "recover" => shelf::recover(dir),
+        "handover" => {
+            std::io::stdout().write_all(shelf::handover(dir)?.as_bytes())?;
+            Ok(())
+        }
+        "verify-handover" => {
+            let raw = std::fs::read(dir)?;
+            std::io::stdout().write_all(shelf::verify_handover(&raw)?.as_bytes())?;
+            Ok(())
+        }
         "dump" => {
             std::io::stdout().write_all(shelf::dump(dir)?.as_bytes())?;
             Ok(())

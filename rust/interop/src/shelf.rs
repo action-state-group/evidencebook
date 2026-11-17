@@ -15,8 +15,8 @@ use cll::log::EntryStore as _;
 use ed25519_dalek::{Signer as _, SigningKey};
 use evidencebook::record::EpistemicType;
 use evidencebook::shelf::{
-    BookEntry, Cadence, CadenceConfig, SeededStream, Shelf, ShelfConfig, ShelfError, Time,
-    WitnessReceipt, WITNESS_VERIFIED,
+    BookEntry, Cadence, CadenceConfig, Handover, SeededStream, Shelf, ShelfConfig, ShelfError,
+    Time, WitnessReceipt, WITNESS_VERIFIED,
 };
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -681,6 +681,58 @@ pub fn dump(dir: &Path) -> Result<String, Error> {
     state.push(("standard_history_anchors", anchors));
     state.push(("chains", chains));
     let mut out = go_marshal_indent(&object(state), "  ");
+    out.push('\n');
+    Ok(out)
+}
+
+/// The handover of the shelf in `dir` at its newest finished stamp (Go
+/// `shelfscript.HandoverJSON`; evidencebook#461 §2.7), in the dump's
+/// encoding. It reads a copy, as [`dump`] does: a handover opens the books
+/// whose consistency it proves.
+pub fn handover(dir: &Path) -> Result<String, Error> {
+    let scratch = tempfile::Builder::new()
+        .prefix("shelf-handover-")
+        .tempdir()?;
+    let path = scratch.path().join(file(dir).file_name().unwrap());
+    {
+        let original = open_db(&file(dir))?;
+        original.execute("VACUUM INTO ?", [path.to_str().unwrap()])?;
+    }
+    let e = open(
+        &path,
+        "evidencebook shelf vectors/handover",
+        start().plus(Duration::from_secs(3 * 3600)),
+        None,
+    )?;
+    let h = e.cadence.handover(0);
+    e.release()?;
+    marshal(serde_json::to_value(h?)?)
+}
+
+/// Replay the handover `raw` under the script's checkpoint key and witness
+/// directory (Go `shelfscript.VerifyHandoverJSON`); its result in the dump's
+/// encoding.
+pub fn verify_handover(raw: &[u8]) -> Result<String, Error> {
+    let h: Handover = serde_json::from_slice(raw)?;
+    let result =
+        evidencebook::shelf::verify_handover(&h, &checkpoint_key_id(), Some(&witness_directory()))?;
+    marshal(serde_json::to_value(result)?)
+}
+
+/// The script's checkpoint key id: its public key in hex.
+pub fn checkpoint_key_id() -> String {
+    hex::encode(key(&script(), "checkpoint").verifying_key().to_bytes())
+}
+
+/// The script's witness directory.
+pub fn witness_directory() -> Value {
+    directory(&script())
+}
+
+/// Go's `json.MarshalIndent(v, "", "  ")` and a newline, the dump's
+/// encoding: members in struct order.
+fn marshal(v: Value) -> Result<String, Error> {
+    let mut out = go_marshal_indent(&v, "  ");
     out.push('\n');
     Ok(out)
 }
