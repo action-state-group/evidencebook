@@ -342,7 +342,7 @@ func run(ctx context.Context, dir, out, profile string) error {
 		return err
 	}
 	for _, cp := range checkpoints {
-		o.LogKeys = append(o.LogKeys, map[string]string{"iss": cp.LogID, "sub": fmt.Sprintf("%s#%d", cp.LogID, cp.TreeSize), "kid": cp.KeyID})
+		o.LogKeys = append(o.LogKeys, map[string]string{"iss": cp.LogID, "sub": cp.LogID, "kid": cp.KeyID})
 	}
 
 	// Request C (JSON) by alice and request D (CBOR, another nonce) by bob.
