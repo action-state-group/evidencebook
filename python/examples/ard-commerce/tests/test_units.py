@@ -151,3 +151,9 @@ def test_card_line_uses_the_cards_own_total_and_a_stated_check_is_not_a_tick():
 
 def test_a_non_limit_seller_that_is_not_go_never_prints_a_zero_cap():
     assert screens.limit_outcome(assessment("ASK", "T0", 268)) == "ASK: no deal opens and nothing is paid"
+
+
+def test_popup_buttons_say_what_a_tap_does():
+    assert screens.button("Alder", assessment("GO", "T2", 289)) == "Alder".join(["Pay ", " 289 msat"])
+    assert "over its limit: nothing is paid" in screens.button("Kestrel", assessment("LIMIT", "T1", 268, 100))
+    assert screens.button("Kestrel", assessment("ASK", "T0", 268)) == "Pick Kestrel (ASK: nothing is paid)"

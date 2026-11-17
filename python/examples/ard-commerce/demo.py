@@ -135,8 +135,7 @@ class Run:
             opts.append({"id": e["id"], "name": e["name"], "price": "Listed price " + screens.msat(a.price_msat), "verdict": a.verdict,
                          "decision": screens.decision_line(a, ev, p.max_adverse_permille, ceiling),
                          "card": screens.card_line(ev, ev.sample_card),
-                         "button": (f"Pay {e['name']} {screens.msat(a.price_msat)}" if a.verdict == "GO"
-                                    else f"Pick {e['name']} (over its limit: nothing is paid)")})
+                         "button": screens.button(e["name"], a)})
         return opts
 
     def popup(self, p: packs.Pack, made: dict[str, buyer.Assessment]) -> str:

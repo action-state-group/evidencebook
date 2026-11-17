@@ -61,5 +61,14 @@ def limit_outcome(a: Assessment) -> str:
     return f"{a.verdict}: no deal opens and nothing is paid"
 
 
+def button(name: str, a: Assessment) -> str:
+    """The popup button: it says what a tap does."""
+    if a.verdict == "GO":
+        return f"Pay {name} {msat(a.price_msat)}"
+    if a.verdict == "LIMIT":
+        return f"Pick {name} (over its limit: nothing is paid)"
+    return f"Pick {name} ({a.verdict}: nothing is paid)"
+
+
 def check_lines(ev: Evidence) -> list[str]:
     return [f"{'–' if c.stated else '✓' if c.ok else '✗'} {c.name}: {c.detail}" for c in ev.checks]
