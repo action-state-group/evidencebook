@@ -1,6 +1,8 @@
 package deal
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -43,6 +45,9 @@ type cardReason struct {
 // cardFacts are the values the reasons are said with.
 type cardFacts struct {
 	limit, floor, picked string
+	// brokenLimit is a limit of the user's own rules that failed, said as the
+	// checker gave it ("$25 per-purchase"), or "".
+	brokenLimit string
 	// told are the details given for the first time, as a sentence lists
 	// them.
 	told string
@@ -91,6 +96,11 @@ var cardReasons = []cardReason{
 	{key: "card.why.over_limit", when: func(r dealCheckResult, _ dealSnapshot, f cardFacts) bool {
 		return !f.askedOver && hasRule(r, "over_limit")
 	}},
+	// A limit in the user's rules failed (the checker's finding carries the
+	// limit and the value); the deal's own over_limit above says it first.
+	{key: "card.why.limit_failed", when: func(r dealCheckResult, _ dealSnapshot, f cardFacts) bool {
+		return f.brokenLimit != "" && !hasRule(r, "over_limit")
+	}},
 	{key: "card.why.under_floor", rules: []string{"under_floor"}},
 	{key: "card.why.representation_missing", rules: []string{ruleRepresentationMissing}},
 	{key: "card.why.attributed_claim", rules: []string{ruleAttributedClaim}},
@@ -124,8 +134,8 @@ var cardReasons = []cardReason{
 	// A first dealing is said beside a rules escalation on a pay, as a fact
 	// next to the cause: capsulectl reads no ruleset's rule ids, so it never
 	// says which rule asked (capsule-cli#344 review).
-	{key: "card.why.first_dealing", when: func(r dealCheckResult, snap dealSnapshot, _ cardFacts) bool {
-		return snap.Action == "pay" && r.Recipient != nil && r.Recipient.FirstTime && hasRule(r, "rules_escalate")
+	{key: "card.why.first_dealing", when: func(r dealCheckResult, snap dealSnapshot, f cardFacts) bool {
+		return snap.Action == "pay" && r.Recipient != nil && r.Recipient.FirstTime && (hasRule(r, "rules_escalate") || f.brokenLimit != "")
 	}},
 	{key: "card.why.promised", rules: []string{"promised_ask"}},
 }
@@ -152,7 +162,7 @@ func cardWhy(w cli.Wording, r dealCheckResult, snap dealSnapshot, f cardFacts) [
 		}
 		// A first dealing is said only beside the rules' own reason, never
 		// in its place.
-		if row.key == "card.why.first_dealing" && !slices.Contains(why, w.Line("card.why.rules_ask", nil)) {
+		if row.key == "card.why.first_dealing" && !slices.Contains(why, w.Line("card.why.rules_ask", nil)) && !slices.Contains(why, w.Line("card.why.limit_failed", cli.V{"limit": f.brokenLimit})) {
 			continue
 		}
 		what := f.picked
@@ -165,7 +175,7 @@ func cardWhy(w cli.Wording, r dealCheckResult, snap dealSnapshot, f cardFacts) [
 			// words, by name, not as "your rules" (evidencebook-deal#157).
 			text = strings.Join(words, "; ")
 		} else {
-			text = w.Line(row.key, cli.V{"limit": f.limit, "floor": f.floor, "what": what, "days": strconv.Itoa(cli.RulesHistoryDays), "payee": f.payee})
+			text = w.Line(row.key, cli.V{"limit": limitWords(row.key, f), "floor": f.floor, "what": what, "days": strconv.Itoa(cli.RulesHistoryDays), "payee": f.payee})
 		}
 		if text != "" && !slices.Contains(why, text) {
 			why = append(why, text)
@@ -234,6 +244,77 @@ func packRuleWords(r *dealRules, verdict string) []string {
 	}
 	if len(words) > packWordRows {
 		words = append(words[:packWordRows], fmt.Sprintf("and %d more", len(words)-packWordRows))
+	}
+	return words
+}
+
+func limitWords(key string, f cardFacts) string {
+	if key == "card.why.limit_failed" {
+		return f.brokenLimit
+	}
+	return f.limit
+}
+
+// brokenLimit is, for a check against the user's rules that asked or denied,
+// a spending limit that was exceeded: the first failed finding whose limit
+// and value are both whole numbers with the value over the limit, read as
+// minor units of the deal's currency. The profile defines no unit or
+// direction for a finding's limit and value, so this is the interim contract
+// (evidencebook-deal#203): a checker sends them, in minor units, only for a
+// cap the value went over; a floor or a count rule sends none, and then the
+// card keeps "your rules ask for your OK". It is said as "$25 per-purchase",
+// the check name giving the kind when it is a plain identifier. Only the first
+// such finding is named, in the checker's order, not the binding one. Rule
+// ids are never read. ok reports a broken limit.
+func brokenLimit(r *dealRules, money func(int64) string) (words string, ok bool) {
+	if r == nil || r.Status != "evaluated" || (r.Verdict != "escalate" && r.Verdict != "deny") {
+		return "", false
+	}
+	for _, f := range r.Findings {
+		if f.Verdict != "fail" {
+			continue
+		}
+		limit, lok := minorAmount(f.Limit)
+		value, vok := minorAmount(f.Value)
+		if !lok || !vok || value <= limit {
+			continue
+		}
+		words = money(limit)
+		if kind := checkKind(f.Check); kind != "" {
+			words += " " + kind
+		}
+		return words, true
+	}
+	return "", false
+}
+
+// minorAmount reads a finding's number as a whole amount of minor units.
+func minorAmount(raw json.RawMessage) (int64, bool) {
+	// A bare JSON number only: json.Number would also take a quoted string.
+	var n any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if len(raw) == 0 || dec.Decode(&n) != nil {
+		return 0, false
+	}
+	num, isNum := n.(json.Number)
+	if !isNum {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(num.String(), 10, 64)
+	return v, err == nil && v >= 0
+}
+
+// checkKind says a finding's check name as a kind of limit: "per_purchase"
+// is "per-purchase". Only a lowercase identifier is said; anything else is
+// the checker's free text and the card falls back to the limit alone.
+func checkKind(check string) string {
+	if check == "" || len(check) > 40 || strings.Trim(check, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+		return ""
+	}
+	words := strings.ReplaceAll(check, "_", " ")
+	if rest, ok := strings.CutPrefix(words, "per "); ok {
+		return "per-" + rest
 	}
 	return words
 }
@@ -328,7 +409,8 @@ func checkCard(w cli.Wording, state dealState, snap dealSnapshot, r dealCheckRes
 		// stopped (u245: "will not do it and will not ask").
 		ask.Question, ask.WhyKey = cardDenial(w, snap, vals), "card.why.label_stopped"
 	}
-	ask.Facts = cardFactsLine(w, state, snap, r, terms, money)
+	broken, _ := brokenLimit(r.Rules, money)
+	ask.Facts = cardFactsLine(w, state, snap, r, terms, money, broken)
 	ask.Terms = cardTermsLine(w, state, snap, r)
 	askedOver := false
 	if total, field := limitBound(terms, snap); total != nil {
@@ -343,7 +425,7 @@ func checkCard(w cli.Wording, state dealState, snap dealSnapshot, r dealCheckRes
 	// pickup area needs none).
 	acceptanceOld := isShare(snap.Action) && snap.DisclosingTo == "counterparty" && slices.ContainsFunc(snap.Disclosing, func(c string) bool { return c != "pickup_area" }) &&
 		state.saleThread() && state.acceptanceOutsideHistory(state.historySince) && acceptanceRuleVerdict(r.Rules) != ""
-	ask.Why = cardWhy(w, r, snap, cardFacts{limit: limit, floor: floor, picked: pickedWords(r), told: disclosureWords(w, told), payee: payee, askedOver: askedOver, acceptanceOld: acceptanceOld, acceptanceRefused: acceptanceOld && acceptanceRuleVerdict(r.Rules) == "fail"})
+	ask.Why = cardWhy(w, r, snap, cardFacts{brokenLimit: broken, limit: limit, floor: floor, picked: pickedWords(r), told: disclosureWords(w, told), payee: payee, askedOver: askedOver, acceptanceOld: acceptanceOld, acceptanceRefused: acceptanceOld && acceptanceRuleVerdict(r.Rules) == "fail"})
 	ask.GoodToKnow = cardGoodToKnow(w, r)
 	// A share before a payment is the first of two stops; the charge is not
 	// known yet, so the line names none.
@@ -447,7 +529,7 @@ func disclosureWords(w cli.Wording, classes []string) string {
 
 // cardFactsLine is the money line: the amount (with what it adds to the price),
 // the rail, whether it comes back, and whether it is within the limit.
-func cardFactsLine(w cli.Wording, state dealState, snap dealSnapshot, r dealCheckResult, terms dealTerms, money func(int64) string) string {
+func cardFactsLine(w cli.Wording, state dealState, snap dealSnapshot, r dealCheckResult, terms dealTerms, money func(int64) string, broken string) string {
 	amount := snap.AmountMinor
 	if amount == nil && (snap.Action == "commit" || snap.Action == "pay") {
 		// A commitment says its price.
@@ -483,12 +565,19 @@ func cardFactsLine(w cli.Wording, state dealState, snap dealSnapshot, r dealChec
 	}
 	if m := state.intent.MaxTotalMinor; m != nil {
 		// Over exactly when the check found it over (its over_limit
-		// difference), so the facts and the reason never disagree.
-		key := "card.facts.within"
-		if hasRule(r, "over_limit") {
-			key = "card.facts.over"
+		// difference), so the facts and the reason never disagree. "Within"
+		// is never said when a limit of the user's rules failed: the deal's
+		// own cap is not the limit that asked.
+		switch {
+		case hasRule(r, "over_limit"):
+			parts = append(parts, w.Line("card.facts.over", cli.V{"limit": money(*m)}))
+		case broken != "":
+			parts = append(parts, w.Line("card.facts.over", cli.V{"limit": broken}))
+		default:
+			parts = append(parts, w.Line("card.facts.within", cli.V{"limit": money(*m)}))
 		}
-		parts = append(parts, w.Line(key, cli.V{"limit": money(*m)}))
+	} else if broken != "" {
+		parts = append(parts, w.Line("card.facts.over", cli.V{"limit": broken}))
 	}
 	return strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), " · ")
 }
@@ -550,6 +639,9 @@ func isDefaultPick(a cli.DealAttribute) bool {
 func labelOptions(w cli.Wording, r *dealCheckResult, snap dealSnapshot, state dealState) {
 	amount := cardAmount(snap, state)
 	violation := slices.ContainsFunc(r.Differences, func(d dealDifference) bool { return violationRules[d.Rule] })
+	if _, ok := brokenLimit(r.Rules, func(v int64) string { return strconv.FormatInt(v, 10) }); ok {
+		violation = true
+	}
 	for i, o := range r.Options {
 		var label string
 		switch o.ID {

@@ -140,10 +140,21 @@ func TestProceedIsAnOverrideOnlyWhenARuleFailed(t *testing.T) {
 		assert.Equal(t, []string{"Hold", "Pay $3"}, optionLabels(check))
 	})
 	t.Run("a rule asks", func(t *testing.T) {
-		// A rule that asks for approval is not broken: it asks (#344).
-		check := pinned(t, "escalate", denyFinding)
+		// A rule that asks for approval, with no limit broken, is not
+		// broken: it asks (#344).
+		check := pinned(t, "escalate", `{"id":"new-merchant","verdict":"fail","reason":"first time paying this seller"}`)
 		require.Equal(t, "pause", check["verdict"])
 		assert.Equal(t, []string{"Hold", "Pay $4.54"}, optionLabels(check))
+	})
+	t.Run("a limit of the user's rules failed and asks", func(t *testing.T) {
+		// A failed finding that carries its limit and value is a broken
+		// limit (evidencebook-deal#203): "anyway", and the card never says
+		// "within your limit".
+		check := pinned(t, "escalate", denyFinding)
+		require.Equal(t, "pause", check["verdict"])
+		assert.Equal(t, []string{"Hold", "Pay $4.54 anyway"}, optionLabels(check))
+		assert.Contains(t, check["card"], "over your $25 limit")
+		assert.NotContains(t, check["card"], "within your")
 	})
 	t.Run("a rule denies", func(t *testing.T) {
 		check := pinned(t, "deny", denyFinding)
