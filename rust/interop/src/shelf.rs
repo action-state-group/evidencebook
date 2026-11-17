@@ -193,8 +193,15 @@ impl Env {
         self.shelf.release()
     }
 
+    /// Append `entry` to `book`; book `journal` is the shelf's journal
+    /// ([`Shelf::journal`]).
     fn append(&self, book: &str, entry: &BookEntry) -> Result<(), Error> {
-        self.shelf.open(book)?.append(entry)?;
+        let book = if book == evidencebook::shelf::JOURNAL_LOG_ID {
+            self.shelf.journal()?
+        } else {
+            self.shelf.open(book)?
+        };
+        book.append(entry)?;
         Ok(())
     }
 

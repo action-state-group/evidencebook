@@ -213,6 +213,9 @@ pub(crate) struct BookState {
 
 pub(crate) struct BookCore {
     pub(crate) id: String,
+    /// The `shelf_logs` kind its first record claims: a book's, or the
+    /// journal's (evidencebook#461 §3).
+    kind: &'static str,
     shared: Arc<ShelfShared>,
     pub(crate) log: Log,
     pub(crate) state: Mutex<BookState>,
@@ -233,11 +236,13 @@ impl ShelfBook {
     pub(crate) fn open(
         shared: Arc<ShelfShared>,
         id: &str,
+        kind: &'static str,
         log: Log,
         indexes: Indexes,
     ) -> Result<Self, ShelfError> {
         let core = BookCore {
             id: id.to_string(),
+            kind,
             shared,
             log,
             state: Mutex::new(BookState {
@@ -551,7 +556,7 @@ impl BookCore {
             capsule: sealed.capsule.clone(),
             envelope: sealed.envelope.clone(),
         };
-        store::put_record(&mut self.shared.db(), &self.id, &stored)?;
+        store::put_record(&mut self.shared.db(), &self.id, self.kind, &stored)?;
         let record = BookRecord {
             seq,
             record_id: sealed.record_id,

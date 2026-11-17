@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 	UNIQUE (book_id, checkpoint_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host', 'journal')));
 CREATE TABLE IF NOT EXISTS shelf_entries (
 	entry_seq      INTEGER PRIMARY KEY,
 	kind           TEXT    NOT NULL,
@@ -85,6 +85,30 @@ pub const SHELF_VERSION_FACTS: i64 = 2;
 /// The kinds of `shelf_logs`.
 pub(crate) const KIND_BOOK: &str = "book";
 pub(crate) const KIND_HOST: &str = "host";
+/// The shelf's journal (evidencebook#461 §3).
+pub(crate) const KIND_JOURNAL: &str = "journal";
+
+/// Let `shelf_logs` hold the journal's kind in a file whose table was
+/// created before it existed (evidencebook#461 §3; Go `allowJournalKind`):
+/// SQLite cannot change a CHECK, so the table is rebuilt with the same rows,
+/// in `tx`. A file whose table already allows it is left alone.
+pub(crate) fn allow_journal_kind(tx: &Transaction<'_>) -> Result<(), ShelfError> {
+    let create: String = tx.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_logs'",
+        [],
+        |r| r.get(0),
+    )?;
+    if create.contains("'journal'") {
+        return Ok(());
+    }
+    tx.execute_batch(
+        "CREATE TABLE shelf_logs_journal (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host', 'journal')));
+         INSERT INTO shelf_logs_journal (log_id, kind) SELECT log_id, kind FROM shelf_logs;
+         DROP TABLE shelf_logs;
+         ALTER TABLE shelf_logs_journal RENAME TO shelf_logs;",
+    )?;
+    Ok(())
+}
 
 /// Create the shelf's tables when absent, in one transaction, and apply the
 /// fill rules of evidencebook#254 §2.2 (Go `initSQLiteStore`): a file with
@@ -202,10 +226,12 @@ pub struct StoredRecord {
 
 /// Store `record` in `book_id` (Go `sqliteStore.PutRecord`): stored once,
 /// the same record again a no-op, another one under its id corrupt. The
-/// record and the book's cadence standing are one transaction.
+/// record, the `shelf_logs` kind its first record claims (`kind`: a book's,
+/// or the journal's) and the book's cadence standing are one transaction.
 pub(crate) fn put_record(
     conn: &mut Connection,
     book_id: &str,
+    kind: &str,
     record: &StoredRecord,
 ) -> Result<(), ShelfError> {
     if let Some(existing) = get_record(conn, book_id, &record.record_id)? {
@@ -222,7 +248,7 @@ pub(crate) fn put_record(
         "INSERT INTO book_records (book_id, seq, record_id, header, capsule, envelope) VALUES (?, ?, ?, ?, ?, ?)",
         params![book_id, record.seq as i64, record.record_id, record.header, record.capsule, record.envelope],
     )?;
-    claim_kind(&tx, book_id, KIND_BOOK)?;
+    claim_kind(&tx, book_id, kind)?;
     mark_live(&tx, book_id)?;
     tx.commit()?;
     Ok(())

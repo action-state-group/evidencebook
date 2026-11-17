@@ -174,7 +174,90 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 func (s *Shelf) Open(ctx context.Context, logID string) (*Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.released {
+		return nil, ErrReleased
+	}
+	if kind, err := s.logKind(ctx, logID); err != nil {
+		return nil, err
+	} else if kind == logKindJournal {
+		return nil, fmt.Errorf("%w: %s is the shelf's journal; open it with Journal", ErrInvalid, logID)
+	}
 	return s.openLocked(ctx, logID)
+}
+
+// JournalLogID is the log id of the shelf's journal.
+const JournalLogID = "journal"
+
+// Journal returns the shelf's journal (evidencebook#461 §3): a book of kind
+// journal, one per shelf, opened on first use, whose records are full
+// records. Its facts are journal facts: a whole-shelf reader sees that it
+// changed at a stamp, never its size, and its openings go only to the owner
+// and an auditor it appoints. It needs a shelf of book facts (Migrate), and
+// it refuses a shelf on which a book or host log already has its log id.
+func (s *Shelf) Journal(ctx context.Context) (*Book, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.released {
+		return nil, ErrReleased
+	}
+	if book, ok := s.books[JournalLogID]; ok {
+		// Opened before: as the journal, or as a book that holds its id.
+		if kind, err := s.logKind(ctx, JournalLogID); err != nil {
+			return nil, err
+		} else if kind == logKindJournal {
+			return book, nil
+		}
+		return nil, fmt.Errorf("%w: %s is already a book, not the journal", ErrInvalid, JournalLogID)
+	}
+	if state, err := migrationState(ctx, s.db); err != nil {
+		return nil, err
+	} else if state != migrationDone {
+		return nil, fmt.Errorf("%w: the journal needs a shelf of book facts; call Migrate", ErrInvalid)
+	}
+	if _, ok := s.hosts[JournalLogID]; ok {
+		return nil, fmt.Errorf("%w: %s is a host log, not the journal", ErrInvalid, JournalLogID)
+	}
+	if s.cadence != nil && s.cadence.cfg.LogID == JournalLogID {
+		return nil, fmt.Errorf("%w: %s is the cadence log, not the journal", ErrInvalid, JournalLogID)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var records int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, JournalLogID).Scan(&records); err != nil {
+		return nil, err
+	}
+	kind, err := logKindOf(ctx, tx, JournalLogID)
+	if err != nil {
+		return nil, err
+	}
+	if kind != logKindJournal && (kind != "" || records > 0) {
+		return nil, fmt.Errorf("%w: %s is already a %s log, not the journal", ErrInvalid, JournalLogID, map[bool]string{true: kind, false: logKindBook}[kind != ""])
+	}
+	// A log with entries and no kind (the cadence log, which shelf_logs never
+	// records, or one this build does not know) is not the journal either:
+	// claiming it would leave its owner refused on the next open.
+	if kind == "" {
+		var entries int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cll_entries WHERE log_id = ?`, JournalLogID).Scan(&entries); err != nil {
+			return nil, err
+		}
+		if entries > 0 {
+			return nil, fmt.Errorf("%w: %s already holds another log's entries, not the journal", ErrInvalid, JournalLogID)
+		}
+	}
+	if err := allowJournalKind(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := claimLogKind(ctx, tx, JournalLogID, logKindJournal); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.openLocked(ctx, JournalLogID)
 }
 
 func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
@@ -194,13 +277,17 @@ func (s *Shelf) openLocked(ctx context.Context, logID string) (*Book, error) {
 	if kind == logKindHost {
 		return nil, fmt.Errorf("%w: %s is a host log, not a book", ErrInvalid, logID)
 	}
+	storeKind := logKindBook
+	if kind == logKindJournal {
+		storeKind = logKindJournal
+	}
 	substrate, err := OpenCLLSQLite(s.cfg.Path, logID, s.cfg.CheckpointKey)
 	if err != nil {
 		return nil, err
 	}
 	book, err := Open(ctx, Config{
 		BookID: logID, Operator: s.cfg.Operator, Developer: s.cfg.Developer,
-		Store: &sqliteStore{db: s.db, bookID: logID}, Substrate: substrate,
+		Store: &sqliteStore{db: s.db, bookID: logID, kind: storeKind}, Substrate: substrate,
 		Originals: s.cfg.Originals, Signer: s.cfg.Signer, Now: s.cfg.Now,
 		Authenticated: s.authenticated(logID),
 	})
@@ -223,14 +310,17 @@ func (s *Shelf) authenticated(logID string) []AuthenticatedIndex {
 	return s.cfg.AuthenticatedIndexes(logID)
 }
 
-// Books lists the ids of the books that hold records, in id order.
+// Books lists the ids of the books that hold records, in id order. The
+// journal is not among them: it counts toward no completeness and no tally
+// (evidencebook#461 §2.7).
 func (s *Shelf) Books(ctx context.Context) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.released {
 		return nil, ErrReleased
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT book_id FROM book_records ORDER BY book_id`)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT book_id FROM book_records WHERE book_id NOT IN (SELECT log_id FROM shelf_logs WHERE kind = 'journal') ORDER BY book_id`)
 	if err != nil {
 		return nil, err
 	}

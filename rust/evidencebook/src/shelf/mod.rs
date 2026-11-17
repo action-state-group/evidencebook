@@ -68,6 +68,9 @@ pub use handover::{
     HandoverLatest, HandoverResult,
 };
 pub use history::StandardHistoryAnchor;
+
+/// The log id of the shelf's journal ([`Shelf::journal`]).
+pub const JOURNAL_LOG_ID: &str = "journal";
 pub use import::LegacyCadence;
 pub use log::{Checkpoint, SUBSTRATE_KIND_CLL};
 pub use random::{RandomSource, SeededStream, SystemRandom};
@@ -83,7 +86,7 @@ pub use tree::{
 use self::lock::FileLock;
 use self::log::Log;
 use self::random::Draws;
-use self::store::{KIND_BOOK, KIND_HOST};
+use self::store::{KIND_BOOK, KIND_HOST, KIND_JOURNAL};
 use crate::substrate::Signer;
 use capsule_emit_artifact::Store as ArtifactStore;
 use ed25519_dalek::SigningKey;
@@ -347,10 +350,96 @@ impl Shelf {
 
     /// The book whose log id is `log_id`, created on first use: the same
     /// book for the same id for the shelf's lifetime. A host log's id is
-    /// refused, in this process or as `shelf_logs` records it.
+    /// refused, in this process or as `shelf_logs` records it, and so is the
+    /// journal's ([`Shelf::journal`] opens it).
     pub fn open(&self, log_id: &str) -> Result<ShelfBook, ShelfError> {
         let mut state = self.lock();
+        if state.released {
+            return Err(ShelfError::Released);
+        }
+        if store::log_kind(&self.shared().db(), log_id)?.as_deref() == Some(KIND_JOURNAL) {
+            return Err(ShelfError::Invalid(format!(
+                "{log_id} is the shelf's journal; open it with journal"
+            )));
+        }
         self.open_locked(&mut state, log_id)
+    }
+
+    /// The shelf's journal (evidencebook#461 §3; Go `Journal`): a book of
+    /// kind `journal` whose log id is [`JOURNAL_LOG_ID`], one per shelf,
+    /// opened on first use, whose records are full records. Its facts are
+    /// journal facts: a whole-shelf reader sees that it changed at a stamp,
+    /// never its size, and its openings go only to the owner and an auditor
+    /// it appoints. It needs a shelf of book facts ([`Cadence::migrate`]),
+    /// and it refuses a shelf on which a book or host log already has its
+    /// log id. A file whose `shelf_logs` table predates the kind gets the
+    /// table rebuilt, with the same rows, when the journal is first opened.
+    pub fn journal(&self) -> Result<ShelfBook, ShelfError> {
+        let mut state = self.lock();
+        if state.released {
+            return Err(ShelfError::Released);
+        }
+        let shared = self.shared().clone();
+        if let Some(book) = state.books.get(JOURNAL_LOG_ID) {
+            // Opened before: as the journal, or as a book that holds its id.
+            if store::log_kind(&shared.db(), JOURNAL_LOG_ID)?.as_deref() == Some(KIND_JOURNAL) {
+                return Ok(book.clone());
+            }
+            return Err(ShelfError::Invalid(format!(
+                "{JOURNAL_LOG_ID} is already a book, not the journal"
+            )));
+        }
+        if stamp::migration_state(&shared.db())? != stamp::MIGRATION_DONE {
+            return Err(ShelfError::Invalid(
+                "the journal needs a shelf of book facts; call migrate".into(),
+            ));
+        }
+        if state.hosts.contains_key(JOURNAL_LOG_ID) {
+            return Err(ShelfError::Invalid(format!(
+                "{JOURNAL_LOG_ID} is a host log, not the journal"
+            )));
+        }
+        if state
+            .cadence
+            .as_ref()
+            .is_some_and(|(id, _)| id == JOURNAL_LOG_ID)
+        {
+            return Err(ShelfError::Invalid(format!(
+                "{JOURNAL_LOG_ID} is the cadence log, not the journal"
+            )));
+        }
+        {
+            let mut db = shared.db();
+            let tx = store::write_tx(&mut db)?;
+            let records = store::record_count(&tx, JOURNAL_LOG_ID)?;
+            let kind = store::log_kind(&tx, JOURNAL_LOG_ID)?;
+            if kind.as_deref() != Some(KIND_JOURNAL) && (kind.is_some() || records > 0) {
+                return Err(ShelfError::Invalid(format!(
+                    "{JOURNAL_LOG_ID} is already a {} log, not the journal",
+                    kind.as_deref().unwrap_or(KIND_BOOK)
+                )));
+            }
+            // A log with entries and no kind (the cadence log, which
+            // shelf_logs never records, or one this build does not know) is
+            // not the journal either: claiming it would leave its owner
+            // refused on the next open.
+            if kind.is_none() {
+                let entries: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM cll_entries WHERE log_id = ?",
+                    [JOURNAL_LOG_ID],
+                    |r| r.get(0),
+                )?;
+                if entries > 0 {
+                    return Err(ShelfError::Invalid(format!(
+                        "{JOURNAL_LOG_ID} already holds another log's entries, not the journal"
+                    )));
+                }
+            }
+            store::allow_journal_kind(&tx)?;
+            store::claim_kind(&tx, JOURNAL_LOG_ID, KIND_JOURNAL)?;
+            tx.commit()?;
+        }
+        self.open_locked(&mut state, JOURNAL_LOG_ID)
     }
 
     pub(crate) fn open_locked(
@@ -365,31 +454,39 @@ impl Shelf {
             return Ok(book.clone());
         }
         let shared = self.shared();
-        if state.hosts.contains_key(log_id)
-            || store::log_kind(&shared.db(), log_id)?.as_deref() == Some(KIND_HOST)
-        {
+        let kind = store::log_kind(&shared.db(), log_id)?;
+        if state.hosts.contains_key(log_id) || kind.as_deref() == Some(KIND_HOST) {
             return Err(ShelfError::Invalid(format!(
                 "{log_id} is a host log, not a book"
             )));
         }
+        let kind = if kind.as_deref() == Some(KIND_JOURNAL) {
+            KIND_JOURNAL
+        } else {
+            KIND_BOOK
+        };
         let log = Log::open(&shared.path, log_id, &shared.checkpoint_key, &[], true)?;
         let indexes = shared
             .authenticated
             .as_ref()
             .map_or(Indexes::Defaults, |f| f(log_id));
-        let book = ShelfBook::open(shared.clone(), log_id, log, indexes)?;
+        let book = ShelfBook::open(shared.clone(), log_id, kind, log, indexes)?;
         state.books.insert(log_id.to_string(), book.clone());
         Ok(book)
     }
 
-    /// The ids of the books that hold records, in id order.
+    /// The ids of the books that hold records, in id order. The journal is
+    /// not among them: it counts toward no completeness and no tally
+    /// (evidencebook#461 §2.7).
     pub fn books(&self) -> Result<Vec<String>, ShelfError> {
         let state = self.lock();
         if state.released {
             return Err(ShelfError::Released);
         }
         let db = self.shared().db();
-        let mut stmt = db.prepare("SELECT DISTINCT book_id FROM book_records ORDER BY book_id")?;
+        let mut stmt = db.prepare(
+            "SELECT DISTINCT book_id FROM book_records WHERE book_id NOT IN (SELECT log_id FROM shelf_logs WHERE kind = 'journal') ORDER BY book_id",
+        )?;
         let ids = stmt.query_map([], |r| r.get(0))?;
         Ok(ids.collect::<Result<_, _>>()?)
     }
@@ -449,9 +546,13 @@ impl Shelf {
         let shared = self.shared();
         {
             let db = shared.db();
-            if store::log_kind(&db, log_id)?.as_deref() == Some(KIND_BOOK)
-                || store::record_count(&db, log_id)? > 0
-            {
+            let kind = store::log_kind(&db, log_id)?;
+            if kind.as_deref() == Some(KIND_JOURNAL) {
+                return Err(ShelfError::Invalid(format!(
+                    "{log_id} is the shelf's journal, not a host log"
+                )));
+            }
+            if kind.as_deref() == Some(KIND_BOOK) || store::record_count(&db, log_id)? > 0 {
                 return Err(ShelfError::Invalid(format!(
                     "{log_id} is a book, not a host log"
                 )));

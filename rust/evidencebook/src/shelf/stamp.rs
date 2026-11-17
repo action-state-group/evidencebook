@@ -19,8 +19,9 @@ use super::time::Time;
 use super::tree::{TickLeaf, TickLeaves};
 use super::{Shelf, ShelfError, ShelfState};
 use crate::shelf_facts::{
-    self, book_fact, entry_id, format_switch, openings_for, stamp_entry, FactInput, Opening,
-    ENTRY_KIND_FORMAT_SWITCH, ENTRY_KIND_STAMP, FACT_KIND_BOOK, FACT_KIND_JOURNAL, PROFILE_NONE,
+    self, book_fact, entry_id, format_switch, journal_fact, openings_for, stamp_entry, FactInput,
+    Opening, ENTRY_KIND_FORMAT_SWITCH, ENTRY_KIND_STAMP, FACT_KIND_BOOK, FACT_KIND_JOURNAL,
+    PROFILE_NONE,
 };
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
@@ -178,6 +179,9 @@ struct PendingFact {
     /// The log's new checkpoint, when it grew.
     statement: Option<Vec<u8>>,
     grown: bool,
+    /// The journal's fact (§2.2): its size, checkpoint digest and previous
+    /// size go inside its status commitment.
+    journal: bool,
 }
 
 /// The newest fact the shelf log holds for a log.
@@ -198,6 +202,10 @@ impl PendingFact {
         };
         if self.grown {
             return Ok(true);
+        }
+        if self.journal {
+            // The journal's values follow its size: unchanged unless it grew.
+            return Ok(false);
         }
         let link = shelf_facts::link_value(self.last_received.clone(), self.checked_over.clone())
             .map_err(invalid)?;
@@ -223,21 +231,26 @@ impl Shelf {
     }
 
     fn last_fact_of(&self, log_id: &str) -> Result<Option<LastFact>, ShelfError> {
-        type Row = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
+        type Row = (String, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>);
         let row: Option<Row> = self
             .shared()
             .db()
             .query_row(
-                "SELECT doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind = ? ORDER BY entry_seq DESC LIMIT 1",
-                params![log_id, FACT_KIND_BOOK],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                "SELECT kind, doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind IN (?, ?) ORDER BY entry_seq DESC LIMIT 1",
+                params![log_id, FACT_KIND_BOOK, FACT_KIND_JOURNAL],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()?;
-        let Some((doc, lo, so)) = row else {
+        let Some((kind, doc, lo, so)) = row else {
             return Ok(None);
         };
         let corrupt = || ShelfError::Corrupt(format!("a stored fact of {log_id}"));
-        let fact: Value = serde_json::from_slice(&doc).map_err(|_| corrupt())?;
+        let mut fact: Value = serde_json::from_slice(&doc).map_err(|_| corrupt())?;
+        let status = opening_value(&so.unwrap_or_default())?;
+        if kind == FACT_KIND_JOURNAL {
+            // The journal's true size and checkpoint are its status value's.
+            fact = status.clone();
+        }
         Ok(Some(LastFact {
             size: fact
                 .get("size")
@@ -249,7 +262,7 @@ impl Shelf {
                 .ok_or_else(corrupt)?
                 .to_string(),
             link: opening_value(&lo.unwrap_or_default())?,
-            status: opening_value(&so.unwrap_or_default())?,
+            status,
         }))
     }
 
@@ -495,11 +508,21 @@ impl Cadence {
         last: Option<&LastFact>,
     ) -> Result<PendingFact, ShelfError> {
         let log_id = log.log().log_id.clone();
-        let book_id = self.shelf.book_id_of(log)?;
+        // The journal (§2.2): a book of kind journal under its log id, whose
+        // book id is SHA-256 of its log id and which no profile describes.
+        let journal = matches!(log, CadenceLog::Book(_))
+            && log_id == super::JOURNAL_LOG_ID
+            && store::log_kind(&self.shelf.shared().db(), &log_id)?.as_deref()
+                == Some(store::KIND_JOURNAL);
+        let book_id = if journal {
+            sha256_hex(log_id.as_bytes())
+        } else {
+            self.shelf.book_id_of(log)?
+        };
         // Only a book is described by a profile; a host log's fact is always
         // profile `none` with the empty link value and {} (§2.4, §4).
         let values = match (&self.cfg.status, log) {
-            (Some(status), CadenceLog::Book(_)) => {
+            (Some(status), CadenceLog::Book(_)) if !journal => {
                 status(&book_id, &log_id).map_err(ShelfError::Invalid)?
             }
             _ => None,
@@ -536,6 +559,7 @@ impl Cadence {
             status: values.status,
             statement,
             grown,
+            journal,
         })
     }
 
@@ -569,21 +593,46 @@ impl Cadence {
                 checked_over: f.checked_over.clone(),
                 status: f.status.clone(),
             };
-            // Checked before its salts are drawn, as Go's newBookFact does,
-            // so a refused input consumes no random bytes.
-            shelf_facts::check_book_fact(&input).map_err(invalid)?;
+            // Checked before its salts are drawn, as Go's newBookFact and
+            // newJournalFact do, so a refused input consumes no random bytes.
+            if f.journal {
+                shelf_facts::check_journal_fact(
+                    &f.log_id,
+                    f.size,
+                    &f.checkpoint_sha256,
+                    f.prev_fact_size,
+                )
+            } else {
+                shelf_facts::check_book_fact(&input)
+            }
+            .map_err(invalid)?;
             let link_salt = state.random.bytes(32)?;
             let status_salt = state.random.bytes(32)?;
-            let fact = book_fact(input, [&link_salt, &status_salt]).map_err(invalid)?;
+            let salts = [link_salt.as_slice(), status_salt.as_slice()];
+            let (kind, fact) = if f.journal {
+                let fact = journal_fact(
+                    &f.log_id,
+                    f.size,
+                    &f.checkpoint_sha256,
+                    f.prev_fact_size,
+                    salts,
+                );
+                (FACT_KIND_JOURNAL, fact)
+            } else {
+                (FACT_KIND_BOOK, book_fact(input, salts))
+            };
+            let fact = fact.map_err(invalid)?;
             let (_, doc) = entry_id(&fact.doc).map_err(invalid)?;
             batch.entries.push(BatchEntry {
-                kind: FACT_KIND_BOOK.into(),
+                kind: kind.into(),
                 book_id: f.book_id.clone(),
                 log_id: f.log_id.clone(),
                 doc,
                 link_opening: opening_bytes(&fact.link_opening)?,
                 status_opening: opening_bytes(&fact.status_opening)?,
             });
+            // A journal fact's leaf keeps its true size and checkpoint, which
+            // only the holder reads: the cards' extents leave the journal out.
             leaves.deals.insert(
                 f.log_id.clone(),
                 TickLeaf {
@@ -1211,6 +1260,7 @@ mod tests {
             status: None,
             statement: None,
             grown: true,
+            journal: false,
         };
         let mut state = shelf.lock();
         let built = c.build_stamp_locked(
@@ -1363,5 +1413,255 @@ mod tests {
                 "00".repeat(32)
             )
         );
+    }
+
+    // Go's shelf_journal_test.go, case for case.
+
+    /// A migrated shelf with one deal book and a journal holding one record,
+    /// stamped once after the journal's first record.
+    fn migrated_with_journal(dir: &Path) -> (Shelf, Cadence, crate::shelf::ShelfBook) {
+        let shelf = open(&dir.join("shelf.db"));
+        let (c, _) = stamp_cadence(&shelf);
+        append(&shelf, "deal/a", "1");
+        c.tick(tick_time()).unwrap();
+        c.migrate(minutes(1)).unwrap();
+        let journal = shelf.journal().unwrap();
+        journal_append(&journal, "1");
+        c.stamp(minutes(2)).unwrap();
+        (shelf, c, journal)
+    }
+
+    fn journal_append(journal: &crate::shelf::ShelfBook, payload: &str) {
+        let mut entry = BookEntry::new("observation", EpistemicType::ObservedEvent);
+        entry.subject_ref = Some("journal".into());
+        entry.payloads = vec![payload.as_bytes().to_vec()];
+        journal.append(&entry).unwrap();
+    }
+
+    fn journal_facts(shelf: &Shelf) -> Vec<shelf_facts::BookFact> {
+        let db = shelf.shared().db();
+        let mut stmt = db
+            .prepare("SELECT doc FROM shelf_entries WHERE kind = ? ORDER BY entry_seq")
+            .unwrap();
+        let rows = stmt
+            .query_map([FACT_KIND_JOURNAL], |r| r.get::<_, Vec<u8>>(0))
+            .unwrap();
+        rows.map(|doc| serde_json::from_slice(&doc.unwrap()).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn the_journal_gets_a_journal_fact_that_hides_its_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let (shelf, _, _) = migrated_with_journal(dir.path());
+        let facts = journal_facts(&shelf);
+        assert_eq!(facts.len(), 1);
+        let f = &facts[0];
+        assert_eq!(f.log_id, crate::shelf::JOURNAL_LOG_ID);
+        assert_eq!(f.size, 0);
+        assert_eq!(f.checkpoint_sha256, "");
+        assert_eq!(f.prev_fact_size, 0);
+        assert_eq!(f.profile, PROFILE_NONE);
+
+        // The owner's opening holds the true size and checkpoint.
+        let got = shelf.openings(&f.book_id, "owner").unwrap();
+        assert_eq!(got.len(), 1);
+        let status = &got[0].status_opening.as_ref().unwrap().value;
+        assert_ne!(status["size"].as_u64().unwrap(), 0);
+        let sum = status["checkpoint_sha256"].as_str().unwrap();
+        assert!(sum.len() == 64 && sum.bytes().all(|c| c.is_ascii_hexdigit()));
+        shelf_facts::verify_openings(
+            &got[0].fact,
+            got[0].link_opening.as_ref(),
+            got[0].status_opening.as_ref(),
+        )
+        .unwrap();
+        shelf.release().unwrap();
+    }
+
+    // The journal follows the write rule: a fact only when it grew.
+    #[test]
+    fn the_journal_gets_a_fact_only_when_it_grows() {
+        let dir = tempfile::tempdir().unwrap();
+        let (shelf, c, journal) = migrated_with_journal(dir.path());
+        c.stamp(minutes(3)).unwrap();
+        assert_eq!(
+            journal_facts(&shelf).len(),
+            1,
+            "a quiet journal gets no fact"
+        );
+        journal_append(&journal, "2");
+        c.stamp(minutes(4)).unwrap();
+        let facts = journal_facts(&shelf);
+        assert_eq!(facts.len(), 2);
+
+        let got = shelf.openings(&facts[0].book_id, "owner").unwrap();
+        assert_eq!(got.len(), 2);
+        let first = &got[0].status_opening.as_ref().unwrap().value;
+        let second = &got[1].status_opening.as_ref().unwrap().value;
+        assert_eq!(first["size"], second["prev_fact_size"]);
+        assert!(second["size"].as_u64() > first["size"].as_u64());
+        shelf.release().unwrap();
+    }
+
+    // The journal counts toward no completeness and no tally: it is not one
+    // of the shelf's books, has no extent on a card, and a handover returns
+    // no latest fact for it.
+    #[test]
+    fn the_journal_is_in_no_count_and_no_handover() {
+        let dir = tempfile::tempdir().unwrap();
+        let (shelf, c, _) = migrated_with_journal(dir.path());
+        assert_eq!(shelf.books().unwrap(), ["deal/a"]);
+        let last = c.last().unwrap().unwrap();
+        let anchor = c.standard_history_anchor(last.n).unwrap();
+        assert!(!anchor.extents.contains_key(crate::shelf::JOURNAL_LOG_ID));
+        assert!(anchor.extents.contains_key("deal/a"));
+
+        let h = c.handover(0).unwrap();
+        let key = super::super::log::Checkpoint::from_statement(&h.anchor)
+            .unwrap()
+            .key_id;
+        let got = crate::shelf::verify_handover(&h, &key, None).unwrap();
+        assert!(got
+            .latest
+            .iter()
+            .all(|l| l.fact.log_id != crate::shelf::JOURNAL_LOG_ID));
+        let mut journal_docs = 0;
+        for d in &h.documents {
+            let f: Value = serde_json::from_slice(&d.doc).unwrap();
+            if f["kind"] == FACT_KIND_JOURNAL {
+                journal_docs += 1;
+                assert!(
+                    d.status_opening.is_none(),
+                    "the journal's opening is never handed over"
+                );
+            }
+        }
+        assert_eq!(journal_docs, 1);
+        shelf.release().unwrap();
+    }
+
+    #[test]
+    fn the_journal_is_opened_only_as_the_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let (shelf, _, journal) = migrated_with_journal(dir.path());
+        let again = shelf.journal().unwrap();
+        assert!(Arc::ptr_eq(&journal.0, &again.0), "the same journal");
+        assert!(
+            matches!(
+                shelf.open(crate::shelf::JOURNAL_LOG_ID),
+                Err(ShelfError::Invalid(_))
+            ),
+            "open refuses the journal"
+        );
+        assert!(
+            matches!(
+                shelf.host_log(crate::shelf::JOURNAL_LOG_ID, true),
+                Err(ShelfError::Invalid(_))
+            ),
+            "a host log cannot take the journal's id"
+        );
+        shelf.release().unwrap();
+    }
+
+    #[test]
+    fn the_journal_needs_a_shelf_of_book_facts() {
+        let dir = tempfile::tempdir().unwrap();
+        let shelf = open(&dir.path().join("shelf.db"));
+        assert!(matches!(shelf.journal(), Err(ShelfError::Invalid(_))));
+        shelf.release().unwrap();
+    }
+
+    #[test]
+    fn the_journal_refuses_a_log_that_already_has_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let shelf = open(&dir.path().join("shelf.db"));
+        let (c, _) = stamp_cadence(&shelf);
+        append(&shelf, crate::shelf::JOURNAL_LOG_ID, "1");
+        c.tick(tick_time()).unwrap();
+        c.migrate(minutes(1)).unwrap();
+        assert!(matches!(shelf.journal(), Err(ShelfError::Invalid(_))));
+        shelf.release().unwrap();
+    }
+
+    // A file whose shelf_logs predates the journal's kind is rebuilt with
+    // the same rows when the journal is first opened.
+    #[test]
+    fn an_older_shelf_logs_table_takes_the_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        let shelf = open(&dir.path().join("shelf.db"));
+        let (c, _) = stamp_cadence(&shelf);
+        append(&shelf, "deal/a", "1");
+        c.tick(tick_time()).unwrap();
+        c.migrate(minutes(1)).unwrap();
+        shelf
+            .shared()
+            .db()
+            .execute_batch(
+                "CREATE TABLE shelf_logs_old (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+                 INSERT INTO shelf_logs_old SELECT log_id, kind FROM shelf_logs;
+                 DROP TABLE shelf_logs;
+                 ALTER TABLE shelf_logs_old RENAME TO shelf_logs;",
+            )
+            .unwrap();
+        shelf.journal().unwrap();
+        let db = shelf.shared().db();
+        assert_eq!(
+            store::log_kind(&db, "deal/a").unwrap().as_deref(),
+            Some(store::KIND_BOOK)
+        );
+        assert_eq!(
+            store::log_kind(&db, crate::shelf::JOURNAL_LOG_ID)
+                .unwrap()
+                .as_deref(),
+            Some(store::KIND_JOURNAL)
+        );
+        drop(db);
+        shelf.release().unwrap();
+    }
+
+    // A shelf whose cadence log is named as the journal refuses the journal
+    // and changes nothing, in this process and after a reopen with no
+    // cadence open (Go TestTheJournalRefusesTheCadenceLogsID).
+    #[test]
+    fn the_journal_refuses_the_cadence_logs_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shelf.db");
+        let cadence = |shelf: &Shelf| {
+            shelf.cadence(CadenceConfig {
+                log_id: crate::shelf::JOURNAL_LOG_ID.into(),
+                interval: Duration::from_secs(300),
+                jitter: Duration::ZERO,
+                no_jitter: true,
+                witness_ids: Vec::new(),
+                witnesses: None,
+                pad_bucket: 1,
+                ended: Arc::new(|_| Ok(false)),
+                status: None,
+            })
+        };
+        let shelf = open(&path);
+        let c = cadence(&shelf).unwrap();
+        append(&shelf, "deal/a", "1");
+        c.tick(tick_time()).unwrap();
+        c.migrate(minutes(1)).unwrap();
+        assert!(
+            matches!(shelf.journal(), Err(ShelfError::Invalid(_))),
+            "the cadence open in this process"
+        );
+        shelf.release().unwrap();
+
+        let reopened = open(&path);
+        assert!(
+            matches!(reopened.journal(), Err(ShelfError::Invalid(_))),
+            "the cadence's entries on disk"
+        );
+        assert_eq!(
+            store::log_kind(&reopened.shared().db(), crate::shelf::JOURNAL_LOG_ID).unwrap(),
+            None,
+            "nothing was claimed"
+        );
+        assert!(cadence(&reopened).is_ok(), "the cadence still opens");
+        reopened.release().unwrap();
     }
 }

@@ -201,6 +201,23 @@ pub fn book_fact(input: FactInput, salts: [&[u8]; 2]) -> Result<Fact, Invalid> {
 
 /// The journal's fact: its book id is the SHA-256 of its log id, and its
 /// size, checkpoint digest and previous size are in its status only.
+/// Every check [`journal_fact`] makes before it commits, so a caller can
+/// refuse an input before drawing its salts (Go's `newJournalFact`
+/// validates first).
+pub(crate) fn check_journal_fact(
+    log_id: &str,
+    size: u64,
+    checkpoint_sha256: &str,
+    prev_fact_size: u64,
+) -> Result<(), Invalid> {
+    if log_id.is_empty() || !is_digest(checkpoint_sha256) || size < prev_fact_size {
+        return Err(invalid(
+            "a journal fact needs its log, checkpoint and sizes",
+        ));
+    }
+    Ok(())
+}
+
 pub fn journal_fact(
     log_id: &str,
     size: u64,
@@ -208,11 +225,7 @@ pub fn journal_fact(
     prev_fact_size: u64,
     salts: [&[u8]; 2],
 ) -> Result<Fact, Invalid> {
-    if log_id.is_empty() || !is_digest(checkpoint_sha256) || size < prev_fact_size {
-        return Err(invalid(
-            "a journal fact needs its log, checkpoint and sizes",
-        ));
-    }
+    check_journal_fact(log_id, size, checkpoint_sha256, prev_fact_size)?;
     let link = link_value(None, Vec::new())?;
     let status = json!({"size": size, "checkpoint_sha256": checkpoint_sha256, "prev_fact_size": prev_fact_size});
     let (lc, lo) = commit(salts[0], &link)?;

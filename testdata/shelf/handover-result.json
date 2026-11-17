@@ -49,11 +49,11 @@
         "size": 32,
         "checkpoint_sha256": "0c4109218dbff6d585ed1851f6048dbcd3e80250ec9e07105a345b10d9eba90f",
         "prev_fact_size": 25,
-        "link_commitment": "de1d029878a3c9dae98be93f9b0cda64545f16f300e6f3ea137db3c7dee18875",
-        "status_commitment": "488a8d01b42e09dda19376ea1f7aa81545e23d1bbcd4cb906e3ed686656e8da2"
+        "link_commitment": "6387dac7e44a567cf7b1747d734ac289da0edc2f265252a0b5175382db4fcde5",
+        "status_commitment": "a1518ccc1a28f440c7fa4cc31cc86636e0aed06aba550314674f37b59319c726"
       },
       "status_opening": {
-        "salt": "e338e3c93307dd186f2bf9937080acde66b58463ad80ddd9956b1c36b83ae24e",
+        "salt": "a99b62597a1ff64cb504da11bf3a6c32a4f6accff5e278ec8c2236b3db73f6bb",
         "value": {}
       }
     },
@@ -65,13 +65,13 @@
         "book_id": "998eedf8e2c8ee68a291e970e1f34b84c6627e8801392bf114520e9c9ae1d1d5",
         "log_id": "legacy/old",
         "size": 8,
-        "checkpoint_sha256": "4a325571af0e99e6093588b0767fe228ea2568e68dc81261a02be49360713f19",
+        "checkpoint_sha256": "ca5adb4dcbc6392af5544732ccb177f8bf2dd0db488091dbc5ef8ec4c2f6d598",
         "prev_fact_size": 7,
-        "link_commitment": "787fbfb1fc8f2c4ae4b65a7337f3ec8b883db4cf203e91d630ca8477f4784107",
-        "status_commitment": "d84dc7662d235fd04aaf41ebbfa8a9bfd521f34fd014b4fb623222a19404043d"
+        "link_commitment": "165053d37f0bf55b83157e4162f65efa5cd80c7b3b95a5b8fea4fa2fd9e882bc",
+        "status_commitment": "c19cf7932d98fd377ae90e23d256943c103682ea14ead80840a92c120426560f"
       },
       "status_opening": {
-        "salt": "a4f6accff5e278ec8c2236b3db73f6bb4f2d9fde12871ba859655d7c02f92ad3",
+        "salt": "c0eea2e066f6be817486a9de29aeda24f4d79bc304bd21df17e073f0365f4c3f",
         "value": {}
       }
     }

@@ -185,7 +185,11 @@ func pendingEntry(subject string) evidencebook.Entry {
 }
 
 func (e *env) append(ctx context.Context, bookID string, entry evidencebook.Entry) error {
-	book, err := e.shelf.Open(ctx, bookID)
+	open := e.shelf.Open
+	if bookID == evidencebook.JournalLogID {
+		open = func(ctx context.Context, _ string) (*evidencebook.Book, error) { return e.shelf.Journal(ctx) }
+	}
+	book, err := open(ctx, bookID)
 	if err != nil {
 		return err
 	}
@@ -253,7 +257,8 @@ func (e *env) witness(ctx context.Context, tick evidencebook.CadenceTick) error 
 //   - "host_append": append HostValue(N) to the host log "legacy/old" in the
 //     cadence (HostLog), at the clock;
 //   - "append": append an observation about Subject with the one payload
-//     Payload to Book, at the clock;
+//     Payload to Book, at the clock; Book "journal" is the shelf's journal
+//     (Shelf.Journal);
 //   - "tick": set the clock to the last tick's due time (the first tick:
 //     Start + 30 s) and tick; with Witness, report MintReceipt's receipt for
 //     it, which must verify;
@@ -312,13 +317,16 @@ var ContinuePhase = []Step{
 
 // MigratePhase continues the shelf after ContinuePhase: it switches it to a
 // log of book facts (evidencebook#461) and stamps it, on demand and on the
-// heartbeat, with a quiet stamp between.
+// heartbeat, with a quiet stamp between; the journal starts after the switch
+// and grows again before the heartbeat.
 var MigratePhase = []Step{
 	{Op: "open", Stream: MigrateStream, At: 10800},
 	{Op: "migrate"},
 	{Op: "append", Book: "deal/a", Subject: "a", Payload: "a7"},
+	{Op: "append", Book: "journal", Subject: "journal", Payload: "j1"},
 	{Op: "stamp", At: 10860},
 	{Op: "stamp", At: 10920},
+	{Op: "append", Book: "journal", Subject: "journal", Payload: "j2"},
 	{Op: "host_append", N: 5},
 	{Op: "tick", Witness: true},
 	{Op: "release"},

@@ -85,7 +85,8 @@ impl Cadence {
         let first = Checkpoint::from_statement(&first)?;
         let mut stmt = db.prepare(
             "SELECT j.key, MAX(json_extract(j.value, '$.size')) FROM cadence_ticks AS t, json_each(t.leaves, '$.deals') AS j
-             WHERE t.tick <= ? AND t.checkpoint_size > 0 GROUP BY j.key",
+             WHERE t.tick <= ? AND t.checkpoint_size > 0
+               AND j.key NOT IN (SELECT log_id FROM shelf_logs WHERE kind = 'journal') GROUP BY j.key",
         )?;
         let mut extents = BTreeMap::new();
         for row in stmt.query_map([n as i64], |r| {

@@ -290,6 +290,9 @@ type pendingFact struct {
 	input     FactInput
 	statement []byte
 	grown     bool
+	// journal marks the journal's fact (§2.2): its size, checkpoint digest
+	// and previous size go inside its status commitment.
+	journal bool
 }
 
 // cadenceLogIDs is every log of the lifetime table, sorted.
@@ -319,9 +322,10 @@ type lastFact struct {
 
 func (s *Shelf) lastFactOf(ctx context.Context, logID string) (lastFact, error) {
 	var doc, lo, so []byte
+	var kind string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind = ? ORDER BY entry_seq DESC LIMIT 1`,
-		logID, FactKindBook).Scan(&doc, &lo, &so)
+		`SELECT kind, doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind IN (?, ?) ORDER BY entry_seq DESC LIMIT 1`,
+		logID, FactKindBook, FactKindJournal).Scan(&kind, &doc, &lo, &so)
 	if errors.Is(err, sql.ErrNoRows) {
 		return lastFact{}, nil
 	}
@@ -334,6 +338,14 @@ func (s *Shelf) lastFactOf(ctx context.Context, logID string) (lastFact, error) 
 		return lastFact{}, fmt.Errorf("%w: a stored fact of %s: %v", ErrCorrupt, logID, err)
 	}
 	out.link, out.status, out.found = link.Value, status.Value, true
+	if kind == FactKindJournal {
+		// The journal's true size and checkpoint are its status value's.
+		var js JournalStatus
+		if err := json.Unmarshal(status.Value, &js); err != nil {
+			return lastFact{}, fmt.Errorf("%w: a stored journal fact: %v", ErrCorrupt, err)
+		}
+		out.fact.Size, out.fact.CheckpointSHA256, out.fact.PrevFactSize = js.Size, js.CheckpointSHA256, js.PrevFactSize
+	}
 	return out, nil
 }
 
@@ -359,14 +371,26 @@ func (s *Shelf) bookIDOf(ctx context.Context, log CadenceLog) (string, error) {
 // fact, or nil for a genesis fact. grown says whether its checkpoint grew.
 func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, last *lastFact) (pendingFact, error) {
 	s := c.shelf
-	bookID, err := s.bookIDOf(ctx, log)
-	if err != nil {
+	journal := false
+	if _, ok := log.(bookLog); ok && log.LogID() == JournalLogID {
+		kind, err := s.logKind(ctx, log.LogID())
+		if err != nil {
+			return pendingFact{}, err
+		}
+		journal = kind == logKindJournal
+	}
+	var bookID string
+	var err error
+	if journal {
+		sum := sha256.Sum256([]byte(log.LogID()))
+		bookID = hex.EncodeToString(sum[:])
+	} else if bookID, err = s.bookIDOf(ctx, log); err != nil {
 		return pendingFact{}, err
 	}
 	profile, link, status := ProfileNone, LinkValue{}, json.RawMessage(nil)
 	// Only a book is described by a profile; a host log's fact is always
 	// profile "none" with the empty link value and {} (§2.4, §4).
-	if _, isBook := log.(bookLog); isBook && c.cfg.Status != nil {
+	if _, isBook := log.(bookLog); isBook && !journal && c.cfg.Status != nil {
 		p, l, st, ok, err := c.cfg.Status.Values(ctx, bookID, log.LogID())
 		if err != nil {
 			return pendingFact{}, err
@@ -396,7 +420,7 @@ func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, las
 	} else {
 		in.CheckpointSHA256 = last.fact.CheckpointSHA256
 	}
-	return pendingFact{input: in, statement: statement, grown: grown}, nil
+	return pendingFact{input: in, statement: statement, grown: grown, journal: journal}, nil
 }
 
 // changed reports whether f's fact would differ from last (§2.4): the size
@@ -405,6 +429,10 @@ func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, las
 func (f pendingFact) changed(last lastFact) (bool, error) {
 	if !last.found || f.grown {
 		return true, nil
+	}
+	if f.journal {
+		// The journal's values follow its size: unchanged unless it grew.
+		return false, nil
 	}
 	link, err := linkValue(f.input.Link)
 	if err != nil {
@@ -452,7 +480,16 @@ func (c *Cadence) buildStampLocked(ctx context.Context, n uint64, at, now time.T
 	batch := StampBatch{V: 1, Entries: head}
 	leaves := TickLeaves{Deals: map[string]TickLeaf{}}
 	for _, f := range facts {
-		fact, lo, so, err := newBookFact(f.input, random)
+		kind := FactKindBook
+		var fact BookFact
+		var lo, so FactOpening
+		var err error
+		if f.journal {
+			kind = FactKindJournal
+			fact, lo, so, err = newJournalFact(f.input.LogID, JournalStatus{Size: f.input.Size, CheckpointSHA256: f.input.CheckpointSHA256, PrevFactSize: f.input.PrevFactSize}, random)
+		} else {
+			fact, lo, so, err = newBookFact(f.input, random)
+		}
 		if err != nil {
 			return CadenceTick{}, err
 		}
@@ -469,8 +506,10 @@ func (c *Cadence) buildStampLocked(ctx context.Context, n uint64, at, now time.T
 		if err != nil {
 			return CadenceTick{}, err
 		}
-		batch.Entries = append(batch.Entries, BatchEntry{Kind: FactKindBook, BookID: fact.BookID, LogID: fact.LogID, Doc: doc, LinkOpening: loB, StatusOpening: soB})
-		leaf := TickLeaf{LogID: fact.LogID, Size: fact.Size, CheckpointSHA256: fact.CheckpointSHA256}
+		batch.Entries = append(batch.Entries, BatchEntry{Kind: kind, BookID: fact.BookID, LogID: fact.LogID, Doc: doc, LinkOpening: loB, StatusOpening: soB})
+		// A journal fact's leaf keeps its true size and checkpoint, which
+		// only the holder reads: the cards' extents leave the journal out.
+		leaf := TickLeaf{LogID: fact.LogID, Size: f.input.Size, CheckpointSHA256: f.input.CheckpointSHA256}
 		if f.statement != nil {
 			leaf.Statement = base64.RawURLEncoding.EncodeToString(f.statement)
 		}

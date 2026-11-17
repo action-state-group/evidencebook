@@ -103,12 +103,24 @@
       "payload": "a7"
     },
     {
+      "op": "append",
+      "book": "journal",
+      "subject": "journal",
+      "payload": "j1"
+    },
+    {
       "op": "stamp",
       "at": 10860
     },
     {
       "op": "stamp",
       "at": 10920
+    },
+    {
+      "op": "append",
+      "book": "journal",
+      "subject": "journal",
+      "payload": "j2"
     },
     {
       "op": "host_append",
