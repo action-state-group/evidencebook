@@ -329,3 +329,74 @@ func TestAReceivedRecordTimeIsTheFirstFactThatLinksIt(t *testing.T) {
 	_, _, err = shelf.ReceivedRecordTime(ctx, bookID, "deal/theirs", 1, []string{testWitnessURL})
 	assert.ErrorIs(t, err, ErrReleased)
 }
+
+// A record time by key id (#482 Q1, u604) reads the key id each receipt
+// verified under: the same receipts give the same time as by URL, a key no
+// receipt verified under gives none, and the handover's reader agrees.
+func TestARecordTimeByKey(t *testing.T) {
+	ctx := context.Background()
+	_, shelf, c, bookID, first, second := recordTimeShelf(t)
+	key, _ := testWitness()
+	keyID := hex.EncodeToString(key.Public().(ed25519.PublicKey))
+	otherKey := hex.EncodeToString(otherWitnessKey().Public().(ed25519.PublicKey))
+	t1, t2 := tickTime.Add(10*time.Minute), tickTime.Add(20*time.Minute)
+	witnessAt(t, c, first, testWitnessURL, t1)
+	witnessAt(t, c, second, testWitnessURL, t2)
+	last := leavesOf(t, shelf, "deal/a")
+	for p := uint64(1); p <= last+1; p++ {
+		byURL, okURL := recordTime(t, shelf, bookID, p, testWitnessURL)
+		byKey, okKey, err := shelf.RecordTimeByKey(ctx, bookID, p, []string{keyID})
+		require.NoError(t, err)
+		assert.Equal(t, okURL, okKey, p)
+		assert.Equal(t, byURL, byKey, p)
+		_, ok, err := shelf.RecordTimeByKey(ctx, bookID, p, []string{otherKey, testWitnessURL})
+		require.NoError(t, err)
+		assert.False(t, ok, "a URL is not a key id, and the other key verified no receipt")
+	}
+	_, _, err := shelf.RecordTimeByKey(ctx, bookID, 0, []string{keyID})
+	assert.ErrorIs(t, err, ErrInvalid)
+
+	_, err = c.Stamp(ctx, tickTime.Add(4*time.Minute))
+	require.NoError(t, err)
+	h, err := c.Handover(ctx, 0)
+	require.NoError(t, err)
+	times, err := VerifyHandoverTimes(h, checkpointKeyOf(t, h), testWitnesses(t))
+	require.NoError(t, err)
+	for p := uint64(1); p <= last; p++ {
+		want, wantOK, err := shelf.RecordTimeByKey(ctx, bookID, p, []string{keyID})
+		require.NoError(t, err)
+		got, ok, err := times.RecordTimeByKey(bookID, p, []string{keyID})
+		require.NoError(t, err)
+		assert.Equal(t, wantOK, ok, p)
+		assert.Equal(t, want, got, p)
+	}
+}
+
+// ReceivedRecordTimeByKey names witnesses by key id as RecordTimeByKey does.
+func TestAReceivedRecordTimeByKey(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, values := newStampCadence(t, shelf)
+	values.set("deal/a", `{"row":"open"}`)
+	a := mustOpenBook(t, shelf, "deal/a")
+	mustAppend(t, a, observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	values.mu.Lock()
+	values.link["deal/a"] = LinkValue{LastReceived: &ReceivedPosition{LogID: "deal/theirs", Size: 2, RecordDigest: dg("theirs2")}, CheckedOver: []string{}}
+	values.mu.Unlock()
+	mustAppend(t, a, observation("a", "2"))
+	s1, err := c.Stamp(ctx, tickTime.Add(2*time.Minute))
+	require.NoError(t, err)
+	witnessAt(t, c, s1.Tick, testWitnessURL, tickTime.Add(30*time.Minute))
+	var bookID string
+	require.NoError(t, shelf.db.QueryRow(`SELECT book_id FROM shelf_entries WHERE log_id = 'deal/a' LIMIT 1`).Scan(&bookID))
+	key, _ := testWitness()
+	got, ok, err := shelf.ReceivedRecordTimeByKey(ctx, bookID, "deal/theirs", 2, []string{hex.EncodeToString(key.Public().(ed25519.PublicKey))})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, tickTime.Add(30*time.Minute), got)
+	_, ok, err = shelf.ReceivedRecordTimeByKey(ctx, bookID, "deal/theirs", 2, []string{testWitnessURL})
+	require.NoError(t, err)
+	assert.False(t, ok, "a URL is not a key id")
+}

@@ -38,7 +38,9 @@ type handoverFact struct {
 
 type handoverRegistration struct {
 	entries uint64
-	at      map[string]int64
+	// at and atKey are the earliest registration times by witness URL and
+	// by verified key id.
+	at, atKey map[string]int64
 }
 
 // VerifyHandoverTimes replays h with VerifyHandover, then reads the
@@ -68,15 +70,14 @@ func VerifyHandoverTimes(h Handover, pinnedKey string, witnesses aacwitness.Dire
 		if err != nil {
 			return HandoverTimes{}, err
 		}
-		reg := handoverRegistration{entries: cp.Entries, at: map[string]int64{}}
+		reg := handoverRegistration{entries: cp.Entries, at: map[string]int64{}, atKey: map[string]int64{}}
 		for _, r := range w.Receipts {
 			check, verified, err := verifyWitnessReceipt(w.Checkpoint, r, witnesses)
 			if err != nil || check.State != WitnessVerified || verified.registeredAt == nil {
 				continue
 			}
-			if held, ok := reg.at[r.TSURL]; !ok || *verified.registeredAt < held {
-				reg.at[r.TSURL] = *verified.registeredAt
-			}
+			keepEarliest(reg.at, r.TSURL, *verified.registeredAt)
+			keepEarliest(reg.atKey, verified.keyID, *verified.registeredAt)
 		}
 		out.checkpoints = append(out.checkpoints, reg)
 	}
@@ -88,6 +89,16 @@ func VerifyHandoverTimes(h Handover, pinnedKey string, witnesses aacwitness.Dire
 // computes it: the earliest registration time of a handed-over checkpoint
 // that covers the first fact of the book whose size covers the position.
 func (t HandoverTimes) RecordTime(bookID string, position uint64, witnesses []string) (time.Time, bool, error) {
+	return t.recordTime(bookID, position, witnesses, false)
+}
+
+// RecordTimeByKey is RecordTime with the witnesses named by their verified
+// key ids, as Shelf.RecordTimeByKey.
+func (t HandoverTimes) RecordTimeByKey(bookID string, position uint64, keyIDs []string) (time.Time, bool, error) {
+	return t.recordTime(bookID, position, keyIDs, true)
+}
+
+func (t HandoverTimes) recordTime(bookID string, position uint64, witnesses []string, byKey bool) (time.Time, bool, error) {
 	if position == 0 {
 		return time.Time{}, false, fmt.Errorf("%w: a record position counts from 1", ErrInvalid)
 	}
@@ -107,8 +118,12 @@ func (t HandoverTimes) RecordTime(bookID string, position uint64, witnesses []st
 		if cp.entries < seq {
 			continue
 		}
+		at := cp.at
+		if byKey {
+			at = cp.atKey
+		}
 		for _, w := range witnesses {
-			if at, ok := cp.at[w]; ok && (!found || at < earliest) {
+			if at, ok := at[w]; ok && (!found || at < earliest) {
 				earliest, found = at, true
 			}
 		}
@@ -117,4 +132,11 @@ func (t HandoverTimes) RecordTime(bookID string, position uint64, witnesses []st
 		return time.Time{}, false, nil
 	}
 	return time.Unix(earliest, 0).UTC(), true, nil
+}
+
+// keepEarliest keeps at in m under name unless m holds an earlier time.
+func keepEarliest(m map[string]int64, name string, at int64) {
+	if held, ok := m[name]; !ok || at < held {
+		m[name] = at
+	}
 }
