@@ -110,7 +110,7 @@ class Run:
 
     def edit(self, p: packs.Pack, permille: int | None) -> packs.Pack:
         rule("4b  The presenter tightens the rule (placeholder thresholds, for this demo only)")
-        print(f"max_adverse_permille is {p.max_adverse_permille} in pack {p.version}.")
+        print(f"The pack's limit is {p.max_adverse_permille} in every 1,000 deals did not hold (placeholder), in pack {p.version}.")
         if permille is None:
             raw = input(f"New value [{DEFAULT_PERMILLE}]: ").strip() if not self.auto else ""
             permille = int(raw or DEFAULT_PERMILLE)
@@ -131,7 +131,7 @@ class Run:
             a, ev = made[e["id"]], self.evidence[e["id"]]
             band = ev.card["bands"][0]
             ceiling = p.ceiling_msat(a.tier) if a.tier else None
-            opts.append({"id": e["id"], "name": e["name"], "price": screens.msat(a.price_msat), "verdict": a.verdict,
+            opts.append({"id": e["id"], "name": e["name"], "price": "Listed price " + screens.msat(a.price_msat), "verdict": a.verdict,
                          "decision": screens.decision_line(a, ev, p.max_adverse_permille, ceiling),
                          "card": f"{band['held'] + band['did_not_hold']} deals · " + screens.card_line(ev, ev.sample_card),
                          "rulings": "Shown, not scored.", "button": f"Pay {e['name']} {screens.msat(a.price_msat)}"})
@@ -160,8 +160,7 @@ class Run:
         rule("6  Pick sealed, deal and payment")
         print(f"pick sealed before any payment: {name} at {screens.msat(a.price_msat)}, citing both assessments ({pick[:10]}…)")
         if a.verdict != "GO":
-            line = (f"LIMIT: {screens.msat(a.price_msat)} is over this seller's limit (deals under "
-                    f"{screens.msat(a.cap_msat or 0)}); no deal opens and nothing is paid · 价格超过上限，不放行")
+            line = screens.limit_outcome(a)
             print(line)
             self.srv.finish(line)
             return
@@ -192,8 +191,10 @@ class Run:
                 time.sleep(min(max(wait, 1), 10))
         card = seller.standard_history()
         o = card["deals"]
-        print(f"{name}'s card now counts {len(o)} deals ({sum(1 for d in o if d['outcome'] == 'held')} held)")
-        self.srv.finish(f"Paid {name} {screens.msat(a.price_msat)}. {name}'s card now counts {len(o)} deals.")
+        live = len(o) - 48
+        summary = f"{name}'s card now counts {len(o)} deals: 48 sample, {live} run live ({sum(1 for d in o if d['outcome'] == 'held')} held)"
+        print(summary)
+        self.srv.finish(f"Paid {name} {screens.msat(a.price_msat)}. {summary}.")
 
 
 def prepare(args) -> tuple[World, Server]:

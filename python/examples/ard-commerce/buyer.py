@@ -43,6 +43,7 @@ class Check:
     name: str
     ok: bool
     detail: str
+    stated: bool = False  # the seller's own statement, not checked against records
 
 
 @dataclass
@@ -59,6 +60,9 @@ class Evidence:
 
     def ok(self, name: str, detail: str = "") -> None:
         self.checks.append(Check(name, True, detail))
+
+    def stated(self, name: str, detail: str) -> None:
+        self.checks.append(Check(name, True, detail, stated=True))
 
     def fail(self, name: str, detail: str) -> None:
         self.checks.append(Check(name, False, detail))
@@ -182,8 +186,8 @@ def gather(world: World, maya: gn.Node, entry: dict, anchor: str, wait: float = 
             if not good:
                 raise ValueError("not this request's answer from this seller")
             ev.selection_ok = body["unanswered_disputes"] == []
-            ev.ok("selection", f"signed answer bound to this request; {len(body['unanswered_disputes'])} unanswered disputes "
-                               "(demo form: no inclusion proofs)")
+            ev.stated("selection", f"signed answer bound to this request; the seller states {len(body['unanswered_disputes'])} "
+                                   "unanswered disputes (demo form: no inclusion proofs, not checked against its records)")
         except Exception as exc:
             ev.fail("selection", str(exc))
     return ev

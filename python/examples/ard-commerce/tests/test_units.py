@@ -19,7 +19,7 @@ def assessment(verdict: str, tier: str, price: int, cap: int | None = None, reas
 
 def card(held: int, bad: int) -> Evidence:
     ev = Evidence("kestrel")
-    ev.card = {"bands": [{"currency": "BTC", "decade": -9, "held": held, "did_not_hold": bad, "undecided": 0}]}
+    ev.card = {"bands": [{"currency": "BTC", "decade": -9, "held": held, "did_not_hold": bad, "undecided": 0, "of": held + bad}]}
     return ev
 
 
@@ -48,7 +48,7 @@ def test_screen_lines_say_assessment_and_never_score_or_blame():
     go = screens.decision_line(assessment("GO", "T2", 289), card(48, 0), 100, 1000)
     limit = screens.decision_line(assessment("LIMIT", "T1", 268, 100, ["band-history"]), card(45, 3), 50)
     assert go == "GO: 289 msat is within this pack's limit for it (T2, under 1,000 msat)"
-    assert limit == "LIMIT: deals under 100 msat; 268 msat is outside it; more than 50 per thousand did not hold (placeholder)"
+    assert limit == "LIMIT: deals under 100 msat; 268 msat is outside it; the pack's limit is 50 in every 1,000 deals did not hold (placeholder)"
     text = " ".join([go, limit, screens.card_line(card(45, 3), True), screens.card_line(card(48, 0), False), screens.BANNER,
                     screens.ASSESSMENT_NOTE, screens.PACK_NOTE]).lower()
     for word in ("lost", "failed", "dishonest", "usd", "$"):
@@ -131,3 +131,17 @@ def test_an_entry_whose_commitment_failed_is_a_failed_check_not_a_crash():
     import buyer
     ev = buyer.gather(None, None, {"id": "x", "problem": "commitment: bad signature"}, "aa")
     assert [(c.name, c.ok) for c in ev.checks] == [("commitment", False)] and ev.card is None
+
+
+def test_limit_tap_line_is_english_and_pays_nothing():
+    line = screens.limit_outcome(assessment("LIMIT", "T1", 268, 100, ["band-history"]))
+    assert line == "LIMIT: 268 msat is over this seller's limit (deals under 100 msat); no deal opens and nothing is paid"
+    assert line.isascii()
+
+
+def test_card_line_uses_the_cards_own_total_and_a_stated_check_is_not_a_tick():
+    ev = card(40, 3)
+    ev.card["bands"][0].update(undecided=5, of=48)
+    assert screens.card_line(ev, False).startswith("3 of 48 deals did not hold")
+    ev.stated("selection", "the seller states 0 unanswered disputes")
+    assert screens.check_lines(ev)[-1].startswith("– selection")
