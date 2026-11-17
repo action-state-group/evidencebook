@@ -21,6 +21,9 @@
 //!   checkpoint as a salted leaf of a sparse tree whose root alone reaches
 //!   the witness; after [`Cadence::migrate`] each tick is a stamp that
 //!   appends book facts to the cadence log instead (evidencebook#461).
+//! - [`Cadence::handover`] hands the whole shelf log over to a reader the
+//!   holder chooses, and [`verify_handover`] replays it (evidencebook#461
+//!   §2.7).
 //!
 //! **Readers without the lock.** Another process may read the file while a
 //! writer holds the shelf: the file is in WAL mode, so a reader that opens
@@ -42,6 +45,7 @@ mod book;
 mod cadence;
 mod chain;
 mod gojson;
+mod handover;
 mod history;
 mod import;
 mod lock;
@@ -59,6 +63,10 @@ pub use cadence::{
     WITNESS_NOT_CHECKED, WITNESS_VERIFIED,
 };
 pub use chain::CADENCE_EXTENSION;
+pub use handover::{
+    verify_handover, ConsistencyEvidence, Handover, HandoverConsistency, HandoverDocument,
+    HandoverLatest, HandoverResult,
+};
 pub use history::StandardHistoryAnchor;
 pub use import::LegacyCadence;
 pub use log::{Checkpoint, SUBSTRATE_KIND_CLL};
