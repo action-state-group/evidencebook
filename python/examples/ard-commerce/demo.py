@@ -83,6 +83,8 @@ class Run:
             ev = buyer.gather(self.w, self.maya, e, anchor.anchor)
             ev.sample_card = self.w.sample_card.get(e["id"], False)
             self.evidence[e["id"]] = ev
+            if e["id"] == "kestrel" and not ev.sample_card and ev.card and ev.card["outcomes"]["did_not_hold"] == 0:
+                raise SystemExit("Kestrel's card shows no deal that did not hold: seed this home with `seed --kestrel-card sentinel`")
             print("\n".join("  " + line for line in screens.check_lines(ev)))
 
     # -- 4 assessment ---------------------------------------------------------------------
@@ -200,9 +202,7 @@ class Run:
 def prepare(args) -> tuple[World, Server]:
     home = Path(os.environ.get("ARD_HOME", args.home)).expanduser()
     world = World(home).open()
-    if args.kestrel_card == "sentinel":
-        raise SystemExit("--kestrel-card sentinel waits on the sentinel record (evidencebook#462); use sample")
-    world.sample_card = {"kestrel": True}
+    world.sample_card = {"kestrel": True} if args.kestrel_card == "sample" else {}
     for name in SELLERS:
         world.advertise(name)
         world.serve(name)
@@ -215,7 +215,7 @@ def prepare(args) -> tuple[World, Server]:
 
 def cmd_seed(args) -> int:
     with World(Path(os.environ.get("ARD_HOME", args.home)).expanduser()) as world:
-        seeding.seed(world)
+        seeding.seed(world, kestrel_card=args.kestrel_card)
     return 0
 
 

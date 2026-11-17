@@ -12,6 +12,7 @@ from typing import Any
 
 import deal_records as dr
 import goose_node as gn
+from evidencebook import deal
 from demo_node import RECONCILED
 
 SAMPLE_PAYMENT = "sample:no-payment"
@@ -86,3 +87,25 @@ def _agreed(payloads: list[bytes]) -> tuple[int, str]:
         if body.get("action") in ("commit", "pay") and "amount_minor" in body:
             return body["amount_minor"], body["currency"]
     return (-1, "")
+
+
+#: TEMPORARY (evidencebook#462, until #461's computed row status): the book owner's note, sealed once
+#: after a deal's final close, that the outcome did not hold. It is the owner's own record: the card
+#: counts it ``did_not_hold`` without showing who wrote it, and no counterparty or ruling confirms it.
+OUTCOME_NOTE = "outcome_note"
+REASONS = ("dispute_lost", "settled_against", "not_delivered", "other")
+
+
+def note_did_not_hold(node: gn.Node, deal_id: str, reason: str = "other") -> str:
+    """Seal this node's ``outcome_note`` on one of its own closed deals. Needs an evidencebook that has
+    the record (#464); an older one refuses it as an unknown record type."""
+    if reason not in REASONS:
+        raise ValueError(f"reason must be one of {REASONS}")
+    with node._lock:
+        chain = node.deal(deal_id)
+        close = chain._latest(deal.TYPE_CLOSE)
+        at = datetime.now(timezone.utc)
+        n = len(chain._built)
+        chain._step(chain._untyped(OUTCOME_NOTE, at, {"outcome": "did_not_hold", "reason": reason}, [("confirms", close)]),
+                    at, {OUTCOME_NOTE: reason})
+        return node.seal(chain, chain._since(n))[0].record_id

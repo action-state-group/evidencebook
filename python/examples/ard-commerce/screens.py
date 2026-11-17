@@ -36,6 +36,8 @@ def card_line(ev: Evidence, sample_card: bool) -> str:
     of, bad = _totals(ev)
     label = ("sample card, written for this demo; not recomputed from records" if sample_card
              else "sample history, run by the demo operator")
+    if bad and not sample_card:  # the owner's own outcome_note: not confirmed by the buyer or by a ruling
+        label += "; marked by the seller itself, not confirmed by the buyer or a ruling"
     return f"{bad} of {of} deals did not hold ({label})"
 
 
