@@ -62,6 +62,9 @@ type CadenceConfig struct {
 	// deal, a close step is sealed). It is evaluated each time it is
 	// needed, never stored.
 	Ended func(ctx context.Context, logID string) (bool, error)
+	// Status gives each book's profile and fact values once the shelf is a
+	// log of book facts (Migrate). Nil gives every book profile "none".
+	Status StatusProvider
 }
 
 func (c *CadenceConfig) defaults() error {
@@ -486,10 +489,19 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	// A tick stored but not finished (a crash or an error after its row)
 	// is finished first, as the same tick: its root, never a new one.
 	if haveLast && last.CheckpointSize == 0 {
+		if last.Leaves.Stamp != nil {
+			return c.finishStampLocked(ctx, last)
+		}
 		return c.finishLocked(ctx, last)
 	}
 	if haveLast && now.Before(last.DueNext) {
 		return TickResult{DueNext: last.DueNext}, nil
+	}
+	// After the format switch every tick is a stamp (evidencebook#461).
+	if state, err := migrationState(ctx, s.db); err != nil {
+		return TickResult{}, err
+	} else if state == migrationDone {
+		return c.stampLocked(ctx, now)
 	}
 	n := uint64(1)
 	if haveLast {

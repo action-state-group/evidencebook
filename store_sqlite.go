@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 -- record, a host log's when it is opened as one.
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+-- A shelf log of book facts (evidencebook#461, shelf_stamp.go): every entry
+-- document after the format switch, by its position in the cadence log, and
+-- the migration's progress. Empty in a version 1 file.
+CREATE TABLE IF NOT EXISTS shelf_entries (
+	entry_seq      INTEGER PRIMARY KEY,
+	kind           TEXT    NOT NULL,
+	book_id        TEXT    NOT NULL,
+	log_id         TEXT    NOT NULL,
+	doc            BLOB    NOT NULL,
+	link_opening   BLOB,
+	status_opening BLOB,
+	tick           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
+CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL, batch TEXT NOT NULL);
 `
 
 // ShelfVersion is the shelf file version this implementation writes and the
@@ -114,8 +129,8 @@ func initSQLiteStore(ctx context.Context, db *sql.DB) error {
 		case errors.Is(err, sql.ErrNoRows):
 		case err != nil:
 			return err
-		case version != ShelfVersion:
-			return fmt.Errorf("%w: shelf file version %d (this build opens version %d)", ErrUnsupported, version, ShelfVersion)
+		case version != ShelfVersion && version != ShelfVersionFacts:
+			return fmt.Errorf("%w: shelf file version %d (this build opens versions %d and %d)", ErrUnsupported, version, ShelfVersion, ShelfVersionFacts)
 		default:
 			versioned = true
 		}
