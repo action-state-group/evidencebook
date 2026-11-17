@@ -48,7 +48,7 @@ def test_screen_lines_say_assessment_and_never_score_or_blame():
     go = screens.decision_line(assessment("GO", "T2", 289), card(48, 0), 100, 1000)
     limit = screens.decision_line(assessment("LIMIT", "T1", 268, 100, ["band-history"]), card(45, 3), 50)
     assert go == "GO: 289 msat is within this pack's limit for it (T2, under 1,000 msat)"
-    assert limit == "LIMIT: deals under 100 msat; 268 msat is outside it; the pack's limit is 50 in every 1,000 deals that did not hold (placeholder)"
+    assert limit == "LIMIT: deals under 100 msat; 268 msat is outside it; the pack allows at most 50 in every 1,000 deals not holding (placeholder)"
     text = " ".join([go, limit, screens.card_line(card(45, 3), True), screens.card_line(card(48, 0), False), screens.BANNER,
                     screens.ASSESSMENT_NOTE, screens.PACK_NOTE]).lower()
     for word in ("lost", "failed", "dishonest", "usd", "$"):

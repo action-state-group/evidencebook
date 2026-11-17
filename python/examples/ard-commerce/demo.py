@@ -112,7 +112,7 @@ class Run:
 
     def edit(self, p: packs.Pack, permille: int | None) -> packs.Pack:
         rule("4b  The presenter tightens the rule (placeholder thresholds, for this demo only)")
-        print(f"The pack's limit is {p.max_adverse_permille} in every 1,000 deals did not hold (placeholder), in pack {p.version}.")
+        print(f"The pack allows at most {p.max_adverse_permille} in every 1,000 deals not holding (placeholder), in pack {p.version}.")
         if permille is None:
             raw = input(f"New value [{DEFAULT_PERMILLE}]: ").strip() if not self.auto else ""
             permille = int(raw or DEFAULT_PERMILLE)

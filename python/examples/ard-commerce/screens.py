@@ -47,7 +47,7 @@ def decision_line(a: Assessment, ev: Evidence, max_permille: int, ceiling_msat_f
         within = f" ({a.tier}, under {msat(ceiling_msat_for_tier)})" if ceiling_msat_for_tier else ""
         return f"GO: {msat(a.price_msat)} is within this pack's limit for it{within}"
     if a.verdict == "LIMIT" and a.cap_msat is not None:
-        why = (f"; the pack's limit is {max_permille} in every 1,000 deals that did not hold (placeholder)"
+        why = (f"; the pack allows at most {max_permille} in every 1,000 deals not holding (placeholder)"
                if "band-history" in a.reasons else "")
         return f"LIMIT: deals under {msat(a.cap_msat)}; {msat(a.price_msat)} is outside it{why}"
     return f"{a.verdict}: see the assessment rows"
