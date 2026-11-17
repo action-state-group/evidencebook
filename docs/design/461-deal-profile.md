@@ -249,12 +249,30 @@ Design §7 leaves four kinds of record outside the ten: "intent; the check befor
 of rules; the note of what was shared with whom ... These need types of their own or a place in
 the overlay; no source settles which". The agreement must cite the intent, and an act must cite
 its passing check (design §4.2, "Checks before an act"), so v1 cannot leave them out.
-**Proposed:** an **x-deal-v1 journal overlay** of three types, sealed in the journal only and
-never sent: `intent` (v0 `IntentBody`, `types.go:79-92`, unchanged), `check` (v0 `CheckBody`,
-`types.go:262-299`, unchanged, plus `result`: `pass` | `pause` | `deny` and `payment_ref`, the
-reference the payment will be made under, design §4.2), and `approval` (v0 `ApprovalBody`,
-`types.go:384-391`, unchanged). A change of rules and the note of what was shared stay where the
-library keeps them today. The decision is Steven's (section 12, Q3).
+**Proposed:** an **x-deal-v1 journal overlay** of four types, sealed in the journal only and
+never sent. Each keeps v0's body and v0's rules between them (`PROFILE.md` §3 and §6, rules 5 and
+6), now inside the journal:
+
+- `intent` (v0 `IntentBody`, `types.go:79-92`, unchanged);
+- `check` (v0 `CheckBody`, `types.go:262-299`, plus `payment_ref`, the reference the payment will
+  be made under, design §4.2): what is about to happen;
+- `verdict` (v0 `VerdictBody`, `types.go:354-366`, unchanged): the answer to **one check**,
+  `pass`, `pause` or `deny`, with exactly one `checks` ref to its check (`PROFILE.md:208`). It is
+  not the deal-level `rules_verdict` (`PROFILE.md:220`), which is one word on the whole deal (3.3)
+  (review round 2);
+- `approval` (v0 `ApprovalBody`, `types.go:384-391`, unchanged): its `approves` ref still names the
+  verdict it answers, or, on `confirm_limits`, the intent, as in v0 (`PROFILE.md:209`).
+
+**How the references migrate** (review round 2). In v0 an `action` carries `authorized_by` to an
+`approval` with `proceed: true` (`PROFILE.md:210`). In v1 the act is a deal-book `perform` or
+`settle` and cites the `check` by digest (3.3; design §4.2: "The act's record in the deal book
+cites the passing check by digest"). A record check of the act's author, run on its own shelf,
+follows that check to its one `verdict` in the journal: the act is allowed when the verdict is
+`pass`, or when it is `pause` and one `approval` with `proceed: true` approves it. A `deny`, or a
+pause with no such approval, refuses the act. The counterparty sees only the act and the check's
+digest (design §4.2: "the counterparty has no claim on it and relies on the statement"). A change
+of rules and the note of what was shared stay where the library keeps them today. The decision is
+Steven's (section 12, Q3).
 
 `rules_verdict` stays, under the same name, as a deal-book overlay type (constraint 4; section
 3.3). The consumer journey records Muse uses (`message`, `claim`, `evidence`, `detail_change`,
@@ -263,18 +281,43 @@ library keeps them today. The decision is Steven's (section 12, Q3).
 `outcome_note`) are not among the ten.
 
 **Proposed: the x-deal-v1 journey overlay.** Design §7 "moves the consumer journey records that
-Muse uses into an optional overlay" (§14, row 7). So a v1 deal book may also hold these overlay
-types, each carrying the `x-deal-v1` block like any v1 record (2.3 rule 2 holds: one version per
-book), with v0's bodies unchanged: `message`, `claim`, `evidence`, `detail_change`, `agent_move`,
-`disclosure`, `sale`, `thread`, `thread_opened`, `sale_cut`, `sale_unpost`, `counterparty_profile`.
-They are sealed in the deal book as today, are no input to start (5), statements, row status, the
-status value or a card, and a reader that does not know an overlay type keeps the record and
-ignores it. Six v0 journey types have no v1 counterpart because v1 replaces what they did:
-`baseline` (the book now opens with `agree`), `action` (an act is `perform` or `settle`),
-`verdict` (`rules_verdict`, 3.3), and `close`, `outcome`, `outcome_note`, `sale_close` (there is no
-close: a deal is settled by computation, design §4.2). A Muse flow that seals one of those on a
-v0 deal keeps doing so; on a v1 deal it seals the v1 record named. One book per deal, so no v0
-side book. The overlay's names are part of the vocabulary trim Steven decides (Q3).
+Muse uses into an optional overlay" (§14, row 7). These overlay types carry the `x-deal-v1` block
+like any v1 record, keep v0's bodies, are no input to start (5), statements, row status, the status
+value or a card, and a reader that does not know an overlay type keeps the record and ignores it.
+
+**Where each is sealed, by phase** (review round 2). A deal book exists only from the agreement
+(design §4.2, "When a deal book opens"), and what comes before it is in the journal: "A listing
+and its thread with each buyer come before agreement, so what is sealed about them is in the
+journal" (design, Appendix B; line 1615 of the export), and the seller's journal "holds the record
+that it was published" (design §7, `propose`; line 800). So:
+
+| Overlay type | Sealed in |
+|---|---|
+| `sale` (the listing was published), `thread` (one buyer's thread registered), `thread_opened`, `sale_unpost` | the seller's journal, always: they come before any agreement |
+| `counterparty_profile` | the journal, always: it is "never in a shared copy" (`PROFILE.md:219`), and a deal book is copied to the counterparty |
+| `disclosure` | the journal, always: design §4.1 puts "what it shared with whom" in the journal |
+| `message`, `claim`, `evidence`, `detail_change`, `agent_move` | the journal before the holder's agreement exists; that deal book after it |
+
+A record is never sealed into a deal book before its agreement: a v1 deal book's first record is
+its agreement (2.3 rule 2), so a flow that has not agreed seals in the journal.
+
+**A listing and its offers.** The listing's content is published in a feed and is not a record
+that is sent (design §7, `propose`). The seller's journal `sale` record commits to it. Each buyer's
+offer (`propose`) is its own record with its own `deal_id`, and is that buyer's thread: v1 has no
+other thread id (3.5). **Proposed:** an offer that answers a listing carries `listing`, the SHA-256
+of the published listing bytes it read (3.3). The seller relates each received offer to its
+listing by that digest, and its journal `thread` record registers the offer's `deal_id`, committed
+as v0's `thread_ref_commitment`. When the seller agrees to one offer, it declines each other offer
+on that listing with reason `not_selected` (3.5); that decline is each losing buyer's copy, so v1
+needs no sale bundle.
+
+**v0 types with no v1 counterpart.** Seven, because v1 replaces what they did: `baseline` (the book
+now opens with `agree`), `action` (an act is `perform` or `settle`), `close`, `outcome`,
+`outcome_note` and `sale_close` (there is no close: a deal is settled by computation, design
+§4.2), and `sale_cut` (it cuts a sale bundle, and v1 sends the decline instead). `verdict` is not
+among them: it is the journal overlay's per-check verdict above. A Muse flow that seals one of the
+seven on a v0 deal keeps doing so; on a v1 deal it seals the v1 record named. One book per deal, so
+no v0 side book. The overlays' names are part of the vocabulary trim Steven decides (Q3).
 
 ### 3.3 Each type's body
 
@@ -305,6 +348,7 @@ chooses a remedy (4.6).
 | `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; naming is Q1 |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
+| `listing` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers | Proposed (3.2, "A listing and its offers"; review round 2) |
 
 The offerer's card is stapled beside the offer, never inside it (design §7: "the offerer's card is
 stapled beside it when the other side's admission asks for it").
@@ -874,18 +918,27 @@ after it has written it". Step 3 meets both only when the first act comes before
      proof received again returns `Duplicate` before any coverage is reported
      (`shelf_stamp_proof.go:307-310`), and so does a restart that re-reads nothing. No public reader
      of the verified coverage exists today: `verifiedCoverage` is internal
-     (`shelf_receive.go:1069`). So PR 1 adds a lock-free reader, `Shelf.Coverage(ctx, senderKey,
-     logID) (uint64, error)`: the count of counted records a verified held proof covers (review
-     round 1);
+     (`shelf_receive.go:1069`). A count would not be enough either (review round 2). The store's
+     coverage is the largest verified proof size for the sender and book log
+     (`shelf_receive.go:1067-1078`), and the library checks no profile binding: a proof signed by
+     the same key over another shelf log is stored, verified and counted
+     (`VerifyStampProof` checks only that one key signed both checkpoints,
+     `shelf_stamp_proof.go:46-86`; Forms SF-5). So PR 1 adds a lock-free reader of the stored
+     proofs themselves, `Shelf.HeldProofs(ctx, senderKey, logID) ([]HeldProof, error)`: each held
+     proof's `StampProof` bytes as received and whether its root recomputed from the records held
+     (`shelf_received_proofs.verified`). `CanAct` reads them on every call and accepts only a proof
+     that passes every check below;
+   - the proof verifies again (`VerifyStampProof`), and its root recomputed from the records held;
    - the fact's `book_id` is the record id of the acceptor's agreement, and its size covers it;
    - the verified proof's `KeyID` equals the agreement's `checkpoint_key`, and the shelf
      checkpoint's log id equals its `shelf_log_id` and, where the acceptor published an evidence
      commitment, the log that commitment names (design §4.3, "The stamp proof"; the profile's
      answer to Forms SF-5).
 3. It writes its agreement (`seen` = the acceptor's agreement), and before its first `perform` or
-   payer `settle`, `xdealv1.CanAct(deal)` checks, through `Shelf.Coverage`, that such a proof is
-   held. Without it the act is refused. `CanAct` gives the same answer after a duplicate proof and
-   after the shelf is closed and opened again.
+   payer `settle`, `xdealv1.CanAct(deal)` reads `Shelf.HeldProofs` and checks, on each call, that a
+   proof meeting every check of step 2 is held. Without one the act is refused. `CanAct` gives the
+   same answer after a duplicate proof and after the shelf is closed and opened again, and a proof
+   that fails a binding stays refused after a restart, since nothing about it is cached.
 4. After the act: `Stamp`, `StampProof(..., AudienceCounterparty)`, and a push with the act's
    record.
 
@@ -912,7 +965,9 @@ only its journal offer (the acceptor's agreement and proof admitted, 8.3); the s
 twice (`Duplicate`, `CanAct` still true); the proof accepted, the shelf closed and opened again
 (`CanAct` still true); and `ProofSender` from each side, for the acceptor's proof received by the
 offerer and the offerer's proof received by the acceptor, each returning the proof author's record
-key.
+key. Added in review round 2: a proof signed by the acceptor's checkpoint key over another shelf
+log, stored and verified by the library, then the shelf closed and opened again (`CanAct` still
+refuses); and two senders whose books share one log id (8.3, `ProofSender`).
 
 ## 8. The StatusProvider and ReceiveProfile implementations
 
@@ -948,27 +1003,34 @@ holds inputs, never a computed status, so a quiet book gets no new fact when a d
     "outcome": "open" | "for_claimant" | "against_claimant" | "no_finding" | "withdrawn"}]}
 ```
 
-**Times in a fact** (review round 1). A time that the status value carries takes one of four
-forms, so that "no record", "a record this stamp is the first to cover" and "a time already known"
-are never confused:
+**Times in a fact** (review rounds 1 and 2). A time the status value carries takes one of three
+forms, so that "no record", "a record whose time is not yet known" and "a time already known" are
+never confused:
 
-| Form | Means | A reader uses |
+| Form | Means | A reader resolves it to |
 |---|---|---|
-| `"<RFC 3339>"` | the record exists and its time is known | that time |
-| `"this_stamp"` | the record exists and this fact's stamp is the first to cover it | the earliest receipt, from a named witness, of the shelf checkpoint this fact sits under; none such leaves the record untimed |
-| `"untimed"` | the record exists, an earlier stamp covered it, and no time from a named witness was known when this fact was written | no time: a status resting on it is local |
+| `"<RFC 3339>"` | the record exists and its time was known when this fact was written | that time |
+| `{"stamp": n}` | the record exists, stamp `n` is the first stamp on this shelf that covered it, and no time from a named witness was known when this fact was written. `n` is the stamp entry's number (`461-shelf-facts.md:159`); for a record this fact's own stamp is the first to cover, `n` is this fact's stamp | the earliest registration time, from a named witness, among the receipts it holds for the shelf checkpoints of stamps `n` up to its anchor. Each of those checkpoints covers stamp `n`'s entries, so each receipt is a valid time for the record, and the earliest is the record's time on this shelf (design §4.3, "A record's time"; the library reads it the same way, "later checkpoints included", `461-shelf-facts.md:190`). With no such receipt the record has no time |
 | `null` | no such record exists: a named record not yet written, a statement the other side's book has not yet named | no record. A `Named.time` of `null` leaves the dates it sets not set (design §4.2, "Not set until the record has a time"; line 371 of the export) |
 
-When a `"this_stamp"` or `"untimed"` record later gets a known time, the value changes, so the write
-rule writes a new fact at the next stamp (`461-shelf-facts.md:143-147`), and that fact carries the
-time. A whole-shelf reader is handed receipts for the anchor checkpoint only
-(`461-shelf-facts.md:199-206`), so it resolves `"this_stamp"` only on a fact under the anchor, and
-otherwise reads it as untimed (section 13, item 13). When the profile hands rowstatus an input, a
-known time is the time, and `"this_stamp"` resolved or not, `"untimed"` and a statement's untimed
-record are all `null`, which rowstatus reads as "a record with no time" (`rowstatus.go:87-89`). A
-`null` named record stays `null` there too, and rowstatus leaves its dates unset until the latest
-date passes (`rowstatus.go:13-19`), so the two meet in rowstatus only where they mean the same
-thing.
+The first stamp unwitnessed and the next one witnessed (review round 2): a record first covered at
+stamp 1, whose checkpoint never gets a named receipt, is written `{"stamp": 1}` in the fact of stamp
+2. If stamp 2's checkpoint then gets a named receipt and is the anchor, a reader resolves the record
+to that receipt's time at once, with no third stamp; the holder's own `RecordTime`
+(`shelf_record_time.go:110-175`) gives the same time. The holder's next fact also writes it as a
+time, since the value changed (`461-shelf-facts.md:143-147`).
+
+A whole-shelf reader needs the receipts of every stamp checkpoint from `n` to the anchor to find the
+earliest. `Handover` carries the anchor's receipts only (`461-shelf-facts.md:199-206`). So PR 1
+extends it to carry every receipt `shelf_receipts` holds for the shelf checkpoints it hands over
+(11.1; section 13, item 13). A reader with fewer receipts resolves to the earliest of those it holds,
+which can only be later than the true time; it reports such a result as not recomputed.
+
+**To rowstatus.** A resolved time is passed as that time; a `{"stamp": n}` with no receipt, and
+`null`, are passed as `null`, which rowstatus reads as "a record with no time" (`rowstatus.go:87-89`)
+and treats as local. A resolved named record's time sets its dates (`rowstatus.go:415-430`). A
+`null` named record and an unresolved one both leave the dates unset until the latest date passes
+(`rowstatus.go:13-19`), which is what the design means by both.
 
 - `counterparty_kind` uses SH §7's `counterparty_class` values, as v0 reads them
   (`standard_history.go:38-42`).
@@ -984,26 +1046,38 @@ thing.
   nothing the other side's facts also carry that would pair the two shelves (design line 470: "so
   that two shelves' facts cannot be paired by a shared digest"). The link opening, which does name
   the counterparty's log, goes only to the counterparty, the adjudicator and an allowed asker. What
-  is left in common is the content both books share by nature: the record times, the roles and the
-  dates. Two shelves' facts can still be guessed to pair by equal times, which the design already
-  says of ruling dates (design §8, "Which rulings went against a key"); section 13, item 14.
+  is left in common is the content both books share by nature: the record times and the dates, the
+  roles, the witness list, the adjudicator's key and rules digest, and the pack's row ids. These are
+  public configuration or shared content, not deal identifiers. Two shelves' facts can still be
+  guessed to pair by equal times, which the design already says of ruling dates (design §8, "Which
+  rulings went against a key"); section 13, item 14.
 - **Card facts that rowstatus does not carry** (review round 1). `rowstatus.Ruling` has no
   `against` and `rowstatus.Remedy` only a time (`rowstatus.go:138-151`). `/3`'s deal entry needs
   `disputes` as `{"side", "outcome", "forum"}` (AAC#626 `spec/standard-history-v0.md` §5.4, §11.2,
   at `46c4cd3`), and each row's `owed_by` as `holder` or `counterparty` (§11.2). So the status adds
-  `ruling_against` per row (the first final ruling's `against`), and `disputes`, one entry per
-  dispute record of either side: its row, its claimant's role, and its outcome. The outcome is
-  `withdrawn` after the claimant's withdrawal; `for_claimant` or `against_claimant` when the first
-  final ruling on the row is against the other side or the claimant; `no_finding` when that ruling
-  is against neither; and `open` otherwise. `/3` maps these as 10 says, and `forum` is Q4. The
+  `ruling_against` per row, and `disputes`, one entry per dispute record of either side: its row,
+  its claimant's role, and its outcome.
+  **The effective ruling** (review round 2) is the one rowstatus applies: the first final ruling of
+  the adjudicator the agreement names, and none at all when the holder holds two conflicting final
+  rulings, in which case rowstatus gives `in_dispute` (`rowstatus.go:538-560`; design §8, "A forked
+  case book"). `ruling_against` is the effective ruling's `against`, or `null` when there is none.
+  The outcome is `withdrawn` after the claimant's withdrawal; `for_claimant` or `against_claimant`
+  when the effective ruling is against the other side or the claimant; `no_finding` when it is
+  against neither; and `open` otherwise, conflicting final rulings included, so no branch of a
+  forked case book decides a card's dispute outcome. `/3` maps these as 10 says, and `forum` is Q4. The
   four did-not-hold splits are AAC#626's (§11.4), and read only row results, owed_by and remedy, so
   the status needs nothing more for them.
 - **Which statements go in** (design §4.3: "each side's latest statement that is known to be in
   time, any newer statement that this stamp is the first to cover, and any later concession"): per
   side, the latest statement with a known time not after the window end; every later statement
-  this stamp is the first to cover; and the first statement after the window end that would be a
-  concession. A conformance property pins it: `Compute` over these statements equals `Compute`
-  over all of them, for every T at or after the stamp (9.2).
+  whose time is not yet known, that is, written `{"stamp": n}`, whether this stamp or an earlier
+  one first covered it; and the first statement after the window end that would be a concession.
+  **Carry-forward** (review round 2): a statement an earlier fact carried as `{"stamp": n}` stays in
+  every later fact until its time is known. It then enters as a known time: as the side's latest
+  in-time statement when its time is not after the window end, or as the concession candidate when
+  it is after it, or it drops out when it is neither. A conformance property pins it: `Compute`
+  over these statements equals `Compute` over all of them, for every T at or after the stamp and
+  for every later fact of the book (11.2).
 - Disputes, withdrawals, the first final ruling with its date (or the conflicting flag) and
   remedies are in each row's `input`. The witnesses are deal-level (design §4.3, "For the deal").
 
@@ -1061,16 +1135,23 @@ holder chooses. A stamp proof never carries a link opening (`shelf_stamp_proof.g
   journal); an `agree` of kind `decline` in our **journal**; or a `propose` in our journal whose
   `counter_to` cites it. An offer we agreed to therefore stays answered and is never dropped by
   the offer bounds (`shelf_receive.go:735-747`), so the terms its agreement cites stay held.
-- **`ProofSender(checkpointKeyID, logID)`** (review round 1). A proof is the counterparty's, so it
-  is matched against the counterparty's agreement, never against ours. The profile finds the held
-  record at position 1 of `logID` (an agreement the counterparty signed, which the record part of
-  the same push stored first). When that agreement's `checkpoint_key` is `checkpointKeyID`, it
-  returns that agreement's **signer**, the key its records are held under, and `ok` true;
-  otherwise `ok` false. It never returns the agreement's `counterparty_key`, which names our own
-  key. The library's proof check then reads the records held under the returned key and log
-  (`shelf_stamp_proof.go:222-229`, `293-305`). Finding the held record by log id alone needs a
-  lock-free reader the store lacks today (it is indexed by sender key, log id and position,
-  `461-shelf-facts.md:250-253`), so PR 1 adds `Shelf.HeldFirst(ctx, logID) (HeldRecord, error)`.
+- **`ProofSender(checkpointKeyID, logID)`** (review rounds 1 and 2). A proof is the
+  counterparty's, so it is matched against the counterparty's agreement, never against ours. It
+  never returns the agreement's `counterparty_key`, which names our own key. The library's proof
+  check then reads the records held under the returned key and log
+  (`shelf_stamp_proof.go:222-229`, `293-305`).
+  The store keeps a log id per sender, not across senders: its index is `(sender_key, log_id,
+  position)` and nothing makes a log id unique across senders (`store_sqlite.go:106-117`). The
+  holder's random log ids constrain only its own books, never what another key sends. So the
+  profile keeps the sender dimension. PR 1 adds a lock-free reader,
+  `Shelf.HeldFirst(ctx, logID) ([]HeldRecord, error)`, that returns **every** held record at
+  position 1 of a log with that id, one per sender. The profile keeps a candidate only when all of
+  these hold: it is a v1 `agree` of kind `agreement`; its `checkpoint_key` is `checkpointKeyID`;
+  its `deal_id` is a deal of ours (we hold its offer in our journal, or our own agreement for it);
+  and its signer is the key that deal expects (our offer's `to`, or our agreement's
+  `counterparty_key`). With exactly one candidate left, it returns that candidate's signer and `ok`
+  true. With none, or more than one, it returns `ok` false, and the proof is refused as from a
+  sender that may not push it (`shelf_stamp_proof.go:222-227`).
 
 ## 9. The sealed deal report
 
@@ -1292,10 +1373,13 @@ same vectors, each in its own pull request.
    gives. If Steven picks key-id naming (Q1), `RecordTime` also takes witnesses by key id,
    reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
    outputs land here too (Q9, decided), and `Shelf.SealSent`, which seals a sent journal record
-   and its standalone Capsule in one call (3.1). Added in review round 1, both lock-free readers
-   so the profile may call them from a stamp or a `Receive`: `Shelf.Coverage(ctx, senderKey,
-   logID)`, the persistent verified coverage `CanAct` reads (7.2), and `Shelf.HeldFirst(ctx,
-   logID)`, the held record at position 1 of a received log, which `ProofSender` reads (8.3).
+   and its standalone Capsule in one call (3.1). Added in review rounds 1 and 2, both lock-free
+   readers so the profile may call them from a stamp or a `Receive`: `Shelf.HeldProofs(ctx,
+   senderKey, logID)`, the stored proofs `CanAct` re-checks on every call (7.2), and
+   `Shelf.HeldFirst(ctx, logID)`, every held record at position 1 of a received log with that id,
+   one per sender, which `ProofSender` narrows to one (8.3). Also from round 2: `Handover` carries
+   every receipt `shelf_receipts` holds for the shelf checkpoints it hands over, not only the
+   anchor's, so a reader resolves `{"stamp": n}` times to the earliest time (8.1).
 2. **`dealprofile/x-deal-v1/`**: `PROFILE.md`, `x-deal-v1.schema.json`, `check_profile.py` (v1), and
    fixtures: Appendix A's two books as positive fixtures, with negatives for each record check of
    section 3. **`dealprofile/xdealv1`**: names, types, Encode and Decode, the record checks,
@@ -1331,13 +1415,33 @@ actionstate-muse#378 (pages that read the v1 report).
 - **Projection** (review round 1). Each Appendix A row, projected as 4.2 says, is accepted by
   `rowstatus.ParseInput` in Go, Rust and Python and computes the same result in all three; the
   unprojected profile row is refused by `ParseInput`.
-- **No pairing across shelves** (review round 1). For Appendix A, no log id, `book_id`, digest or
-  other string of 16 characters or more in either side's facts and status openings appears in the
-  other side's facts and status openings. The two sides' deal-book log ids differ.
-- **Times in a fact** (review round 1). Three status vectors, one per form of 8.1: a named record
-  not yet written (`null`, its row's dates stay unset), one this stamp is the first to cover
-  (`"this_stamp"`), and one covered earlier with a known time (the time); and a stamp that turns a
-  `"this_stamp"` into a time writes a new fact.
+- **No pairing across shelves** (review rounds 1 and 2; scoped to identifiers). For Appendix A, no
+  identifier of one side's deal book appears in the other side's facts or status openings: no log
+  id, `book_id`, record id or record digest, and no deal id, offer digest or rows digest in either.
+  The two sides' deal-book log ids differ. The shared content 8.1 names (times, dates, roles, the
+  witness list, the adjudicator's key and rules digest, the pack's row ids) is allowed to appear on
+  both sides and is not checked.
+- **Times in a fact** (review rounds 1 and 2). Status vectors, one per form of 8.1: a named record
+  not yet written (`null`, its row's dates stay unset); a record this stamp is the first to cover
+  (`{"stamp": n}` with `n` this stamp), resolved to the anchor's receipt time and passed to
+  rowstatus as that time, so a named record's dates are set and the status is not local; a record
+  covered earlier with a known time (the time); and the case of the first stamp unwitnessed and the
+  next witnessed, where the fact of stamp 2 writes `{"stamp": 1}`, an anchor at stamp 2 resolves it
+  to stamp 2's receipt time, and the holder's `RecordTime` gives the same time. A stamp that turns
+  a `{"stamp": n}` into a time writes a new fact.
+- **Carry-forward** (review round 2). A statement first covered at a stamp with no named receipt
+  stays in each later fact as `{"stamp": n}` until its time is known, then enters as a known time
+  (in time, as a concession candidate, or dropped). `Compute` over the selected statements equals
+  `Compute` over all of them at every fact and every T, for these cases.
+- **Effective ruling** (review round 2). With two conflicting final rulings held, the row is
+  `in_dispute`, `ruling_against` is `null`, and each dispute's outcome is `open`.
+- **Journey overlay placement** (review round 2). `sale`, `thread`, `thread_opened`, `sale_unpost`,
+  `counterparty_profile` and `disclosure` are refused in a deal book; a `message` sealed before the
+  agreement is in the journal and one after it is in the deal book; a v1 `verdict` in the journal
+  with `pause` and an `approval` with `proceed: true` lets the act that cites its check pass the
+  act's record check, and a `deny` refuses it.
+- **Offers on one listing.** Two offers citing the same `listing`; the seller agrees to one and
+  sends the other a decline with reason `not_selected`.
 - **Answered** (review round 1). With the offer bounds reached, an offer our deal book's agreement
   cites, and one our journal declined, are kept; the oldest unanswered offer is dropped.
 - **Remedies, settled, card mapping.** The vectors of 6.1, 9 (`settled`) and 10.
@@ -1388,9 +1492,9 @@ are (3.3), condition 1 (shared under the holder's share policy: a node shares by
 person does not) and condition 4 among them, and the verdict word stays a record in the party's
 own book, never a member of a report (u195 condition 3; section 9).
 
-**Q3. The intent, the check before an act and the approval.** Design §7 says they need "types of
+**Q3. The intent, the check before an act, its verdict and the approval.** Design §7 says they need "types of
 their own or a place in the overlay; no source settles which". Proposed: a journal-only overlay
-of three types, reusing v0's bodies (3.2). This touches the trim of the public vocabulary that
+of four types (`intent`, `check`, the per-check `verdict`, `approval`), reusing v0's bodies and rules (3.2), and the journey overlay placed by phase (3.2). This touches the trim of the public vocabulary that
 design §14, row 7, puts to Steven.
 
 **Q4. evidencebook#404 against the ten types.** #404 (sourced to Steven, 2026-11-05) asks for four
@@ -1494,12 +1598,11 @@ where it is his door.
     cites "the side's own intent and admission decision"; Appendix A's seller has no intent and its
     agreement cites none (line 15). The note requires `admit` always and `intent` only where one
     exists (3.3).
-13. **Receipts in a handover.** A fact's `"this_stamp"` time needs the receipts of the stamp it sits
-    under, and `Handover` carries receipts for the anchor checkpoint only
-    (`461-shelf-facts.md:199-206`). The holder's next fact replaces a resolved time (8.1), so this
-    matters only for a latest fact under an earlier, unanchored stamp, which a reader reads as
-    untimed. Carrying every such stamp's receipts would change the handover; it is not proposed
-    here.
+13. **Receipts in a handover.** A fact's `{"stamp": n}` time resolves to the earliest named receipt
+    of the shelf checkpoints from stamp `n` to the anchor, and `Handover` carries receipts for the
+    anchor checkpoint only (`461-shelf-facts.md:199-206`). With the anchor's alone a reader gets a
+    valid time but possibly not the earliest. PR 1 extends `Handover` to carry every receipt it
+    holds for the checkpoints it hands over (8.1; 11.1), which changes the shelf note's §2.7 list.
 14. **Pairing two shelves' facts.** Design §4.3 promises that facts "cannot be paired by a shared
     digest" (line 470) and that a whole-shelf reader does not learn "which book of another shelf a
     fact pairs with" (line 518). v0's shared book name would break both, so v1 uses per-side log
