@@ -1,0 +1,1905 @@
+{
+  "cases": [
+    {
+      "name": "admit",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "admit",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "outcome": "GO",
+          "tier": "t1",
+          "rows": [],
+          "asks": [],
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "answers": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "admit/deal_id-flipped",
+      "record": {
+        "body": {
+          "answers": [],
+          "asks": [],
+          "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "outcome": "GO",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rows": [],
+          "tier": "t1"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "admit"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "agent_move",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "agent_move",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "move": "couldnt",
+          "reason": "other",
+          "detail_commitment": "7777777777777777777777777777777777777777777777777777777777777777"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "agent_move/deal_id-flipped",
+      "record": {
+        "body": {
+          "detail_commitment": "7777777777777777777777777777777777777777777777777777777777777777",
+          "move": "couldnt",
+          "reason": "other"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "agent_move"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "agree/agreement",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "agree",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 1,
+          "seen": null
+        },
+        "body": {
+          "kind": "agreement",
+          "offer": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb"
+          },
+          "rows_digest": "726379c6fb72dd74af34d73ef8bde99523a5d1dad4954063accb9fb37c0ad2a7",
+          "side": "acceptor",
+          "role": "seller",
+          "admit": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ],
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "counterparty_layer": true,
+          "counterparty_key": "buyer-key",
+          "checkpoint_key": "seller-checkpoint",
+          "shelf_log_id": "seller-shelf"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "agree/agreement/deal_id-flipped",
+      "record": {
+        "body": {
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "admit": {
+            "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "checkpoint_key": "seller-checkpoint",
+          "counterparty_key": "buyer-key",
+          "counterparty_layer": true,
+          "kind": "agreement",
+          "offer": {
+            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "role": "seller",
+          "rows_digest": "726379c6fb72dd74af34d73ef8bde99523a5d1dad4954063accb9fb37c0ad2a7",
+          "shelf_log_id": "seller-shelf",
+          "side": "acceptor",
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "agree",
+          "seen": null,
+          "seq": 1
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "agree/cancellation",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "agree",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "kind": "cancellation",
+          "offer": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "agree/cancellation/deal_id-flipped",
+      "record": {
+        "body": {
+          "kind": "cancellation",
+          "offer": {
+            "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          }
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "agree"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "agree/decline",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "agree",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "kind": "decline",
+          "offer": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          "reason": "not_selected"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "agree/decline/deal_id-flipped",
+      "record": {
+        "body": {
+          "kind": "decline",
+          "offer": {
+            "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "reason": "not_selected"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "agree"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "answer/journal",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "answer",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "request": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "outcome": "absence",
+          "answer": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "8888888888888888888888888888888888888888888888888888888888888888"
+          }
+        }
+      },
+      "context": {
+        "offer_exists": false,
+        "admission": true
+      },
+      "valid": true
+    },
+    {
+      "name": "answer/journal/deal_id-flipped",
+      "record": {
+        "body": {
+          "answer": {
+            "digest": "8888888888888888888888888888888888888888888888888888888888888888",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "outcome": "absence",
+          "request": {
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          }
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "answer"
+        }
+      },
+      "context": {
+        "offer_exists": false,
+        "admission": true
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "approval/confirm",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "approval",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "choice": "confirm_limits",
+          "proceed": true,
+          "approver": "user",
+          "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "limits": {
+            "previous": {},
+            "new": {}
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "approval/confirm/deal_id-flipped",
+      "record": {
+        "body": {
+          "approver": "user",
+          "choice": "confirm_limits",
+          "limits": {
+            "new": {},
+            "previous": {}
+          },
+          "proceed": true,
+          "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "approval"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "approval/proceed",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "approval",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "choice": "proceed",
+          "proceed": true,
+          "approver": "user",
+          "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "approval/proceed/deal_id-flipped",
+      "record": {
+        "body": {
+          "approver": "user",
+          "choice": "proceed",
+          "proceed": true,
+          "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "approval"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "ask/book",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "ask",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 7,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "request": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "to": "adjudicator"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "ask/book/deal_id-flipped",
+      "record": {
+        "body": {
+          "request": {
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "to": "adjudicator"
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "ask",
+          "seen": null,
+          "seq": 7
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "ask/journal",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "ask",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "request": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "to": "counterparty"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "ask/journal/deal_id-flipped",
+      "record": {
+        "body": {
+          "request": {
+            "digest": "7777777777777777777777777777777777777777777777777777777777777777",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "to": "counterparty"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "ask"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "check",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "check",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "action": "pay",
+          "payment_ref": "invoice-17"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "check/deal_id-flipped",
+      "record": {
+        "body": {
+          "action": "pay",
+          "payment_ref": "invoice-17"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "check"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "claim",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "claim",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "text_commitment": "8888888888888888888888888888888888888888888888888888888888888888",
+          "source_kind": "merchant"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "claim/deal_id-flipped",
+      "record": {
+        "body": {
+          "source_kind": "merchant",
+          "text_commitment": "8888888888888888888888888888888888888888888888888888888888888888"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "claim"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "counterparty_profile",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "counterparty_profile",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {}
+      },
+      "valid": true
+    },
+    {
+      "name": "counterparty_profile/deal_id-flipped",
+      "record": {
+        "body": {},
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "counterparty_profile"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "detail_change",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "detail_change",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "source": "counterparty",
+          "changed": [
+            "rail"
+          ],
+          "recourse": {
+            "rail": "zelle",
+            "refundable": false
+          }
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "detail_change/deal_id-flipped",
+      "record": {
+        "body": {
+          "changed": [
+            "rail"
+          ],
+          "recourse": {
+            "rail": "zelle",
+            "refundable": false
+          },
+          "source": "counterparty"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "detail_change"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "disclosure",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "disclosure",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "to": "counterparty",
+          "fields": [
+            {
+              "class": "phone",
+              "value_commitment": "9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "authority": "none",
+          "rule": "answer_was_not_proceed"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "disclosure/deal_id-flipped",
+      "record": {
+        "body": {
+          "authority": "none",
+          "fields": [
+            {
+              "class": "phone",
+              "value_commitment": "9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "rule": "answer_was_not_proceed",
+          "to": "counterparty"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "disclosure"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "dispute/challenge",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "dispute",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 6,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "kind": "challenge",
+          "ruling": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "grounds_commitment": "5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "dispute/challenge/deal_id-flipped",
+      "record": {
+        "body": {
+          "grounds_commitment": "5555555555555555555555555555555555555555555555555555555555555555",
+          "kind": "challenge",
+          "ruling": {
+            "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          }
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "dispute",
+          "seen": null,
+          "seq": 6
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "dispute/dispute",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "dispute",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 5,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "kind": "dispute",
+          "row": "delivered",
+          "statements": [
+            {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "4444444444444444444444444444444444444444444444444444444444444444"
+            }
+          ],
+          "adjudicator": "adjudicator-key",
+          "forum": "auto:ref"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "dispute/dispute/deal_id-flipped",
+      "record": {
+        "body": {
+          "adjudicator": "adjudicator-key",
+          "forum": "auto:ref",
+          "kind": "dispute",
+          "row": "delivered",
+          "statements": [
+            {
+              "digest": "4444444444444444444444444444444444444444444444444444444444444444",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "dispute",
+          "seen": null,
+          "seq": 5
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "dispute/withdrawal",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "dispute",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 6,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "kind": "withdrawal",
+          "row": "delivered"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "dispute/withdrawal/deal_id-flipped",
+      "record": {
+        "body": {
+          "kind": "withdrawal",
+          "row": "delivered"
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "dispute",
+          "seen": null,
+          "seq": 6
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "evidence",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "evidence",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "source": "listing_photo",
+          "verified": false
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "evidence/deal_id-flipped",
+      "record": {
+        "body": {
+          "source": "listing_photo",
+          "verified": false
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "evidence"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "intent",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "intent",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "verbatim_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "intent/deal_id-flipped",
+      "record": {
+        "body": {
+          "verbatim_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "intent"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "message/after-offer",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "message",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "from": "agent",
+          "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "message/after-offer/deal_id-flipped",
+      "record": {
+        "body": {
+          "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "from": "agent"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "message"
+        }
+      },
+      "context": {
+        "offer_exists": true,
+        "admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "message/before-offer",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "message",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "from": "agent",
+          "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "context": {
+        "offer_exists": false,
+        "admission": true
+      },
+      "valid": true
+    },
+    {
+      "name": "message/before-offer/deal_id-flipped",
+      "record": {
+        "body": {
+          "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "from": "agent"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "message"
+        }
+      },
+      "context": {
+        "offer_exists": false,
+        "admission": true
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "perform",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "perform",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 3,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "act": "deliver",
+          "observed": "carrier_scan",
+          "statements": [
+            {
+              "row": "delivered",
+              "value": "met"
+            }
+          ]
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "perform/deal_id-flipped",
+      "record": {
+        "body": {
+          "act": "deliver",
+          "observed": "carrier_scan",
+          "statements": [
+            {
+              "row": "delivered",
+              "value": "met"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "perform",
+          "seen": null,
+          "seq": 3
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "propose",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "propose",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "role": "buyer",
+          "to": "seller-key",
+          "terms": {
+            "item": "lamp",
+            "currency": "USD"
+          },
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stated_at": "2026-11-01T10:00:00Z",
+          "agree_by": "2026-11-02T10:00:00Z",
+          "terms_rows": {
+            "rows": [
+              {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "owed": {
+                  "amount_minor": 6000,
+                  "currency": "USD"
+                },
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              {
+                "id": "delivered",
+                "owed_by": "seller",
+                "owed": {},
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              }
+            ],
+            "named": {
+              "paid": {
+                "side": "buyer",
+                "latest": "2026-11-04T23:59:59Z"
+              }
+            }
+          },
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ]
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "propose/deal_id-flipped",
+      "record": {
+        "body": {
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "agree_by": "2026-11-02T10:00:00Z",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "role": "buyer",
+          "stated_at": "2026-11-01T10:00:00Z",
+          "terms": {
+            "currency": "USD",
+            "item": "lamp"
+          },
+          "terms_rows": {
+            "named": {
+              "paid": {
+                "latest": "2026-11-04T23:59:59Z",
+                "side": "buyer"
+              }
+            },
+            "rows": [
+              {
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "id": "paid_as_agreed",
+                "owed": {
+                  "amount_minor": 6000,
+                  "currency": "USD"
+                },
+                "owed_by": "buyer",
+                "recomputed": true,
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                }
+              },
+              {
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "id": "delivered",
+                "owed": {},
+                "owed_by": "seller",
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              }
+            ]
+          },
+          "to": "seller-key",
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "propose"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "rules_verdict",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "rules_verdict",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 8,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "word": "met",
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "rules_verdict/deal_id-flipped",
+      "record": {
+        "body": {
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "word": "met"
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "rules_verdict",
+          "seen": null,
+          "seq": 8
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "ruling",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "ruling",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 1
+        },
+        "body": {
+          "row": "delivered",
+          "keys": {
+            "buyer": "buyer-key",
+            "seller": "seller-key"
+          },
+          "against": "seller",
+          "value": "not_met",
+          "read": {
+            "buyer": "6666666666666666666666666666666666666666666666666666666666666666",
+            "seller": null
+          },
+          "forum": "auto:ref",
+          "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "final": true
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "ruling/deal_id-flipped",
+      "record": {
+        "body": {
+          "against": "seller",
+          "final": true,
+          "forum": "auto:ref",
+          "keys": {
+            "buyer": "buyer-key",
+            "seller": "seller-key"
+          },
+          "read": {
+            "buyer": "6666666666666666666666666666666666666666666666666666666666666666",
+            "seller": null
+          },
+          "row": "delivered",
+          "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "value": "not_met"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "ruling",
+          "seq": 1
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "sale",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "sale",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "deal_type": "purchase",
+          "intent": {
+            "verbatim_commitment": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "party_role": "seller",
+            "allowed": [
+              "offer",
+              "commit"
+            ]
+          },
+          "terms": {
+            "item": "lamp",
+            "quantity": 1,
+            "price_minor": 6000,
+            "currency": "USD"
+          },
+          "recourse": {
+            "rail": "card",
+            "refundable": false
+          },
+          "item_ref_commitment": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "sale/deal_id-flipped",
+      "record": {
+        "body": {
+          "deal_type": "purchase",
+          "intent": {
+            "allowed": [
+              "offer",
+              "commit"
+            ],
+            "party_role": "seller",
+            "verbatim_commitment": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "item_ref_commitment": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "recourse": {
+            "rail": "card",
+            "refundable": false
+          },
+          "terms": {
+            "currency": "USD",
+            "item": "lamp",
+            "price_minor": 6000,
+            "quantity": 1
+          }
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "sale"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "sale_unpost",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "sale_unpost",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "platform": "market.test"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "sale_unpost/deal_id-flipped",
+      "record": {
+        "body": {
+          "platform": "market.test"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "sale_unpost"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "settle/payee",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "settle",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 2,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "leg": "payee",
+          "statements": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "settle/payee/deal_id-flipped",
+      "record": {
+        "body": {
+          "leg": "payee",
+          "statements": []
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "settle",
+          "seen": null,
+          "seq": 2
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "settle/payer",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "settle",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 2,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "leg": "payer",
+          "statements": [
+            {
+              "row": "paid_as_agreed",
+              "value": "met"
+            }
+          ],
+          "check": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "settle/payer/deal_id-flipped",
+      "record": {
+        "body": {
+          "check": {
+            "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "leg": "payer",
+          "statements": [
+            {
+              "row": "paid_as_agreed",
+              "value": "met"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "settle",
+          "seen": null,
+          "seq": 2
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "statement",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "statement",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 4,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "statements": [
+            {
+              "row": "delivered",
+              "value": "not_met"
+            }
+          ]
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "statement/deal_id-flipped",
+      "record": {
+        "body": {
+          "statements": [
+            {
+              "row": "delivered",
+              "value": "not_met"
+            }
+          ]
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "statement",
+          "seen": null,
+          "seq": 4
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "statement/names",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "statement",
+          "at": "2026-11-01T10:00:00Z",
+          "seq": 4,
+          "prev": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "agreement_ref": {
+            "type": "deal-record",
+            "digest_alg": "SHA-256",
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "seen": null
+        },
+        "body": {
+          "statements": [],
+          "names": {
+            "ruling": {
+              "type": "deal-record",
+              "digest_alg": "SHA-256",
+              "digest": "3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "statement/names/deal_id-flipped",
+      "record": {
+        "body": {
+          "names": {
+            "ruling": {
+              "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            }
+          },
+          "statements": []
+        },
+        "x-deal-v1": {
+          "agreement_ref": {
+            "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "prev": {
+            "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "digest_alg": "SHA-256",
+            "type": "deal-record"
+          },
+          "profile": "x-deal-v1",
+          "record_type": "statement",
+          "seen": null,
+          "seq": 4
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "thread",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "thread",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "thread_ref_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "thread/deal_id-flipped",
+      "record": {
+        "body": {
+          "thread_ref_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "thread"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "thread_opened",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "thread_opened",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "task_authority_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "thread_opened/deal_id-flipped",
+      "record": {
+        "body": {
+          "task_authority_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "thread_opened"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "verdict",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "verdict",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "result": "pass",
+          "differences": [],
+          "options": []
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "verdict/deal_id-flipped",
+      "record": {
+        "body": {
+          "differences": [],
+          "options": [],
+          "result": "pass"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "verdict"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    }
+  ],
+  "description": "deal-id-presence (evidencebook#461, docs/design/461-deal-profile.md §3.1, §11.2): each record passes or is refused at the stage given, checked with its context when it has one (CheckSealed: offer_exists, admission). deal_id is required on every book record, on propose and every agree, on check and verdict and on an approval that answers a verdict; absent on intent, admit, sale, thread, thread_opened, sale_unpost, counterparty_profile, disclosure and a confirm_limits approval; on a journal journey record exactly when its offer exists, and on a journal ask or answer exactly when it is not of an admission. Written by dealprofile/xdealv1's TestDealIDPresence (EB_WRITE_DEAL_V1_VECTORS=1)."
+}
