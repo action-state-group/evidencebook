@@ -503,8 +503,9 @@ fn limits_count_only_records_under_the_anchor() {
 /// binding. `EVIDENCEBOOK_WRITE_ANSWER_FIXTURE=1` rewrites the fixture
 /// (only ever from that commit, or from the commit that moves the Checkpointed
 /// Local Log line, whose checkpoint encoding is inside every envelope: the
-/// move to checkpointed-local-log 0.6 changed only each envelope's anchor
-/// digest, request digest, signature and embedded checkpoint); the fixture's
+/// move to checkpointed-local-log 0.6 changed each envelope's anchor digest,
+/// request digest, signature and embedded checkpoint, and the artifact bytes and
+/// digest wherever the artifact carries that anchor or checkpoint); the fixture's
 /// SHA-256 is pinned so a rewrite anywhere else fails here.
 #[test]
 fn every_answer_form_is_byte_for_byte_the_pre_store_trait_answer() {
