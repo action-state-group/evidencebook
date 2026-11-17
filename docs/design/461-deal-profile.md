@@ -1135,8 +1135,9 @@ same vectors, each in its own pull request.
    position covered by the holder's own facts (4.3); and, once AAC#621 fixes its form, receiving
    the witnessed follow-up (receipts and the shelf consistency proof) and the record time it
    gives. If Steven picks key-id naming (Q1), `RecordTime` also takes witnesses by key id,
-   reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). If Q9 is accepted, the additive
-   rowstatus `late_*` outputs land here too.
+   reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
+   outputs land here too (Q9, decided), and `Shelf.SealSent`, which seals a sent journal record
+   and its standalone Capsule in one call (3.1).
 2. **`dealprofile/x-deal-v1/`**: `PROFILE.md`, `x-deal-v1.schema.json`, `check_profile.py` (v1), and
    fixtures: Appendix A's two books as positive fixtures, with negatives for each record check of
    section 3. **`dealprofile/xdealv1`**: names, types, Encode and Decode, the record checks,
