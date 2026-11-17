@@ -403,6 +403,52 @@ jobs:
               echo "written by $writer, continued by $continuer: every dump is the vector's"
             done
           done
+      - name: Migrate a shelf another language wrote, and compare, in every pair of languages
+        # evidencebook#461: Migrate and stamps (the script's migrate phase) on a
+        # shelf written and continued by one language, every dump equal to
+        # testdata/shelf/after-migrate.json.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          for writer in $langs; do
+            for migrator in $langs; do
+              dir="$work/$writer-$migrator"
+              "$RUNNER_TEMP/shelf-$writer" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$writer" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$migrator" migrate "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after-migrate.$reader.json" < /dev/null
+                cmp testdata/shelf/after-migrate.json "$dir/after-migrate.$reader.json"
+              done
+              echo "written by $writer, migrated by $migrator: every dump is the vector's"
+            done
+          done
+      - name: Finish a crash Go planted, in every language
+        # evidencebook#461 §7: a tree tick stored but not finished beside an
+        # empty host log, and a migration stopped in its step 4; each language
+        # recovers it (Migrate, then a stamp), every dump equal to the vector.
+        run: |
+          langs="go py rs"
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+          # A migration stopped after its checkpoint is cut recovers to the same
+          # shelf as one stopped after two appends.
+          for scenario in tick:tick migration:migration migration-checkpointed:migration; do
+            plant="${scenario%%:*}" vector="${scenario##*:}"
+            for recoverer in $langs; do
+              dir="$work/$plant-$recoverer"
+              "$RUNNER_TEMP/shelf-go" write "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" continue "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-go" "plant-$plant" "$dir" < /dev/null
+              "$RUNNER_TEMP/shelf-$recoverer" recover "$dir" < /dev/null
+              for reader in $langs; do
+                "$RUNNER_TEMP/shelf-$reader" dump "$dir" > "$dir/after.$reader.json" < /dev/null
+                cmp "testdata/shelf/after-recover-$vector.json" "$dir/after.$reader.json"
+              done
+              echo "$plant planted by go, recovered by $recoverer: every dump is the vector's"
+            done
+          done
       - name: Two writers of one file exclude each other, in every pair of languages
         run: |
           langs="go py rs"
@@ -446,6 +492,41 @@ jobs:
               test "$(grep -c '"seq"' "$dir/read.go.json")" -eq 3
               echo "written by $writer, continued by $continuer: both readers open every step"
             done
+          done
+
+  row-status-diff:
+    # The row status differential check (evidencebook#461, acceptance 6): Go,
+    # Rust and Python give the same result, or all refuse, on 100,000 random
+    # inputs; the hand-written vectors in testdata/row-status pin the rule.
+    name: Row status differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - name: Build the Go and Rust sides, install the Python side
+        run: |
+          go build -o "$RUNNER_TEMP/row-status-go" ./test/interop/row-status
+          cargo build --locked --manifest-path rust/Cargo.toml -p evidencebook-interop --bin row-status
+          cp rust/target/debug/row-status "$RUNNER_TEMP/row-status-rs"
+          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5"
+      - name: Compare on random inputs
+        run: |
+          for seed in 1 2 3 4 5; do
+            python test/interop/row-status/diff.py "$RUNNER_TEMP/row-status-go" "$RUNNER_TEMP/row-status-rs" --n 20000 --seed "$seed"
           done
 
   goose:
@@ -496,6 +577,8 @@ jobs:
           GOOSE_REQUIRE_REFEREE: "1"
           GOOSE_MESH_CHECK: test/interop/goose-mesh-check/target/debug/goose-mesh-check
         run: python -m pytest -q python/examples/goose/tests
+      - name: Test the ARD two-seller demo (its units; the end-to-end tests need the evaluator and skip here)
+        run: python -m pytest -q python/examples/ard-commerce/tests
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)

@@ -2,8 +2,8 @@
 //! (evidencebook#254 §5), Rust's side: Go's `internal/shelfscript`, run from
 //! `testdata/shelf/script.json`. The writer and continuer phases, the lock
 //! exchange, and a dump of everything the contract fixes in the file, which
-//! must equal Go's `after-write.json` and `after-continue.json` byte for
-//! byte.
+//! must equal Go's `after-write.json`, `after-continue.json` and
+//! `after-migrate.json` byte for byte.
 
 use crate::go_marshal_indent;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -171,6 +171,7 @@ pub fn open(
         witnesses: Some(directory(&v)),
         pad_bucket: number(&v, &hp("/cadence/pad_bucket")),
         ended: Arc::new(move |id| Ok(ended.iter().any(|e| e == id))),
+        status: None,
     });
     let cadence = match cadence {
         Ok(c) => c,
@@ -336,6 +337,18 @@ pub fn continue_(dir: &Path) -> Result<(), Error> {
     run(&file(dir), script()["continue_phase"].as_array().unwrap())
 }
 
+/// Run the migrate phase on `dir/shelf.db`: switch it to a log of book facts
+/// (evidencebook#461) and stamp it.
+pub fn migrate(dir: &Path) -> Result<(), Error> {
+    run(&file(dir), script()["migrate_phase"].as_array().unwrap())
+}
+
+/// Run the recover phase on `dir/shelf.db`: finish whatever a crash left
+/// (Go's `plant-tick` or `plant-migration`) with a migration, then a stamp.
+pub fn recover(dir: &Path) -> Result<(), Error> {
+    run(&file(dir), script()["recover_phase"].as_array().unwrap())
+}
+
 /// Run `steps` on the shelf file at `path`, as Go's `shelfscript.Run`.
 pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
     let mut env: Option<Env> = None;
@@ -384,6 +397,16 @@ pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
                     {
                         e.witness(&tick)?;
                     }
+                }
+                "migrate" => {
+                    let e = env.as_ref().unwrap();
+                    e.cadence.migrate(e.clock.now())?;
+                }
+                "stamp" => {
+                    let e = env.as_ref().unwrap();
+                    let at = start().plus(Duration::from_secs(at as u64));
+                    e.clock.set(at);
+                    e.cadence.stamp(at)?;
                 }
                 "plant_pending" => plant_pending(
                     path,
@@ -592,6 +615,37 @@ pub fn dump(dir: &Path) -> Result<String, Error> {
             },
         )?,
     ));
+    // A shelf of book facts (version 2) also dumps its entry documents and
+    // its migration row; the backup's digest is left out, since the backup
+    // file is SQLite's own bytes, which no contract fixes.
+    if version == evidencebook::shelf::SHELF_VERSION_FACTS {
+        let text = |b: Option<Vec<u8>>| json!(String::from_utf8_lossy(&b.unwrap_or_default()));
+        state.push(("shelf_entries", rows(&db, "SELECT entry_seq, kind, book_id, log_id, doc, link_opening, status_opening, tick FROM shelf_entries ORDER BY entry_seq", |r| {
+            Ok(object(vec![
+                ("entry_seq", json!(r.get::<_, i64>(0)?)),
+                ("kind", json!(r.get::<_, String>(1)?)),
+                ("book_id", json!(r.get::<_, String>(2)?)),
+                ("log_id", json!(r.get::<_, String>(3)?)),
+                ("doc", text(r.get(4)?)),
+                ("link_opening", text(r.get(5)?)),
+                ("status_opening", text(r.get(6)?)),
+                ("tick", json!(r.get::<_, i64>(7)?)),
+            ]))
+        })?));
+        state.push((
+            "shelf_migration",
+            rows(
+                &db,
+                "SELECT state, backup_sha256 != '' FROM shelf_migration ORDER BY id",
+                |r| {
+                    Ok(object(vec![
+                        ("state", json!(r.get::<_, String>(0)?)),
+                        ("backed_up", json!(r.get::<_, bool>(1)?)),
+                    ]))
+                },
+            )?,
+        ));
+    }
     let mut nodes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     {
         let mut stmt =
@@ -664,8 +718,18 @@ fn derive(e: &Env) -> Result<(Value, Value, Value, Value), Error> {
     let (mut roots, mut anchors, mut chains) = (Vec::new(), Vec::new(), Map::new());
     for n in 1..=last.n {
         let tick = e.cadence.get(n)?;
-        let (root, _) = tick.leaves.tree(tick.leaves.filler_index)?;
-        roots.push(json!(hex::encode(root)));
+        match &tick.leaves.stamp {
+            // A stamp has no tree root: its last entry, the stamp entry, ends
+            // it.
+            Some(stamp) => {
+                let last = stamp.entries.last().ok_or("a stamp with no entry")?;
+                roots.push(json!(format!("stamp:{}", sha256_hex(&last.doc))));
+            }
+            None => {
+                let (root, _) = tick.leaves.tree(tick.leaves.filler_index)?;
+                roots.push(json!(hex::encode(root)));
+            }
+        }
         let anchor = e.cadence.standard_history_anchor(n)?;
         anchors.push(object(vec![
             ("tick", json!(anchor.tick.n)),
@@ -684,6 +748,9 @@ fn derive(e: &Env) -> Result<(Value, Value, Value, Value), Error> {
             ),
         ]));
         for (id, leaf) in &tick.leaves.deals {
+            if leaf.statement.is_empty() {
+                continue; // a fact whose checkpoint did not grow carries no new one
+            }
             let statement = URL_SAFE_NO_PAD.decode(&leaf.statement)?;
             let key = format!("{n} {id}");
             let chain = match e.cadence.chain(&statement) {

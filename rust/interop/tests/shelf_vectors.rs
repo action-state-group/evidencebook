@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! The scripted shelf (testdata/shelf/script.json), run by the Rust shelf:
 //! each phase's dump equals the Go run's vector byte for byte
-//! (`after-write.json`, `after-continue.json`). CI's `shelf-interlock` job
+//! (`after-write.json`, `after-continue.json`, `after-migrate.json`). CI's `shelf-interlock` job
 //! runs the same phases in separate processes, Rust continuing Go's file and
 //! Go continuing Rust's.
 
@@ -13,7 +13,7 @@ fn vector(name: &str) -> String {
 }
 
 #[test]
-fn the_rust_shelf_writes_and_continues_the_vectors_byte_for_byte() {
+fn the_rust_shelf_writes_continues_and_migrates_the_vectors_byte_for_byte() {
     let dir = tempfile::tempdir().unwrap();
     shelf::write(dir.path()).unwrap();
     assert!(
@@ -24,6 +24,11 @@ fn the_rust_shelf_writes_and_continues_the_vectors_byte_for_byte() {
     assert!(
         shelf::dump(dir.path()).unwrap() == vector("after-continue.json"),
         "after-continue.json differs"
+    );
+    shelf::migrate(dir.path()).unwrap();
+    assert!(
+        shelf::dump(dir.path()).unwrap() == vector("after-migrate.json"),
+        "after-migrate.json differs"
     );
     assert!(
         shelf::write(dir.path()).is_err(),

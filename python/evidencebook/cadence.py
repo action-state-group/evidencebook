@@ -30,6 +30,7 @@ from agent_action_capsule.witness import verify_witness_receipts
 from cll.checkpoint import core
 from cll.checkpoint.cose_wire import verify_checkpoint_cose_offline
 
+from . import shelf_stamp
 from ._cll import read_checkpoint
 from ._gojson import Ordered, go_json
 from ._random import RandomSource
@@ -38,8 +39,8 @@ from .errors import CorruptError, InvalidError, NotFoundError, OverLimitError
 
 __all__ = [
     "CADENCE_DEPTH", "CADENCE_EXTENSION", "WITNESS_VERIFIED", "WITNESS_NOT_CHECKED", "WITNESS_INVALID",
-    "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StandardHistoryAnchor", "TickLeaf", "TickLeaves",
-    "TickResult", "WitnessCheck", "WitnessReceipt", "WitnessRejected", "derived_fillers", "padding_record_id",
+    "BatchEntry", "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StampBatch", "StandardHistoryAnchor",
+    "TickLeaf", "TickLeaves", "TickResult", "WitnessCheck", "WitnessReceipt", "WitnessRejected", "derived_fillers", "padding_record_id",
 ]
 
 #: The tree's fixed depth: every path is 16 hashes.
@@ -175,16 +176,77 @@ class TickLeaf:
                    int(value["index"]), value.get("statement", ""))
 
 
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode()
+
+
+def _unb64(text: Any) -> bytes:
+    if text is None:
+        return b""
+    return base64.b64decode(text, validate=True)
+
+
+@dataclass(frozen=True)
+class BatchEntry:
+    """One entry of a stamp's batch (Go ``BatchEntry``): its document and,
+    for a fact, the openings of its two commitments (each Go's
+    ``json.Marshal`` of a ``FactOpening``)."""
+
+    kind: str
+    doc: bytes
+    book_id: str = ""
+    log_id: str = ""
+    link_opening: bytes = b""
+    status_opening: bytes = b""
+
+    def value(self) -> Ordered:
+        out = Ordered(kind=self.kind)
+        if self.book_id:
+            out["book_id"] = self.book_id
+        if self.log_id:
+            out["log_id"] = self.log_id
+        out["doc"] = _b64(self.doc)
+        if self.link_opening:
+            out["link_opening"] = _b64(self.link_opening)
+        if self.status_opening:
+            out["status_opening"] = _b64(self.status_opening)
+        return out
+
+    @classmethod
+    def from_value(cls, value: dict) -> BatchEntry:
+        return cls(value["kind"], _unb64(value.get("doc")), value.get("book_id", ""), value.get("log_id", ""),
+                   _unb64(value.get("link_opening")), _unb64(value.get("status_opening")))
+
+
+@dataclass(frozen=True)
+class StampBatch:
+    """A stamp's stored batch (Go ``StampBatch``, evidencebook#461): its
+    entry documents in append order, the stamp entry last."""
+
+    v: int
+    entries: tuple[BatchEntry, ...]
+
+    def value(self) -> Ordered:
+        return Ordered(v=self.v, entries=[e.value() for e in self.entries])
+
+    @classmethod
+    def from_value(cls, value: dict) -> StampBatch:
+        return cls(int(value.get("v", 0)), tuple(BatchEntry.from_value(e) for e in (value.get("entries") or [])))
+
+
 @dataclass(frozen=True)
 class TickLeaves:
     """Every leaf of one tick: the logs under ``deals``, filler 0, and the
-    derived fillers that keep its occupancy at the lifetime log count."""
+    derived fillers that keep its occupancy at the lifetime log count. A
+    tick cut after the shelf's format switch is a stamp: ``stamp`` holds its
+    batch and ``deals`` each fact's log size and checkpoint."""
 
     deals: dict[str, TickLeaf]
     filler_index: int
     filler_nonce: str
     filler_seed: str = ""
     filler_count: int = 0
+    stamp: StampBatch | None = None
 
     def encode(self) -> str:
         """Go's ``json.Marshal`` of its ``TickLeaves``, as ``cadence_ticks.leaves`` holds it."""
@@ -194,15 +256,19 @@ class TickLeaves:
             out["filler_seed"] = self.filler_seed
         if self.filler_count:
             out["filler_count"] = self.filler_count
+        if self.stamp is not None:
+            out["stamp"] = self.stamp.value()
         return go_json(out)
 
     @classmethod
     def decode(cls, text: str) -> TickLeaves:
         try:
             value = json.loads(text)
+            stamp = value.get("stamp")
             return cls({k: TickLeaf.from_value(v) for k, v in (value.get("deals") or {}).items()},
                        int(value.get("filler_index", 0)), value.get("filler_nonce", ""),
-                       value.get("filler_seed", ""), int(value.get("filler_count", 0)))
+                       value.get("filler_seed", ""), int(value.get("filler_count", 0)),
+                       None if stamp is None else StampBatch.from_value(stamp))
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             raise CorruptError(f"tick leaves: {exc}") from None
 
@@ -346,7 +412,14 @@ class CadenceConfig:
     receipts are verified under (a ``witnesses.json`` mapping; ``None``
     trusts no witness). ``pad_bucket`` pads the cadence log to a multiple of
     that many entries per tick (at most 1024; 0 is 1). ``ended`` is the
-    profile's predicate: whether a log has ended. It must not call the shelf."""
+    profile's predicate: whether a log has ended. It must not call the shelf.
+    ``status`` gives each book's profile and fact values once the shelf is a
+    log of book facts (:meth:`Cadence.migrate`): called with the book id and
+    the log id, it returns ``None`` for a book no profile claims (profile
+    ``"none"``, the empty link value and ``{}``), else ``(profile, link,
+    status)``: ``link`` is ``{"last_received": ..., "checked_over": [...]}``
+    (or ``None``, the empty link value) and ``status`` a JSON object (or
+    ``None``, which is ``{}``). It must not call the shelf."""
 
     log_id: str
     ended: Callable[[str], bool]
@@ -356,6 +429,7 @@ class CadenceConfig:
     witness_ids: Sequence[str] = ()
     witnesses: Any = None
     pad_bucket: int = 0
+    status: Callable[[str, str], Any] | None = None
 
     def checked(self) -> CadenceConfig:
         interval = self.interval or timedelta(minutes=5)
@@ -510,9 +584,19 @@ class Cadence:
             shelf._check_open()
             last = self._last_locked()
             if last is not None and last.checkpoint_size == 0:
+                if last.leaves.stamp is not None:
+                    return shelf_stamp.finish_stamp_locked(self, last)
                 return self._finish_locked(last)
             if last is not None and utc(now) < last.due_next:
                 return TickResult(False, last.due_next)
+            # After the format switch every tick is a stamp (evidencebook#461);
+            # while a migration is under way no tick is cut, so no tree root
+            # ever follows the marker.
+            state = shelf_stamp.migration_state(shelf)
+            if state == shelf_stamp.MIGRATION_DONE:
+                return shelf_stamp.stamp_locked(self, now)
+            if state != "":
+                raise InvalidError("a migration is in progress; call migrate")
             n = 1 if last is None else last.n + 1
             now_ns = _ns(now)
             # Times leaving this device are coarsened to the minute.
@@ -591,6 +675,30 @@ class Cadence:
         tick = replace(tick, entry_seq=entry_seq, checkpoint_size=cp.tree_size, checkpoint=cp.statement)
         return TickResult(True, tick.due_next, tick)
 
+    # -- the shelf log of book facts (evidencebook#461) ---------------------------------
+
+    def migrated(self) -> bool:
+        """Whether the shelf's cadence log is a log of book facts."""
+        with self._shelf._mu:
+            self._shelf._check_open()
+            return shelf_stamp.migration_state(self._shelf) == shelf_stamp.MIGRATION_DONE
+
+    def migrate(self, now: datetime) -> None:
+        """Switch the shelf to a log of book facts (Go ``Cadence.Migrate``):
+        explicit, one-way and resumable; it backs the file up first to
+        ``<path>.v1.bak``, a version 1 file an older build opens."""
+        with self._shelf._mu:
+            self._shelf._check_open()
+            shelf_stamp.migrate_locked(self, now)
+
+    def stamp(self, now: datetime) -> TickResult:
+        """Take a stamp now, whatever the heartbeat's schedule (Go
+        ``Cadence.Stamp``). A stamp stored but not finished is finished
+        first, as the same stamp. It needs a migrated shelf."""
+        with self._shelf._mu:
+            self._shelf._check_open()
+            return shelf_stamp.stamp_locked(self, now)
+
     # -- witnessing ---------------------------------------------------------------------
 
     def witnessed(self, n: int, receipt: WitnessReceipt) -> WitnessCheck:
@@ -618,10 +726,15 @@ class Cadence:
                 raise WitnessRejected(f"tick {n}'s witness receipt is rejected: {check.reason}", check)
             if check.state != WITNESS_VERIFIED:
                 return check
-            ended = {log_id: bool(self._cfg.ended(log_id)) for log_id in tick.leaves.deals}
+            ended = {} if tick.leaves.stamp is not None else {log_id: bool(self._cfg.ended(log_id)) for log_id in tick.leaves.deals}
             with shelf._tx() as db:
                 db.execute("UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
                            (receipt.encode(), n))
+                # cadence_witnessed and the live set index the tree's ticks; a
+                # stamp has no tree and its proof is the stamp proof
+                # (evidencebook#461), so a witnessed stamp touches neither.
+                if tick.leaves.stamp is not None:
+                    return check
                 for log_id, leaf in tick.leaves.deals.items():
                     db.execute(_WITNESS_INDEX, (log_id, leaf.checkpoint_sha256, leaf.size, n))
                     witnessed = db.execute("SELECT COALESCE(MAX(mmr_size), 0) FROM cadence_witnessed WHERE log_id = ?",
@@ -652,6 +765,8 @@ class Cadence:
         if row is None:
             raise NotFoundError(f"no witnessed tick carries {log_id}")
         tick = self._tick_locked(row[0])
+        if tick.leaves.stamp is not None:
+            raise CorruptError(f"tick {tick.n} is a stamp, whose proof is a stamp proof, not a cadence chain")
         leaf = tick.leaves.deals.get(log_id)
         if leaf is None:
             raise CorruptError(f"witnessed tick {tick.n} holds no leaf of {log_id}")

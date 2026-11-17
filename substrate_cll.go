@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -35,6 +36,10 @@ type CLLSubstrate struct {
 	logID  string
 	log    cll.Backend
 	runner *checkpoint.Runner
+	// indexer indexes pending entries into the log's MMR and never
+	// checkpoints (its cadence is never due), so CheckpointWhole cuts one
+	// checkpoint over a batch longer than one runner scan.
+	indexer *checkpoint.Runner
 	// treeLoads counts MMR restores, so a test can see that one bundle
 	// restores the tree once.
 	treeLoads int
@@ -148,7 +153,14 @@ func newCLLSubstrateWith(log cll.Backend, logID string, checkpointKey ed25519.Pr
 	if err != nil {
 		return nil, errors.Join(err, log.Close())
 	}
-	return &CLLSubstrate{logID: logID, log: log, runner: runner}, nil
+	indexConfig := config
+	indexConfig.Cadence = checkpoint.Config{CadenceEntries: math.MaxUint64, CadenceAge: time.Duration(math.MaxInt64)}
+	indexConfig.WitnessIDs = nil
+	indexer, err := checkpoint.NewRunner(indexConfig, log, signer)
+	if err != nil {
+		return nil, errors.Join(err, log.Close())
+	}
+	return &CLLSubstrate{logID: logID, log: log, runner: runner, indexer: indexer}, nil
 }
 
 func (s *CLLSubstrate) Info() SubstrateInfo {
@@ -194,6 +206,26 @@ func (s *CLLSubstrate) Entries(ctx context.Context, afterSeq uint64, limit int) 
 		out[i] = SubstrateEntry{Seq: entry.Seq, RecordID: hex.EncodeToString(entry.Value), AppendedAt: entry.AppendedAt}
 	}
 	return out, nil
+}
+
+// CheckpointWhole is Checkpoint over everything the log holds, as one
+// checkpoint: every pending entry is indexed first, without a checkpoint, so
+// a batch longer than one runner scan (cll.MaxScanLimit entries) is never
+// covered in part (evidencebook#461, a stamp's batch).
+func (s *CLLSubstrate) CheckpointWhole(ctx context.Context, now time.Time) (Checkpoint, error) {
+	s.mu.Lock()
+	for {
+		changed, err := s.indexer.RunOnce(ctx, now)
+		if err != nil {
+			s.mu.Unlock()
+			return Checkpoint{}, fmt.Errorf("CLL index: %w", err)
+		}
+		if !changed {
+			break
+		}
+	}
+	s.mu.Unlock()
+	return s.Checkpoint(ctx, now)
 }
 
 func (s *CLLSubstrate) Checkpoint(ctx context.Context, now time.Time) (Checkpoint, error) {

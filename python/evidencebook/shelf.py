@@ -47,13 +47,16 @@ from .signer import Signer
 from .store import StoredRecord
 
 __all__ = [
-    "SHELF_VERSION", "HeldLock", "HostLog", "HostLogStores", "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore",
+    "SHELF_VERSION", "SHELF_VERSION_FACTS", "HeldLock", "HostLog", "HostLogStores", "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore",
     "SqliteSubstrate",
 ]
 
-#: The shelf file version this implementation writes and the only one it
-#: opens (``shelf_meta.version``).
+#: The shelf file version this implementation writes (``shelf_meta.version``).
 SHELF_VERSION = 1
+
+#: The version once :meth:`Cadence.migrate` has switched the shelf to a log
+#: of book facts (evidencebook#461); this build opens both.
+SHELF_VERSION_FACTS = 2
 
 _KIND_BOOK, _KIND_HOST = "book", "host"
 
@@ -100,6 +103,18 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 );
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+CREATE TABLE IF NOT EXISTS shelf_entries (
+	entry_seq      INTEGER PRIMARY KEY,
+	kind           TEXT    NOT NULL,
+	book_id        TEXT    NOT NULL,
+	log_id         TEXT    NOT NULL,
+	doc            BLOB    NOT NULL,
+	link_opening   BLOB,
+	status_opening BLOB,
+	tick           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
+CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 """
 
 #: How often a waiting shelf tries the writer lock again.
@@ -236,6 +251,12 @@ class SqliteSubstrate(CLLSubstrate):
         # entry is due the moment the book asks.
         self._runner = CheckpointRunner(backend, _RunnerSigner(checkpoint_key), log_id, witness_ids=tuple(witness_ids),
                                         cadence_entries=1, cadence_age=timedelta(hours=1), scan_limit=MAX_SCAN_LIMIT)
+        # Indexes pending entries into the log's MMR and never checkpoints (its
+        # cadence is never due, and it has no witnesses), so checkpoint_whole
+        # cuts one checkpoint over a batch longer than one runner scan.
+        self._indexer = CheckpointRunner(backend, _RunnerSigner(checkpoint_key), log_id, witness_ids=(),
+                                         cadence_entries=2**64 - 1, cadence_age=timedelta.max,
+                                         scan_limit=MAX_SCAN_LIMIT)
         self._sync()
         self._latest = self._stored_checkpoint()
 
@@ -337,6 +358,16 @@ class SqliteSubstrate(CLLSubstrate):
                 raise NotFoundError(f"log {self.log_id} has no checkpoint yet")
             self._latest = latest
             return latest
+
+    def checkpoint_whole(self, now: datetime) -> Checkpoint:
+        """:meth:`checkpoint` over everything the log holds, as one checkpoint
+        (Go ``CheckpointWhole``): every pending entry is indexed first, without
+        a checkpoint, so a batch longer than one runner scan (``MAX_SCAN_LIMIT``
+        entries) is never covered in part (evidencebook#461, a stamp's batch)."""
+        with self._mirror:
+            while self._indexer.run_once(utc(now)):
+                pass
+        return self.checkpoint(now)
 
     def inclusion_proof(self, seq: int, at: Checkpoint) -> bytes:
         with self._mirror:
@@ -968,6 +999,16 @@ class Shelf:
             self._cadence = Cadence(self, config, log)
             return self._cadence
 
+    # -- the shelf log of book facts ------------------------------------------------------
+
+    def openings(self, book_id: str, audience: str) -> list:
+        """Every fact of a book (by its book id) with the openings
+        ``audience`` may have (Go ``Shelf.Openings``); see
+        :func:`evidencebook.shelf_stamp.openings`."""
+        from .shelf_stamp import openings
+
+        return openings(self, book_id, audience)
+
     # -- release ------------------------------------------------------------------------
 
     def release(self) -> None:
@@ -1010,8 +1051,9 @@ def _init(db: sqlite3.Connection) -> None:
         if has("shelf_meta"):
             row = db.execute("SELECT version FROM shelf_meta WHERE id = 1").fetchone()
             if row is not None:
-                if row[0] != SHELF_VERSION:
-                    raise UnsupportedError(f"shelf file version {row[0]} (this build opens version {SHELF_VERSION})")
+                if row[0] not in (SHELF_VERSION, SHELF_VERSION_FACTS):
+                    raise UnsupportedError(f"shelf file version {row[0]} (this build opens versions {SHELF_VERSION} "
+                                           f"and {SHELF_VERSION_FACTS})")
                 versioned = True
         had_logs = has("shelf_logs")
         for statement in SCHEMA.split(";"):

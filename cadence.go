@@ -62,6 +62,9 @@ type CadenceConfig struct {
 	// deal, a close step is sealed). It is evaluated each time it is
 	// needed, never stored.
 	Ended func(ctx context.Context, logID string) (bool, error)
+	// Status gives each book's profile and fact values once the shelf is a
+	// log of book facts (Migrate). Nil gives every book profile "none".
+	Status StatusProvider
 }
 
 func (c *CadenceConfig) defaults() error {
@@ -486,10 +489,24 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	// A tick stored but not finished (a crash or an error after its row)
 	// is finished first, as the same tick: its root, never a new one.
 	if haveLast && last.CheckpointSize == 0 {
+		if last.Leaves.Stamp != nil {
+			return c.finishStampLocked(ctx, last)
+		}
 		return c.finishLocked(ctx, last)
 	}
 	if haveLast && now.Before(last.DueNext) {
 		return TickResult{DueNext: last.DueNext}, nil
+	}
+	// After the format switch every tick is a stamp (evidencebook#461);
+	// while a migration is under way no tick is cut, so no tree root ever
+	// follows the marker.
+	switch state, err := migrationState(ctx, s.db); {
+	case err != nil:
+		return TickResult{}, err
+	case state == migrationDone:
+		return c.stampLocked(ctx, now)
+	case state != "":
+		return TickResult{}, fmt.Errorf("%w: a migration is in progress; call Migrate", ErrInvalid)
 	}
 	n := uint64(1)
 	if haveLast {
@@ -726,6 +743,17 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	case check.State != WitnessVerified:
 		return check, nil
 	}
+	if tick.Leaves.Stamp != nil {
+		// A witnessed stamp is the tick's own state only: cadence_witnessed
+		// and the live set index the tree's ticks, which a cadence chain
+		// (Chain) proves a checkpoint by; a stamp's proof is the stamp proof
+		// (evidencebook#461).
+		_, err := s.db.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n)
+		if err != nil {
+			return WitnessCheck{}, err
+		}
+		return check, nil
+	}
 	ended := map[string]bool{}
 	for id := range tick.Leaves.Deals {
 		if ended[id], err = c.cfg.Ended(ctx, id); err != nil {
@@ -816,6 +844,9 @@ func (c *Cadence) witnessedTickLocked(ctx context.Context, logID, checkpointSHA2
 	}
 	if tick, err = c.tickLocked(ctx, n); err != nil {
 		return "", CadenceTick{}, TickLeaf{}, err
+	}
+	if tick.Leaves.Stamp != nil {
+		return "", CadenceTick{}, TickLeaf{}, fmt.Errorf("%w: tick %d is a stamp, whose proof is a stamp proof, not a cadence chain", ErrCorrupt, n)
 	}
 	return extent, tick, tick.Leaves.Deals[logID], nil
 }

@@ -1,0 +1,217 @@
+# admission-baseline@1 -- the baseline admission pack (#51), in admission pack
+# profile v0 (docs/admission-pack-profile-v0.md).
+#
+# A relying party runs it before an act, over what it received about the
+# counterparty. capsule-engine#265 is the evaluator (Go and Rust); this file
+# states thresholds only, and the evaluator computes the band, the tier,
+# freshness, counts and denominators.
+#
+# Sources: Reference v3 §3A.2 (the illustrative rows), §3A.14 (decade bands);
+# the admission design of 2026-10-27 §4 (the tier ladder: T0 micro, T1 small,
+# T2 standard, nothing offered above T2); Steven's 2026-10-30 ruling (the Terms
+# Pack build approach; the SDK does the math); the register §13.1 items 16 and
+# 26 (Action State authors and signs this pack; a refusal maps to LIMIT, never
+# NO; decade bands; USD-pegged stablecoins and Lightning msat accepted
+# directly, everything else through a mapping table).
+#
+# PLACEHOLDERS. Every band ceiling, threshold, window and budget below is a
+# labelled placeholder, to be calibrated first from the live stage-1 health
+# report. None is a recommendation.
+#
+# Not the Mesh default. While Steven's 10-29 ruling u137 stands, a Mesh pack
+# yields GO and NO only and keeps own_history from deciding NO (an adverse
+# adjudication is sealed as a row result and the operator makes it a NO in
+# config). This baseline lets our own adjudicated history decide NO, as
+# design §4 draws it.
+#
+# The climb rests on the counterparty's own evidence (design §4): its card at
+# T1, a selection bound to our ask at T2. Our own book with it is recorded,
+# never a gate a stranger cannot pass on a first deal.
+#
+# Not used here yet (profile §3.1, §3.2; #79): the per-band ladder with k and
+# a step-up (card.band_history_or_stake, Reference v3 §3A.14, item 26) reads
+# per-band counts of corroborated, net-settled subjects, which no card served
+# today carries; and trust_roots pins no rail, so the stake row counts no
+# stake. Pinning none keeps this pack's compiled bytes and digest.
+#
+# Outcomes are quoted: YAML 1.1 reads a plain NO as false.
+pack_id: demo/ard_admission/1.0.0
+pack_version: 1.0.0
+scope:
+  kind: admission
+source: "demo copy of evidencebook-skills admission-baseline@1; placeholder thresholds, for this demo only"
+
+outcomes: ["GO", "ASK", "LIMIT", "NO"]
+# A missing input limits to T0; it is never a silent GO.
+missing: "LIMIT"
+
+# The mapping table: what each accepted currency's band is counted in. No
+# conversion across units: a sat band and a USD band are never compared.
+accept:
+  msat: {band: sat, scale: -3}
+  BTC: {band: sat, scale: 8}
+  sat: {band: sat, scale: 0}
+  USD: {band: USD, scale: 0}
+  USDC: {band: USD, scale: 0}
+  USDT: {band: USD, scale: 0}
+
+# A deal sits in the first tier whose ceiling for its band unit holds the
+# band's decade. Above the highest tier that names its unit nothing is
+# offered: a USD deal above T2, or a sat deal above T1, is LIMIT at that tier
+# with source above_tier, unless a NO row or a missing input decides first or
+# a row lowers the tier.
+tiers:
+  - id: T0
+    max_decade: {sat: -4, USD: -1}  # under 1 msat
+  - id: T1
+    max_decade: {sat: -2, USD: 0}   # under 100 msat
+  - id: T2
+    max_decade: {sat: -1, USD: 2}   # under 1,000 msat
+
+budget:
+  max_asks: 3                   # placeholder
+  deadline_s: 86400             # placeholder: an unanswered ask is absence after a day
+
+# Whose word counts: placeholders until the operator names its own.
+trust_roots:
+  controllers: [demo-controller]
+  witnesses: [demo-witness]
+  judges: [placeholder-judge]
+
+rows:
+  # T0: platform facts, the operator's lists and our own adjudicated history.
+  # These are the only rows that decide NO. A micro deal needs no card.
+  - id: attestation
+    statement: The platform does not report the counterparty's release attestation as invalid.
+    source: platform
+    check: platform.attestation_not_invalid
+    from: T0
+    on_fail: "NO"
+  - id: owner-signed
+    statement: The platform reports the counterparty's release as owner-signed.
+    source: platform
+    check: platform.owner_signed
+    from: T0
+    on_fail: "record"
+  - id: deny-list
+    statement: The counterparty is not on the operator's deny list.
+    source: operator
+    check: operator.not_deny_listed
+    from: T0
+    on_fail: "NO"
+  - id: allow-list
+    statement: When the operator keeps an allow list, the counterparty is on it.
+    source: operator
+    check: operator.allow_listed
+    from: T0
+    on_fail: "NO"
+  - id: adverse-adjudication
+    statement: No adjudication this party holds went against the counterparty in the last 180 days.
+    source: own_history
+    check: own.no_adverse_adjudication
+    params: {window_days: 180}  # placeholder
+    from: T0
+    on_fail: "NO"
+  # Our own book, recorded at every tier and gating none.
+  - id: own-settled
+    statement: This party's own book holds a settled deal with the counterparty.
+    source: own_history
+    check: own.settled
+    params: {min: 1}            # placeholder
+    from: T0
+    on_fail: "record"
+  - id: own-corroboration
+    statement: This party holds the counterparty's half of an exchange.
+    source: own_history
+    check: own.held_halves
+    params: {min: 1}            # placeholder
+    from: T0
+    on_fail: "record"
+
+  # T1: the card is required, fresh and witnessed, with claims held shown
+  # with their denominator and a controller declared. A missing or stale card
+  # is asked for (one ask answers every row that needs it); a refused or
+  # unanswered ask limits to T0.
+  - id: card-verified
+    statement: The counterparty's card verifies under the key that presents it.
+    source: card
+    check: card.verified
+    from: T1
+    on_fail: "LIMIT"
+    ask: {derivation: served_summary/1}
+  - id: card-fresh
+    statement: The card's latest checkpoint is at most 7 days old.
+    source: card
+    check: card.fresh
+    params: {max_age_s: 604800}  # placeholder
+    from: T1
+    on_fail: "LIMIT"
+    ask: {derivation: served_summary/1}
+  - id: card-witnessed
+    statement: A witness in this pack's trust roots receipted the card's latest checkpoint.
+    source: card
+    check: card.witnessed
+    from: T1
+    on_fail: "LIMIT"
+  - id: controller-declared
+    statement: The card's key declares the controller it is bound to.
+    source: card
+    check: card.controller_declared
+    from: T1
+    on_fail: "LIMIT"
+  - id: no-conflicting-deal
+    statement: No deal with the counterparty is CONFLICTING in this party's own book.
+    source: own_history
+    check: own.no_conflicting
+    from: T1
+    on_fail: "LIMIT"
+
+  # T2: a selection bound to our ask, with inclusion proofs; the controller in
+  # our trust roots; no dispute left unanswered with anyone in 90 days.
+  - id: selection
+    statement: A selection the counterparty returned to this party's own ask verifies, inclusion proofs included.
+    source: bound
+    check: bound.selection_verified
+    from: T2
+    on_fail: "LIMIT"
+    ask: {derivation: selection}
+  - id: controller-trusted
+    statement: The controller the card declares is in this pack's trust roots.
+    source: card
+    check: card.controller_trusted
+    from: T2
+    on_fail: "LIMIT"
+  - id: no-unanswered-dispute
+    statement: The selection shows no dispute with anyone left unanswered in the last 90 days.
+    source: bound
+    check: bound.no_unanswered_dispute
+    params: {window_days: 90}   # placeholder
+    from: T2
+    on_fail: "LIMIT"
+  - id: band-history
+    statement: In the deal's band the card shows at least 10 decided deals and at most 100 per thousand did not hold.
+    source: card
+    check: card.band_history_or_stake
+    params: {k: 10, step_decades: 0, max_adverse_permille: 100}  # placeholder, for this demo only
+    from: T2
+    on_fail: "LIMIT"
+  - id: independence
+    statement: Vouches from distinct controllers, not the counterparty's own, are counted.
+    source: vouch
+    check: vouch.distinct_controllers
+    params: {min: 3}            # placeholder
+    from: T2
+    on_fail: "record"
+  - id: adjacent-domain
+    statement: The disclosed history is from the same kind of work as the proposed deal.
+    source: judged
+    check: judged
+    from: T2
+    on_fail: {cap: T1}
+  # Stake is a row source only: recorded, deciding nothing, with no bond terms.
+  - id: stake
+    statement: Collateral posted on this deal covers its amount in the deal's band unit.
+    source: stake
+    check: stake.covers_deal
+    from: T2
+    on_fail: "record"

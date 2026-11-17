@@ -75,10 +75,12 @@ pub mod record;
 pub mod request;
 pub mod respond;
 pub mod retention;
+pub mod row_status;
 pub mod seal;
 pub mod served_summary;
 #[cfg(feature = "shelf")]
 pub mod shelf;
+pub mod shelf_facts;
 pub mod standard_history;
 pub mod staple;
 pub mod store;

@@ -1,0 +1,233 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The entry documents of a shelf log of book facts (evidencebook#461).
+
+Byte for byte with Go's ``shelf_facts.go`` and the Rust crate's
+``shelf_facts``: after the format-switch marker every shelf log entry is the
+SHA-256 of one document's RFC 8785 bytes; a fact commits to its link and
+status values as ``hex(SHA-256(salt || JCS(value)))``, each under its own
+32-byte salt, and an opening ``{salt, value}`` shows one value
+(docs/design/461-shelf-facts.md section 2). ``testdata/shelf/facts`` holds
+the shared vectors.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+from dataclasses import dataclass
+from typing import Any, Optional
+
+from agent_action_capsule.canonical import jcs
+
+__all__ = [
+    "ENTRY_KIND_FORMAT_SWITCH",
+    "ENTRY_KIND_STAMP",
+    "FACT_KIND_BOOK",
+    "FACT_KIND_JOURNAL",
+    "Fact",
+    "Invalid",
+    "Opening",
+    "book_fact",
+    "commit",
+    "entry_id",
+    "format_switch",
+    "journal_fact",
+    "openings_for",
+    "stamp_entry",
+    "verify_openings",
+]
+
+FACT_KIND_BOOK = "book_fact"
+FACT_KIND_JOURNAL = "journal_fact"
+ENTRY_KIND_STAMP = "stamp"
+ENTRY_KIND_FORMAT_SWITCH = "format_switch"
+SHELF_FACTS_FORMAT = "book_facts/1"
+PROFILE_NONE = "none"
+
+
+class Invalid(ValueError):
+    """An input or opening the construction cannot take."""
+
+
+@dataclass(frozen=True)
+class Opening:
+    salt: str
+    value: Any
+
+    def to_json(self) -> dict[str, Any]:
+        return {"salt": self.salt, "value": self.value}
+
+    def verify(self, commitment: str) -> None:
+        try:
+            salt = bytes.fromhex(self.salt)
+        except ValueError:
+            raise Invalid("an opening's salt is hex") from None
+        if len(salt) != 32 or salt.hex() != self.salt:
+            raise Invalid("an opening's salt is 32 bytes in lowercase hex")
+        if not _digest(commitment) or not hmac.compare_digest(commit(salt, self.value)[0], commitment):
+            raise Invalid("the opening does not recompute the commitment")
+
+
+def commit(salt: bytes, value: Any) -> tuple[str, Opening]:
+    """``hex(SHA-256(salt || JCS(value)))`` and the opening."""
+    if len(salt) != 32:
+        raise Invalid("a commitment's salt is 32 bytes")
+    _check_text(value)
+    try:
+        body = jcs(value)
+    except Exception as e:  # the AAC canonicalizer's own refusals (a float, among them)
+        raise Invalid(f"a committed value: {e}") from None
+    return hashlib.sha256(salt + body).hexdigest(), Opening(salt.hex(), json.loads(body))
+
+
+@dataclass(frozen=True)
+class Fact:
+    doc: dict[str, Any]
+    link_opening: Opening
+    status_opening: Opening
+
+
+_ABSENT: Any = object()
+
+
+def _count(name: str, v: Any) -> int:
+    """A size or count: a non-negative integer, never a bool (Go and Rust hold them as unsigned)."""
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0 or v >= 2**64:
+        raise Invalid(f"{name} is a non-negative integer")
+    return v
+
+
+def _digest(s: Any) -> bool:
+    return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
+
+def _check_text(v: Any) -> None:
+    """Every string, member names included, is valid UTF-8 (no lone surrogate), as Go and Rust require."""
+    if isinstance(v, str):
+        try:
+            v.encode("utf-8")
+        except UnicodeEncodeError:
+            raise Invalid("a string holds an unpaired surrogate") from None
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            _check_text(k)
+            _check_text(x)
+    elif isinstance(v, list):
+        for x in v:
+            _check_text(x)
+
+
+def _link(last_received: Optional[dict[str, Any]], checked_over: list[str]) -> dict[str, Any]:
+    if last_received is not None:
+        if not isinstance(last_received, dict) or set(last_received) != {"log_id", "size", "record_digest"}:
+            raise Invalid("last_received is exactly {log_id, size, record_digest}")
+        if not isinstance(last_received["log_id"], str) or not last_received["log_id"] or not _digest(last_received["record_digest"]):
+            raise Invalid("last_received needs its log id and a SHA-256 record digest")
+        if _count("last_received.size", last_received["size"]) == 0:
+            raise Invalid("last_received.size is at least 1")
+    if not all(_digest(d) for d in checked_over):
+        raise Invalid("a checked-over digest is 64 lowercase hex")
+    over = sorted(checked_over)
+    if len(set(over)) != len(over):
+        raise Invalid("a digest checked over twice")
+    return {"last_received": last_received, "checked_over": over}
+
+
+def book_fact(
+    *,
+    profile: str,
+    book_id: str,
+    log_id: str,
+    size: int,
+    checkpoint_sha256: str,
+    prev_fact_size: int,
+    last_received: Optional[dict[str, Any]] = None,
+    checked_over: Optional[list[str]] = None,
+    status: Any = _ABSENT,
+    salts: tuple[bytes, bytes],
+) -> Fact:
+    """A book fact; ``salts`` is the link salt, then the status salt. An absent status is ``{}``;
+    ``None`` (JSON null) is refused, as Go and Rust refuse it."""
+    if not (profile and book_id and log_id and checkpoint_sha256):
+        raise Invalid("a fact needs its profile, book, log and checkpoint")
+    if _count("size", size) < _count("prev_fact_size", prev_fact_size):
+        raise Invalid("a fact's size is below its previous fact's")
+    if not (_digest(book_id) and _digest(checkpoint_sha256)):
+        raise Invalid("a fact's book id and checkpoint digest are 64 lowercase hex")
+    status = {} if status is _ABSENT else status
+    if not isinstance(status, dict):
+        raise Invalid("a fact's status is a JSON object")
+    lc, lo = commit(salts[0], _link(last_received, checked_over or []))
+    sc, so = commit(salts[1], status)
+    doc = {"v": 1, "kind": FACT_KIND_BOOK, "profile": profile, "book_id": book_id, "log_id": log_id,
+           "size": size, "checkpoint_sha256": checkpoint_sha256, "prev_fact_size": prev_fact_size,
+           "link_commitment": lc, "status_commitment": sc}
+    return Fact(doc, lo, so)
+
+
+def journal_fact(log_id: str, size: int, checkpoint_sha256: str, prev_fact_size: int, salts: tuple[bytes, bytes]) -> Fact:
+    """The journal's fact: book id SHA-256(log id); its sizes and digest only in its status."""
+    if not (log_id and _digest(checkpoint_sha256)) or _count("size", size) < _count("prev_fact_size", prev_fact_size):
+        raise Invalid("a journal fact needs its log, checkpoint and sizes")
+    lc, lo = commit(salts[0], _link(None, []))
+    sc, so = commit(salts[1], {"size": size, "checkpoint_sha256": checkpoint_sha256, "prev_fact_size": prev_fact_size})
+    doc = {"v": 1, "kind": FACT_KIND_JOURNAL, "profile": PROFILE_NONE,
+           "book_id": hashlib.sha256(log_id.encode()).hexdigest(), "log_id": log_id, "size": 0,
+           "checkpoint_sha256": "", "prev_fact_size": 0, "link_commitment": lc, "status_commitment": sc}
+    return Fact(doc, lo, so)
+
+
+def stamp_entry(stamp: int, facts: int) -> dict[str, Any]:
+    """The entry that ends every stamp."""
+    return {"v": 1, "kind": ENTRY_KIND_STAMP, "stamp": _count("stamp", stamp), "facts": _count("facts", facts)}
+
+
+def format_switch(last_tick: int, logs: list[tuple[str, int]]) -> dict[str, Any]:
+    """The migration's marker, its logs sorted by log id (UTF-8 byte order)."""
+    for i, s in logs:
+        _check_text(i)
+        _count("size", s)
+    ordered = sorted(logs, key=lambda x: x[0].encode())
+    ids = [i for i, _ in ordered]
+    if any(not i for i in ids) or len(set(ids)) != len(ids):
+        raise Invalid("the marker lists each log once, by its id")
+    return {"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": _count("last_tick", last_tick),
+            "logs": [{"log_id": i, "size": s} for i, s in ordered]}
+
+
+def entry_id(doc: dict[str, Any]) -> tuple[bytes, bytes]:
+    """A shelf log entry: SHA-256 of the document's RFC 8785 bytes, and those bytes."""
+    _check_text(doc)
+    try:
+        body = jcs(doc)
+    except Exception as e:  # the AAC canonicalizer's own refusals
+        raise Invalid(f"an entry document: {e}") from None
+    return hashlib.sha256(body).digest(), body
+
+
+_BOOK = {"counterparty": (True, True), "owner": (True, True), "adjudicator": (True, False),
+         "asker": (True, False), "chosen_reader": (False, True), "auditor": (False, False)}
+_JOURNAL = {"owner": (True, True), "auditor": (True, True), "counterparty": (False, False),
+            "adjudicator": (False, False), "asker": (False, False), "chosen_reader": (False, False)}
+
+
+def openings_for(kind: str, audience: str) -> tuple[bool, bool]:
+    """Which of a fact's openings an audience may have: (link, status); see Go's ``OpeningsFor``."""
+    table = {FACT_KIND_BOOK: _BOOK, FACT_KIND_JOURNAL: _JOURNAL}.get(kind)
+    if table is None:
+        raise Invalid(f"no openings for {kind!r}")
+    if audience not in table:
+        raise Invalid(f"unknown audience {audience!r}")
+    return table[audience]
+
+
+def verify_openings(fact: dict[str, Any], link: Optional[Opening] = None, status: Optional[Opening] = None) -> None:
+    """Checks the openings a reader was handed for a fact (Go ``VerifyOpenings``)."""
+    for opening, key in ((link, "link_commitment"), (status, "status_commitment")):
+        if opening is None:
+            continue
+        commitment = fact.get(key) if isinstance(fact, dict) else None
+        if not isinstance(commitment, str):
+            raise Invalid(f"a fact without {key}")
+        opening.verify(commitment)
