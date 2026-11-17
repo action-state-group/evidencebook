@@ -50,7 +50,7 @@ type lockHeld struct{ error }
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: shelf write|continue|dump|hold|try DIR [ARG]")
+		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|dump|handover|hold|try DIR [ARG], or shelf verify-handover FILE")
 	}
 	ctx := context.Background()
 	dir := args[1]

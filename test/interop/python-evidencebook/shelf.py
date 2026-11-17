@@ -367,8 +367,8 @@ def derive(path: str) -> dict:
 
 def main(args: list[str]) -> int:
     if len(args) < 2:
-        print("usage: shelf.py write|continue|migrate|recover|dump|handover|hold|try DIR [ARG] | verify-handover FILE",
-              file=sys.stderr)
+        print("usage: shelf.py write|continue|migrate|recover|dump|handover|hold|try DIR [ARG]\n"
+              "       shelf.py verify-handover FILE", file=sys.stderr)
         return 1
     command, directory = args[0], args[1]
     path = os.path.join(directory, FILE)

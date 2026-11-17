@@ -33,7 +33,7 @@ from ._gojson import Ordered
 from .errors import CorruptError, InvalidError
 
 __all__ = ["Handover", "HandoverConsistency", "HandoverDocument", "HandoverLatest", "HandoverResult",
-           "handover_locked", "verify_handover"]
+           "canonical_document", "check_fact_chain", "handover_locked", "verify_handover"]
 
 
 def _b64(data: bytes) -> str:
@@ -192,6 +192,8 @@ class Handover:
         """Read a handover's JSON, keeping each raw value's member order."""
         try:
             value = json.loads(text, object_pairs_hook=Ordered, parse_constant=_no_constant)
+        except RecursionError:
+            raise InvalidError("handover: nested too deeply") from None
         except (ValueError, TypeError) as exc:
             raise InvalidError(f"handover: {exc}") from None
         return cls.from_value(value)
@@ -268,7 +270,12 @@ _DOCUMENT_TYPES = {shelf_facts.ENTRY_KIND_STAMP: _STAMP_ENTRY, shelf_facts.ENTRY
 
 
 def _decode_document(doc: bytes) -> Any:
-    return json.loads(doc, parse_constant=_no_constant)
+    """An entry document's JSON; one nested past the interpreter's recursion
+    limit is a ValueError, as any other JSON a reader refuses."""
+    try:
+        return json.loads(doc, parse_constant=_no_constant)
+    except RecursionError:
+        raise ValueError("nested too deeply") from None
 
 
 def canonical_document(doc: bytes, kind: str) -> dict:
@@ -290,6 +297,8 @@ def canonical_document(doc: bytes, kind: str) -> dict:
         _, canonical = shelf_facts.entry_id(value)
     except shelf_facts.Invalid as exc:
         raise InvalidError(str(exc)) from None
+    except RecursionError:
+        raise InvalidError("nested too deeply") from None
     if canonical != doc:
         raise InvalidError("not its canonical JSON")
     return value
@@ -407,14 +416,53 @@ def _verify_consistency(older: Checkpoint, newer: Checkpoint, evidence: Any) -> 
     for value in [*old_peaks, *new_peaks, *(h for path in witness for h in path), older.root, newer.root]:
         if _hex32(value) is None:
             raise InvalidError(f"record id {value!r} is not 64 lowercase hex characters")
-    v, kind = proof.get("v", 0), proof.get("kind", "")
-    old_size, new_size = _uint(proof.get("old_size", 0), "old_size"), _uint(proof.get("new_size", 0), "new_size")
+    # Go decodes the proof into its typed portableConsistency: JSON null or
+    # an absent member is the zero value, any other type is refused.
+    def member(name: str, zero: Any) -> Any:
+        value = proof.get(name)
+        return zero if value is None else value
+
+    v = _uint(member("v", 0), "a consistency proof's v")
+    kind = _str(member("kind", ""), "a consistency proof's kind")
+    old_size, new_size = _uint(member("old_size", 0), "old_size"), _uint(member("new_size", 0), "new_size")
     if old_size != older.tree_size or new_size != newer.tree_size:
         raise InvalidError("consistency proof sizes do not match the checkpoints")
     wire = core.ConsistencyProof(v, kind, old_size, new_size, tuple(old_peaks), tuple(tuple(p) for p in witness),
                                  tuple(new_peaks))
     if not core.verify_consistency(bytes.fromhex(older.root), old_size, bytes.fromhex(newer.root), new_size, wire):
         raise InvalidError("consistency proof does not verify")
+
+
+def check_fact_chain(p: dict, f: dict, statements: dict[str, Checkpoint], proofs: dict) -> None:
+    """Check two consecutive facts of one book (§2.7; Go ``checkFactChain``):
+    one log, ``prev_fact_size`` the previous size, no shrinking, the same
+    checkpoint at the same size, and a consistency proof that verifies when
+    the size grew. A break is a replaced book. ``statements`` maps a
+    checkpoint statement's SHA-256 to the checkpoint, and ``proofs``
+    ``(log, from, to)`` to its proof."""
+
+    def replaced(message: str) -> InvalidError:
+        return InvalidError(f"{message} (a replaced book)")
+
+    if f["log_id"] != p["log_id"]:
+        raise replaced(f"names {f['log_id']}, its previous fact {p['log_id']}")
+    if f["prev_fact_size"] != p["size"]:
+        raise replaced(f"names previous size {f['prev_fact_size']}, its previous fact {p['size']}")
+    if f["size"] < p["size"]:
+        raise replaced(f"shrinks the book from {p['size']} to {f['size']}")
+    if f["size"] == p["size"] and f["checkpoint_sha256"] != p["checkpoint_sha256"]:
+        raise replaced(f"keeps size {f['size']} with another checkpoint")
+    if f["size"] > p["size"]:
+        proof = proofs.get((f["log_id"], p["size"], f["size"]))
+        if proof is None:
+            raise replaced(f"no consistency proof for {f['log_id']} from {p['size']} to {f['size']}")
+        older, newer = statements.get(p["checkpoint_sha256"]), statements.get(f["checkpoint_sha256"])
+        if older is None or newer is None:
+            raise replaced(f"a checkpoint of {f['log_id']} the handover does not hold")
+        try:
+            _verify_consistency(older, newer, proof)
+        except InvalidError as exc:
+            raise replaced(f"{f['log_id']} from {p['size']} to {f['size']}: {exc}") from None
 
 
 def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverResult:
@@ -435,6 +483,8 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
         anchor = read_checkpoint(h.anchor)
     except InvalidError as exc:
         raise bad(f"the anchor does not verify: {exc}") from None
+    if h.v != 1:
+        raise bad(f"a handover of version {h.v}")
     if anchor.key_id != pinned_key or anchor.log_id != h.log_id:
         raise bad("the anchor is not the holder's shelf log")
     # Every entry up to the anchor, exactly: an entry held back changes the
@@ -521,6 +571,9 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
             d.status_opening.verify(f["status_commitment"])
         except shelf_facts.Invalid as exc:
             raise bad(f"the fact at {seq}: {exc}") from None
+        except RecursionError:
+            # The parser takes deeper JSON than the canonicalizer's recursion.
+            raise bad(f"the fact at {seq}: an opening's value is nested too deeply") from None
         cp = statements.get(f["checkpoint_sha256"])
         if cp is None:
             raise bad(f"the fact at {seq} carries a checkpoint the handover does not hold")
@@ -534,25 +587,10 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
                 raise bad(f"the first fact of {book} at {seq} names a previous size")
             untied.append(book)
         else:
-            p = prev.fact
-            if f["log_id"] != p["log_id"]:
-                raise bad(f"the facts of {book} at {seq} name two logs (a replaced book)")
-            if f["prev_fact_size"] != p["size"]:
-                raise bad(f"the fact of {book} at {seq} names previous size {f['prev_fact_size']}, its previous "
-                          f"fact {p['size']} (a replaced book)")
-            if f["size"] < p["size"]:
-                raise bad(f"the fact of {book} at {seq} shrinks the book (a replaced book)")
-            if f["size"] == p["size"] and f["checkpoint_sha256"] != p["checkpoint_sha256"]:
-                raise bad(f"the fact of {book} at {seq} keeps the size with another checkpoint (a replaced book)")
-            if f["size"] > p["size"]:
-                proof = proofs.get((f["log_id"], p["size"], f["size"]))
-                if proof is None:
-                    raise bad(f"no consistency proof for {f['log_id']} from {p['size']} to {f['size']} "
-                              "(a replaced book)")
-                try:
-                    _verify_consistency(statements[p["checkpoint_sha256"]], cp, proof)
-                except InvalidError as exc:
-                    raise bad(f"{f['log_id']} from {p['size']} to {f['size']}: {exc} (a replaced book)") from None
+            try:
+                check_fact_chain(prev.fact, f, statements, proofs)
+            except InvalidError as exc:
+                raise bad(f"the fact of {book} at {seq}: {exc}") from None
         latest[book] = HandoverLatest(f, d.status_opening)
     if not coverage:
         raise bad("the migration's stamp is not in the handover")

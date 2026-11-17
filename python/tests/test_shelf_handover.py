@@ -5,6 +5,7 @@ to handover-result.json byte for byte."""
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 from datetime import timedelta
 
@@ -13,7 +14,9 @@ import pytest
 from evidencebook._gojson import go_json, go_json_indent
 from evidencebook.errors import InvalidError
 from evidencebook.shelf_facts import FACT_KIND_BOOK, Opening
-from evidencebook.shelf_handover import Handover, canonical_document, verify_handover
+from evidencebook._cll import read_checkpoint
+from evidencebook._gojson import Ordered
+from evidencebook.shelf_handover import Handover, canonical_document, check_fact_chain, verify_handover
 
 from test_shelf_stamp import START, VECTORS, fx, obs, script, stamp_cadence  # noqa: F401  (fx is a fixture)
 
@@ -146,3 +149,76 @@ def test_the_vector_replays_to_its_result():
     assert go_json_indent(h.value()) == raw
     got = verify_handover(h, KEY, script.DIRECTORY)
     assert go_json_indent(got.value()) == (VECTORS / "handover-result.json").read_text()
+
+
+def test_a_handover_of_another_version_is_refused(fx):
+    h = handed_over(fx)
+    for v in (0, 2):
+        with pytest.raises(InvalidError, match="version"):
+            verify_handover(dataclasses.replace(h, v=v), KEY, script.DIRECTORY)
+    value = h.value()
+    del value["v"]
+    with pytest.raises(InvalidError, match="version 0"):
+        verify_handover(Handover.loads(go_json(value)), KEY, script.DIRECTORY)
+
+
+def test_a_fact_chain_refuses_a_replaced_book(fx):
+    """Go ``TestAFactChainRefusesAReplacedBook``, on deal/a's two facts."""
+    h = handed_over(fx)
+    verify_handover(h, KEY, script.DIRECTORY)
+    statements = {hashlib.sha256(b).hexdigest(): read_checkpoint(b) for b in h.book_checkpoints}
+    proofs = {(p.log_id, p.from_size, p.to_size): p.proof for p in h.consistency}
+    a = [f for f in (json.loads(d.doc) for d in h.documents) if f["kind"] == FACT_KIND_BOOK and f["log_id"] == "deal/a"]
+    assert len(a) == 2
+    prev, nxt = a
+    assert nxt["size"] > prev["size"]
+    check_fact_chain(prev, nxt, statements, proofs)
+    same = {**nxt, "prev_fact_size": nxt["size"]}
+    check_fact_chain(nxt, same, statements, proofs)  # a later fact at the same size and checkpoint (a changed value)
+
+    key = ("deal/a", prev["size"], nxt["size"])
+    forged = json.loads(go_json(proofs[key]), object_pairs_hook=Ordered)
+    forged["proof"]["old_peaks"][0] = "00" * 32
+    wrong_proof = {**proofs, key: forged}
+    cases = {
+        "another log": (prev, {**nxt, "log_id": "deal/b"}, proofs),
+        "a wrong previous size": (prev, {**nxt, "prev_fact_size": prev["size"] + 1}, proofs),
+        "a shrinking book": (nxt, {**prev, "prev_fact_size": nxt["size"]}, proofs),
+        "the same size, another checkpoint": (
+            prev, {**prev, "prev_fact_size": prev["size"], "checkpoint_sha256": nxt["checkpoint_sha256"]}, proofs),
+        "no proof": (prev, nxt, {}),
+        "a wrong proof": (prev, nxt, wrong_proof),
+    }
+    for name, (p, f, ps) in cases.items():
+        with pytest.raises(InvalidError, match=r"\(a replaced book\)"):
+            check_fact_chain(p, f, statements, ps)
+            pytest.fail(name)
+    # A checkpoint the handover does not hold is a replaced book too.
+    held = {k: v for k, v in statements.items() if k != nxt["checkpoint_sha256"]}
+    with pytest.raises(InvalidError, match=r"\(a replaced book\)"):
+        check_fact_chain(prev, nxt, held, proofs)
+
+
+@pytest.mark.parametrize("member,value", [("v", True), ("v", 1.0), ("v", "1"), ("kind", 1)])
+def test_a_consistency_proof_of_the_wrong_type_is_refused(fx, member, value):
+    h = handed_over(fx)
+    raw = h.value()
+    raw["consistency"][0]["proof"]["proof"][member] = value
+    with pytest.raises(InvalidError, match="replaced book"):
+        verify_handover(Handover.loads(go_json(raw)), KEY, script.DIRECTORY)
+
+
+def test_a_value_nested_too_deeply_is_refused(fx):
+    """A status opening value 5000 deep parses (Python's parser and Go's take
+    it) and is refused by the replay, never a RecursionError; JSON past the
+    parser's own limit is refused where it is read."""
+    h = handed_over(fx)
+    text = go_json(h.value()).replace('"value":{}', '"value":' + "[" * 5000 + "]" * 5000, 1)
+    assert "[" * 5000 in text
+    with pytest.raises(InvalidError, match="nested too deeply"):
+        verify_handover(Handover.loads(text), KEY, script.DIRECTORY)
+    deeper = 1_000_000
+    with pytest.raises(InvalidError):
+        Handover.loads(go_json(h.value()).replace('"value":{}', '"value":' + "[" * deeper + "]" * deeper, 1))
+    with pytest.raises(InvalidError):
+        canonical_document(b"[" * deeper + b"]" * deeper, FACT_KIND_BOOK)
