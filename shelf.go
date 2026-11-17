@@ -57,6 +57,10 @@ type ShelfConfig struct {
 	// non-nil result gives it none, so its checkpoints commit no index_root
 	// records: a deal's log then holds its own steps only.
 	AuthenticatedIndexes func(logID string) []AuthenticatedIndex
+	// Receive is the store of what the other side pushes (Shelf.Receive):
+	// the profile that reads its records, the store's bounds and the
+	// holder's retention.
+	Receive ReceiveConfig
 }
 
 // HeldLock is a writer lock a host holds on the shelf's store. Held reports
@@ -79,12 +83,15 @@ type HeldLock interface {
 // CLL transactions). Operations across books, such as a cadence tick, take
 // the shelf's mutex.
 type Shelf struct {
-	mu     sync.Mutex
-	cfg    ShelfConfig
-	db     *sql.DB
-	unlock func() error
-	random randomSource
-	books  map[string]*Book
+	mu sync.Mutex
+	// receiveMu serializes Receive and Forget, which call the receive
+	// profile outside mu so the profile may read the shelf.
+	receiveMu sync.Mutex
+	cfg       ShelfConfig
+	db        *sql.DB
+	unlock    func() error
+	random    randomSource
+	books     map[string]*Book
 	// hosts are the host logs the shelf opened (Legacy, HostLog).
 	hosts map[string]*HostLog
 	// cadenceLogs are the cadence logs Cadence opened, released with the

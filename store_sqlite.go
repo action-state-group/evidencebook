@@ -79,6 +79,50 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
+-- The store of what the other side pushes (evidencebook#461 §3,
+-- shelf_receive.go): its records, by digest, with the predecessor each names
+-- and whether it is an unanswered unsolicited offer; every stamp proof
+-- accepted; the tombstone a deleted record leaves; and the evidence of a
+-- fork or a contradicting checkpoint. Nothing here is appended to a book.
+CREATE TABLE IF NOT EXISTS shelf_received (
+	digest      TEXT    PRIMARY KEY,
+	sender_key  TEXT    NOT NULL,
+	log_id      TEXT    NOT NULL,
+	position    INTEGER NOT NULL,
+	prev        TEXT    NOT NULL,
+	deal_id     TEXT    NOT NULL,
+	offer       INTEGER NOT NULL DEFAULT 0,
+	record      BLOB    NOT NULL,
+	received_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shelf_received_position ON shelf_received (sender_key, log_id, position);
+CREATE INDEX IF NOT EXISTS shelf_received_deal ON shelf_received (deal_id);
+CREATE TABLE IF NOT EXISTS shelf_received_proofs (
+	sender_key              TEXT    NOT NULL,
+	log_id                  TEXT    NOT NULL,
+	size                    INTEGER NOT NULL,
+	shelf_checkpoint_sha256 TEXT    NOT NULL,
+	book_checkpoint         BLOB    NOT NULL,
+	fact                    BLOB    NOT NULL,
+	status_opening          BLOB,
+	inclusion_proof         BLOB    NOT NULL,
+	shelf_checkpoint        BLOB    NOT NULL,
+	received_at             TEXT    NOT NULL,
+	PRIMARY KEY (sender_key, log_id, size, shelf_checkpoint_sha256)
+);
+CREATE TABLE IF NOT EXISTS shelf_received_tombstones (
+	digest      TEXT PRIMARY KEY,
+	sender_key  TEXT NOT NULL,
+	received_at TEXT NOT NULL,
+	deleted_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shelf_evidence (
+	id       INTEGER PRIMARY KEY,
+	kind     TEXT    NOT NULL,
+	a        BLOB    NOT NULL,
+	b        BLOB    NOT NULL,
+	noted_at TEXT    NOT NULL
+);
 `
 
 // ShelfVersion is the shelf file version this implementation writes and the

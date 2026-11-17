@@ -230,10 +230,12 @@ count over the returned facts.
 
 - **The journal** is a book of kind `journal`, one per shelf, opened on first use, whose records
   are full records. The request and share logs of today keep their bare digests and are not moved.
-- **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, deal_id,
-  record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`;
+- **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, prev, deal_id,
+  offer, record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`
+  (`prev`, the predecessor the record names, lets a restart recompute forks from the store alone;
+  `offer` marks an unsolicited offer not yet answered, which the offer bounds count);
   `shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint BLOB,
-  fact BLOB, inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key,
+  fact BLOB, status_opening BLOB, inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key,
   log_id, size, shelf_checkpoint_sha256))`, so two proofs of one book checkpoint under different
   shelf checkpoints (a received-only change) are both kept, every stamp proof accepted, so a restart keeps what it covered and a later
   contradiction is found against it; and `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for
