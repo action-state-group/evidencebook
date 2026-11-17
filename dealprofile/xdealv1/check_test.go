@@ -352,6 +352,7 @@ func TestForums(t *testing.T) {
 		"a forum with no adjudicator":    {"propose", func(_, body map[string]any) { body["adjudicator"] = nil }},
 		"an agreement with no forums":    {"agree/agreement", func(_, body map[string]any) { delete(body, "forums") }},
 		"an offer with no forums member": {"propose", func(_, body map[string]any) { delete(body, "forums") }},
+		"a forum named twice":            {"propose", func(_, body map[string]any) { body["forums"] = []any{ForumAutoRef, ForumAutoRef} }},
 	} {
 		err := Check(edit(t, records[c.base], c.f))
 		assert.Error(t, err, name)
@@ -365,14 +366,39 @@ func TestForums(t *testing.T) {
 	offer := record(blk(TypePropose), offerBody())
 	acc := acceptorAgreement(offer)
 	require.NoError(t, CheckAgreement(acc, offer, ""))
+	twoOffer := record(blk(TypePropose), offerBody())
+	twoOffer.Body.(*ProposeBody).Forums = []string{ForumAutoRef, "external:court"}
+	twoAcc := acceptorAgreement(twoOffer)
+	twoAcc.Body.(*AgreeBody).Forums = []string{"external:court", ForumAutoRef}
+	assert.NoError(t, CheckAgreement(twoAcc, twoOffer, ""), "forums compare as a set")
+	noAdjOffer := record(blk(TypePropose), offerBody())
+	nob := noAdjOffer.Body.(*ProposeBody)
+	nob.Adjudicator, nob.Forums = NullOf[Adjudicator](), []string{}
+	noAdjAcc := acceptorAgreement(noAdjOffer)
+	naab := noAdjAcc.Body.(*AgreeBody)
+	naab.Adjudicator, naab.Forums = NullOf[Adjudicator](), []string{}
+	assert.NoError(t, CheckAgreement(noAdjAcc, noAdjOffer, ""), "no adjudicator and no forum on both sides")
 	other := acceptorAgreement(offer)
 	other.Body.(*AgreeBody).Forums = []string{"external:court"}
 	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(other, offer, "")), "the agreement's forums are the offer's")
 
 	dispute := records["dispute/dispute"]
+	ad, err := Digest(acc)
+	require.NoError(t, err)
+	dispute.Block.AgreementRef = &Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: ad}
 	assert.NoError(t, CheckDispute(dispute, acc))
+	valueDispute, valueAgreement := dispute, acc
+	valueDispute.Body, valueAgreement.Body = *dispute.Body.(*DisputeBody), *acc.Body.(*AgreeBody)
+	assert.NoError(t, CheckDispute(valueDispute, valueAgreement), "value bodies read as pointers")
+	otherAgreement := acceptorAgreement(offer)
+	otherAgreement.Body.(*AgreeBody).ShelfLogID = "another-shelf"
+	assert.Equal(t, StageAgreement, stageOf(CheckDispute(dispute, otherAgreement)), "a dispute is held to the agreement it cites")
+	assert.Equal(t, StageAgreement, stageOf(CheckDispute(dispute, Record{Block: acc.Block, Body: (*AgreeBody)(nil)})), "a nil body is refused, not a panic")
 	ruling := records["ruling"]
 	assert.NoError(t, CheckRuling(ruling, acc))
+	valueRuling := ruling
+	valueRuling.Body = *ruling.Body.(*RulingBody)
+	assert.NoError(t, CheckRuling(valueRuling, valueAgreement))
 	outside := dispute
 	ob := *outside.Body.(*DisputeBody)
 	ob.Forum = "rail:card"

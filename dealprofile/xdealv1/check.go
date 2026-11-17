@@ -338,11 +338,8 @@ func asPropose(b Body) (ProposeBody, bool) {
 }
 
 func asAgree(b Body) (AgreeBody, bool) {
-	switch x := b.(type) {
-	case AgreeBody:
-		return x, true
-	case *AgreeBody:
-		return *x, x != nil
+	if x, ok := bodyOf[AgreeBody](b); ok {
+		return *x, true
 	}
 	return AgreeBody{}, false
 }
@@ -588,7 +585,8 @@ func sortedCopy(s []string) []string {
 // deal book: it goes to the adjudicator the agreement names, in one of the
 // forums the agreement accepts (the recourse clause, #404: no forum shopping
 // at dispute time). A deal whose agreement names no adjudicator allows no
-// dispute. Both records must pass Check.
+// dispute. The dispute's agreement_ref must cite this agreement. Both
+// records must pass Check.
 func CheckDispute(dispute, agreement Record) error {
 	d, ok := bodyOf[DisputeBody](dispute.Body)
 	if !ok || d.Kind != KindDispute {
@@ -600,6 +598,13 @@ func CheckDispute(dispute, agreement Record) error {
 	}
 	if dispute.Block.DealID != agreement.Block.DealID {
 		return stageErr(StageAgreement, "the dispute is of another deal")
+	}
+	ad, err := Digest(agreement)
+	if err != nil {
+		return err
+	}
+	if dispute.Block.AgreementRef == nil || dispute.Block.AgreementRef.Digest != ad {
+		return stageErr(StageAgreement, "the dispute is bound to another agreement (agreement_ref)")
 	}
 	if ag.Adjudicator.IsNull() || !ag.Adjudicator.Present {
 		return stageErr(StageAgreement, "the agreement names no adjudicator: no dispute is possible")
