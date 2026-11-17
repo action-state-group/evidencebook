@@ -41,3 +41,8 @@ def test_repeated_member_refused():
 def test_raw_refused(raw):
     with pytest.raises(Invalid):
         compute(parse_input(raw))
+
+
+def test_compute_without_row_is_invalid():
+    with pytest.raises(Invalid):
+        compute({"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"]})

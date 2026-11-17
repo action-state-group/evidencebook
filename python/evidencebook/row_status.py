@@ -343,8 +343,10 @@ def compute(inp: dict[str, Any]) -> Outcome:
     parties = inp.get("parties") or []
     if len(parties) != 2 or not parties[0] or not parties[1] or parties[0] == parties[1]:
         raise Invalid("two distinct parties are required")
+    row = inp.get("row")
+    if not isinstance(row, dict):
+        raise Invalid("input.row is required")
     c = _Calc(inp, at, parties)
-    row = inp["row"]
     c.side(row.get("owed_by") or "")
     if (inp.get("check") or "") not in ("", "pass", "fail"):
         raise Invalid("check is pass, fail or empty")
