@@ -177,8 +177,9 @@ has none to carry.
 - **REQUIRED** on every deal-book record, on `ruling`, and on journal records that serve one deal:
   `propose`, `agree` of every kind (agreement, decline, cancellation), the journal overlay's `check`,
   `verdict`, and an `approval` that answers a verdict (they serve one deal's act), an `ask` or `answer` between the two
-  parties, and a journey record (`message`, `claim`, `evidence`, `detail_change`, `agent_move`)
-  sealed within one offer's thread, that is, after that offer exists.
+  parties, and a journey record (`message`, `claim`, `evidence`, `detail_change`, `agent_move`,
+  all sealed in the journal, 3.2) sealed within one offer's thread, that is, after that offer
+  exists.
 - **Absent** on journal records that predate or span deals: an `approval` on `confirm_limits`,
   which approves an intent's limits rather than one act (`PROFILE.md:609-614`); `intent` (Appendix A seals the buyer's
   intent at line 6, before its offer at line 11; an intent's limit spans every deal that cites it,
@@ -322,7 +323,7 @@ that it was published" (design §7, `propose`; line 800). So:
 | `sale` (the listing was published), `thread` (one buyer's thread registered), `thread_opened`, `sale_unpost` | the seller's journal, always: they come before any agreement |
 | `counterparty_profile` | the journal, always: it is "never in a shared copy" (`PROFILE.md:219`), and a deal book is copied to the counterparty |
 | `disclosure` | the journal, always: design §4.1 puts "what it shared with whom" in the journal |
-| `message`, `claim`, `evidence`, `detail_change`, `agent_move` | the journal before the holder's agreement exists; that deal book after it |
+| `message`, `claim`, `evidence`, `detail_change`, `agent_move` | the journal, always. They are the holder's own working notes (v0 `PROFILE.md:202-206`): how it searched, what the other side asserted, the checks it ran, a changed identifier it flagged. In a deal book they would tell the counterparty and the adjudicator about the holder's private risk process, which Steven keeps out of the deal (the admission decision stays in the person's own book), and the design says the counterparty "has no claim on" the holder's checks (§4.2). An adjudicator gets those the holder cites in a dispute, by the holder's choice; each carries `deal_id` once its offer exists, so it can be cited (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6) |
 
 A record is never sealed into a deal book before its agreement: a v1 deal book's first record is
 its agreement (2.3 rule 2), so a flow that has not agreed seals in the journal.
@@ -330,8 +331,8 @@ its agreement (2.3 rule 2), so a flow that has not agreed seals in the journal.
 **A listing and its offers.** The listing's content is published in a feed and is not a record
 that is sent (design §7, `propose`). The seller's journal `sale` record commits to it. Each buyer's
 offer (`propose`) is its own record with its own `deal_id`, and is that buyer's thread: v1 has no
-other thread id (3.5). **Proposed:** an offer that answers a listing carries `listing`, the SHA-256
-of the published listing bytes it read (3.3). The seller relates each received offer to its
+other thread id (3.5). **Proposed:** an offer that answers a listing carries `listing_digest`, the
+SHA-256 of the published listing bytes it read (3.3). The seller relates each received offer to its
 listing by that digest, and its journal `thread` record registers the offer's `deal_id`, committed
 as v0's `thread_ref_commitment`. When the seller agrees to one offer, it declines each other offer
 on that listing with reason `not_selected` (3.5); that decline is each losing buyer's copy, so v1
@@ -374,7 +375,7 @@ chooses a remedy (4.6).
 | `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; naming is Q1 |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
-| `listing` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers | Proposed (3.2, "A listing and its offers"; review round 2) |
+| `listing_digest` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers. A third digest, distinct from `pack_digest` (the deal terms pack) and from the rows digest (`terms_rows`): it names the feed bytes the buyer read, so the two must not be merged | Proposed (3.2, "A listing and its offers"; review round 2; named per Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6) |
 
 The offerer's card is stapled beside the offer, never inside it (design §7: "the offerer's card is
 stapled beside it when the other side's admission asks for it").
@@ -1382,10 +1383,12 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
     id, which the status value does not carry (8.1).
 - **Vectors.** The settled-without-ruling path of Appendix A (lines s1 to s12) gives, from each
   side's latest facts at 1 Dec, the full expected row results and lines under AAC#626 §11.3 and
-  §11.4: the seller's deal has row 3 `agreed` `not_met`, owed by the holder and not `ruled`, so it
-  is `did_not_hold` in part `not_remedied`, although the seller refunded; the buyer's has the same
-  row owed by the counterparty, so `did_not_hold` in part `other_side`. That first result is what
-  Q5 puts to Steven. The ruled path (Appendix A lines 43 to 76) gives `did_not_hold` in part
+  §11.4: the seller's deal has row 3 `agreed` `not_met`, owed by the holder and not `ruled`, with
+  the refund made; AAC#626 at 361f7b4b proposes counting that as `did_not_hold` in part `remedied`
+  (its SH-16), which Q5 asks Steven to confirm, so the vector pins `remedied` and, if Steven does
+  not confirm, `not_remedied`. Either way the status value must carry that a remedy was made on an
+  unruled row (the `settle` record's `remedy_for`, 6.1), so a reader of facts can tell. The buyer's
+  has the same row owed by the counterparty, so `did_not_hold` in part `other_side`. The ruled path (Appendix A lines 43 to 76) gives `did_not_hold` in part
   `remedied` for the seller and `other_side` for the buyer, and the dispute entries `received`
   and `against` for the seller, `raised` and `for` for the buyer.
 
@@ -1471,9 +1474,9 @@ actionstate-muse#378 (pages that read the v1 report).
 - **Effective ruling** (review round 2). With two conflicting final rulings held, the row is
   `in_dispute`, `ruling_against` is `null`, and each dispute's outcome is `open`.
 - **Journey overlay placement** (review round 2). `sale`, `thread`, `thread_opened`, `sale_unpost`,
-  `counterparty_profile` and `disclosure` are refused in a deal book; a `message` sealed before the
-  agreement is in the journal and one after it is in the deal book.
-- **Offers on one listing.** Two offers citing the same `listing`; the seller agrees to one and
+  `counterparty_profile`, `disclosure`, `message`, `claim`, `evidence`, `detail_change` and
+  `agent_move` are refused in a deal book, before and after the agreement.
+- **Offers on one listing.** Two offers citing the same `listing_digest`; the seller agrees to one and
   sends the other a decline with reason `not_selected`.
 - **Answered** (review round 1). With the offer bounds reached, an offer our deal book's agreement
   cites, and one our journal declined, are kept; the oldest unanswered offer is dropped.
@@ -1548,7 +1551,9 @@ acceptance 9 says a deal whose records have no time from the named witnesses is 
 counted", while the design calls such a status "a local result" only. Both need one answer
 before v1's vectors pin them. This is one of the questions that gate AAC#626's exact-head approval
 (the one ask above).
-*Sherlock2's recommendation:* keep `not_reached` as `undecided` on the card, as AAC#626 §11.3 does,
+*Sherlock2's recommendation, which departs from the design's text* (design §4.2: a `not_reached`
+row is "left out" when a card is counted; the ask says so): keep `not_reached` as `undecided` on
+the card, as AAC#626 §11.3 does,
 since "left out" would let a holder drop deals from its card by never timing the named record. The
 `settled` rule of 9 still leaves a `not_reached` row out of settlement, as the design says; that
 decides when a deal is finished, not its card line.
@@ -1557,11 +1562,11 @@ decides when a deal is finished, not its card line.
 chosen under the terms (design §4.2, "Remedy rows"), which has no contest window in the design and
 no rowstatus input outside a ruling (proposed: a derived row, 4.6); and a remedy made by agreement
 after a concession, as in Appendix A's settled-without-ruling path (lines s1 to s12). rowstatus
-records a remedy only for a ruled row (`rowstatus.go:138-151`), and AAC#626 §11.4 puts a deal whose
-unmet row owed by the holder is not `ruled` in `not_remedied` ("no remedy is made or ordered"). So
-on a public card the seller who refunded in Appendix A shows as `not_remedied` (10, vectors).
-Whether a remedy outside a ruling should count as remedied is Steven's: it changes a public card
-line. It is part of the one ask above.
+records a remedy only for a ruled row (`rowstatus.go:138-151`). AAC#626 at its head 361f7b4b now
+proposes counting such a remedy as remedied (its SH-16, Steven's decision 3 in that PR's list), so a
+seller who refunded as in Appendix A would be `remedied`. The ask is that Steven confirms #626's
+proposal; the profile then has to carry what the card needs to see a remedy made outside a ruling
+(10). It is part of the one ask above (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6).
 
 **Q11. What a decline and a cancellation disclose to the other side.** This belongs to Sherlock2's
 door question. Proposed (3.5): the signer's key, the cited offer's digest, the deal id, one closed
@@ -1570,8 +1575,10 @@ free-text reason opened only to that side. It discloses nothing about other offe
 terms, and nothing about its place in the journal. The questions: whether `not_selected` may be
 told to the losing buyer at all (Muse's PRD says the copy "says so", `PRD_SELLER.md:303-305`);
 whether a reason token is allowed or required; and whether the buyer may show the copy to a third
-party, since that copy proves the seller's key declined. Sherlock2 confirms or rules, with Steven
-where it is his door.
+party, since that copy proves the seller's key declined. Confirmed, no Steven door (Sherlock2,
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dab78e4530acd8dc56936d22778547b3cfce4ef95b62a3beca0b66fffc5e66c9&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6, item 2): `not_selected` may go to the losing buyer, the reason token stays optional,
+and the buyer may show its copy to a third party (PRD_SELLER.md:304 promises that it "verifies");
+the free-text reason stays a commitment only the buyer can open.
 
 ### 12.2 Left open by the design, not settled here
 
