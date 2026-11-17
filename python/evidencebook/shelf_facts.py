@@ -65,7 +65,7 @@ class Opening:
             raise Invalid("an opening's salt is hex") from None
         if len(salt) != 32 or salt.hex() != self.salt:
             raise Invalid("an opening's salt is 32 bytes in lowercase hex")
-        if not hmac.compare_digest(commit(salt, self.value)[0], commitment):
+        if not _digest(commitment) or not hmac.compare_digest(commit(salt, self.value)[0], commitment):
             raise Invalid("the opening does not recompute the commitment")
 
 

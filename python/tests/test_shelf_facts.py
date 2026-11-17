@@ -107,3 +107,8 @@ def test_text_and_missing_commitments():
         sf.entry_id({"log_id": "deal/\ud800"})
     with pytest.raises(sf.Invalid):
         sf.verify_openings({}, status=sf.Opening("00" * 32, {}))
+
+
+def test_non_ascii_commitment_is_invalid():
+    with pytest.raises(sf.Invalid):
+        sf.Opening("00" * 32, {}).verify("\u00e9" * 64)
