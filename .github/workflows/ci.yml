@@ -496,6 +496,8 @@ jobs:
           GOOSE_REQUIRE_REFEREE: "1"
           GOOSE_MESH_CHECK: test/interop/goose-mesh-check/target/debug/goose-mesh-check
         run: python -m pytest -q python/examples/goose/tests
+      - name: Test the ARD two-seller demo (its units; the end-to-end tests need the evaluator and skip here)
+        run: python -m pytest -q python/examples/ard-commerce/tests
 
   registry-conformance:
     name: Registry conformance (every registry-governed value the book seals is registered on its axis)
