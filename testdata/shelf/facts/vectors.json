@@ -1,0 +1,437 @@
+{
+ "about": "Shelf log entry documents (evidencebook#461, docs/design/461-shelf-facts.md section 2): each entry's doc is the RFC 8785 bytes whose SHA-256 is entry_id; a fact's openings recompute its commitments; audiences say which openings each may have; bad_openings must all be refused. Written by shelf_facts_vectors_test.go (EB_WRITE_SHELF_VECTORS=1).",
+ "entries": [
+  {
+   "name": "deal-fact",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": 4,
+       "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "checked_over": [
+       "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+       "1111111111111111111111111111111111111111111111111111111111111111"
+      ]
+     },
+     "status": {
+      "rows": [
+       {
+        "id": "paid_as_agreed",
+        "owed_by": "buyer",
+        "due": {
+         "at": "2026-11-01T23:59:59Z"
+        }
+       }
+      ],
+      "role": "bought",
+      "value_band": {
+       "currency": "USD",
+       "decade": 1
+      }
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   },
+   "doc": {
+    "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+    "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+    "kind": "book_fact",
+    "link_commitment": "48d16d62774272576dd9de6522786ec77ea66ebdfaa0da80d7b55653f9cccd03",
+    "log_id": "deal/2f1c",
+    "prev_fact_size": 4,
+    "profile": "deal",
+    "size": 7,
+    "status_commitment": "3586856f83d2c877e88ce402d49569fdf4dca4575eec089d9a41508dad3555a4",
+    "v": 1
+   },
+   "entry_id": "57162e7f7631560554a68112bccbddb89a3a61ee27902ae98d3bb862830c54f6",
+   "link_opening": {
+    "salt": "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+    "value": {
+     "checked_over": [
+      "1111111111111111111111111111111111111111111111111111111111111111",
+      "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+     ],
+     "last_received": {
+      "log_id": "deal/91aa",
+      "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "size": 4
+     }
+    }
+   },
+   "status_opening": {
+    "salt": "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847",
+    "value": {
+     "role": "bought",
+     "rows": [
+      {
+       "due": {
+        "at": "2026-11-01T23:59:59Z"
+       },
+       "id": "paid_as_agreed",
+       "owed_by": "buyer"
+      }
+     ],
+     "value_band": {
+      "currency": "USD",
+      "decade": 1
+     }
+    }
+   }
+  },
+  {
+   "name": "none-fact",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "none",
+     "book_id": "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+     "log_id": "host/legacy-1",
+     "size": 3,
+     "checkpoint_sha256": "1212121212121212121212121212121212121212121212121212121212121212",
+     "prev_fact_size": 0,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "0f312c93e8f75af74757bb8a02e5e5103f420cbbdb0972450eb8f0f3f0da13bd",
+     "87b9ff57604c5c52a9731c4aeac9efb3cd841afe1fb22e718ebc2279963da54a"
+    ]
+   },
+   "doc": {
+    "book_id": "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+    "checkpoint_sha256": "1212121212121212121212121212121212121212121212121212121212121212",
+    "kind": "book_fact",
+    "link_commitment": "2ca1142cd18ad4b7a682600db5f1bbd227caea59ad4c17167f9753966c6588dc",
+    "log_id": "host/legacy-1",
+    "prev_fact_size": 0,
+    "profile": "none",
+    "size": 3,
+    "status_commitment": "70c2f702ec7d597341c2437a5f5824179af6e461c57e3bfd77cd78c1562da3ab",
+    "v": 1
+   },
+   "entry_id": "94444d0ea3e22925798bf6569b35846f7e33c082e0be65068a9fea199e1b3c77",
+   "link_opening": {
+    "salt": "0f312c93e8f75af74757bb8a02e5e5103f420cbbdb0972450eb8f0f3f0da13bd",
+    "value": {
+     "checked_over": [],
+     "last_received": null
+    }
+   },
+   "status_opening": {
+    "salt": "87b9ff57604c5c52a9731c4aeac9efb3cd841afe1fb22e718ebc2279963da54a",
+    "value": {}
+   }
+  },
+  {
+   "name": "received-only-fact",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 7,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": 6,
+       "record_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "checked_over": [
+       "1111111111111111111111111111111111111111111111111111111111111111",
+       "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      ]
+     },
+     "status": {
+      "rows": []
+     }
+    },
+    "salts": [
+     "46e760bdef4aad9dd1c69060fca099cab08c303ae6859d24802f8d9d85f8871c",
+     "703a21b12900f3184909c015d62daa9607f9e1f6bfdf39305531c6100f15c519"
+    ]
+   },
+   "doc": {
+    "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+    "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+    "kind": "book_fact",
+    "link_commitment": "ba645ab254855c02ded6f0ff4fce8fe2150177c1a2fdd898ea16fe2fa7fcd1f3",
+    "log_id": "deal/2f1c",
+    "prev_fact_size": 7,
+    "profile": "deal",
+    "size": 7,
+    "status_commitment": "f091a632a5cd246ddb4f20526573648e4acfe1b302420d5e085266c71fbfd2ff",
+    "v": 1
+   },
+   "entry_id": "4d5df530c87a9e0ef4fa45ea02fe6b3b65869c1fb130cc9574f9924b2916ac77",
+   "link_opening": {
+    "salt": "46e760bdef4aad9dd1c69060fca099cab08c303ae6859d24802f8d9d85f8871c",
+    "value": {
+     "checked_over": [
+      "1111111111111111111111111111111111111111111111111111111111111111",
+      "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+     ],
+     "last_received": {
+      "log_id": "deal/91aa",
+      "record_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "size": 6
+     }
+    }
+   },
+   "status_opening": {
+    "salt": "703a21b12900f3184909c015d62daa9607f9e1f6bfdf39305531c6100f15c519",
+    "value": {
+     "rows": []
+    }
+   }
+  },
+  {
+   "name": "journal-fact",
+   "input": {
+    "kind": "journal_fact",
+    "journal": {
+     "log_id": "journal/5a3b",
+     "status": {
+      "size": 11,
+      "checkpoint_sha256": "3434343434343434343434343434343434343434343434343434343434343434",
+      "prev_fact_size": 8
+     }
+    },
+    "salts": [
+     "ed17ff38cb27416524484dc21871dd8e7b6ffca19abf5d79ff22922292f71014",
+     "0f0eda4fb1d8845ce1d8d8413e47965f9e63da9a1b7228a5d59d15c8cde484ef"
+    ]
+   },
+   "doc": {
+    "book_id": "e1471d99502f7a742f782bff6be17ce4b32a7bfe377ad454fab9be13cdf05281",
+    "checkpoint_sha256": "",
+    "kind": "journal_fact",
+    "link_commitment": "b8bb8306c1064b4779525d8b5664cdcfdfe0728936fc3772150022cec6024b4b",
+    "log_id": "journal/5a3b",
+    "prev_fact_size": 0,
+    "profile": "none",
+    "size": 0,
+    "status_commitment": "448d9ed2569ce2332325ff7182fa4b05138f007b04eee21f6a883ec4cc616f50",
+    "v": 1
+   },
+   "entry_id": "321ee09a30f0c472e139417c9bddb4f5da55b9396667938527668fa511a5370b",
+   "link_opening": {
+    "salt": "ed17ff38cb27416524484dc21871dd8e7b6ffca19abf5d79ff22922292f71014",
+    "value": {
+     "checked_over": [],
+     "last_received": null
+    }
+   },
+   "status_opening": {
+    "salt": "0f0eda4fb1d8845ce1d8d8413e47965f9e63da9a1b7228a5d59d15c8cde484ef",
+    "value": {
+     "checkpoint_sha256": "3434343434343434343434343434343434343434343434343434343434343434",
+     "prev_fact_size": 8,
+     "size": 11
+    }
+   }
+  },
+  {
+   "name": "stamp",
+   "input": {
+    "kind": "stamp",
+    "stamp": {
+     "v": 1,
+     "kind": "stamp",
+     "stamp": 42,
+     "facts": 3
+    }
+   },
+   "doc": {
+    "facts": 3,
+    "kind": "stamp",
+    "stamp": 42,
+    "v": 1
+   },
+   "entry_id": "fe7ea4ba4e77bd599d5a0948f1ac6f127c00ec3c283e7571932d7346fd4d522d"
+  },
+  {
+   "name": "empty-stamp",
+   "input": {
+    "kind": "stamp",
+    "stamp": {
+     "v": 1,
+     "kind": "stamp",
+     "stamp": 43,
+     "facts": 0
+    }
+   },
+   "doc": {
+    "facts": 0,
+    "kind": "stamp",
+    "stamp": 43,
+    "v": 1
+   },
+   "entry_id": "0f6e2a3127bc242f3c80434ed69a9959ffc4f7243e5bb5e33774e5522308cd9c"
+  },
+  {
+   "name": "marker",
+   "input": {
+    "kind": "format_switch",
+    "marker": {
+     "last_tick": 288,
+     "logs": [
+      {
+       "log_id": "deal/b2",
+       "size": 9
+      },
+      {
+       "log_id": "deal/a1",
+       "size": 4
+      },
+      {
+       "log_id": "host/empty",
+       "size": 0
+      }
+     ]
+    }
+   },
+   "doc": {
+    "format": "book_facts/1",
+    "kind": "format_switch",
+    "last_tick": 288,
+    "logs": [
+     {
+      "log_id": "deal/a1",
+      "size": 4
+     },
+     {
+      "log_id": "deal/b2",
+      "size": 9
+     },
+     {
+      "log_id": "host/empty",
+      "size": 0
+     }
+    ],
+    "v": 1
+   },
+   "entry_id": "942a43844c768dcb514c3c8d238435359a8acdba4b5c40e260709beba92a2d07"
+  }
+ ],
+ "audiences": [
+  {
+   "kind": "book_fact",
+   "audience": "counterparty",
+   "link": true,
+   "status": true
+  },
+  {
+   "kind": "book_fact",
+   "audience": "adjudicator",
+   "link": true,
+   "status": false
+  },
+  {
+   "kind": "book_fact",
+   "audience": "asker",
+   "link": true,
+   "status": false
+  },
+  {
+   "kind": "book_fact",
+   "audience": "chosen_reader",
+   "link": false,
+   "status": true
+  },
+  {
+   "kind": "book_fact",
+   "audience": "owner",
+   "link": true,
+   "status": true
+  },
+  {
+   "kind": "book_fact",
+   "audience": "auditor",
+   "link": false,
+   "status": false
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "counterparty",
+   "link": false,
+   "status": false
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "adjudicator",
+   "link": false,
+   "status": false
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "asker",
+   "link": false,
+   "status": false
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "chosen_reader",
+   "link": false,
+   "status": false
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "owner",
+   "link": true,
+   "status": true
+  },
+  {
+   "kind": "journal_fact",
+   "audience": "auditor",
+   "link": true,
+   "status": true
+  }
+ ],
+ "bad_openings": [
+  {
+   "name": "changed-value",
+   "commitment": "3586856f83d2c877e88ce402d49569fdf4dca4575eec089d9a41508dad3555a4",
+   "opening": {
+    "salt": "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847",
+    "value": {
+     "rows": []
+    }
+   }
+  },
+  {
+   "name": "short-salt",
+   "commitment": "0000000000000000000000000000000000000000000000000000000000000000",
+   "opening": {
+    "salt": "00",
+    "value": {}
+   }
+  },
+  {
+   "name": "uppercase-salt",
+   "commitment": "0000000000000000000000000000000000000000000000000000000000000000",
+   "opening": {
+    "salt": "52E05FCDEC2BE8F05C4EF28985F2AE70F2B4E3CE6DC62A7829F3AEAFDDB4F6E2",
+    "value": {}
+   }
+  }
+ ]
+}
