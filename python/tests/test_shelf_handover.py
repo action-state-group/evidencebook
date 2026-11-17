@@ -39,7 +39,10 @@ def handed_over(fx) -> Handover:
         values.status["deal/b"] = {"rows": []}
         c.stamp(START + timedelta(minutes=3))
         last = c.stamp(START + timedelta(minutes=4)).tick
-        assert c.witnessed(last.n, script.mint_receipt(last.checkpoint)).state == "VERIFIED"
+        # A receipt with a registration time: only such a receipt gives the
+        # handover the witnessed level (§2.7).
+        iat = int((START + timedelta(minutes=5)).timestamp())
+        assert c.witnessed(last.n, script.mint_receipt(last.checkpoint, iat)).state == "VERIFIED"
         return c.handover(0)
 
 

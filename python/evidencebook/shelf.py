@@ -117,6 +117,18 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 	tick           INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
+-- Every witness receipt that verified for a shelf checkpoint, one per
+-- witness (its receipt's URL), with the directory key id it verified under
+-- and the registration time it gives in Unix seconds or null
+-- (shelf_record_time.py).
+CREATE TABLE IF NOT EXISTS shelf_receipts (
+	checkpoint_sha256 TEXT    NOT NULL,
+	witness_id        TEXT    NOT NULL,
+	key_id            TEXT    NOT NULL,
+	receipt           TEXT    NOT NULL,
+	registered_at     INTEGER,
+	PRIMARY KEY (checkpoint_sha256, witness_id)
+);
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 -- The store of what the other side pushes (evidencebook#461 §3,
 -- shelf_receive.py): its records, by digest, with the predecessor each names
@@ -1152,7 +1164,13 @@ class Shelf:
                 raise InvalidError(f"{config.log_id} is a {'book' if book else 'host'} log, not the cadence log")
             log = SqliteSubstrate.open(self._path, config.log_id, self._checkpoint_key, config.witness_ids)
             self._cadence_logs.append(log)
-            self._cadence = Cadence(self, config, log)
+            c = Cadence(self, config, log)
+            # A witnessed tick whose receipt shelf_receipts lacks gets it here
+            # (evidencebook#461 §2.3).
+            from .shelf_record_time import backfill_receipts_locked
+
+            backfill_receipts_locked(c)
+            self._cadence = c
             return self._cadence
 
     # -- the shelf log of book facts ------------------------------------------------------
@@ -1239,6 +1257,27 @@ class Shelf:
         from . import shelf_receive
 
         return shelf_receive.evidence(self)
+
+    # -- record time (evidencebook#461 §2.6) ----------------------------------------------
+
+    def record_time(self, book_id: str, position: int, witnesses: Sequence[str]) -> datetime | None:
+        """The record time of the record at ``position`` (from 1) of the book
+        ``book_id`` (its book id, §2.2; the journal's included), as Go's
+        ``Shelf.RecordTime``: the earliest registration time, among the
+        receipts held from the witnesses named (their receipt URLs), of a
+        shelf checkpoint that covers the first fact of that book whose size
+        covers the position, in UTC. ``None`` when there is none: no fact
+        covers the position yet, no checkpoint covering that fact has a
+        receipt from a named witness, or every such receipt gives no
+        registration time. A status resting on a record with no time is
+        local, never witnessed. Position 0 is :class:`InvalidError`.
+
+        It takes no lock of the shelf's, so a status provider or a receive
+        profile may call it, and reads in one transaction, so a stamp being
+        finished is seen whole or not at all."""
+        from . import shelf_record_time
+
+        return shelf_record_time.record_time(self, book_id, position, witnesses)
 
     def __enter__(self) -> Shelf:
         return self

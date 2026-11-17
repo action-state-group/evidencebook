@@ -1,0 +1,259 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Record time and the shelf's witness receipts (evidencebook#461 §2.3, §2.6,
+§2.7), as Go's shelf_record_time_test.go checks them, and
+testdata/shelf/record-time.json run after the migrate phase to every step's
+expect and to after-record-time.json byte for byte."""
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from evidencebook.cadence import CadenceConfig, WITNESS_VERIFIED
+from evidencebook.errors import CorruptError, InvalidError, ReleasedError
+from evidencebook.shelf import JOURNAL_LOG_ID
+from evidencebook.shelf_handover import verify_handover
+from evidencebook.signer import Ed25519Signer
+
+from test_shelf_stamp import START, VECTORS, fx, obs, script  # noqa: F401  (fx is a fixture)
+
+WITNESS_URL = script.CADENCE["witness_url"]
+# A second witness, its own test key; never use it for anything else.
+OTHER_URL = "https://other-witness.test"
+OTHER_KEY = Ed25519Signer(hashlib.sha256(b"evidencebook record time tests/other witness").digest())
+DIRECTORY = {"witnesses": [
+    {"name": "test witness", "endpoint": WITNESS_URL, "key_ids": [script.KEYS["witness_public"]]},
+    {"name": "other witness", "endpoint": OTHER_URL, "key_ids": [OTHER_KEY.public_key().hex()]},
+]}
+LOG_ID = "deal-cadence/0123456789abcdef"
+
+
+def at(minutes: int) -> datetime:
+    return START + timedelta(minutes=minutes)
+
+
+def unix(moment: datetime) -> int:
+    return int(moment.timestamp())
+
+
+def cadence(shelf, witnesses=DIRECTORY):
+    return shelf.cadence(CadenceConfig(log_id=LOG_ID, ended=lambda _: False, witnesses=witnesses,
+                                       status=lambda book_id, log_id: None))
+
+
+def witness_at(c, tick, url: str = WITNESS_URL, when: datetime | None = None) -> None:
+    key = script.WITNESS_KEY if url == WITNESS_URL else OTHER_KEY
+    receipt = script.mint_receipt(tick.checkpoint, None if when is None else unix(when), key, url)
+    check = c.witnessed(tick.n, receipt)
+    assert check.state == WITNESS_VERIFIED, check.reason
+
+
+def scalar(shelf, query: str, *args):
+    with shelf._read() as db:
+        return db.execute(query, args).fetchone()[0]
+
+
+def record_time_shelf(shelf):
+    """A migrated shelf whose book deal/a has its genesis fact in the
+    migration's stamp and a second fact, after another append, in the second
+    of two stamps after it (Go ``recordTimeShelf``)."""
+    c = cadence(shelf)
+    a = shelf.open("deal/a")
+    a.append(obs("a", "1"))
+    c.tick(START)
+    c.migrate(at(1))
+    first = c.stamp(at(2)).tick
+    a.append(obs("a", "2"))
+    second = c.stamp(at(3)).tick
+    book_id = scalar(shelf, "SELECT book_id FROM shelf_entries WHERE log_id = 'deal/a' LIMIT 1")
+    return c, book_id, first, second
+
+
+def leaves_of(shelf, log_id: str) -> int:
+    return scalar(shelf, "SELECT COUNT(*) FROM book_records WHERE book_id = ?", log_id)
+
+
+def test_a_record_time_is_the_earliest_named_registration(fx):
+    with fx.open() as shelf:
+        c, book_id, first, second = record_time_shelf(shelf)
+        size = scalar(shelf, "SELECT json_extract(doc, '$.size') FROM shelf_entries WHERE log_id = 'deal/a' "
+                             "ORDER BY entry_seq LIMIT 1")
+        from cll.checkpoint import core
+
+        in_first, last = core.leaf_count(size), leaves_of(shelf, "deal/a")
+        assert in_first < last
+        t1, t2 = at(10), at(20)
+
+        assert shelf.record_time(book_id, in_first, [WITNESS_URL]) is None, "no receipt yet"
+        witness_at(c, second, WITNESS_URL, t2)
+        got = shelf.record_time(book_id, in_first, [WITNESS_URL])
+        assert got == t2 and got.tzinfo == timezone.utc, "the second stamp's checkpoint covers the first fact"
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == t2
+
+        witness_at(c, first, OTHER_URL, t1)
+        assert shelf.record_time(book_id, in_first, [WITNESS_URL, OTHER_URL]) == t1, "the earliest named"
+        assert shelf.record_time(book_id, in_first, [WITNESS_URL]) == t2, "a witness not named gives nothing"
+        assert shelf.record_time(book_id, last, [OTHER_URL]) is None, \
+            "the first stamp's checkpoint does not cover the second fact"
+        assert shelf.record_time(book_id, in_first, ["https://unnamed.test"]) is None
+        assert shelf.record_time(book_id, in_first, []) is None, "no witness named"
+        assert shelf.record_time(book_id, last + 1, [WITNESS_URL]) is None, "no fact covers the position"
+        assert shelf.record_time("no-such-book", 1, [WITNESS_URL]) is None
+        with pytest.raises(InvalidError):
+            shelf.record_time(book_id, 0, [WITNESS_URL])
+
+
+def test_a_record_time_needs_a_registration_time(fx):
+    with fx.open() as shelf:
+        c, book_id, _, second = record_time_shelf(shelf)
+        last = leaves_of(shelf, "deal/a")
+        witness_at(c, second, WITNESS_URL, None)
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) is None, "a receipt with no registration time"
+        cp = hashlib.sha256(second.checkpoint).hexdigest()
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? "
+                             "AND registered_at IS NULL", cp) == 1
+
+        later, earlier = at(30), at(20)
+        witness_at(c, second, WITNESS_URL, later)
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == later
+        witness_at(c, second, WITNESS_URL, earlier)
+        witness_at(c, second, WITNESS_URL, later + timedelta(hours=1))
+        witness_at(c, second, WITNESS_URL, None)
+        assert shelf.record_time(book_id, last, [WITNESS_URL]) == earlier, "the witness's earliest is kept"
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ?", cp) == 1, \
+            "one row per witness"
+        # The row holds the earliest receipt itself, and the directory key it verified under.
+        with shelf._read() as db:
+            receipt, key_id, registered = db.execute("SELECT receipt, key_id, registered_at FROM shelf_receipts "
+                                                     "WHERE checkpoint_sha256 = ?", (cp,)).fetchone()
+        assert registered == unix(earlier)
+        assert receipt == script.mint_receipt(second.checkpoint, unix(earlier)).encode()
+        assert key_id == script.KEYS["witness_public"]
+
+
+def test_a_record_time_covers_the_journal(fx):
+    with fx.open() as shelf:
+        c, _, _, _ = record_time_shelf(shelf)
+        shelf.journal().append(obs("journal", "1"))
+        stamp = c.stamp(at(4)).tick
+        book_id = scalar(shelf, "SELECT book_id FROM shelf_entries WHERE log_id = ? LIMIT 1", JOURNAL_LOG_ID)
+        iat = at(60)
+        witness_at(c, stamp, WITNESS_URL, iat)
+        held = leaves_of(shelf, JOURNAL_LOG_ID)
+        assert shelf.record_time(book_id, held, [WITNESS_URL]) == iat
+        assert shelf.record_time(book_id, held + 1, [WITNESS_URL]) is None
+
+
+def test_receipts_of_witnessed_ticks_are_kept_and_backfilled(fx):
+    with fx.open() as shelf:
+        c = cadence(shelf)
+        shelf.open("deal/a").append(obs("a", "1"))
+        tree = c.tick(START).tick
+        witness_at(c, tree, WITNESS_URL, at(1))
+        c.migrate(at(1))
+        stamp = c.stamp(at(2)).tick
+        witness_at(c, stamp, WITNESS_URL, at(3))
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE registered_at IS NOT NULL") == 2, \
+            "a tree tick's receipt and a stamp's"
+        with shelf._tx() as db:
+            db.execute("DELETE FROM shelf_receipts")
+
+    # A directory that no longer lists the witness backfills nothing.
+    with fx.open() as shelf:
+        shelf.cadence(CadenceConfig(log_id=LOG_ID, ended=lambda _: False, witnesses={"witnesses": []}))
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 0
+
+    with fx.open() as shelf:
+        cadence(shelf)
+        assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts WHERE registered_at IS NOT NULL AND "
+                             "witness_id = ? AND key_id = ?", WITNESS_URL, script.KEYS["witness_public"]) == 2, \
+            "each row keeps the directory key it verified under"
+
+
+def test_a_corrupt_stored_receipt_fails_the_backfill(fx):
+    with fx.open() as shelf:
+        c = cadence(shelf)
+        shelf.open("deal/a").append(obs("a", "1"))
+        witness_at(c, c.tick(START).tick, WITNESS_URL, at(1))
+        with shelf._tx() as db:
+            db.execute("DELETE FROM shelf_receipts")
+            db.execute("UPDATE cadence_ticks SET receipt = 'not json' WHERE witnessed = 1")
+    with fx.open() as shelf:
+        with pytest.raises(CorruptError, match="tick 1 receipt"):
+            cadence(shelf)
+
+
+def test_a_handover_is_witnessed_only_with_a_registration_time(fx):
+    with fx.open() as shelf:
+        c, _, _, second = record_time_shelf(shelf)
+        witness_at(c, second, WITNESS_URL, None)
+        h = c.handover(0)
+        assert len(h.receipts) == 1
+        key = script.CHECKPOINT_KEY.public_key().hex()
+        assert not verify_handover(h, key, DIRECTORY).witnessed, "a receipt with no registration time"
+
+        witness_at(c, second, OTHER_URL, at(60))
+        h = c.handover(0)
+        assert [r.ts_url for r in h.receipts] == [OTHER_URL, WITNESS_URL], "in witness URL order"
+        assert verify_handover(h, key, DIRECTORY).witnessed
+
+
+def test_a_corrupt_stored_fact_or_receipt_is_corrupt(fx):
+    with fx.open() as shelf:
+        c, book_id, _, second = record_time_shelf(shelf)
+        witness_at(c, second, WITNESS_URL, at(5))
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_receipts SET receipt = 'not json'")
+        with pytest.raises(CorruptError, match="a stored receipt of tick"):
+            c.handover(0)
+        with shelf._tx() as db:
+            db.execute("UPDATE shelf_entries SET doc = CAST('{\"size\": -1}' AS BLOB) WHERE book_id = ?", (book_id,))
+        with pytest.raises(CorruptError, match="stored fact"):
+            shelf.record_time(book_id, 1, [WITNESS_URL])
+
+
+def test_a_record_time_on_a_released_shelf(fx):
+    shelf = fx.open()
+    _, book_id, _, _ = record_time_shelf(shelf)
+    shelf.release()
+    with pytest.raises(ReleasedError):
+        shelf.record_time(book_id, 1, [WITNESS_URL])
+
+
+# -- the vectors (testdata/shelf/record-time.json) -------------------------------------
+
+RECORD_TIME = json.loads((VECTORS / "record-time.json").read_text())
+
+
+def test_the_record_time_phase_is_gos(tmp_path):
+    path = str(tmp_path / script.FILE)
+    for phase in ("write_phase", "continue_phase", "migrate_phase"):
+        script.run(path, script.SCRIPT[phase])
+    steps = RECORD_TIME["steps"]
+    got = script.run_record_time(path, steps)
+    assert got == [s.get("expect") for s in steps]
+    assert script.dump(str(tmp_path)) == (VECTORS / "after-record-time.json").read_bytes()
+
+
+def test_the_record_time_receipts_are_minted_as_go_mints_them(tmp_path):
+    """The receipts the vector carries are Go's MintReceiptAt with the phase's
+    registration times (14520 and 14490 seconds after the script's start, and
+    none), so Python mints the same bytes."""
+    path = str(tmp_path / script.FILE)
+    for phase in ("write_phase", "continue_phase", "migrate_phase"):
+        script.run(path, script.SCRIPT[phase])
+    script.run_record_time(path, RECORD_TIME["steps"])
+    witnessed = [s for s in RECORD_TIME["steps"] if s["op"] == "witness"]
+    db = sqlite3.connect(path)
+    try:
+        statement = bytes(db.execute("SELECT checkpoint FROM cadence_ticks WHERE tick = ?",
+                                     (witnessed[0]["expect"]["tick"],)).fetchone()[0])
+    finally:
+        db.close()
+    for step, offset in zip(witnessed, (14520, 14490, None)):
+        iat = None if offset is None else unix(script.START + timedelta(seconds=offset))
+        minted = script.mint_receipt(statement, iat)
+        assert json.loads(minted.encode()) == step["receipt"]

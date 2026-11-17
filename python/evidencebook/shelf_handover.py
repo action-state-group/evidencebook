@@ -141,7 +141,8 @@ class Handover:
     """The material a whole-shelf reader is handed (§2.7). ``entries`` is
     every entry of the shelf log up to the anchor, 32-byte ids in lowercase
     hex; ``anchor`` the shelf checkpoint it runs to and ``receipts`` the
-    witness receipts the holder holds for it."""
+    witness receipts the holder holds for it (``shelf_receipts``), one per
+    witness in witness URL order."""
 
     v: int
     log_id: str
@@ -216,8 +217,9 @@ class HandoverResult:
     """What a verified handover shows. ``recomputed`` is always true:
     :func:`verify_handover` raises rather than return a result it could not
     recompute. ``witnessed`` says a receipt from a witness in the directory
-    verifies for the anchor; a shelf with no witness is a supported default
-    and is unwitnessed. ``coverage_start`` is the shelf log size, in
+    verifies for the anchor and gives a registration time (§2.7); a receipt
+    with no registration time cannot give the witnessed level. A shelf with
+    no witness is a supported default and is unwitnessed. ``coverage_start`` is the shelf log size, in
     entries, at which the facts begin to be complete: the end of the
     migration's stamp. ``latest`` is each book's latest fact and ``untied``
     the books whose genesis fact carries no tie to the old witnessed tree,
@@ -327,6 +329,19 @@ def handover_locked(c: Any, n: int) -> Handover:
     if tick.leaves.stamp is None or tick.checkpoint_size == 0:
         raise InvalidError(f"tick {n} is not a finished stamp")
     anchor = _checkpoint(tick.checkpoint)
+    from .cadence import WitnessReceipt
+
+    # Every receipt shelf_receipts holds for the anchor, one per witness, in
+    # witness URL order.
+    with shelf._read() as db:
+        held = [r for (r,) in db.execute("SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? "
+                                         "ORDER BY witness_id", (hashlib.sha256(tick.checkpoint).hexdigest(),))]
+    receipts = []
+    for raw in held:
+        try:
+            receipts.append(WitnessReceipt.decode(raw))
+        except CorruptError as exc:
+            raise CorruptError(f"a stored receipt of tick {n}: {exc}") from None
     entries: list[str] = []
     after = 0
     while after < anchor.entries:
@@ -391,8 +406,7 @@ def handover_locked(c: Any, n: int) -> Handover:
             consistency.append(HandoverConsistency(log_id, prev[1], size,
                                                    Ordered(kind="cll-mmr-consistency", proof=proof)))
         last[log_id] = f
-    return Handover(1, c._cfg.log_id, entries, documents, book_checkpoints, consistency, tick.checkpoint,
-                    [] if tick.receipt is None else [tick.receipt])
+    return Handover(1, c._cfg.log_id, entries, documents, book_checkpoints, consistency, tick.checkpoint, receipts)
 
 
 # -- the replay -----------------------------------------------------------------------
@@ -474,7 +488,7 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
     or not the holder's, or a book's facts break their chain (a replaced
     book). The journal's chain is not checked and its openings are not
     asked for."""
-    from .cadence import WITNESS_VERIFIED, check_witness_receipt
+    from .cadence import WITNESS_VERIFIED, verify_witness_receipt
 
     def bad(message: str) -> InvalidError:
         return InvalidError(f"handover: {message}")
@@ -597,7 +611,10 @@ def verify_handover(h: Handover, pinned_key: str, witnesses: Any) -> HandoverRes
     witnessed = False
     for r in h.receipts:
         try:
-            if check_witness_receipt(h.anchor, r, witnesses).state == WITNESS_VERIFIED:
+            # Only a receipt that gives a registration time gives the
+            # witnessed level (§2.7).
+            check, verified = verify_witness_receipt(h.anchor, r, witnesses)
+            if check.state == WITNESS_VERIFIED and verified.registered_at is not None:
                 witnessed = True
                 break
         except Exception:  # Go skips a receipt whose check errs
