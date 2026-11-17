@@ -175,3 +175,94 @@ fn the_handover_and_its_replay_are_the_vectors() {
         "handover-result.json differs"
     );
 }
+
+/// earliest-receipt-not-anchor (invariant C, `docs/design/461-deal-profile.md`
+/// §8.1): a reader of the vector's handover gets every query's time, the
+/// holder's `record_time`, and without the witnessed checkpoints before the
+/// anchor some time would differ.
+#[test]
+fn the_earliest_receipt_vector_replays() {
+    use evidencebook::shelf::verify_handover_times;
+    let v: Value =
+        serde_json::from_str(&vector("handover/earliest-receipt-not-anchor.json")).unwrap();
+    let h: Handover = serde_json::from_value(v["handover"].clone()).unwrap();
+    let key = v["pinned_key"].as_str().unwrap();
+    assert_eq!(key, shelf::checkpoint_key_id());
+    let directory = shelf::witness_directory();
+    let times = verify_handover_times(&h, key, Some(&directory)).unwrap();
+    let mut anchor_only = h.clone();
+    anchor_only.witnessed.clear();
+    let without = verify_handover_times(&anchor_only, key, Some(&directory)).unwrap();
+    let mut differs = false;
+    for q in v["queries"].as_array().unwrap() {
+        let book = q["book_id"].as_str().unwrap();
+        let position = q["position"].as_u64().unwrap();
+        let witnesses: Vec<String> = q["witnesses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap().to_string())
+            .collect();
+        let got = times.record_time(book, position, &witnesses).unwrap();
+        let want = q["time"]
+            .as_str()
+            .map(|t| evidencebook::shelf::Time::parse(t).unwrap());
+        assert_eq!(got, want, "{} at {position}", q["log_id"]);
+        differs |= without.record_time(book, position, &witnesses).unwrap() != got;
+    }
+    assert!(
+        differs,
+        "some record's time comes from a checkpoint before the anchor"
+    );
+    assert!(matches!(
+        times.record_time("any", 0, &[]),
+        Err(ShelfError::Invalid(_))
+    ));
+}
+
+/// A witnessed checkpoint that is the anchor, given twice, carries no
+/// receipt, is not a checkpoint, or has a root the entries do not recompute
+/// (the vector's `forked`) is refused (Go
+/// `TestAHandoverRefusesABadWitnessedCheckpoint`).
+#[test]
+fn a_bad_witnessed_checkpoint_is_refused() {
+    let v: Value =
+        serde_json::from_str(&vector("handover/earliest-receipt-not-anchor.json")).unwrap();
+    let h: Handover = serde_json::from_value(v["handover"].clone()).unwrap();
+    assert!(verify(&h).is_ok());
+    assert!(h.witnessed.len() >= 2);
+    let forked: evidencebook::shelf::HandoverCheckpoint =
+        serde_json::from_value(v["forked"].clone()).unwrap();
+    type Edit = Box<dyn Fn(&mut Handover)>;
+    let edits: Vec<(&str, Edit)> = vec![
+        (
+            "the anchor again",
+            Box::new(|h| h.witnessed[0].checkpoint = h.anchor.clone()),
+        ),
+        (
+            "one checkpoint twice",
+            Box::new(|h| h.witnessed[1] = h.witnessed[0].clone()),
+        ),
+        ("no receipt", Box::new(|h| h.witnessed[0].receipts.clear())),
+        (
+            "not a checkpoint",
+            Box::new(|h| h.witnessed[0].checkpoint = b"x".to_vec()),
+        ),
+        (
+            "another root at a size within the anchor",
+            Box::new(move |h| h.witnessed[0] = forked.clone()),
+        ),
+        (
+            "the holder's key, another log",
+            Box::new(|h| h.witnessed[0].checkpoint = h.book_checkpoints[0].clone()),
+        ),
+    ];
+    for (name, edit) in edits {
+        let mut bad = h.clone();
+        edit(&mut bad);
+        assert!(
+            matches!(verify(&bad), Err(ShelfError::Invalid(_))),
+            "{name}"
+        );
+    }
+}

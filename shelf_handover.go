@@ -49,6 +49,13 @@ type Handover struct {
 	// witness in witness URL order.
 	Anchor   []byte           `json:"anchor"`
 	Receipts []WitnessReceipt `json:"receipts,omitempty"`
+	// Witnessed are the shelf checkpoints before the anchor, within it,
+	// for which the holder holds receipts, each with every receipt held, in
+	// tick order (docs/design/461-deal-profile.md §8.1, invariant C): a
+	// record's time is the earliest named registration of any checkpoint
+	// that covers it, not only the anchor's, so a reader resolves the times
+	// the holder's RecordTime gives (HandoverTimes).
+	Witnessed []HandoverCheckpoint `json:"witnessed,omitempty"`
 	// Ties ties each genesis fact the holder can tie to the old witnessed
 	// tree (shelf_handover_tie.go), in book id order.
 	Ties []HandoverTie `json:"ties"`
@@ -60,6 +67,13 @@ type HandoverDocument struct {
 	Seq           uint64       `json:"seq"`
 	Doc           []byte       `json:"doc"`
 	StatusOpening *FactOpening `json:"status_opening,omitempty"`
+}
+
+// HandoverCheckpoint is a shelf checkpoint before a handover's anchor and
+// the witness receipts held for it, one per witness in witness URL order.
+type HandoverCheckpoint struct {
+	Checkpoint []byte           `json:"checkpoint"`
+	Receipts   []WitnessReceipt `json:"receipts"`
 }
 
 // HandoverConsistency is a consistency proof between two checkpoints of one
@@ -131,6 +145,9 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 	}
 	if len(receipts) > 0 {
 		out.Receipts = receipts
+	}
+	if out.Witnessed, err = c.witnessedBeforeLocked(ctx, n, anchor, tick.Checkpoint); err != nil {
+		return Handover{}, err
 	}
 	for after := uint64(0); after < anchor.Entries; {
 		entries, err := c.log.Entries(ctx, after, int(min(1000, anchor.Entries-after)))
@@ -447,6 +464,9 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	if coverage == 0 {
 		return bad("the migration's stamp is not in the handover")
 	}
+	if err := verifyWitnessedCheckpoints(h, anchor, tree, pinnedKey); err != nil {
+		return bad("%v", err)
+	}
 	if len(ties) > 0 {
 		orphans := make([]string, 0, len(ties))
 		for id := range ties {
@@ -531,6 +551,80 @@ func firstErr(errs ...error) error {
 	for _, err := range errs {
 		if err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// witnessedBeforeLocked is every shelf checkpoint of a tick before tick n,
+// within the anchor, for which shelf_receipts holds a receipt, with those
+// receipts, in tick order; nil for none. Two ticks that cut one checkpoint
+// give it once.
+func (c *Cadence) witnessedBeforeLocked(ctx context.Context, n uint64, anchor Checkpoint, anchorStatement []byte) ([]HandoverCheckpoint, error) {
+	rows, err := c.shelf.db.QueryContext(ctx,
+		`SELECT checkpoint FROM cadence_ticks WHERE tick < ? AND checkpoint_size > 0 AND checkpoint_size <= ? ORDER BY tick`, n, anchor.TreeSize)
+	if err != nil {
+		return nil, err
+	}
+	var statements [][]byte
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		statements = append(statements, b)
+	}
+	if err := firstErr(rows.Err(), rows.Close()); err != nil {
+		return nil, err
+	}
+	var out []HandoverCheckpoint
+	seen := map[string]bool{}
+	for _, b := range statements {
+		sum := sha256.Sum256(b)
+		if seen[string(sum[:])] || bytes.Equal(b, anchorStatement) {
+			continue
+		}
+		seen[string(sum[:])] = true
+		receipts, err := c.receiptsLocked(ctx, b)
+		if err != nil {
+			return nil, err
+		}
+		if len(receipts) > 0 {
+			out = append(out, HandoverCheckpoint{Checkpoint: b, Receipts: receipts})
+		}
+	}
+	return out, nil
+}
+
+// verifyWitnessedCheckpoints checks a handover's earlier witnessed
+// checkpoints (invariant C): each is the holder's checkpoint of the shelf
+// log, within the anchor and not the anchor, held once, carries a receipt,
+// and its root is the one the handed-over entries recompute at its size.
+// Whether a receipt verifies is the reader's to judge, as for the anchor's.
+func verifyWitnessedCheckpoints(h Handover, anchor Checkpoint, tree *mmr.Tree, pinnedKey string) error {
+	seen := map[string]bool{string(h.Anchor): true}
+	for i, w := range h.Witnessed {
+		cp, err := checkpointFromStatement(w.Checkpoint)
+		if err != nil {
+			return fmt.Errorf("witnessed checkpoint %d does not verify: %v", i+1, err)
+		}
+		if cp.KeyID != pinnedKey || cp.LogID != h.LogID {
+			return fmt.Errorf("witnessed checkpoint %d is not the holder's shelf log", i+1)
+		}
+		if seen[string(w.Checkpoint)] {
+			return fmt.Errorf("witnessed checkpoint %d is the anchor or given twice", i+1)
+		}
+		seen[string(w.Checkpoint)] = true
+		if cp.TreeSize > anchor.TreeSize || cp.Entries > anchor.Entries {
+			return fmt.Errorf("witnessed checkpoint %d is past the anchor", i+1)
+		}
+		if len(w.Receipts) == 0 {
+			return fmt.Errorf("witnessed checkpoint %d carries no receipt", i+1)
+		}
+		peaks, err := tree.PeakHashesAt(cp.TreeSize)
+		if err != nil || hex.EncodeToString(mmr.RootFromPeaks(peaks)) != cp.Root {
+			return fmt.Errorf("the handed-over entries do not recompute witnessed checkpoint %d", i+1)
 		}
 	}
 	return nil
