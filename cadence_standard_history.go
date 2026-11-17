@@ -97,7 +97,8 @@ func (c *Cadence) StandardHistoryAnchor(ctx context.Context, n uint64) (Standard
 func (c *Cadence) extentsLocked(ctx context.Context, n uint64) (map[string]uint64, error) {
 	rows, err := c.shelf.db.QueryContext(ctx,
 		`SELECT j.key, MAX(json_extract(j.value, '$.size')) FROM cadence_ticks AS t, json_each(t.leaves, '$.deals') AS j
-		 WHERE t.tick <= ? AND t.checkpoint_size > 0 GROUP BY j.key`, n)
+		 WHERE t.tick <= ? AND t.checkpoint_size > 0
+		   AND j.key NOT IN (SELECT log_id FROM shelf_logs WHERE kind = 'journal') GROUP BY j.key`, n)
 	if err != nil {
 		return nil, err
 	}

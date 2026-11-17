@@ -343,6 +343,9 @@ func (s *Shelf) hostLocked(ctx context.Context, logID string, inCadence, provisi
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_records WHERE book_id = ?`, logID).Scan(&records); err != nil {
 		return nil, err
 	}
+	if kind == logKindJournal {
+		return nil, fmt.Errorf("%w: %s is the shelf's journal, not a host log", ErrInvalid, logID)
+	}
 	if kind == logKindBook || records > 0 {
 		return nil, fmt.Errorf("%w: %s is a book, not a host log", ErrInvalid, logID)
 	}

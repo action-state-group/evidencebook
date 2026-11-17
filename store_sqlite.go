@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 const sqliteStoreSchema = `
@@ -62,7 +63,7 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 -- cadence log (evidencebook#254 §2.2): a book's row is written with its first
 -- record, a host log's when it is opened as one.
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host', 'journal')));
 -- A shelf log of book facts (evidencebook#461, shelf_stamp.go): every entry
 -- document after the format switch, by its position in the cadence log, and
 -- the migration's progress. Empty in a version 1 file.
@@ -86,8 +87,9 @@ const ShelfVersion = 1
 
 // The kinds of shelf_logs.
 const (
-	logKindBook = "book"
-	logKindHost = "host"
+	logKindBook    = "book"
+	logKindHost    = "host"
+	logKindJournal = "journal"
 )
 
 // sqliteStore is one book's Store in a database several books share, every
@@ -98,6 +100,9 @@ const (
 type sqliteStore struct {
 	db     *sql.DB
 	bookID string
+	// kind is the shelf_logs kind its first record claims: a book's, or the
+	// journal's (evidencebook#461 §3).
+	kind string
 }
 
 // initSQLiteStore creates the shelf's tables when absent, in one
@@ -213,7 +218,11 @@ func (s *sqliteStore) PutRecord(ctx context.Context, record StoredRecord) error 
 		s.bookID, record.Seq, record.RecordID, []byte(record.Header), []byte(record.Capsule), record.Envelope); err != nil {
 		return err
 	}
-	if err := claimLogKind(ctx, tx, s.bookID, logKindBook); err != nil {
+	kind := s.kind
+	if kind == "" {
+		kind = logKindBook
+	}
+	if err := claimLogKind(ctx, tx, s.bookID, kind); err != nil {
 		return err
 	}
 	if err := markLive(ctx, tx, s.bookID); err != nil {
@@ -322,3 +331,28 @@ func (s *sqliteStore) Checkpoints(ctx context.Context) ([]Checkpoint, error) {
 
 // Release is a no-op: the shelf owns the shared database.
 func (s *sqliteStore) Release() error { return nil }
+
+// allowJournalKind lets shelf_logs hold the journal's kind in a file whose
+// table was created before it existed (evidencebook#461 §3): SQLite cannot
+// change a CHECK, so the table is rebuilt with the same rows, in tx. A file
+// whose table already allows it is left alone.
+func allowJournalKind(ctx context.Context, tx *sql.Tx) error {
+	var create string
+	if err := tx.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_logs'`).Scan(&create); err != nil {
+		return err
+	}
+	if strings.Contains(create, "'journal'") {
+		return nil
+	}
+	for _, statement := range []string{
+		`CREATE TABLE shelf_logs_journal (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host', 'journal')))`,
+		`INSERT INTO shelf_logs_journal (log_id, kind) SELECT log_id, kind FROM shelf_logs`,
+		`DROP TABLE shelf_logs`,
+		`ALTER TABLE shelf_logs_journal RENAME TO shelf_logs`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
