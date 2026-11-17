@@ -813,6 +813,83 @@
      "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
     ]
    }
+  },
+  {
+   "name": "last-received-size-missing",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "last-received-size-null",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": null,
+       "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "last-received-size-zero",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": 0,
+       "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
   }
  ],
  "invalid_markers": [

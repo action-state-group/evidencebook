@@ -124,7 +124,8 @@ def _link(last_received: Optional[dict[str, Any]], checked_over: list[str]) -> d
             raise Invalid("last_received is exactly {log_id, size, record_digest}")
         if not isinstance(last_received["log_id"], str) or not last_received["log_id"] or not _digest(last_received["record_digest"]):
             raise Invalid("last_received needs its log id and a SHA-256 record digest")
-        _count("last_received.size", last_received["size"])
+        if _count("last_received.size", last_received["size"]) == 0:
+            raise Invalid("last_received.size is at least 1")
     if not all(_digest(d) for d in checked_over):
         raise Invalid("a checked-over digest is 64 lowercase hex")
     over = sorted(checked_over)

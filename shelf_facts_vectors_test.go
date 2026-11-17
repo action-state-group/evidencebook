@@ -176,15 +176,33 @@ func TestShelfFactVectors(t *testing.T) {
 }
 
 func TestFactErrors(t *testing.T) {
-	r := saltSource(t, []string{"00", "00"})
-	_, _, _, err := newBookFact(FactInput{Profile: "deal", BookID: "b", LogID: "l", CheckpointSHA256: "c", Size: 1, PrevFactSize: 2}, r)
+	d1, d2 := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	salts := func() randomSource {
+		return saltSource(t, []string{strings.Repeat("01", 32), strings.Repeat("02", 32)})
+	}
+	ok := FactInput{Profile: "deal", BookID: d1, LogID: "l", CheckpointSHA256: d2, Size: 2}
+	_, _, _, err := newBookFact(ok, salts())
+	require.NoError(t, err, "the base input is valid, so each case below fails for its own reason")
+	in := ok
+	in.Size, in.PrevFactSize = 1, 2
+	_, _, _, err = newBookFact(in, salts())
 	assert.ErrorIs(t, err, ErrInvalid, "size below the previous fact")
-	_, _, _, err = newBookFact(FactInput{Profile: "deal", BookID: "b", LogID: "l", CheckpointSHA256: "c", Size: 2, Status: json.RawMessage(`[1]`)}, r)
+	in = ok
+	in.Status = json.RawMessage(`[1]`)
+	_, _, _, err = newBookFact(in, salts())
 	assert.ErrorIs(t, err, ErrInvalid, "a status that is not an object")
-	_, _, _, err = newBookFact(FactInput{Profile: "deal", BookID: "b", LogID: "l", CheckpointSHA256: "c", Size: 2, Link: LinkValue{CheckedOver: []string{"a", "a"}}}, r)
+	in = ok
+	in.Link = LinkValue{CheckedOver: []string{d1, d1}}
+	_, _, _, err = newBookFact(in, salts())
 	assert.ErrorIs(t, err, ErrInvalid, "a digest checked over twice")
-	_, _, _, err = newBookFact(FactInput{Profile: "deal", BookID: "b", LogID: "l", CheckpointSHA256: "c", Size: 2}, newRandomSource(bytes.NewReader(nil)))
-	assert.Error(t, err, "a random source that runs dry")
+	in = ok
+	in.Link = LinkValue{LastReceived: &ReceivedPosition{LogID: "deal/x", RecordDigest: d1}}
+	_, _, _, err = newBookFact(in, salts())
+	assert.ErrorIs(t, err, ErrInvalid, "last_received with no size")
+	_, _, _, err = newBookFact(ok, newRandomSource(bytes.NewReader(make([]byte, 32))))
+	require.Error(t, err, "a random source that runs dry after the link salt")
+	assert.NotErrorIs(t, err, ErrInvalid, "the failure is the random source, not the input")
+	r := salts()
 	_, err = newFormatSwitch(1, []LoggedSize{{LogID: "a", Size: 1}, {LogID: "a", Size: 2}})
 	assert.ErrorIs(t, err, ErrInvalid, "a log listed twice")
 	_, _, _, err = newJournalFact("journal/x", JournalStatus{Size: 1, CheckpointSHA256: "nothex"}, r)

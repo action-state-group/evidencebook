@@ -105,13 +105,15 @@ fn is_digest(s: &str) -> bool {
 /// `last_received` is exactly `{log_id, size, record_digest}`, as Go's
 /// `ReceivedPosition` is.
 fn check_last_received(v: &Value) -> Result<(), Invalid> {
-    let bad = || invalid("last_received is exactly {log_id, size, record_digest}");
+    let bad = || invalid("last_received is exactly {log_id, size >= 1, record_digest}");
     let m = v.as_object().ok_or_else(bad)?;
     if m.len() != 3 {
         return Err(bad());
     }
     let log = m.get("log_id").and_then(Value::as_str).ok_or_else(bad)?;
-    m.get("size").and_then(Value::as_u64).ok_or_else(bad)?;
+    if m.get("size").and_then(Value::as_u64).ok_or_else(bad)? == 0 {
+        return Err(bad());
+    }
     let digest = m
         .get("record_digest")
         .and_then(Value::as_str)

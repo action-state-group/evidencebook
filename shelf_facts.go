@@ -249,8 +249,10 @@ func statusValue(raw json.RawMessage) (any, error) {
 // linkValue checks the link's members and sorts the checked-over digests,
 // as the design fixes them.
 func linkValue(l LinkValue) (LinkValue, error) {
-	if r := l.LastReceived; r != nil && (r.LogID == "" || !isDigest(r.RecordDigest)) {
-		return LinkValue{}, fmt.Errorf("%w: last_received needs its log id and a SHA-256 record digest", ErrInvalid)
+	// A record held from the other side means its log has at least one entry,
+	// so a size of 0 (also what a missing size reads as in Go) is refused.
+	if r := l.LastReceived; r != nil && (r.LogID == "" || r.Size == 0 || !isDigest(r.RecordDigest)) {
+		return LinkValue{}, fmt.Errorf("%w: last_received needs its log id, a size of at least 1 and a SHA-256 record digest", ErrInvalid)
 	}
 	over := append([]string{}, l.CheckedOver...)
 	for _, d := range over {
