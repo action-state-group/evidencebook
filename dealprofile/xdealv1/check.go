@@ -435,12 +435,18 @@ func checkBody(r Record) error {
 		if err := checkWitnesses(body.Witnesses); err != nil {
 			return err
 		}
+		if err := checkForums(body.Adjudicator, body.Forums); err != nil {
+			return err
+		}
 		return checkRows(body.TermsRows)
 	case *AgreeBody:
 		if err := checkWitnesses(body.Witnesses); err != nil {
 			return err
 		}
 		if body.Kind == KindAgreement {
+			if err := checkForums(body.Adjudicator, body.Forums); err != nil {
+				return err
+			}
 			layer := body.CounterpartyLayer != nil && *body.CounterpartyLayer
 			if !layer && (!r.Block.Seen.IsNull() || !body.CounterpartyKey.IsNull()) {
 				return bad("an agreement with a counterparty that runs no layer has seen null and counterparty_key null")
@@ -559,6 +565,86 @@ func CheckSealed(record any, ctx SealContext) error {
 	return nil
 }
 
+// checkForums refuses a recourse clause that does not fit its adjudicator:
+// an agreement with no adjudicator names no forum and allows no dispute, and
+// one with an adjudicator names at least one forum.
+func checkForums(adj Null[Adjudicator], forums []string) error {
+	switch none := adj.IsNull(); {
+	case none && len(forums) > 0:
+		return stageErr(StageRecord, "an offer or agreement with no adjudicator names no forum")
+	case !none && len(forums) == 0:
+		return stageErr(StageRecord, "an offer or agreement with an adjudicator names the forums both sides accept")
+	}
+	return nil
+}
+
+func sortedCopy(s []string) []string {
+	out := slices.Clone(s)
+	slices.Sort(out)
+	return out
+}
+
+// CheckDispute reads a dispute of kind dispute against the agreement of its
+// deal book: it goes to the adjudicator the agreement names, in one of the
+// forums the agreement accepts (the recourse clause, #404: no forum shopping
+// at dispute time). A deal whose agreement names no adjudicator allows no
+// dispute. Both records must pass Check.
+func CheckDispute(dispute, agreement Record) error {
+	d, ok := bodyOf[DisputeBody](dispute.Body)
+	if !ok || d.Kind != KindDispute {
+		return stageErr(StageAgreement, "not a dispute of kind dispute")
+	}
+	ag, ok := asAgree(agreement.Body)
+	if !ok || ag.Kind != KindAgreement {
+		return stageErr(StageAgreement, "not an agreement")
+	}
+	if dispute.Block.DealID != agreement.Block.DealID {
+		return stageErr(StageAgreement, "the dispute is of another deal")
+	}
+	if ag.Adjudicator.IsNull() || !ag.Adjudicator.Present {
+		return stageErr(StageAgreement, "the agreement names no adjudicator: no dispute is possible")
+	}
+	if d.Adjudicator != ag.Adjudicator.V.KeyID {
+		return stageErr(StageAgreement, "the dispute goes to another adjudicator than the agreement names")
+	}
+	if !slices.Contains(ag.Forums, d.Forum) {
+		return stageErr(StageAgreement, "the dispute's forum %s is not one the agreement accepts", d.Forum)
+	}
+	return nil
+}
+
+// CheckRuling reads a ruling against the agreement of the deal: it rules in
+// one of the forums the agreement accepts. That the adjudicator the
+// agreement names signed it is the reader's, from the ruling's Capsule.
+func CheckRuling(ruling, agreement Record) error {
+	r, ok := bodyOf[RulingBody](ruling.Body)
+	if !ok {
+		return stageErr(StageAgreement, "not a ruling")
+	}
+	ag, ok := asAgree(agreement.Body)
+	if !ok || ag.Kind != KindAgreement {
+		return stageErr(StageAgreement, "not an agreement")
+	}
+	if ruling.Block.DealID != agreement.Block.DealID {
+		return stageErr(StageAgreement, "the ruling is of another deal")
+	}
+	if !slices.Contains(ag.Forums, r.Forum) {
+		return stageErr(StageAgreement, "the ruling's forum %s is not one the agreement accepts", r.Forum)
+	}
+	return nil
+}
+
+// bodyOf is a body of type T, held as a value or a pointer.
+func bodyOf[T any](b Body) (*T, bool) {
+	switch x := any(b).(type) {
+	case T:
+		return &x, true
+	case *T:
+		return x, x != nil
+	}
+	return nil, false
+}
+
 // checkWitnesses refuses a witness named twice: one key id is one witness,
 // whatever URLs it is found at.
 func checkWitnesses(ws []Witness) error {
@@ -650,6 +736,9 @@ func CheckAgreement(agreement, offer Record, heldAcceptorAgreement string) error
 	}
 	if !sameAdjudicator(ag.Adjudicator, of.Adjudicator) {
 		return bad("the agreement's adjudicator is not the offer's")
+	}
+	if !slices.Equal(sortedCopy(ag.Forums), sortedCopy(of.Forums)) {
+		return bad("the agreement's forums are not the offer's")
 	}
 	switch ag.Side {
 	case SideOfferer:

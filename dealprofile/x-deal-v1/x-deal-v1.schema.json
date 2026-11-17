@@ -910,6 +910,7 @@
         "agree_by",
         "terms_rows",
         "adjudicator",
+        "forums",
         "witnesses"
       ],
       "properties": {
@@ -982,6 +983,9 @@
         },
         "listing_digest": {
           "$ref": "#/$defs/hex64"
+        },
+        "forums": {
+          "$ref": "#/$defs/forums"
         }
       }
     },
@@ -997,6 +1001,7 @@
             "side",
             "role",
             "admit",
+            "forums",
             "witnesses",
             "adjudicator",
             "counterparty_layer",
@@ -1056,6 +1061,9 @@
             "shelf_log_id": {
               "type": "string",
               "minLength": 1
+            },
+            "forums": {
+              "$ref": "#/$defs/forums"
             }
           }
         },
@@ -1555,6 +1563,14 @@
         }
       },
       "description": "A witness, named by its verified key id with its URL as a hint (Steven, #482 Q1, u604)."
+    },
+    "forums": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/forum"
+      },
+      "description": "The forums both sides accept for a dispute on this deal: the recourse clause (evidencebook#404; Terms Pack Studio PRD v5 §7, no forum shopping). Empty exactly when adjudicator is null, which allows no dispute."
     }
   }
 }

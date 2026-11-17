@@ -156,20 +156,23 @@ type AskAddress struct {
 // ProposeBody is a propose record's body: an offer or a counter-offer
 // (§3.3). To and Adjudicator are REQUIRED and may be null.
 type ProposeBody struct {
-	Role          string            `json:"role"`
-	To            Null[string]      `json:"to"`
-	CounterTo     *Ref              `json:"counter_to,omitzero"`
-	Terms         Terms             `json:"terms"`
-	PackDigest    string            `json:"pack_digest"`
-	PackURL       string            `json:"pack_url,omitzero"`
-	StatedAt      string            `json:"stated_at"`
-	AgreeBy       string            `json:"agree_by"`
-	TermsRows     TermsRows         `json:"terms_rows"`
-	Adjudicator   Null[Adjudicator] `json:"adjudicator"`
-	Witnesses     []Witness         `json:"witnesses"`
-	Ask           *AskAddress       `json:"ask,omitzero"`
-	Profiles      []string          `json:"profiles,omitzero"`
-	ListingDigest string            `json:"listing_digest,omitzero"`
+	Role        string            `json:"role"`
+	To          Null[string]      `json:"to"`
+	CounterTo   *Ref              `json:"counter_to,omitzero"`
+	Terms       Terms             `json:"terms"`
+	PackDigest  string            `json:"pack_digest"`
+	PackURL     string            `json:"pack_url,omitzero"`
+	StatedAt    string            `json:"stated_at"`
+	AgreeBy     string            `json:"agree_by"`
+	TermsRows   TermsRows         `json:"terms_rows"`
+	Adjudicator Null[Adjudicator] `json:"adjudicator"`
+	// Forums are the forums both sides accept for a dispute: the recourse
+	// clause (#404). Empty exactly when Adjudicator is null.
+	Forums        []string    `json:"forums"`
+	Witnesses     []Witness   `json:"witnesses"`
+	Ask           *AskAddress `json:"ask,omitzero"`
+	Profiles      []string    `json:"profiles,omitzero"`
+	ListingDigest string      `json:"listing_digest,omitzero"`
 }
 
 // AgreeBody is an agree record's body: an agreement, a decline or a
@@ -187,6 +190,7 @@ type AgreeBody struct {
 	Intent            *Ref              `json:"intent,omitzero"`
 	Witnesses         []Witness         `json:"witnesses,omitzero"`
 	Adjudicator       Null[Adjudicator] `json:"adjudicator,omitzero"`
+	Forums            []string          `json:"forums,omitzero"`
 	CounterpartyLayer *bool             `json:"counterparty_layer,omitzero"`
 	CounterpartyKey   Null[string]      `json:"counterparty_key,omitzero"`
 	CheckpointKey     string            `json:"checkpoint_key,omitzero"`

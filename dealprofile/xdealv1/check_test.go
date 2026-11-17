@@ -222,7 +222,9 @@ func TestCheckAgreement(t *testing.T) {
 		"other witnesses": func(a *Record, _ *Record) {
 			a.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hx('5'), URL: "https://witness.test"}}
 		},
-		"no adjudicator":   func(a *Record, _ *Record) { a.Body.(*AgreeBody).Adjudicator = NullOf[Adjudicator]() },
+		"no adjudicator": func(a *Record, _ *Record) {
+			a.Body.(*AgreeBody).Adjudicator, a.Body.(*AgreeBody).Forums = NullOf[Adjudicator](), []string{}
+		},
 		"the offer's role": func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
 		"not citing an offer": func(_ *Record, o *Record) {
 			o.Block.RecordType = TypeCheck
@@ -335,4 +337,59 @@ func TestCheckAgreementTakesValueBodies(t *testing.T) {
 	acc.Body = *acc.Body.(*AgreeBody)
 	require.NoError(t, Check(offer))
 	assert.NoError(t, CheckAgreement(acc, offer, ""))
+}
+
+// The recourse clause (#404; Sherlock2 on evidencebook-deal#215): an offer
+// and its agreement name the forums both sides accept, none with no
+// adjudicator; a dispute and a ruling stay within them.
+func TestForums(t *testing.T) {
+	records := validRecords(t)
+	for name, c := range map[string]struct {
+		base string
+		f    func(b, body map[string]any)
+	}{
+		"an adjudicator with no forum":   {"propose", func(_, body map[string]any) { body["forums"] = []any{} }},
+		"a forum with no adjudicator":    {"propose", func(_, body map[string]any) { body["adjudicator"] = nil }},
+		"an agreement with no forums":    {"agree/agreement", func(_, body map[string]any) { delete(body, "forums") }},
+		"an offer with no forums member": {"propose", func(_, body map[string]any) { delete(body, "forums") }},
+	} {
+		err := Check(edit(t, records[c.base], c.f))
+		assert.Error(t, err, name)
+	}
+	noAdj := records["propose"]
+	nb := *noAdj.Body.(*ProposeBody)
+	nb.Adjudicator, nb.Forums = NullOf[Adjudicator](), []string{}
+	noAdj.Body = &nb
+	assert.NoError(t, Check(noAdj), "no adjudicator and no forum: no dispute is possible")
+
+	offer := record(blk(TypePropose), offerBody())
+	acc := acceptorAgreement(offer)
+	require.NoError(t, CheckAgreement(acc, offer, ""))
+	other := acceptorAgreement(offer)
+	other.Body.(*AgreeBody).Forums = []string{"external:court"}
+	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(other, offer, "")), "the agreement's forums are the offer's")
+
+	dispute := records["dispute/dispute"]
+	assert.NoError(t, CheckDispute(dispute, acc))
+	ruling := records["ruling"]
+	assert.NoError(t, CheckRuling(ruling, acc))
+	outside := dispute
+	ob := *outside.Body.(*DisputeBody)
+	ob.Forum = "rail:card"
+	outside.Body = &ob
+	assert.Equal(t, StageAgreement, stageOf(CheckDispute(outside, acc)), "no forum shopping at dispute time")
+	elsewhere := dispute
+	eb := *elsewhere.Body.(*DisputeBody)
+	eb.Adjudicator = "another-key"
+	elsewhere.Body = &eb
+	assert.Equal(t, StageAgreement, stageOf(CheckDispute(elsewhere, acc)))
+	rOut := ruling
+	rb := *rOut.Body.(*RulingBody)
+	rb.Forum = "external:court"
+	rOut.Body = &rb
+	assert.Equal(t, StageAgreement, stageOf(CheckRuling(rOut, acc)))
+	none := acceptorAgreement(offer)
+	nab := none.Body.(*AgreeBody)
+	nab.Adjudicator, nab.Forums = NullOf[Adjudicator](), []string{}
+	assert.Equal(t, StageAgreement, stageOf(CheckDispute(dispute, none)), "no adjudicator, no dispute")
 }

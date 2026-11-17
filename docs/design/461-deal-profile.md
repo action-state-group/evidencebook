@@ -373,6 +373,7 @@ chooses a remedy (4.6).
 | `agree_by` | REQUIRED | the agree-by time, RFC 3339 UTC to the second | design §4.2: "it is the `valid_until` that settlement terms already carry" |
 | `terms_rows` | REQUIRED | the rows and the named records they hang on (4.2) | design §4.2 |
 | `adjudicator` | REQUIRED, or `null` | `{"key_id", "rules_digest", "rules_url"}`; `null` is an offer with no adjudicator | design §8, "Who it is, and its rules" |
+| `forums` | REQUIRED | the forums the offerer accepts for a dispute (Q4's values): the recourse clause, so no forum is picked at dispute time. Empty exactly when `adjudicator` is `null`, which allows no dispute | evidencebook#404 (Steven, 11-05: "the recourse clause that was agreed", "forums accepted"); Sherlock2 on evidencebook-deal#215, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6c12438b1a1f6fa3f225b0a1acb8dd5be8e9716534cddef9e39a0e105d4fecc4&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6 |
 | `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; each witness named by its key id with its URL as a hint (Q1, answered) |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
@@ -395,6 +396,7 @@ stapled beside it when the other side's admission asks for it").
 | `intent` | REQUIRED when the holder sealed an intent for the task, else absent | digest ref of the holder's journal intent | design line 326 names the intent too. Appendix A has an intent for the buyer only (lines 6 and 18) and none for the seller (line 15), so the intent is required only where one exists; section 13, item 12 |
 | `witnesses` | REQUIRED | equal to the offer's | Decided: acceptance 9; design §4.3 |
 | `adjudicator` | REQUIRED, or `null` | equal to the offer's | design §8 |
+| `forums` | REQUIRED | equal to the offer's, as a set | as `forums` above |
 | `counterparty_layer` | REQUIRED | `false` marks a counterparty with no layer (4.7) | Decided: design §4.2, "The rule is for two sides that both run the layer" |
 | `counterparty_key` | REQUIRED, or `null` | the counterparty's record key: the offer's signer for the acceptor, the acceptor's agreement signer for the offerer; `null` with no layer | Proposed: the push rule (8.3) |
 | `checkpoint_key`, `shelf_log_id` | REQUIRED | the holder's checkpoint key id and shelf log id | Proposed: lets the receiver bind a stamp proof to this shelf log (7.3), which Forms leaves open (SF-5) |
@@ -437,7 +439,8 @@ store and never into the book. A `statement` with empty `statements` and no `nam
 
 - `kind: "dispute"`: `row`; `statements`, the record digests of the statements on that row that
   exist when it is sealed; `adjudicator`, the key id the agreement names (design §8 table); `forum`,
-  the process that resolves it (Q4, answered).
+  the process that resolves it (Q4, answered), one of the agreement's `forums`; a forum outside them is
+  refused (`CheckDispute`), and so is a dispute on a deal whose agreement names no adjudicator.
 - `kind: "withdrawal"`: `row` (same table).
 - `kind: "challenge"`: `ruling`, digest ref; `grounds_commitment` (same table).
 
@@ -445,7 +448,7 @@ store and never into the book. A `statement` with empty `statements` and no `nam
 table: `row`; `keys`, `{"buyer", "seller"}`; `against`, `buyer` | `seller` | `null`; `value`,
 `met` | `not_met`; `remedy`, `{"kind", "amount_minor"?, "currency"?, "due"}` or absent; `read`,
 the last record id of each deal book the adjudicator read; `rules_digest`; `forum`, the process that
-ruled (Q4, answered); `final`, a boolean.
+ruled (Q4, answered), one of the agreement's `forums` (`CheckRuling`); `final`, a boolean.
 Its block has no `seen` and no `agreement_ref`; `seq` and `prev` are the case book's.
 
 **`ask`, `answer`.** The evidence request interaction already exists in the library and in the
