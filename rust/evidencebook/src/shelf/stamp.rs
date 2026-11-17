@@ -1619,4 +1619,49 @@ mod tests {
         drop(db);
         shelf.release().unwrap();
     }
+
+    // A shelf whose cadence log is named as the journal refuses the journal
+    // and changes nothing, in this process and after a reopen with no
+    // cadence open (Go TestTheJournalRefusesTheCadenceLogsID).
+    #[test]
+    fn the_journal_refuses_the_cadence_logs_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shelf.db");
+        let cadence = |shelf: &Shelf| {
+            shelf.cadence(CadenceConfig {
+                log_id: crate::shelf::JOURNAL_LOG_ID.into(),
+                interval: Duration::from_secs(300),
+                jitter: Duration::ZERO,
+                no_jitter: true,
+                witness_ids: Vec::new(),
+                witnesses: None,
+                pad_bucket: 1,
+                ended: Arc::new(|_| Ok(false)),
+                status: None,
+            })
+        };
+        let shelf = open(&path);
+        let c = cadence(&shelf).unwrap();
+        append(&shelf, "deal/a", "1");
+        c.tick(tick_time()).unwrap();
+        c.migrate(minutes(1)).unwrap();
+        assert!(
+            matches!(shelf.journal(), Err(ShelfError::Invalid(_))),
+            "the cadence open in this process"
+        );
+        shelf.release().unwrap();
+
+        let reopened = open(&path);
+        assert!(
+            matches!(reopened.journal(), Err(ShelfError::Invalid(_))),
+            "the cadence's entries on disk"
+        );
+        assert_eq!(
+            store::log_kind(&reopened.shared().db(), crate::shelf::JOURNAL_LOG_ID).unwrap(),
+            None,
+            "nothing was claimed"
+        );
+        assert!(cadence(&reopened).is_ok(), "the cadence still opens");
+        reopened.release().unwrap();
+    }
 }

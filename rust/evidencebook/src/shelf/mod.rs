@@ -399,6 +399,15 @@ impl Shelf {
                 "{JOURNAL_LOG_ID} is a host log, not the journal"
             )));
         }
+        if state
+            .cadence
+            .as_ref()
+            .is_some_and(|(id, _)| id == JOURNAL_LOG_ID)
+        {
+            return Err(ShelfError::Invalid(format!(
+                "{JOURNAL_LOG_ID} is the cadence log, not the journal"
+            )));
+        }
         {
             let mut db = shared.db();
             let tx = store::write_tx(&mut db)?;
@@ -409,6 +418,22 @@ impl Shelf {
                     "{JOURNAL_LOG_ID} is already a {} log, not the journal",
                     kind.as_deref().unwrap_or(KIND_BOOK)
                 )));
+            }
+            // A log with entries and no kind (the cadence log, which
+            // shelf_logs never records, or one this build does not know) is
+            // not the journal either: claiming it would leave its owner
+            // refused on the next open.
+            if kind.is_none() {
+                let entries: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM cll_entries WHERE log_id = ?",
+                    [JOURNAL_LOG_ID],
+                    |r| r.get(0),
+                )?;
+                if entries > 0 {
+                    return Err(ShelfError::Invalid(format!(
+                        "{JOURNAL_LOG_ID} already holds another log's entries, not the journal"
+                    )));
+                }
             }
             store::allow_journal_kind(&tx)?;
             store::claim_kind(&tx, JOURNAL_LOG_ID, KIND_JOURNAL)?;
