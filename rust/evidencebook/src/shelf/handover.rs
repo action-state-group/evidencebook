@@ -5,9 +5,10 @@
 //! opening, the book checkpoints the facts carry and the consistency proofs
 //! between a book's facts, and checks that nothing was held back, left out,
 //! changed or replaced. Counting a card from the latest facts is
-//! standard_history/3's (AAC). A genesis fact's tie to the old witnessed
-//! tree (§2.7) is not handed over yet: every genesis fact is reported
-//! untied, which claims nothing about a log before the coverage start.
+//! standard_history/3's (AAC). A genesis fact comes with its tie to the old
+//! witnessed tree when the holder has one ([`super::handover_tie`]); one
+//! without is reported untied, which claims nothing about a log before the
+//! coverage start.
 //!
 //! The JSON of [`Handover`] and [`HandoverResult`] is Go's, member for
 //! member: byte strings are standard base64 with padding, as Go's
@@ -15,6 +16,7 @@
 //! `handover-result.json`).
 
 use super::cadence::{verify_witness_receipt, Cadence, WitnessReceipt, WITNESS_VERIFIED};
+use super::handover_tie::{verify_tie, HandoverTie};
 use super::log::Checkpoint;
 use super::stamp::bytes_b64;
 use super::ShelfError;
@@ -32,7 +34,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// The proof kind of a CLL consistency proof (Go `ConsistencyEvidence`).
-const CONSISTENCY_KIND_CLL: &str = "cll-mmr-consistency";
+pub(crate) const CONSISTENCY_KIND_CLL: &str = "cll-mmr-consistency";
 
 /// The material a whole-shelf reader is handed (§2.7; Go `Handover`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -66,6 +68,10 @@ pub struct Handover {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub receipts: Vec<WitnessReceipt>,
+    /// Ties each genesis fact the holder can tie to the old witnessed tree
+    /// ([`HandoverTie`]), in book id order.
+    #[serde(default, deserialize_with = "nullable")]
+    pub ties: Vec<HandoverTie>,
 }
 
 /// One entry document and, for a book fact, its status opening (Go
@@ -239,7 +245,7 @@ struct PortableConsistency {
 
 /// Whether `evidence` proves `newer` append-only extends `older` (Go
 /// `verifyCLLConsistency`).
-fn verify_cll_consistency(
+pub(crate) fn verify_cll_consistency(
     older: &Checkpoint,
     newer: &Checkpoint,
     evidence: &ConsistencyEvidence,
@@ -281,8 +287,9 @@ fn verify_cll_consistency(
     Ok(())
 }
 
-/// A fact as the handover collects it: its log, size and checkpoint.
+/// A fact as the handover collects it: its book, log, size and checkpoint.
 struct HandedFact {
+    book: String,
     log: String,
     size: u64,
     sum: String,
@@ -324,21 +331,9 @@ impl Cadence {
             consistency: Vec::new(),
             anchor: tick.checkpoint.clone(),
             receipts: Vec::new(),
+            ties: Vec::new(),
         };
-        {
-            let db = self.shelf.shared().db();
-            let mut stmt = db.prepare(
-                "SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id",
-            )?;
-            let rows = stmt.query_map([hex::encode(Sha256::digest(&tick.checkpoint))], |r| {
-                r.get::<_, String>(0)
-            })?;
-            for raw in rows {
-                out.receipts.push(serde_json::from_str(&raw?).map_err(|e| {
-                    ShelfError::Corrupt(format!("a stored receipt of tick {n}: {e}"))
-                })?);
-            }
-        }
+        out.receipts = self.receipts_locked(&tick.checkpoint)?;
         let mut after = 0;
         while after < anchor.entries {
             let want = (anchor.entries - after).min(1000) as usize;
@@ -388,6 +383,7 @@ impl Cadence {
                     serde_json::from_slice(&so.unwrap_or_default()).map_err(corrupt)?;
                 let f: BookFact = serde_json::from_slice(&d.doc).map_err(corrupt)?;
                 facts.push(HandedFact {
+                    book: f.book_id,
                     log: f.log_id,
                     size: f.size,
                     sum: f.checkpoint_sha256,
@@ -430,15 +426,15 @@ impl Cadence {
             })
         };
         let mut seen = HashSet::new();
-        let mut last: HashMap<String, HandedFact> = HashMap::new();
-        for f in facts {
+        let mut last: HashMap<&str, &HandedFact> = HashMap::new();
+        for f in &facts {
             if seen.insert(f.sum.clone()) {
-                out.book_checkpoints.push(statement_of(&f)?.clone());
+                out.book_checkpoints.push(statement_of(f)?.clone());
             }
-            if let Some(prev) = last.get(&f.log) {
+            if let Some(prev) = last.get(f.log.as_str()) {
                 if f.size > prev.size {
                     let older = Checkpoint::from_statement(statement_of(prev)?)?;
-                    let newer = Checkpoint::from_statement(statement_of(&f)?)?;
+                    let newer = Checkpoint::from_statement(statement_of(f)?)?;
                     let log = self.shelf.cadence_log_locked(&mut state, &f.log)?;
                     let proof = log.log().prove_consistency(&older, &newer)?;
                     out.consistency.push(HandoverConsistency {
@@ -452,10 +448,40 @@ impl Cadence {
                     });
                 }
             }
-            last.insert(f.log.clone(), f);
+            last.insert(&f.log, f);
+        }
+        // Each book's genesis fact (its first) with its tie, when the holder
+        // has one, in book id order.
+        let mut genesis: BTreeMap<&str, &HandedFact> = BTreeMap::new();
+        for f in &facts {
+            genesis.entry(&f.book).or_insert(f);
+        }
+        for (book, f) in genesis {
+            if let Some(tie) = self.tie_locked(&mut state, book, &f.log, statement_of(f)?)? {
+                out.ties.push(tie);
+            }
         }
         Ok(out)
     }
+}
+
+/// The root of the MMR `tree` at `size` (Go `PeakHashesAt` then
+/// `RootFromPeaks`), lowercase hex; `None` when `size` is not an MMR size
+/// the tree reaches.
+pub(crate) fn root_at(tree: &mmr::MemoryNodeStore, size: u64) -> Option<String> {
+    let peaks = if size == 0 {
+        Vec::new()
+    } else {
+        match mmr::peaks(size) {
+            Ok(p) if size <= mmr::NodeReader::size(tree) => p,
+            _ => return None,
+        }
+    };
+    let peaks: Vec<mmr::Hash> = peaks
+        .iter()
+        .map(|&p| mmr::NodeReader::node(tree, p))
+        .collect();
+    Some(hex::encode(mmr::root_from_peaks(&peaks)))
 }
 
 /// A handover's consistency proofs by `(log id, from size, to size)`.
@@ -520,7 +546,9 @@ pub(crate) fn check_fact_chain(
 /// when an entry is held back, a document is left out, is not its canonical
 /// JSON or does not hash to its entry, a status opening does not recompute
 /// its commitment, a book checkpoint is not the fact's or not the holder's,
-/// or a book's facts break their chain (a replaced book). The journal's
+/// a book's facts break their chain (a replaced book), or a genesis fact's
+/// tie ([`HandoverTie`]) does not verify, is one of two of a book, or names
+/// a book with no genesis fact in the handover. The journal's
 /// chain is not checked and its openings are not asked for.
 pub fn verify_handover(
     h: &Handover,
@@ -558,24 +586,13 @@ pub fn verify_handover(
         mmr::add_leaf(&mut tree, mmr::leaf_hash(&value))
             .map_err(|e| ShelfError::Invalid(format!("handover: {e}")))?;
     }
-    let peaks = if anchor.tree_size == 0 {
-        Vec::new()
-    } else {
-        match mmr::peaks(anchor.tree_size) {
-            Ok(p) if anchor.tree_size <= mmr::NodeReader::size(&tree) => p,
-            _ => {
-                return bad(format!(
-                    "the entries do not reach the anchor's size {}",
-                    anchor.tree_size
-                ))
-            }
-        }
+    let Some(root) = root_at(&tree, anchor.tree_size) else {
+        return bad(format!(
+            "the entries do not reach the anchor's size {}",
+            anchor.tree_size
+        ));
     };
-    let peaks: Vec<mmr::Hash> = peaks
-        .iter()
-        .map(|&p| mmr::NodeReader::node(&tree, p))
-        .collect();
-    if hex::encode(mmr::root_from_peaks(&peaks)) != anchor.root {
+    if root != anchor.root {
         return bad("the entries do not recompute the anchor's root".into());
     }
     // Every entry after the marker has its document.
@@ -635,6 +652,12 @@ pub fn verify_handover(
         .iter()
         .map(|p| ((p.log_id.clone(), p.from_size, p.to_size), p.proof.clone()))
         .collect();
+    let mut ties: BTreeMap<&str, &HandoverTie> = BTreeMap::new();
+    for t in &h.ties {
+        if ties.insert(&t.book_id, t).is_some() {
+            return bad(format!("two ties of {}", t.book_id));
+        }
+    }
     let mut untied = Vec::new();
     let mut latest: BTreeMap<String, HandoverLatest> = BTreeMap::new();
     let mut coverage = 0;
@@ -687,7 +710,16 @@ pub fn verify_handover(
                         f.book_id
                     ));
                 }
-                untied.push(f.book_id.clone());
+                match ties.remove(f.book_id.as_str()) {
+                    None => untied.push(f.book_id.clone()),
+                    Some(t) => {
+                        if let Err(e) =
+                            verify_tie(t, &f, cp, h, &tree, marker, pinned_key, witnesses)
+                        {
+                            return bad(format!("the tie of {}: {e}", f.book_id));
+                        }
+                    }
+                }
             }
             Some(prev) => {
                 if let Err(e) = check_fact_chain(&prev.fact, &f, &statements, &proofs) {
@@ -705,6 +737,11 @@ pub fn verify_handover(
     }
     if coverage == 0 {
         return bad("the migration's stamp is not in the handover".into());
+    }
+    if let Some(id) = ties.keys().next() {
+        return bad(format!(
+            "a tie of {id}, which has no genesis fact in the handover"
+        ));
     }
     untied.sort();
     // Only a receipt that gives a registration time gives the witnessed
