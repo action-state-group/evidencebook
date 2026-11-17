@@ -1,5 +1,0 @@
-### Changed: Rust crate on checkpointed-local-log 0.6.0, evidence-request 0.6.0 and agent-action-capsule 0.11.0 (#452)
-
-- The `evidencebook` crate and the interop crate depend on checkpointed-local-log 0.6.0 (CLL 0.9.0, -02 checkpoints whose `sub` is the bare log id), evidence-request 0.6.0 and agent-action-capsule 0.11.0, so one copy of each new version is in the graph again, except agent-action-capsule, which `capsule-emit-artifact` 0.0.3 still brings at 0.10.0. The pinned answer envelopes are rewritten: each envelope's anchor digest, request digest, signature and embedded checkpoint change, and so do the artifact bytes and digest wherever the artifact carries that anchor or checkpoint.
-- The crate now signs checkpoints with the bare-log-id `sub`. A verifier that insists on `<log id>#<size>`, such as capsule-anchor's witness check before capsule-anchor#94 (merged 2026-11-16, not yet released), rejects them: run a capsule-anchor release that includes #94 before adopting this crate version.
-- The interop `responder` and `personal-history` programs write each log key identity with the bare log id as `sub`, matching the checkpoints it signs and the Go responder.

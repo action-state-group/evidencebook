@@ -252,3 +252,23 @@
 - `evidencebook.deal`: `sale_unpost` joins the record types (a sale's listing taken down; PROFILE.md section 6, rule 15), and the vendored schemas follow x-deal-v0 (#451).
 
 - **TEMPORARY** `deal.TYPE_OUTCOME_NOTE`, the x-deal-v0 `outcome_note` record (evidencebook#462), counted `did_not_hold` by `standard_history_deal`.
+
+### Changed: Python package on checkpointed-local-log 0.9.0 and capsule-emit 0.17.0 (#452)
+
+- `python/` requires checkpointed-local-log `>=0.9.0,<0.10` and capsule-emit `>=0.17.0,<0.18` (were `>=0.8.0,<0.9` and `>=0.15.0,<0.16`). Its checkpoint writer now signs the CLL -02 CWT `sub`, the bare log id, instead of `<log id>#<size>`; the reader still accepts both. The interop twins (`responder.py`, `personal_history.py`) write the bare log id in their log keys, and the checkpoint-parity cases keep the signed `sub` when they change a claim.
+- `capsulectl`'s Go ↔ Python round trip now resolves evidencebook v0.14.2 and installs Python CLL from `python/v0.9.0` (the `python/` subdirectory), with agent-action-capsule 0.16.0 and capsule-emit 0.17.0 locked with hashes.
+- `capsulectl` keeps answering refusals with the specific tokens, explicitly (`ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}`), because evidencebook v0.14.0 made uniform the library default; whether capsulectl should move to uniform is left to a disclosure decision.
+
+- `python/examples/ard-commerce`: the Goose ARD two-seller demo. Maya's agent finds two sellers through an ARD
+  catalogue, asks each for its evidence over the sellers' mailboxes, assesses each under a demo admission pack with
+  `capsule-engine admission evaluate`, and a presenter's pick (a popup) opens the deal and pays it over Lightning in
+  msat. Kestrel's card is a hand-written sample until the sentinel record ships. The Goose node takes
+  `CADENCE_OPTIONS` (the cadence's interval) as a class attribute.
+
+- `evidencebook.row_status` (new): the Go package `rowstatus`'s term row status, result for result over `testdata/row-status/vectors.json` (evidencebook#461, acceptance 6).
+
+- `evidencebook.shelf_facts` (new): the Go package's shelf log entry documents, commitments, openings and audiences, byte for byte over `testdata/shelf/facts/vectors.json` (#461).
+
+- `Cadence.handover` and `shelf_handover.verify_handover`: Go's whole-shelf handover and its replay (#461 §2.7), member for member. A Python shelf hands over to `testdata/shelf/handover.json`, and Python replays any language's handover to `handover-result.json`: every entry up to the anchor, each document as its canonical JSON, each book fact's status opening, its checkpoint and the consistency proofs between a book's facts, the coverage start, whether a receipt verifies against the witness directory, and each book's latest fact.
+
+- `Cadence.migrate`, `Cadence.stamp` and `Shelf.openings`: Go's shelf log of book facts (#461), byte for byte. A Python shelf migrates a shelf Go or Rust wrote, and the reverse, to `testdata/shelf/after-migrate.json`. Shelf file versions 1 and 2 are opened.

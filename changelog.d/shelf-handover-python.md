@@ -1,2 +1,0 @@
-<!-- changelog: python/CHANGELOG.md -->
-- `Cadence.handover` and `shelf_handover.verify_handover`: Go's whole-shelf handover and its replay (#461 §2.7), member for member. A Python shelf hands over to `testdata/shelf/handover.json`, and Python replays any language's handover to `handover-result.json`: every entry up to the anchor, each document as its canonical JSON, each book fact's status opening, its checkpoint and the consistency proofs between a book's facts, the coverage start, whether a receipt verifies against the witness directory, and each book's latest fact.
