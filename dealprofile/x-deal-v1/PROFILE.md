@@ -169,7 +169,8 @@ counterparty with no layer), `counter_to`, `terms`, `pack_digest`, `pack_url`, `
 
 **`agree`, kinds `decline` and `cancellation`.** `offer`, the digest ref of the offer it answers
 or withdraws; on a decline only, `reason` (`not_selected` or `other`); `reason_commitment`, a
-free-text reason committed with `sha256-jcs-nonce256`. No other member. A decline is signed by the
+free-text reason committed with `sha256-jcs-nonce256`. `reason` and `reason_commitment` are
+OPTIONAL. No other member. A decline is signed by the
 key the offer was sent `to`; a cancellation by the offer's signer (section 7).
 
 **`perform`.** `act`, `observed`, `detail_commitment`, `statements`, `check` (the passing journal
@@ -243,8 +244,7 @@ journal order. The journal is read in order and its `at` never decreases: a jour
 `at` is earlier than the record before it is refused.
 
 `xdealv1.CheckAuthorizations(journal, acts)` checks them, refusing at the `authorization` stage,
-and returns per act what must be signed by the person, beside the records, before the act is
-relied on:
+and returns per act the record digests the person signs:
 
 - the approval, when it is the person's own (approver `user` or `agent_card`): the person's
   signature over the approval's record digest. The record's Capsule is signed by the holder's
@@ -252,6 +252,11 @@ relied on:
 - every `confirm_limits` approval whose confirmed proposal put in force the `allowed` a
   `standing_intent` approval relied on (`LimitApprovals`): the person's signature over each one's
   record digest. Without it the agent could widen its own limits and then approve its own act.
+
+An act MUST NOT be relied on until the person's signature over each listed digest, from the
+person's own key, is held. The signature travels beside the approval record, never inside it, so
+it changes no record format; the member that carries it is defined in
+action-state-group/agent-action-capsule#627, not here (section 10).
 
 ## 9. Checks, stages and fixtures
 
@@ -281,4 +286,5 @@ item 2 lists with this profile, is not yet here; it follows in a later pull requ
 
 When a deal has started (design note §5), the stamp proof order (§7), the status and link values
 and how a received record is read (§8), and the sealed deal report (§9) are later parts of
-evidencebook#461 step 5 (design note §11.1, PRs 3 to 5).
+evidencebook#461 step 5 (design note §11.1, PRs 3 to 5). The member that carries the person's
+signature beside an approval (section 8) is defined in action-state-group/agent-action-capsule#627.
