@@ -45,6 +45,50 @@
       "stage": "record"
     },
     {
+      "name": "agent_move",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "agent_move",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "move": "couldnt",
+          "reason": "other",
+          "detail_commitment": "7777777777777777777777777777777777777777777777777777777777777777"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "agent_move/deal_id-flipped",
+      "record": {
+        "body": {
+          "detail_commitment": "7777777777777777777777777777777777777777777777777777777777777777",
+          "move": "couldnt",
+          "reason": "other"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "agent_move"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
       "name": "agree/agreement",
       "record": {
         "x-deal-v1": {
@@ -239,6 +283,10 @@
           }
         }
       },
+      "context": {
+        "OfferExists": false,
+        "Admission": true
+      },
       "valid": true
     },
     {
@@ -265,7 +313,12 @@
           "record_type": "answer"
         }
       },
-      "valid": true
+      "context": {
+        "OfferExists": false,
+        "Admission": true
+      },
+      "valid": false,
+      "stage": "record"
     },
     {
       "name": "approval/confirm",
@@ -436,6 +489,10 @@
           "to": "counterparty"
         }
       },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
       "valid": true
     },
     {
@@ -456,7 +513,12 @@
           "record_type": "ask"
         }
       },
-      "valid": true
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
     },
     {
       "name": "check",
@@ -493,6 +555,48 @@
       "stage": "record"
     },
     {
+      "name": "claim",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "claim",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "text_commitment": "8888888888888888888888888888888888888888888888888888888888888888",
+          "source_kind": "merchant"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "claim/deal_id-flipped",
+      "record": {
+        "body": {
+          "source_kind": "merchant",
+          "text_commitment": "8888888888888888888888888888888888888888888888888888888888888888"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "claim"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
       "name": "counterparty_profile",
       "record": {
         "x-deal-v1": {
@@ -515,6 +619,108 @@
           "deal_id": "deal-0123456789abcdef",
           "profile": "x-deal-v1",
           "record_type": "counterparty_profile"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "detail_change",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "detail_change",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "source": "counterparty",
+          "changed": [
+            "rail"
+          ],
+          "recourse": {
+            "rail": "zelle",
+            "refundable": false
+          }
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "detail_change/deal_id-flipped",
+      "record": {
+        "body": {
+          "changed": [
+            "rail"
+          ],
+          "recourse": {
+            "rail": "zelle",
+            "refundable": false
+          },
+          "source": "counterparty"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "detail_change"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "disclosure",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "disclosure",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "to": "counterparty",
+          "fields": [
+            {
+              "class": "phone",
+              "value_commitment": "9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "authority": "none",
+          "rule": "answer_was_not_proceed"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "disclosure/deal_id-flipped",
+      "record": {
+        "body": {
+          "authority": "none",
+          "fields": [
+            {
+              "class": "phone",
+              "value_commitment": "9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "rule": "answer_was_not_proceed",
+          "to": "counterparty"
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "disclosure"
         }
       },
       "valid": false,
@@ -723,6 +929,48 @@
       "stage": "record"
     },
     {
+      "name": "evidence",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "evidence",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "source": "listing_photo",
+          "verified": false
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": true
+    },
+    {
+      "name": "evidence/deal_id-flipped",
+      "record": {
+        "body": {
+          "source": "listing_photo",
+          "verified": false
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "profile": "x-deal-v1",
+          "record_type": "evidence"
+        }
+      },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
       "name": "intent",
       "record": {
         "x-deal-v1": {
@@ -769,6 +1017,10 @@
           "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
       "valid": true
     },
     {
@@ -785,7 +1037,12 @@
           "record_type": "message"
         }
       },
-      "valid": true
+      "context": {
+        "OfferExists": true,
+        "Admission": false
+      },
+      "valid": false,
+      "stage": "record"
     },
     {
       "name": "message/before-offer",
@@ -800,6 +1057,10 @@
           "from": "agent",
           "content_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
+      },
+      "context": {
+        "OfferExists": false,
+        "Admission": true
       },
       "valid": true
     },
@@ -818,7 +1079,12 @@
           "record_type": "message"
         }
       },
-      "valid": true
+      "context": {
+        "OfferExists": false,
+        "Admission": true
+      },
+      "valid": false,
+      "stage": "record"
     },
     {
       "name": "perform",
@@ -1143,6 +1409,76 @@
           "profile": "x-deal-v1",
           "record_type": "ruling",
           "seq": 1
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "sale",
+      "record": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "record_type": "sale",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "deal_type": "purchase",
+          "intent": {
+            "verbatim_commitment": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "party_role": "seller",
+            "allowed": [
+              "offer",
+              "commit"
+            ]
+          },
+          "terms": {
+            "item": "lamp",
+            "quantity": 1,
+            "price_minor": 6000,
+            "currency": "USD"
+          },
+          "recourse": {
+            "rail": "card",
+            "refundable": false
+          },
+          "item_ref_commitment": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "sale/deal_id-flipped",
+      "record": {
+        "body": {
+          "deal_type": "purchase",
+          "intent": {
+            "allowed": [
+              "offer",
+              "commit"
+            ],
+            "party_role": "seller",
+            "verbatim_commitment": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "item_ref_commitment": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "recourse": {
+            "rail": "card",
+            "refundable": false
+          },
+          "terms": {
+            "currency": "USD",
+            "item": "lamp",
+            "price_minor": 6000,
+            "quantity": 1
+          }
+        },
+        "x-deal-v1": {
+          "at": "2026-11-01T10:00:00Z",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "profile": "x-deal-v1",
+          "record_type": "sale"
         }
       },
       "valid": false,
@@ -1553,5 +1889,5 @@
       "stage": "record"
     }
   ],
-  "description": "deal-id-presence (evidencebook#461, docs/design/461-deal-profile.md §3.1): each record passes or is refused at the stage given. deal_id is required on every book record, on propose and every agree, on check and verdict and on an approval that answers a verdict; absent on intent, admit, sale, thread, thread_opened, sale_unpost, counterparty_profile, disclosure and a confirm_limits approval; either on a journal journey record, ask or answer. Written by dealprofile/xdealv1's TestDealIDPresence (EB_WRITE_DEAL_V1_VECTORS=1)."
+  "description": "deal-id-presence (evidencebook#461, docs/design/461-deal-profile.md §3.1, §11.2): each record passes or is refused at the stage given, checked with its context when it has one (CheckSealed: offer_exists, admission). deal_id is required on every book record, on propose and every agree, on check and verdict and on an approval that answers a verdict; absent on intent, admit, sale, thread, thread_opened, sale_unpost, counterparty_profile, disclosure and a confirm_limits approval; on a journal journey record exactly when its offer exists, and on a journal ask or answer exactly when it is not of an admission. Written by dealprofile/xdealv1's TestDealIDPresence (EB_WRITE_DEAL_V1_VECTORS=1)."
 }

@@ -41,18 +41,21 @@ func edit(t *testing.T, r Record, f func(blk, body map[string]any)) []byte {
 	return out
 }
 
-// deal-id-presence (design §3.1, review round 3): each record type with
-// deal_id as §3.1 places it passes, and with it flipped (dropped where it is
-// required, added where it is absent) is refused at the record stage; the
-// records whose deal_id depends on when they were sealed pass either way.
-// The cases are written to testdata/deal-v1/records/deal-id-presence.json
-// (EB_WRITE_DEAL_V1_VECTORS=1), which the Rust and Python ports replay.
+// deal-id-presence (design §3.1, §11.2; review round 3): each record type
+// with deal_id as §3.1 places it passes, and with it flipped (dropped where
+// it is required, added where it is absent) is refused at the record stage.
+// A journey record, ask or answer in the journal is checked with its
+// SealContext (CheckSealed): whether its offer exists, whether it is of an
+// admission. The cases are written to
+// testdata/deal-v1/records/deal-id-presence.json (EB_WRITE_DEAL_V1_VECTORS=1),
+// which the Rust and Python ports replay.
 func TestDealIDPresence(t *testing.T) {
 	type vcase struct {
-		Name   string          `json:"name"`
-		Record json.RawMessage `json:"record"`
-		Valid  bool            `json:"valid"`
-		Stage  string          `json:"stage,omitempty"`
+		Name    string          `json:"name"`
+		Record  json.RawMessage `json:"record"`
+		Context *SealContext    `json:"context,omitempty"`
+		Valid   bool            `json:"valid"`
+		Stage   string          `json:"stage,omitempty"`
 	}
 	var cases []vcase
 	records := validRecords(t)
@@ -63,10 +66,19 @@ func TestDealIDPresence(t *testing.T) {
 	sort.Strings(names)
 	for _, name := range names {
 		r := records[name]
+		var ctx *SealContext
+		if t0 := r.Block.RecordType; PlacementOf(r) == PlacementJournal && (slices.Contains(journeyTypes, t0) || slices.Contains(askTypes, t0)) {
+			has := r.Block.DealID != ""
+			ctx = &SealContext{OfferExists: has, Admission: !has}
+		}
+		var sc SealContext
+		if ctx != nil {
+			sc = *ctx
+		}
 		raw, err := json.Marshal(r)
 		require.NoError(t, err)
-		require.NoError(t, Check(raw), name)
-		cases = append(cases, vcase{Name: name, Record: raw, Valid: true})
+		require.NoError(t, CheckSealed(raw, sc), name)
+		cases = append(cases, vcase{Name: name, Record: raw, Context: ctx, Valid: true})
 		flipped := edit(t, r, func(b, _ map[string]any) {
 			if _, ok := b["deal_id"]; ok {
 				delete(b, "deal_id")
@@ -74,19 +86,17 @@ func TestDealIDPresence(t *testing.T) {
 				b["deal_id"] = dealID
 			}
 		})
-		err = Check(flipped)
-		either := slices.Contains(eitherDealID, r.Block.RecordType) && PlacementOf(r) == PlacementJournal
-		if either {
-			assert.NoError(t, err, name)
-			cases = append(cases, vcase{Name: name + "/deal_id-flipped", Record: flipped, Valid: true})
-			continue
-		}
+		err = CheckSealed(flipped, sc)
 		require.Error(t, err, name)
 		assert.Equal(t, StageRecord, stageOf(err), "%s: %v", name, err)
-		cases = append(cases, vcase{Name: name + "/deal_id-flipped", Record: flipped, Valid: false, Stage: StageRecord})
+		cases = append(cases, vcase{Name: name + "/deal_id-flipped", Record: flipped, Context: ctx, Valid: false, Stage: StageRecord})
+		if ctx != nil {
+			// Check alone, which cannot see the context, takes either.
+			assert.NoError(t, Check(flipped), name)
+		}
 	}
 	got, err := json.MarshalIndent(map[string]any{
-		"description": "deal-id-presence (evidencebook#461, docs/design/461-deal-profile.md §3.1): each record passes or is refused at the stage given. deal_id is required on every book record, on propose and every agree, on check and verdict and on an approval that answers a verdict; absent on intent, admit, sale, thread, thread_opened, sale_unpost, counterparty_profile, disclosure and a confirm_limits approval; either on a journal journey record, ask or answer. Written by dealprofile/xdealv1's TestDealIDPresence (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "deal-id-presence (evidencebook#461, docs/design/461-deal-profile.md §3.1, §11.2): each record passes or is refused at the stage given, checked with its context when it has one (CheckSealed: offer_exists, admission). deal_id is required on every book record, on propose and every agree, on check and verdict and on an approval that answers a verdict; absent on intent, admit, sale, thread, thread_opened, sale_unpost, counterparty_profile, disclosure and a confirm_limits approval; on a journal journey record exactly when its offer exists, and on a journal ask or answer exactly when it is not of an admission. Written by dealprofile/xdealv1's TestDealIDPresence (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
 	}, "", "  ")
 	require.NoError(t, err)
@@ -100,6 +110,26 @@ func TestDealIDPresence(t *testing.T) {
 	want, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.True(t, bytes.Equal(want, got), "deal-id-presence.json differs from this build's; regenerate only for an intended change")
+}
+
+// Version gives x-deal-v0 for every positive v0 fixture, typed ones
+// included (design §11.2).
+func TestVersionOfEveryV0Fixture(t *testing.T) {
+	files, err := filepath.Glob("../x-deal-v0/fixtures/positive*/*.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		require.NoError(t, err)
+		var fx struct {
+			Record json.RawMessage `json:"record"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &fx), f)
+		require.NotNil(t, fx.Record, f)
+		v, err := dealprofile.Version(fx.Record)
+		require.NoError(t, err, f)
+		assert.Equal(t, dealprofile.Profile, v, f)
+	}
 }
 
 func TestPlacementRules(t *testing.T) {
@@ -185,7 +215,10 @@ func TestCheckAgreement(t *testing.T) {
 		"other witnesses":     func(a *Record, _ *Record) { a.Body.(*AgreeBody).Witnesses = []string{"https://other.test"} },
 		"no adjudicator":      func(a *Record, _ *Record) { a.Body.(*AgreeBody).Adjudicator = NullOf[Adjudicator]() },
 		"the offer's role":    func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
-		"not citing an offer": func(_ *Record, o *Record) { o.Block.RecordType = TypeCheck; o.Body = &CheckBody{} },
+		"not citing an offer": func(_ *Record, o *Record) {
+			o.Block.RecordType = TypeCheck
+			o.Body = &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}}
+		},
 	} {
 		a, o := acceptorAgreement(offer), record(blk(TypePropose), offerBody())
 		f(&a, &o)

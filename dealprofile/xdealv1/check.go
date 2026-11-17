@@ -281,20 +281,16 @@ func noFloats(v any, path string) error {
 var (
 	// dealBookTypes are sealed in a deal book only.
 	dealBookTypes = []string{TypePerform, TypeSettle, TypeStatement, TypeDispute, TypeRulesVerdict}
-	// journalTypes are sealed in the journal only.
-	journalTypes = []string{TypePropose, TypeAdmit, TypeIntent, TypeCheck, TypeVerdict, TypeApproval,
-		TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeAgentMove, TypeDisclosure, TypeSale,
-		TypeThread, TypeThreadOpened, TypeSaleUnpost, TypeCounterpartyProfile}
 	// noDealID are the journal records that predate or span deals: deal_id
 	// absent (§3.1).
 	noDealID = []string{TypeIntent, TypeAdmit, TypeSale, TypeThread, TypeThreadOpened, TypeSaleUnpost,
 		TypeCounterpartyProfile, TypeDisclosure}
-	// eitherDealID are the journal records whose deal_id depends on when
-	// they were sealed: a journey record carries it once its offer exists,
-	// and an ask or answer when it is between the two parties rather than
-	// of an admission. The record alone cannot tell, so the record checks
-	// take either.
-	eitherDealID = []string{TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeAgentMove, TypeAsk, TypeAnswer}
+	// journeyTypes carry deal_id once their offer exists, and askTypes when
+	// they are between the two parties rather than of an admission. The
+	// record alone cannot tell which, so Check takes either and CheckSealed,
+	// given what the holder knows, decides.
+	journeyTypes = []string{TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeAgentMove}
+	askTypes     = []string{TypeAsk, TypeAnswer}
 )
 
 // Placement is where a record is sealed: in a deal book, a case book, or
@@ -409,7 +405,7 @@ func checkDealID(r Record, place Placement) error {
 	switch {
 	case place != PlacementJournal:
 		required = true
-	case slices.Contains(eitherDealID, t):
+	case slices.Contains(journeyTypes, t) || slices.Contains(askTypes, t):
 	case slices.Contains(noDealID, t):
 		absent = true
 	case t == TypeApproval:
@@ -461,7 +457,7 @@ func checkBody(r Record) error {
 		if err != nil {
 			return err
 		}
-		s, err := dealprofile.ProfileSchemaAt("#/$defs/body_check")
+		s, err := v0BodyCheck()
 		if err != nil {
 			return err
 		}
@@ -508,6 +504,54 @@ func checkDates(r Record) error {
 	return nil
 }
 
+// SealContext is what the holder knows when it seals a journal record that
+// the record alone does not show (§3.1, "Where deal_id is present").
+type SealContext struct {
+	// OfferExists says the offer of the deal the record serves exists (sent
+	// or received) when the record is sealed.
+	OfferExists bool
+	// Admission says an ask or answer is of an admission decision, not
+	// between the two parties of a deal.
+	Admission bool
+}
+
+// CheckSealed is Check, and then §3.1's deal_id rule for the journal
+// records whose presence depends on when they are sealed: a journey record
+// (message, claim, evidence, detail_change, agent_move) carries deal_id
+// exactly when its offer exists, and an ask or answer in the journal
+// exactly when it is not of an admission. Other records are Check's alone.
+func CheckSealed(record any, ctx SealContext) error {
+	if err := Check(record); err != nil {
+		return err
+	}
+	_, raw, err := decode(record)
+	if err != nil {
+		return err
+	}
+	r, err := Decode(raw)
+	if err != nil {
+		return err
+	}
+	if PlacementOf(r) != PlacementJournal {
+		return nil
+	}
+	t, has := r.Block.RecordType, r.Block.DealID != ""
+	var want bool
+	switch {
+	case slices.Contains(journeyTypes, t):
+		want = ctx.OfferExists
+	case slices.Contains(askTypes, t):
+		want = !ctx.Admission
+	default:
+		return nil
+	}
+	if has != want {
+		return stageErr(StageRecord, "a %s record sealed here carries deal_id only %s", t,
+			map[bool]string{true: "when its offer exists", false: "between the two parties of a deal"}[slices.Contains(journeyTypes, t)])
+	}
+	return nil
+}
+
 // checkRows refuses rows the schema admits that the rule cannot read: a
 // row id given twice, and a date that hangs on a record named nowhere.
 func checkRows(tr TermsRows) error {
@@ -535,9 +579,15 @@ func checkRows(tr TermsRows) error {
 // side and the other on the acceptor's. heldAcceptorAgreement is the record
 // id of the acceptor's agreement the holder holds, which an offerer's
 // agreement with a counterparty that runs the layer names in its seen field;
-// it is ignored for an acceptor's agreement. Both records must pass Check.
+// it is ignored for an acceptor's agreement. It runs Check on both records
+// first.
 func CheckAgreement(agreement, offer Record, heldAcceptorAgreement string) error {
 	bad := func(format string, args ...any) error { return stageErr(StageAgreement, format, args...) }
+	for _, r := range []Record{agreement, offer} {
+		if err := Check(r); err != nil {
+			return err
+		}
+	}
 	ag, ok := asAgree(agreement.Body)
 	if !ok || ag.Kind != KindAgreement {
 		return bad("not an agreement")
@@ -595,6 +645,10 @@ func sameAdjudicator(a, b Null[Adjudicator]) bool {
 	}
 	return *a.V == *b.V
 }
+
+var v0BodyCheck = sync.OnceValues(func() (*jsonschema.Schema, error) {
+	return dealprofile.ProfileSchemaAt("#/$defs/body_check")
+})
 
 var (
 	schemaOnce sync.Once

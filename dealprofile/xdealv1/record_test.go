@@ -80,6 +80,14 @@ func approval(choice string) *dealprofile.ApprovalBody {
 	return a
 }
 
+// v0Body reads a v0 body from its JSON.
+func v0Body[T any](t *testing.T, raw string) *T {
+	t.Helper()
+	var b T
+	require.NoError(t, json.Unmarshal([]byte(raw), &b))
+	return &b
+}
+
 func noDeal(t string) Block { b := blk(t); b.DealID = ""; return b }
 
 // validRecords is one valid record of each type and kind.
@@ -121,6 +129,12 @@ func validRecords(t *testing.T) map[string]Record {
 		"counterparty_profile": record(noDeal(TypeCounterpartyProfile), &dealprofile.CounterpartyProfileBody{}),
 		"sale_unpost":          record(noDeal(TypeSaleUnpost), &dealprofile.SaleUnpostBody{Platform: "market.test"}),
 		"thread_opened":        record(noDeal(TypeThreadOpened), &dealprofile.ThreadOpenedBody{TaskAuthorityCommitment: hex('a')}),
+		"sale":                 record(noDeal(TypeSale), v0Body[dealprofile.SaleBody](t, `{"deal_type": "purchase", "intent": {"verbatim_commitment": "`+hex('d')+`", "party_role": "seller", "allowed": ["offer", "commit"]}, "terms": {"item": "lamp", "quantity": 1, "price_minor": 6000, "currency": "USD"}, "recourse": {"rail": "card", "refundable": false}, "item_ref_commitment": "`+hex('e')+`"}`)),
+		"disclosure":           record(noDeal(TypeDisclosure), v0Body[dealprofile.DisclosureBody](t, `{"to": "counterparty", "authority": "none", "rule": "answer_was_not_proceed", "fields": [{"class": "phone", "value_commitment": "`+hex('9')+`"}]}`)),
+		"claim":                record(blk(TypeClaim), v0Body[dealprofile.Claim](t, `{"text_commitment": "`+hex('8')+`", "source_kind": "merchant"}`)),
+		"evidence":             record(blk(TypeEvidence), v0Body[dealprofile.EvidenceBody](t, `{"source": "listing_photo", "verified": false}`)),
+		"detail_change":        record(blk(TypeDetailChange), v0Body[dealprofile.DetailChangeBody](t, `{"source": "counterparty", "changed": ["rail"], "recourse": {"rail": "zelle", "refundable": false}}`)),
+		"agent_move":           record(blk(TypeAgentMove), v0Body[dealprofile.AgentMoveBody](t, `{"move": "couldnt", "reason": "other", "detail_commitment": "`+hex('7')+`"}`)),
 	}
 }
 
