@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent / "desktop_server.py"
 
 COMMON = """Write in English only.
-Use only the tools of your own extension. Do not use any other tool: no terminal, no file tools, no tool search.
+Use only the tools of your own extension. Do not use any other tool: no terminal, no file tools, no session or agent listing, no tool search except to load your own extension's tools.
 """
 
 PARTIES = {
@@ -34,7 +34,7 @@ PARTIES = {
         "Your one tool, ard_seller_activity, shows what you did: the evidence requests you answered, any deal asked of you "
         "and how it went, the sale and payment, and your History card. Call it when the user asks what happened on your side, "
         "then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
-        "prompt": "Reply in English only. Show me what your agent has done so far.",
+        "prompt": "Reply in English only. Call your ard_seller_activity tool now and tell me in two short sentences what it shows.",
     },
     "kestrel": {
         "title": "Kestrel Print (seller)",
@@ -42,7 +42,7 @@ PARTIES = {
         "Your one tool, ard_seller_activity, shows what you did: the evidence requests you answered, any deal asked of you "
         "and how it went, and your History card. Call it when the user asks what happened on your side, "
         "then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
-        "prompt": "Reply in English only. Show me what your agent has done so far.",
+        "prompt": "Reply in English only. Call your ard_seller_activity tool now and tell me in two short sentences what it shows.",
     },
     "maya": {
         "title": "Maya buys conference badges (buyer)",
