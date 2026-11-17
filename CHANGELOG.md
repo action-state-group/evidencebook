@@ -16,6 +16,40 @@
 
 - The shelf log of book facts (#461, `docs/design/461-shelf-facts.md` §2.4, §2.5 and §4). `Cadence.Migrate` switches a shelf for good. It first closes the file to older builds by moving it to shelf file version 2, then writes `<path>.v1.bak`, a version 1 copy an older build still opens. It then appends the format-switch marker, a genesis fact for each log, and a stamp entry. It can be resumed at every step. After the switch, `Cadence.Stamp`, and the heartbeat `Tick`, append a fact only for a log whose checkpoint grew or whose committed values changed (the `CadenceConfig.Status` provider gives the values), then a stamp entry, so every stamp gets a new checkpoint. A stamp is a cadence tick whose leaves carry its batch. Stamps are therefore recovered, witnessed and used as `standard_history/1` and `/2` anchors as ticks are. `Shelf.Openings` hands out a fact's openings by audience. This build opens shelf file versions 1 and 2; an older build refuses version 2.
 
+- The shelf's journal (#461, `docs/design/461-shelf-facts.md` §2.2 and §3). `Shelf.Journal` opens the journal, a book of kind `journal`, one per shelf, on first use, on a shelf of book facts. A stamp writes it a journal fact when it grew: `size`, `checkpoint_sha256` and `prev_fact_size` are zero in the clear and their true values are inside its status commitment, whose opening goes only to the owner and an auditor. The journal is not one of `Shelf.Books`, has no extent on a `standard_history/1` or `/2` card, and a handover carries none of its openings. `Shelf.Open` and `Shelf.HostLog` refuse the journal's log id, `journal`. A file whose `shelf_logs` table predates the kind gets the table rebuilt, with the same rows, when the journal is first opened.
+
+- The shelf's store of what the other side pushes (evidencebook#461 §3): `Shelf.Receive` takes a record, a
+  `StampProof`, or both, each part on its own, and returns the deal ids with records that entered or left their
+  sender's counted prefix, those with new fork or checkpoint evidence, and those whose records a held proof
+  newly covers (once the records reach its size and recompute its root). A `ReceiveProfile` (in
+  `ShelfConfig.Receive`) reads each record and holds the push rule, so the library knows no record format. The
+  store acknowledges a duplicate, stores a gap without counting it until it is filled, keeps both records of a
+  fork as evidence and ends the counted prefix before it for good (a deletion never undoes it; evidence is kept
+  once per position), and bounds record size, records per book and unanswered unsolicited offers (dropping the
+  oldest first). Before an offer is dropped the profile's `Answered` is asked, outside the write transaction,
+  under a mark of the holder's own books; a mark that moved before the transaction plans the drop again
+  (`ErrBusy` after three tries). What unsolicited offers leave behind (the positions of dropped offers, and
+  conflicts with their evidence in logs of offers alone) is bounded per sender and in total
+  (`ReceiveBounds.MaxOfferEvidencePerSender`, `MaxOfferEvidence`); an offer belongs to no deal, so past the
+  bound no row is kept and such a position may later be forgotten. What `Forget` leaves, and conflicts in logs
+  holding other records, are kept for good. A record arriving where a deleted record was (`Forget`, or a dropped
+  offer) is a fork there, and a deletion returns the proofs reaching it to unchecked. A proof is refused, and
+  its evidence kept, when it contradicts a held proof at the same size or the records held; every accepted proof
+  is kept. `Cadence.StampProof` builds a proof for an audience and `VerifyStampProof` checks one. `Shelf.Forget`
+  deletes a settled deal's records under the holder's `Retention` (by default the life of the shelf, so never),
+  leaving tombstones that read as `ErrDeleted`. `CountedPrefix`, `ReceivedRecordOf` and `Evidence` read the
+  store without the shelf's lock, so a `StatusProvider` may call them during a stamp; the shelf's handle now
+  keeps four connections. Works on version 1 and 2 shelves. `testdata/shelf/receive` holds the store's vectors:
+  a test profile, a script of steps with each step's expected outcome, and the store's dump after it.
+
+- Record time (evidencebook#461 §2.6): `Shelf.RecordTime(bookID, position, witnesses)` returns the earliest
+  registration time, among the receipts held from the named witnesses (their receipt URLs), of a shelf
+  checkpoint covering the first fact of the book whose size covers the position, or no time. `Witnessed` keeps
+  every verified receipt in the new `shelf_receipts` table, one per witness with its registration time, the
+  earliest kept; a witnessed tick missing there is filled in at the cadence's next open. `Handover` carries every
+  receipt held for its anchor, and `VerifyHandover` reports `Witnessed` only for a receipt that gives a
+  registration time.
+
 ## v0.14.2 (2026-11-16)
 
 Go module only. Pull request since v0.14.1: #464 (the temporary `outcome_note` record; entry cites its issue #462). Cut for the 2026-11-19 Goose ARD demo.
