@@ -136,16 +136,16 @@ gives no time.
 
 ### 2.7 Handover and replay
 
-`Handover(anchor)` gives a reader the holder chooses: every shelf log entry from the coverage
-start to the anchor; each book fact's bytes and its status opening; each journal fact's bytes and
+`Handover(anchor)` gives a reader the holder chooses: every shelf log entry up to the anchor, the
+entries before the marker as the opaque ids they are, and the coverage start; each book fact's
+bytes and its status opening; each journal fact's bytes and
 no opening; for each pair of consecutive facts of a book with a larger size, the consistency
 proof between their checkpoints; and the anchor checkpoint with its witness receipts.
 
 `VerifyHandover(material, witnesses)` checks that the entries are exactly as many as the anchor
 states and recompute its commitment; that each fact hashes to its entry; that each status opening
 recomputes its commitment; that each book's consecutive facts satisfy 2.4's rule, with a
-consistency proof that verifies when the size grew; that no `book_id` appears before the coverage
-start in material that claims to begin there; and it returns each book's latest fact and opening,
+consistency proof that verifies when the size grew; and it returns each book's latest fact and opening,
 the coverage start, and the level reached: Recomputed when everything passed and the anchor has a
 witnessed time, else the lower level with its reason. A dropped book is one whose latest fact the
 caller does not count; a replaced book breaks its chain and fails. Counting the card from those
