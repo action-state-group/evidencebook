@@ -98,7 +98,7 @@ fn entries() {
                     .map(|l| (s(&l["log_id"]).to_string(), l["size"].as_u64().unwrap()))
                     .collect();
                 (
-                    sf::format_switch(m["last_tick"].as_u64().unwrap(), logs),
+                    sf::format_switch(m["last_tick"].as_u64().unwrap(), logs).unwrap(),
                     None,
                 )
             }
@@ -114,8 +114,12 @@ fn entries() {
         if let Some((lo, so)) = openings {
             assert_eq!(lo, opening(&e["link_opening"]), "{name}: link opening");
             assert_eq!(so, opening(&e["status_opening"]), "{name}: status opening");
-            lo.verify(s(&doc["link_commitment"])).unwrap();
-            so.verify(s(&doc["status_commitment"])).unwrap();
+            sf::verify_openings(&doc, Some(&lo), Some(&so)).unwrap();
+            sf::verify_openings(&doc, None, Some(&so)).unwrap();
+            assert!(
+                sf::verify_openings(&doc, Some(&so), None).is_err(),
+                "{name}: an opening against the wrong commitment"
+            );
         }
     }
 }
@@ -182,4 +186,27 @@ fn invalid_facts() {
 fn raw_opening_with_lone_surrogate_is_refused() {
     // serde_json refuses the lone surrogate itself, so such an opening never reaches verify.
     assert!(serde_json::from_slice::<Value>(br#"{"x":"\ud800"}"#).is_err());
+}
+
+#[test]
+fn invalid_markers_and_journals() {
+    let v = vectors();
+    for m in v["invalid_markers"].as_array().unwrap() {
+        let mk = &m["marker"];
+        let logs = mk["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| (s(&l["log_id"]).to_string(), l["size"].as_u64().unwrap()))
+            .collect();
+        assert!(
+            sf::format_switch(mk["last_tick"].as_u64().unwrap(), logs).is_err(),
+            "{}",
+            m["name"]
+        );
+    }
+    let z = [0u8; 32];
+    assert!(sf::journal_fact("journal/x", 1, "nothex", 0, [&z, &z]).is_err());
+    assert!(sf::journal_fact("journal/x", 1, &"a".repeat(64), 2, [&z, &z]).is_err());
+    assert!(sf::journal_fact("", 1, &"a".repeat(64), 0, [&z, &z]).is_err());
 }

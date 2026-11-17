@@ -35,6 +35,7 @@ __all__ = [
     "journal_fact",
     "openings_for",
     "stamp_entry",
+    "verify_openings",
 ]
 
 FACT_KIND_BOOK = "book_fact"
@@ -151,6 +152,8 @@ def book_fact(
         raise Invalid("a fact needs its profile, book, log and checkpoint")
     if _count("size", size) < _count("prev_fact_size", prev_fact_size):
         raise Invalid("a fact's size is below its previous fact's")
+    if not (_digest(book_id) and _digest(checkpoint_sha256)):
+        raise Invalid("a fact's book id and checkpoint digest are 64 lowercase hex")
     status = {} if status is _ABSENT else status
     if not isinstance(status, dict):
         raise Invalid("a fact's status is a JSON object")
@@ -164,7 +167,7 @@ def book_fact(
 
 def journal_fact(log_id: str, size: int, checkpoint_sha256: str, prev_fact_size: int, salts: tuple[bytes, bytes]) -> Fact:
     """The journal's fact: book id SHA-256(log id); its sizes and digest only in its status."""
-    if not (log_id and checkpoint_sha256) or _count("size", size) < _count("prev_fact_size", prev_fact_size):
+    if not (log_id and _digest(checkpoint_sha256)) or _count("size", size) < _count("prev_fact_size", prev_fact_size):
         raise Invalid("a journal fact needs its log, checkpoint and sizes")
     lc, lo = commit(salts[0], _link(None, []))
     sc, so = commit(salts[1], {"size": size, "checkpoint_sha256": checkpoint_sha256, "prev_fact_size": prev_fact_size})
@@ -185,6 +188,9 @@ def format_switch(last_tick: int, logs: list[tuple[str, int]]) -> dict[str, Any]
         _check_text(i)
         _count("size", s)
     ordered = sorted(logs, key=lambda x: x[0].encode())
+    ids = [i for i, _ in ordered]
+    if any(not i for i in ids) or len(set(ids)) != len(ids):
+        raise Invalid("the marker lists each log once, by its id")
     return {"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": _count("last_tick", last_tick),
             "logs": [{"log_id": i, "size": s} for i, s in ordered]}
 
@@ -209,3 +215,11 @@ def openings_for(kind: str, audience: str) -> tuple[bool, bool]:
     if audience not in table:
         raise Invalid(f"unknown audience {audience!r}")
     return table[audience]
+
+
+def verify_openings(fact: dict[str, Any], link: Optional[Opening] = None, status: Optional[Opening] = None) -> None:
+    """Checks the openings a reader was handed for a fact (Go ``VerifyOpenings``)."""
+    if link is not None:
+        link.verify(fact["link_commitment"])
+    if status is not None:
+        status.verify(fact["status_commitment"])

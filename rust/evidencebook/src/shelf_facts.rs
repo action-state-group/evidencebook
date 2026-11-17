@@ -150,6 +150,11 @@ pub fn book_fact(input: FactInput, salts: [&[u8]; 2]) -> Result<Fact, Invalid> {
     if input.size < input.prev_fact_size {
         return Err(invalid("a fact's size is below its previous fact's"));
     }
+    if !is_digest(input.book_id) || !is_digest(input.checkpoint_sha256) {
+        return Err(invalid(
+            "a fact's book id and checkpoint digest are 64 lowercase hex",
+        ));
+    }
     let status = input.status.unwrap_or_else(|| json!({}));
     if !status.is_object() {
         return Err(invalid("a fact's status is a JSON object"));
@@ -175,7 +180,7 @@ pub fn journal_fact(
     prev_fact_size: u64,
     salts: [&[u8]; 2],
 ) -> Result<Fact, Invalid> {
-    if log_id.is_empty() || checkpoint_sha256.is_empty() || size < prev_fact_size {
+    if log_id.is_empty() || !is_digest(checkpoint_sha256) || size < prev_fact_size {
         return Err(invalid(
             "a journal fact needs its log, checkpoint and sizes",
         ));
@@ -198,14 +203,41 @@ pub fn stamp_entry(stamp: u64, facts: u64) -> Value {
     json!({"v": 1, "kind": ENTRY_KIND_STAMP, "stamp": stamp, "facts": facts})
 }
 
-/// The migration's marker; `logs` is `(log_id, size)`, sorted here by log id.
-pub fn format_switch(last_tick: u64, mut logs: Vec<(String, u64)>) -> Value {
+/// The migration's marker; `logs` is `(log_id, size)`, sorted here by log id
+/// (UTF-8 byte order), each log once.
+pub fn format_switch(last_tick: u64, mut logs: Vec<(String, u64)>) -> Result<Value, Invalid> {
     logs.sort_by(|a, b| a.0.cmp(&b.0));
+    if logs.iter().any(|l| l.0.is_empty()) || logs.windows(2).any(|w| w[0].0 == w[1].0) {
+        return Err(invalid("the marker lists each log once, by its id"));
+    }
     let logs: Vec<Value> = logs
         .into_iter()
         .map(|(id, size)| json!({"log_id": id, "size": size}))
         .collect();
-    json!({"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": last_tick, "logs": logs})
+    Ok(
+        json!({"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": last_tick, "logs": logs}),
+    )
+}
+
+/// Checks the openings a reader was handed for a fact document: each one
+/// given must recompute its commitment (Go `VerifyOpenings`).
+pub fn verify_openings(
+    fact: &Value,
+    link: Option<&Opening>,
+    status: Option<&Opening>,
+) -> Result<(), Invalid> {
+    let get = |k: &str| {
+        fact[k]
+            .as_str()
+            .ok_or_else(|| invalid(format!("a fact without {k}")))
+    };
+    if let Some(o) = link {
+        o.verify(get("link_commitment")?)?;
+    }
+    if let Some(o) = status {
+        o.verify(get("status_commitment")?)?;
+    }
+    Ok(())
 }
 
 /// A shelf log entry: SHA-256 of the document's RFC 8785 bytes, and those

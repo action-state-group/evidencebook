@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,6 +74,10 @@ type factVectors struct {
 		Name  string          `json:"name"`
 		Input json.RawMessage `json:"input"`
 	} `json:"invalid_facts"`
+	InvalidMarkers []struct {
+		Name   string      `json:"name"`
+		Marker markerInput `json:"marker"`
+	} `json:"invalid_markers"`
 	BadOpenings []struct {
 		Name       string      `json:"name"`
 		Commitment string      `json:"commitment"`
@@ -111,7 +116,9 @@ func buildEntry(t *testing.T, in factVectorInput) factVector {
 	case EntryKindStamp:
 		doc = *in.Stamp
 	case EntryKindFormatSwitch:
-		doc = newFormatSwitch(in.Marker.LastTick, in.Marker.Logs)
+		m, err := newFormatSwitch(in.Marker.LastTick, in.Marker.Logs)
+		require.NoError(t, err)
+		doc = m
 	default:
 		t.Fatalf("unknown kind %q", in.Kind)
 	}
@@ -154,6 +161,10 @@ func TestShelfFactVectors(t *testing.T) {
 	for _, c := range v.InvalidFacts {
 		assert.Error(t, buildInvalid(t, c.Input), c.Name)
 	}
+	for _, m := range v.InvalidMarkers {
+		_, err := newFormatSwitch(m.Marker.LastTick, m.Marker.Logs)
+		assert.ErrorIs(t, err, ErrInvalid, m.Name)
+	}
 	for _, b := range v.BadOpenings {
 		assert.ErrorIs(t, b.Opening.Verify(b.Commitment), ErrInvalid, b.Name)
 	}
@@ -174,6 +185,16 @@ func TestFactErrors(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalid, "a digest checked over twice")
 	_, _, _, err = newBookFact(FactInput{Profile: "deal", BookID: "b", LogID: "l", CheckpointSHA256: "c", Size: 2}, newRandomSource(bytes.NewReader(nil)))
 	assert.Error(t, err, "a random source that runs dry")
+	_, err = newFormatSwitch(1, []LoggedSize{{LogID: "a", Size: 1}, {LogID: "a", Size: 2}})
+	assert.ErrorIs(t, err, ErrInvalid, "a log listed twice")
+	_, _, _, err = newJournalFact("journal/x", JournalStatus{Size: 1, CheckpointSHA256: "nothex"}, r)
+	assert.ErrorIs(t, err, ErrInvalid, "a journal checkpoint digest that is not hex")
+	fact, lo, so, err := newBookFact(FactInput{Profile: "deal", BookID: strings.Repeat("a", 64), LogID: "l", CheckpointSHA256: strings.Repeat("b", 64), Size: 2},
+		saltSource(t, []string{strings.Repeat("01", 32), strings.Repeat("02", 32)}))
+	require.NoError(t, err)
+	require.NoError(t, VerifyOpenings(fact, &lo, &so))
+	require.NoError(t, VerifyOpenings(fact, nil, &so), "an audience handed the status opening only")
+	assert.ErrorIs(t, VerifyOpenings(fact, &so, nil), ErrInvalid, "an opening against the wrong commitment")
 	_, _, err = OpeningsFor("stamp", AudienceOwner)
 	assert.ErrorIs(t, err, ErrInvalid)
 	_, _, err = OpeningsFor(FactKindBook, "stranger")

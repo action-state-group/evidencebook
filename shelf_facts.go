@@ -165,6 +165,9 @@ func newBookFact(in FactInput, random randomSource) (BookFact, FactOpening, Fact
 	if in.Size < in.PrevFactSize {
 		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a fact's size is below its previous fact's", ErrInvalid)
 	}
+	if !isDigest(in.BookID) || !isDigest(in.CheckpointSHA256) {
+		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a fact's book id and checkpoint digest are 64 lowercase hex", ErrInvalid)
+	}
 	status, err := statusValue(in.Status)
 	if err != nil {
 		return BookFact{}, FactOpening{}, FactOpening{}, err
@@ -186,7 +189,7 @@ func newBookFact(in FactInput, random randomSource) (BookFact, FactOpening, Fact
 // journal's log id, and its size, checkpoint digest and previous size are
 // inside its status commitment only.
 func newJournalFact(logID string, status JournalStatus, random randomSource) (BookFact, FactOpening, FactOpening, error) {
-	if logID == "" || status.CheckpointSHA256 == "" || status.Size < status.PrevFactSize {
+	if logID == "" || !isDigest(status.CheckpointSHA256) || status.Size < status.PrevFactSize {
 		return BookFact{}, FactOpening{}, FactOpening{}, fmt.Errorf("%w: a journal fact needs its log, checkpoint and sizes", ErrInvalid)
 	}
 	sum := sha256.Sum256([]byte(logID))
@@ -274,11 +277,35 @@ func EntryID(doc any) ([32]byte, []byte, error) {
 	return sha256.Sum256(jcs), jcs, nil
 }
 
-// newFormatSwitch makes the marker, its logs sorted by log id.
-func newFormatSwitch(lastTick uint64, logs []LoggedSize) FormatSwitch {
+// newFormatSwitch makes the marker, its logs sorted by log id; each log is
+// listed once.
+func newFormatSwitch(lastTick uint64, logs []LoggedSize) (FormatSwitch, error) {
 	sorted := append([]LoggedSize{}, logs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].LogID < sorted[j].LogID })
-	return FormatSwitch{V: 1, Kind: EntryKindFormatSwitch, Format: ShelfFactsFormat, LastTick: lastTick, Logs: sorted}
+	for i := range sorted {
+		if sorted[i].LogID == "" || (i > 0 && sorted[i].LogID == sorted[i-1].LogID) {
+			return FormatSwitch{}, fmt.Errorf("%w: the marker lists each log once, by its id", ErrInvalid)
+		}
+	}
+	return FormatSwitch{V: 1, Kind: EntryKindFormatSwitch, Format: ShelfFactsFormat, LastTick: lastTick, Logs: sorted}, nil
+}
+
+// VerifyOpenings checks the openings a reader was handed for a fact: each one
+// given (nil is not given) must recompute its commitment. Which openings an
+// audience may be handed is OpeningsFor's; the shelf's per-book Openings call
+// lands with the stamp (docs/design/461-shelf-facts.md §6, part 2).
+func VerifyOpenings(fact BookFact, link, status *FactOpening) error {
+	if link != nil {
+		if err := link.Verify(fact.LinkCommitment); err != nil {
+			return fmt.Errorf("link opening: %w", err)
+		}
+	}
+	if status != nil {
+		if err := status.Verify(fact.StatusCommitment); err != nil {
+			return fmt.Errorf("status opening: %w", err)
+		}
+	}
+	return nil
 }
 
 // Audience is who an opening is handed to (§2.2).

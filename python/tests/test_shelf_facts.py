@@ -43,8 +43,10 @@ def test_entry(e):
     if fact is not None:
         assert fact.link_opening.to_json() == e["link_opening"]
         assert fact.status_opening.to_json() == e["status_opening"]
-        fact.link_opening.verify(doc["link_commitment"])
-        fact.status_opening.verify(doc["status_commitment"])
+        sf.verify_openings(doc, fact.link_opening, fact.status_opening)
+        sf.verify_openings(doc, status=fact.status_opening)
+        with pytest.raises(sf.Invalid):
+            sf.verify_openings(doc, link=fact.status_opening)
 
 
 @pytest.mark.parametrize("a", V["audiences"], ids=lambda a: f"{a['kind']}-{a['audience']}")
@@ -83,3 +85,18 @@ def test_lone_surrogate_and_bad_counts():
         sf.stamp_entry(True, 1)
     with pytest.raises(sf.Invalid):
         sf.format_switch(-1, [])
+
+
+@pytest.mark.parametrize("m", V["invalid_markers"], ids=lambda m: m["name"])
+def test_invalid_marker(m):
+    with pytest.raises(sf.Invalid):
+        sf.format_switch(m["marker"]["last_tick"], [(x["log_id"], x["size"]) for x in m["marker"]["logs"]])
+
+
+def test_journal_errors():
+    z = (bytes(32), bytes(32))
+    for args in [("journal/x", 1, "nothex", 0), ("journal/x", 1, "a" * 64, 2), ("", 1, "a" * 64, 0)]:
+        with pytest.raises(sf.Invalid):
+            sf.journal_fact(*args, z)
+    with pytest.raises(sf.Invalid):
+        sf.book_fact(profile="deal", book_id="a" * 64, log_id="l", size=1, checkpoint_sha256="b" * 64, prev_fact_size=0, status=[1], salts=z)
