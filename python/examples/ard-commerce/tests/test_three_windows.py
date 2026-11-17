@@ -37,7 +37,7 @@ def stage_env(tmp_path_factory):
     home = tmp_path_factory.mktemp("three-windows")
     with World(home) as world:
         seed.seed(world, say=lambda *_: None, kestrel_card="sentinel")
-    env = {**os.environ, "ARD_HOME": str(home), "ARD_RAIL": "fake", "ARD_KESTREL_CARD": "sentinel",
+    env = {**os.environ, "ARD_HOME": str(home), "ARD_RAIL": "fake", "ARD_APPROVAL": "none", "ARD_KESTREL_CARD": "sentinel",
            "ARD_RELAY_PORT": str(_free_port()), "ARD_STAGE_PORT": str(_free_port())}
     stage = subprocess.Popen([sys.executable, str(HERE / "stage.py"), str(home)], env=env, stdout=subprocess.DEVNULL)
     yield env
@@ -85,5 +85,5 @@ def test_three_windows_run_the_story(stage_env):
     assert "Kestrel Print      LIMIT:" in out["assess"].split("4b  Assessment again")[1]
     assert "no deal opens and nothing is paid" in out["kestrel"]
     assert "answered a signed evidence request" in out["kestrel_side"] and "a buyer asks to buy" not in out["kestrel_side"]
-    assert "invoice 289 msat" in out["pay"] and "deal closed with Alder Print Co." in out["pay"]
+    assert "approval gate off" in out["pay"] and "invoice 289 msat" in out["pay"] and "deal closed with Alder Print Co." in out["pay"]
     assert "a buyer asks to buy" in out["alder_side"] and "deal closed: both closes name 289 msat" in out["alder_side"]

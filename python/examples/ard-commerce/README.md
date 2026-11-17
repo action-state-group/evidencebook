@@ -111,6 +111,11 @@ Trust and Execute. Tile the windows with Window, Move & Resize. Keep the global 
 `ard_demo` extension off. `ARD_ROLE=all` (the default of `desktop_server.py`) runs the whole story in one
 process and one window, with Maya's five tools.
 
+The payment gate. `ard_pay` never pays on the agent's word: before it moves anything it shows a native macOS dialog on
+the presenter's screen (payee, amount, real or simulated rail; Cancel is the default) and pays only if the presenter
+clicks Pay. The agent neither sees nor answers that dialog, so it cannot pay in one turn; Cancel, a timeout or no screen
+refuses and pays nothing. `ARD_APPROVAL=none` in the extension command turns the gate off (tests only; the tool says so).
+
 Things to know. Goose Desktop keeps environment values of a custom extension as secrets it does not pass
 to the server, so the recipes put them in the command (`/usr/bin/env`). One Goose chat per party and home:
 a second chat's server refuses to start. A Claude-backed provider (Claude Code ACP) reads the account's own

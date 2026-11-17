@@ -107,6 +107,23 @@ class Session:
             raise
 
 
+def approve_payment(summary: str) -> bool:
+    """The presenter's approval, out of band: a native dialog on the presenter's screen that the agent neither reads
+    nor answers through the chat (a code returned in the tool's output would reach the agent, which could reuse it in
+    the same turn). True only for the Pay button; Cancel, a timeout, no screen or any error is a refusal.
+    ``ARD_APPROVAL=none`` turns the gate off (tests only; the tool says so in its output)."""
+    import subprocess
+
+    text = summary.replace("\\", " ").replace('"', "'")
+    script = (f'display dialog "{text}" with title "ARD demo: approve this payment" buttons {{"Cancel", "Pay"}} '
+              'default button "Cancel" cancel button "Cancel" with icon caution giving up after 180')
+    try:
+        run = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=200)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return run.returncode == 0 and "button returned:Pay" in run.stdout and "gave up:true" not in run.stdout
+
+
 _session: Session | None = None
 _seller: parties.Seller | None = None
 
@@ -234,7 +251,16 @@ def ard_pay(seller: str) -> None:
         raise RuntimeError(f"no sealed pick of {SELLERS[key]['label']} within its limit: call ard_pick first")
     if key in s.paid:
         raise RuntimeError(f"{SELLERS[key]['label']} was already paid in this run")
-    s.paid.add(key)  # before the payment: a failure mid-way must not be retried blindly (check Brattain's balance)
+    rail_name = os.environ.get("ARD_RAIL", "fake")
+    real = rail_name in ("lightning", "local")
+    summary = (f"Pay {SELLERS[key]['label']} {screens.msat(s.assessed[key].price_msat)} on the "
+               + ("REAL Lightning rail: this moves real money." if real else "simulated rail: no money moves."))
+    if os.environ.get("ARD_APPROVAL") == "none":
+        print("(approval gate off: ARD_APPROVAL=none)")
+    elif not approve_payment(summary):
+        raise RuntimeError("the presenter did not approve this payment (the approval dialog was cancelled, timed out or "
+                           "could not be shown): nothing was paid. Ask the presenter to try again.")
+    s.paid.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
     if ROLE == "all":
         s.run.pay_deal(s.assessed, key, s.picked[key])
         return

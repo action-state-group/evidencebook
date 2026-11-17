@@ -37,7 +37,7 @@ def test_out_of_order_calls_are_refused_and_change_nothing(tools):
     assert "REFUSED: call ard_show_history first" in tools.ard_assess()
 
 
-def test_the_story_find_history_assess_limit_then_pay(tools):
+def test_the_story_find_history_assess_limit_then_pay(tools, monkeypatch):
     found = tools.ard_find_sellers()
     assert "Alder Print Co." in found and "Kestrel Print" in found and "commitment verified" in found
     history = tools.ard_show_history()
@@ -50,11 +50,19 @@ def test_the_story_find_history_assess_limit_then_pay(tools):
     assert "REFUSED: no sealed pick of Alder" in tools.ard_pay("alder")
     limit = tools.ard_pick("kestrel")
     assert "over this seller's limit" in limit and "no deal opens and nothing is paid" in limit
+    monkeypatch.setattr(tools, "approve_payment", lambda summary: pytest.fail("a refused pay must not ask for approval"))
     assert "REFUSED: no sealed pick of Kestrel" in tools.ard_pay("kestrel")
     assert tools._session.run.rail.paid == []
 
     assert "within its limit" in tools.ard_pick("alder")
+    # The approval gate: the presenter's dialog decides, never the agent. A refusal pays nothing and can be retried.
+    monkeypatch.setattr(tools, "approve_payment", lambda summary: False)
+    refused = tools.ard_pay("alder")
+    assert "the presenter did not approve" in refused and tools._session.run.rail.paid == []
+    asked: list[str] = []
+    monkeypatch.setattr(tools, "approve_payment", lambda summary: asked.append(summary) or True)
     paid = tools.ard_pay("alder")
+    assert asked == ["Pay Alder Print Co. 289 msat on the simulated rail: no money moves."]
     assert "invoice 289 msat" in paid and "Alder Print Co.'s card now counts 49 deals" in paid
     assert tools._session.run.rail.paid == [289]
     assert "REFUSED: Alder Print Co. was already paid" in tools.ard_pay("alder")
