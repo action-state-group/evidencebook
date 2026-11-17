@@ -162,27 +162,16 @@ func (k actKind) checkAction() string {
 // actCheck is the check an act cites (nil for none) and its kind; ok is
 // false for a record that is not an act.
 func actCheck(r Record) (check *Ref, kind actKind, ok bool) {
-	if b, isPerform := bodyAs[PerformBody](r.Body); isPerform {
+	if b, isPerform := bodyOf[PerformBody](r.Body); isPerform {
 		return b.Check, actPerform, true
 	}
-	if b, isSettle := bodyAs[SettleBody](r.Body); isSettle {
+	if b, isSettle := bodyOf[SettleBody](r.Body); isSettle {
 		if b.Reverses != nil {
 			return b.Check, actRefund, true
 		}
 		return b.Check, actPay, true
 	}
 	return nil, "", false
-}
-
-// bodyAs is a body of type T, held as a value or a pointer.
-func bodyAs[T any](b Body) (*T, bool) {
-	switch x := any(b).(type) {
-	case T:
-		return &x, true
-	case *T:
-		return x, x != nil
-	}
-	return nil, false
 }
 
 func parseAt(r Record) (time.Time, error) {
@@ -258,10 +247,10 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 		}
 		switch r.Block.RecordType {
 		case TypeIntent:
-			b, _ := bodyAs[dealprofile.IntentBody](r.Body)
+			b, _ := bodyOf[dealprofile.IntentBody](r.Body)
 			lim.narrow(b)
 		case TypeCheck:
-			b, _ := bodyAs[CheckBody](r.Body)
+			b, _ := bodyOf[CheckBody](r.Body)
 			w.check[i] = b
 		case TypeVerdict:
 			j, err := one("checks", TypeCheck)
@@ -275,16 +264,16 @@ func walkJournal(journal []Record) (*journalWalk, error) {
 				return nil, bad("a check has one verdict")
 			}
 			w.verdictOf[j] = i
-			w.verdict[i], _ = bodyAs[dealprofile.VerdictBody](r.Body)
+			w.verdict[i], _ = bodyOf[dealprofile.VerdictBody](r.Body)
 		case TypeApproval:
-			b, _ := bodyAs[dealprofile.ApprovalBody](r.Body)
+			b, _ := bodyOf[dealprofile.ApprovalBody](r.Body)
 			w.approval[i] = b
 			if b.Choice == ChoiceConfirm {
 				j, err := one("approves", TypeIntent)
 				if err != nil {
 					return nil, err
 				}
-				prop, _ := bodyAs[dealprofile.IntentBody](journal[j].Body)
+				prop, _ := bodyOf[dealprofile.IntentBody](journal[j].Body)
 				if err := lim.confirm(b, prop, confirmed[j] || intentBetween(journal, j, i)); err != nil {
 					return nil, bad("%v", err)
 				}
@@ -370,13 +359,13 @@ func (w *journalWalk) changesDetails(k int) bool {
 	case TypeMessage:
 		return r.Block.Counterparty != nil
 	case TypeEvidence:
-		b, _ := bodyAs[dealprofile.EvidenceBody](r.Body)
+		b, _ := bodyOf[dealprofile.EvidenceBody](r.Body)
 		return r.Block.Counterparty != nil || (b != nil && b.CounterpartyFacts != nil)
 	case TypeIntent:
-		b, _ := bodyAs[dealprofile.IntentBody](r.Body)
+		b, _ := bodyOf[dealprofile.IntentBody](r.Body)
 		return r.Block.Counterparty != nil || (b != nil && b.Move != "" && b.Asked != nil && b.Asked.Item != "")
 	case TypeAgentMove:
-		b, _ := bodyAs[dealprofile.AgentMoveBody](r.Body)
+		b, _ := bodyOf[dealprofile.AgentMoveBody](r.Body)
 		return b != nil && b.Move == "chose"
 	}
 	return false
