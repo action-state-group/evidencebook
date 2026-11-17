@@ -96,7 +96,39 @@ pub struct Fact {
     pub status_opening: Opening,
 }
 
+fn is_digest(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+}
+
+/// `last_received` is exactly `{log_id, size, record_digest}`, as Go's
+/// `ReceivedPosition` is.
+fn check_last_received(v: &Value) -> Result<(), Invalid> {
+    let bad = || invalid("last_received is exactly {log_id, size, record_digest}");
+    let m = v.as_object().ok_or_else(bad)?;
+    if m.len() != 3 {
+        return Err(bad());
+    }
+    let log = m.get("log_id").and_then(Value::as_str).ok_or_else(bad)?;
+    m.get("size").and_then(Value::as_u64).ok_or_else(bad)?;
+    let digest = m
+        .get("record_digest")
+        .and_then(Value::as_str)
+        .ok_or_else(bad)?;
+    if log.is_empty() || !is_digest(digest) {
+        return Err(bad());
+    }
+    Ok(())
+}
+
 fn link_value(last: Option<Value>, mut over: Vec<String>) -> Result<Value, Invalid> {
+    if let Some(l) = &last {
+        check_last_received(l)?;
+    }
+    if !over.iter().all(|d| is_digest(d)) {
+        return Err(invalid("a checked-over digest is 64 lowercase hex"));
+    }
     over.sort();
     if over.windows(2).any(|w| w[0] == w[1]) {
         return Err(invalid("a digest checked over twice"));

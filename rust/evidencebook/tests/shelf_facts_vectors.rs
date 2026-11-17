@@ -141,3 +141,45 @@ fn audiences_and_bad_openings() {
     assert!(sf::openings_for("stamp", "owner").is_err());
     assert!(sf::openings_for(sf::FACT_KIND_BOOK, "stranger").is_err());
 }
+
+#[test]
+fn invalid_facts() {
+    let v = vectors();
+    for c in v["invalid_facts"].as_array().unwrap() {
+        let name = s(&c["name"]);
+        let input = &c["input"];
+        let f = &input["fact"];
+        let salt = salts(input);
+        let link = &f["link"];
+        let (Some(size), Some(prev)) = (f["size"].as_u64(), f["prev_fact_size"].as_u64()) else {
+            continue; // a size that is no u64 cannot be expressed: refused by the type
+        };
+        let got = sf::book_fact(
+            FactInput {
+                profile: s(&f["profile"]),
+                book_id: s(&f["book_id"]),
+                log_id: s(&f["log_id"]),
+                size,
+                checkpoint_sha256: s(&f["checkpoint_sha256"]),
+                prev_fact_size: prev,
+                last_received: (!link["last_received"].is_null())
+                    .then(|| link["last_received"].clone()),
+                checked_over: link["checked_over"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| s(x).to_string())
+                    .collect(),
+                status: f.get("status").cloned(),
+            },
+            [&salt[0], &salt[1]],
+        );
+        assert!(got.is_err(), "{name} was accepted");
+    }
+}
+
+#[test]
+fn raw_opening_with_lone_surrogate_is_refused() {
+    // serde_json refuses the lone surrogate itself, so such an opening never reaches verify.
+    assert!(serde_json::from_slice::<Value>(br#"{"x":"\ud800"}"#).is_err());
+}

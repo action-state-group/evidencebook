@@ -19,7 +19,7 @@ def _build(inp):
         fact = sf.book_fact(profile=f["profile"], book_id=f["book_id"], log_id=f["log_id"], size=f["size"],
                             checkpoint_sha256=f["checkpoint_sha256"], prev_fact_size=f["prev_fact_size"],
                             last_received=f["link"]["last_received"], checked_over=f["link"]["checked_over"],
-                            status=f.get("status"), salts=salts)
+                            status=f["status"] if "status" in f else sf._ABSENT, salts=salts)
         return fact.doc, fact
     if kind == sf.FACT_KIND_JOURNAL:
         j = inp["journal"]
@@ -68,3 +68,18 @@ def test_errors():
         sf.openings_for("stamp", "owner")
     with pytest.raises(sf.Invalid):
         sf.openings_for(sf.FACT_KIND_BOOK, "stranger")
+
+
+@pytest.mark.parametrize("c", V["invalid_facts"], ids=lambda c: c["name"])
+def test_invalid_fact(c):
+    with pytest.raises(sf.Invalid):
+        _build(c["input"])
+
+
+def test_lone_surrogate_and_bad_counts():
+    with pytest.raises(sf.Invalid):
+        sf.commit(bytes(32), {"x": "\ud800"})
+    with pytest.raises(sf.Invalid):
+        sf.stamp_entry(True, 1)
+    with pytest.raises(sf.Invalid):
+        sf.format_switch(-1, [])

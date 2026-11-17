@@ -66,9 +66,13 @@ type audienceVector struct {
 }
 
 type factVectors struct {
-	About       string           `json:"about"`
-	Entries     []factVector     `json:"entries"`
-	Audiences   []audienceVector `json:"audiences"`
+	About        string           `json:"about"`
+	Entries      []factVector     `json:"entries"`
+	Audiences    []audienceVector `json:"audiences"`
+	InvalidFacts []struct {
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	} `json:"invalid_facts"`
 	BadOpenings []struct {
 		Name       string      `json:"name"`
 		Commitment string      `json:"commitment"`
@@ -147,6 +151,9 @@ func TestShelfFactVectors(t *testing.T) {
 		assert.Equal(t, a.Link, link, "%s/%s link", a.Kind, a.Audience)
 		assert.Equal(t, a.Status, status, "%s/%s status", a.Kind, a.Audience)
 	}
+	for _, c := range v.InvalidFacts {
+		assert.Error(t, buildInvalid(t, c.Input), c.Name)
+	}
 	for _, b := range v.BadOpenings {
 		assert.ErrorIs(t, b.Opening.Verify(b.Commitment), ErrInvalid, b.Name)
 	}
@@ -181,4 +188,30 @@ func sameOpening(t *testing.T, want, got *FactOpening, name string) {
 	}
 	assert.Equal(t, want.Salt, got.Salt, name)
 	assert.JSONEq(t, string(want.Value), string(got.Value), name)
+}
+
+// buildInvalid reads an input strictly (no unknown members, the members'
+// own types) and builds it, returning the first refusal.
+func buildInvalid(t *testing.T, raw json.RawMessage) error {
+	t.Helper()
+	var in factVectorInput
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&in); err != nil {
+		return err
+	}
+	f := in.Fact
+	_, _, _, err := newBookFact(FactInput{Profile: f.Profile, BookID: f.BookID, LogID: f.LogID, Size: f.Size,
+		CheckpointSHA256: f.CheckpointSHA256, PrevFactSize: f.PrevFactSize, Link: f.Link, Status: f.Status}, saltSource(t, in.Salts))
+	return err
+}
+
+func TestFactOpeningRawText(t *testing.T) {
+	commitment, opening, err := commit(make([]byte, 32), map[string]any{"x": "\ufffd"})
+	require.NoError(t, err)
+	require.NoError(t, opening.Verify(commitment))
+	forged := FactOpening{Salt: opening.Salt, Value: json.RawMessage(`{"x":"\ud800"}`)}
+	assert.ErrorIs(t, forged.Verify(commitment), ErrInvalid, "a lone surrogate Go would read as U+FFFD")
+	bad := FactOpening{Salt: opening.Salt, Value: json.RawMessage("{\"x\":\"\xff\"}")}
+	assert.ErrorIs(t, bad.Verify(commitment), ErrInvalid, "invalid UTF-8")
 }

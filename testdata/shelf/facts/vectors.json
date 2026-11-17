@@ -1,5 +1,5 @@
 {
- "about": "Shelf log entry documents (evidencebook#461, docs/design/461-shelf-facts.md section 2): each entry's doc is the RFC 8785 bytes whose SHA-256 is entry_id; a fact's openings recompute its commitments; audiences say which openings each may have; bad_openings must all be refused. Written by shelf_facts_vectors_test.go (EB_WRITE_SHELF_VECTORS=1).",
+ "about": "Shelf log entry documents (evidencebook#461, docs/design/461-shelf-facts.md section 2): each entry's doc is the RFC 8785 bytes whose SHA-256 is entry_id; a fact's openings recompute its commitments; audiences say which openings each may have; bad_openings must all be refused. Written by shelf_facts_vectors_test.go (EB_WRITE_SHELF_VECTORS=1); invalid_facts must all be refused by every reader.",
  "entries": [
   {
    "name": "deal-fact",
@@ -431,6 +431,224 @@
    "opening": {
     "salt": "52E05FCDEC2BE8F05C4EF28985F2AE70F2B4E3CE6DC62A7829F3AEAFDDB4F6E2",
     "value": {}
+   }
+  }
+ ],
+ "invalid_facts": [
+  {
+   "name": "float-in-status",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     },
+     "status": {
+      "x": 1.5
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "null-status",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     },
+     "status": null
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "array-status",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     },
+     "status": [
+      1
+     ]
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "last-received-empty",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {},
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "last-received-extra-member",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": 4,
+       "record_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+       "note": "x"
+      },
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "last-received-bad-digest",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": {
+       "log_id": "deal/91aa",
+       "size": 4,
+       "record_digest": "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
+      },
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "checked-over-not-a-digest",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 7,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": [
+       "abc"
+      ]
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "negative-size",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": -1,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
+   }
+  },
+  {
+   "name": "size-below-previous",
+   "input": {
+    "kind": "book_fact",
+    "fact": {
+     "profile": "deal",
+     "book_id": "7d1f000000000000000000000000000000000000000000000000000000000000",
+     "log_id": "deal/2f1c",
+     "size": 3,
+     "checkpoint_sha256": "abababababababababababababababababababababababababababababababab",
+     "prev_fact_size": 4,
+     "link": {
+      "last_received": null,
+      "checked_over": []
+     }
+    },
+    "salts": [
+     "52e05fcdec2be8f05c4ef28985f2ae70f2b4e3ce6dc62a7829f3aeafddb4f6e2",
+     "46d329197fe8a74914ed6d5b825dc95fc48704b4fd460449047117b7796c9847"
+    ]
    }
   }
  ]

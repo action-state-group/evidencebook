@@ -8,8 +8,11 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // The entry documents of a shelf log of book facts (evidencebook#461,
@@ -123,6 +126,9 @@ func (o FactOpening) Verify(commitment string) error {
 	if err != nil || len(salt) != 32 || hex.EncodeToString(salt) != o.Salt {
 		return fmt.Errorf("%w: an opening's salt is 32 bytes in lowercase hex", ErrInvalid)
 	}
+	if err := validJSONText(o.Value); err != nil {
+		return fmt.Errorf("%w: an opening's value: %v", ErrInvalid, err)
+	}
 	value, err := decodeJSON(o.Value)
 	if err != nil {
 		return fmt.Errorf("%w: an opening's value: %v", ErrInvalid, err)
@@ -216,9 +222,16 @@ func commitBoth(link, status any, random randomSource) (string, FactOpening, str
 	return linkC, linkO, statusC, statusO, nil
 }
 
+// statusValue is the profile's status: absent is {}, and anything else must
+// be a JSON object (null included is refused). Its numbers are integers, as
+// every value the layer canonicalizes (AAC §5.1 refuses floats in
+// digest-bearing values, in Go, Rust and Python alike).
 func statusValue(raw json.RawMessage) (any, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return map[string]any{}, nil
+	}
+	if err := validJSONText(raw); err != nil {
+		return nil, fmt.Errorf("%w: a fact's status: %v", ErrInvalid, err)
 	}
 	v, err := decodeJSON(raw)
 	if err != nil {
@@ -230,9 +243,18 @@ func statusValue(raw json.RawMessage) (any, error) {
 	return v, nil
 }
 
-// linkValue sorts the checked-over digests, as the design fixes them.
+// linkValue checks the link's members and sorts the checked-over digests,
+// as the design fixes them.
 func linkValue(l LinkValue) (LinkValue, error) {
+	if r := l.LastReceived; r != nil && (r.LogID == "" || !isDigest(r.RecordDigest)) {
+		return LinkValue{}, fmt.Errorf("%w: last_received needs its log id and a SHA-256 record digest", ErrInvalid)
+	}
 	over := append([]string{}, l.CheckedOver...)
+	for _, d := range over {
+		if !isDigest(d) {
+			return LinkValue{}, fmt.Errorf("%w: a checked-over digest is 64 lowercase hex", ErrInvalid)
+		}
+	}
 	sort.Strings(over)
 	for i := 1; i < len(over); i++ {
 		if over[i] == over[i-1] {
@@ -308,4 +330,68 @@ func OpeningsFor(kind string, audience Audience) (link, status bool, err error) 
 		return false, false, fmt.Errorf("%w: no openings for %q", ErrInvalid, kind)
 	}
 	return false, false, fmt.Errorf("%w: unknown audience %q", ErrInvalid, audience)
+}
+
+func isDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// validJSONText refuses invalid UTF-8 and an escaped surrogate that is not
+// part of a pair, which Go's decoder would silently replace with U+FFFD where
+// Rust refuses it and Python keeps it.
+func validJSONText(b []byte) error {
+	if !utf8.Valid(b) {
+		return errors.New("invalid UTF-8")
+	}
+	inString := false
+	for i := 0; i < len(b); i++ {
+		switch {
+		case !inString:
+			inString = b[i] == '"'
+		case b[i] == '"':
+			inString = false
+		case b[i] == '\\' && i+1 < len(b):
+			i++
+			if b[i] != 'u' || i+4 >= len(b) {
+				continue
+			}
+			r := hex4(b[i+1 : i+5])
+			i += 4
+			if !utf16.IsSurrogate(r) {
+				continue
+			}
+			if r >= 0xdc00 || i+6 >= len(b) || b[i+1] != '\\' || b[i+2] != 'u' {
+				return errors.New("an unpaired surrogate")
+			}
+			if lo := hex4(b[i+3 : i+7]); lo < 0xdc00 || lo > 0xdfff {
+				return errors.New("an unpaired surrogate")
+			}
+			i += 6
+		}
+	}
+	return nil
+}
+
+func hex4(b []byte) rune {
+	var r rune
+	for _, c := range b {
+		r <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			r |= rune(c - '0')
+		case c >= 'a' && c <= 'f':
+			r |= rune(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			r |= rune(c-'A') + 10
+		}
+	}
+	return r
 }

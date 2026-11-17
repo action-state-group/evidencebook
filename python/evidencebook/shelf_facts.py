@@ -72,7 +72,11 @@ def commit(salt: bytes, value: Any) -> tuple[str, Opening]:
     """``hex(SHA-256(salt || JCS(value)))`` and the opening."""
     if len(salt) != 32:
         raise Invalid("a commitment's salt is 32 bytes")
-    body = jcs(value)
+    _check_text(value)
+    try:
+        body = jcs(value)
+    except Exception as e:  # the AAC canonicalizer's own refusals (a float, among them)
+        raise Invalid(f"a committed value: {e}") from None
     return hashlib.sha256(salt + body).hexdigest(), Opening(salt.hex(), json.loads(body))
 
 
@@ -83,7 +87,45 @@ class Fact:
     status_opening: Opening
 
 
+_ABSENT: Any = object()
+
+
+def _count(name: str, v: Any) -> int:
+    """A size or count: a non-negative integer, never a bool (Go and Rust hold them as unsigned)."""
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0 or v >= 2**64:
+        raise Invalid(f"{name} is a non-negative integer")
+    return v
+
+
+def _digest(s: Any) -> bool:
+    return isinstance(s, str) and len(s) == 64 and all(c in "0123456789abcdef" for c in s)
+
+
+def _check_text(v: Any) -> None:
+    """Every string, member names included, is valid UTF-8 (no lone surrogate), as Go and Rust require."""
+    if isinstance(v, str):
+        try:
+            v.encode("utf-8")
+        except UnicodeEncodeError:
+            raise Invalid("a string holds an unpaired surrogate") from None
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            _check_text(k)
+            _check_text(x)
+    elif isinstance(v, list):
+        for x in v:
+            _check_text(x)
+
+
 def _link(last_received: Optional[dict[str, Any]], checked_over: list[str]) -> dict[str, Any]:
+    if last_received is not None:
+        if not isinstance(last_received, dict) or set(last_received) != {"log_id", "size", "record_digest"}:
+            raise Invalid("last_received is exactly {log_id, size, record_digest}")
+        if not isinstance(last_received["log_id"], str) or not last_received["log_id"] or not _digest(last_received["record_digest"]):
+            raise Invalid("last_received needs its log id and a SHA-256 record digest")
+        _count("last_received.size", last_received["size"])
+    if not all(_digest(d) for d in checked_over):
+        raise Invalid("a checked-over digest is 64 lowercase hex")
     over = sorted(checked_over)
     if len(set(over)) != len(over):
         raise Invalid("a digest checked over twice")
@@ -100,15 +142,16 @@ def book_fact(
     prev_fact_size: int,
     last_received: Optional[dict[str, Any]] = None,
     checked_over: Optional[list[str]] = None,
-    status: Optional[dict[str, Any]] = None,
+    status: Any = _ABSENT,
     salts: tuple[bytes, bytes],
 ) -> Fact:
-    """A book fact; ``salts`` is the link salt, then the status salt."""
+    """A book fact; ``salts`` is the link salt, then the status salt. An absent status is ``{}``;
+    ``None`` (JSON null) is refused, as Go and Rust refuse it."""
     if not (profile and book_id and log_id and checkpoint_sha256):
         raise Invalid("a fact needs its profile, book, log and checkpoint")
-    if size < prev_fact_size:
+    if _count("size", size) < _count("prev_fact_size", prev_fact_size):
         raise Invalid("a fact's size is below its previous fact's")
-    status = {} if status is None else status
+    status = {} if status is _ABSENT else status
     if not isinstance(status, dict):
         raise Invalid("a fact's status is a JSON object")
     lc, lo = commit(salts[0], _link(last_received, checked_over or []))
@@ -121,7 +164,7 @@ def book_fact(
 
 def journal_fact(log_id: str, size: int, checkpoint_sha256: str, prev_fact_size: int, salts: tuple[bytes, bytes]) -> Fact:
     """The journal's fact: book id SHA-256(log id); its sizes and digest only in its status."""
-    if not (log_id and checkpoint_sha256) or size < prev_fact_size:
+    if not (log_id and checkpoint_sha256) or _count("size", size) < _count("prev_fact_size", prev_fact_size):
         raise Invalid("a journal fact needs its log, checkpoint and sizes")
     lc, lo = commit(salts[0], _link(None, []))
     sc, so = commit(salts[1], {"size": size, "checkpoint_sha256": checkpoint_sha256, "prev_fact_size": prev_fact_size})
@@ -133,13 +176,16 @@ def journal_fact(log_id: str, size: int, checkpoint_sha256: str, prev_fact_size:
 
 def stamp_entry(stamp: int, facts: int) -> dict[str, Any]:
     """The entry that ends every stamp."""
-    return {"v": 1, "kind": ENTRY_KIND_STAMP, "stamp": stamp, "facts": facts}
+    return {"v": 1, "kind": ENTRY_KIND_STAMP, "stamp": _count("stamp", stamp), "facts": _count("facts", facts)}
 
 
 def format_switch(last_tick: int, logs: list[tuple[str, int]]) -> dict[str, Any]:
     """The migration's marker, its logs sorted by log id (UTF-8 byte order)."""
+    for i, s in logs:
+        _check_text(i)
+        _count("size", s)
     ordered = sorted(logs, key=lambda x: x[0].encode())
-    return {"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": last_tick,
+    return {"v": 1, "kind": ENTRY_KIND_FORMAT_SWITCH, "format": SHELF_FACTS_FORMAT, "last_tick": _count("last_tick", last_tick),
             "logs": [{"log_id": i, "size": s} for i, s in ordered]}
 
 
