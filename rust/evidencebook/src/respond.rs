@@ -50,7 +50,7 @@ pub const PROFILE_ID: &str = crate::ask::PROFILE_ID;
 /// answers [`PROFILE_ID`].
 pub const PROFILE_V1: &str = evidence_request::envelope::PROFILE_V1;
 
-/// The profile identifiers this responder answers. evidence-request 0.5.0 also
+/// The profile identifiers this responder answers. evidence-request 0.6.0 also
 /// implements `evidence-interop/2`, which the book does not answer: a request
 /// naming it is `request_malformed`, as in the Go and Python books.
 pub(crate) const ANSWERED_PROFILES: [&str; 2] = [

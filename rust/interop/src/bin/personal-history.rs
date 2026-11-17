@@ -128,7 +128,7 @@ fn main() {
             let c = &cp.checkpoint;
             checkpoints.push(json!({
                 "expected_pin": anchor_digest(&cp), "tree_size": c.mmr_size,
-                "log_key": {"iss": c.log_id, "sub": format!("{}#{}", c.log_id, c.mmr_size), "kid": c.key_id},
+                "log_key": {"iss": c.log_id, "sub": c.log_id, "kid": c.key_id},
             }));
         }
     }

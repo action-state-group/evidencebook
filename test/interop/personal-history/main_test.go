@@ -19,19 +19,13 @@ import (
 
 // The agent-action-capsule commit whose vectors/personal-history-basic-v0/
 // this command reproduces, and the SHA-256 of the files the guide relies on
-// there. testdata/vectors.json is that commit's vectors.json, unchanged.
-//
-// producerSHA256 is this repository's main.go. It differs from that commit's
-// producer/main.go (SHA-256 e9054656...f7c38e) where the book's payload store
-// became its artifact store (Config.Originals, capsule-cli#236), which the
-// corpus's evidencebook commit predates, and in its -correlated mode (#82),
-// which leaves the default run unchanged. producer.diff is the whole difference, and CI
-// checks it against the corpus. When the corpus next pins evidencebook, its
-// producer/main.go takes this file.
+// there. testdata/vectors.json is that commit's vectors.json, unchanged, and
+// main.go is that commit's producer/main.go, unchanged (CI compares it with the
+// corpus's copy).
 const (
-	aacCommit      = "9d653f41419d2d2bac4714137b763315947ec754"
-	vectorsSHA256  = "f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9"
-	producerSHA256 = "c2ed0caca48a37121e194d03e407f6a9ac38bac01c4f5eeb984ad800125e5d63"
+	aacCommit      = "f143a18edb42f499a8837beeef1588fd70f71835"
+	vectorsSHA256  = "884ca5aaf0751a4beec7c9c2215212f81edbe9c7d3f18c0a4592fdb5896859ad"
+	producerSHA256 = "451cdd37b70884581d95e9e0e0d2a4106d96899a2c79c20a46c34614243634fd"
 )
 
 var (
@@ -222,7 +216,7 @@ func TestRunIsThePublishedRun(t *testing.T) {
 // still describes the corpus README's copy step.
 func TestProducerIsTheCorpusProducer(t *testing.T) {
 	if got := sha(readFile(t, "main.go")); got != producerSHA256 {
-		t.Fatalf("main.go has SHA-256 %s, not the pinned %s: update producerSHA256 and producer.diff together", got, producerSHA256)
+		t.Fatalf("main.go has SHA-256 %s, not the pinned %s: update producerSHA256 together with the corpus pin", got, producerSHA256)
 	}
 }
 
@@ -271,7 +265,7 @@ func TestCorpusIsCutFromTheRun(t *testing.T) {
 			}
 		}
 	}
-	if c.Count != 14 || len(c.Cases) != 14 || responder != 5 {
+	if c.Count != 23 || len(c.Cases) != 23 || responder != 5 {
 		t.Errorf("corpus: %d cases (count %d), %d from the responder", len(c.Cases), c.Count, responder)
 	}
 }
@@ -395,12 +389,22 @@ func TestGuideQuotesTheCorpus(t *testing.T) {
 		if !slices.Equal(p.TrustPolicy.ResponderKeys, keys) {
 			t.Errorf("%s: responder keys %v, the guide says %v", vc.ID, p.TrustPolicy.ResponderKeys, keys)
 		}
-		if len(p.TrustPolicy.LogKeys) != len(out.Checkpoints) {
-			t.Errorf("%s: %d log keys", vc.ID, len(p.TrustPolicy.LogKeys))
+		// The two tick cases add the holder tick log's two checkpoints
+		// (iss and sub holder-tick-log, under the same key).
+		wantKeys := len(out.Checkpoints)
+		if vc.ID == "multi-stream-earlier-tick" || vc.ID == "mutant-tick-path-consistency-changed" {
+			wantKeys += 2
+		}
+		if len(p.TrustPolicy.LogKeys) != wantKeys {
+			t.Errorf("%s: %d log keys, want %d", vc.ID, len(p.TrustPolicy.LogKeys), wantKeys)
 		}
 		for i, lk := range p.TrustPolicy.LogKeys {
-			if lk != out.Checkpoints[i].LogKey {
-				t.Errorf("%s: log key %d is %+v, not the run's %+v", vc.ID, i+1, lk, out.Checkpoints[i].LogKey)
+			if i < len(out.Checkpoints) {
+				if lk != out.Checkpoints[i].LogKey {
+					t.Errorf("%s: log key %d is %+v, not the run's %+v", vc.ID, i+1, lk, out.Checkpoints[i].LogKey)
+				}
+			} else if lk.Iss != "holder-tick-log" || lk.Sub != "holder-tick-log" || lk.Kid != out.Checkpoints[0].LogKey.Kid {
+				t.Errorf("%s: log key %d is %+v, not the holder tick log's", vc.ID, i+1, lk)
 			}
 		}
 		vp := p.VerificationPolicy

@@ -454,7 +454,7 @@ class CLLSubstrate:
             consistency_proof=core.consistency_proof(self._nodes, prev.tree_size, size) if prev else None,
         )
         protected = {1: _COSE_ALG_EDDSA, 3: CLL_CHECKPOINT_CONTENT_TYPE, 4: self._key.public_key(),
-                     15: {1: self.log_id, 2: f"{self.log_id}#{size}"}}
+                     15: {1: self.log_id, 2: self.log_id}}
         self._latest = read_checkpoint(sign1(self._key, protected, cbor2.dumps(claims, canonical=True)))
         return self._latest
 

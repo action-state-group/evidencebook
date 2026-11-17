@@ -225,7 +225,7 @@ func run(ctx context.Context, correlated bool) error {
 			sum := sha256.Sum256(cp.Statement)
 			out.Checkpoints = append(out.Checkpoints, checkpoint{
 				ExpectedPin: hex.EncodeToString(sum[:]), TreeSize: cp.TreeSize,
-				LogKey: logKey{Iss: cp.LogID, Sub: fmt.Sprintf("%s#%d", cp.LogID, cp.TreeSize), Kid: cp.KeyID},
+				LogKey: logKey{Iss: cp.LogID, Sub: cp.LogID, Kid: cp.KeyID},
 			})
 		}
 	}

@@ -17,7 +17,11 @@ import (
 // The agent-action-capsule commit the whole third-party guide pins, and its
 // vectors/interop-profile-v0/vectors.json, vendored unchanged in testdata.
 const (
-	aacCommit         = "9d653f41419d2d2bac4714137b763315947ec754"
+	aacCommit = "9d653f41419d2d2bac4714137b763315947ec754"
+	// historyCommit is the AAC commit of the regenerated personal-history
+	// corpus, which §6 of the guide reads (test/interop/personal-history pins
+	// the same commit).
+	historyCommit     = "f143a18edb42f499a8837beeef1588fd70f71835"
 	regeneratedCommit = "e706487d37561a7e7aae5c169d7c45e76305973b"
 	// The guide's §7: checkpointed-local-log at tag
 	// crates/checkpointed-local-log-v0.3.1, and the evidence-network/loop
@@ -120,13 +124,30 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 		if len(pins) != p.inGuide {
 			t.Errorf("the guide sets %s %d times, want %d", p.name, len(pins), p.inGuide)
 		}
+		history := 0
 		for _, m := range append(pins, set.FindAllStringSubmatch(string(script), -1)...) {
+			// §6.1 reads the regenerated History corpus at its own, later AAC
+			// commit; run.sh holds that pin as AAC_PH.
+			if p.name == "AAC" && m[1] == historyCommit {
+				history++
+				continue
+			}
 			if m[1] != p.commit {
 				t.Errorf("%s=%s, not %s", p.name, m[1], p.commit)
 			}
 		}
+		if want := map[bool]int{true: 1, false: 0}[p.name == "AAC"]; history != want {
+			t.Errorf("%s is set to the History corpus's commit %d times, want %d", p.name, history, want)
+		}
 		if n := len(set.FindAllStringSubmatch(string(script), -1)); n != 1 {
 			t.Errorf("run.sh sets %s %d times, want 1", p.name, n)
+		}
+		if p.name == "AAC" {
+			// §6.1's separate pin in run.sh.
+			ph := regexp.MustCompile(`(?m)^AAC_PH=(\S+)`).FindAllStringSubmatch(string(script), -1)
+			if len(ph) != 1 || ph[0][1] != historyCommit {
+				t.Errorf("run.sh's AAC_PH pins %v, want exactly %s", ph, historyCommit)
+			}
 		}
 	}
 	// Every digest and key run.sh holds the page's commands to is one the
@@ -144,7 +165,7 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 	}
 	for _, sha := range regexp.MustCompile("`([0-9a-f]{40})`").FindAllStringSubmatch(guide, -1) {
 		switch sha[1] {
-		case aacCommit, regeneratedCommit, cllCommit, loopCommit, dealCommit, "43f3cb1b955d647bc92cb4da0d823973d1981cad":
+		case aacCommit, historyCommit, regeneratedCommit, cllCommit, loopCommit, dealCommit, "b2605f7f243c295d21a6ef1376f09bf4fbe5b87e":
 		default:
 			t.Errorf("the guide names another commit: %s", sha[1])
 		}

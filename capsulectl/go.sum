@@ -16,10 +16,10 @@ github.com/action-state-group/capsule-engine/go v0.3.0 h1:nrRT2GOj+zPLF5lohWlYVR
 github.com/action-state-group/capsule-engine/go v0.3.0/go.mod h1:RUUfr+8kEmYFT3Qelv7aZynN49rtaRkx7HhkWmu6AVw=
 github.com/action-state-group/capsule-viewer/go v0.18.2 h1:jHvdtISLKZwIDmzukJ0F7Hfyhr2f7ATnQyvpPRLZa3A=
 github.com/action-state-group/capsule-viewer/go v0.18.2/go.mod h1:ZbHGy5rg7ofNMPBU9qB8S6glMz8eLdMQU7ey0Uvu+iI=
-github.com/action-state-group/checkpointed-local-log/go v0.3.0 h1:vT7HEljD2jOm9CQqZPStSFe0+n9lS6EdtBC24wTdwkM=
-github.com/action-state-group/checkpointed-local-log/go v0.3.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
-github.com/action-state-group/evidencebook v0.13.9 h1:AlEVNaGNpvxZbmA0MFEd6+XCldVnX/XcRiYuXzzg6dM=
-github.com/action-state-group/evidencebook v0.13.9/go.mod h1:koUY5ph0+DTEUD0lpL5NiRqdTveYICeNG18oCznV+cM=
+github.com/action-state-group/checkpointed-local-log/go v0.4.0 h1:AcIdYJq6vkhzBMQGsXm/AmfAqGLNAVLaNHXfambPVf0=
+github.com/action-state-group/checkpointed-local-log/go v0.4.0/go.mod h1:zyHyXVNqA4pMTJ14xtcRoDHZF0n4QyjS5KMDD3KwQ2Q=
+github.com/action-state-group/evidencebook v0.14.2 h1:IgY8c1+cJMUcAVp8ixSq8t3L6gA/8SEbJIjW8VY5qdE=
+github.com/action-state-group/evidencebook v0.14.2/go.mod h1:Q6AKHYXG030OycopzdLn2vuPKz/wSuSyS+imGrk9ISo=
 github.com/action-state-group/evidencebook/report v0.4.1-0.20261107191006-dc3fd0ea02f1 h1:jD5gwx4q8fHH+kFL4hpdWMeZ+lcVbsIoBTBhfsh0xQ8=
 github.com/action-state-group/evidencebook/report v0.4.1-0.20261107191006-dc3fd0ea02f1/go.mod h1:PNWDPHeFuZZXHHoOKGohaWVBmG2KyDZDOxzwKAR7OKo=
 github.com/btcsuite/btcd/btcec/v2 v2.5.1 h1:zDnj4h0PTlFz69xIhoGGXYkkkYxPgTv/AfjBxQQLlnE=

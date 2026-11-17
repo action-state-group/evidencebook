@@ -242,7 +242,7 @@ fn main() {
         .iter()
         .map(|cp| {
             let c = &cp.checkpoint;
-            json!({"iss": c.log_id, "kid": c.key_id, "sub": format!("{}#{}", c.log_id, c.mmr_size)})
+            json!({"iss": c.log_id, "kid": c.key_id, "sub": c.log_id})
         })
         .collect();
     let mut exchanges = Map::new();

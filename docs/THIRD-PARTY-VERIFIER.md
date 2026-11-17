@@ -121,8 +121,8 @@ are the same on every run and on every machine:
 |---|---|
 | `responder_key` | `e84fed8190a6116016bf68ef2fc1780a919e9ed2d9f88efb895a954ffd7f0117` |
 | log key `kid` | `c82acf66ef2bdc106017544b91873dfbdc92f0963b099d49b0f621bedf76e2af` |
-| checkpoint 1 `expected_pin` | `07e8e7a0936fdc0d5eda424946ca36576a0bdff8b7602b419daf308d7719afbd` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#8`) |
-| checkpoint 2 `expected_pin` | `a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1#19`) |
+| checkpoint 1 `expected_pin` | `aaf396605ae8f26c66ed3befc0ed5e51716193d36c14b44021cbf7151d02d598` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1`) |
+| checkpoint 2 `expected_pin` | `d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01` (`iss` `evidence-stream-1`, `sub` `evidence-stream-1`) |
 | record 1 | `78c2628bf823fc958b96c66e47cbaec799194b4da38b5f3ad30eda1404b4a9b0` |
 | record 2 | `5053828d77686751cdefd690ff1c8112a3e0f11c038060e69029d300adc412b4` |
 | record 3 | `b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d` |
@@ -167,7 +167,7 @@ that you can compare your own encoder's output with it, and then gets the reply.
 
 ```bash
 mkdir -p run
-PIN=a8f66f1f436bf4e2549faf86040a272f98dc7f578cc78fc0459347db3934f25d
+PIN=d07b0057edd6d7f534a16eb3c49aa6de20d88856ce6241602e13b155a1636d01
 REC=b1c7ffe655132799ca75ec97ecdc47375f77e394eb0ebe07e1d0fab39dad855d
 ```
 
@@ -180,7 +180,7 @@ go run ./test/interop/answer -media-type application/json -requester alice -in r
 
 **Invariance.** The same question, as `bob` with another nonce, in
 deterministic CBOR. Your encoder's output must be these 211 bytes, with SHA-256
-`bb1f40c649a44c58bd0ab9da36f90c3a83938ca0ec5933d73f5488c57e8e487f`:
+`dedb4ea810029cfc5781be5694e939dc8268df85b8fa494c84c0f51e5c393169`:
 
 ```bash
 printf '%b' '\xa4\x65nonce\x65bob-1\x67profile\x72evidence-interop/0\x67subject\xa1\x66record\x78\x40'$REC'\x68coverage\xa1\x6cexpected_pin\x78\x40'$PIN > run/invariance-bob.req.cbor
@@ -283,13 +283,13 @@ selection. The request's `derivation` is the SHA-256 of that document.
 
 ### 6.1 The inputs
 
-They come from the same public repository at the same commit as §1,
-`9d653f41419d2d2bac4714137b763315947ec754`.
+They come from the same public repository as §1, at the later commit
+`f143a18edb42f499a8837beeef1588fd70f71835`, which regenerated the vectors for the CLL -02 checkpoint `sub`.
 
 | Input | Path at this commit |
 |---|---|
 | The host profile | `spec/personal-agent-history-profile-v0.md` |
-| Its conformance vectors | `vectors/personal-history-basic-v0/` (`vectors.json`, 14 cases, with `README.md` explaining how to read it) |
+| Its conformance vectors | `vectors/personal-history-basic-v0/` (`vectors.json`, 23 cases, with `README.md` explaining how to read it) |
 | The responder run the vectors are built from | `vectors/personal-history-basic-v0/responder-run.json` |
 | The program that produced that run | `vectors/personal-history-basic-v0/producer/main.go` |
 
@@ -297,7 +297,7 @@ Download them next to the §1 inputs:
 
 ```bash
 cd ~/eb-verifier-test
-AAC=9d653f41419d2d2bac4714137b763315947ec754
+AAC=f143a18edb42f499a8837beeef1588fd70f71835
 for f in spec/personal-agent-history-profile-v0.md spec/evidence-result-v0.md \
   vectors/personal-history-basic-v0/README.md vectors/personal-history-basic-v0/manifest.json \
   vectors/personal-history-basic-v0/vectors.json vectors/personal-history-basic-v0/responder-run.json \
@@ -310,7 +310,7 @@ done
 
 On macOS, use `shasum -a 256 -c SHA256SUMS`. All five files should report
 `OK`. `vectors.json` has SHA-256
-`f1f0e1b95c7dd32f2ddc584d4c55bc9a643a58f550a941651bfd5d3e4c59a4b9`.
+`884ca5aaf0751a4beec7c9c2215212f81edbe9c7d3f18c0a4592fdb5896859ad`.
 `spec/evidence-result-v0.md` is the Evidence Result document the profile takes
 its claim, sufficiency and verdict from.
 
@@ -318,17 +318,15 @@ its claim, sufficiency and verdict from.
 
 The vectors' positive run is not hand-made. It is the octets that
 evidencebook's `Respond`, unmodified, sent at evidencebook commit
-`43f3cb1b955d647bc92cb4da0d823973d1981cad`. The program that drove it is in
+`b2605f7f243c295d21a6ef1376f09bf4fbe5b87e`. The program that drove it is in
 this repository as `test/interop/personal-history`. It seeds a holder stream of
 four deals, with a checkpoint after the sixth record and another after the
 eighth, and registers the Basic level definition for one recipient. Then it
 asks for each deal as the requester each exchange names. Its clock is fixed and
 its keys are test keys, so every run on every machine gives the same bytes.
 
-Its `main.go` is the `producer/main.go` you downloaded with two changes, which
-`test/interop/personal-history/producer.diff` records exactly: the book keeps
-payloads in its originals store rather than a payload directory, and a
-`-correlated` flag adds a second run that is not the corpus's. Without the flag
+Its `main.go` is the `producer/main.go` you downloaded, byte for byte; it also has a
+`-correlated` flag that adds a second run, which is not the corpus's. Without the flag
 the output is the corpus run, byte for byte.
 
 In the `evidencebook` clone of §2:
@@ -336,17 +334,17 @@ In the `evidencebook` clone of §2:
 ```bash
 cd ~/eb-verifier-test/evidencebook
 PH=../aac/vectors/personal-history-basic-v0
-diff "$PH/producer/main.go" test/interop/personal-history/main.go | cmp - test/interop/personal-history/producer.diff
+cmp "$PH/producer/main.go" test/interop/personal-history/main.go
 go run ./test/interop/personal-history > run/responder-run.json
 cmp "$PH/responder-run.json" run/responder-run.json
 (sha256sum run/responder-run.json 2>/dev/null || shasum -a 256 run/responder-run.json) | cut -d' ' -f1
 ```
 
 Both `cmp` commands print nothing, and the last line prints
-`f7d77d56d81ca187cb9a8118f8a15aae5407f5a96aca1c5525a5f5d2e827b848`. That is
+`8cbf6272ab8f42c534e45e0b1f90358cbb88b5e3cf0263bf79bd92d53d606684`. That is
 `run_sha256` in the corpus `manifest.json`. evidencebook's continuous
 integration reproduces the run on every change, so a later commit than
-`43f3cb1b…` gives the same bytes. If yours does not, report it as a finding.
+`b2605f7f…` gives the same bytes. If yours does not, report it as a finding.
 
 The run holds every request and reply as the octets carried, the definitions,
 the holder stream (four deals, three selected, eight records) and its two
@@ -363,8 +361,10 @@ Each case pins its own policy in `pins`. Use it as given:
   holder key `020126b36be66edbb505b7c18f5164055d99e457f0cdf42b0430ea0c93c00a1b`),
   and the holder log key
   `74897b69738198f3322a53d7e4ac2f70ffd568e7303f8549655ccffe14d28320` for
-  `iss` `holder-stream-1`, `sub` `holder-stream-1#15` and
-  `holder-stream-1#22`;
+  `iss` and `sub` `holder-stream-1`, once for each of its two checkpoints. The
+  two tick cases (`multi-stream-earlier-tick` and `mutant-tick-path-consistency-changed`)
+  add the holder tick log's two checkpoints, `iss` and `sub` `holder-tick-log`, under the same
+  key;
 - `verification_policy`: offline, `evidence-interop/0`, the three CLL kinds;
 - the contract `H@1`, with SHA-256
   `5d4b7da72c8de9ef089f02b4f39dde25fe06d7659c9b4800e5fe79c6e8b12d34`, given
@@ -416,19 +416,39 @@ no verification material for a derivation's answer. So no case yields `met` or
 | `mutant-definition-reads-widened` | responder | answers under a definition whose `reads` adds `statement` and `counterparty_ref` | 3 of 3 | none | `definition_form` | not accepted |
 | `multi-stream-one-tick` | derived | the three deals of `history-basic`, each moved to a stream of its own and answered at one witnessed checkpoint tick (a label digest, see the note below), re-signed by the holder key | 3 of 3 | none | none | accepted |
 | `mutant-multi-stream-mixed-anchor` | derived | `multi-stream-one-tick` with one deal answered at its own stream's checkpoint | 3 of 3 | none | `single_anchor` | not accepted |
+| `mutant-artifact-not-jcs` | derived | a space added after the opening brace in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form`, `record_kinds` | not accepted |
+| `mutant-entry-digest-not-digest` | derived | the first record's digest in uppercase hex in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-entry-leaf-index-text` | derived | the first record's leaf_index as text in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-read-member-object` | derived | the first record's committed_at replaced by an object in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-committed-at-fraction` | derived | the first record's committed_at given with fractional seconds in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-event-time-claim-offset` | derived | the first record's event_time_claim given as +00:00 in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `mutant-epistemic-type-outside-el` | derived | the first record's epistemic_type made verified_fact in history-1's artifact, re-signed by the holder key | 3 of 3 | none | `artifact_form` | not accepted |
+| `multi-stream-earlier-tick` | derived | `multi-stream-one-tick` requested at a tick log checkpoint and re-signed by the holder key, with a tick path for history-3's stream | 3 of 3 | none | none | accepted |
+| `mutant-tick-path-consistency-changed` | derived | `multi-stream-earlier-tick` with one octet of the consistency proof's last right peak flipped | 3 of 3 | none | none | accepted |
 | `refused-other-requester` | responder | a request under the definition from `requester-2`, who is not its recipient | no envelope | refusal `not_authorized`; every refusal property `PASS` except `responder_key_current` `NOT_CHECKED`; row `refusal-withheld`: `WITHHELD`, `GAP`, `not_evaluable` | no History | no History |
 
 For `history-basic`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step.
 
+For `multi-stream-earlier-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic` (selected deals, 3 in `multi-stream-earlier-tick`).
+
+For `mutant-tick-path-consistency-changed`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic` (selected deals, 3 in `mutant-tick-path-consistency-changed`).
+
 For `multi-stream-one-tick`, `deal_states` counts 3 selected deals: 1 with a recorded failed step, 2 with recorded completed steps only, 0 with no recorded step. These are the same three deals as in `history-basic` (selected deals, 3 in `multi-stream-one-tick`).
 
-The two multi-stream cases are derived, not part of the responder run: each
+The multi-stream cases are derived, not part of the responder run: each
 selected deal's records move to a stream of their own, and each request names
 one tick. That tick, and the stream checkpoint in
 `mutant-multi-stream-mixed-anchor`, are label digests, not real checkpoints.
 At the Basic level you check only that every envelope names the same anchor.
 The definition, and so the derivation, is the one of the positive run.
 The corpus README describes how they were built.
+
+The two tick cases (`multi-stream-earlier-tick` and `mutant-tick-path-consistency-changed`)
+also carry `tick_paths`: each tick path's check status under the host profile's
+§8.3, reported beside the History properties and never among them. In
+`mutant-tick-path-consistency-changed` the tick path check is `FAIL` and the
+History is still accepted, because that check does not change `accepted`. The
+corpus README describes how the tick paths were built.
 
 The two other-anchor cases are two readings of one row of the host profile's
 §6.4 table. That row names both `single_anchor` and `anchor_match`, and the
@@ -715,7 +735,7 @@ with:
    and your `row`, `status`, `sufficiency` and `verdict` for `r-record`, with
    the claim's `evidence` and `proofs`;
 5. the SHA-256 of the `run/responder-run.json` you produced in §6.2;
-6. for each of the 14 cases of §6.3, by case id: per exchange, your
+6. for each of the 23 cases of §6.3, by case id: per exchange, your
    per-property statuses, whether you accepted the envelope, your `row`,
    `status`, `sufficiency` and `verdict` for `r-deal-steps`, and the claim;
    then your seven History properties, whether you accepted the History, and,

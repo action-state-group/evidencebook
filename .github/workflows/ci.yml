@@ -168,7 +168,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Python CLL, the AAC bundle verifier and capsule-emit
-        run: python -m pip install "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0"
+        run: python -m pip install "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0"
       - name: Verify a Go-produced bundle with the Python reference
         shell: bash
         run: |
@@ -202,13 +202,13 @@ jobs:
           path: evidencebook
       # The profile's reference verifier (AAC #238) and its conformance
       # vectors (AAC #237, regenerated in #263), pinned to an AAC main commit
-      # that carries both: the one that added the personal-history vectors
-      # (#296). vectors/interop-profile-v0/ there is unchanged since #263.
+      # that carries both: the one that regenerated the personal-history
+      # corpus for the CLL -02 bare `sub` (agent-action-capsule#623).
       - name: Check out the profile's reference verifier and vectors
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
       # evidence-interop/1's vectors (vectors/interop-profile-v1/) and the
       # reference verifier that checks /1, at an AAC main commit that
@@ -273,7 +273,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -288,17 +288,15 @@ jobs:
         run: python -m pip install "cryptography>=42" pytest
       - name: Reproduce the responder run byte for byte, and rebuild the corpus from it
         shell: bash
+        env:
+          PYTHONPATH: agent-action-capsule/python
         run: |
           corpus=agent-action-capsule/vectors/personal-history-basic-v0
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
-          # main.go is the corpus producer with the book's payload directory
-          # replaced by its originals store (Config.Originals,
-          # capsule-cli#236) and a -correlated mode (#82): exactly the change
-          # producer.diff records, until the corpus pins an evidencebook with
-          # it.
-          diff "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go > "$work/producer.diff" || true
-          cmp evidencebook/test/interop/personal-history/producer.diff "$work/producer.diff"
+          # main.go is the corpus producer, byte for byte (its -correlated mode, #82,
+          # leaves the default run unchanged).
+          cmp "$corpus/producer/main.go" evidencebook/test/interop/personal-history/main.go
           go -C evidencebook run ./test/interop/personal-history > "$work/responder-run.json"
           want=$(python -c 'import json, sys; print(json.load(open(sys.argv[1]))["responder"]["run_sha256"])' "$corpus/manifest.json")
           got=$(sha256sum "$work/responder-run.json" | cut -d' ' -f1)
@@ -337,7 +335,7 @@ jobs:
           corpus="$work/aac/vectors/personal-history-basic-v0"
           go -C evidencebook run ./test/interop/personal-history -correlated > "$work/correlated-run.json"
           find "$corpus" -mindepth 1 -maxdepth 1 ! -name README.md ! -name producer -exec rm -rf {} +
-          python "$work/aac/python/scripts/generate_personal_history_basic_v0_vectors.py" --out "$corpus" --run "$work/correlated-run.json"
+          PYTHONPATH="$work/aac/python" python "$work/aac/python/scripts/generate_personal_history_basic_v0_vectors.py" --out "$corpus" --run "$work/correlated-run.json"
           if cmp -s "$corpus/vectors.json" agent-action-capsule/vectors/personal-history-basic-v0/vectors.json; then
             echo "the correlated run rebuilt the committed corpus: -correlated changed nothing" >&2
             exit 1
@@ -379,7 +377,7 @@ jobs:
       - name: Build the Go side and install the Python side
         run: |
           go build -o "$RUNNER_TEMP/shelf-go" ./test/interop/shelf
-          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5"
+          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5"
           printf '#!/bin/sh\nexec python "%s/test/interop/python-evidencebook/shelf.py" "$@"\n' "$PWD" > "$RUNNER_TEMP/shelf-py"
           chmod +x "$RUNNER_TEMP/shelf-py"
       - name: Write, continue and compare, in every pair of languages
@@ -543,7 +541,7 @@ jobs:
           go build -o "$RUNNER_TEMP/row-status-go" ./test/interop/row-status
           cargo build --locked --manifest-path rust/Cargo.toml -p evidencebook-interop --bin row-status
           cp rust/target/debug/row-status "$RUNNER_TEMP/row-status-rs"
-          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5"
+          python -m pip install ./python "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5"
       - name: Compare on random inputs
         run: |
           for seed in 1 2 3 4 5; do
@@ -668,7 +666,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
       # evidence-interop/1's vectors (vectors/interop-profile-v1/) and the
       # reference verifier that checks /1, at an AAC main commit that
@@ -691,7 +689,7 @@ jobs:
       # jsonschema 4.23.0 is the reference checker's, whose wording the
       # profile's negative fixtures quote (the deal-profile job pins it too).
       - name: Install the package and its pinned dependencies
-        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.16.0" "checkpointed-local-log==0.8.0" "capsule-emit==0.15.0" "cbor2==6.1.5" "jsonschema==4.23.0"
+        run: python -m pip install "./evidencebook/python[test]" "agent-action-capsule==0.16.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5" "jsonschema==4.23.0"
       # evidence.evaluate runs capsule-engine go/v0.3.0's `admission evaluate`
       # (capsule-engine#278); build it and hold it to the shared admission vectors.
       - name: Check out capsule-engine at go/v0.3.0

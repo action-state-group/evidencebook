@@ -279,7 +279,7 @@ func info(ctx context.Context) ([]byte, error) {
 		sum := sha256.Sum256(cp.Statement)
 		out.Checkpoints = append(out.Checkpoints, checkpointInfo{
 			Pin: hex.EncodeToString(sum[:]), TreeSize: cp.TreeSize, Seeded: []int{3, 7}[i],
-			LogKey: logKey{Iss: cp.LogID, Sub: fmt.Sprintf("%s#%d", cp.LogID, cp.TreeSize), Kid: cp.KeyID},
+			LogKey: logKey{Iss: cp.LogID, Sub: cp.LogID, Kid: cp.KeyID},
 		})
 	}
 	for _, r := range s.records {
