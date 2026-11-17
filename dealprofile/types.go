@@ -500,6 +500,11 @@ type SaleCutBody struct {
 type SaleCloseBody struct {
 }
 
+// SaleUnpostBody is body_sale_unpost in the schema.
+type SaleUnpostBody struct {
+	Platform string `json:"platform"`
+}
+
 // AgentMoveBodyOptionsItem is an item of the options member of AgentMoveBody.
 type AgentMoveBodyOptionsItem struct {
 	ItemCommitment string `json:"item_commitment"`

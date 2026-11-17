@@ -620,6 +620,9 @@ def check_sale_chain(records):
     # approval, first and unused, of the latest post check authorizes the act.
     kind_at, first_answer, used, stale = {}, {}, set(), set()
     latest_verdict, latest_check = None, None
+    # A listing taken down (rule 15): a platform's live post is its latest post act
+    # not yet taken down; platform_of reads a post's platform from its own check.
+    check_of, live_post, platform_of = {}, {}, {}
     for i in range(2, len(records)):
         r = records[i]
         if is_typed(r):
@@ -629,9 +632,9 @@ def check_sale_chain(records):
         else:
             b, body = r["x-deal-v0"], r["body"]
             t = b["record_type"]
-        if t not in ("thread", "thread_opened", "sale_cut", "sale_close", "post_check", "post_verdict", "post_approval", "post_action"):
-            fail(i, "after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, "
-                    "and a listing post's check, evaluation, approval and action")
+        if t not in ("thread", "thread_opened", "sale_cut", "sale_close", "sale_unpost", "post_check", "post_verdict", "post_approval", "post_action"):
+            fail(i, "after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, "
+                    "a listing post's check, evaluation, approval and action, and a listing's takedown")
         if closed and t != "sale_cut":
             fail(i, "after a sale's close, its log holds only cuts")
         closed = closed or t == "sale_close"
@@ -667,6 +670,7 @@ def check_sale_chain(records):
             if body.get("rules_status") != "not_applicable" or "rules_checks" in body:
                 fail(i, "no rules checker runs on a post: its evaluation says rules_status not_applicable")
             latest_verdict = i
+            check_of[i] = j
         elif t == "post_approval":
             j = ref_to("approves", "post_verdict")
             # What the user was shown is what the post check rendered, as on a
@@ -691,6 +695,8 @@ def check_sale_chain(records):
             if first_answer.get(jv) != ja or ja in used:
                 fail(i, "a post rests on the first answer to its check, and an approval posts once")
             used.add(ja)
+            platform_of[i] = records[check_of[jv]]["body"]["posting"]["platform"]
+            live_post[platform_of[i]] = i
             if b["at"] > records[jv]["body"]["valid_until"]:
                 fail(i, f"the post check was valid until {records[jv]['body']['valid_until']}: a post after that needs a new check")
             if body.get("evaluation_ref", {}).get("digest") != digests[jv]:
@@ -698,6 +704,11 @@ def check_sale_chain(records):
             if [(e["type"], e["ref"]["digest"]) for e in body.get("authority_basis", [])] != \
                     [("task_authority", sale_ta), ("user_approval", digests[ja])]:
                 fail(i, "a post's authority_basis is the sale's task authority, then the user's approval")
+        elif t == "sale_unpost":
+            j = ref_to("unposts", "post_action")
+            if platform_of.get(j) != body["platform"] or live_post.get(body["platform"]) != j:
+                fail(i, "a listing's takedown names the live post of its platform: that platform's latest post, not already taken down")
+            del live_post[body["platform"]]
         elif t == "thread_opened":
             reg = b["refs"][0]["digest"]
             if reg not in registrations or reg in opened:
@@ -717,11 +728,15 @@ def is_sale_log(records):
 
 
 def sale_listings(sale):
-    """The sale's post acts, in log order: (at, platform, classes), each read from
-    the post check its approval answers (section 8, listing_classes)."""
+    """The sale's post acts and takedowns, in log order: (at, platform, classes), each
+    post read from the post check its approval answers, and a takedown (sale_unpost) as
+    (at, platform, None) (section 8, listing_classes)."""
     digests = [record_digest(r) for r in sale]
     out = []
     for r in sale:
+        if not is_typed(r) and r["x-deal-v0"]["record_type"] == "sale_unpost":
+            out.append((r["x-deal-v0"]["at"], r["body"]["platform"], None))
+            continue
         if not is_typed(r) or r["type"] != "action-record/v0" or r["body"].get("action") != "post":
             continue
         approval = sale[digests.index(r["refs"][0]["digest"])]
@@ -757,12 +772,73 @@ def listing_classes_report(sale, thread):
         latest = {}
         for p_at, platform, classes in posts:
             if p_at < at:
-                latest[platform] = classes
+                if classes is None:
+                    latest.pop(platform, None)
+                else:
+                    latest[platform] = classes
         want = None
         if latest:
             sets = [set(c) for c in latest.values()]
             want = sorted(set.intersection(*sets))
         yield r["seq"], "match" if sealed == want else "mismatch", sealed, want
+
+
+def listing_classes_selftest() -> list[str]:
+    """listing_classes recomputed over a sale's log with takedowns (section 8): a taken-down
+    listing stops counting, a later post makes its platform count again, no live listing
+    leaves the value absent, and a takedown in the check's second leaves it not established.
+    Returns the failures. The records are minimal stand-ins: the recomputation reads only
+    each post's check (by refs), the takedowns, the thread registrations and the times."""
+    def sale_post(platform, classes, at):
+        chk = {"type": "proposed-action/v0", "at": at, "body": {"posting": {"platform": platform, "classes": classes}}}
+        ev = {"type": "action-evaluation/v0", "at": at, "refs": [{"rel": "checks", "digest": record_digest(chk)}]}
+        ap = {"type": "action-approval/v0", "at": at, "refs": [{"rel": "approves", "digest": record_digest(ev)}]}
+        act = {"type": "action-record/v0", "at": at, "body": {"action": "post"},
+               "refs": [{"rel": "authorized_by", "digest": record_digest(ap)}]}
+        return [chk, ev, ap, act]
+
+    def unpost(platform, at):
+        return {"x-deal-v0": {"record_type": "sale_unpost", "at": at}, "body": {"platform": platform}}
+
+    reg = {"x-deal-v0": {"record_type": "thread", "at": "2026-10-06T08:00:00Z"}, "body": {}}
+    tail = {"x-deal-v0": {"record_type": "sale_cut", "at": "2026-10-06T09:00:00Z"}, "body": {}}
+    sale_root = {"x-deal-v0": {"record_type": "sale", "at": "2026-10-06T08:00:00Z"}, "body": {}}
+    ta = {"type": "task-authority/v0", "at": "2026-10-06T08:00:00Z", "refs": [{"rel": "registration", "digest": record_digest(reg)}]}
+
+    def offer(at, sealed):
+        body = {"action": "offer"}
+        if sealed is not None:
+            body["listing_classes"] = sealed
+        return {"type": "proposed-action/v0", "seq": 3, "at": at, "body": body}
+
+    two = sale_post("marketplace.example", ["condition", "price"], "2026-10-06T08:01:00Z") + \
+        sale_post("other.example", ["condition"], "2026-10-06T08:02:00Z")
+    cases = [
+        ("both live", two, "2026-10-06T08:10:00Z", ["condition"], "match"),
+        ("one taken down", two + [unpost("other.example", "2026-10-06T08:03:00Z")], "2026-10-06T08:10:00Z",
+         ["condition", "price"], "match"),
+        ("a taken-down listing still counted", two + [unpost("other.example", "2026-10-06T08:03:00Z")],
+         "2026-10-06T08:10:00Z", ["condition"], "mismatch"),
+        ("all taken down", two + [unpost("other.example", "2026-10-06T08:03:00Z"), unpost("marketplace.example", "2026-10-06T08:04:00Z")],
+         "2026-10-06T08:10:00Z", None, "match"),
+        ("all taken down, value sealed anyway", two + [unpost("other.example", "2026-10-06T08:03:00Z"),
+                                                       unpost("marketplace.example", "2026-10-06T08:04:00Z")],
+         "2026-10-06T08:10:00Z", [], "mismatch"),
+        ("posted again", two + [unpost("other.example", "2026-10-06T08:03:00Z")]
+         + sale_post("other.example", ["price"], "2026-10-06T08:05:00Z"), "2026-10-06T08:10:00Z", ["price"], "match"),
+        ("takedown after the check", two + [unpost("other.example", "2026-10-06T08:30:00Z")], "2026-10-06T08:10:00Z",
+         ["condition"], "match"),
+        ("takedown in the check's second", two + [unpost("other.example", "2026-10-06T08:10:00Z")], "2026-10-06T08:10:00Z",
+         ["condition"], "not_established"),
+    ]
+    fails = []
+    for name, events, at, sealed, want in cases:
+        sale = [sale_root, ta, reg] + events + [tail]
+        thread = [{"type": "baseline"}, ta, offer(at, sealed)]
+        got = [status for _, status, _, _ in listing_classes_report(sale, thread)]
+        if got != [want]:
+            fails.append(f"{name}: {got} != {[want]}")
+    return fails
 
 
 def check_chain(records):
@@ -1490,7 +1566,7 @@ def run_fixtures() -> int:
     # records beside x-deal-v0 evidence records, a seller's typed share, and a
     # sale's own log. Each is checked as its own chain.
     positives = []
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
         chain = []
         for p in sorted((FIX / chain_dir).glob("*.json")):
             positives.append(p)
@@ -1505,7 +1581,7 @@ def run_fixtures() -> int:
                 # A sale's log, and a seller's deal (sealed in the typed records),
                 # is checked as a chain from its task authority on, every prefix:
                 # its root alone is not yet one.
-                if chain_dir not in ("positive-sale", "positive-typed-seller") or len(chain) >= 2:
+                if chain_dir not in ("positive-sale", "positive-sale-unpost", "positive-typed-seller") or len(chain) >= 2:
                     check_chain(chain)
                 print(f"ok   {chain_dir}/{p.name:<34} {record_type_of(rec):<20} jcs-sha256 {d}")
             except StageError as e:
@@ -1632,7 +1708,7 @@ def check_listing_classes(chains) -> int:
             elif status == "match":
                 print(f"ok   {p}: listing_classes at seq {seq} matches the sale's listings in force then")
             else:
-                print(f"note {p}: listing_classes at seq {seq} is not independently established: a post act in the same "
+                print(f"note {p}: listing_classes at seq {seq} is not independently established: a post act or a takedown in the same "
                       f"second, or the sale's log copy ends before the check, leaves the two logs unordered")
     return bad
 
@@ -2025,7 +2101,9 @@ def regen():
                     "action-evaluation/v0": "The post check asks (ASK), with capsulectl's own public_post difference: no rules "
                                             "checker runs on a post.",
                     "action-approval/v0": "The user's own \"post it\", in their words, on the card that quoted the listing.",
-                    "action-record/v0": "The listing posted, resting on the user's approval of the latest post check."}
+                    "action-record/v0": "The listing posted, resting on the user's approval of the latest post check.",
+                    "sale_unpost": "A listing taken down: the platform and the live post act it takes down, and nothing else. "
+                                   "It needs no check or approval; a later post on the platform makes it live again."}
     (FIX / "positive-sale").mkdir(parents=True, exist_ok=True)
     for old in (FIX / "positive-sale").glob("*.json"):
         old.unlink()
@@ -2039,6 +2117,47 @@ def regen():
         digests.append((f"positive-sale/{n}", d))
         dump(FIX / "positive-sale" / n, {"fixture": n, "expect": "valid", "story": sale_stories[record_type_of(r)],
                                          "record": r, "expected_digest": d})
+    # --- a sale's listing taken down, and posted again (rule 15) -------------------------
+    # The first eight records are the positive sale's; the post is then taken down
+    # (sale_unpost), posted again on the same platform (a new check, evaluation,
+    # approval and post act) and taken down once more, before the cut.
+    unpost_1 = sale_step(9, "sale_unpost", post_act, {"platform": "marketplace.example"},
+                         refs=[{"rel": "unposts", **_ref(record_digest(post_act))}])
+    repost_text = "Example bicycle, ridden twice. Price reduced."
+    repost_card = f"PAUSED FOR YOU\nPost this listing on marketplace.example: \"{repost_text}\"?"
+    repost_check = sale_typed(10, "proposed-action/v0", unpost_1, {
+        "action": "post", "action_class": "communication.publish", "taxonomy_version": "6", "spend_minor": 0,
+        "posting": {"text_commitment": commitment(nonce("sale-repost-text"), repost_text),
+                    "classes": ["condition", "price"], "platform": "marketplace.example"},
+        "task_authority_ref": sale_ta_ref})
+    repost_eval = sale_typed(11, "action-evaluation/v0", repost_check, {
+        **post_eval["body"], "rendering_commitment": commitment(nonce("sale-repost-card"), repost_card),
+        "proposed_action_digest": record_digest(repost_check)}, refs=[("checks", repost_check)])
+    repost_approval = sale_typed(12, "action-approval/v0", repost_eval, {
+        **post_approval["body"], "said_commitment": commitment(nonce("sale-repost-said"), "post it"),
+        "rendering_commitment": commitment(nonce("sale-repost-card"), repost_card)}, refs=[("approves", repost_eval)])
+    repost_act = sale_typed(13, "action-record/v0", repost_approval, {
+        **post_act["body"], "evaluation_ref": {"type": "record", "digest_alg": "SHA-256", "digest": record_digest(repost_eval)},
+        "authority_basis": [{"type": "task_authority", "ref": sale_ta_ref},
+                            {"type": "user_approval", "ref": {"type": "record", "digest_alg": "SHA-256",
+                                                              "digest": record_digest(repost_approval)}}]},
+        refs=[("authorized_by", repost_approval)])
+    unpost_2 = sale_step(14, "sale_unpost", repost_act, {"platform": "marketplace.example"},
+                         refs=[{"rel": "unposts", **_ref(record_digest(repost_act))}])
+    unpost_cut = sale_step(15, "sale_cut", unpost_2, {"thread_heads": [
+        {"registration": _ref(registration), "head_commitment": commitment(nonce("sale-head-1"), nonce("sale-head-1-digest"))}]})
+    (FIX / "positive-sale-unpost").mkdir(parents=True, exist_ok=True)
+    for old in (FIX / "positive-sale-unpost").glob("*.json"):
+        old.unlink()
+    unpost_files = (sale_files[:8] + (("09-sale-unpost.json", unpost_1), ("10-repost-check.json", repost_check),
+                                      ("11-repost-evaluation.json", repost_eval), ("12-repost-approval.json", repost_approval),
+                                      ("13-repost-action.json", repost_act), ("14-sale-unpost.json", unpost_2),
+                                      ("15-sale-cut.json", unpost_cut)))
+    for n, r in unpost_files:
+        d = record_digest(r)
+        digests.append((f"positive-sale-unpost/{n}", d))
+        dump(FIX / "positive-sale-unpost" / n, {"fixture": n, "expect": "valid", "story": sale_stories[record_type_of(r)],
+                                                "record": r, "expected_digest": d})
     # --- a seller's typed share of the listing's pickup area (capsule-engine#181) --------
     # Before any offer, the seller's agent gives a listing platform the public pickup
     # area. pickup_area is not an address class, so no acceptance is needed; the same
@@ -2593,6 +2712,41 @@ def regen():
          after_close("thread_opened", {"task_authority_commitment": commitment(nonce("sale-late-ta"), nonce("sale-late-ta-digest"))},
                      refs=[{"rel": "registration", **_ref(registration)}]), closed_at,
          "A thread's opening sealed after the sale closed: the close seals every missing opening first.")
+    # A listing's takedown (rule 15): it names the live post of its platform.
+    def negu(name, stage, contains, record, prefix_upto, desc, chain_dir="positive-sale"):
+        files = unpost_files if chain_dir == "positive-sale-unpost" else sale_files
+        dump(FIX / "negative" / f"{name}.json", {
+            "fixture": name, "expect": "invalid", "description": desc, "expected_stage": stage,
+            "expected_error_contains": contains, "chain_dir": chain_dir,
+            "chain_prefix": [n for n, _ in files[:prefix_upto]], "record": record})
+
+    acted_idx = [r for _, r in sale_files].index(post_act) + 1
+    unposts_post = [{"rel": "unposts", **_ref(record_digest(post_act))}]
+    r = sale_step(acted_idx + 1, "sale_unpost", post_act, {"platform": "other.example"}, unposts_post)
+    negu("neg-sale-unpost-of-another-platform", "chain", "live post of its platform", r, acted_idx,
+         "A takedown on a platform the post was not made on.")
+    r = sale_step(acted_idx + 2, "sale_unpost", unpost_1, {"platform": "marketplace.example"}, unposts_post)
+    negu("neg-sale-unpost-twice", "chain", "not already taken down", r, acted_idx + 1,
+         "A second takedown of a post already taken down: only a later post makes the platform live again.",
+         chain_dir="positive-sale-unpost")
+    r = sale_step(acted_idx + 2, "sale_unpost", sale_cut, {"platform": "marketplace.example"},
+                  [{"rel": "unposts", **_ref(record_digest(sale_cut))}])
+    negu("neg-sale-unpost-of-a-cut", "chain", "exactly one earlier action", r, acted_idx + 1,
+         "A takedown whose unposts ref names a record that is not a post act.")
+    r = sale_step(closed_at + 1, "sale_unpost", sale_close, {"platform": "marketplace.example"}, unposts_post)
+    negs("neg-sale-unpost-after-close", "chain", "only cuts", r, closed_at,
+         "A takedown after the sale's close: after a sale's close, only cuts follow.")
+    for name, edit, contains, desc in (
+            ("with-a-buyer", lambda r: r["x-deal-v0"].update(
+                counterparty={"fp_alg": "hmac-sha256-deal-key", "ids": {"domain": "0" * 64}}), "x-deal-v0",
+             "A takedown that names a buyer."),
+            ("with-another-member", lambda r: r["body"].update(reason="sold"), "reason",
+             "A takedown carries the platform and nothing else."),
+            ("with-another-rel", lambda r: r["x-deal-v0"]["refs"][0].update(rel="about"), "x-deal-v0",
+             "A takedown whose ref is not an unposts ref.")):
+        r = copy.deepcopy(unpost_1)
+        edit(r)
+        negu(f"neg-sale-unpost-{name}", "schema", contains, r, acted_idx, desc)
     # A listing post (rule 15): each edit of the post act, the last post record.
     acted_at = [r for _, r in sale_files].index(post_act)
     shown_at = [r for _, r in sale_files].index(post_approval)
@@ -2766,10 +2920,10 @@ def chain_vectors():
             return e.stage, str(e)[len(e.stage) + 3:]
         return "", ""
 
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
         recs = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
         for n in range(1, len(recs) + 1):
-            if chain_dir in ("positive-sale", "positive-typed-seller") and n < 2:
+            if chain_dir in ("positive-sale", "positive-sale-unpost", "positive-typed-seller") and n < 2:
                 continue
             stage, err = verdict(recs[:n])
             out.append({"name": f"{chain_dir}/{n}", "stage": stage, "error": err})
@@ -2852,7 +3006,7 @@ def _mutation_vectors(verdict):
     reference checker's. Every distinct refusal keeps its first few cases, and so do the
     chains that pass, so the file stays small and every rule a mutation reaches is in it."""
     seen, out = {}, []
-    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale"):
+    for chain_dir in ("positive", "positive-typed", "positive-typed-seller", "positive-sale", "positive-sale-unpost"):
         chain = [load(p)["record"] for p in sorted((FIX / chain_dir).glob("*.json"))]
         for k, rec in enumerate(chain):
             for path in _leaf_paths(rec):
@@ -2893,6 +3047,11 @@ def main(argv):
     for f in fails:
         print("FAIL jcs", f)
     print(f"{'ok  ' if not fails else 'FAIL'} RFC 8785 self-test (Appendix B numbers, 3.2.2 example, 3.2.3 sort order)")
+    lc_fails = listing_classes_selftest()
+    for f in lc_fails:
+        print("FAIL listing_classes", f)
+    print(f"{'ok  ' if not lc_fails else 'FAIL'} listing_classes self-test (takedowns, repost, no live listing, same second)")
+    fails = fails + lc_fails
     if "--selftest" in argv:
         return 1 if fails else 0
     _validator()

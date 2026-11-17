@@ -15,6 +15,7 @@ Files in this directory:
 | `x-deal-v0.schema.json` | JSON Schema (Draft 2020-12) for one record: the block and each record type's body. |
 | `records/` | JSON Schemas (Draft 2020-12) for the typed action records and the check request and response (section 9). |
 | `fixtures/positive/` | One deal, 20 records, covering most record types (not `sale`, which `positive-sale/` carries; the fixture run of `check_profile.py` names the types no positive fixture carries yet), with the expected JCS digest of each. |
+| `fixtures/positive-sale-unpost/` | A sale's own log whose listing is taken down, posted again and taken down once more (section 6, rule 15). Its first eight records are `positive-sale/`'s. |
 | `fixtures/positive-typed/` | One deal sealed in the typed action records beside x-deal-v0 evidence records (section 9). |
 | `fixtures/positive-typed-seller/` | A seller's typed deal that gives a listing platform the public pickup area (`pickup_area`) before any offer. |
 | `fixtures/negative/` | Records that MUST be rejected, each at one named stage. |
@@ -169,7 +170,7 @@ when or how often the deal was shared:
 | `profile` | `"x-deal-v0"` | REQUIRED | Profile and version. |
 | `canonicalization` | `"jcs"` | REQUIRED | Pinned: RFC 8785. Any other value fails closed (section 5). |
 | `deal_id` | string `^deal-[0-9a-f]{16,64}$` | REQUIRED | Random, opaque, and the same on every record of the deal. Never derived from any identifier. |
-| `record_type` | enum (section 3) | REQUIRED | One of the 21 record types. |
+| `record_type` | enum (section 3) | REQUIRED | One of the 22 record types. |
 | `seq` | integer ≥ 1 | REQUIRED | Position in the deal: 1, 2, 3, … with no gaps (section 6). |
 | `at` | string `YYYY-MM-DDThh:mm:ssZ` | REQUIRED | The seal time in UTC, whole seconds. |
 | `prev` | digest ref | REQUIRED iff `seq` > 1 | The record digest of record `seq − 1`. |
@@ -191,12 +192,12 @@ never against a later change.
 
 ## 3. Record types (action-type conventions)
 
-Twenty-one record types. The set is closed: an unknown `record_type` fails the schema.
+Twenty-two record types. The set is closed: an unknown `record_type` fails the schema.
 
 | record_type | What it records | Required body fields | Required refs / block fields |
 |---|---|---|---|
 | `baseline` | First contact: what the user asked, who the counterparty is, the terms and the way back. The deal's contract. | `deal_type` (`purchase`\|`rental`\|`booking`\|`service`), `intent` (as the intent body; its optional `party_role`, `buyer`\|`seller`, is which side of the deal the user is on, absent meaning `buyer`, as on every deal sealed before it was recorded), `terms`, `recourse.rail` + `recourse.refundable` (a deal opened at the user's first ask, before a merchant is in play, may have no `recourse` and no `counterparty`: its first leg starts later, section 6 rule 13); `materiality` (the materiality predicate pinned when the deal opened, as on a verdict; a verdict under another one carries a `materiality_changed` difference) | `seq` = 1; `channel`; `counterparty` (≥ 1 id) when a merchant is in play. No `prev`, no `baseline_ref`. Its intent has no `move`, `proposed` or `why_commitment`; it may carry `delegated` + `delegated_commitment`. Optional `claims[]`, `counterparty_facts`, `demo`, `skill` (`{"skill_md_digest": <64 hex>, "other_copies": <int ≥ 0>}`: the SHA-256 of the SKILL.md the agent reported following, and how many other copies of that skill sat beside it; a boundary marker for accidents, not proof the instructions were followed). |
-| `sale` | Where the user sells one item to one of several buyers: the first record of the sale's own log (deal_id `sale-…`), before any buyer. Followed by the sale's one `task-authority/v0`, then `thread`, `thread_opened` and `sale_cut` records, the typed records of its listing posts (section 6, rule 15), and at most one `sale_close`, after which only `sale_cut` records follow, and nothing else. | `deal_type`, `intent` (the seller's request and limits, `party_role: seller`), `terms`, `recourse.rail` + `recourse.refundable`, `item_ref_commitment` (the sale's opaque item reference, committed) | `seq` = 1. No `prev`, no `baseline_ref`, no `counterparty`, no `refs`. Optional `demo`. |
+| `sale` | Where the user sells one item to one of several buyers: the first record of the sale's own log (deal_id `sale-…`), before any buyer. Followed by the sale's one `task-authority/v0`, then `thread`, `thread_opened` and `sale_cut` records, the typed records of its listing posts and `sale_unpost` takedowns (section 6, rule 15), and at most one `sale_close`, after which only `sale_cut` records follow, and nothing else. | `deal_type`, `intent` (the seller's request and limits, `party_role: seller`), `terms`, `recourse.rail` + `recourse.refundable`, `item_ref_commitment` (the sale's opaque item reference, committed) | `seq` = 1. No `prev`, no `baseline_ref`, no `counterparty`, no `refs`. Optional `demo`. |
 | `intent` | The user restates or picks within the ask. Replaces `verbatim` / `asked` from here on. `allowed` and `max_total_minor` carry forward unchanged: an intent may lower the limit or drop actions, and a higher limit or a new action is only a proposal (section 6, rule 6). | `verbatim_commitment` | `baseline_ref`, `prev`. Optional `party_role`, equal to the baseline's (a deal's role is fixed when it opens). Optional `ordered_representations` (where the user sells, section 6 rule 12): on the baseline, what the user orders; on a later intent, a proposal. Optional `delegated` (`["item"]`: the user's words hand the agent the choice of item) with `delegated_commitment` (those words); a later intent never widens it, and one that names `asked.item` takes the item back. On a later intent sealed since journey records: `move` (`narrowed`\|`switched`\|`raised`\|`picked`, derived by the producer, section 6 rule 13), `proposed: true` when it asks for more than the limits in force, `why_commitment` on a switch or raise, and a `counterparty` block when it starts a leg. |
 | `agent_move` | One of the agent's moves on the errand, its label fixed by `move`: `searched`, `options` (Showed you N options), `recommended`, `chose` (Chose for you), `couldnt` (Couldn't). | `move`; `searched`: `where_commitment`, `results`; `options`: `options[]` (each `item_commitment`, optional `price_minor`), `found`; `recommended`: `option` (from 1), `reason_commitment`; `chose`: `item_commitment`, optional `price_minor`; `couldnt`: `reason` (`sign_in_required`\|`out_of_stock`\|`cannot_ship_here`\|`blocked`\|`payment_declined`\|`site_error`\|`other`), `detail_commitment` with `other` | `baseline_ref`, `prev`. A `chose` follows a `delegated` item in force; it carries a `counterparty` block only when it starts the first leg. Texts are commitments only. |
 | `message` | One message in the thread. The text stays local. | `from` (`counterparty`\|`user`\|`agent`), `content_commitment`; optional `sent_at` (the platform's own time for the message, when the agent could read it, in UTC, at or before the record's `at`, which is when it was noted) | `channel`. `counterparty` when the message shows identifiers (for example, a new phone number). |
@@ -213,6 +214,7 @@ Twenty-one record types. The set is closed: an unknown `record_type` fails the s
 | `thread` | On a sale's own log: the registration of one buyer's thread, sealed by `deal open --sale` before the thread opens (section 6, rule 10). | `thread_ref_commitment`: the thread's deal id, committed under this step's own nonce | `deal_id` `sale-…`; follows the sale's previous record (`prev`, `baseline_ref` → the `sale` root). No `counterparty`, no `refs`. |
 | `thread_opened` | On a sale's own log: a registered thread opened, sealed right after its task authority (or by the next sale bundle or `deal sale close`, if a crash came between) (section 6, rule 10). | `task_authority_commitment`: the thread's task-authority record digest, committed under this step's own nonce | `deal_id` `sale-…`; exactly one `registration` ref → an earlier `thread` record of this log, at most one `thread_opened` per registration. No `counterparty`. |
 | `sale_cut` | On a sale's own log: the cut a sale bundle is made at, sealed after each thread's report and before the bundle's checkpoint (section 6, rule 10). | `thread_heads[]`: `{registration (digest ref), head_commitment}`, one per opened thread, each committing to that thread's last record at the cut | `deal_id` `sale-…`; each head names an opened thread, once. No `counterparty`, no `refs`. |
+| `sale_unpost` | On a sale's own log: a listing taken down (section 6, rule 15). It needs no check, evaluation or approval. | `platform`: the registrable domain of the platform, as on the post check's `posting` | `deal_id` `sale-…`; follows the sale's previous record. Exactly one `unposts` ref → the live post act of that platform (its latest post on it, not already taken down). No `counterparty`. Not after the sale's `sale_close`. |
 | `sale_close` | On a sale's own log: the end of the sale, sealed by `deal sale close` after every opened thread's `thread_opened` (section 6, rule 10). No buyer's thread opens on the sale after it; a thread already open goes on and ends at its own close. | nothing: `body` is empty | `deal_id` `sale-…`; follows the sale's previous record. No `counterparty`, no `refs`. At most one per sale, and only `sale_cut` records follow it, since every later sale bundle cuts the threads' heads again. |
 | `counterparty_profile` | The payee of the `check` just before it, fingerprinted under this profile's own key, for the user's own history: one merchant has one value across the profile's deals. Sealed right after its check, before any rules checker runs; never in a shared copy. | `counterparty_profile` in the header: `{fp_alg: "hmac-sha256-profile-key", ids: {payee}}`; an empty body | exactly one `about` → the `check` it follows. No `counterparty` block. |
 | `rules_verdict` | The party's own overall rules word for the deal, under the pack its digest names, so a counterparty copy can say whether that side's own check agreed (evidencebook-deal#191; Steven's ruling, Buzz 8b6aaecf). One word, derived once by the party's own check and never re-run, counted or combined; never a field of a report and never on a History card. | `word` (`met`\|`not_met`\|`unknown`\|`out_of_scope`), `pack_digest` (the pack's definition digest, 64 hex), optional `pack_id` (`publisher/name/semver`, only for a published pack; a private or forked pack carries the digest alone); no `counterparty` block. | At most one per deal, sealed only after the final `close` (the verdict is on the finished deal): a late record like `evidence` (Late records, section 3), with exactly one `confirms` ref → the final `close`, chained `confirms` as a Capsule, so a reconcile admission that reads every later step as confirming that close still holds. |
@@ -657,7 +659,7 @@ A verifier holding one deal's records in `seq` order checks:
     `task-authority/v0` (`source` → the sale record, the floor's `bounds_commitment` when the
     sale states one, no `sale_authority_commitment`), then its `thread` registrations, the
     `thread_opened` of each that opened, the `sale_cut` of each sale bundle, the typed records
-    of its listing posts (rule 15), and at most one `sale_close`, after which only `sale_cut`
+    of its listing posts and their takedowns (rule 15), and at most one `sale_close`, after which only `sale_cut`
     records follow; nothing else. A closed sale has
     ended for the cadence, as a deal has at its final close; no thread opens on it after the
     close. Each buyer's negotiation is a deal of its own, a thread, whose task
@@ -843,6 +845,20 @@ A verifier holding one deal's records in `seq` order checks:
     Sentence_Terminal code point, every line terminator Python's `str.splitlines` uses, and
     U+2026, the 181 code points of `sentence-marks.txt` beside this document.
     A later post on the same platform replaces the earlier one there.
+
+    **A listing taken down.** A `sale_unpost` ends a listing on its platform: an x-deal-v0
+    record, not an action record, with `platform` as its only body member and exactly one
+    `unposts` ref to a post act of this sale. It needs no check, evaluation or approval. The
+    chain refuses it unless that post is live: the latest post act on that platform (the
+    platform being the one its post check's `posting` names) and not already taken down, with
+    the same platform in the body. A later post on the platform, sealed as rule 15 says, makes
+    it live again, and a later `sale_unpost` takes that post down. It is refused after the
+    sale's `sale_close`: after a close only cuts follow.
+
+    The takedown is its own record type and not an `unpost` action beside `post`, because an
+    action record rests on a check and an approval and a takedown needs neither. A sale that
+    holds no `sale_unpost` verifies as it did before this record type; a verifier that predates
+    it refuses a sale that holds one, since the type is not in its closed set.
     `post` is never in a task authority's `allowed`, `allowed_actions` or `preconditions`
     (`record-common-v0`'s `plan_action`), and no deal's own chain holds a `post` check or action.
 
@@ -903,14 +919,14 @@ sealed before carries none and re-derives unchanged.
 | `offer_fields_changed`, `offer_fields_basis` | How many of the offer fields (`terms.item`, `terms.quantity`, `terms.price_minor`, `terms.deposit_minor`, `terms.conditions`, `recourse.refundable`) the user's own words state (`intent.asked`) that the proposal does not match, and the list's digest. Only the keys the user's words state are compared: a key they never state is not a change. Both are absent when the user's words state none of them. |
 | `task_authority_ref` | Typed records only: the task authority in force, as on the evaluation. |
 | `no_proposal` | On an `offer` only: `true` when no message from the counterparty was sealed in the deal before the check, so the offer answers no proposal (section 6, rule 9). Absent otherwise, and never beside a `source` ref. Decided by the producer from its whole log, never from a shared copy. |
-| `listing_classes` | On an `offer` or `commit` check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest `post` action per platform on the sale's own log (section 6, rule 15). `[]` when the listings state no class in common; absent when the sale has no post. Read from the sale's log, which the producer holds, under the existing store writer lock (the one `flock` a deal session holds from open to close, which every post action is also sealed under), so none lands between the read and the check; sealed in the check, so a later re-post never changes an earlier check, and a replay reads what was sealed. Class names only, never a reference to the post: equal across a sale's threads like `recipient_role`, it links nothing. A listing taken down keeps counting until a post replaces it. |
+| `listing_classes` | On an `offer` or `commit` check of a sale's thread: the representation classes every live listing of the sale states when the check is made, the intersection over the latest `post` action per platform on the sale's own log that no later `sale_unpost` took down (section 6, rule 15). `[]` when the listings state no class in common; absent when the sale has no live listing (it never posted, or every post was taken down: a thread's check then has no listing limit). Read from the sale's log, which the producer holds, under the existing store writer lock (the one `flock` a deal session holds from open to close, which every post action is also sealed under), so none lands between the read and the check; sealed in the check, so a later re-post never changes an earlier check, and a replay reads what was sealed. Class names only, never a reference to the post: equal across a sale's threads like `recipient_role`, it links nothing. A listing counts until a post replaces it or a `sale_unpost` takes it down (section 6, rule 15). |
 
 **Recomputing `listing_classes`.** `check_profile.py SALE.json THREAD.json …` (the sale's log
 from `deal sale export` beside its threads' `deal export`) recomputes each sealed
 `listing_classes` from the sale's log: the intersection over the latest post action per
-platform sealed before the check, by `at`, for each thread whose task authority names a
+platform sealed before the check, by `at`, less any post that a `sale_unpost` sealed before the check took down, for each thread whose task authority names a
 registration of that sale. A value that differs is a failure. The two logs have no ordering
-finer than `at`: a post action in the same second as the check, or a copy of the sale's log
+finer than `at`: a post action or a takedown in the same second as the check, or a copy of the sale's log
 with no record sealed after the check (a later post, cut or close shows the copy holds every
 post before it), leaves the value *not independently established*, reported as neither a match
 nor a mismatch. A thread checked alone reports it as a producer input, like the other rule

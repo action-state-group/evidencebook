@@ -1,0 +1,50 @@
+{
+  "fixture": "neg-sale-unpost-twice",
+  "expect": "invalid",
+  "description": "A second takedown of a post already taken down: only a later post makes the platform live again.",
+  "expected_stage": "chain",
+  "expected_error_contains": "not already taken down",
+  "chain_dir": "positive-sale-unpost",
+  "chain_prefix": [
+    "01-sale.json",
+    "02-task-authority.json",
+    "03-thread.json",
+    "04-thread-opened.json",
+    "05-post-check.json",
+    "06-post-evaluation.json",
+    "07-post-approval.json",
+    "08-post-action.json",
+    "09-sale-unpost.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "sale-3c9e1a7b5d2f8064",
+      "record_type": "sale_unpost",
+      "seq": 10,
+      "at": "2026-10-06T08:00:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "5c9d63d53717e4fb9025deb82270cc15cc43ef578090cd870b64d93d4a074298"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f"
+      },
+      "refs": [
+        {
+          "rel": "unposts",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d"
+        }
+      ]
+    },
+    "body": {
+      "platform": "marketplace.example"
+    }
+  }
+}

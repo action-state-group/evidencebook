@@ -242,6 +242,76 @@
       "error": ""
     },
     {
+      "name": "positive-sale-unpost/2",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/3",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/4",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/5",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/6",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/7",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/8",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/9",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/10",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/11",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/12",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/13",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/14",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "positive-sale-unpost/15",
+      "stage": "",
+      "error": ""
+    },
+    {
       "name": "negative/neg-action-on-hold.json",
       "stage": "chain",
       "error": "seq position 16: the referenced approval did not approve proceeding"
@@ -475,6 +545,41 @@
       "name": "negative/neg-sale-thread-after-close.json",
       "stage": "chain",
       "error": "seq position 11: after a sale's close, its log holds only cuts"
+    },
+    {
+      "name": "negative/neg-sale-unpost-after-close.json",
+      "stage": "chain",
+      "error": "seq position 11: after a sale's close, its log holds only cuts"
+    },
+    {
+      "name": "negative/neg-sale-unpost-of-a-cut.json",
+      "stage": "chain",
+      "error": "seq position 10: a post's unpost names exactly one earlier action of this sale (unposts)"
+    },
+    {
+      "name": "negative/neg-sale-unpost-of-another-platform.json",
+      "stage": "chain",
+      "error": "seq position 9: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "negative/neg-sale-unpost-twice.json",
+      "stage": "chain",
+      "error": "seq position 10: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "negative/neg-sale-unpost-with-a-buyer.json",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "negative/neg-sale-unpost-with-another-member.json",
+      "stage": "",
+      "error": ""
+    },
+    {
+      "name": "negative/neg-sale-unpost-with-another-rel.json",
+      "stage": "chain",
+      "error": "seq position 9: a post's unpost names exactly one earlier action of this sale (unposts)"
     },
     {
       "name": "negative/neg-second-rules-verdict.json",
@@ -6419,7 +6524,7 @@
       "op": "set",
       "value": "threadx",
       "stage": "chain",
-      "error": "seq position 3: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 3: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/3/x-deal-v0.record_type/set=\"\"",
@@ -6432,7 +6537,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 3: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 3: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/3/x-deal-v0.at/set=\"2026-10-06T08:00:00Zx\"",
@@ -6471,7 +6576,7 @@
       "op": "set",
       "value": "thread_openedx",
       "stage": "chain",
-      "error": "seq position 4: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 4: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/4/x-deal-v0.record_type/set=\"\"",
@@ -6484,7 +6589,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 4: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 4: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/4/x-deal-v0.at/set=\"2026-10-06T08:00:00Zx\"",
@@ -6798,7 +6903,7 @@
       "op": "set",
       "value": "user_approvalx",
       "stage": "chain",
-      "error": "seq position 7: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 7: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/7/body.authority/set=\"\"",
@@ -6811,7 +6916,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 7: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 7: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/7/body.proceed/delete",
@@ -6999,7 +7104,7 @@
       "op": "set",
       "value": "sale_cutx",
       "stage": "chain",
-      "error": "seq position 9: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 9: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/9/x-deal-v0.record_type/set=\"\"",
@@ -7012,7 +7117,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 9: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 9: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/9/x-deal-v0.at/set=\"2026-10-06T08:00:00Zx\"",
@@ -7067,7 +7172,7 @@
       "op": "set",
       "value": "sale_closex",
       "stage": "chain",
-      "error": "seq position 10: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 10: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/10/x-deal-v0.record_type/set=\"\"",
@@ -7080,7 +7185,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 10: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 10: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/10/x-deal-v0.at/set=\"2026-10-06T08:00:00Zx\"",
@@ -7119,7 +7224,7 @@
       "op": "set",
       "value": "sale_cutx",
       "stage": "chain",
-      "error": "seq position 11: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 11: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/11/x-deal-v0.record_type/set=\"\"",
@@ -7132,7 +7237,7 @@
       "op": "set",
       "value": "",
       "stage": "chain",
-      "error": "seq position 11: after its task authority, a sale's log holds only thread registrations, their openings, cuts and its close, and a listing post's check, evaluation, approval and action"
+      "error": "seq position 11: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
     },
     {
       "name": "mutation/positive-sale/11/body.thread_heads.0.registration.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
@@ -7149,6 +7254,695 @@
       "value": "0000000000000000000000000000000000000000000000000000000000000000",
       "stage": "chain",
       "error": "seq position 11: a sale cut names each opened thread at most once, and only opened threads"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/2/body.bounds_commitment/delete",
+      "chain": "positive-sale-unpost",
+      "index": 1,
+      "path": [
+        "body",
+        "bounds_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 2: the sale's task authority carries the floor its root states"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/4/x-deal-v0.refs.0.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 3,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 4: a thread's opening names an earlier registration of this sale, once"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/5/body.posting.platform/set=\"marketplace.examplex\"",
+      "chain": "positive-sale-unpost",
+      "index": 4,
+      "path": [
+        "body",
+        "posting",
+        "platform"
+      ],
+      "op": "set",
+      "value": "marketplace.examplex",
+      "stage": "chain",
+      "error": "seq position 9: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/5/body.posting.platform/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 4,
+      "path": [
+        "body",
+        "posting",
+        "platform"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 9: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/6/body.valid_until/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 5,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 8: the post check was valid until : a post after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/9/x-deal-v0.refs.0.rel/set=\"unpostsx\"",
+      "chain": "positive-sale-unpost",
+      "index": 8,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "unpostsx",
+      "stage": "chain",
+      "error": "seq position 9: a post's unpost names exactly one earlier action of this sale (unposts)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/9/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 8,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 9: a post's unpost names exactly one earlier action of this sale (unposts)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.action/delete",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: a sale's own log checks only a listing post (action post)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.action/set=\"postx\"",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "postx",
+      "stage": "chain",
+      "error": "seq position 10: a sale's own log checks only a listing post (action post)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.posting.platform/set=\"marketplace.examplex\"",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "posting",
+        "platform"
+      ],
+      "op": "set",
+      "value": "marketplace.examplex",
+      "stage": "chain",
+      "error": "seq position 14: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.posting.platform/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "posting",
+        "platform"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 14: a listing's takedown names the live post of its platform: that platform's latest post, not already taken down"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.task_authority_ref.digest/delete",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 10: a post check names the sale's one task authority"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/10/body.task_authority_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 9,
+      "path": [
+        "body",
+        "task_authority_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 10: a post check names the sale's one task authority"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/at/set=\"2026-10-06T08:00:00Zx\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "2026-10-06T08:00:00Zx",
+      "stage": "chain",
+      "error": "seq position 12: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/refs.0.rel/set=\"checksx\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "checksx",
+      "stage": "chain",
+      "error": "seq position 11: a post's verdict names exactly one earlier check of this sale (checks)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/refs.0.rel/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 11: a post's verdict names exactly one earlier check of this sale (checks)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.rendering_commitment/delete",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "rendering_commitment"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 12: what was shown (rendering_commitment) is not the card the post check rendered"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.rendering_commitment/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "rendering_commitment"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 12: what was shown (rendering_commitment) is not the card the post check rendered"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.proposed_action_digest/delete",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 11: a post's evaluation names its check and the sale's one task authority"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.proposed_action_digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "proposed_action_digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 11: a post's evaluation names its check and the sale's one task authority"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.valid_until/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "valid_until"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: the post check was valid until : a post after that needs a new check"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.rules_status/delete",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "rules_status"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 11: no rules checker runs on a post: its evaluation says rules_status not_applicable"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/11/body.rules_status/set=\"not_applicablex\"",
+      "chain": "positive-sale-unpost",
+      "index": 10,
+      "path": [
+        "body",
+        "rules_status"
+      ],
+      "op": "set",
+      "value": "not_applicablex",
+      "stage": "chain",
+      "error": "seq position 11: no rules checker runs on a post: its evaluation says rules_status not_applicable"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/chain_id/set=\"sale-3c9e1a7b5d2f8064x\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "chain_id"
+      ],
+      "op": "set",
+      "value": "sale-3c9e1a7b5d2f8064x",
+      "stage": "chain",
+      "error": "seq position 12: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/at/set=\"2026-10-06T08:00:00Zx\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "2026-10-06T08:00:00Zx",
+      "stage": "chain",
+      "error": "seq position 13: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/refs.0.rel/set=\"approvesx\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "approvesx",
+      "stage": "chain",
+      "error": "seq position 12: a post's approval names exactly one earlier verdict of this sale (approves)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/refs.0.rel/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 12: a post's approval names exactly one earlier verdict of this sale (approves)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/body.authority/set=\"user_approvalx\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "body",
+        "authority"
+      ],
+      "op": "set",
+      "value": "user_approvalx",
+      "stage": "chain",
+      "error": "seq position 12: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/body.authority/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "body",
+        "authority"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 12: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/body.proceed/delete",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "body",
+        "proceed"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 13: only the user's own approval, in their words, authorizes a post: an answer without the user's words does not"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/12/body.proceed/set=false",
+      "chain": "positive-sale-unpost",
+      "index": 11,
+      "path": [
+        "body",
+        "proceed"
+      ],
+      "op": "set",
+      "value": false,
+      "stage": "chain",
+      "error": "seq position 13: only the user's own approval, in their words, authorizes a post: an answer without the user's words does not"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/chain_id/set=\"sale-3c9e1a7b5d2f8064x\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "chain_id"
+      ],
+      "op": "set",
+      "value": "sale-3c9e1a7b5d2f8064x",
+      "stage": "chain",
+      "error": "seq position 13: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/at/set=\"2026-10-06T08:00:00Zx\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "at"
+      ],
+      "op": "set",
+      "value": "2026-10-06T08:00:00Zx",
+      "stage": "chain",
+      "error": "seq position 14: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/refs.0.rel/set=\"authorized_byx\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "authorized_byx",
+      "stage": "chain",
+      "error": "seq position 13: a post's action names exactly one earlier approval of this sale (authorized_by)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/refs.0.rel/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: a post's action names exactly one earlier approval of this sale (authorized_by)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.action/delete",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 13: a sale's own log takes only the post act"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.action/set=\"postx\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "action"
+      ],
+      "op": "set",
+      "value": "postx",
+      "stage": "chain",
+      "error": "seq position 13: a sale's own log takes only the post act"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.evaluation_ref.digest/delete",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "delete",
+      "value": null,
+      "stage": "chain",
+      "error": "seq position 13: evaluation_ref is the post's evaluation"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.evaluation_ref.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "evaluation_ref",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 13: evaluation_ref is the post's evaluation"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.authority_basis.0.type/set=\"task_authorityx\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "task_authorityx",
+      "stage": "chain",
+      "error": "seq position 13: a post's authority_basis is the sale's task authority, then the user's approval"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/13/body.authority_basis.0.type/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 12,
+      "path": [
+        "body",
+        "authority_basis",
+        0,
+        "type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 13: a post's authority_basis is the sale's task authority, then the user's approval"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.deal_id/set=\"sale-3c9e1a7b5d2f8064x\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "deal_id"
+      ],
+      "op": "set",
+      "value": "sale-3c9e1a7b5d2f8064x",
+      "stage": "chain",
+      "error": "seq position 14: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.record_type/set=\"sale_unpostx\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "sale_unpostx",
+      "stage": "chain",
+      "error": "seq position 14: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 14: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.at/set=\"2026-10-06T08:00:00Zx\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "at"
+      ],
+      "op": "set",
+      "value": "2026-10-06T08:00:00Zx",
+      "stage": "chain",
+      "error": "seq position 15: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.refs.0.rel/set=\"unpostsx\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "unpostsx",
+      "stage": "chain",
+      "error": "seq position 14: a post's unpost names exactly one earlier action of this sale (unposts)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/14/x-deal-v0.refs.0.rel/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 13,
+      "path": [
+        "x-deal-v0",
+        "refs",
+        0,
+        "rel"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 14: a post's unpost names exactly one earlier action of this sale (unposts)"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/15/x-deal-v0.deal_id/set=\"sale-3c9e1a7b5d2f8064x\"",
+      "chain": "positive-sale-unpost",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "deal_id"
+      ],
+      "op": "set",
+      "value": "sale-3c9e1a7b5d2f8064x",
+      "stage": "chain",
+      "error": "seq position 15: a sale's record follows its previous record in the same log"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/15/x-deal-v0.record_type/set=\"sale_cutx\"",
+      "chain": "positive-sale-unpost",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "sale_cutx",
+      "stage": "chain",
+      "error": "seq position 15: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/15/x-deal-v0.record_type/set=\"\"",
+      "chain": "positive-sale-unpost",
+      "index": 14,
+      "path": [
+        "x-deal-v0",
+        "record_type"
+      ],
+      "op": "set",
+      "value": "",
+      "stage": "chain",
+      "error": "seq position 15: after its task authority, a sale's log holds only thread registrations, their openings, cuts, its close, a listing post's check, evaluation, approval and action, and a listing's takedown"
+    },
+    {
+      "name": "mutation/positive-sale-unpost/15/body.thread_heads.0.registration.digest/set=\"0000000000000000000000000000000000000000000000000000000000000000\"",
+      "chain": "positive-sale-unpost",
+      "index": 14,
+      "path": [
+        "body",
+        "thread_heads",
+        0,
+        "registration",
+        "digest"
+      ],
+      "op": "set",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stage": "chain",
+      "error": "seq position 15: a sale cut names each opened thread at most once, and only opened threads"
     }
   ]
 }

@@ -116,6 +116,7 @@ fn records_round_trip() {
         "positive-typed",
         "positive-typed-seller",
         "positive-sale",
+        "positive-sale-unpost",
     ] {
         let mut files: Vec<PathBuf> = fs::read_dir(fixtures_dir().join(dir))
             .unwrap()

@@ -44,6 +44,7 @@ const (
 	TypeThreadOpened        = "thread_opened"
 	TypeSaleCut             = "sale_cut"
 	TypeSaleClose           = "sale_close"
+	TypeSaleUnpost          = "sale_unpost"
 	TypeAgentMove           = "agent_move"
 	TypeRulesVerdict        = "rules_verdict"
 )
@@ -54,7 +55,7 @@ func RecordTypes() []string { return append([]string(nil), recordTypes...) }
 var recordTypes = []string{
 	TypeIntent, TypeBaseline, TypeMessage, TypeClaim, TypeEvidence, TypeDetailChange, TypeCheck,
 	TypeVerdict, TypeApproval, TypeAction, TypeOutcome, TypeClose, TypeDisclosure, TypeSale,
-	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeAgentMove,
+	TypeCounterpartyProfile, TypeThread, TypeThreadOpened, TypeSaleCut, TypeSaleClose, TypeSaleUnpost, TypeAgentMove,
 	TypeRulesVerdict,
 }
 

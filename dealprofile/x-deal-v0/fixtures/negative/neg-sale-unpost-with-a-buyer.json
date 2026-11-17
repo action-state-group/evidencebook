@@ -1,0 +1,55 @@
+{
+  "fixture": "neg-sale-unpost-with-a-buyer",
+  "expect": "invalid",
+  "description": "A takedown that names a buyer.",
+  "expected_stage": "schema",
+  "expected_error_contains": "x-deal-v0",
+  "chain_dir": "positive-sale",
+  "chain_prefix": [
+    "01-sale.json",
+    "02-task-authority.json",
+    "03-thread.json",
+    "04-thread-opened.json",
+    "05-post-check.json",
+    "06-post-evaluation.json",
+    "07-post-approval.json",
+    "08-post-action.json"
+  ],
+  "record": {
+    "x-deal-v0": {
+      "profile": "x-deal-v0",
+      "canonicalization": "jcs",
+      "deal_id": "sale-3c9e1a7b5d2f8064",
+      "record_type": "sale_unpost",
+      "seq": 9,
+      "at": "2026-10-06T08:00:00Z",
+      "prev": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d"
+      },
+      "baseline_ref": {
+        "type": "deal-record",
+        "digest_alg": "SHA-256",
+        "digest": "902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f"
+      },
+      "refs": [
+        {
+          "rel": "unposts",
+          "type": "deal-record",
+          "digest_alg": "SHA-256",
+          "digest": "e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d"
+        }
+      ],
+      "counterparty": {
+        "fp_alg": "hmac-sha256-deal-key",
+        "ids": {
+          "domain": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      }
+    },
+    "body": {
+      "platform": "marketplace.example"
+    }
+  }
+}
