@@ -572,6 +572,18 @@ func checkWitnesses(ws []Witness) error {
 	return nil
 }
 
+// witnessKeys are the key ids a witness list names, sorted: a witness is its
+// key id, and its URL only a hint (#482 Q1), so two lists name the same
+// witnesses when their key ids agree, whatever the hints and order.
+func witnessKeys(ws []Witness) []string {
+	out := make([]string, len(ws))
+	for i, w := range ws {
+		out[i] = w.KeyID
+	}
+	slices.Sort(out)
+	return out
+}
+
 // checkRows refuses rows the schema admits that the rule cannot read: a
 // row id given twice, and a date that hangs on a record named nowhere.
 func checkRows(tr TermsRows) error {
@@ -633,7 +645,7 @@ func CheckAgreement(agreement, offer Record, heldAcceptorAgreement string) error
 	if ag.RowsDigest != rows {
 		return bad("rows_digest is not the offer's rows digest")
 	}
-	if !slices.Equal(ag.Witnesses, of.Witnesses) {
+	if !slices.Equal(witnessKeys(ag.Witnesses), witnessKeys(of.Witnesses)) {
 		return bad("the agreement's witnesses are not the offer's")
 	}
 	if !sameAdjudicator(ag.Adjudicator, of.Adjudicator) {

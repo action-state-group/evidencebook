@@ -234,6 +234,15 @@ func TestCheckAgreement(t *testing.T) {
 		err := CheckAgreement(a, o, "")
 		assert.Equal(t, StageAgreement, stageOf(err), "%s: %v", name, err)
 	}
+	// A witness is its key id: another URL hint, or another order, is the
+	// same list.
+	hinted := acceptorAgreement(offer)
+	hinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('4'), URL: "https://moved.test"}}
+	assert.NoError(t, CheckAgreement(hinted, offer, ""))
+	unhinted := acceptorAgreement(offer)
+	unhinted.Body.(*AgreeBody).Witnesses = []Witness{{KeyID: hex('4')}}
+	assert.NoError(t, CheckAgreement(unhinted, offer, ""))
+
 	// The offerer's agreement names the acceptor's agreement it holds.
 	assert.Equal(t, StageAgreement, stageOf(CheckAgreement(offerer, offer, hex('8'))))
 	offerer.Body.(*AgreeBody).Role = RoleSeller
