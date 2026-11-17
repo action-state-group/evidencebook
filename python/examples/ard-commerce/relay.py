@@ -13,11 +13,16 @@ class FakeRelay:
     """A NIP-01 relay in memory: it stores every event it is sent and answers a REQ
     with the stored events that match its filter, then EOSE. It checks nothing."""
 
-    def __init__(self) -> None:
+    def __init__(self, port: int = 0) -> None:
         self.events: list[dict] = []
-        self._server = websockets_server.serve(self._handle, "127.0.0.1", 0)
+        self._server = websockets_server.serve(self._handle, "127.0.0.1", port)
         self.url = f"ws://127.0.0.1:{self._server.socket.getsockname()[1]}"
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def on(cls, port: int) -> FakeRelay:
+        """The relay on a fixed port, for parties in separate processes (:mod:`parties`)."""
+        return cls(port)
 
     def _handle(self, ws) -> None:
         for raw in ws:
