@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.14.1 (2026-11-16)
+
+Go module only. Pull request since v0.14.0: #454 (the `sale_unpost` record; entry cites its issue #451).
+
+- `dealprofile`: a sale's own log takes a `sale_unpost` record, a listing taken down (PROFILE.md section 6, rule 15). Its body is `platform` only, it needs no check, evaluation or approval, and its one `unposts` ref names the live post act of that platform (the latest post on it, not already taken down); a later post makes the platform live again, and a taken-down listing no longer counts in `listing_classes`. It is a record type of its own, not an `unpost` action beside `post`, because an action record rests on a check and an approval and a takedown needs neither; it is refused after `sale_close`. The record type is new, so a verifier that predates it refuses a sale that holds one; a sale without one verifies as before (no `rule_inputs_version` change). New fixtures: `positive-sale-unpost/` and the `neg-sale-unpost-*` negatives (#451).
+
 ## v0.14.0 (2026-11-13)
 
 Go module only. Pull requests since v0.13.9: #433 (`uniform` is the default refusal policy, breaking), #432 and #434 (diagnostic page and `report build --diagnostic`), #435 and #439 (pin agent-action-capsule go v0.21.0) and #445 (the `rules_verdict` record).

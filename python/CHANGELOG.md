@@ -244,3 +244,9 @@
 ### Changed (breaking): `uniform` is the default refusal policy (#225, #206 row 8)
 
 - `ResponderPolicy().refusal_policy` is now `REFUSAL_POLICY_UNIFORM` (an empty string reads as uniform too): a responder answers `policy_declined` wherever a more specific token would tell a counterparty whether the holder has a record for a key it does not hold. `REFUSAL_POLICY_SPECIFIC` is an explicit operator opt-in; pass `ResponderPolicy(refusal_policy=REFUSAL_POLICY_SPECIFIC)` to keep the old answers.
+
+- The checkpoint reader accepts the CWT `sub` as the log id (Checkpointed Local Log -02) as well as the pre-02 `<log id>#<log size>`; any other subject is still refused (#449).
+
+- `standard_history_deal` counts disputes as the deal plugin does: a buyer's dispute step with no ruling is `raised`/`open`, and a ruling step ends it `for` or `against` the holder (`raised` for a buyer's store, `received` for a seller's), so a seller with a ruling against it no longer shows a clean card (#457).
+
+- `evidencebook.deal`: `sale_unpost` joins the record types (a sale's listing taken down; PROFILE.md section 6, rule 15), and the vendored schemas follow x-deal-v0 (#451).
