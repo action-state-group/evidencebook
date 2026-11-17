@@ -945,7 +945,14 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 **Proposed: the v1 report.**
 
 - **Type and Capsule.** The same Capsule form and names (`ReportActionID`, `ReportType`
-  `deal_report`, `ReportExtension` `x-deal-report/v0`), with payload `profile` `"x-deal-v1"`. A v1
+  `deal_report`), with payload `profile` `"x-deal-v1"`.
+- **How a page finds it.** A v1 bundle carries the extension `x-deal-v1` (the record version's
+  name, 2.3), whose `sealed_report` member names the report Capsule, as a v0 bundle's `x-deal-v0`
+  extension does (capsule-viewer `src/capsule_viewer/receipt/model.py:41,485-489` at `99d61f4`).
+  A standalone report travels in the same carrier extension as v0's, `x-deal-report/v0`
+  (`names.go:99-102`): that name is a carrier, not a profile version, and the report's own
+  `profile` member says which version it is. A page reads `x-deal-v1`, never `x-deal-v0`, for a
+  v1 deal. A v1
   report is always standalone: it is appended to no book. So it adds no fact, changes no book
   checkpoint, and shows no one when or how often the deal was shared (`PROFILE.md:141-145`). It is
   not one of the ten record types and is not a step.
@@ -961,10 +968,12 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
  "referee": "<adjudicator's copy only>",
  "as_of": "<T, RFC 3339 UTC to the second>",
  "deal_checkpoint": {"log_id": "deal/<deal_id>", "mmr_size": 7, "root": "<hex>"},
+ "pack_digest": "<the deal terms pack's digest, as the agreement cites it>",
  "start": {"state": "started" | "awaiting_agreement" | "not_started", "local": false,
            "by": "offerer_in_time" | "acceptor_named" | "first_act" | null},
  "settled": false,
- "rows": [ ... one per agreed row, in agreement order, empty unless started ... ],
+ "rows_state": "listed" | "not_started" | "withheld",
+ "rows": [ ... one per agreed row, in agreement order, when rows_state is "listed" ... ],
  "rests_on": {
    "own": {"log_id": "deal/<deal_id>", "size": 7, "last": "<record id>"},
    "counterparty": {"log_id": "deal/<deal_id>", "counted": 6, "last": "<record id>",
@@ -977,7 +986,7 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 - **One row:**
 
 ```json
-{"id": "as_described", "owed_by": "seller",
+{"id": "as_described", "owed_by": "seller", "owed": { ... as the agreed row's owed ... },
  "due": "2026-11-04T09:12:00Z" | "not_set",
  "window_end": "2026-11-18T09:12:00Z" | "not_set",
  "status": "<rowstatus status word>", "value": "met" | "not_met" | null,
@@ -1009,6 +1018,39 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
   `shelf_receive.go:1110-1139`), including a fork's position.
 - `settled` is true when every row is agreed, uncontested, or ruled with its remedy made (design
   §4.2, third consequence).
+- **Row text.** A row carries its `id` and its agreed `owed`, not free text. A page names a row
+  by the deal terms pack whose digest `pack_digest` gives (design §4.2, "The row id": the pack's
+  author gives each template its id and text); a page that does not hold the pack shows the id.
+  So the report keeps no second copy of the terms that could disagree with the pack.
+- **`rows_state`.** `listed`: `rows` holds every agreed row. `not_started`: the deal has not
+  started (`start.state` is not `started`) and `rows` is empty. `withheld`: this audience may not
+  have row statuses and `rows` is empty. Proposed, following the status opening's audiences
+  (shelf note §2.2; AAC `spec/shelf-forms-v0.md` §4.3): `keep` and `counterparty` get `listed`;
+  `adjudicator` gets `withheld`, since an adjudicator computes from both books it is handed, not
+  from a party's statement of the result. Part of the door question (Q11).
+- **The deal-level line.** A v1 report's `report` text body has no `lifecycle` member, and a page
+  never reads `report.lifecycle.state` for a v1 deal. Its deal-level line is `start.state`, and,
+  for a started deal, `settled`: true shows "settled", false shows nothing (a v1 deal is never
+  closed by a record, design §4.2). A v0 report keeps its close and its `lifecycle`.
+- **`as_of`** is the time T at which the holder computed every status in the report, from what it
+  held then; it is not a time any witness attests.
+- **`late`** is optional: absent until the additive rowstatus output lands (Q9, decided), and a
+  page shows nothing for it while absent.
+- **The closed word sets**, every word a page has to word (a wording pack covers exactly these):
+
+  | Member | Words |
+  |---|---|
+  | `start.state` | `started`, `awaiting_agreement`, `not_started` |
+  | `start.by` | `offerer_in_time`, `acceptor_named`, `first_act`, or `null` |
+  | `rows_state` | `listed`, `not_started`, `withheld` |
+  | row `status` | rowstatus's ten (`rowstatus.go:56-66`): `not_reached`, `not_due`, `no_statement`, `waiting`, `uncontested`, `agreed_so_far`, `agreed`, `in_disagreement`, `in_dispute`, `ruled` |
+  | row `value` | `met`, `not_met`, or `null` (`cannot_tell` is never a value: rowstatus counts it as no statement) |
+  | row `remedy` | `none`, `due`, `made`, `not_honoured`, or `null` for a row that is not ruled |
+  | row `check` | `passed`, `failed`, `not_run`, `not_recomputed` |
+  | row `due`, `window_end` | an RFC 3339 UTC time, or `not_set` |
+  | `audience` | `keep`, `counterparty`, `adjudicator` |
+  | booleans | `local`, `witnessed`, `settled`, `final`, `counterparty_layer` |
+
 - A page shows `rows` and `start` as they are. It never recomputes them.
 
 **Vectors** (`testdata/deal-v1/report/`), each from Appendix A's two books, at fixed nonces:
