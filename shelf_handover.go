@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -126,26 +125,12 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 		return Handover{}, err
 	}
 	out := Handover{V: 1, LogID: c.cfg.LogID, Anchor: tick.Checkpoint, Entries: []string{}, Documents: []HandoverDocument{}, BookCheckpoints: [][]byte{}, Consistency: []HandoverConsistency{}, Ties: []HandoverTie{}}
-	sum := sha256.Sum256(tick.Checkpoint)
-	rows, err := s.db.QueryContext(ctx, `SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id`, hex.EncodeToString(sum[:]))
+	receipts, err := c.receiptsLocked(ctx, tick.Checkpoint)
 	if err != nil {
-		return Handover{}, err
+		return Handover{}, fmt.Errorf("tick %d: %w", n, err)
 	}
-	for rows.Next() {
-		var raw string
-		var r WitnessReceipt
-		if err := rows.Scan(&raw); err != nil {
-			rows.Close()
-			return Handover{}, err
-		}
-		if err := json.Unmarshal([]byte(raw), &r); err != nil {
-			rows.Close()
-			return Handover{}, fmt.Errorf("%w: a stored receipt of tick %d: %v", ErrCorrupt, n, err)
-		}
-		out.Receipts = append(out.Receipts, r)
-	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return Handover{}, err
+	if len(receipts) > 0 {
+		out.Receipts = receipts
 	}
 	for after := uint64(0); after < anchor.Entries; {
 		entries, err := c.log.Entries(ctx, after, int(min(1000, anchor.Entries-after)))
@@ -165,7 +150,7 @@ func (c *Cadence) Handover(ctx context.Context, n uint64) (Handover, error) {
 			after = e.Seq
 		}
 	}
-	rows, err = s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT entry_seq, kind, log_id, doc, status_opening FROM shelf_entries WHERE entry_seq <= ? ORDER BY entry_seq`, anchor.Entries)
 	if err != nil {
 		return Handover{}, err

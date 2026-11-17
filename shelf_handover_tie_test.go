@@ -114,3 +114,53 @@ func TestATieThatDoesNotVerifyFailsTheHandover(t *testing.T) {
 	_, err := VerifyHandover(h, key, aacwitness.Directory{})
 	require.ErrorIs(t, err, ErrInvalid)
 }
+
+// A cadence checkpoint the holder signed and a named witness witnessed, but
+// of another shelf history (another root at the tie's position), fails the
+// tie on its root, not on its receipts.
+func TestATieUnderAnotherHistorysCheckpointFails(t *testing.T) {
+	h, key, _ := tiedHandover(t)
+	// Another shelf under the same checkpoint key and cadence log id, whose
+	// first tick is witnessed.
+	other := newShelfFixture(t).open(t)
+	c, _ := newStampCadence(t, other)
+	mustAppend(t, mustOpenBook(t, other, "deal/z"), observation("z", "1"))
+	forged := mustTick(t, c, tickTime)
+	cp, err := checkpointFromStatement(forged.Checkpoint)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, cp.Entries, h.Ties[0].EntrySeq)
+	h.Ties[0].CadenceCheckpoint = forged.Checkpoint
+	h.Ties[0].Receipts = []WitnessReceipt{receiptFor(t, forged.Checkpoint, testWitnessURL)}
+	_, err = VerifyHandover(h, key, testWitnesses(t))
+	require.ErrorIs(t, err, ErrInvalid)
+	assert.Contains(t, err.Error(), "do not recompute the cadence checkpoint")
+}
+
+// A witnessed tree tick whose leaf kept no checkpoint statement (as a
+// released capsule-cli build stored it) gives that book no tie: it is
+// untied, and the handover verifies.
+func TestALeafWithNoStatementLeavesItsBookUntied(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newStampCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	mustAppend(t, mustOpenBook(t, shelf, "deal/b"), observation("b", "1"))
+	tree := mustTick(t, c, tickTime)
+	mustWitness(t, c, tree.N)
+	_, err := shelf.db.Exec(`UPDATE cadence_ticks SET leaves = json_remove(leaves, '$.deals."deal/b".statement') WHERE tick = ?`, tree.N)
+	require.NoError(t, err)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	_, err = c.Stamp(ctx, tickTime.Add(2*time.Minute))
+	require.NoError(t, err)
+	h, err := c.Handover(ctx, 0)
+	require.NoError(t, err)
+	require.Len(t, h.Ties, 1)
+	assert.Equal(t, "deal/a", h.Ties[0].LogID)
+	anchor, err := checkpointFromStatement(h.Anchor)
+	require.NoError(t, err)
+	got, err := VerifyHandover(h, anchor.KeyID, testWitnesses(t))
+	require.NoError(t, err)
+	var bookB string
+	require.NoError(t, shelf.db.QueryRow(`SELECT book_id FROM shelf_entries WHERE log_id = 'deal/b' LIMIT 1`).Scan(&bookB))
+	assert.Equal(t, []string{bookB}, got.Untied)
+}
