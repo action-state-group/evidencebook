@@ -98,7 +98,7 @@ jobs:
         run: python -m pytest -q .github/test_release.py
 
   deal-profile:
-    name: x-deal-v0 reference checker over the profile's fixtures and the chains Go builds
+    name: x-deal-v0 and x-deal-v1 reference checkers over the profiles' fixtures and the chains Go builds
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -120,6 +120,11 @@ jobs:
         run: |
           python check_profile.py | tee "$RUNNER_TEMP/check_profile.out"
           tail -n 1 "$RUNNER_TEMP/check_profile.out" | grep -qx "ALL OK"
+      - name: Run x-deal-v1's check_profile.py over its fixtures (anything but ALL OK fails)
+        working-directory: dealprofile/x-deal-v1
+        run: |
+          python check_profile.py | tee "$RUNNER_TEMP/check_profile_v1.out"
+          tail -n 1 "$RUNNER_TEMP/check_profile_v1.out" | grep -qx "ALL OK"
       - name: Check testdata/chain-vectors.json is the reference checker's chain-stage verdict (Go's and Rust's chain stages are tested against it)
         run: |
           (cd dealprofile/x-deal-v0 && python check_profile.py --chain-vectors) > "$RUNNER_TEMP/chain-vectors.json"
