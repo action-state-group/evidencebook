@@ -183,18 +183,22 @@ type AgreeBody struct {
 	Kind  string `json:"kind"`
 	Offer Ref    `json:"offer"`
 	// The agreement's members.
-	RowsDigest        string            `json:"rows_digest,omitzero"`
-	Side              string            `json:"side,omitzero"`
-	Role              string            `json:"role,omitzero"`
-	Admit             *Ref              `json:"admit,omitzero"`
-	Intent            *Ref              `json:"intent,omitzero"`
-	Witnesses         []Witness         `json:"witnesses,omitzero"`
-	Adjudicator       Null[Adjudicator] `json:"adjudicator,omitzero"`
-	Forums            []string          `json:"forums,omitzero"`
-	CounterpartyLayer *bool             `json:"counterparty_layer,omitzero"`
-	CounterpartyKey   Null[string]      `json:"counterparty_key,omitzero"`
-	CheckpointKey     string            `json:"checkpoint_key,omitzero"`
-	ShelfLogID        string            `json:"shelf_log_id,omitzero"`
+	RowsDigest  string            `json:"rows_digest,omitzero"`
+	Side        string            `json:"side,omitzero"`
+	Role        string            `json:"role,omitzero"`
+	Admit       *Ref              `json:"admit,omitzero"`
+	Intent      *Ref              `json:"intent,omitzero"`
+	Witnesses   []Witness         `json:"witnesses,omitzero"`
+	Adjudicator Null[Adjudicator] `json:"adjudicator,omitzero"`
+	// Forums are the agreement's recourse clause, the offer's. An agreement
+	// always carries the member: with a null adjudicator set it to an empty,
+	// non-nil slice, since a nil one is left out (omitzero, as decline and
+	// cancellation carry no forums).
+	Forums            []string     `json:"forums,omitzero"`
+	CounterpartyLayer *bool        `json:"counterparty_layer,omitzero"`
+	CounterpartyKey   Null[string] `json:"counterparty_key,omitzero"`
+	CheckpointKey     string       `json:"checkpoint_key,omitzero"`
+	ShelfLogID        string       `json:"shelf_log_id,omitzero"`
 	// A decline's or a cancellation's.
 	Reason           string `json:"reason,omitzero"`
 	ReasonCommitment string `json:"reason_commitment,omitzero"`
