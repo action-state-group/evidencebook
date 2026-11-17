@@ -116,15 +116,16 @@ New tables, all in the same file:
   checkpoint, with its registration time or null.
 - `shelf_book_checkpoints (log_id, size, checkpoint BLOB, PRIMARY KEY (log_id, size))`: the COSE
   bytes of every book checkpoint a fact carries, so a handover can include them.
-- `shelf_received` and `shelf_evidence`: the store (section 3).
+- `shelf_received`, `shelf_received_proofs` and `shelf_evidence`: the store (section 3).
 - `shelf_migration (id = 1, state, backup_sha256, batch TEXT)`: the migration's progress (section 4).
 
 `cadence_ticks` and the tree tables are kept and no longer written after the marker.
 
 ### 2.4 The write rule
 
-At each stamp, for each book that has a first record, the shelf computes the fact it would write
-now: the book's current size and checkpoint, and the openings' values as the profile gives them.
+At each stamp, for each book that has a first record, and for each host log in the cadence
+(`cadence_logs`) that has an entry (profile `"none"`, link value
+`{"last_received": null, "checked_over": []}`), the shelf computes the fact it would write now: the book's current size and checkpoint, and the openings' values as the profile gives them.
 It writes a fact when the size grew, or when either opening's value differs from the one in the
 book's last fact (the salts differ every time, so values are compared, never commitments). A book
 whose values are unchanged gets no fact. A grown book's checkpoint is cut at the stamp. No book is
@@ -160,8 +161,8 @@ When a stamp is taken is the owner's: `Stamp(ctx, now)` on demand, which the dea
 after a statement, a dispute or a remedy and before its window ends; the host's own schedule,
 calling `Stamp`; or the heartbeat, `Tick`, which after the marker stamps instead of building a
 tree, at the same interval. The random draws of a stamp are, in this order: each fact's link salt
-then status salt, in append order; then the jitter of `due_next`, as today's last draw before
-padding (`cadence.go:560-567`). No padding is written (the target, section 4.3: none for now).
+then status salt, in append order; then the jitter of `due_next` (today's tick draws it too,
+`cadence.go:560-567`). No padding is written (the target, section 4.3: none for now).
 Times leaving the device stay coarsened to the minute (`cadence.go:498-499`).
 
 `Witnessed(checkpoint, witness_id, receipt)` verifies a receipt for any shelf checkpoint and keeps
@@ -183,8 +184,8 @@ counterparty's facts and the profile's status, so they are step 5's vectors, bui
 entries before the marker as the opaque ids they are), every entry document after the marker,
 each book fact's status opening, no journal opening and no link opening, the COSE bytes of every
 book checkpoint a book fact carries, the consistency proof between each pair of consecutive book
-facts whose size grew, each genesis fact's consistency proof from the log's largest witnessed size
-with that witnessed checkpoint, the anchor checkpoint, its receipts, and the coverage start
+facts whose size grew, each genesis fact's tie when the holder has one (below), the anchor
+checkpoint, its receipts, and the coverage start
 (section 4).
 
 `VerifyHandover(material, witnesses)` fails when:
@@ -201,8 +202,12 @@ with that witnessed checkpoint, the anchor checkpoint, its receipts, and the cov
   `size` has the same `checkpoint_sha256`; and a fact whose size grew has a consistency proof from
   the previous one that verifies (a replaced book). Whether a fact was due under the write rule
   needs the profile's inputs, so the verifier does not judge it;
-- a genesis fact that comes with a consistency proof from the log's largest witnessed size has a
-  proof that fails.
+- a genesis fact that comes with a tie fails to verify it. A **tie** is the old witnessed tick's
+  leaf for that log (its log id, size, checkpoint digest and salt), its path to that tick's tree
+  root, that root's entry in the cadence log under a cadence checkpoint with a receipt from a named
+  witness, the old book checkpoint's COSE bytes, and the consistency proof from it to the genesis
+  fact's checkpoint. A genesis fact with no tie is reported untied: nothing is claimed about the
+  log's continuity before the coverage start, which is all the coverage start already says.
 
 It does not check the journal's chain or ask for its openings, and the journal counts toward no
 completeness and no tally. It returns each book's latest fact and opening, the coverage start, and
@@ -220,8 +225,12 @@ count over the returned facts.
 - **The journal** is a book of kind `journal`, one per shelf, opened on first use, whose records
   are full records. The request and share logs of today keep their bare digests and are not moved.
 - **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, deal_id,
-  record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`, and
-  `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for a contradicting checkpoint or a fork.
+  record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`;
+  `shelf_received_proofs (sender_key, log_id, size, book_checkpoint BLOB, fact BLOB,
+  inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key, log_id,
+  size))`, every stamp proof accepted, so a restart keeps what it covered and a later
+  contradiction is found against it; and `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for
+  a contradicting checkpoint or a fork.
   Nothing in the store is appended to a book.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the
@@ -236,8 +245,10 @@ count over the returned facts.
     book), and its inclusion proof against its shelf checkpoint; a proof whose book checkpoint
     contradicts one already held for the same key and log at the same size is refused and kept as
     evidence; the same checkpoint again is no contradiction.
-  - Each call returns what changed: the deal ids whose counted prefix grew, shrank or forked, so
-    the profile recomputes every row of each (acceptance 4). A restart recomputes from the store.
+  - Each call returns what changed: the deal ids whose counted prefix grew, shrank or forked, and
+    those whose records gained coverage or a registration time from an accepted proof or receipt,
+    so the profile recomputes every row of each (acceptance 4). A restart recomputes from the
+    store.
 - **The `seen` field** is a record member the library fills, when asked, with the digest of the
   last record of the counted prefix held from the other side of that book.
 - **The storage interface**: the shelf, the stamp and the card anchor take a `ShelfStore`
@@ -253,24 +264,28 @@ is one-way, and recoverable at every step:
    so no tree root is ever appended after the marker.
 2. **Back up.** The shelf writes `VACUUM INTO '<path>.v1.bak.tmp'`, which is a consistent snapshot
    including what is still in the WAL, records the snapshot's SHA-256 in `shelf_migration`, and
-   renames it to `<path>.v1.bak`. On a restart, a `.v1.bak` whose SHA-256 matches the recorded one
-   is reused; one that does not match is refused, and the shelf asks the owner to move it.
+   renames it to `<path>.v1.bak`. On a restart: a `.v1.bak` whose SHA-256 matches the recorded one
+   is reused; a `.v1.bak.tmp` whose SHA-256 matches it is renamed; a `.v1.bak.tmp` with no
+   recorded digest, or another one, is from an attempt that did not finish and is removed before
+   `VACUUM INTO` runs again (it refuses an existing file); a `.v1.bak` that does not match is
+   refused, and the shelf asks the owner to move it.
 3. **Store the batch.** `shelf_migration.batch` holds the marker
    `{"v": 1, "kind": "format_switch", "format": "book_facts/1", "last_tick": <n>,
-   "logs": [{"log_id", "size"}, ...]}`, listing every log in `cadence_logs` with its current size
+   "logs": [{"log_id", "size"}, ...]}`, listing every log in `cadence_logs`, sorted by log id
+   (byte order of its UTF-8), with its current size
    (0 for a log with no entry), and a genesis fact for every log of that list with an entry: its
    current size and checkpoint, `prev_fact_size` 0, profile `"none"` for a host log in the cadence
    (the Mesh node's own log is not one: a host log that witnesses itself is outside the cadence,
-   `rust/evidencebook/src/shelf/mod.rs:467-470`, and stays so until step 8), and in the
-   handover material the consistency proof from its largest witnessed size (`cadence_witnessed`)
-   when one exists. A log listed with size 0 gets its first fact when it first has an entry. In
+   `rust/evidencebook/src/shelf/mod.rs:467-470`, and stays so until step 8), and for a log with a
+   witnessed size (`cadence_witnessed`) the batch keeps the tie of 2.7 from the largest one. A log listed with size 0 gets its first fact when it first has an entry. In
    the same shelf transaction as the batch, `shelf_meta.version` becomes 2 and
    `shelf_migration.state` `migrating`, so from here an older build refuses the file and can
    never tick a tree root after the marker.
 4. **Append and checkpoint.** The marker, then the genesis facts in `book_id` order, then a stamp
    entry, are appended through the cadence log's own CLL handle; then the shelf checkpoint is cut
-   and queued for the shelf's witnesses, as every stamp's is. This checkpoint is the **coverage
-   start**.
+   and queued for the shelf's witnesses, as every stamp's is. The shelf records this as stamp 1 in
+   `shelf_stamps` (its entries, checkpoint, `at`, and `due_next` from the cadence's interval and
+   jitter). This checkpoint is the **coverage start**.
 5. **Finish.** `shelf_migration.state` becomes `done`. A new build that opens a file in state
    `migrating` repeats step 4 from the stored batch, appending only what is missing, as a stamp is
    finished (2.5), before anything else; a crash before step 3's transaction leaves a version 1
@@ -284,7 +299,9 @@ before it.
 
 **Old cards and old readers.** `standard_history/1` and `/2` stay served on a migrated shelf: their
 anchor is a stamp's checkpoint after the coverage start, and their extents are each book's latest
-fact's size at that stamp, in place of `cadence_ticks`; their counting rules do not change. A test
+fact at that stamp as a record count (`mmr.LeafCount(size)`, refusing a size that is not an MMR
+size, as `extentsLocked` counts today, `cadence_standard_history.go:112-116`), in place of
+`cadence_ticks`; their counting rules do not change. A test
 adds a deal after migration and checks that a `/1` card counts it. Old cards stay readable as old
 cards. A reader of the old format given a `/3` card reports an unknown format. An older pinned
 build refuses a version 2 file; the upgrade note says a downgrade needs the backup.
