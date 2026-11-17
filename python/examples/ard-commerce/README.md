@@ -114,13 +114,14 @@ process and one window, with Maya's five tools.
 Cards and receipts. In every window `ard_show_card` prints that party's own `standard_history/1` card and `ard_show_receipt`
 its own receipt for the deal, both computed from that party's own sealed records (Maya's from her book, Alder's from
 his); a window never shows another party's. Before the deal Maya's card counts 0 deals, Alder's 48 and Kestrel's 48 (3 did
-not hold); after it Alder's counts 49 and Maya's 1 once each takes its next checkpoint (about a minute). The seller's
+not hold); after it Alder's counts 49 and Maya's 1: `ard_pay` takes Maya's checkpoint over her own records as part of closing (waiting up to a minute if her last one was that recent) and Alder's agent takes its own right after the close, so both cards show the sale within seconds in the demo's story. The seller's
 receipt holds no payment step: the payment is the buyer's act, so only Maya's receipt shows it.
 
 The payment gate. `ard_pay` never pays on the agent's word: before it moves anything it shows a native macOS dialog on
 the presenter's screen (payee, amount, real or simulated rail; Cancel is the default) and pays only if the presenter
 clicks Pay. The agent neither sees nor answers that dialog, so it cannot pay in one turn; Cancel, a timeout or no screen
-refuses and pays nothing. `ARD_APPROVAL=none` in the extension command turns the gate off (tests only; the tool says so).
+refuses and pays nothing. Stated limit: it stops the agent, not an agent that has computer-use tools and clicks the dialog
+itself; the demo agent uses only the `ard_*` tools. `ARD_APPROVAL=none` in the extension command turns the gate off (tests only; the tool says so).
 
 Things to know. Goose Desktop keeps environment values of a custom extension as secrets it does not pass
 to the server, so the recipes put them in the command (`/usr/bin/env`). One Goose chat per party and home:

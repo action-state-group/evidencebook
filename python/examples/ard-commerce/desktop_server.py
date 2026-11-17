@@ -11,7 +11,7 @@ tool returns the text that run prints, so the screen says what the script demo s
     ard_show_history   ->  each seller's signed answers, checked, and the History cards
     ard_assess         ->  the assessment (the on-stage edit is its ``max_adverse_permille``)
     ard_pick           ->  the pick (a seller over its limit ends here: no deal opens, nothing is paid)
-    ard_pay            ->  the deal and the payment; the one tool that moves money (Goose asks first)
+    ard_pay            ->  the deal and the payment; the one tool that moves money (the presenter approves in a dialog)
 ``alder`` / ``kestrel``     a seller's window, its own node and keys:
     ard_seller_activity  ->  what its agent did: requests answered, the deal, the sale, its card
 ``all`` (default)     the whole story in one process, the five buyer tools (one window).
@@ -28,6 +28,8 @@ import inspect
 import io
 import os
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -84,6 +86,7 @@ class Session:
         self.pack: packs.Pack | None = None
         self.picked: dict[str, str] = {}
         self.paid: set[str] = set()
+        self.pay_lock = threading.Lock()  # one check, approval and payment at a time
         rail: pay.Rail = pay.from_env(os.environ.get("ARD_RAIL", "fake"))
         kestrel_card = os.environ.get("ARD_KESTREL_CARD", "sentinel")
         if ROLE == "maya":
@@ -236,10 +239,13 @@ def ard_pick(seller: str) -> None:
 
 if os.environ.get("ARD_RAIL") in ("lightning", "local"):
     _PAY = ("Step 6-7: open the deal for the picked seller and pay it over the real Lightning rail (289 msat for Alder). "
-            "THIS MOVES REAL MONEY: only after Maya has said to pay. Refused unless ard_pick sealed this seller.")
+            "THIS MOVES REAL MONEY. A dialog appears on the presenter's screen and this call blocks, for up to 3 minutes, until "
+            "the presenter clicks Pay or Cancel: do not retry or call it again while it waits, and tell the presenter to answer the "
+            "dialog. Refused unless ard_pick sealed this seller.")
 else:
     _PAY = ("Step 6-7: open the deal for the picked seller and pay it on the SIMULATED rail: no money moves. "
-            "Only after Maya has said to pay. Refused unless ard_pick sealed this seller.")
+            "A dialog appears on the presenter's screen and this call blocks, for up to 3 minutes, until the presenter clicks Pay "
+            "or Cancel: do not retry or call it again while it waits. Refused unless ard_pick sealed this seller.")
 
 
 @_tool("maya", description=_PAY)
@@ -249,18 +255,19 @@ def ard_pay(seller: str) -> None:
     key = _seller_key(seller)
     if key not in s.picked:
         raise RuntimeError(f"no sealed pick of {SELLERS[key]['label']} within its limit: call ard_pick first")
-    if key in s.paid:
-        raise RuntimeError(f"{SELLERS[key]['label']} was already paid in this run")
-    rail_name = os.environ.get("ARD_RAIL", "fake")
-    real = rail_name in ("lightning", "local")
-    summary = (f"Pay {SELLERS[key]['label']} {screens.msat(s.assessed[key].price_msat)} on the "
-               + ("REAL Lightning rail: this moves real money." if real else "simulated rail: no money moves."))
-    if os.environ.get("ARD_APPROVAL") == "none":
-        print("(approval gate off: ARD_APPROVAL=none)")
-    elif not approve_payment(summary):
-        raise RuntimeError("the presenter did not approve this payment (the approval dialog was cancelled, timed out or "
-                           "could not be shown): nothing was paid. Ask the presenter to try again.")
-    s.paid.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
+    with s.pay_lock:  # a second call waits here, then sees the seller paid
+        if key in s.paid:
+            raise RuntimeError(f"{SELLERS[key]['label']} was already paid in this run")
+        rail_name = os.environ.get("ARD_RAIL", "fake")
+        real = rail_name in ("lightning", "local")
+        summary = (f"Pay {SELLERS[key]['label']} {screens.msat(s.assessed[key].price_msat)} on the "
+                   + ("REAL Lightning rail: this moves real money." if real else "simulated rail: no money moves."))
+        if os.environ.get("ARD_APPROVAL") == "none":
+            print("(approval gate off: ARD_APPROVAL=none)")
+        elif not approve_payment(summary):
+            raise RuntimeError("the presenter did not approve this payment (the approval dialog was cancelled, timed out or "
+                               "could not be shown): nothing was paid. Ask the presenter to try again.")
+        s.paid.add(key)  # before the payment: a failure mid-way must not be retried blindly (check the wallet)
     if ROLE == "all":
         s.run.pay_deal(s.assessed, key, s.picked[key])
         return
@@ -270,8 +277,21 @@ def ard_pay(seller: str) -> None:
     payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
     who = ("Brattain's wallet paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
-    print(f"deal closed with {SELLERS[key]['label']}: both halves compared. Its card counts the sale after its next checkpoint.")
-    run.maya.tick(datetime.now(timezone.utc))
+    print(f"deal closed with {SELLERS[key]['label']}: both halves compared.")
+    # Maya's checkpoint over her own records, taken now so her card shows this deal right away. The profile allows one a
+    # minute at the soonest, so this waits for it if the last one is that recent (it is due in the demo's story).
+    waited = 0
+    while waited <= 70:
+        if run.maya.tick(datetime.now(timezone.utc)).ticked:
+            print("Maya's checkpoint taken over her records: her History card now counts this deal.")
+            break
+        if waited == 0:
+            print("Maya's last checkpoint was under a minute ago: waiting for the next one (at most a minute).")
+        time.sleep(5)
+        waited += 5
+    else:
+        print("Maya's checkpoint is not due yet: her card shows this deal after it.")
+    print(f"{SELLERS[key]['label']}'s agent takes its own checkpoint after the close; its card follows.")
 
 
 @_tool("alder", "kestrel")

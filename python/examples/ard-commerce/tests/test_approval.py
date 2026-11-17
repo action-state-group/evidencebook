@@ -44,3 +44,16 @@ def test_quotes_in_the_summary_cannot_break_out_of_the_script(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: seen.append(cmd[2]) or types.SimpleNamespace(returncode=1, stdout=""))
     ds.approve_payment('x" & (do shell script "id") & "')
     assert 'do shell script "id"' not in seen[0] and "x' & (do shell script 'id') & '" in seen[0]
+
+
+def test_the_dialog_gives_up_after_three_minutes(monkeypatch):
+    seen = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: seen.append(cmd[2]) or types.SimpleNamespace(returncode=1, stdout=""))
+    ds.approve_payment("Pay X")
+    assert "giving up after 180" in seen[0]
+
+
+def test_summary_wording_names_the_rail():
+    # the text the presenter reads: real money on the real rails, none on the simulated one
+    src = open(ds.__file__).read()
+    assert "REAL Lightning rail: this moves real money." in src and "simulated rail: no money moves." in src
