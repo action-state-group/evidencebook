@@ -80,6 +80,11 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	bad := func(format string, args ...any) (Sent, error) {
 		return Sent{}, stageErr(StageSent, format, args...)
 	}
+	// Text read other than as written (a member given twice, a lone
+	// surrogate) would let two readers see two records in one pair.
+	if err := checkText(pair); err != nil {
+		return Sent{}, err
+	}
 	var p struct {
 		Record     map[string]json.RawMessage `json:"record"`
 		AgentInput json.RawMessage            `json:"agent_input"`
@@ -132,8 +137,11 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if err := json.Unmarshal(capsule, &c); err != nil {
 		return Sent{}, err
 	}
-	if _, ok := p.Record["evidence_record_header"]; ok || c.ActionType != string(emit.ActionTypeFYI) || len(c.References) > 0 {
-		return bad("not a standalone sent Capsule: fyi, no references, no evidence_record_header")
+	_, header := p.Record["evidence_record_header"]
+	chain, chained := p.Record["chain"]
+	chained = chained && string(chain) != "null"
+	if header || chained || c.ActionType != string(emit.ActionTypeFYI) || len(c.References) > 0 {
+		return bad("not a standalone sent Capsule: fyi, no chain, no references, no evidence_record_header")
 	}
 	digest, err := Digest([]byte(p.AgentInput))
 	if err != nil {
@@ -163,7 +171,7 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if offer == nil || !isAgree {
 		return out, nil
 	}
-	of, ok := offer.Offer.Body.(*ProposeBody)
+	of, ok := asPropose(offer.Offer.Body)
 	if !ok {
 		return bad("the offer given is a %s", offer.Offer.Block.RecordType)
 	}

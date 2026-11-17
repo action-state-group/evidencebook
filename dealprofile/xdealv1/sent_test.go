@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,12 @@ func keyHex(k ed25519.PrivateKey) string { return hex.EncodeToString(k.Public().
 // returns its pair; actionID "" is the record's own "<deal_id>/sent".
 func sealSent(t *testing.T, r Record, key ed25519.PrivateKey, actionID string) []byte {
 	t.Helper()
+	return sealSentWith(t, r, key, actionID, nil)
+}
+
+// sealSentWith is sealSent with a chain to a parent Capsule.
+func sealSentWith(t *testing.T, r Record, key ed25519.PrivateKey, actionID string, chain *emit.Chain) []byte {
+	t.Helper()
 	payload, _, err := Encode(r)
 	require.NoError(t, err)
 	if actionID == "" {
@@ -38,7 +45,7 @@ func sealSent(t *testing.T, r Record, key ed25519.PrivateKey, actionID string) [
 	require.NoError(t, err)
 	sealed, err := emit.Seal(emit.SealInput{
 		Capsule: emit.Input{ActionID: actionID, ActionType: emit.ActionTypeFYI, Operator: "seller-agent", Developer: "xdealv1-test",
-			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC)},
+			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Chain: chain},
 		Payload: json.RawMessage(payload), Identity: identity,
 	})
 	require.NoError(t, err)
@@ -118,6 +125,17 @@ func TestSentVectors(t *testing.T) {
 	run("key-id-not-the-signer", otherKey, true, StageSent)
 	declineOfOther := record(blk(TypeAgree), &AgreeBody{Kind: KindDecline, Offer: *ref('2')})
 	run("decline-of-another-offer", sealSent(t, declineOfOther, seller, ""), true, StageSent)
+	var parent struct {
+		Record struct {
+			CapsuleID string `json:"capsule_id"`
+		} `json:"record"`
+	}
+	require.NoError(t, json.Unmarshal(cancelPair, &parent))
+	chained := sealSentWith(t, decline, seller, "", &emit.Chain{ParentCapsuleID: parent.Record.CapsuleID, Relation: emit.ChainConfirms})
+	run("chained", chained, true, StageSent)
+	twice := []byte(strings.Replace(string(declinePair), `{"agent_input":`, `{"agent_input":{},"agent_input":`, 1))
+	require.NotEqual(t, string(declinePair), string(twice))
+	run("agent-input-twice", twice, true, StageCanonicalization)
 
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "Sent decline, cancellation and offer pairs (evidencebook#461, docs/design/461-deal-profile.md §3.1, §3.5): each pair is {record: the standalone Capsule with signature and key_id, agent_input: the x-deal-v1 record}. VerifySent(pair, offer?) must pass the valid cases with the digest given and refuse the others at the stage given. Written by dealprofile/xdealv1's TestSentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
@@ -202,4 +220,17 @@ func sealRaw(t *testing.T, raw []byte, key ed25519.PrivateKey) []byte {
 	pair, err := Pair(sealed.Payload, sealed.Envelope, payload)
 	require.NoError(t, err)
 	return pair
+}
+
+// VerifySent reads an offer held as a value as one held by pointer.
+func TestVerifySentTakesAValueOffer(t *testing.T) {
+	seller, buyer := testKey(11), testKey(12)
+	offerB := offerBody()
+	offerB.To = Some(keyHex(seller))
+	byValue := record(blk(TypePropose), *offerB)
+	od, err := Digest(byValue)
+	require.NoError(t, err)
+	decline := record(blk(TypeAgree), &AgreeBody{Kind: KindDecline, Offer: RefTo(od)})
+	_, err = VerifySent(sealSent(t, decline, seller, ""), &OfferContext{Offer: byValue, Signer: keyHex(buyer)})
+	assert.NoError(t, err)
 }

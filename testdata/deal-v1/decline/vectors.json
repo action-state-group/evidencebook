@@ -1385,6 +1385,247 @@
       "offer_signer": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
       "valid": false,
       "stage": "sent"
+    },
+    {
+      "name": "chained",
+      "pair": {
+        "agent_input": {
+          "body": {
+            "kind": "decline",
+            "offer": {
+              "digest": "52f9dca1756bea40e9b1c40c82c3ce8416f156858c549879542a56aa73f2126b",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "reason": "not_selected"
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T10:00:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "profile": "x-deal-v1",
+            "record_type": "agree"
+          }
+        },
+        "record": {
+          "action_id": "deal-0123456789abcdef/sent",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "chained"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "50963ccf8d955e32a47e83a918d70db13c3b57522609302a4203703277405268",
+          "chain": {
+            "parent_capsule_id": "a35ec0af1bde71b1fa0c6ebf88785b70108b754d7909b9963603dcd4526a9e94",
+            "relation": "confirms"
+          },
+          "developer": "xdealv1-test",
+          "format_version": "4",
+          "key_id": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "7a5fd46102dc7f812f3b4c8577ccd3eb30bfb7427c9ff5bf8154a7c7cf7496a6"
+            }
+          },
+          "operator": "seller-agent",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582066be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a0127a0582050963ccf8d955e32a47e83a918d70db13c3b57522609302a42037032774052685840660108662f3169c829b45e1b6249de31b8b5c43a6b7e2fa15fb0447bb5e85f9f39355719e962aa8899b2a6deeb84d5d3d1fa77541802d792f46052f91f2f590e",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T10:05:00Z"
+        }
+      },
+      "offer": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "propose",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "role": "buyer",
+          "to": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "terms": {
+            "item": "lamp",
+            "currency": "USD"
+          },
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stated_at": "2026-11-01T10:00:00Z",
+          "agree_by": "2026-11-02T10:00:00Z",
+          "terms_rows": {
+            "rows": [
+              {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "owed": {
+                  "amount_minor": 6000,
+                  "currency": "USD"
+                },
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              {
+                "id": "delivered",
+                "owed_by": "seller",
+                "owed": {},
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              }
+            ],
+            "named": {
+              "paid": {
+                "side": "buyer",
+                "latest": "2026-11-04T23:59:59Z"
+              }
+            }
+          },
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ]
+        }
+      },
+      "offer_signer": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
+      "valid": false,
+      "stage": "sent"
+    },
+    {
+      "name": "agent-input-twice",
+      "pair": {
+        "agent_input": {},
+        "agent_input": {
+          "body": {
+            "kind": "decline",
+            "offer": {
+              "digest": "52f9dca1756bea40e9b1c40c82c3ce8416f156858c549879542a56aa73f2126b",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "reason": "not_selected"
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T10:00:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-0123456789abcdef",
+            "profile": "x-deal-v1",
+            "record_type": "agree"
+          }
+        },
+        "record": {
+          "action_id": "deal-0123456789abcdef/sent",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "db691662e928af75ff3c14cd02d9f79022d2c066ecc0a4eea3ece9803bf2fba9",
+          "developer": "xdealv1-test",
+          "format_version": "4",
+          "key_id": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "7a5fd46102dc7f812f3b4c8577ccd3eb30bfb7427c9ff5bf8154a7c7cf7496a6"
+            }
+          },
+          "operator": "seller-agent",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582066be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a0127a05820db691662e928af75ff3c14cd02d9f79022d2c066ecc0a4eea3ece9803bf2fba958402ddb2fa7509f3b50f02e753f3228d9b142e0a26e1d857fcaadbe507690ce44f20623ffba5135e2cf1125e66f0e34e091ff935e90b0eeddf6608e30d162adaf08",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T10:05:00Z"
+        }
+      },
+      "offer": {
+        "x-deal-v1": {
+          "profile": "x-deal-v1",
+          "canonicalization": "jcs",
+          "deal_id": "deal-0123456789abcdef",
+          "record_type": "propose",
+          "at": "2026-11-01T10:00:00Z"
+        },
+        "body": {
+          "role": "buyer",
+          "to": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+          "terms": {
+            "item": "lamp",
+            "currency": "USD"
+          },
+          "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "stated_at": "2026-11-01T10:00:00Z",
+          "agree_by": "2026-11-02T10:00:00Z",
+          "terms_rows": {
+            "rows": [
+              {
+                "id": "paid_as_agreed",
+                "owed_by": "buyer",
+                "owed": {
+                  "amount_minor": 6000,
+                  "currency": "USD"
+                },
+                "due": {
+                  "at": "2026-11-01T23:59:59Z"
+                },
+                "window_end": {
+                  "at": "2026-11-04T23:59:59Z"
+                },
+                "recomputed": true
+              },
+              {
+                "id": "delivered",
+                "owed_by": "seller",
+                "owed": {},
+                "due": {
+                  "after": "paid",
+                  "seconds": 345600
+                },
+                "window_end": {
+                  "after": "paid",
+                  "seconds": 604800
+                }
+              }
+            ],
+            "named": {
+              "paid": {
+                "side": "buyer",
+                "latest": "2026-11-04T23:59:59Z"
+              }
+            }
+          },
+          "adjudicator": {
+            "key_id": "adjudicator-key",
+            "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "rules_url": "https://rules.test/r"
+          },
+          "witnesses": [
+            {
+              "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
+              "url": "https://witness.test"
+            }
+          ]
+        }
+      },
+      "offer_signer": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
+      "valid": false,
+      "stage": "canonicalization"
     }
   ],
   "description": "Sent decline, cancellation and offer pairs (evidencebook#461, docs/design/461-deal-profile.md §3.1, §3.5): each pair is {record: the standalone Capsule with signature and key_id, agent_input: the x-deal-v1 record}. VerifySent(pair, offer?) must pass the valid cases with the digest given and refuse the others at the stage given. Written by dealprofile/xdealv1's TestSentVectors (EB_WRITE_DEAL_V1_VECTORS=1)."
