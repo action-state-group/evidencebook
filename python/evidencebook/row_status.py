@@ -83,6 +83,11 @@ def _check(v: Any, shape: Any, where: str) -> None:
             for k, x in v.items():
                 _check(x, inner, f"{where}.{k}")
         return
+    if isinstance(v, str):
+        try:
+            v.encode("utf-8")
+        except UnicodeEncodeError:
+            raise Invalid(f"{where} holds an unpaired surrogate") from None
     if shape == _STR:
         if not isinstance(v, str):
             raise Invalid(f"{where} is not a string")
@@ -170,6 +175,7 @@ class _Calc:
     rulings: list[tuple[dict[str, Any], Optional[datetime]]] = field(default_factory=list)
     remedies: list[Optional[datetime]] = field(default_factory=list)
     withdrawn: list[bool] = field(default_factory=lambda: [False, False])
+    w_timed: list[bool] = field(default_factory=lambda: [False, False])
 
     def side(self, s: Any) -> int:
         if s == self.parties[0]:
@@ -211,7 +217,10 @@ class _Calc:
                 self.reached = False
             self.unset = True
             return None
-        return t + timedelta(seconds=seconds)
+        try:
+            return t + timedelta(seconds=seconds)
+        except OverflowError:
+            raise Invalid("a date past year 9999") from None
 
     def use(self, t: Optional[datetime]) -> None:
         if t is None:
@@ -230,9 +239,11 @@ class _Calc:
                 idx[s.side] = i
         v = ["", ""]
         for side, i in enumerate(idx):
-            if i >= 0 and self.stmts[i].value != _CANNOT_TELL:
+            if i < 0:
+                continue
+            self.use(self.stmts[i].t)
+            if self.stmts[i].value != _CANNOT_TELL:
                 v[side] = self.stmts[i].value
-                self.use(self.stmts[i].t)
         return v
 
     def concede(self, v: list[str]) -> list[str]:
@@ -289,9 +300,6 @@ class _Calc:
 
         if not self.reached:
             return finish("not_reached")
-        if self.unset:
-            return finish("not_due")
-        assert self.due is not None and self.end is not None
         conflicting = bool(self.inp.get("conflicting_final_rulings"))
         if not conflicting:
             for r, t in self.rulings:
@@ -299,6 +307,9 @@ class _Calc:
                     self.use(t)
                     rem = self.remedy(r)
                     return finish("ruled", r["value"], rem)
+        if self.unset:
+            return finish("not_due")
+        assert self.due is not None and self.end is not None
         in_time = self.values()
         stated = self.concede(in_time)
         failed = self.inp.get("check") == "fail"
@@ -306,7 +317,11 @@ class _Calc:
         if conflicting:
             return finish("in_dispute")
         for side, t, seen in self.disputes:
-            if self.withdrawn[side] or self.dispute_late(t, seen, in_time, failed):
+            if self.withdrawn[side]:
+                if not self.w_timed[side]:
+                    self.local = True
+                continue
+            if self.dispute_late(t, seen, in_time, failed):
                 continue
             self.use(t)
             return finish("in_dispute")
@@ -333,6 +348,8 @@ def compute(inp: dict[str, Any]) -> Outcome:
     c.side(row.get("owed_by") or "")
     if (inp.get("check") or "") not in ("", "pass", "fail"):
         raise Invalid("check is pass, fail or empty")
+    if inp.get("check") and not row.get("recomputed"):
+        raise Invalid("a check result on a row its terms do not mark recomputed")
     c.due = c.date(row.get("due"))
     c.end = c.date(row.get("window_end"))
     if c.due is not None and c.end is not None and c.end < c.due:
@@ -343,17 +360,20 @@ def compute(inp: dict[str, Any]) -> Outcome:
         i = c.side(s.get("side") or "")
         if s.get("value") not in (_MET, _NOT_MET, _CANNOT_TELL):
             raise Invalid(f"statement value {s.get('value')!r}")
-        ok, t = c.held(s.get("time"))
-        if not ok:
-            continue
-        c.stmts.append(_Stmt(i, s["value"], t, floors[i]))
+        t = None if s.get("time") is None else _time(s["time"])
+        floor = floors[i]
         if t is not None and (floors[i] is None or t > floors[i]):
             floors[i] = t
+        if (t is not None and t > at) or (t is None and floor is not None and floor > at):
+            continue
+        c.stmts.append(_Stmt(i, s["value"], t, floor))
     for w in inp.get("withdrawals") or []:
         w = w or {}
         i = c.side(w.get("side") or "")
-        if c.held(w.get("time"))[0]:
+        ok, t = c.held(w.get("time"))
+        if ok:
             c.withdrawn[i] = True
+            c.w_timed[i] = c.w_timed[i] or t is not None
     for d in inp.get("disputes") or []:
         d = d or {}
         i = c.side(d.get("side") or "")

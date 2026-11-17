@@ -27,3 +27,17 @@ def test_repeated_member_refused():
     raw = '{"at": "2026-11-02T00:00:00Z", "at": "2026-11-03T00:00:00Z", "parties": ["a", "b"], "row": {}}'
     with pytest.raises(Invalid):
         parse_input(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}}]',
+        '{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"x": {"latest": "2026-11-02T00:00:00Z"}, "x": {"latest": "2026-11-03T00:00:00Z"}}}',
+        '{"at": "2026-11-02T00:00:00Z", "parties": ["\\ud800", "b"], "row": {}}',
+        '{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {"id": "\\udc00"}}',
+    ],
+)
+def test_raw_refused(raw):
+    with pytest.raises(Invalid):
+        compute(parse_input(raw))

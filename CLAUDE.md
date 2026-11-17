@@ -47,6 +47,12 @@ dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && go run ./test/
 dir=$(mktemp -d) && go run ./test/interop/shelf write "$dir/s" && rust/target/debug/shelf continue "$dir/s" \
   && go run ./test/interop/shelf dump "$dir/s" | cmp testdata/shelf/after-continue.json -
 
+# Row status (rowstatus/, rust row_status, python row_status): the shared vectors, then Go, Rust
+# and Python on the same random inputs (CI: row-status-diff in ci.yml)
+python3 testdata/row-status/generate.py testdata/row-status/vectors.json && git diff --exit-code testdata/row-status
+go build -o /tmp/rs-go ./test/interop/row-status && (cd rust && cargo build --locked -p evidencebook-interop --bin row-status) \
+  && python/.venv/bin/python test/interop/row-status/diff.py /tmp/rs-go rust/target/debug/row-status
+
 # The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
 # scripted two-node run over MCP stdio, Go's check of each node's card, and each node's deal half
 # through a capsules-plugin v0.1.8 Mesh node's checks (each check skips when its variable is unset)

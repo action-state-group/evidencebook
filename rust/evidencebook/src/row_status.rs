@@ -127,7 +127,7 @@ pub struct Input {
     #[serde(default)]
     pub parties: Vec<String>,
     pub row: Row,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "unique_map")]
     pub named: BTreeMap<String, Named>,
     #[serde(default)]
     pub no_concession: bool,
@@ -145,6 +145,34 @@ pub struct Input {
     pub conflicting_final_rulings: bool,
     #[serde(default)]
     pub remedies: Vec<Remedy>,
+}
+
+/// A map whose keys are each named once: serde would keep the last of a
+/// repeated key, where Go and Python refuse it.
+fn unique_map<'de, D>(d: D) -> Result<BTreeMap<String, Named>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct V;
+    impl<'de> serde::de::Visitor<'de> for V {
+        type Value = BTreeMap<String, Named>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an object of named records")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut m: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some((k, v)) = m.next_entry::<String, Named>()? {
+                if out.insert(k.clone(), v).is_some() {
+                    return Err(serde::de::Error::custom(format!("member {k:?} repeated")));
+                }
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_map(V)
 }
 
 /// A row's status and the value stated, read together.
@@ -166,6 +194,8 @@ const MET: &str = "met";
 const NOT_MET: &str = "not_met";
 const CANNOT_TELL: &str = "cannot_tell";
 const MAX_OFFSET: i64 = 100 * 366 * 24 * 3600;
+/// 9999-12-31T23:59:59Z.
+const MAX_TIME: i64 = 253_402_300_799;
 
 /// Reads one input as the vectors write it, refusing unknown and repeated
 /// members (member names match exactly).
@@ -193,6 +223,7 @@ struct Calc<'a> {
     rulings: Vec<(&'a Ruling, Option<i64>)>,
     remedies: Vec<Option<i64>>,
     withdrawn: [bool; 2],
+    w_timed: [bool; 2],
 }
 
 /// Applies the rule to one row as of `input.at`.
@@ -221,10 +252,16 @@ impl<'a> Calc<'a> {
             rulings: Vec::new(),
             remedies: Vec::new(),
             withdrawn: [false; 2],
+            w_timed: [false; 2],
         };
         c.side(&input.row.owed_by)?;
         if !matches!(input.check.as_str(), "" | "pass" | "fail") {
             return Err(invalid("check is pass, fail or empty"));
+        }
+        if !input.check.is_empty() && !input.row.recomputed {
+            return Err(invalid(
+                "a check result on a row its terms do not mark recomputed",
+            ));
         }
         c.due = c.date(&input.row.due)?;
         c.end = c.date(&input.row.window_end)?;
@@ -239,23 +276,32 @@ impl<'a> Calc<'a> {
             if !matches!(s.value.as_str(), MET | NOT_MET | CANNOT_TELL) {
                 return Err(invalid(format!("statement value {:?}", s.value)));
             }
-            let Some(t) = c.held(&s.time)? else { continue };
-            c.stmts.push(Stmt {
-                side: i,
-                value: s.value.clone(),
-                t,
-                floor: floors[i],
-            });
+            let t = s.time.as_deref().map(parse_time).transpose()?;
+            let floor = floors[i];
             if let Some(t) = t {
                 if floors[i].is_none_or(|f| t > f) {
                     floors[i] = Some(t);
                 }
             }
+            let after_t = match t {
+                Some(t) => t > c.at,
+                None => floor.is_some_and(|f| f > c.at),
+            };
+            if after_t {
+                continue;
+            }
+            c.stmts.push(Stmt {
+                side: i,
+                value: s.value.clone(),
+                t,
+                floor,
+            });
         }
         for w in &input.withdrawals {
             let i = c.side(&w.side)?;
-            if c.held(&w.time)?.is_some() {
+            if let Some(t) = c.held(&w.time)? {
                 c.withdrawn[i] = true;
+                c.w_timed[i] |= t.is_some();
             }
         }
         for d in &input.disputes {
@@ -338,6 +384,7 @@ impl<'a> Calc<'a> {
                 self.unset = true;
                 Ok(None)
             }
+            Some(t) if t + d.seconds > MAX_TIME => Err(invalid("a date past year 9999")),
             Some(t) => Ok(Some(t + d.seconds)),
         }
     }
@@ -369,10 +416,10 @@ impl<'a> Calc<'a> {
         let mut v = [String::new(), String::new()];
         for side in 0..2 {
             if let Some(i) = idx[side] {
+                let t = self.stmts[i].t;
+                self.use_time(t);
                 if self.stmts[i].value != CANNOT_TELL {
                     v[side] = self.stmts[i].value.clone();
-                    let t = self.stmts[i].t;
-                    self.use_time(t);
                 }
             }
         }
@@ -434,9 +481,6 @@ impl<'a> Calc<'a> {
         if !self.reached {
             return finish(out, "not_reached", "", self.local);
         }
-        if self.unset {
-            return finish(out, "not_due", "", self.local);
-        }
         if !self.input.conflicting_final_rulings {
             let rulings = self.rulings.clone();
             if let Some((r, t)) = rulings.into_iter().find(|(r, _)| r.r#final) {
@@ -444,6 +488,9 @@ impl<'a> Calc<'a> {
                 out.remedy = self.remedy(r).into();
                 return finish(out, "ruled", &r.value, self.local);
             }
+        }
+        if self.unset {
+            return finish(out, "not_due", "", self.local);
         }
         let in_time = self.values();
         let stated = self.concede(in_time.clone());
@@ -454,7 +501,13 @@ impl<'a> Calc<'a> {
         }
         let disputes = self.disputes.clone();
         for (side, t, seen) in disputes {
-            if self.withdrawn[side] || self.dispute_late(t, seen, &in_time, failed) {
+            if self.withdrawn[side] {
+                if !self.w_timed[side] {
+                    self.local = true;
+                }
+                continue;
+            }
+            if self.dispute_late(t, seen, &in_time, failed) {
                 continue;
             }
             self.use_time(t);
@@ -565,7 +618,8 @@ fn parse_time(s: &str) -> Result<i64, Invalid> {
         30,
         31,
     ];
-    if !(1..=12).contains(&mo)
+    if y < 1
+        || !(1..=12).contains(&mo)
         || d < 1
         || d > days_in[(mo - 1) as usize]
         || h > 23
@@ -629,6 +683,12 @@ mod tests {
         let raw = br#"{"at": "2026-11-02T00:00:00Z", "at": "2026-11-03T00:00:00Z", "parties": ["a", "b"], "row": {}}"#;
         assert!(parse_input(raw).is_err());
         let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}} {}"#;
+        assert!(parse_input(raw).is_err());
+        let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}}]"#;
+        assert!(parse_input(raw).is_err());
+        let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["a", "b"], "row": {}, "named": {"x": {"latest": "2026-11-02T00:00:00Z"}, "x": {"latest": "2026-11-03T00:00:00Z"}}}"#;
+        assert!(parse_input(raw).is_err());
+        let raw = br#"{"at": "2026-11-02T00:00:00Z", "parties": ["\ud800", "b"], "row": {}}"#;
         assert!(parse_input(raw).is_err());
     }
 }

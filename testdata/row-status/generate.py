@@ -147,6 +147,47 @@ case("l-untimed-after-late", "an untimed statement after one of the same side th
 case("l-untimed-dispute", "a dispute with no time is never late and makes the result local", "2026-11-07T00:00:00Z", ROW1, res("in_dispute", R1D, local=True),
      statements=AGR1, disputes=[{"side": "seller", "time": None, "seen_in_time": True}])
 
+# Boundaries: each rule at the due date and at the end of the contest window (acceptance 6).
+R1END, R1DUE = "2026-11-04T23:59:59Z", "2026-11-01T23:59:59Z"
+DIS0 = [st("buyer", "met", "2026-11-01T12:00:00Z"), st("seller", "not_met", "2026-11-01T13:00:00Z")]
+case("b-r3-at-due", "in disagreement at T = the due date", R1DUE, ROW1, res("in_disagreement", R1D), statements=DIS0)
+case("b-r3-at-window-end", "in disagreement at T = the window end", R1END, ROW1, res("in_disagreement", R1D), statements=DIS0)
+case("b-r4-at-due", "agreed so far at T = the due date", R1DUE, ROW1, res("agreed_so_far", R1D, "met"), statements=AGR1)
+case("b-r4-at-window-end", "still agreed so far at T = the window end (inside)", R1END, ROW1, res("agreed_so_far", R1D, "met"), statements=AGR1)
+case("b-r5-at-due", "waiting at T = the due date", R1DUE, ROW1, res("waiting", R1D, "met"), statements=[st("buyer", "met", "2026-11-01T12:00:00Z")])
+RUL1 = [{"final": True, "value": "not_met", "time": "2026-11-01T20:00:00Z"}]
+case("b-r1-at-due", "ruled at T = the due date", R1DUE, ROW1, res("ruled", R1D, "not_met", "none"), statements=AGR1, rulings=RUL1)
+case("b-r1-at-window-end", "ruled at T = the window end", R1END, ROW1, res("ruled", R1D, "not_met", "none"), statements=AGR1, rulings=RUL1)
+case("b-r2-at-due", "in dispute at T = the due date", R1DUE, ROW1, res("in_dispute", R1D), statements=AGR1,
+     disputes=[{"side": "seller", "time": "2026-11-01T20:00:00Z", "seen_in_time": True}])
+case("b-r2-at-window-end", "in dispute at T = the window end", R1END, ROW1, res("in_dispute", R1D), statements=AGR1,
+     disputes=[{"side": "seller", "time": "2026-11-01T20:00:00Z", "seen_in_time": True}])
+case("b-dispute-at-window-end-not-late", "a dispute dated exactly at the window end is not after it: not late", "2026-11-06T00:00:00Z", ROW1, res("in_dispute", R1D),
+     statements=AGR1, disputes=[{"side": "seller", "time": R1END, "seen_in_time": True}])
+case("b-dispute-one-second-after-late", "one second after the window end: late", "2026-11-06T00:00:00Z", ROW1, res("agreed", R1D, "met"),
+     statements=AGR1, disputes=[{"side": "seller", "time": "2026-11-05T00:00:00Z", "seen_in_time": True}])
+case("b-statement-at-window-end-in-time", "a statement dated exactly at the window end is in time, not a concession (shown with concessions off)", "2026-11-06T00:00:00Z", ROW1,
+     res("agreed", R1D, "met"), no_concession=True, statements=DIS1 + [st("seller", "met", R1END)])
+case("b-statement-one-second-after-late", "one second after the window end the same statement is late, and with concessions off it does not count", "2026-11-06T00:00:00Z", ROW1,
+     res("in_disagreement", R1D), no_concession=True, statements=DIS1 + [st("seller", "met", "2026-11-05T00:00:00Z")])
+RD = dict(FR, remedy_due="2026-11-27T23:59:59Z")
+case("b-remedy-at-its-date", "a remedy dated exactly at the remedy's date is made", "2026-11-28T00:00:00Z", ROW3, res("ruled", R3D, "not_met", "made"),
+     named=RCPT, statements=R3ST, rulings=[RD], remedies=[{"time": "2026-11-27T23:59:59Z"}])
+case("b-remedy-due-at-its-date", "T = the remedy's date with no remedy: still due", "2026-11-27T23:59:59Z", ROW3, res("ruled", R3D, "not_met", "due"),
+     named=RCPT, statements=R3ST, rulings=[RD])
+# Records with no time that a result rests on.
+case("l-untimed-cannot-tell", "an untimed cannot_tell that clears the side's earlier value makes the result local", "2026-11-02T00:00:00Z", ROW1, res("waiting", R1D, "met", local=True),
+     statements=[st("buyer", "met", "2026-11-01T12:00:00Z"), st("buyer", "cannot_tell", None), st("seller", "met", "2026-11-01T12:30:00Z")])
+case("l-untimed-withdrawal", "an untimed withdrawal that removes a dispute makes the result local", "2026-11-04T00:00:00Z", ROW1, res("agreed_so_far", R1D, "met", local=True),
+     statements=AGR1, disputes=[{"side": "seller", "time": "2026-11-03T10:00:00Z", "seen_in_time": True}], withdrawals=[{"side": "seller", "time": None}])
+case("l-untimed-after-future", "an untimed statement after one of the same side dated after T is not held as of T", "2026-11-05T05:00:00Z", ROW1, res("uncontested", R1D, "met"),
+     statements=[st("seller", "met", "2026-11-01T12:30:00Z"), st("buyer", "not_met", "2026-11-05T10:00:00Z"), st("buyer", "met", None)])
+# A final ruling shows while a date it does not need is unset (Sherlock2's recommendation; a product call recorded on #466).
+case("d-ruling-over-unset-date", "a final ruling decides the row even before the receipt record has a time", "2026-11-20T00:00:00Z", ROW3, res("ruled", {}, "not_met", "none"),
+     named=NORCPT, rulings=[{"final": True, "value": "not_met", "time": "2026-11-19T10:00:00Z"}])
+case("d-not-reached-over-ruling", "not reached is checked first, before any ruling", "2026-12-02T00:00:00Z", ROW3, res("not_reached", {}),
+     named=NORCPT, rulings=[{"final": True, "value": "not_met", "time": "2026-11-19T10:00:00Z"}])
+
 invalid = [
     {"name": "unknown-party", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": ROW1, "statements": [st("carol", "met", "2026-11-01T12:00:00Z")]}},
     {"name": "bad-value", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": ROW1, "statements": [st("buyer", "yes", "2026-11-01T12:00:00Z")]}},
@@ -164,6 +205,9 @@ invalid = [
     {"name": "null-row", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": None}},
     {"name": "string-final", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": ROW1, "rulings": [{"final": "yes", "value": "met", "time": "2026-11-01T12:00:00Z"}]}},
     {"name": "fractional-offset", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "named": PAY, "row": dict(ROW2, due={"after": "buyer_payment", "seconds": 1.5})}},
+    {"name": "check-not-recomputed", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": ROW1, "check": "fail"}},
+    {"name": "year-zero", "input": {"at": "0000-01-01T00:00:00Z", "parties": P, "row": ROW1}},
+    {"name": "date-past-9999", "input": {"at": "9999-12-31T23:59:59Z", "parties": P, "named": {"buyer_payment": {"time": "9999-12-31T23:59:59Z", "latest": "9999-12-31T23:59:59Z"}}, "row": ROW2}},
     {"name": "same-parties", "input": {"at": "2026-11-02T00:00:00Z", "parties": ["buyer", "buyer"], "row": ROW1}},
     {"name": "window-before-due", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": dict(ROW1, window_end=at("2026-11-01T00:00:00Z"))}},
     {"name": "date-both-forms", "input": {"at": "2026-11-02T00:00:00Z", "parties": P, "row": dict(ROW1, due={"at": "2026-11-01T23:59:59Z", "after": "buyer_payment", "seconds": 1})}},

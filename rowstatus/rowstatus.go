@@ -11,9 +11,12 @@
 // The rule, applied in order at a time T, after the row's dates are known:
 //
 //  0. A date that hangs on a named record whose time is not known by the
-//     record's latest date: not_reached once T is past that latest date. A
-//     date whose named record has no time yet: not_due.
-//  1. The first final ruling of the adjudicator the agreement names: ruled.
+//     record's latest date: not_reached once T is past that latest date.
+//  1. The first final ruling of the adjudicator the agreement names: ruled,
+//     with its remedy none, due, made (by the remedy's date) or not_honoured
+//     (that date passed without one; a remedy made after it is not counted).
+//     A date whose named record has no time yet, when no final ruling
+//     exists: not_due.
 //  2. A dispute that is not late and not withdrawn, or two conflicting final
 //     rulings: in_dispute.
 //  3. Both sides' in-time statements differ, or the row's recomputed check
@@ -35,9 +38,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // ErrInvalid reports inputs the rule cannot be applied to.
@@ -231,6 +237,9 @@ type calc struct {
 	rTimes    []*time.Time
 	remedies  []*time.Time
 	withdrawn [2]bool
+	// wTimed says a side has a withdrawal with a time; one with none makes
+	// a result that rests on it local.
+	wTimed [2]bool
 }
 
 func newCalc(in Input) (*calc, error) {
@@ -247,6 +256,9 @@ func newCalc(in Input) (*calc, error) {
 	}
 	if in.Check != "" && in.Check != checkPass && in.Check != checkFail {
 		return nil, fmt.Errorf("%w: check is pass, fail or empty", ErrInvalid)
+	}
+	if in.Check != "" && !in.Row.Recomputed {
+		return nil, fmt.Errorf("%w: a check result on a row its terms do not mark recomputed", ErrInvalid)
 	}
 	if c.due, err = c.date(in.Row.Due); err != nil {
 		return nil, err
@@ -268,27 +280,32 @@ func newCalc(in Input) (*calc, error) {
 		default:
 			return nil, fmt.Errorf("%w: statement value %q", ErrInvalid, s.Value)
 		}
-		t, ok, err := c.held(s.Time)
+		// The floor counts every earlier timed statement of the side, held
+		// as of T or not: an untimed one after a statement dated after T is
+		// itself after T, so it is not held yet.
+		t, err := optTime(s.Time)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
-		}
-		c.stmts = append(c.stmts, stmt{side: i, value: s.Value, t: t, floor: floors[i]})
+		floor := floors[i]
 		if t != nil && (floors[i] == nil || t.After(*floors[i])) {
 			floors[i] = t
 		}
+		if (t != nil && t.After(at)) || (t == nil && floor != nil && floor.After(at)) {
+			continue
+		}
+		c.stmts = append(c.stmts, stmt{side: i, value: s.Value, t: t, floor: floor})
 	}
 	for _, w := range in.Withdrawals {
 		i, err := c.side(w.Side)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok, err := c.held(w.Time); err != nil {
+		if t, ok, err := c.held(w.Time); err != nil {
 			return nil, err
 		} else if ok {
 			c.withdrawn[i] = true
+			c.wTimed[i] = c.wTimed[i] || t != nil
 		}
 	}
 	for _, d := range in.Disputes {
@@ -348,17 +365,25 @@ func (c *calc) side(s string) (int, error) {
 // record whose time is after T does not yet. A record with no time exists,
 // and makes the result local if it is used.
 func (c *calc) held(s Time) (*time.Time, bool, error) {
-	if s == nil {
-		return nil, true, nil
-	}
-	t, err := parseTime(*s)
-	if err != nil {
-		return nil, false, err
+	t, err := optTime(s)
+	if err != nil || t == nil {
+		return nil, err == nil, err
 	}
 	if t.After(c.at) {
 		return nil, false, nil
 	}
-	return &t, true, nil
+	return t, true, nil
+}
+
+func optTime(s Time) (*time.Time, error) {
+	if s == nil {
+		return nil, nil
+	}
+	t, err := parseTime(*s)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 // date resolves a row date as of T. A date on a named record that has no
@@ -402,6 +427,9 @@ func (c *calc) date(d Date) (*time.Time, error) {
 		return nil, nil
 	}
 	r := t.Add(time.Duration(d.Seconds) * time.Second)
+	if r.Year() > 9999 {
+		return nil, fmt.Errorf("%w: a date past year 9999", ErrInvalid)
+	}
 	return &r, nil
 }
 
@@ -434,9 +462,14 @@ func (c *calc) inTime() [2]int {
 func (c *calc) values(idx [2]int) [2]string {
 	var v [2]string
 	for side, i := range idx {
-		if i >= 0 && c.stmts[i].value != CannotTell {
+		if i < 0 {
+			continue
+		}
+		// A cannot_tell that clears an earlier value is relied on as much as
+		// a value is.
+		c.use(c.stmts[i].t)
+		if c.stmts[i].value != CannotTell {
 			v[side] = c.stmts[i].value
-			c.use(c.stmts[i].t)
 		}
 	}
 	return v
@@ -495,11 +528,10 @@ func (c *calc) compute() Result {
 	if !c.reached {
 		return finish(NotReached, "")
 	}
-	if c.unset {
-		return finish(NotDue, "")
-	}
 
-	// Rule 1: the first final ruling.
+	// Rule 1: the first final ruling. It is applied before an unset date,
+	// so a final ruling shows even while the record a date hangs on has no
+	// time yet.
 	if !c.in.ConflictingFinalRulings {
 		for i, r := range c.rulings {
 			if !r.Final {
@@ -509,6 +541,10 @@ func (c *calc) compute() Result {
 			res.Remedy = c.remedy(r)
 			return finish(Ruled, r.Value)
 		}
+	}
+
+	if c.unset {
+		return finish(NotDue, "")
 	}
 
 	inTime := c.values(c.inTime())
@@ -523,6 +559,9 @@ func (c *calc) compute() Result {
 	for i, d := range c.disputes {
 		side, _ := c.side(d.Side)
 		if c.withdrawn[side] {
+			if !c.wTimed[side] {
+				c.local = true
+			}
 			continue
 		}
 		if c.disputeLate(d, c.dTimes[i], inTime, failed) {
@@ -595,7 +634,7 @@ func parseTime(s string) (time.Time, error) {
 	}
 	// One form only, so the three implementations agree on what they read:
 	// UTC, to the second, written with Z.
-	if t.Format(time.RFC3339) != s || t.Location() != time.UTC {
+	if t.Format(time.RFC3339) != s || t.Location() != time.UTC || t.Year() < 1 {
 		return time.Time{}, fmt.Errorf("%w: time %q is not YYYY-MM-DDTHH:MM:SSZ", ErrInvalid, s)
 	}
 	return t, nil
@@ -609,10 +648,10 @@ func exactMembers(b []byte, t reflect.Type) error {
 	if err := walk(dec, t); err != nil {
 		return err
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return errors.New("trailing data")
 	}
-	return nil
+	return validUnicode(b)
 }
 
 func walk(dec *json.Decoder, t reflect.Type) error {
@@ -683,4 +722,56 @@ func field(t reflect.Type, name string) (reflect.Type, bool) {
 		}
 	}
 	return nil, false
+}
+
+// validUnicode refuses invalid UTF-8 and an escaped surrogate that is not
+// part of a pair, which Go's decoder would replace with U+FFFD where Rust
+// and Python refuse or keep it.
+func validUnicode(b []byte) error {
+	if !utf8.Valid(b) {
+		return errors.New("invalid UTF-8")
+	}
+	inString := false
+	for i := 0; i < len(b); i++ {
+		switch {
+		case !inString:
+			inString = b[i] == '"'
+		case b[i] == '"':
+			inString = false
+		case b[i] == '\\' && i+1 < len(b):
+			i++
+			if b[i] != 'u' || i+4 >= len(b) {
+				continue
+			}
+			r := hex4(b[i+1 : i+5])
+			i += 4
+			if !utf16.IsSurrogate(r) {
+				continue
+			}
+			if r >= 0xdc00 || i+6 >= len(b) || b[i+1] != '\\' || b[i+2] != 'u' {
+				return errors.New("an unpaired surrogate")
+			}
+			if lo := hex4(b[i+3 : i+7]); lo < 0xdc00 || lo > 0xdfff {
+				return errors.New("an unpaired surrogate")
+			}
+			i += 6
+		}
+	}
+	return nil
+}
+
+func hex4(b []byte) rune {
+	var r rune
+	for _, c := range b {
+		r <<= 4
+		switch {
+		case c >= '0' && c <= '9':
+			r |= rune(c - '0')
+		case c >= 'a' && c <= 'f':
+			r |= rune(c-'a') + 10
+		case c >= 'A' && c <= 'F':
+			r |= rune(c-'A') + 10
+		}
+	}
+	return r
 }
