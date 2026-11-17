@@ -305,10 +305,15 @@ count over the returned facts.
     those whose records gained coverage or a registration time from an accepted proof or receipt,
     so the profile recomputes every row of each (acceptance 4). A restart recomputes from the
     store.
-- **The `seen` field** is a record member the library fills, when asked, with the digest of the
-  last record of the counted prefix held from the other side of that book.
-- **The storage interface**: the shelf, the stamp and the card anchor take a `ShelfStore`
-  interface; SQLite stays the default and the only implementation in this item.
+- **The `seen` field** is a record member carrying the digest of the last record of the counted
+  prefix held from the other side of that book. The library gives that value,
+  `Shelf.CountedPrefix(senderKey, logID).Last`; which records carry the member, and which sender
+  is the other side, are the deal profile's (step 5, evidencebook-deal#212), since no book names
+  its counterparty to the library
+  (https://github.com/action-state-group/evidencebook/issues/461#issuecomment-6949048721).
+- **No storage interface in this item.** SQLite is the shelf's only store, and no second backend
+  or consumer of one exists, so a `ShelfStore` interface would only add an abstraction; it is
+  revisited in the item that adds a second backend (same comment).
 
 ## 4. Migration (4b)
 
