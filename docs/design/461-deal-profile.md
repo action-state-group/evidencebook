@@ -299,7 +299,7 @@ claim on it and relies on the statement").
   and a standing-intent approval outside `allowed`, refused.
 
 A change of rules and the note of what was shared stay where the library keeps them today. The
-decision is Steven's (section 12, Q3).
+decision was Steven's, and he took the recommendation (section 12, Q3, answered).
 
 `rules_verdict` stays, under the same name, as a deal-book overlay type (constraint 4; section
 3.3). The consumer journey records Muse uses (`message`, `claim`, `evidence`, `detail_change`,
@@ -344,7 +344,8 @@ now opens with `agree`), `action` (an act is `perform` or `settle`), `close`, `o
 §4.2), and `sale_cut` (it cuts a sale bundle, and v1 sends the decline instead). `verdict` is not
 among them: it is the journal overlay's per-check verdict above. A Muse flow that seals one of the
 seven on a v0 deal keeps doing so; on a v1 deal it seals the v1 record named. One book per deal, so
-no v0 side book. The overlays' names are part of the vocabulary trim Steven decides (Q3).
+no v0 side book. The overlays' names were part of the vocabulary trim Steven decided (Q3,
+answered: the overlays as proposed).
 
 ### 3.3 Each type's body
 
@@ -372,7 +373,7 @@ chooses a remedy (4.6).
 | `agree_by` | REQUIRED | the agree-by time, RFC 3339 UTC to the second | design §4.2: "it is the `valid_until` that settlement terms already carry" |
 | `terms_rows` | REQUIRED | the rows and the named records they hang on (4.2) | design §4.2 |
 | `adjudicator` | REQUIRED, or `null` | `{"key_id", "rules_digest", "rules_url"}`; `null` is an offer with no adjudicator | design §8, "Who it is, and its rules" |
-| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; naming is Q1 |
+| `witnesses` | REQUIRED | the witnesses the offerer accepts from the listing's list, possibly empty | design §4.3 (witness paragraph); u186 for an empty list; each witness named by its key id with its URL as a hint (Q1, answered) |
 | `ask` | OPTIONAL | how to ask the offerer for evidence: its evidence commitment's address and digest | design §7, `propose` |
 | `profiles` | OPTIONAL | the deal profile versions the offerer reads | Proposed (2.3) |
 | `listing_digest` | OPTIONAL | the SHA-256 of the published listing bytes this offer answers. A third digest, distinct from `pack_digest` (the deal terms pack) and from the rows digest (`terms_rows`): it names the feed bytes the buyer read, so the two must not be merged | Proposed (3.2, "A listing and its offers"; review round 2; named per Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6) |
@@ -435,14 +436,16 @@ store and never into the book. A `statement` with empty `statements` and no `nam
 **`dispute`** (deal book). One body type with a `kind`, as design §7 puts all three here.
 
 - `kind: "dispute"`: `row`; `statements`, the record digests of the statements on that row that
-  exist when it is sealed; `adjudicator`, the key id the agreement names (design §8 table).
+  exist when it is sealed; `adjudicator`, the key id the agreement names (design §8 table); `forum`,
+  the process that resolves it (Q4, answered).
 - `kind: "withdrawal"`: `row` (same table).
 - `kind: "challenge"`: `ruling`, digest ref; `grounds_commitment` (same table).
 
 **`ruling`** (the adjudicator's case book; one book per case, design §8). Members are design §8's
 table: `row`; `keys`, `{"buyer", "seller"}`; `against`, `buyer` | `seller` | `null`; `value`,
 `met` | `not_met`; `remedy`, `{"kind", "amount_minor"?, "currency"?, "due"}` or absent; `read`,
-the last record id of each deal book the adjudicator read; `rules_digest`; `final`, a boolean.
+the last record id of each deal book the adjudicator read; `rules_digest`; `forum`, the process that
+ruled (Q4, answered); `final`, a boolean.
 Its block has no `seen` and no `agreement_ref`; `seq` and `prev` are the case book's.
 
 **`ask`, `answer`.** The evidence request interaction already exists in the library and in the
@@ -464,7 +467,8 @@ one word, at most one per deal; carried in the counterparty cut, with its payloa
 the holder's share policy says so ("not shared"); never read by a card, a report row or the row
 status. v0 seals it "only after the final `close`" (`PROFILE.md:220`), and v1 has no close.
 **Proposed:** seal it only once the holder computes the deal settled, as 9 defines `settled`
-(design §4.2, third consequence). A deal that is never settled has no verdict. Q2.
+(design §4.2, third consequence). A deal that is never settled has no verdict. Q2, answered: as
+proposed.
 
 ### 3.4 Which records carry `seen`
 
@@ -606,8 +610,8 @@ The table in 3.3 lists the members.
 
 **Witnesses.** An empty list is allowed (u186, as the How ack records it; design §4.3: "a deal with
 no witness that both accept has no record times"). Then no record of the deal has a time, every
-status is local, and a card tallies the deal as not counted (acceptance 9). How a witness is named
-is Q1, which goes to Steven.
+status is local, and a card tallies the deal as not counted (acceptance 9). A witness is named by
+its verified key id, with its URL only as a hint where to find it (Q1, answered).
 
 **The adjudicator** is `{"key_id", "rules_digest", "rules_url"}` or `null`. An agreement with no
 adjudicator says so (design §8, "Who it is").
@@ -1020,10 +1024,12 @@ holds inputs, never a computed status, so a quiet book gets no new fact when a d
    {"id": "as_described",
     "input": { rowstatus.Input without "at", its times as A below requires },
     "statement_named_by_other": [<time> | null, ...],
-    "ruling_against": "buyer" | "seller" | null}],
+    "ruling_against": "buyer" | "seller" | null,
+    "remedy_made": <time> | null}],
  "disputes": [
    {"row": "as_described", "claimant": "buyer" | "seller",
-    "outcome": "open" | "for_claimant" | "against_claimant" | "no_finding" | "withdrawn"}]}
+    "outcome": "open" | "for_claimant" | "against_claimant" | "no_finding" | "withdrawn",
+    "forum": "<the dispute record's forum>"}]}
 ```
 
 **Times, and which statements a fact carries (A).** A fact carries only some of the holder's
@@ -1092,7 +1098,15 @@ the witness receipts it is handed (A, above).
   `disputes` as `{"side", "outcome", "forum"}` (AAC#626 `spec/standard-history-v0.md` §5.4, §11.2,
   at `46c4cd3`), and each row's `owed_by` as `holder` or `counterparty` (§11.2). So the status adds
   `ruling_against` per row, and `disputes`, one entry per dispute record of either side: its row,
-  its claimant's role, and its outcome.
+  its claimant's role, its outcome, and the dispute record's `forum` (Q4, answered).
+- **A remedy made without a ruling** (Q5, answered: it counts as remedied). rowstatus records a
+  remedy only for a ruled row (`rowstatus.go:138-151`), and 6.1's `remedies` input holds only those
+  that give what the first final ruling orders. So the status adds `remedy_made` per row: the time
+  (as A requires) of the first `settle` or `perform` record whose `remedy_for.row` is the row, sealed
+  by the side that owes the row, with or without a ruling; `null` when there is none. A reader of
+  facts counts an unruled row that did not hold as `remedied` when `remedy_made` is set. Owner: PR 4,
+  with a status vector telling an unruled refunded row from an unruled unrefunded one by the
+  status opening alone.
   **The effective ruling** (review round 2) is the one rowstatus applies: the first final ruling of
   the adjudicator the agreement names, and none at all when the holder holds two conflicting final
   rulings, in which case rowstatus gives `in_dispute` (`rowstatus.go:538-560`; design §8, "A forked
@@ -1100,9 +1114,10 @@ the witness receipts it is handed (A, above).
   The outcome is `withdrawn` after the claimant's withdrawal; `for_claimant` or `against_claimant`
   when the effective ruling is against the other side or the claimant; `no_finding` when it is
   against neither; and `open` otherwise, conflicting final rulings included, so no branch of a
-  forked case book decides a card's dispute outcome. `/3` maps these as 10 says, and `forum` is Q4. The
-  four did-not-hold splits are AAC#626's (§11.4), and read only row results, owed_by and remedy, so
-  the status needs nothing more for them.
+  forked case book decides a card's dispute outcome. `/3` maps these as 10 says, and `forum` is the
+  dispute record's (Q4, answered). The
+  card-level `remedied` count is AAC#626's, and reads only row results, owed_by and remedy, so the
+  status needs nothing more for it (Steven's AAC#626 ruling, items 1 and 2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; u603) replaced the four did-not-hold splits with it).
 - Disputes, withdrawals, the first final ruling with its date (or the conflicting flag) and
   remedies are in each row's `input`. The witnesses are deal-level (design §4.3, "For the deal").
 
@@ -1275,7 +1290,8 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 - **`settled`** (review round 1). It is true when all of these hold at `as_of`: the deal has
   started (`start.state` is `started`); and every row that is not `not_reached` is `agreed`,
   `uncontested`, or `ruled` with remedy `none` (the final ruling ordered nothing) or `made`. A
-  `not_reached` row is left out, as the design says ("it is left out when the deal is settled",
+  `not_reached` row is left out of settlement, as the design says (on the card it is `undecided`,
+  Q12, answered) ("it is left out when the deal is settled",
   design §4.2, "A latest date"; line 372 of the export). A row `ruled` with remedy `due` or
   `not_honoured` keeps the deal unsettled. A started deal whose rows are all `not_reached` is
   settled. The same definition decides when `rules_verdict` may be sealed (3.3), and `settled`
@@ -1362,10 +1378,9 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   - `role`, `value_band`, `counterparty_kind`;
   - `agreed_at`, and the first witnessed time of the book's first fact, since design §4.1,
     "Counting only a window", proposes the latter as the window key in place of the time of
-    agreement;
+    agreement (not adopted: `/3` keeps `agreed_at`, AAC#626 SH-13);
   - per row, `owed_by` and the rowstatus inputs, so each row's status at the anchor's time gives
-    the card's line, and the four did-not-hold splits can tell rows the holder owed from rows the
-    other side owed (design §4.1, the card table);
+    the card's line, and only rows the holder owed can make the deal `did_not_hold` (Steven's AAC#626 ruling, items 1 and 2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; u603));
   - `disputes` (8.1), for `/3`'s `{"side", "outcome", "forum"}`;
   - the profile name `x-deal-v1`, so a `/3` reader knows the status schema.
 - **How the profile's words map to `/3`'s** (stated once, from Sherlock2's review, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dab78e4530acd8dc56936d22778547b3cfce4ef95b62a3beca0b66fffc5e66c9&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6).
@@ -1382,15 +1397,15 @@ not-started book (empty `rows`); and the counterparty-without-layer book.
   - `/3`'s `deal` member (a non-empty deal reference, §5.2): the book's `book_id`, never the deal
     id, which the status value does not carry (8.1).
 - **Vectors.** The settled-without-ruling path of Appendix A (lines s1 to s12) gives, from each
-  side's latest facts at 1 Dec, the full expected row results and lines under AAC#626 §11.3 and
-  §11.4: the seller's deal has row 3 `agreed` `not_met`, owed by the holder and not `ruled`, with
-  the refund made; AAC#626 at 361f7b4b proposes counting that as `did_not_hold` in part `remedied`
-  (its SH-16), which Q5 asks Steven to confirm, so the vector pins `remedied` and, if Steven does
-  not confirm, `not_remedied`. Either way the status value must carry that a remedy was made on an
-  unruled row (the `settle` record's `remedy_for`, 6.1), so a reader of facts can tell. The buyer's
-  has the same row owed by the counterparty, so `did_not_hold` in part `other_side`. The ruled path (Appendix A lines 43 to 76) gives `did_not_hold` in part
-  `remedied` for the seller and `other_side` for the buyer, and the dispute entries `received`
-  and `against` for the seller, `raised` and `for` for the buyer.
+  side's latest facts at 1 Dec, the full expected row results and lines under AAC#626's card rules:
+  the seller's deal has row 3 `agreed` `not_met`, owed by the holder and not `ruled`, with the
+  refund made, so it is `did_not_hold`, counted in `remedied` (Q5, answered: a refund without a
+  ruling counts as remedied). The status value carries that a remedy was made on an unruled row
+  (`remedy_made`, 8.1), so a reader of facts can tell. The buyer's deal, whose
+  failed row the counterparty owed, is not `did_not_hold` (Steven's AAC#626 ruling, items 1 and 2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; u603)); where it lands on the card is
+  AAC#626's text. The ruled path (Appendix A lines 43 to 76) gives `did_not_hold`, counted in
+  `remedied`, for the seller, and the dispute entries `received` and `against` for the seller,
+  `raised` and `for` for the buyer.
 
 ## 11. Order of work, and conformance
 
@@ -1403,8 +1418,8 @@ same vectors, each in its own pull request.
 1. **Library, format-free** (Go, then Rust and Python): the record time of a counterparty
    position covered by the holder's own facts (4.3); and, once AAC#621 fixes its form, receiving
    the witnessed follow-up (receipts and the shelf consistency proof) and the record time it
-   gives. If Steven picks key-id naming (Q1), `RecordTime` also takes witnesses by key id,
-   reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
+   gives. Steven picked key-id naming (Q1, answered), so `RecordTime` also takes witnesses by key
+   id, reading `shelf_receipts.key_id` (`461-shelf-facts.md:117-125`). The additive rowstatus `late_*`
    outputs land here too (Q9, decided), and `Shelf.SealSent`, which seals a sent journal record
    and its standalone Capsule in one call (3.1). Lock-free readers the profile calls from a
    stamp or a `Receive`: one that lets the profile re-check every held proof's bindings against the
@@ -1513,10 +1528,13 @@ verified under (`shelf_record_time.go:20-25`; `461-shelf-facts.md:117-125`).
 
 Key-id naming needs `RecordTime` to filter by key id (11.1, PR 1). URL naming needs no library
 change.
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): name each witness by its verified key id, with the URL as a hint:
+`{"key_id": "…", "url": "…"}`. The library's `RecordTime` gains naming by key id (11.1, PR 1).
 
-**Steven's one ask for AAC#626.** Q4 and Q12 gate AAC#626's exact-head approval (the `/3` card's
+**Steven's one ask for AAC#626.** Q4 and Q12 gated AAC#626's exact-head approval (the `/3` card's
 `forum` and `by_forum`, and its line for a `not_reached` row and for a deal with no witnessed time),
-and Q5 decides a line of the same card. They go to Steven in one ask, with Sherlock2's
+and Q5 decided a line of the same card. Steven answered all three on 2026-11-17 (each is marked
+**Answered** below). They went to Steven in one ask, with Sherlock2's
 recommendations below (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=dab78e4530acd8dc56936d22778547b3cfce4ef95b62a3beca0b66fffc5e66c9&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6, relayed by the coordinator on 2026-11-17).
 
 **Q2. When is `rules_verdict` sealed now that there is no close?** v0 seals it after the final close
@@ -1527,11 +1545,13 @@ since a verdict sealed before settlement would be a close by another name. u195'
 are (3.3), condition 1 (shared under the holder's share policy: a node shares by default, a
 person does not) and condition 4 among them, and the verdict word stays a record in the party's
 own book, never a member of a report (u195 condition 3; section 9).
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): seal at settled; a deal that is never settled has no verdict.
 
 **Q3. The intent, the check before an act, its verdict and the approval.** Design §7 says they need "types of
 their own or a place in the overlay; no source settles which". Proposed: a journal-only overlay
 of four types (`intent`, `check`, the per-check `verdict`, `approval`), reusing v0's bodies and rules (3.2), and the journey overlay placed by phase (3.2). This touches the trim of the public vocabulary that
 design §14, row 7, puts to Steven.
+**Answered** (Steven, 2026-11-17: "482 Q1-3 recs" (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=9f75d69a01bf5cca16ba4c2123e6d6f4434217cbabb7e83b6993ec9d0c1dc6c5; Sherlock2's recommendations, recorded as u604, ops a86cd2f9)): the journal overlay as proposed, with `listing_digest` optional on an offer (3.3).
 
 **Q4. evidencebook#404 against the ten types.** #404 (sourced to Steven, 2026-11-05) asks for four
 kinds: `dispute`, `dispute_response`, `adjudication` and `revocation`, plus a forum enum and a
@@ -1543,6 +1563,13 @@ AAC#620's `/3` table has `dispute_entry` with a `forum` and `disputes.by_forum`,
 counts disputes by forum (AAC SH §4). With no forum in v1, a `/3` card has nothing to fill
 `by_forum` with: either v1 keeps a forum on `dispute`, or `/3` drops `by_forum`, which is a card
 change.
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): yes, dispute and ruling records carry a forum. A `dispute` of kind `dispute` and a
+`ruling` carry `forum` (3.3), one of #404's values: `auto:twin`, `auto:ref`, `network:<id>`,
+`rail:<program>` or `external:<class>`. Its prefix is the class `/3` counts in `by_forum`. The spelling
+after the colon (`[a-z0-9][a-z0-9._-]{0,63}`) is syntax with no door, as long as `auto` stays closed to
+`twin` and `ref` and no list of allowed names comes with it (Sherlock2, and the local twin by session
+message, both 2026-11-17: buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=96dbf3c6c35ec3ea041f5f1e33cf91ba5b55739bfef443e2fbe99bf3ddfb68e4&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6). Landed in #487. The
+other #404 kinds (`dispute_response`, `revocation`) stay out, as the design maps them.
 
 **Q12. A row that is not reached, and a deal with no witnessed time, on a card.** The design says a
 `not_reached` row is "left out" when a card is counted (design §4.2, "Dates that hang on a
@@ -1557,6 +1584,12 @@ the card, as AAC#626 §11.3 does,
 since "left out" would let a holder drop deals from its card by never timing the named record. The
 `settled` rule of 9 still leaves a `not_reached` row out of settlement, as the design says; that
 decides when a deal is finished, not its card line.
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): any `not_reached` row makes the deal undecided on the card, replacing the design's
+"left out" (item 5). A deal with no time from a witness its agreement names stays left out
+(acceptance 9). Items 1 and 2 of the same ruling set three card outcomes, `held`, `undecided` and
+`did_not_hold`, and take `other_side` out of the did-not-hold split: a deal where only the
+counterparty failed is not `did_not_hold` (10). How the card text orders `not_reached` against
+`did_not_hold` is AAC#626's.
 
 **Q5. A remedy outside a ruling** (moved here from 12.2 in review round 1). Two cases: a remedy
 chosen under the terms (design §4.2, "Remedy rows"), which has no contest window in the design and
@@ -1567,6 +1600,9 @@ proposes counting such a remedy as remedied (its SH-16, Steven's decision 3 in t
 seller who refunded as in Appendix A would be `remedied`. The ask is that Steven confirms #626's
 proposal; the profile then has to carry what the card needs to see a remedy made outside a ruling
 (10). It is part of the one ask above (Sherlock2, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=211abab2ff32fae38d39cde2d38f111088d936a63ae0734fe5b1404657bf041b&thread=3d8cda2cdd8468ac2e9490593e42c5325e21c58af6c96156801f9ccc1db684b6).
+**Answered** (Steven's AAC#626 ruling, 2026-11-17 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; read by Sherlock2 as u603, buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=71e5098f96ceeadf8970c251112bdb8f9677084483f5994ffcc5781294410057)): yes. A refund without a ruling counts as remedied (#626's SH-16), and the counterparty
+answers by disputing the row. The status value carries it as `remedy_made` (8.1), so a
+reader of facts sees the remedy; the vectors of 10 pin `remedied`.
 
 **Q11. What a decline and a cancellation disclose to the other side.** This belongs to Sherlock2's
 door question. Proposed (3.5): the signer's key, the cited offer's digest, the deal id, one closed
