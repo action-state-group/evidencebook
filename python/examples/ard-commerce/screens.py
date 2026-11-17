@@ -27,8 +27,8 @@ def msat(n: int) -> str:
 
 def _totals(ev: Evidence) -> tuple[int, int]:
     """Deals counted and deals that did not hold, over every band of the card (its own ``of``)."""
-    bands = ev.card["bands"]
-    return sum(b["of"] for b in bands), sum(b["did_not_hold"] for b in bands)
+    outcomes = ev.card["outcomes"]  # the card's own totals
+    return outcomes["of"], outcomes["did_not_hold"]
 
 
 def card_line(ev: Evidence, sample_card: bool) -> str:
@@ -47,16 +47,18 @@ def decision_line(a: Assessment, ev: Evidence, max_permille: int, ceiling_msat_f
         within = f" ({a.tier}, under {msat(ceiling_msat_for_tier)})" if ceiling_msat_for_tier else ""
         return f"GO: {msat(a.price_msat)} is within this pack's limit for it{within}"
     if a.verdict == "LIMIT" and a.cap_msat is not None:
-        why = (f"; the pack's limit is {max_permille} in every 1,000 deals did not hold (placeholder)"
+        why = (f"; the pack's limit is {max_permille} in every 1,000 deals that did not hold (placeholder)"
                if "band-history" in a.reasons else "")
         return f"LIMIT: deals under {msat(a.cap_msat)}; {msat(a.price_msat)} is outside it{why}"
     return f"{a.verdict}: see the assessment rows"
 
 
 def limit_outcome(a: Assessment) -> str:
-    """What a tap on a LIMIT seller shows: nothing opens and nothing is paid."""
-    return (f"LIMIT: {msat(a.price_msat)} is over this seller's limit (deals under {msat(a.cap_msat or 0)}); "
-            "no deal opens and nothing is paid")
+    """What a tap on a seller that is not GO shows: nothing opens and nothing is paid."""
+    if a.verdict == "LIMIT" and a.cap_msat:
+        return (f"LIMIT: {msat(a.price_msat)} is over this seller's limit (deals under {msat(a.cap_msat)}); "
+                "no deal opens and nothing is paid")
+    return f"{a.verdict}: no deal opens and nothing is paid"
 
 
 def check_lines(ev: Evidence) -> list[str]:

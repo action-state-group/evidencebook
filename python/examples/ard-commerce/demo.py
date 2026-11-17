@@ -33,7 +33,7 @@ import pay  # noqa: E402
 import screens  # noqa: E402
 import seed as seeding  # noqa: E402
 from server import Server  # noqa: E402
-from world import ITEM, SELLERS, World  # noqa: E402
+from world import DEALS_EACH, ITEM, SELLERS, World  # noqa: E402
 
 DEFAULT_HOME = "~/.config/ard-commerce-demo"
 ASK = f"Maya: I need 200 conference badges by Friday, under 300 msat. ({ITEM})"
@@ -192,8 +192,8 @@ class Run:
                 time.sleep(min(max(wait, 1), 10))
         card = seller.standard_history()
         o = card["deals"]
-        live = len(o) - 48
-        summary = f"{name}'s card now counts {len(o)} deals: 48 sample, {live} run live ({sum(1 for d in o if d['outcome'] == 'held')} held)"
+        live = len(o) - DEALS_EACH
+        summary = f"{name}'s card now counts {len(o)} deals: {DEALS_EACH} sample, {live} run live ({sum(1 for d in o if d['outcome'] == 'held')} held)"
         print(summary)
         self.srv.finish(f"Paid {name} {screens.msat(paid[0].invoice_msat)} (the invoice amount). {summary}.")
 
