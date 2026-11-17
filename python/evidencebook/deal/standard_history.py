@@ -32,7 +32,9 @@ never guessed:
   received and verifies (the host's check, as the deal view's); else
   "receipt_only" when the holder's own final close observed a "received"
   outcome; else "no_record".
-* ``disputes`` is empty: the profile seals no IP §11.2 disputes statement.
+* ``disputes`` is what the deal's evidence steps state, as the deal plugin's
+  ``disputesOf`` counts them (:func:`_disputes`): the profile seals no IP §11.2
+  disputes statement, so the dispute and ruling steps stand in.
 
 The entry is the dict ``agent_action_capsule.standard_history.derive_card``
 takes in ``deals``. Records are read with ``json``: a member name is matched
@@ -242,11 +244,41 @@ def standard_history_deal(inp: HistoryInput) -> dict[str, Any] | None:
         "happened": _happened(records, by_digest, inp.counterparty_half_verified),
         "disputes": [],
     }
+    entry["disputes"] = _disputes(records, entry["role"])
     cls = _counterparty_class(records)
     if cls is not None:
         entry = {**{k: entry[k] for k in ("deal", "agreed_at")}, "counterparty_class": cls,
                  **{k: v for k, v in entry.items() if k not in ("deal", "agreed_at")}}
     return entry
+
+
+_SOURCE_DISPUTE = "dispute"
+_SOURCE_RULING_BUYER = "ruling_for_buyer"
+_SOURCE_RULING_SELLER = "ruling_for_seller"
+
+
+def _disputes(records: list[_Rec], role: str) -> list[dict[str, str]]:
+    """The deal's SH §5.4 disputes as its records state them. The source token of an
+    evidence record carries the step: a ruling ends the dispute at once, for or against
+    the holder; a dispute with no ruling is open, and only a buyer's store holds one;
+    no ruling and no dispute is none."""
+    disputed, ruled = False, ""
+    for r in records:
+        if r.kind != "evidence":
+            continue
+        source = r.str("source")
+        if source == _SOURCE_DISPUTE:
+            disputed = True
+        elif source in (_SOURCE_RULING_BUYER, _SOURCE_RULING_SELLER):
+            ruled = source
+    bought = role == "bought"
+    if ruled:
+        outcome = "for" if (ruled == _SOURCE_RULING_BUYER) == bought else "against"
+    elif disputed and bought:
+        outcome = "open"
+    else:
+        return []
+    return [{"side": "raised" if bought else "received", "outcome": outcome, "forum": "external"}]
 
 
 def _minute(at: datetime) -> str:
