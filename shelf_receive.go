@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -347,6 +348,10 @@ func (r ReceivedRecord) validate() error {
 		return errors.New("it names no sender, log or deal")
 	case r.Position == 0:
 		return errors.New("its position is 0; the first is 1")
+	case r.Position > math.MaxInt64:
+		// SQLite stores a signed 64-bit integer; every language refuses
+		// a position past it as invalid.
+		return errors.New("its position is past 2^63 - 1")
 	case r.Position == 1 && r.Prev != "":
 		return errors.New("the first record names a predecessor")
 	case r.Position > 1 && !isDigest(r.Prev):

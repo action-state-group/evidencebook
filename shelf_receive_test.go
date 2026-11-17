@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -1039,6 +1041,48 @@ func TestReceiveRetriesTheDropWhenTheJournalChangesUnderIt(t *testing.T) {
 	assert.Equal(t, 2, asked, "the drop was planned again")
 	_, err = s.ReceivedRecordOf(ctx, dg("o1"))
 	assert.NoError(t, err, "the answered offer is kept")
+}
+
+// Round 4: when our books change under every plan, the drop is refused as
+// busy after three attempts, and nothing is stored or dropped.
+func TestReceiveRefusesBusyWhenTheMarkKeepsMoving(t *testing.T) {
+	ctx := context.Background()
+	f := &receiveFixture{shelfFixture: newShelfFixture(t), profile: newTestReceiveProfile("alice")}
+	f.cfg.Receive = ReceiveConfig{Profile: f.profile, Bounds: ReceiveBounds{MaxOffersPerSender: 1}}
+	s := f.open(t)
+	c, _ := newStampCadence(t, s)
+	mustAppend(t, mustOpenBook(t, s, "deal/ours"), observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	journal, err := s.Journal(ctx)
+	require.NoError(t, err)
+
+	mustReceive(t, s, offer(t, "bob", "o1", 0), nil)
+	asked := 0
+	f.profile.afterAnswered = func(r ReceivedRecord) {
+		asked++
+		_, err := journal.Append(ctx, observation("busy", fmt.Sprint(asked)))
+		require.NoError(t, err)
+	}
+	var res ReceiveResult
+	withinTime(t, func() { res, err = s.Receive(ctx, offer(t, "bob", "o2", 0), nil) })
+	assert.ErrorIs(t, err, ErrBusy)
+	require.NotNil(t, res.Record)
+	assert.ErrorIs(t, res.Record.Refused, ErrBusy)
+	assert.Equal(t, 3, asked, "three plans, then the refusal")
+	_, err = s.ReceivedRecordOf(ctx, dg("o1"))
+	assert.NoError(t, err, "nothing was dropped")
+	_, err = s.ReceivedRecordOf(ctx, dg("o2"))
+	assert.ErrorIs(t, err, ErrNotFound, "nothing was stored")
+}
+
+// Round 4: a position past SQLite's signed 64-bit range is refused as
+// invalid, as Python and Rust refuse it.
+func TestReceiveRefusesAPositionPastInt64(t *testing.T) {
+	r := ReceivedRecord{Digest: dg("x"), SenderKey: "bob", LogID: "l", DealID: "d", Position: math.MaxInt64 + 1, Prev: dg("p")}
+	assert.Error(t, r.validate())
+	r.Position = math.MaxInt64
+	assert.NoError(t, r.validate())
 }
 
 // R2-4: a proof part whose transaction does not commit adds no changes;
