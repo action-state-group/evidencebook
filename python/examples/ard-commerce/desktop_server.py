@@ -241,10 +241,9 @@ def ard_pay(seller: str) -> None:
     a, peer, run = s.assessed[key], s.bworld.nodes[key], s.run
     chain = buyer.open_deal(run.maya, peer, s.picked[key], a, demo.ASK)
     print(f"deal opened with {SELLERS[key]['label']}: waiting for its agent's half")
-    payment, before = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
+    payment = parties.buyer_deal(run.maya, peer, chain, run.rail, a.price_msat)
     who = "Brattain's wallet paid it" if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
-    print(f"operator check, not shown as the price: balances {before} → {run.rail.balances()}")
     print(f"deal closed with {SELLERS[key]['label']}: both halves compared. Its card counts the sale after its next checkpoint.")
     run.maya.tick(datetime.now(timezone.utc))
 

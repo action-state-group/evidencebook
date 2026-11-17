@@ -325,13 +325,12 @@ class Seller:
 
 # -- Maya's half of the deal ----------------------------------------------------------------------
 
-def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_wait: float = 120) -> tuple[object, dict]:
+def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_wait: float = 120) -> object:
     """Maya's half of :func:`deals.run_deal`: open, wait for the seller's half, pay, exchange halves, close.
-    Returns the payment and the rail's balances before."""
+    Returns the payment."""
     wire = peer.home / "stage" / "wire"
     now = lambda: datetime.now(timezone.utc)  # noqa: E731
     deal_id = chain.deal_id
-    before = rail.balances()
     write_atomic(wire / peer.id / f"{deal_id}.m1.json", json.dumps(maya.half(deal_id)).encode())
     s1 = wait_file(wire / "maya" / f"{deal_id}.s1.json", seller_wait)
     deals._reconcile(maya, s1, peer)
@@ -346,4 +345,4 @@ def buyer_deal(maya: gn.Node, peer: Peer, chain, rail, price_msat: int, seller_w
     write_atomic(wire / peer.id / f"{deal_id}.m3.json", json.dumps(maya.half(deal_id)).encode())
     s3 = wait_file(wire / "maya" / f"{deal_id}.s3.json", seller_wait)
     deals._reconcile(maya, s3, peer)
-    return payment, before
+    return payment
