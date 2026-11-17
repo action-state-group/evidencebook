@@ -118,6 +118,75 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
+-- The store of what the other side pushes (evidencebook#461 §3,
+-- shelf_receive.py): its records, by digest, with the predecessor each names
+-- and whether it is an unanswered unsolicited offer, every stamp proof
+-- accepted, and whether the records held recomputed its root (0 not yet, 1
+-- recomputed, 2 contradicted), the tombstone a deleted record leaves, the
+-- evidence of a fork, a contradicting checkpoint or a checkpoint the records
+-- do not recompute, each conflict found, once per position (a fork) or
+-- size (a checkpoint), which no deletion undoes, and the position and digest
+-- of every deleted record, so another record arriving there is a fork. A
+-- row with offer = 1 counts under the offer bounds and is not kept past
+-- them. Nothing here is appended to a book.
+CREATE TABLE IF NOT EXISTS shelf_received (
+    digest      TEXT    PRIMARY KEY,
+    sender_key  TEXT    NOT NULL,
+    log_id      TEXT    NOT NULL,
+    position    INTEGER NOT NULL,
+    prev        TEXT    NOT NULL,
+    deal_id     TEXT    NOT NULL,
+    offer       INTEGER NOT NULL DEFAULT 0,
+    record      BLOB    NOT NULL,
+    received_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shelf_received_position ON shelf_received (sender_key, log_id, position);
+CREATE INDEX IF NOT EXISTS shelf_received_deal ON shelf_received (deal_id);
+CREATE TABLE IF NOT EXISTS shelf_received_proofs (
+    sender_key              TEXT    NOT NULL,
+    log_id                  TEXT    NOT NULL,
+    size                    INTEGER NOT NULL,
+    shelf_checkpoint_sha256 TEXT    NOT NULL,
+    book_checkpoint         BLOB    NOT NULL,
+    fact                    BLOB    NOT NULL,
+    status_opening          BLOB,
+    inclusion_proof         BLOB    NOT NULL,
+    shelf_checkpoint        BLOB    NOT NULL,
+    received_at             TEXT    NOT NULL,
+    verified                INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (sender_key, log_id, size, shelf_checkpoint_sha256)
+);
+CREATE TABLE IF NOT EXISTS shelf_received_tombstones (
+    digest      TEXT PRIMARY KEY,
+    sender_key  TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    deleted_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shelf_evidence (
+    id       INTEGER PRIMARY KEY,
+    kind     TEXT    NOT NULL,
+    a        BLOB    NOT NULL,
+    b        BLOB    NOT NULL,
+    noted_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shelf_received_conflicts (
+    sender_key  TEXT    NOT NULL,
+    log_id      TEXT    NOT NULL,
+    kind        TEXT    NOT NULL,
+    at          INTEGER NOT NULL,
+    evidence_id INTEGER NOT NULL,
+    offer       INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (sender_key, log_id, kind, at)
+);
+CREATE TABLE IF NOT EXISTS shelf_received_vacated (
+    sender_key TEXT    NOT NULL,
+    log_id     TEXT    NOT NULL,
+    position   INTEGER NOT NULL,
+    digest     TEXT    NOT NULL,
+    deal_id    TEXT    NOT NULL,
+    offer      INTEGER NOT NULL,
+    PRIMARY KEY (sender_key, log_id, position, digest)
+);
 """
 
 #: How often a waiting shelf tries the writer lock again.
@@ -757,7 +826,7 @@ class Shelf:
     def __init__(self, *, path: str, db: sqlite3.Connection, unlock: Callable[[], None], operator: str,
                  developer: str, signer: Signer, checkpoint_key: Signer, originals: Any, random: RandomSource,
                  now: Callable[[], datetime] | None,
-                 authenticated_indexes: Callable[[str], Sequence[Any] | None] | None):
+                 authenticated_indexes: Callable[[str], Sequence[Any] | None] | None, receive: Any = None):
         self._path = path
         self._db = db
         self._db_lock = threading.RLock()
@@ -774,6 +843,13 @@ class Shelf:
         self._cadence_logs: list[SqliteSubstrate] = []
         self._cadence = None
         self._released = False
+        from .shelf_receive import ReceiveConfig
+
+        # The store of what the other side pushes (shelf_receive.py): Receive
+        # and Forget serialize on their own mutex, never the shelf's, so the
+        # profile they call may read the shelf.
+        self._receive = receive if receive is not None else ReceiveConfig()
+        self._receive_mu = threading.Lock()
 
     @classmethod
     def open_sqlite(cls, path: str | os.PathLike, *, operator: str, signer: Signer, checkpoint_key: Signer,
@@ -781,7 +857,7 @@ class Shelf:
                     held_lock: HeldLock | None = None, random: Reader | None = None,
                     now: Callable[[], datetime] | None = None,
                     authenticated_indexes: Callable[[str], Sequence[Any] | None] | None = None,
-                    lock_timeout: float | None = None) -> Shelf:
+                    lock_timeout: float | None = None, receive: Any = None) -> Shelf:
         """Take the writer lock, waiting up to ``lock_timeout`` seconds for
         another holder (forever when ``None``), or check the host's
         ``held_lock``; open the file and create the shelf's tables when absent.
@@ -789,7 +865,9 @@ class Shelf:
         lock another file passes it. A file whose ``shelf_meta`` version is
         unknown is refused (:class:`UnsupportedError`); one with no row is a
         fresh file or a shelf from v0.12.0 or earlier and gets version 1,
-        with ``shelf_logs`` filled from what it holds (§2.2)."""
+        with ``shelf_logs`` filled from what it holds (§2.2). ``receive`` is
+        the store of what the other side pushes
+        (:class:`~evidencebook.shelf_receive.ReceiveConfig`; :meth:`receive`)."""
         path = os.fspath(path)
         if not path or not operator or signer is None or checkpoint_key is None or originals is None:
             raise InvalidError("path, operator, signer, checkpoint key and originals are required")
@@ -816,7 +894,7 @@ class Shelf:
             raise
         return cls(path=path, db=db, unlock=unlock, operator=operator, developer=developer, signer=signer,
                    checkpoint_key=checkpoint_key, originals=originals, random=RandomSource(random), now=now,
-                   authenticated_indexes=authenticated_indexes)
+                   authenticated_indexes=authenticated_indexes, receive=receive)
 
     # -- the file -----------------------------------------------------------------------
 
@@ -1108,6 +1186,59 @@ class Shelf:
                     errors.append(exc)
             if errors:
                 raise errors[0]
+
+    # -- the store of what the other side pushes (evidencebook#461 §3) ------------------
+
+    def receive(self, record: bytes | None = None, proof: Any = None) -> Any:
+        """Take a pushed record, a stamp proof
+        (:class:`~evidencebook.shelf_stamp_proof.StampProof`), or both (§3; Go
+        ``Shelf.Receive``), each part on its own, the record first: a record
+        sent again with a proof it lacked the first time still delivers the
+        proof. Returns a :class:`~evidencebook.shelf_receive.ReceiveResult`.
+        A part refused is reported in its outcome (``refused``) and in
+        ``ReceiveResult.refusals``, beside the other part's result; it is
+        not raised. Any other exception is the store's or the profile's: one
+        in the record part reports nothing, since nothing of it was
+        committed; one in the proof part carries the record part's outcome
+        and changes as its ``receive_result`` attribute."""
+        from . import shelf_receive
+
+        return shelf_receive.receive(self, record, proof)
+
+    def forget(self, deal_id: str, now: datetime, settled: Callable[[str], bool]) -> list[str]:
+        """Delete a deal's received records under the holder's retention
+        (§3; Go ``Shelf.Forget``): only when ``ReceiveConfig.retention`` is
+        set, only once ``settled(deal_id)`` reports the deal settled, and only
+        the records received at least the retention before ``now``. Each
+        leaves a tombstone, so reading it reports
+        :class:`~evidencebook.errors.DeletedError`. The deal's proofs,
+        evidence and forks stay. Returns the digests deleted."""
+        from . import shelf_receive
+
+        return shelf_receive.forget(self, deal_id, now, settled)
+
+    def counted_prefix(self, sender_key: str, log_id: str) -> Any:
+        """A sender's counted prefix in one log, computed from the store now.
+        It takes no lock of the shelf's: a status provider or a receive
+        profile may call it."""
+        from . import shelf_receive
+
+        return shelf_receive.counted_prefix(self, sender_key, log_id)
+
+    def received_record_of(self, digest: str) -> Any:
+        """A received record by its digest: :class:`DeletedError` for one
+        deleted under retention, :class:`NotFoundError` for one never held.
+        It takes no lock of the shelf's."""
+        from . import shelf_receive
+
+        return shelf_receive.received_record_of(self, digest)
+
+    def evidence(self) -> list:
+        """The store's evidence of forks and contradicting checkpoints,
+        oldest first. It takes no lock of the shelf's."""
+        from . import shelf_receive
+
+        return shelf_receive.evidence(self)
 
     def __enter__(self) -> Shelf:
         return self
