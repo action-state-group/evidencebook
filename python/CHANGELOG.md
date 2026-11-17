@@ -250,3 +250,5 @@
 - `standard_history_deal` counts disputes as the deal plugin does: a buyer's dispute step with no ruling is `raised`/`open`, and a ruling step ends it `for` or `against` the holder (`raised` for a buyer's store, `received` for a seller's), so a seller with a ruling against it no longer shows a clean card (#457).
 
 - `evidencebook.deal`: `sale_unpost` joins the record types (a sale's listing taken down; PROFILE.md section 6, rule 15), and the vendored schemas follow x-deal-v0 (#451).
+
+- **TEMPORARY** `deal.TYPE_OUTCOME_NOTE`, the x-deal-v0 `outcome_note` record (evidencebook#462), counted `did_not_hold` by `standard_history_deal`.

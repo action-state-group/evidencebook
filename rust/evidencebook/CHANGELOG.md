@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.0.17 (2026-11-16)
+
+Tag `crates/evidencebook-v0.0.17`. Pull request since 0.0.16 that touches `rust/`: [#464](https://github.com/action-state-group/evidencebook/pull/464) (the temporary `outcome_note` record).
+
+- **TEMPORARY** `deal::TYPE_OUTCOME_NOTE` and `OutcomeNoteBody`, the x-deal-v0 `outcome_note` record (evidencebook#462), checked by the chain and counted `did_not_hold` by `standard_history_deal`.
+
 ## 0.0.16 (2026-11-16)
 
 Tag `crates/evidencebook-v0.0.16`. Pull requests since 0.0.15 that touch `rust/`: [#454](https://github.com/action-state-group/evidencebook/pull/454) (the `sale_unpost` record), [#445](https://github.com/action-state-group/evidencebook/pull/445) (the `rules_verdict` record, described in the root CHANGELOG's v0.14.0 entry; the crate carries `RulesVerdictBody`), [#448](https://github.com/action-state-group/evidencebook/pull/448) (clippy 1.100 fix, internal) and [#450](https://github.com/action-state-group/evidencebook/pull/450) (a test change only, internal).

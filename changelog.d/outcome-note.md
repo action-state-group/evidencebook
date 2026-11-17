@@ -1,1 +1,0 @@
-- **TEMPORARY** x-deal-v0 `outcome_note` record (evidencebook#462; evidencebook#461's computed row status supersedes it): the book owner's own note, sealed after the final close, that the deal did not hold. The History deal entry's `outcome` is `did_not_hold` for a deal whose log holds one (`dealprofile.StandardHistoryDeal`).
