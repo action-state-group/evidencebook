@@ -751,8 +751,9 @@ func TestReceivedStoreReadersRunInsideAStamp(t *testing.T) {
 }
 
 // P1-2: an answer committed between a pushed offer's Read and the drop keeps
-// the answered offer; Answered runs inside the write transaction, and a
-// profile reading the shelf there does not deadlock.
+// the answered offer; Answered runs before the write transaction (a moved
+// mark replans the drop), and a profile reading the shelf there does not
+// deadlock.
 func TestReceiveAnAnswerCommittedBeforeTheDropKeepsTheOffer(t *testing.T) {
 	ctx := context.Background()
 	f, s := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 1}})

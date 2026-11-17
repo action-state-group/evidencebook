@@ -11,8 +11,8 @@ every step's `expect` and the dump `after.json`, byte for byte.
 | `after.json` | the store's tables after the last step, and each sender's counted prefix |
 
 Both files are Go's `encoding/json` `MarshalIndent` with a two-space indent, object keys in the
-order the Go structs list them (maps in byte order), `<`, `>` and `&` written as `<`, `>`
-and `&`, and one final newline, as the other shelf vectors are (`../README.md`).
+order the Go structs list them (maps in byte order), `<`, `>` and `&` written as `\u003c`, `\u003e`
+and `\u0026`, and one final newline, as the other shelf vectors are (`../README.md`).
 
 ## The vector profile
 
