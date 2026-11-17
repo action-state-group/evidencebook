@@ -4,7 +4,9 @@
 
 ## 0.0.16 (2026-11-16)
 
-Tag `crates/evidencebook-v0.0.16`. Pull requests since 0.0.15 that touch `rust/`: [#454](https://github.com/action-state-group/evidencebook/pull/454) (the `sale_unpost` record) and [#448](https://github.com/action-state-group/evidencebook/pull/448) (clippy 1.100 fix, internal).
+Tag `crates/evidencebook-v0.0.16`. Pull requests since 0.0.15 that touch `rust/`: [#454](https://github.com/action-state-group/evidencebook/pull/454) (the `sale_unpost` record), [#445](https://github.com/action-state-group/evidencebook/pull/445) (the `rules_verdict` record), [#448](https://github.com/action-state-group/evidencebook/pull/448) (clippy 1.100 fix, internal) and [#450](https://github.com/action-state-group/evidencebook/pull/450) (a test change only, internal).
+
+- `deal`: the sale-log chain stage and the record types follow x-deal-v0's `rules_verdict` record (the party's own overall rules word), with `RulesVerdictBody` and `TYPE_RULES_VERDICT` (#444, #445). It was in the Go module's v0.14.0 and is new to the crate.
 
 - Internal: the shelf commit loop iterates the records instead of indexing them, so `cargo clippy -- -D warnings` passes on Rust 1.100 (#446). No behaviour change.
 
