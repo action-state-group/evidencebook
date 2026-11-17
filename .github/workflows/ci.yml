@@ -202,8 +202,8 @@ jobs:
           path: evidencebook
       # The profile's reference verifier (AAC #238) and its conformance
       # vectors (AAC #237, regenerated in #263), pinned to an AAC main commit
-      # that carries both: the one that added the personal-history vectors
-      # (#296). vectors/interop-profile-v0/ there is unchanged since #263.
+      # that carries both: the one that regenerated the personal-history
+      # corpus for the CLL -02 bare `sub` (agent-action-capsule#623).
       - name: Check out the profile's reference verifier and vectors
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

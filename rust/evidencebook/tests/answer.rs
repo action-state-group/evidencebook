@@ -501,11 +501,15 @@ fn limits_count_only_records_under_the_anchor() {
 /// verifying tests above cover it), byte for byte as the crate built it before the store
 /// traits (evidencebook main 6558c39, crate 0.0.5): the envelope's JSON
 /// binding. `EVIDENCEBOOK_WRITE_ANSWER_FIXTURE=1` rewrites the fixture
-/// (only ever from that commit); the fixture's SHA-256 is pinned so a rewrite
-/// anywhere else fails here.
+/// (only ever from that commit, or from the commit that moves the Checkpointed
+/// Local Log line, whose checkpoint encoding is inside every envelope: the
+/// move to checkpointed-local-log 0.6 changed each envelope's anchor digest,
+/// request digest, signature and embedded checkpoint, and the artifact bytes and
+/// digest wherever the artifact carries that anchor or checkpoint); the fixture's
+/// SHA-256 is pinned so a rewrite anywhere else fails here.
 #[test]
 fn every_answer_form_is_byte_for_byte_the_pre_store_trait_answer() {
-    const FIXTURE_SHA256: &str = "af2a028d4c1541961278dba1be3623550708982a81a1b40eb0d5b5f85ed01470";
+    const FIXTURE_SHA256: &str = "446267c12a0cfa754a76085b9e56ce805f2368dad2bbd467bcb5cf90e154cdd9";
     let b = book();
     let cases: Vec<(&str, Value, Value, Value)> = vec![
         (
