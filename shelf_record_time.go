@@ -20,14 +20,16 @@ import (
 // shelf_receipts, one per witness, with the registration time the witness
 // put in it (the iat of its protected CWT claims) or none. A witness is
 // named by its receipt's URL (ts_url), the name a witness directory row is
-// found by, so a witness an agreement names is that URL.
+// found by, so a witness an agreement names is that URL. Each row also keeps
+// the directory key id the receipt verified under: a URL is a locator, and
+// the key id lets a later naming by key read the rows already held.
 
 // upsertReceipt keeps a verified receipt for the checkpoint whose SHA-256 is
 // checkpointSHA256. Another receipt from the same witness replaces the held
 // one only when it gives an earlier registration time, or the held one gives
 // none: a witness's earliest registration is the one a record time reads.
-const upsertReceipt = `INSERT INTO shelf_receipts (checkpoint_sha256, witness_id, receipt, registered_at) VALUES (?, ?, ?, ?)
-ON CONFLICT (checkpoint_sha256, witness_id) DO UPDATE SET receipt = excluded.receipt, registered_at = excluded.registered_at
+const upsertReceipt = `INSERT INTO shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt, registered_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (checkpoint_sha256, witness_id) DO UPDATE SET key_id = excluded.key_id, receipt = excluded.receipt, registered_at = excluded.registered_at
 WHERE excluded.registered_at IS NOT NULL AND (shelf_receipts.registered_at IS NULL OR excluded.registered_at < shelf_receipts.registered_at)`
 
 type execer interface {
@@ -35,13 +37,13 @@ type execer interface {
 }
 
 // keepReceipt stores a receipt that verified for statement.
-func keepReceipt(ctx context.Context, db execer, statement []byte, receipt WitnessReceipt, encoded string, registeredAt *int64) error {
+func keepReceipt(ctx context.Context, db execer, statement []byte, receipt WitnessReceipt, encoded string, v verifiedReceipt) error {
 	sum := sha256.Sum256(statement)
 	var at any
-	if registeredAt != nil {
-		at = *registeredAt
+	if v.registeredAt != nil {
+		at = *v.registeredAt
 	}
-	_, err := db.ExecContext(ctx, upsertReceipt, hex.EncodeToString(sum[:]), receipt.TSURL, encoded, at)
+	_, err := db.ExecContext(ctx, upsertReceipt, hex.EncodeToString(sum[:]), receipt.TSURL, v.keyID, encoded, at)
 	return err
 }
 
@@ -91,11 +93,11 @@ func (c *Cadence) backfillReceiptsLocked(ctx context.Context) error {
 			if present > 0 {
 				continue
 			}
-			check, registeredAt, err := verifyWitnessReceipt(h.statement, receipt, c.cfg.Witnesses)
+			check, verified, err := verifyWitnessReceipt(h.statement, receipt, c.cfg.Witnesses)
 			if err != nil || check.State != WitnessVerified {
 				continue
 			}
-			if err := keepReceipt(ctx, tx, h.statement, receipt, h.receipt, registeredAt); err != nil {
+			if err := keepReceipt(ctx, tx, h.statement, receipt, h.receipt, verified); err != nil {
 				return err
 			}
 		}

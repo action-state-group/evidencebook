@@ -79,11 +79,13 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
 -- Every witness receipt that verified for a shelf checkpoint, one per
--- witness (its receipt's URL), with the registration time it gives in Unix
--- seconds or null (shelf_record_time.go).
+-- witness (its receipt's URL), with the directory key id it verified under
+-- and the registration time it gives in Unix seconds or null
+-- (shelf_record_time.go).
 CREATE TABLE IF NOT EXISTS shelf_receipts (
 	checkpoint_sha256 TEXT    NOT NULL,
 	witness_id        TEXT    NOT NULL,
+	key_id            TEXT    NOT NULL,
 	receipt           TEXT    NOT NULL,
 	registered_at     INTEGER,
 	PRIMARY KEY (checkpoint_sha256, witness_id)

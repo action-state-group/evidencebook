@@ -436,7 +436,7 @@ func VerifyHandover(h Handover, pinnedKey string, witnesses aacwitness.Directory
 	}
 	sort.Strings(result.Untied)
 	for _, r := range h.Receipts {
-		if check, registeredAt, err := verifyWitnessReceipt(h.Anchor, r, witnesses); err == nil && check.State == WitnessVerified && registeredAt != nil {
+		if check, verified, err := verifyWitnessReceipt(h.Anchor, r, witnesses); err == nil && check.State == WitnessVerified && verified.registeredAt != nil {
 			result.Witnessed = true
 			break
 		}

@@ -4,6 +4,7 @@ package evidencebook
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
@@ -186,7 +187,9 @@ func TestReceiptsOfWitnessedTicksAreKeptAndBackfilled(t *testing.T) {
 
 	shelf = f.open(t)
 	newStampCadence(t, shelf)
-	assert.Equal(t, 2, countRows(t, shelf, `SELECT COUNT(*) FROM shelf_receipts WHERE registered_at IS NOT NULL AND witness_id = ?`, testWitnessURL))
+	key, _ := testWitness()
+	assert.Equal(t, 2, countRows(t, shelf, `SELECT COUNT(*) FROM shelf_receipts WHERE registered_at IS NOT NULL AND witness_id = ? AND key_id = ?`,
+		testWitnessURL, hex.EncodeToString(key.Public().(ed25519.PublicKey))), "each row keeps the directory key it verified under")
 }
 
 // A handover carries every witness's receipt for its anchor, and is

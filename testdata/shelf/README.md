@@ -76,7 +76,7 @@ which covers SQLite's own bytes. A stamp's `tick_roots` entry is
 has no chain.
 
 Every dump lists `shelf_receipts` (evidencebook#461 §2.3) by `checkpoint_sha256` then
-`witness_id`: each verified receipt as the stored text `cadence_ticks.receipt` holds,
+`witness_id`: `key_id` the directory key it verified under, each verified receipt as the stored text `cadence_ticks.receipt` holds,
 `registered_at` in Unix seconds or null. The scripted receipts carry no registration time,
 so after the migrate phase the handover replays as recomputed and unwitnessed.
 
