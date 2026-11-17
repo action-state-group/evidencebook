@@ -14,13 +14,15 @@ def seed(world: World, say=print) -> None:
     buyer = world.nodes["sample-buyer"]
     for name, seller in SELLERS.items():
         node = world.nodes[name]
-        if len(node.shelf.books()) > 8:
-            say(f"{name}: sample history already there ({len(node.shelf.books())} books)")
+        have = sum(1 for b in node.shelf.books() if b.startswith("deal/") and b.count("/") == 1)
+        if have >= DEALS_EACH:
+            say(f"{name}: sample history already there ({have} deals)")
             continue
-        deals.admit(buyer, node, reason="sample buyer, run by the demo operator")
-        deals.admit(node, buyer, reason="sample buyer, run by the demo operator")
+        if have == 0:
+            deals.admit(buyer, node, reason="sample buyer, run by the demo operator")
+            deals.admit(node, buyer, reason="sample buyer, run by the demo operator")
         terms = dr.Terms(ITEM, seller["price_msat"], CURRENCY, RAIL, False)
-        for i in range(DEALS_EACH):
+        for i in range(have, DEALS_EACH):
             deals.run_deal(buyer, node, terms, "sample deal", deals.SAMPLE_PAYMENT)
             if (i + 1) % 12 == 0:
                 say(f"{name}: {i + 1}/{DEALS_EACH} sample deals")

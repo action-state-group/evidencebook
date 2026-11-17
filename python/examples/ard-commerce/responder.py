@@ -50,16 +50,17 @@ def card_as_of(node: gn.Node, pin: str) -> tuple[Any, dict] | None:
         n = anchor.tick.n - 1
 
 
-def sample_card(card: dict, held: int, did_not_hold: int) -> dict:
+def sample_card(card: dict, did_not_hold: int) -> dict:
     """The hand-written variant of a real card: the same deals with ``did_not_hold`` of them counted
     as not holding. Written by the demo operator and signed by the seller's key; nothing recomputes it
     from records (Kestrel's flaw, until the sentinel record can show it from a real book)."""
     out = json.loads(json.dumps(card))
-    if sum(b["held"] + b["did_not_hold"] + b["undecided"] for b in out["bands"]) != held + did_not_hold:
-        raise ValueError("the sample counts are not the card's deals")
     band = out["bands"][0]
-    band.update(held=held, did_not_hold=did_not_hold, undecided=0)
-    out["outcomes"].update(held=held, did_not_hold=did_not_hold, undecided=0)
+    decided = band["held"] + band["did_not_hold"]
+    if len(out["bands"]) != 1 or band["undecided"] or did_not_hold > decided:
+        raise ValueError("the sample card needs one band of decided deals")
+    band.update(held=decided - did_not_hold, did_not_hold=did_not_hold)
+    out["outcomes"].update(held=decided - did_not_hold, did_not_hold=did_not_hold, undecided=0)
     return out
 
 
@@ -72,7 +73,7 @@ def selection_artifact(node: gn.Node, nonce: str, now: datetime) -> bytes:
 
 
 def answer_round(node: gn.Node, relays: list[str], relay_factory: Any, sample: bool = False,
-                 sample_counts: tuple[int, int] | None = None) -> list[str]:
+                 sample_counts: int | None = None) -> list[str]:
     """One poll of the seller's mailbox. Returns the ids of the requests answered."""
     with node._lock:
         answered = {st["request_event_id"] for _, st in node.notes(mx.ANSWERED)}
@@ -90,12 +91,15 @@ def answer_round(node: gn.Node, relays: list[str], relay_factory: Any, sample: b
             anchor, result = found
             card = json.loads(result["card"])
             if sample and sample_counts:
-                card = sample_card(card, *sample_counts)
+                card = sample_card(card, sample_counts)
             envelope = sign_envelope(octets, req.subject, anchor.anchor, jcs(card), signer=EvidenceSigner(node.signer),
                                      issued_at=profile_time(now), derivation=STANDARD, profile=req.profile or ER_PROFILE)
             return encode_envelope(envelope, MEDIA_TYPE_JSON).message.octets
         if req is not None and req.derivation == SELECTION and req.nonce:
-            anchor = node.cadence.standard_history_anchor(0)
+            found = card_as_of(node, req.coverage.expected_pin) if req.coverage.expected_pin else None
+            if found is None:
+                return None  # the asker's pin is not an anchor this node has
+            anchor = found[0]
             envelope = sign_envelope(octets, req.subject, anchor.anchor, selection_artifact(node, req.nonce, now),
                                      signer=EvidenceSigner(node.signer), issued_at=profile_time(now),
                                      derivation=SELECTION, profile=req.profile or ER_PROFILE)

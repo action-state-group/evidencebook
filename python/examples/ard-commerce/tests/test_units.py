@@ -76,6 +76,7 @@ def scrub_copy(d):
 
 
 INVOICE = "lnbc2890p1pnqexample"
+OTHER = "lnbc2900p1pnqexample"
 
 
 def test_the_rail_pays_the_invoice_amount_and_makes_only_fund_and_send_calls():
@@ -88,7 +89,8 @@ def test_the_rail_pays_the_invoice_amount_and_makes_only_fund_and_send_calls():
 
 @pytest.mark.parametrize("fund,send,why", [
     ({"note": "no invoice"}, {}, "no invoice"),
-    ({"invoice": INVOICE, "amount_msat": 290}, {}, "not 289"),
+    ({"invoice": OTHER, "amount_msat": 289}, {}, "not 289"),
+    ({"invoice": "lnbc1pnqnoamount", "amount_msat": 289}, {}, "None msat"),
     ({"invoice": INVOICE, "amount_msat": 289}, {"status": "failed"}, "did not succeed"),
     ({"invoice": INVOICE, "amount_msat": 289}, {"status": "succeeded", "amount_msat": 290}, "not 289"),
 ])
@@ -98,7 +100,7 @@ def test_the_rail_refuses_a_wrong_invoice_or_payment(fund, send, why):
 
 
 def test_a_refused_invoice_is_never_paid():
-    rail = Scripted({"invoice": INVOICE, "amount_msat": 290}, {"status": "succeeded"})
+    rail = Scripted({"invoice": OTHER, "amount_msat": 289}, {"status": "succeeded"})
     with pytest.raises(pay.RailError):
         rail.pay(289)
     assert [c for _, c in rail.calls] == ["fund"]
@@ -107,3 +109,25 @@ def test_a_refused_invoice_is_never_paid():
 def test_fake_rail_moves_no_money():
     rail = pay.FakeRail()
     assert rail.pay(289).status == "succeeded" and rail.paid == [289]
+
+
+def test_invoice_amounts_are_read_from_the_invoice_text():
+    assert pay.invoice_msat("lnbc2890p1pabc") == 289 and pay.invoice_msat("lnbc2680p1pabc") == 268
+    assert pay.invoice_msat("lnbc10n1pabc") == 1000 and pay.invoice_msat("lnbc1pabc") is None
+    assert pay.invoice_msat("lnbc2895p1pabc") is None  # not a whole msat
+
+
+def test_a_failed_wallet_call_never_echoes_secret_looking_output(monkeypatch):
+    class Run:
+        returncode, stdout, stderr = 1, "", "boom " + "ab" * 32
+
+    monkeypatch.setattr(pay.subprocess, "run", lambda *a, **k: Run())
+    with pytest.raises(pay.RailError) as e:
+        pay.LightningRail()._control("h", {"command": "balance"})
+    assert "ab" * 32 not in str(e.value) and "<hex>" in str(e.value)
+
+
+def test_an_entry_whose_commitment_failed_is_a_failed_check_not_a_crash():
+    import buyer
+    ev = buyer.gather(None, None, {"id": "x", "problem": "commitment: bad signature"}, "aa")
+    assert [(c.name, c.ok) for c in ev.checks] == [("commitment", False)] and ev.card is None

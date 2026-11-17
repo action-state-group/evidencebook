@@ -53,6 +53,8 @@ class Run:
     def __init__(self, world: World, server: Server, rail: pay.Rail, auto: bool, open_browser: bool):
         self.w, self.srv, self.rail, self.auto, self.open_browser = world, server, rail, auto, open_browser
         self.maya = world.nodes["maya"]
+        self.banner = screens.banner("lightning" if isinstance(rail, pay.LightningRail) else "fake")
+        self.started_payment = False
         self.entries: list[dict] = []
         self.evidence: dict[str, buyer.Evidence] = {}
         self.info: dict[str, dict] = {}
@@ -60,7 +62,7 @@ class Run:
     # -- 1-2 ask and discover -------------------------------------------------------------
 
     def discover(self) -> None:
-        print(screens.BANNER)
+        print(self.banner)
         rule("1  Maya asks her agent")
         print(ASK)
         rule("2  ARD discovery")
@@ -100,7 +102,7 @@ class Run:
 
     def assessments(self, p: packs.Pack, heading: str) -> dict[str, buyer.Assessment]:
         rule(heading)
-        print(f"pack {p.pack_id} · digest {p.digest[:12]}… · {screens.PACK_NOTE}")
+        print(f"pack {p.version} · digest {p.digest[:12]}… · {screens.PACK_NOTE}")
         print(f"({screens.CLAIMS_NOTE}; {screens.ASSESSMENT_NOTE})\n")
         return self.assess(p)
 
@@ -117,7 +119,7 @@ class Run:
         major, minor, _ = p.version.split(".")
         version = f"{major}.{int(minor) + 1}.0"
         new = packs.compile_source(packs.edited(Path(p.path).parent.parent.joinpath("pack-source.yaml").read_text(), permille, version), version)
-        print(f"recompiled: {p.pack_id}  digest {p.digest[:12]}…  →  {new.pack_id}  digest {new.digest[:12]}…")
+        print(f"recompiled: pack {p.version}  digest {p.digest[:12]}…  →  pack {new.version}  digest {new.digest[:12]}…")
         print("both assessments rerun on the evidence already collected: no new request is sent")
         return new
 
@@ -137,8 +139,8 @@ class Run:
 
     def popup(self, p: packs.Pack, made: dict[str, buyer.Assessment]) -> str:
         rule("5  The popup: the presenter picks for Maya")
-        header = {"banner": screens.BANNER, "title": "Maya: 200 conference badges by Friday, under 300 msat. Pick a seller.",
-                  "pack": f"Assessed under {p.pack_id} · digest {p.digest[:12]}… · {screens.PACK_NOTE}",
+        header = {"banner": self.banner, "title": "Maya: 200 conference badges by Friday, under 300 msat. Pick a seller.",
+                  "pack": f"Assessed under pack {p.version} · digest {p.digest[:12]}… · {screens.PACK_NOTE}",
                   "note": f"{screens.CLAIMS_NOTE}. {screens.ASSESSMENT_NOTE}."}
         self.srv.popup(self.options(p, made), header)
         print(f"popup: {self.srv.url}/")
@@ -169,10 +171,11 @@ class Run:
         paid: list[pay.Payment] = []
 
         def send() -> str:
+            self.started_payment = True
             payment = self.rail.pay(a.price_msat)
             paid.append(payment)
-            print(f"invoice {screens.msat(payment.invoice_msat)} issued by Shockley's wallet; Brattain's wallet paid it: "
-                  f"{payment.status} (fee {payment.fee_msat} msat)")
+            who = "Brattain's wallet paid it" if self.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
+            print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
             return payment.reference
 
         deals.run_deal(self.maya, seller, chain.terms, ASK, "", opened=chain, pay=send)
@@ -226,8 +229,9 @@ def cmd_reset(args) -> int:
 def cmd_run(args) -> int:
     packs.engine(), packs.skills_checkout()
     world, server = prepare(args)
+    run = None
     try:
-        if len(world.nodes["alder"].shelf.books()) <= 8:
+        if any(sum(1 for b in world.nodes[n].shelf.books() if b.startswith("deal/") and b.count("/") == 1) < 48 for n in SELLERS):
             print("no sample history yet: run `python demo.py seed` first")
             return 2
         rail: pay.Rail = pay.LightningRail() if args.rail == "lightning" else pay.FakeRail()
@@ -245,7 +249,11 @@ def cmd_run(args) -> int:
         run.settle(tight, made, chosen)
         return 0
     except KeyboardInterrupt:
-        print("\ninterrupted: nothing half-paid is left; run again to start over (the sample history is kept)")
+        if run is not None and run.started_payment:
+            print("\ninterrupted after the payment started: it may have settled. Check Brattain's balance "
+                  "(`pay-lightning control balance`) before running again; the sample history is kept")
+        else:
+            print("\ninterrupted before any payment: nothing was paid; run again to start over (the sample history is kept)")
         return 130
     finally:
         server.close()

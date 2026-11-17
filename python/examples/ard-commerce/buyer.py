@@ -123,10 +123,10 @@ def _envelope_checks(ev: Evidence, name: str, octets: bytes, reply: bytes, selle
 def gather(world: World, maya: gn.Node, entry: dict, anchor: str, wait: float = 20.0) -> Evidence:
     """Ask one seller for its history card and selection over its mailbox, and check each answer."""
     ev = Evidence(entry["id"])
-    commitment = entry["commitment"]
-    if entry.get("problem"):
-        ev.fail("commitment", entry["problem"])
+    if entry.get("problem") or "commitment" not in entry:
+        ev.fail("commitment", entry.get("problem", "no commitment"))
         return ev
+    commitment = entry["commitment"]
     ev.ok("commitment", f"signature verifies under {commitment['key_id'][:8]}…")
     ev.ok("catalogue digest", "matches the served commitment" if entry["digest_matches"] else "differs (a carrier fact only)")
     where = mx.route(commitment)
@@ -175,7 +175,10 @@ def gather(world: World, maya: gn.Node, entry: dict, anchor: str, wait: float = 
             env.verify()
             body = json.loads(env.artifact)
             good = (env.responder == commitment["key_id"] and body.get("nonce") == sreq.nonce
-                    and env.signed_members()["request_digest"] == hashlib.sha256(soctets).hexdigest())
+                    and env.signed_members()["request_digest"] == hashlib.sha256(soctets).hexdigest()
+                    and env.anchor_digest == anchor and env.derivation == "selection/1"
+                    and body.get("derivation") == "selection/1" and body.get("key_id") == commitment["key_id"]
+                    and isinstance(body.get("unanswered_disputes"), list))
             if not good:
                 raise ValueError("not this request's answer from this seller")
             ev.selection_ok = body["unanswered_disputes"] == []

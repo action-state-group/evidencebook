@@ -104,3 +104,11 @@ def test_picking_alder_pays_289_and_alders_card_reads_49_held(run):
     card = alder.standard_history()
     assert len(card["deals"]) == 49 and sum(d["outcome"] == "held" for d in card["deals"]) == 49
     assert json.loads(card["card"])["bands"][0]["held"] == 49
+
+
+def test_a_request_pinned_to_an_unknown_anchor_gets_no_card_and_no_selection(run):
+    import buyer
+    entry = next(e for e in run.entries if e["id"] == "alder")
+    ev = buyer.gather(run.w, run.maya, entry, "ab" * 32, wait=3)
+    assert ev.card is None and not ev.selection_ok
+    assert [(c.name, c.ok) for c in ev.checks if not c.ok] == [("standard_history/1", False)]

@@ -117,6 +117,6 @@ class World:
         self._threads.append(t)
 
 
-#: The hand-written sample card's counts per seller: (held, did_not_hold). Only a seller named here
+#: The hand-written sample card's did_not_hold count per seller. Only a seller named here
 #: is answered with a hand-written card, and only while ``World.sample_card`` says so.
-SAMPLE_COUNTS = {"kestrel": (45, 3)}
+SAMPLE_COUNTS = {"kestrel": 3}

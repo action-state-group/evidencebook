@@ -27,6 +27,28 @@ class RailError(RuntimeError):
     pass
 
 
+_HEX64 = re.compile(r"[0-9a-fA-F]{64}")
+_MULT_MSAT = {"": 10**11, "m": 10**8, "u": 10**5, "n": 10**2}  # msat per unit of the amount's multiplier; p is 0.1 msat
+_HRP = re.compile(r"^ln(?:bc|tb|bcrt)(\d+)([munp]?)1")
+
+
+def invoice_msat(invoice: str) -> int | None:
+    """The amount a BOLT11 invoice states, in msat, read from its human-readable part ("lnbc2890p1…" is 289 msat);
+    ``None`` for an invoice with no amount or one that is not a whole number of msat."""
+    m = _HRP.match(invoice.lower())
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2)
+    if unit == "p":
+        return n // 10 if n % 10 == 0 else None
+    return n * _MULT_MSAT[unit]
+
+
+def redact(text: str) -> str:
+    """``text`` with every 64-hex string (a preimage, a hash or a key) replaced, cut to 200 characters."""
+    return _HEX64.sub("<hex>", text)[-200:]
+
+
 def scrub(value: Any) -> Any:
     """``value`` without any member whose name says preimage (secret material is never kept)."""
     if isinstance(value, dict):
@@ -64,7 +86,7 @@ class LightningRail(Rail):
                              capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=timeout)
         out = run.stdout.strip()
         if run.returncode != 0 or not out:
-            raise RailError(f"{host} {payload['command']}: {(run.stderr or out).strip()[-300:]}")
+            raise RailError(f"{host} {payload['command']}: exit {run.returncode}: {redact((run.stderr or 'no output').strip())}")
         try:
             return scrub(json.loads(out))
         except ValueError:
@@ -79,8 +101,8 @@ class LightningRail(Rail):
         invoice = _find_invoice(made)
         if invoice is None:
             raise RailError("Shockley's fund call returned no invoice")
-        stated = made.get("amount_msat")
-        if stated is not None and int(stated) != amount_msat:
+        stated = invoice_msat(invoice)  # the invoice itself, not the wallet's account of it
+        if stated != amount_msat:
             raise RailError(f"the invoice is for {stated} msat, not {amount_msat}: not paying it")
         sent = self._control(self.BUYER, {"command": "send", "invoice": invoice, "max_fee_msat": MAX_FEE_MSAT})
         status = str(sent.get("status", ""))

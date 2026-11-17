@@ -10,9 +10,14 @@ from buyer import Assessment, Evidence
 
 BANNER = ("DEMO · sample history, run by the demo operator · test nodes with real Lightning (Brattain pays, "
           "Shockley receives; both sellers settle to the one test node Shockley)")
+BANNER_FAKE = "DEMO · sample history, run by the demo operator · SIMULATED payment: no money moves"
+
+
+def banner(rail: str) -> str:
+    return BANNER if rail == "lightning" else BANNER_FAKE
 PACK_NOTE = "demo copy, not published · placeholder thresholds, for this demo only"
 CLAIMS_NOTE = "claims-held is not read today: no card carries claims yet"
-ASSESSMENT_NOTE = "an assessment, not an admission: the presenter's pick decides who is paid"
+ASSESSMENT_NOTE = "the agent's assessment of each seller; the presenter's pick decides who is paid"
 
 
 def msat(n: int) -> str:

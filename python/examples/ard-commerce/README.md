@@ -39,8 +39,8 @@ Needs Python 3.10+, this package, a `capsule-engine` binary and an
 `evidencebook-skills` checkout (for compiling the pack).
 
 ```bash
-python -m venv .venv
-.venv/bin/pip install ./python pyyaml rfc8785 websockets
+python -m venv python/.venv
+python/.venv/bin/pip install ./python pyyaml rfc8785 websockets
 export CAPSULE_ENGINE=/path/to/capsule-engine        # go build ./cmd/capsule-engine in capsule-engine/go
 export ARD_SKILLS=/path/to/evidencebook-skills       # the pack is compiled under $ARD_SKILLS/demo-ard/
 cd python/examples/ard-commerce
