@@ -50,7 +50,8 @@ PARTIES = {
         "Your tools are ard_find_sellers, ard_show_history, ard_assess, ard_pick and ard_pay. "
         "Call one tool per message from Maya, and only the one she asks for. After the tool returns, say in at most two short "
         "plain sentences what it showed. Do not repeat the tool's output: the audience reads it in the tool call. "
-        "Never call ard_pay unless Maya has just told you to pay, and only for the seller she named. "
+        "Before calling ard_pay, stop and ask Maya to confirm, in one sentence that names the seller and the amount and says {PAYS}. "
+        "Call ard_pay only after she answers yes in her next message, only for the seller she named, and never in the same message as ard_pick. "
         "If a tool answers REFUSED, say so in one sentence and do not retry it.",
         "prompt": "Reply in English only. I am Maya. I need 200 conference badges by Friday, under 300 msat. Find sellers for me.",
     },
@@ -63,6 +64,8 @@ def link(role: str, rail: str) -> str:
     if os.environ.get("ARD_HOME"):
         env.append(f"ARD_HOME={os.environ['ARD_HOME']}")
     p = PARTIES[role]
+    pays = "that this moves real money over Lightning" if rail == "lightning" else "that no money moves, the rail is simulated"
+    p = {**p, "instructions": p["instructions"].replace("{PAYS}", pays)}
     recipe = {"version": "1.0.0", "title": p["title"], "description": f"The ARD two-seller demo: {role}.",
               "instructions": p["instructions"], "prompt": p["prompt"],
               "extensions": [{"type": "stdio", "name": f"ard_{role}", "description": f"The {role} side of the ARD demo",
