@@ -40,7 +40,6 @@ _PEAKS = "-01 Commitment Representation: the peak list of the MMR at that size"
 #: (case name, without its first-/second- prefix when the departure holds for
 #: both checkpoints, the spec's verdict, the basis).
 GO_DEPARTS: list[tuple[str, str, str]] = [
-    ("protected-cwt-sub-log-id", "accept", "CLL -02: sub is the log id, the same in every checkpoint (Go's pinned reader still requires <log id>#<log_size>)"),
     ("claims-extra-member", "accept", _MUST_IGNORE),
     ("claims-consistency_proof-missing", "accept", _PROOF_CLAIM),
     ("claims-consistency_proof-null", "accept", _PROOF_CLAIM),
@@ -164,9 +163,8 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
 
     def claims_case(name: str, changed: dict, payload: bytes | None = None) -> None:
         body = canonical(changed) if payload is None else payload
+        # CLL -02: the CWT sub is the log id whatever the claims say, so it stays as signed.
         p = dict(prot)
-        if isinstance(changed.get("log_size"), int) and not isinstance(changed["log_size"], bool):
-            p[15] = {1: prot[15][1], 2: f"{prot[15][1]}#{changed['log_size']}"}
         out[f"{label}-claims-{name}"] = sign(cbor2.dumps(p), body)
 
     # Each claim missing, null, or of another type.
@@ -283,7 +281,7 @@ def mutations(label: str, cp, second) -> dict[str, bytes]:
                                               (15, ("raw", raw_map([(1, cwt[1]), (1, cwt[1]), (2, cwt[2])])))]))
     header_case("cwt-not-map", cbor2.dumps({**prot, 15: [cwt[1], cwt[2]]}))
     header_case("cwt-iss-not-identifier",
-                cbor2.dumps({**prot, 15: {1: "not an id!", 2: "not an id!#" + cwt[2].split("#")[1]}}))
+                cbor2.dumps({**prot, 15: {1: "not an id!", 2: "not an id!"}}))
 
     header_case("alg-ed25519-fully-specified", cbor2.dumps({**prot, 1: -19}))
     header_case("crit-understood", cbor2.dumps({**prot, 2: [1]}))

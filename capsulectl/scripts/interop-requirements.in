@@ -1,15 +1,15 @@
 # The Python stack for scripts/interop-resolved.sh. It follows the scripts of the evidencebook
-# release capsulectl/go.mod resolves, not evidencebook's main CI (which is at agent-action-capsule
-# 0.16.0): that release's build_bundle.py still calls 0.6.0's emit(). Move this lock to 0.16.0,
-# capsule-emit 0.15.0 and checkpointed-local-log 0.8.0 once the resolved release has the new script.
+# release capsulectl/go.mod resolves (v0.14.2), whose build_bundle.py uses
+# capsule_emit.builder.build_capsule: agent-action-capsule 0.16.0, capsule-emit 0.17.0 and
+# checkpointed-local-log 0.9.0 (the CLL -02 checkpoint, whose `sub` is the bare log id).
 # Locked with hashes, transitively, in interop-requirements.txt:
 #   uv pip compile scripts/interop-requirements.in --generate-hashes --no-emit-package checkpointed-local-log \
 #     --python-version 3.12 --python-platform x86_64-unknown-linux-gnu -o scripts/interop-requirements.txt
 # checkpointed-local-log itself is installed FIRST from its pinned commit with --no-deps (a
 # git checkout cannot be hash-pinned); its runtime dependencies are listed here so
 # the lock covers them: cbor2, scitt-cose, agent-action-capsule, cryptography.
-agent-action-capsule==0.6.0
-capsule-emit==0.8.6
+agent-action-capsule==0.16.0
+capsule-emit==0.17.0
 cbor2>=5.5
 scitt-cose>=0.2.0
 cryptography>=42.0

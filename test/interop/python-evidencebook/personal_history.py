@@ -97,7 +97,7 @@ def main() -> None:
             cp = book.checkpoint()
             out["checkpoints"].append({
                 "expected_pin": cp.anchor_digest, "tree_size": cp.tree_size,
-                "log_key": {"iss": cp.log_id, "sub": f"{cp.log_id}#{cp.tree_size}", "kid": cp.key_id},
+                "log_key": {"iss": cp.log_id, "sub": cp.log_id, "kid": cp.key_id},
             })
 
     def define(name: str, reads: list[str]) -> str:
