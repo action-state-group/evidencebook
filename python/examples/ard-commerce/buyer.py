@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_action_capsule.canonical import jcs
 from evidencebook import Coverage, EvidenceRequest, Subject
 from evidencebook.evidence import evaluate
 from evidencebook.request import PROFILE as ER_PROFILE, Message, parse_reply
@@ -32,7 +31,6 @@ from world import CURRENCY, ITEM, RAIL, World
 
 ASSESSED = "ard_assessment"
 PICKED = "ard_pick"
-CARD_RECEIVED = "ard_card_received"
 #: Facts the demo operator supplies (the trust roots of the demo pack name them): the platform and
 #: the one party that is witness and controller. They are the operator's, not a registry's.
 OPERATOR_FACTS = {"witness": "demo-witness", "controller": "demo-controller"}
@@ -57,6 +55,7 @@ class Evidence:
     first_checkpoint_time: str = ""
     card_record: str = ""
     sample_card: bool = False
+    unanswered: list = field(default_factory=list)  # the disputes the seller states it left unanswered
 
     def ok(self, name: str, detail: str = "") -> None:
         self.checks.append(Check(name, True, detail))
@@ -185,7 +184,8 @@ def gather(world: World, maya: gn.Node, entry: dict, anchor: str, wait: float = 
                     and isinstance(body.get("unanswered_disputes"), list))
             if not good:
                 raise ValueError("not this request's answer from this seller")
-            ev.selection_ok = body["unanswered_disputes"] == []
+            ev.unanswered = body["unanswered_disputes"]
+            ev.selection_ok = True
             ev.stated("selection", f"signed answer bound to this request; the seller states {len(body['unanswered_disputes'])} "
                                    "unanswered disputes (demo form: no inclusion proofs, not checked against its records)")
         except Exception as exc:
@@ -206,24 +206,24 @@ def inputs(ev: Evidence, price_msat: int, now: datetime, anchor_info: dict) -> d
                          **OPERATOR_FACTS}
     return {"now": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "amount": str(price_msat), "currency": "msat",
             "platform": {"release_attestation": "valid", "owner_signed": True}, "card": c,
-            "selection": {"state": "verified" if ev.selection_ok else "unanswered", "unanswered_disputes": []},
+            "selection": {"state": "verified" if ev.selection_ok else "unanswered", "unanswered_disputes": list(ev.unanswered)},
             "own": {"exchanges": 0, "settled": 0, "held_halves": 0, "conflicting": 0, "verdicts": []},
             "operator": {"deny_listed": False, "allow_listed": True}, "subject": ev.seller}
 
 
 def assess(maya: gn.Node, seller: gn.Node, ev: Evidence, price_msat: int, pack: Pack, anchor_info: dict,
            sample_card: bool) -> Assessment:
-    """Decide with the evaluator under ``pack`` and seal the decision in Maya's book. The sealed record
-    is the node-book note a deal opens under (a GO), carrying the pack's id and digest and whether the
-    card it read is the demo's hand-written sample."""
+    """Decide with the evaluator under ``pack`` and seal the decision in Maya's book as an
+    ``ard_assessment`` note (its own record type: not a loop admission, and nothing cites it as a GO),
+    carrying the pack's id and digest and whether the card it read is the demo's hand-written sample."""
     now = datetime.now(timezone.utc)
     d = evaluate(pack.path, inputs(ev, price_msat, now, anchor_info), pack_id=pack.pack_id, digest=pack.digest, engine=engine())
     cap = pack.ceiling_msat(d.tier) if d.verdict == "LIMIT" and d.tier else None
     reasons = [r["row"] for r in d.rows if r["result"] == "fail" and r["effect"] != "none"]
-    sealed = deals.admit(maya, seller, decision=d.verdict, reason=f"assessment under {pack.pack_id}",
-                         kind=ASSESSED, pack_id=pack.pack_id, pack_digest=pack.digest, tier=d.tier,
-                         block_sha256=d.block_sha256, price_msat=price_msat, sample_card=sample_card,
-                         limit_msat=cap)
+    sealed = maya.note(ASSESSED, {"peer": seller.key_id, "checkpoint_key_id": seller.checkpoint_key_id,
+                                  "decision": d.verdict, "pack_id": pack.pack_id, "pack_digest": pack.digest, "tier": d.tier,
+                                  "block_sha256": d.block_sha256, "price_msat": price_msat, "sample_card": sample_card,
+                                  "limit_msat": cap}, subject_ref=seller.key_id)
     return Assessment(ev.seller, price_msat, d.verdict, d.tier, cap, pack.pack_id, pack.digest, reasons,
                       list(d.rows), sealed.record_id, sample_card, d.block_sha256)
 
@@ -239,9 +239,9 @@ def seal_pick(maya: gn.Node, seller: gn.Node, chosen: Assessment, others: list[A
 
 
 def open_deal(maya: gn.Node, seller: gn.Node, pick_record: str, chosen: Assessment, asked: str) -> dr.DealChain:
-    """Open Maya's side of the deal from the sealed pick. Refused unless the pick exists and the
-    assessment it cites is the one a deal can open under (a GO; the loop reference's rule for a deal's
-    first step). A LIMIT seller can be picked, and no deal opens."""
+    """Open Maya's side of the deal from the sealed pick: the deal's first step cites the pick (which cites
+    both assessments). Refused unless the pick exists and names this seller at this price. A seller whose
+    assessment is not GO can be picked and no deal opens (nothing is paid above its limit)."""
     picks = [s for r, s in maya.notes(PICKED) if r.record_id == pick_record]
     if not picks or picks[0]["price_msat"] != chosen.price_msat or picks[0]["seller"] != seller.key_id:
         raise gn.Refused("no sealed pick names this seller at this price")
@@ -250,5 +250,5 @@ def open_deal(maya: gn.Node, seller: gn.Node, pick_record: str, chosen: Assessme
                          + (f": deals under {chosen.cap_msat} msat" if chosen.cap_msat else "") + "; no deal opens and nothing is paid")
     terms = dr.Terms(ITEM, chosen.price_msat, CURRENCY, RAIL, False)
     chain = maya.new_deal(f"deal-{os.urandom(8).hex()}", dr.ROLE_BUYER, seller.key_id, terms)
-    maya.open_deal(chain, chain.open(datetime.now(timezone.utc), asked))
+    maya.seal(chain, chain.open(datetime.now(timezone.utc), asked), admission=pick_record)
     return chain

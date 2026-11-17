@@ -69,7 +69,10 @@ screen). Preimages are never printed or kept. You need `gcloud` signed in to the
 ### The one switch
 
 `--kestrel-card sample` (the default) serves Kestrel's hand-written card. `--kestrel-card sentinel`
-will read it from Kestrel's book once the sentinel record ships; until then it refuses to start.
+(`seed --kestrel-card sentinel` first) reads it from Kestrel's own book: three deals carry the book
+owner's `outcome_note` (the temporary record of #462, in evidencebook with #464), which the card counts
+as did not hold. The card does not show who wrote the note, and the screen says it is the seller's own
+note, not confirmed by the buyer or a ruling.
 
 ## What differs from the design note
 
@@ -91,3 +94,6 @@ cd python/examples/ard-commerce
 ../../.venv/bin/python -m pytest -q tests          # the unit tests; the demo tests skip without the two paths
 CAPSULE_ENGINE=… ARD_SKILLS=… ../../.venv/bin/python -m pytest -q tests   # + the demo end to end on a fake rail, about 40 s
 ```
+
+The end-to-end tests are not run in CI (they need a capsule-engine binary and an evidencebook-skills
+checkout): run them with the two paths set before each rehearsal.

@@ -63,7 +63,7 @@ class World:
         self.commitments: dict[str, dict] = {}
         self._stop = threading.Event()
         self._threads: list[threading.Thread] = []
-        self.sample_card = {"kestrel": True}  # the switch: see sample.py
+        self.sample_card = {"kestrel": True}  # the switch (demo.py --kestrel-card)
 
     def factory(self, _url: str) -> mb.Relay:
         return mb.Relay(self.relay.url)

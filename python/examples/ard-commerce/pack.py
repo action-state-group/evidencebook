@@ -27,6 +27,7 @@ class Pack:
     digest: str
     path: Path  # the compiled pack-definition.json
     max_adverse_permille: int
+    source: str = ""  # the pack source text it was compiled from
 
     def tiers(self) -> list[dict]:
         return json.loads(self.path.read_text())["tiers"]
@@ -89,7 +90,7 @@ def compile_source(text: str, version: str, work: Path | None = None) -> Pack:
         raise PackError(f"pack_compile refused the pack: {(run.stdout + run.stderr).strip()}")
     printed = json.loads(run.stdout)
     return Pack(printed["pack_id"], printed["pack_version"], printed["definition_digest"],
-                out_dir / "compiled" / "pack-definition.json", threshold(text))
+                out_dir / "compiled" / "pack-definition.json", threshold(text), text)
 
 
 def starting() -> Pack:

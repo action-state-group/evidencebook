@@ -43,26 +43,31 @@ def run_deal(buyer: gn.Node, seller: gn.Node, terms: dr.Terms, asked: str, payme
     schain = seller.new_deal(deal_id, dr.ROLE_SELLER, verified["key_id"], terms)
     steps = schain.respond(now(), f"sell {terms.item} at the listed price", verified["records"][-1]["digest"])
     seller.open_deal(schain, steps)
-    _reconcile(buyer, seller.half(deal_id))
+    _reconcile(buyer, seller.half(deal_id), seller)
     ref = pay() if pay else payment_ref
     buyer.seal(buyer.deal(deal_id), buyer.deal(deal_id).check_and_pay(now(), ref))
     for me, peer in ((buyer, seller), (seller, buyer)):
         me.ask_half(deal_id)
-        _reconcile(peer, me.half(deal_id))
+        _reconcile(peer, me.half(deal_id), me)
     # each side holds the other's half only after it asked for it (ask_half) and the other reconciled
     for me, peer in ((buyer, seller), (seller, buyer)):
-        _reconcile(me, peer.half(deal_id))
+        _reconcile(me, peer.half(deal_id), peer)
     buyer.close_deal(deal_id, "received")
     seller.close_deal(deal_id, "received")
     for me, peer in ((buyer, seller), (seller, buyer)):
-        _reconcile(peer, me.half(deal_id))
+        _reconcile(peer, me.half(deal_id), me)
     return deal_id
 
 
-def _reconcile(node: gn.Node, half: dict) -> dict:
+def _reconcile(node: gn.Node, half: dict, signer: gn.Node) -> dict:
     """loop_deal_reconcile: the counterparty's half must verify, be signed by the deal's peer and
     state the same terms; a matching half is held."""
-    verified = node.verify_peer_half(half)
+    # A node that admitted the signer (the loop's rule) checks under the checkpoint key it pinned; Maya holds
+    # no admission, only an assessment, so she checks under the key the signer's verified commitment names.
+    if node.admission(signer.key_id) is not None:
+        verified = node.verify_peer_half(half)
+    else:
+        verified = gn.verify_half(half, signer.checkpoint_key_id)
     chain = node.deal(verified["deal_id"])
     if verified["key_id"] != chain.peer:
         raise gn.Refused("the half is not signed by the peer the deal names")

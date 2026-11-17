@@ -120,7 +120,7 @@ class Run:
             raise SystemExit("the edit must tighten the rule (a lower value)")
         major, minor, _ = p.version.split(".")
         version = f"{major}.{int(minor) + 1}.0"
-        new = packs.compile_source(packs.edited(Path(p.path).parent.parent.joinpath("pack-source.yaml").read_text(), permille, version), version)
+        new = packs.compile_source(packs.edited(p.source, permille, version), version)
         print(f"recompiled: pack {p.version}  digest {p.digest[:12]}…  →  pack {new.version}  digest {new.digest[:12]}…")
         print("both assessments rerun on the evidence already collected: no new request is sent")
         return new
@@ -135,7 +135,8 @@ class Run:
             opts.append({"id": e["id"], "name": e["name"], "price": "Listed price " + screens.msat(a.price_msat), "verdict": a.verdict,
                          "decision": screens.decision_line(a, ev, p.max_adverse_permille, ceiling),
                          "card": screens.card_line(ev, ev.sample_card),
-                         "rulings": "Shown, not scored.", "button": f"Pay {e['name']} {screens.msat(a.price_msat)}"})
+                         "button": (f"Pay {e['name']} {screens.msat(a.price_msat)}" if a.verdict == "GO"
+                                    else f"Pick {e['name']} (over its limit: nothing is paid)")})
         return opts
 
     def popup(self, p: packs.Pack, made: dict[str, buyer.Assessment]) -> str:
@@ -206,7 +207,6 @@ def prepare(args) -> tuple[World, Server]:
         world.advertise(name)
         world.serve(name)
     server = Server(args.port)
-    server.files[ard.WELL_KNOWN] = b""
     server.files = {f"/commitments/{n}.json": ard.commitment_octets(world.commitments[n]) for n in SELLERS}
     server.files[ard.WELL_KNOWN] = __import__("json").dumps(ard.catalogue(SELLERS, world.commitments, server.url), sort_keys=True).encode()
     return world, server

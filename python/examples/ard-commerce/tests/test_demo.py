@@ -112,3 +112,14 @@ def test_a_request_pinned_to_an_unknown_anchor_gets_no_card_and_no_selection(run
     ev = buyer.gather(run.w, run.maya, entry, "ab" * 32, wait=3)
     assert ev.card is None and not ev.selection_ok
     assert [(c.name, c.ok) for c in ev.checks if not c.ok] == [("standard_history/1", False)]
+
+
+def test_the_deal_cites_the_pick_and_mayas_book_holds_no_loop_admission(run):
+    import goose_node as gn
+    maya = run.maya
+    assert maya.notes(gn.ADMITTED) == []
+    opened = [b for b in maya.shelf.books() if b.startswith("deal/")]
+    assert opened, "the pick test above opened a deal"
+    first = maya.shelf.open(opened[0]).records()[0]
+    picks = {r.record_id for r, _ in maya.notes("ard_pick")}
+    assert set(first.header.links_to("cites")) & picks
