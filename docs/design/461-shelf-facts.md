@@ -229,9 +229,10 @@ count over the returned facts.
   are full records. The request and share logs of today keep their bare digests and are not moved.
 - **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, deal_id,
   record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`;
-  `shelf_received_proofs (sender_key, log_id, size, book_checkpoint BLOB, fact BLOB,
-  inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key, log_id,
-  size))`, every stamp proof accepted, so a restart keeps what it covered and a later
+  `shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint BLOB,
+  fact BLOB, inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key,
+  log_id, size, shelf_checkpoint_sha256))`, so two proofs of one book checkpoint under different
+  shelf checkpoints (a received-only change) are both kept, every stamp proof accepted, so a restart keeps what it covered and a later
   contradiction is found against it; and `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for
   a contradicting checkpoint or a fork.
   Nothing in the store is appended to a book.
@@ -240,7 +241,8 @@ count over the returned facts.
   proof:
   - who may push: an offer may come from any key (a listing invites them, and admission judges
     it); every other record is taken only from a key that a book on the shelf names as its
-    counterparty or its adjudicator, or whose offer the store holds; any other sender is refused
+    counterparty or its adjudicator, whose offer the store holds, or to which an offer in the
+    journal was sent (the reply to our own offer, before our deal book exists); any other sender is refused
     and nothing is stored. A record over the store's size bound (the host's, default
     1 MiB) or past a per-book count bound is refused. How long the store keeps what it holds is
     not ruled (the How ack names it as an open product door); until it is, nothing is deleted;
@@ -273,9 +275,13 @@ is one-way, and recoverable at every step:
 
 1. **Finish the old cadence.** A tick stored but not finished is finished by today's code first,
    so no tree root is ever appended after the marker.
-2. **Back up.** The shelf writes `VACUUM INTO '<path>.v1.bak.tmp'`, which is a consistent snapshot
-   including what is still in the WAL, records the snapshot's SHA-256 in `shelf_migration`, and
-   renames it to `<path>.v1.bak`. On a restart: a `.v1.bak` whose SHA-256 matches the recorded one
+2. **Close the file to older builds, then back up.** First, in one shelf transaction,
+   `shelf_meta.version` becomes 2 and `shelf_migration.state` `backing_up`, so from here no older
+   build writes the file and a backup taken now cannot go stale. Then the shelf writes
+   `VACUUM INTO '<path>.v1.bak.tmp'`, a consistent snapshot including what is still in the WAL,
+   sets the snapshot's own `shelf_meta.version` back to 1 and drops its `shelf_migration` row, so
+   the backup is the version 1 file an older build opens, records the result's SHA-256 in
+   `shelf_migration`, and renames it to `<path>.v1.bak`. On a restart: a `.v1.bak` whose SHA-256 matches the recorded one
    is reused; a `.v1.bak.tmp` whose SHA-256 matches it is renamed; a `.v1.bak.tmp` with no
    recorded digest, or another one, is from an attempt that did not finish and is removed before
    `VACUUM INTO` runs again (it refuses an existing file); a `.v1.bak` that does not match is
@@ -289,18 +295,17 @@ is one-way, and recoverable at every step:
    (the Mesh node's own log is not one: a host log that witnesses itself is outside the cadence,
    `rust/evidencebook/src/shelf/mod.rs:467-470`, and stays so until step 8), and for a log with a
    witnessed size (`cadence_witnessed`) the batch keeps the tie of 2.7 from the largest one. A log listed with size 0 gets its first fact when it first has an entry. In
-   the same shelf transaction as the batch, `shelf_meta.version` becomes 2 and
-   `shelf_migration.state` `migrating`, so from here an older build refuses the file and can
-   never tick a tree root after the marker.
+   the same shelf transaction as the batch, `shelf_migration.state` becomes `migrating`.
 4. **Append and checkpoint.** The marker, then the genesis facts in `book_id` order, then a stamp
    entry, are appended through the cadence log's own CLL handle; then the shelf checkpoint is cut
    and queued for the shelf's witnesses, as every stamp's is. The shelf records this as stamp 1 in
    `shelf_stamps` (its entries, checkpoint, `at`, and `due_next` from the cadence's interval and
    jitter). This checkpoint is the **coverage start**.
 5. **Finish.** `shelf_migration.state` becomes `done`. A new build that opens a file in state
-   `migrating` repeats step 4 from the stored batch, appending only what is missing, as a stamp is
-   finished (2.5), before anything else; a crash before step 3's transaction leaves a version 1
-   file with nothing after its last tick, which an older build still opens as before.
+   `backing_up` resumes step 2, and one in state `migrating` repeats step 4 from the stored batch,
+   appending only what is missing, as a stamp is finished (2.5), before anything else. A crash
+   before step 2's first transaction leaves a version 1 file, which an older build still opens as
+   before; after it, only a new build or the backup opens the shelf.
 
 The coverage start is that checkpoint, or the shelf log's first entry when the holder also hands
 over the old ticks' material (their leaves, salts, positions and fillers) and it verifies, which
