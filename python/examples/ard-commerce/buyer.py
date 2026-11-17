@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from agent_action_capsule.canonical import jcs
 from evidencebook import Coverage, EvidenceRequest, Subject
 from evidencebook.evidence import evaluate
 from evidencebook.request import PROFILE as ER_PROFILE, Message, parse_reply
@@ -31,6 +32,7 @@ from world import CURRENCY, ITEM, RAIL, World
 
 ASSESSED = "ard_assessment"
 PICKED = "ard_pick"
+CARD_RECEIVED = "ard_card_received"
 #: Facts the demo operator supplies (the trust roots of the demo pack name them): the platform and
 #: the one party that is witness and controller. They are the operator's, not a registry's.
 OPERATOR_FACTS = {"witness": "demo-witness", "controller": "demo-controller"}
@@ -164,6 +166,9 @@ def gather(world: World, maya: gn.Node, entry: dict, anchor: str, wait: float = 
         return ev
     ev.card = checked["card"]
     ev.anchor = checked["anchor"]
+    ev.card_record = maya.note(CARD_RECEIVED, {"seller": commitment["key_id"], "anchor": ev.anchor,
+                                               "card_sha256": hashlib.sha256(jcs(ev.card)).hexdigest()},
+                               subject_ref=commitment["key_id"]).record_id
     ev.ok("card form", f"derivation {ev.card['derivation']}, {ev.card['outcomes']['of']} deals counted")
 
     # 3. the selection, bound to a fresh nonce.
@@ -220,10 +225,11 @@ def assess(maya: gn.Node, seller: gn.Node, ev: Evidence, price_msat: int, pack: 
     d = evaluate(pack.path, inputs(ev, price_msat, now, anchor_info), pack_id=pack.pack_id, digest=pack.digest, engine=engine())
     cap = pack.ceiling_msat(d.tier) if d.verdict == "LIMIT" and d.tier else None
     reasons = [r["row"] for r in d.rows if r["result"] == "fail" and r["effect"] != "none"]
-    sealed = maya.note(ASSESSED, {"peer": seller.key_id, "checkpoint_key_id": seller.checkpoint_key_id,
+    sealed = maya.note(ASSESSED, {"peer": seller.key_id,
                                   "decision": d.verdict, "pack_id": pack.pack_id, "pack_digest": pack.digest, "tier": d.tier,
                                   "block_sha256": d.block_sha256, "price_msat": price_msat, "sample_card": sample_card,
-                                  "limit_msat": cap}, subject_ref=seller.key_id)
+                                  "limit_msat": cap}, subject_ref=seller.key_id,
+                       cites=(ev.card_record,) if ev.card_record else ())
     return Assessment(ev.seller, price_msat, d.verdict, d.tier, cap, pack.pack_id, pack.digest, reasons,
                       list(d.rows), sealed.record_id, sample_card, d.block_sha256)
 

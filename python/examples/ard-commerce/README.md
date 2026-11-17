@@ -84,6 +84,8 @@ note, not confirmed by the buyer or a ruling.
 - The Python deal profile has no producer for `ec:deal-reconcile@1`, so a deal counts as *held* when
   the node's own reconcile check (both closes name the same amount and currency) says so
   (`demo_node.py`).
+- Maya holds no loop admission of a seller, only her assessment, so she checks a seller's half under the
+  checkpoint key its verified commitment names (`deals._reconcile`), not under the key a GO admission pinned.
 - The sellers' commitments name `wss://ard-demo.relay.local`, which this process maps to its one
   local relay (the mailbox events are not encrypted, so the relay is localhost only).
 
