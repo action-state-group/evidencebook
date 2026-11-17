@@ -217,6 +217,9 @@ func (s *Shelf) Journal(ctx context.Context) (*Book, error) {
 	if _, ok := s.hosts[JournalLogID]; ok {
 		return nil, fmt.Errorf("%w: %s is a host log, not the journal", ErrInvalid, JournalLogID)
 	}
+	if s.cadence != nil && s.cadence.cfg.LogID == JournalLogID {
+		return nil, fmt.Errorf("%w: %s is the cadence log, not the journal", ErrInvalid, JournalLogID)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -232,6 +235,18 @@ func (s *Shelf) Journal(ctx context.Context) (*Book, error) {
 	}
 	if kind != logKindJournal && (kind != "" || records > 0) {
 		return nil, fmt.Errorf("%w: %s is already a %s log, not the journal", ErrInvalid, JournalLogID, map[bool]string{true: kind, false: logKindBook}[kind != ""])
+	}
+	// A log with entries and no kind (the cadence log, which shelf_logs never
+	// records, or one this build does not know) is not the journal either:
+	// claiming it would leave its owner refused on the next open.
+	if kind == "" {
+		var entries int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cll_entries WHERE log_id = ?`, JournalLogID).Scan(&entries); err != nil {
+			return nil, err
+		}
+		if entries > 0 {
+			return nil, fmt.Errorf("%w: %s already holds another log's entries, not the journal", ErrInvalid, JournalLogID)
+		}
 	}
 	if err := allowJournalKind(ctx, tx); err != nil {
 		return nil, err

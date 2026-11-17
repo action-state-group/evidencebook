@@ -183,3 +183,30 @@ func TestAnOlderShelfLogsTableTakesTheJournal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, logKindJournal, kind)
 }
+
+// A shelf whose cadence log is named as the journal refuses the journal and
+// changes nothing, in this process and after a reopen with no cadence open.
+func TestTheJournalRefusesTheCadenceLogsID(t *testing.T) {
+	ctx := context.Background()
+	fixture := newShelfFixture(t)
+	shelf := fixture.open(t)
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: JournalLogID,
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t)})
+	require.NoError(t, err)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	_, err = shelf.Journal(ctx)
+	assert.ErrorIs(t, err, ErrInvalid, "the cadence open in this process")
+	require.NoError(t, shelf.Release())
+
+	reopened := fixture.open(t)
+	_, err = reopened.Journal(ctx)
+	assert.ErrorIs(t, err, ErrInvalid, "the cadence's entries on disk")
+	kind, err := reopened.logKind(ctx, JournalLogID)
+	require.NoError(t, err)
+	assert.Empty(t, kind, "nothing was claimed")
+	_, err = reopened.Cadence(ctx, CadenceConfig{LogID: JournalLogID,
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t)})
+	assert.NoError(t, err, "the cadence still opens")
+}
