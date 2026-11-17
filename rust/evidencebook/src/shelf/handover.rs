@@ -218,13 +218,13 @@ fn decode_record_id(id: &str) -> Result<[u8; 32], String> {
 /// The portable JSON of a CLL consistency proof (Go `portableConsistency`).
 #[derive(Deserialize)]
 struct PortableConsistency {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     v: u64,
     #[serde(default, deserialize_with = "nullable")]
     kind: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     old_size: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "nullable")]
     new_size: u64,
     #[serde(default, deserialize_with = "nullable")]
     old_peaks: Vec<String>,

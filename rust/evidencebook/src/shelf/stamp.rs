@@ -860,6 +860,7 @@ mod tests {
             now: Some(Arc::new(tick_time)),
             authenticated_indexes: None,
             correlation_members: Vec::new(),
+            receive: Default::default(),
         })
         .unwrap()
     }

@@ -230,14 +230,26 @@ count over the returned facts.
 
 - **The journal** is a book of kind `journal`, one per shelf, opened on first use, whose records
   are full records. The request and share logs of today keep their bare digests and are not moved.
-- **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, deal_id,
-  record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`;
+- **The store** is `shelf_received (digest PRIMARY KEY, sender_key, log_id, position, prev, deal_id,
+  offer, record BLOB, received_at)`, indexed by `(sender_key, log_id, position)` and `deal_id`
+  (`prev`, the predecessor the record names, lets a restart recompute forks from the store alone;
+  `offer` marks an unsolicited offer not yet answered, which the offer bounds count);
   `shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint BLOB,
-  fact BLOB, inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key,
+  fact BLOB, status_opening BLOB, inclusion_proof BLOB, shelf_checkpoint BLOB, received_at, PRIMARY KEY (sender_key,
   log_id, size, shelf_checkpoint_sha256))`, so two proofs of one book checkpoint under different
   shelf checkpoints (a received-only change) are both kept, every stamp proof accepted, so a restart keeps what it covered and a later
   contradiction is found against it; and `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for
-  a contradicting checkpoint or a fork.
+  a fork (`fork`), a contradicting checkpoint (`checkpoint`), or a book checkpoint whose root the
+  records held do not recompute (`checkpoint_records`), kept for the first conflict at each position
+  or size only, which `shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id)` records
+  so that no later deletion undoes a fork. A proof grants coverage only once
+  the records held reach its size and recompute its root (`shelf_received_proofs.verified`).
+  `shelf_received_vacated (sender_key, log_id, position, digest, deal_id, offer)` keeps where each
+  deleted record was, so another record arriving there is a fork, and a deletion returns the proofs
+  that reach it to unchecked. An unsolicited offer belongs to no deal, so what offers leave behind (a
+  dropped offer's vacated row, and a conflict row with its evidence in a log holding offers alone) is
+  bounded per sender and in total; past the bound no row is kept, and such a position may later be
+  forgotten. Rows `Forget` leaves, and conflicts in a log holding any other record, are kept for good.
   Nothing in the store is appended to a book.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the

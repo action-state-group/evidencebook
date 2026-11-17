@@ -711,6 +711,18 @@ class Cadence:
             self._shelf._check_open()
             return shelf_handover.handover_locked(self, n)
 
+    def stamp_proof(self, book_id: str, n: int = 0, audience: str = "counterparty") -> Any:
+        """The stamp proof of a book's latest fact at stamp ``n`` (the newest
+        finished stamp when ``n`` is 0), for an audience (Go
+        ``Cadence.StampProof``, evidencebook#461 §3): the status opening is
+        included when the audience may have it, the link opening never; the
+        journal's facts are proved to nobody."""
+        from . import shelf_stamp_proof
+
+        with self._shelf._mu:
+            self._shelf._check_open()
+            return shelf_stamp_proof.stamp_proof_locked(self, book_id, n, audience)
+
     # -- witnessing ---------------------------------------------------------------------
 
     def witnessed(self, n: int, receipt: WitnessReceipt) -> WitnessCheck:

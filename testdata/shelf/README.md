@@ -11,6 +11,7 @@ implementation and read by every other. Each file is regenerated only with
 | `script.json` | the scripted shelf: its host parameters, keys and two phases of steps | `internal/shelfscript` |
 | `correlation.json` | records carrying each correlation member or none, and the positions each identifier answers with (`correlationOf`) | `shelf_correlation_vectors_test.go` |
 | `after-write.json`, `after-continue.json`, `after-migrate.json`, `after-recover-tick.json`, `after-recover-migration.json` | the dump of the scripted shelf after each phase; the migrate phase switches it to a log of book facts (evidencebook#461) and stamps it | `internal/shelfscript` |
+| `receive/script.json`, `receive/after.json` | the received store's script of pushes, proofs, forgets and a reopen, each step's expected outcome, and the store's dump after it (evidencebook#461 §3, §7; `receive/README.md`) | `shelf_receive_vectors_test.go` |
 | `handover.json`, `handover-result.json` | the whole-shelf handover of the shelf after the migrate phase, at its newest stamp, and its replay (evidencebook#461 §2.7) | `internal/shelfscript` |
 
 ## The random source

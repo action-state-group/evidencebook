@@ -95,6 +95,7 @@ fn open_with(path: &Path, clock: &Clock, opts: Opts) -> Result<Shelf, ShelfError
         now: Some(Arc::new(move || *now.0.lock().unwrap())),
         authenticated_indexes: opts.indexes.map(|i| Arc::new(move |_: &str| i) as _),
         correlation_members: vec!["request_digest".into()],
+        receive: Default::default(),
     })
 }
 

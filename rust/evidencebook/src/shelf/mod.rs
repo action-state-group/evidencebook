@@ -51,8 +51,12 @@ mod import;
 mod lock;
 mod log;
 mod random;
+mod receive;
+#[cfg(test)]
+mod receive_tests;
 mod records;
 mod stamp;
+mod stamp_proof;
 mod store;
 mod time;
 mod tree;
@@ -74,8 +78,14 @@ pub const JOURNAL_LOG_ID: &str = "journal";
 pub use import::LegacyCadence;
 pub use log::{Checkpoint, SUBSTRATE_KIND_CLL};
 pub use random::{RandomSource, SeededStream, SystemRandom};
+pub use receive::{
+    CountedPrefix, Evidence, HeldRecord, ProofOutcome, ReceiveBounds, ReceiveChanges,
+    ReceiveConfig, ReceiveError, ReceiveProfile, ReceiveResult, ReceivedRecord, RecordOutcome,
+    EVIDENCE_CHECKPOINT, EVIDENCE_CHECKPOINT_RECORDS, EVIDENCE_FORK,
+};
 pub use records::{ShelfRecord, ShelfRecords};
 pub use stamp::{AudienceFact, BatchEntry, BookStatus, StampBatch, StatusValues};
+pub use stamp_proof::{verify_stamp_proof, InclusionEvidence, StampProof, VerifiedStampProof};
 pub use store::{StoredRecord, SHELF_VERSION, SHELF_VERSION_FACTS};
 pub use time::Time;
 pub use tree::{
@@ -93,6 +103,7 @@ use ed25519_dalek::SigningKey;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -115,12 +126,29 @@ pub enum ShelfError {
     #[error("unsupported: {0}")]
     Unsupported(String),
     /// An answer would carry more items than the cost policy allows
-    /// ([`crate::respond::DEFAULT_MAX_ANSWER_ITEMS`]).
+    /// ([`crate::respond::DEFAULT_MAX_ANSWER_ITEMS`]), or a received record
+    /// is past one of the store's bounds ([`ReceiveBounds`]).
     #[error("over the item limit: {0}")]
     OverLimit(String),
     /// The shelf was released.
     #[error("the shelf is released")]
     Released,
+    /// A received record or stamp proof whose sender may not push it
+    /// ([`Shelf::receive`]): nothing of it is stored.
+    #[error("refused: {0}")]
+    Refused(String),
+    /// A received record deleted under the holder's retention: the store
+    /// keeps its tombstone, so it is deleted, not missing.
+    #[error("deleted: {0}")]
+    Deleted(String),
+    /// A received offer refused because the holder's books kept changing
+    /// while room was made for it ([`Shelf::receive`]): sending it again
+    /// later may succeed.
+    #[error("busy; try again: {0}")]
+    Busy(String),
+    /// The receive profile ([`ReceiveProfile`]) failed.
+    #[error("receive profile: {0}")]
+    Profile(String),
     /// Another writer holds the shelf's lock past the caller's deadline.
     #[error("{0}: another writer holds it")]
     LockHeld(String),
@@ -213,6 +241,10 @@ pub struct ShelfConfig {
     /// does on the same file. The names are the profile's, never this
     /// crate's.
     pub correlation_members: Vec<String>,
+    /// The store of what the other side pushes ([`Shelf::receive`]): the
+    /// profile that reads its records, the store's bounds and the holder's
+    /// retention.
+    pub receive: ReceiveConfig,
 }
 
 /// What every book and host log of a shelf shares.
@@ -226,6 +258,14 @@ pub(crate) struct ShelfShared {
     now: Option<Clock>,
     authenticated: Option<IndexChoice>,
     pub(crate) correlation_members: Vec<String>,
+    pub(crate) receive: ReceiveConfig,
+    /// Serializes [`Shelf::receive`] and [`Shelf::forget`], which call the
+    /// receive profile outside the shelf's lock so the profile may read the
+    /// shelf.
+    pub(crate) receive_mu: Mutex<()>,
+    /// Mirrors `released` for the received store's readers, which never take
+    /// the shelf's lock.
+    pub(crate) closed: AtomicBool,
     db: Mutex<Connection>,
 }
 
@@ -320,6 +360,9 @@ impl Shelf {
             now: cfg.now,
             authenticated: cfg.authenticated_indexes,
             correlation_members: cfg.correlation_members,
+            receive: cfg.receive,
+            receive_mu: Mutex::new(()),
+            closed: AtomicBool::new(false),
             db: Mutex::new(conn),
         });
         Ok(Shelf(Arc::new(ShelfInner {
@@ -613,6 +656,7 @@ impl Shelf {
             return Ok(());
         }
         state.released = true;
+        self.shared().closed.store(true, Ordering::SeqCst);
         let mut first: Option<ShelfError> = None;
         let mut keep = |r: Result<(), ShelfError>| {
             if let Err(e) = r {

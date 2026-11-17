@@ -31,7 +31,18 @@ var (
 	// was released.
 	ErrReleased = errors.New("evidencebook: released")
 	// ErrOverLimit reports a Cadence.HistoryCard that would list more ticks
-	// than DefaultMaxAnswerItems. A Book's card over its limit is a refusal
-	// (Book.Staple reports ErrInvalid), not this error.
+	// than DefaultMaxAnswerItems, or a received record past one of the
+	// store's bounds (ReceiveBounds). A Book's card over its limit is a
+	// refusal (Book.Staple reports ErrInvalid), not this error.
 	ErrOverLimit = errors.New("evidencebook: over the item limit")
+	// ErrRefused reports a received record or stamp proof whose sender may
+	// not push it (Shelf.Receive): nothing of it is stored.
+	ErrRefused = errors.New("evidencebook: refused")
+	// ErrDeleted reports a received record deleted under the holder's
+	// retention: the store keeps its tombstone, so it is deleted, not missing.
+	ErrDeleted = errors.New("evidencebook: deleted")
+	// ErrBusy reports a received offer refused because the holder's books
+	// kept changing while room was made for it (Shelf.Receive): sending it
+	// again later may succeed.
+	ErrBusy = errors.New("evidencebook: busy; try again")
 )

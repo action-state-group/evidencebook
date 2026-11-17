@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 __all__ = ["BookError", "InvalidError", "NotFoundError", "CorruptError", "NotCoveredError", "ReleasedError",
-           "UnsupportedError", "UnavailableError", "OverLimitError"]
+           "UnsupportedError", "UnavailableError", "OverLimitError", "RefusedError", "DeletedError", "BusyError"]
 
 
 class BookError(Exception):
@@ -40,5 +40,21 @@ class UnavailableError(BookError):
 
 
 class OverLimitError(BookError):
-    """An answer would carry more items than the cost policy allows
-    (Go ``ErrOverLimit``)."""
+    """An answer would carry more items than the cost policy allows, or a
+    received record is past one of the store's bounds (Go ``ErrOverLimit``)."""
+
+
+class RefusedError(BookError):
+    """A received record or stamp proof whose sender may not push it
+    (``Shelf.receive``): nothing of it is stored (Go ``ErrRefused``)."""
+
+
+class DeletedError(BookError):
+    """A received record deleted under the holder's retention: the store
+    keeps its tombstone, so it is deleted, not missing (Go ``ErrDeleted``)."""
+
+
+class BusyError(BookError):
+    """A received offer refused because the holder's books kept changing
+    while room was made for it (``Shelf.receive``): sending it again later
+    may succeed (Go ``ErrBusy``)."""
