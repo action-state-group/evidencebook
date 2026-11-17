@@ -9,6 +9,7 @@
 //! witness verifier.
 
 use super::log::{Checkpoint, Log};
+use super::record_time::{backfill_receipts, keep_receipt};
 use super::store;
 use super::time::Time;
 use super::tree::{padding_record_id, random_position, TickLeaf, TickLeaves, CADENCE_DEPTH};
@@ -163,6 +164,28 @@ pub(crate) fn check_witness_receipt(
     receipt: &WitnessReceipt,
     directory: Option<&Value>,
 ) -> Result<WitnessCheck, ShelfError> {
+    verify_witness_receipt(statement, receipt, directory).map(|(check, _)| check)
+}
+
+/// What a verified receipt gives beside its check (Go `verifiedReceipt`):
+/// the registration time (the `iat` of its protected CWT claims, in Unix
+/// seconds), `None` when it gives none, and the directory key id it verified
+/// under (the key the directory row binds to the receipt's URL, never one
+/// the receipt carries).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct VerifiedReceipt {
+    pub(crate) registered_at: Option<i64>,
+    pub(crate) key_id: String,
+}
+
+/// [`check_witness_receipt`] with what a verified receipt gives
+/// ([`VerifiedReceipt`]; Go `verifyWitnessReceipt`). A pass that names no
+/// directory key is an error.
+pub(crate) fn verify_witness_receipt(
+    statement: &[u8],
+    receipt: &WitnessReceipt,
+    directory: Option<&Value>,
+) -> Result<(WitnessCheck, VerifiedReceipt), ShelfError> {
     let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
     let decoded = match verified.decoded {
         Some(d) if verified.ok && crate::ed25519::statement_verifies(statement) => d,
@@ -193,10 +216,27 @@ pub(crate) fn check_witness_receipt(
         "withheld" => WITNESS_NOT_CHECKED,
         _ => WITNESS_INVALID,
     };
-    Ok(WitnessCheck {
-        state,
-        reason: parts.join(": "),
-    })
+    let mut verified = VerifiedReceipt::default();
+    if state == WITNESS_VERIFIED {
+        if let [only] = report.receipts.as_slice() {
+            // AAC bounds iat to 2^53 - 1, so it fits an i64.
+            verified.registered_at = only.registration_time.map(|t| t as i64);
+            verified.key_id = only.key_id.clone().unwrap_or_default();
+        }
+        if verified.key_id.is_empty() {
+            // A pass always names the directory key it verified under.
+            return Err(ShelfError::Corrupt(
+                "a passing receipt named no directory key".into(),
+            ));
+        }
+    }
+    Ok((
+        WitnessCheck {
+            state,
+            reason: parts.join(": "),
+        },
+        verified,
+    ))
 }
 
 /// What one [`Cadence::tick`] did.
@@ -295,6 +335,9 @@ impl Shelf {
             &cfg.witness_ids,
             true,
         )?);
+        // A witnessed tick whose receipt shelf_receipts lacks gets it now;
+        // the cadence is the shelf's only once that is done (Go `Cadence`).
+        backfill_receipts(&mut self.shared().db(), cfg.witnesses.as_ref())?;
         state.cadence = Some((cfg.log_id.clone(), log.clone()));
         Ok(Cadence {
             shelf: self.clone(),
@@ -561,8 +604,9 @@ impl Cadence {
                 "tick {n} is not finished, so no witness has seen its root"
             )));
         }
-        let check = check_witness_receipt(&tick.checkpoint, &receipt, self.cfg.witnesses.as_ref())
-            .map_err(|e| ShelfError::Corrupt(format!("tick {n}: {e}")))?;
+        let (check, verified) =
+            verify_witness_receipt(&tick.checkpoint, &receipt, self.cfg.witnesses.as_ref())
+                .map_err(|e| ShelfError::Corrupt(format!("tick {n}: {e}")))?;
         if check.state == WITNESS_INVALID {
             return Err(ShelfError::Invalid(format!(
                 "tick {n}'s witness receipt is rejected: {}",
@@ -577,10 +621,15 @@ impl Cadence {
             // cadence_witnessed and the live set index the tree's ticks,
             // which a cadence chain proves a checkpoint by; a stamp's proof
             // is the stamp proof (evidencebook#461).
-            self.shelf.shared().db().execute(
+            let mut db = self.shelf.shared().db();
+            let tx = store::write_tx(&mut db)?;
+            let encoded = receipt.to_json();
+            tx.execute(
                 "UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
-                params![receipt.to_json(), n as i64],
+                params![encoded, n as i64],
             )?;
+            keep_receipt(&tx, &tick.checkpoint, &receipt, &encoded, &verified)?;
+            tx.commit()?;
             return Ok(check);
         }
         let mut ended = BTreeMap::new();
@@ -592,10 +641,12 @@ impl Cadence {
         }
         let mut db = self.shelf.shared().db();
         let tx = store::write_tx(&mut db)?;
+        let encoded = receipt.to_json();
         tx.execute(
             "UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?",
-            params![receipt.to_json(), n as i64],
+            params![encoded, n as i64],
         )?;
+        keep_receipt(&tx, &tick.checkpoint, &receipt, &encoded, &verified)?;
         for (id, leaf) in &tick.leaves.deals {
             tx.execute(
                 INDEX_WITNESSED,

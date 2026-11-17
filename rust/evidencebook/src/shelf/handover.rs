@@ -14,7 +14,7 @@
 //! `encoding/json` writes `[]byte` (`testdata/shelf/handover.json` and
 //! `handover-result.json`).
 
-use super::cadence::{check_witness_receipt, Cadence, WitnessReceipt, WITNESS_VERIFIED};
+use super::cadence::{verify_witness_receipt, Cadence, WitnessReceipt, WITNESS_VERIFIED};
 use super::log::Checkpoint;
 use super::stamp::bytes_b64;
 use super::ShelfError;
@@ -58,7 +58,8 @@ pub struct Handover {
     /// The shelf checkpoint the handover runs to.
     #[serde(default, with = "bytes_b64")]
     pub anchor: Vec<u8>,
-    /// The witness receipts the holder holds for the anchor.
+    /// The witness receipts the holder holds for the anchor
+    /// (`shelf_receipts`), one per witness in witness URL order.
     #[serde(
         default,
         deserialize_with = "nullable",
@@ -103,8 +104,10 @@ pub struct HandoverResult {
     /// True: [`verify_handover`] fails rather than return a result it could
     /// not recompute.
     pub recomputed: bool,
-    /// A receipt from a witness in the directory verifies for the anchor; a
-    /// shelf with no witness is a supported default and is unwitnessed.
+    /// A receipt from a witness in the directory verifies for the anchor and
+    /// gives a registration time (§2.7); a receipt with no registration time
+    /// cannot give the witnessed level. A shelf with no witness is a
+    /// supported default and is unwitnessed.
     pub witnessed: bool,
     /// The shelf log size, in entries, at which the facts begin to be
     /// complete: the end of the migration's stamp.
@@ -320,8 +323,22 @@ impl Cadence {
             book_checkpoints: Vec::new(),
             consistency: Vec::new(),
             anchor: tick.checkpoint.clone(),
-            receipts: tick.receipt.clone().into_iter().collect(),
+            receipts: Vec::new(),
         };
+        {
+            let db = self.shelf.shared().db();
+            let mut stmt = db.prepare(
+                "SELECT receipt FROM shelf_receipts WHERE checkpoint_sha256 = ? ORDER BY witness_id",
+            )?;
+            let rows = stmt.query_map([hex::encode(Sha256::digest(&tick.checkpoint))], |r| {
+                r.get::<_, String>(0)
+            })?;
+            for raw in rows {
+                out.receipts.push(serde_json::from_str(&raw?).map_err(|e| {
+                    ShelfError::Corrupt(format!("a stored receipt of tick {n}: {e}"))
+                })?);
+            }
+        }
         let mut after = 0;
         while after < anchor.entries {
             let want = (anchor.entries - after).min(1000) as usize;
@@ -690,8 +707,11 @@ pub fn verify_handover(
         return bad("the migration's stamp is not in the handover".into());
     }
     untied.sort();
+    // Only a receipt that gives a registration time gives the witnessed
+    // level (§2.7).
     let witnessed = h.receipts.iter().any(|r| {
-        check_witness_receipt(&h.anchor, r, witnesses).is_ok_and(|c| c.state == WITNESS_VERIFIED)
+        verify_witness_receipt(&h.anchor, r, witnesses)
+            .is_ok_and(|(c, v)| c.state == WITNESS_VERIFIED && v.registered_at.is_some())
     });
     Ok(HandoverResult {
         recomputed: true,

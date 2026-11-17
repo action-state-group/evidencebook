@@ -2,8 +2,8 @@
 //! (evidencebook#254 §5), Rust's side: Go's `internal/shelfscript`, run from
 //! `testdata/shelf/script.json`. The writer and continuer phases, the lock
 //! exchange, and a dump of everything the contract fixes in the file, which
-//! must equal Go's `after-write.json`, `after-continue.json` and
-//! `after-migrate.json` byte for byte.
+//! must equal Go's `after-write.json`, `after-continue.json`,
+//! `after-migrate.json` and `after-record-time.json` byte for byte.
 
 use crate::go_marshal_indent;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -442,6 +442,128 @@ pub fn run(path: &Path, steps: &[Value]) -> Result<(), Error> {
     }
 }
 
+/// The record time vectors: `testdata/shelf/record-time.json`, as Go wrote
+/// them.
+pub const RECORD_TIME: &str = include_str!("../../../testdata/shelf/record-time.json");
+
+/// Run the record time phase (`testdata/shelf/record-time.json`; Go
+/// `shelfscript.RecordTimePhase`, evidencebook#461 §2.6) on `dir/shelf.db`
+/// after the migrate phase: every step's outcome must be its `expect`. A
+/// witness step reports the receipt it carries, so nothing is minted.
+pub fn record_time(dir: &Path) -> Result<(), Error> {
+    let vector: Value = serde_json::from_str(RECORD_TIME)?;
+    let path = file(dir);
+    let mut env: Option<Env> = None;
+    let steps = vector["steps"].as_array().ok_or("record-time.json steps")?;
+    for (i, step) in steps.iter().enumerate() {
+        let op = step["op"].as_str().unwrap_or_default();
+        let str_of = |k: &str| step.get(k).and_then(Value::as_str).unwrap_or_default();
+        let at = step.get("at").and_then(Value::as_u64).unwrap_or(0);
+        let result = (|| -> Result<(), Error> {
+            if env.is_none() != (op == "open") {
+                return Err(format!(
+                    "{op} with the shelf {}",
+                    if env.is_none() { "released" } else { "open" }
+                )
+                .into());
+            }
+            let got = match op {
+                "open" => {
+                    env = Some(open(
+                        &path,
+                        str_of("stream"),
+                        start().plus(Duration::from_secs(at)),
+                        None,
+                    )?);
+                    return Ok(());
+                }
+                "release" => {
+                    env.take().unwrap().release()?;
+                    return Ok(());
+                }
+                "append" => {
+                    env.as_ref().unwrap().append(
+                        str_of("book"),
+                        &observation(str_of("subject"), Some(str_of("payload"))),
+                    )?;
+                    return Ok(());
+                }
+                "stamp" => {
+                    let e = env.as_ref().unwrap();
+                    let at = start().plus(Duration::from_secs(at));
+                    e.clock.set(at);
+                    e.cadence.stamp(at)?;
+                    return Ok(());
+                }
+                "witness" => {
+                    let e = env.as_ref().unwrap();
+                    let tick = e.cadence.last()?.ok_or("no tick to witness")?;
+                    let receipt: WitnessReceipt = serde_json::from_value(step["receipt"].clone())?;
+                    let check = e.cadence.witnessed(tick.n, receipt)?;
+                    json!({"state": check.state, "tick": tick.n})
+                }
+                "record_time" => {
+                    let e = env.as_ref().unwrap();
+                    // Read on a connection of its own, as a lock-free reader.
+                    let book_id: String = open_db(&path)?.query_row(
+                        "SELECT book_id FROM shelf_entries WHERE log_id = ? ORDER BY entry_seq LIMIT 1",
+                        [str_of("book")],
+                        |r| r.get(0),
+                    )?;
+                    if book_id != str_of("book_id") {
+                        return Err(format!(
+                            "the book id of {} is {book_id}, the vector's {}",
+                            str_of("book"),
+                            str_of("book_id")
+                        )
+                        .into());
+                    }
+                    let witnesses: Vec<String> = step
+                        .get("witnesses")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .map(|w| w.as_str().unwrap_or_default().to_string())
+                        .collect();
+                    let position = step.get("position").and_then(Value::as_u64).unwrap_or(0);
+                    match e.shelf.record_time(&book_id, position, &witnesses) {
+                        Err(ShelfError::Invalid(_)) => json!({"error": "invalid"}),
+                        Err(err) => return Err(err.into()),
+                        Ok(t) => json!({"time": t.map(|t| t.rfc3339())}),
+                    }
+                }
+                "handover" => {
+                    let h = env.as_ref().unwrap().cadence.handover(0)?;
+                    let result = evidencebook::shelf::verify_handover(
+                        &h,
+                        &checkpoint_key_id(),
+                        Some(&witness_directory()),
+                    )?;
+                    json!({"witnessed": result.witnessed})
+                }
+                other => return Err(format!("unknown step {other:?}").into()),
+            };
+            if got != step["expect"] {
+                return Err(format!("got {got}, the vector expects {}", step["expect"]).into());
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            if let Some(env) = env.take() {
+                let _ = env.release();
+            }
+            return Err(format!("record time step {} ({op}): {e}", i + 1).into());
+        }
+    }
+    match env {
+        Some(env) => {
+            let _ = env.release();
+            Err("the phase left the shelf open".into())
+        }
+        None => Ok(()),
+    }
+}
+
 /// Open the scripted shelf in `dir`, holding its writer lock until the
 /// returned shelf is released; wait at most `timeout` for another holder.
 pub fn hold(dir: &Path, timeout: Option<Duration>) -> Result<Env, Error> {
@@ -606,6 +728,15 @@ pub fn dump(dir: &Path) -> Result<String, Error> {
             ("leaves", json!(r.get::<_, String>(6)?)),
             ("witnessed", json!(r.get::<_, i64>(7)?)),
             ("receipt", r.get::<_, Option<String>>(8)?.map_or(Value::Null, Value::String)),
+        ]))
+    })?));
+    state.push(("shelf_receipts", rows(&db, "SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id", |r| {
+        Ok(object(vec![
+            ("checkpoint_sha256", json!(r.get::<_, String>(0)?)),
+            ("witness_id", json!(r.get::<_, String>(1)?)),
+            ("key_id", json!(r.get::<_, String>(2)?)),
+            ("receipt", json!(r.get::<_, String>(3)?)),
+            ("registered_at", json!(r.get::<_, Option<i64>>(4)?)),
         ]))
     })?));
     state.push((
