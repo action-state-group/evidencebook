@@ -171,6 +171,9 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	if offer == nil || !isAgree {
 		return out, nil
 	}
+	if err := Check(offer.Offer); err != nil {
+		return Sent{}, err
+	}
 	of, ok := asPropose(offer.Offer.Body)
 	if !ok {
 		return bad("the offer given is a %s", offer.Offer.Block.RecordType)

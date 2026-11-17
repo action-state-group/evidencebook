@@ -34,7 +34,7 @@ func sealSent(t *testing.T, r Record, key ed25519.PrivateKey, actionID string) [
 }
 
 // sealSentWith is sealSent with a chain to a parent Capsule.
-func sealSentWith(t *testing.T, r Record, key ed25519.PrivateKey, actionID string, chain *emit.Chain) []byte {
+func sealSentWith(t *testing.T, r Record, key ed25519.PrivateKey, actionID string, chain *emit.Chain, refs ...emit.Reference) []byte {
 	t.Helper()
 	payload, _, err := Encode(r)
 	require.NoError(t, err)
@@ -45,7 +45,7 @@ func sealSentWith(t *testing.T, r Record, key ed25519.PrivateKey, actionID strin
 	require.NoError(t, err)
 	sealed, err := emit.Seal(emit.SealInput{
 		Capsule: emit.Input{ActionID: actionID, ActionType: emit.ActionTypeFYI, Operator: "seller-agent", Developer: "xdealv1-test",
-			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Chain: chain},
+			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Chain: chain, References: refs},
 		Payload: json.RawMessage(payload), Identity: identity,
 	})
 	require.NoError(t, err)
@@ -136,6 +136,11 @@ func TestSentVectors(t *testing.T) {
 	twice := []byte(strings.Replace(string(declinePair), `{"agent_input":`, `{"agent_input":{},"agent_input":`, 1))
 	require.NotEqual(t, string(declinePair), string(twice))
 	run("agent-input-twice", twice, true, StageCanonicalization)
+	referenced := sealSentWith(t, decline, seller, "", nil, emit.Reference{Type: "agent-action-capsule", DigestAlg: "SHA-256", Digest: hx('6')})
+	run("with-references", referenced, true, StageSent)
+	notHex := mutatePair(t, declinePair, func(p map[string]any) { p["record"].(map[string]any)["signature"] = "zz" })
+	run("signature-not-hex", notHex, true, StageSent)
+	run("offer-with-offer-context", sealSent(t, offer, buyer, ""), true, "")
 
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "Sent decline, cancellation and offer pairs (evidencebook#461, docs/design/461-deal-profile.md §3.1, §3.5): each pair is {record: the standalone Capsule with signature and key_id, agent_input: the x-deal-v1 record}. VerifySent(pair, offer?) must pass the valid cases with the digest given and refuse the others at the stage given. Written by dealprofile/xdealv1's TestSentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
@@ -233,4 +238,18 @@ func TestVerifySentTakesAValueOffer(t *testing.T) {
 	decline := record(blk(TypeAgree), &AgreeBody{Kind: KindDecline, Offer: RefTo(od)})
 	_, err = VerifySent(sealSent(t, decline, seller, ""), &OfferContext{Offer: byValue, Signer: keyHex(buyer)})
 	assert.NoError(t, err)
+}
+
+// The offer given as context must itself pass Check.
+func TestVerifySentChecksTheOfferGiven(t *testing.T) {
+	seller, buyer := testKey(11), testKey(12)
+	offerB := offerBody()
+	offerB.To = Some(keyHex(seller))
+	offerB.Role = "broker"
+	bad := record(blk(TypePropose), offerB)
+	od, err := Digest(bad)
+	require.NoError(t, err)
+	decline := record(blk(TypeAgree), &AgreeBody{Kind: KindDecline, Offer: RefTo(od)})
+	_, err = VerifySent(sealSent(t, decline, seller, ""), &OfferContext{Offer: bad, Signer: keyHex(buyer)})
+	assert.Equal(t, StageSchema, stageOf(err), "%v", err)
 }
