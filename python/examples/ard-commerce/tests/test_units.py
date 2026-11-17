@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The parts of the ARD demo that need no evaluator and no network: the pack edit, the screen
+wording, the wallet rail's refusals and the one-way scrub of secret material."""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+import pack as packs
+import pay
+import screens
+from buyer import Assessment, Check, Evidence
+
+
+def assessment(verdict: str, tier: str, price: int, cap: int | None = None, reasons=()) -> Assessment:
+    return Assessment("kestrel", price, verdict, tier, cap, "demo/ard_admission/1.1.0", "ab" * 32, list(reasons), [], "r", True, "cd" * 32)
+
+
+def card(held: int, bad: int) -> Evidence:
+    ev = Evidence("kestrel")
+    ev.card = {"bands": [{"currency": "BTC", "decade": -9, "held": held, "did_not_hold": bad, "undecided": 0}]}
+    return ev
+
+
+def test_edit_changes_threshold_version_and_id_suffix_only():
+    source = packs.SOURCE.read_text()
+    out = packs.edited(source, 50, "1.1.0")
+    assert packs.threshold(source) == 100 and packs.threshold(out) == 50
+    assert "pack_id: demo/ard_admission/1.1.0" in out and "pack_version: 1.1.0" in out
+    changed = [(a, b) for a, b in zip(source.splitlines(), out.splitlines()) if a != b]
+    assert len(changed) == 3, changed
+
+
+def test_threshold_refuses_a_pack_without_the_row():
+    with pytest.raises(packs.PackError):
+        packs.threshold("pack_id: demo/x/1.0.0\n")
+
+
+def test_the_pack_is_a_demo_fork_that_reads_no_claims():
+    source = packs.SOURCE.read_text()
+    assert "pack_id: demo/ard_admission/1.0.0" in source and "asg/" not in source.split("rows:")[0].replace("evidencebook-skills", "")
+    assert "claims-held" not in source.split("rows:")[1]
+    assert "card.band_history_or_stake" in source and "BTC: {band: sat, scale: 8}" in source
+
+
+def test_screen_lines_say_assessment_and_never_score_or_blame():
+    go = screens.decision_line(assessment("GO", "T2", 289), card(48, 0), 100, 1000)
+    limit = screens.decision_line(assessment("LIMIT", "T1", 268, 100, ["band-history"]), card(45, 3), 50)
+    assert go == "GO: 289 msat is within this pack's limit for it (T2, under 1,000 msat)"
+    assert limit == "LIMIT: deals under 100 msat; 268 msat is outside it; more than 50 per thousand did not hold (placeholder)"
+    text = " ".join([go, limit, screens.card_line(card(45, 3), True), screens.card_line(card(48, 0), False), screens.BANNER,
+                    screens.ASSESSMENT_NOTE, screens.PACK_NOTE]).lower()
+    for word in ("lost", "failed", "dishonest", "usd", "$"):
+        assert word not in text
+    assert "3 of 48 deals did not hold (sample card, written for this demo; not recomputed from records)" in text
+    assert "sample" in text and "test nodes" in text
+
+
+def test_scrub_drops_preimages_at_any_depth():
+    out = pay.scrub({"status": "ok", "payment": {"preimage": "aa", "payment_preimage_hex": "bb", "hash": "cc"}, "l": [{"Preimage": "dd", "n": 1}]})
+    assert json.dumps(out) == '{"status": "ok", "payment": {"hash": "cc"}, "l": [{"n": 1}]}'
+
+
+class Scripted(pay.LightningRail):
+    def __init__(self, fund, send):
+        self.fund, self.send, self.calls = fund, send, []
+
+    def _control(self, host, payload, timeout=90):
+        self.calls.append((host, payload["command"]))
+        return scrub_copy(self.fund if payload["command"] == "fund" else self.send)
+
+
+def scrub_copy(d):
+    return pay.scrub(json.loads(json.dumps(d)))
+
+
+INVOICE = "lnbc2890p1pnqexample"
+
+
+def test_the_rail_pays_the_invoice_amount_and_makes_only_fund_and_send_calls():
+    rail = Scripted({"invoice": INVOICE, "amount_msat": 289}, {"status": "succeeded", "amount_msat": 289, "fee_msat": 0, "payment_hash": "ph", "preimage": "secret"})
+    p = rail.pay(289)
+    assert (p.invoice_msat, p.reference, p.status) == (289, "ph", "succeeded")
+    assert "secret" not in json.dumps(p.raw)
+    assert rail.calls == [(pay.LightningRail.SELLER, "fund"), (pay.LightningRail.BUYER, "send")]
+
+
+@pytest.mark.parametrize("fund,send,why", [
+    ({"note": "no invoice"}, {}, "no invoice"),
+    ({"invoice": INVOICE, "amount_msat": 290}, {}, "not 289"),
+    ({"invoice": INVOICE, "amount_msat": 289}, {"status": "failed"}, "did not succeed"),
+    ({"invoice": INVOICE, "amount_msat": 289}, {"status": "succeeded", "amount_msat": 290}, "not 289"),
+])
+def test_the_rail_refuses_a_wrong_invoice_or_payment(fund, send, why):
+    with pytest.raises(pay.RailError, match=why):
+        Scripted(fund, send).pay(289)
+
+
+def test_a_refused_invoice_is_never_paid():
+    rail = Scripted({"invoice": INVOICE, "amount_msat": 290}, {"status": "succeeded"})
+    with pytest.raises(pay.RailError):
+        rail.pay(289)
+    assert [c for _, c in rail.calls] == ["fund"]
+
+
+def test_fake_rail_moves_no_money():
+    rail = pay.FakeRail()
+    assert rail.pay(289).status == "succeeded" and rail.paid == [289]
