@@ -189,15 +189,27 @@ func TestATypedDenyIsDENYAndNamesTheRuleset(t *testing.T) {
 	checkProfile(t, export)
 }
 
-// An escalation pauses and asks: a rule that asks is not broken, so the
-// button is "Pay $4.54", never "anyway" (#344).
+// An escalation pauses and asks: a rule that asks, with no limit broken, is
+// not broken, so the button is "Pay $4.54", never "anyway" (#344). A failed
+// finding that carries its limit and value over it is a broken limit, and the
+// button reads "anyway" (evidencebook-deal#203).
 func TestAnEscalationPausesAndAsks(t *testing.T) {
-	id := stickerDeal(t, "card", false)
-	pinChecker(t, map[string]any{"command": []string{stubChecker(t, "rules-escalate", checkerPrints("escalate", denyFinding))}})
-	check := dealRun(t, "check", "--deal", id, "--input", writeJSON(t, payCheck("card", 454, 480)))
-	assert.Equal(t, "pause", check["verdict"])
-	assert.Contains(t, differenceTexts(check), "Your rules ask for approval: per-purchase")
-	assert.Equal(t, []string{"Hold", "Pay $4.54"}, optionLabels(check))
+	asks := `{"id":"new-merchant","check":"caps/1","verdict":"fail","reason":"first time paying this seller"}`
+	for _, tc := range []struct {
+		name, finding string
+		buttons       []string
+	}{
+		{"nothing broken", asks, []string{"Hold", "Pay $4.54"}},
+		{"a limit broken", denyFinding, []string{"Hold", "Pay $4.54 anyway"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := stickerDeal(t, "card", false)
+			pinChecker(t, map[string]any{"command": []string{stubChecker(t, "rules-escalate", checkerPrints("escalate", tc.finding))}})
+			check := dealRun(t, "check", "--deal", id, "--input", writeJSON(t, payCheck("card", 454, 480)))
+			assert.Equal(t, "pause", check["verdict"])
+			assert.Equal(t, tc.buttons, optionLabels(check))
+		})
+	}
 }
 
 // The checker's own not_evaluable pauses, naming the rule it could not

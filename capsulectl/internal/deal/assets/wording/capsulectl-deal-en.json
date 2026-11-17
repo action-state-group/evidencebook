@@ -115,6 +115,7 @@
     "card.why.first_disclosure": "first time they get your details",
     "card.why.first_disclosure.some": "first time they get your {what}",
     "card.why.label_stopped": "Why I stopped: {why}.",
+    "card.why.limit_failed": "it's over your {limit} limit",
     "card.why.materiality_changed": "the rule for which of my picks need your OK changed",
     "card.why.new_site": "the site is very new",
     "card.why.no_protection": "money paid this way can't be pulled back",
