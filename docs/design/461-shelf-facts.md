@@ -239,7 +239,11 @@ count over the returned facts.
   log_id, size, shelf_checkpoint_sha256))`, so two proofs of one book checkpoint under different
   shelf checkpoints (a received-only change) are both kept, every stamp proof accepted, so a restart keeps what it covered and a later
   contradiction is found against it; and `shelf_evidence (id, kind, a BLOB, b BLOB, noted_at)` for
-  a contradicting checkpoint or a fork.
+  a fork (`fork`), a contradicting checkpoint (`checkpoint`), or a book checkpoint whose root the
+  records held do not recompute (`checkpoint_records`), kept for the first conflict at each position
+  or size only, which `shelf_received_conflicts (sender_key, log_id, kind, at, evidence_id)` records
+  so that no later deletion undoes a fork. A proof grants coverage only once the records held reach
+  its size and recompute its root (`shelf_received_proofs.verified`).
   Nothing in the store is appended to a book.
 - **`Receive(ctx, record?, proof?)`** takes a record, a stamp proof, or both, and handles each part
   on its own, so a record sent again with a proof it lacked the first time still delivers the

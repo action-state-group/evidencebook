@@ -82,8 +82,12 @@ CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1
 -- The store of what the other side pushes (evidencebook#461 §3,
 -- shelf_receive.go): its records, by digest, with the predecessor each names
 -- and whether it is an unanswered unsolicited offer; every stamp proof
--- accepted; the tombstone a deleted record leaves; and the evidence of a
--- fork or a contradicting checkpoint. Nothing here is appended to a book.
+-- accepted, and whether the records held recomputed its root (0 not yet, 1
+-- recomputed, 2 contradicted); the tombstone a deleted record leaves; the
+-- evidence of a fork, a contradicting checkpoint or a checkpoint the records
+-- do not recompute; and each conflict found, once per position (a fork) or
+-- size (a checkpoint), which no deletion undoes. Nothing here is appended to
+-- a book.
 CREATE TABLE IF NOT EXISTS shelf_received (
 	digest      TEXT    PRIMARY KEY,
 	sender_key  TEXT    NOT NULL,
@@ -108,6 +112,7 @@ CREATE TABLE IF NOT EXISTS shelf_received_proofs (
 	inclusion_proof         BLOB    NOT NULL,
 	shelf_checkpoint        BLOB    NOT NULL,
 	received_at             TEXT    NOT NULL,
+	verified                INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (sender_key, log_id, size, shelf_checkpoint_sha256)
 );
 CREATE TABLE IF NOT EXISTS shelf_received_tombstones (
@@ -122,6 +127,14 @@ CREATE TABLE IF NOT EXISTS shelf_evidence (
 	a        BLOB    NOT NULL,
 	b        BLOB    NOT NULL,
 	noted_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS shelf_received_conflicts (
+	sender_key  TEXT    NOT NULL,
+	log_id      TEXT    NOT NULL,
+	kind        TEXT    NOT NULL,
+	at          INTEGER NOT NULL,
+	evidence_id INTEGER NOT NULL,
+	PRIMARY KEY (sender_key, log_id, kind, at)
 );
 `
 

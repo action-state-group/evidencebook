@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -99,7 +100,13 @@ type Shelf struct {
 	cadenceLogs []*CLLSubstrate
 	cadence     *Cadence
 	released    bool
+	// closed mirrors released for the lock-free readers of the received
+	// store, which never take mu.
+	closed atomic.Bool
 }
+
+// shelfConnections is the size of the shelf handle's connection pool.
+const shelfConnections = 4
 
 // lockWriter takes the shelf's writer lock. It is a unix advisory file lock
 // (shelf_lock_unix.go sets it); elsewhere a shelf cannot be opened.
@@ -156,15 +163,24 @@ func OpenSQLiteShelf(ctx context.Context, cfg ShelfConfig) (*Shelf, error) {
 	// the snapshot, or SQLITE_BUSY (5) when it holds the write lock then. The
 	// busy timeout covers neither. An immediate one waits for the write lock
 	// under the busy timeout instead.
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: "_txlock=immediate"}).String())
+	//
+	// The handle keeps a few connections, each set up by the DSN's pragmas
+	// (busy_timeout and synchronous are per connection), so a reader can run
+	// while a write transaction is open: the received store's readers from
+	// inside a StatusProvider or ReceiveProfile callback (shelf_receive.go),
+	// and a profile's reads from inside Receive's transaction. Writers still
+	// serialize on SQLite's write lock, under the busy timeout.
+	query := url.Values{
+		"_txlock": {"immediate"},
+		"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(FULL)"},
+	}
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: absolute, RawQuery: query.Encode()}).String())
 	if err != nil {
 		return nil, errors.Join(err, unlock())
 	}
-	db.SetMaxOpenConns(1)
-	for _, statement := range []string{"PRAGMA busy_timeout=5000", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL"} {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return nil, errors.Join(err, db.Close(), unlock())
-		}
+	db.SetMaxOpenConns(shelfConnections)
+	if err := db.PingContext(ctx); err != nil {
+		return nil, errors.Join(err, db.Close(), unlock())
 	}
 	if err := initSQLiteStore(ctx, db); err != nil {
 		return nil, errors.Join(err, db.Close(), unlock())
@@ -353,6 +369,7 @@ func (s *Shelf) Release() error {
 		return nil
 	}
 	s.released = true
+	s.closed.Store(true)
 	var errs []error
 	for _, book := range s.books {
 		errs = append(errs, book.Release())

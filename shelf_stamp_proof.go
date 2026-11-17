@@ -205,8 +205,10 @@ func (c *Cadence) StampProof(ctx context.Context, bookID string, n uint64, audie
 // receiveProof handles a Receive call's proof part (§3): it verifies the
 // proof, asks the profile whose records it covers, refuses one that
 // contradicts a held proof at the same size or the records held (keeping
-// the evidence), and keeps every proof accepted, two proofs of one book
-// checkpoint under different shelf checkpoints both.
+// the evidence, once per size), and keeps every proof accepted, two proofs
+// of one book checkpoint under different shelf checkpoints both. A proof
+// grants coverage only once the records held reach its size and recompute
+// its root; one past them is kept, and checked when they arrive.
 func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p StampProof, changes changeSet) (ProofOutcome, error) {
 	var out ProofOutcome
 	refuse := func(err error) (ProofOutcome, error) {
@@ -239,11 +241,15 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 	}
 	now := s.receiveNow()
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
-		prefix, err := receivedPrefix(ctx, tx, key)
+		before, err := readLogState(ctx, tx, key)
 		if err != nil {
 			return err
 		}
-		forked := func() {
+		prefix := before.prefix
+		forked := func(fresh bool) {
+			if !fresh {
+				return
+			}
 			for _, d := range prefix.deals {
 				changes.forked[d] = true
 			}
@@ -278,20 +284,24 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 			if cp.Root != v.BookCheckpoint.Root {
 				// Refused, and the evidence kept: the transaction commits.
 				out.Refused = fmt.Errorf("%w: the book checkpoint of %s at %d contradicts one held from %s", ErrInvalid, v.Fact.LogID, v.Fact.Size, sender)
-				forked()
-				return noteEvidence(ctx, tx, EvidenceCheckpoint, h.book, p.BookCheckpoint, now)
+				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpoint, v.Fact.Size, h.book, p.BookCheckpoint, now)
+				forked(fresh)
+				return err
 			}
 		}
-		if v.BookCheckpoint.Entries <= uint64(len(prefix.digests)) {
-			match, over, err := rootRecomputes(v.BookCheckpoint, prefix.digests)
+		state := proofUnchecked
+		if v.BookCheckpoint.Entries <= uint64(len(prefix.counted)) {
+			match, over, err := rootRecomputes(v.BookCheckpoint, prefix.digests(v.BookCheckpoint.Entries))
 			if err != nil {
 				return err
 			}
 			if !match {
 				out.Refused = fmt.Errorf("%w: the records held from %s in %s do not recompute the book checkpoint at %d", ErrInvalid, sender, v.Fact.LogID, v.Fact.Size)
-				forked()
-				return noteEvidence(ctx, tx, EvidenceCheckpointRecords, p.BookCheckpoint, over, now)
+				fresh, err := noteConflict(ctx, tx, key, EvidenceCheckpointRecords, v.Fact.Size, p.BookCheckpoint, over, now)
+				forked(fresh)
+				return err
 			}
+			state = proofRecomputed
 		}
 		for _, h := range same {
 			if h.shelf == shelfDigest {
@@ -299,36 +309,18 @@ func (s *Shelf) receiveProof(ctx context.Context, profile ReceiveProfile, p Stam
 				return nil
 			}
 		}
-		var largest uint64
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(size), 0) FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ?`, sender, v.Fact.LogID).Scan(&largest); err != nil {
-			return err
-		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint, fact, status_opening, inclusion_proof, shelf_checkpoint, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			sender, v.Fact.LogID, v.Fact.Size, shelfDigest, p.BookCheckpoint, p.Fact, opening, inclusion, p.ShelfCheckpoint, now); err != nil {
+			`INSERT INTO shelf_received_proofs (sender_key, log_id, size, shelf_checkpoint_sha256, book_checkpoint, fact, status_opening, inclusion_proof, shelf_checkpoint, received_at, verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			sender, v.Fact.LogID, v.Fact.Size, shelfDigest, p.BookCheckpoint, p.Fact, opening, inclusion, p.ShelfCheckpoint, now, state); err != nil {
 			return err
 		}
 		out.Accepted = true
-		before, _ := mmr.LeafCount(largest)
-		if v.BookCheckpoint.Entries <= before {
-			return nil
-		}
-		// The records the proof newly covers.
-		deals, err := tx.QueryContext(ctx,
-			`SELECT DISTINCT deal_id FROM shelf_received WHERE sender_key = ? AND log_id = ? AND position > ? AND position <= ?`,
-			sender, v.Fact.LogID, before, v.BookCheckpoint.Entries)
+		after, err := readLogState(ctx, tx, key)
 		if err != nil {
 			return err
 		}
-		defer deals.Close()
-		for deals.Next() {
-			var d string
-			if err := deals.Scan(&d); err != nil {
-				return err
-			}
-			changes.covered[d] = true
-		}
-		return deals.Err()
+		report(before, after, changes)
+		return nil
 	})
 	if err != nil {
 		return ProofOutcome{}, err

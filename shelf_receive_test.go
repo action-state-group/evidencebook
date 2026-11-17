@@ -39,6 +39,11 @@ type testReceiveProfile struct {
 	answered  map[string]bool
 	proofKeys map[string]string
 	reads     int
+	// Hooks run outside the profile's mutex, as a profile reading the
+	// shelf would.
+	onAdmit    func(ReceivedRecord)
+	onAnswered func(ReceivedRecord)
+	proofErr   error
 }
 
 func newTestReceiveProfile(senders ...string) *testReceiveProfile {
@@ -64,12 +69,18 @@ func (p *testReceiveProfile) Read(_ context.Context, record []byte) (ReceivedRec
 }
 
 func (p *testReceiveProfile) Admit(_ context.Context, r ReceivedRecord) (bool, error) {
+	if p.onAdmit != nil {
+		p.onAdmit(r)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return r.Offer || p.admitted[r.SenderKey], nil
 }
 
 func (p *testReceiveProfile) Answered(_ context.Context, r ReceivedRecord) (bool, error) {
+	if p.onAnswered != nil {
+		p.onAnswered(r)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.answered[r.Digest], nil
@@ -78,6 +89,9 @@ func (p *testReceiveProfile) Answered(_ context.Context, r ReceivedRecord) (bool
 func (p *testReceiveProfile) ProofSender(_ context.Context, keyID, _ string) (string, bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.proofErr != nil {
+		return "", false, p.proofErr
+	}
 	s, ok := p.proofKeys[keyID]
 	return s, ok, nil
 }
@@ -285,7 +299,7 @@ func TestReceiveRefusesARecordPastThePerBookBound(t *testing.T) {
 }
 
 func offer(t *testing.T, sender, name string, pad int) []byte {
-	return rec(t, testRecord{Digest: dg(name), Sender: sender, Log: "offers/" + sender, Pos: 1, Deal: "offer-" + name, Offer: true, Pad: strings.Repeat("x", pad)})
+	return rec(t, testRecord{Digest: dg(name), Sender: sender, Log: "offers/" + name, Pos: 1, Deal: "offer-" + name, Offer: true, Pad: strings.Repeat("x", pad)})
 }
 
 func TestReceiveOfferBoundsDropTheOldestUnansweredOffer(t *testing.T) {
@@ -664,4 +678,238 @@ func TestReceiveRefusesAfterRelease(t *testing.T) {
 	require.NoError(t, s.Release())
 	_, err := s.Receive(context.Background(), chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
 	assert.ErrorIs(t, err, ErrReleased)
+}
+
+// withinTime fails the test when f does not return: a deadlock.
+func withinTime(t *testing.T, f func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("deadlock: the call did not return")
+	}
+}
+
+// readerStatus is a StatusProvider whose link value reads the received
+// store, as a deal profile builds last_received.
+type readerStatus struct {
+	shelf *Shelf
+	reads int
+}
+
+func (r *readerStatus) Values(ctx context.Context, _, _ string) (string, LinkValue, json.RawMessage, bool, error) {
+	p, err := r.shelf.CountedPrefix(ctx, "alice", "deal/a")
+	if err != nil {
+		return "", LinkValue{}, nil, false, err
+	}
+	if _, err := r.shelf.Evidence(ctx); err != nil {
+		return "", LinkValue{}, nil, false, err
+	}
+	if _, err := r.shelf.ReceivedRecordOf(ctx, dg("a1")); err != nil {
+		return "", LinkValue{}, nil, false, err
+	}
+	r.reads++
+	link := LinkValue{CheckedOver: []string{}}
+	if p.Size > 0 {
+		link.LastReceived = &ReceivedPosition{LogID: "deal/a", Size: p.Size, RecordDigest: p.Last}
+	}
+	return "deal", link, json.RawMessage(`{}`), true, nil
+}
+
+// P1-1: the store's readers take no lock, so a StatusProvider calls them
+// during a stamp, which holds the shelf's mutex.
+func TestReceivedStoreReadersRunInsideAStamp(t *testing.T) {
+	ctx := context.Background()
+	f := &receiveFixture{shelfFixture: newShelfFixture(t), profile: newTestReceiveProfile("alice")}
+	f.cfg.Receive = ReceiveConfig{Profile: f.profile}
+	s := f.open(t)
+	status := &readerStatus{shelf: s}
+	c, err := s.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t), Status: status})
+	require.NoError(t, err)
+	mustAppend(t, mustOpenBook(t, s, "deal/ours"), observation("a", "1"))
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	mustTick(t, c, tickTime)
+	withinTime(t, func() {
+		require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+		mustAppend(t, mustOpenBook(t, s, "deal/ours"), observation("a", "2"))
+		_, err := c.Stamp(ctx, tickTime.Add(2*time.Minute))
+		require.NoError(t, err)
+	})
+	assert.Positive(t, status.reads)
+}
+
+// P1-2: an answer committed between a pushed offer's Read and the drop keeps
+// the answered offer; Answered runs inside the write transaction, and a
+// profile reading the shelf there does not deadlock.
+func TestReceiveAnAnswerCommittedBeforeTheDropKeepsTheOffer(t *testing.T) {
+	ctx := context.Background()
+	f, s := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 1}})
+	mustReceive(t, s, offer(t, "bob", "o1", 0), nil)
+	f.profile.onAdmit = func(r ReceivedRecord) {
+		if r.Digest == dg("o2") {
+			f.profile.mu.Lock()
+			f.profile.answered[dg("o1")] = true
+			f.profile.mu.Unlock()
+		}
+	}
+	asked := 0
+	f.profile.onAnswered = func(ReceivedRecord) {
+		asked++
+		_, err := s.CountedPrefix(ctx, "bob", "offers/o1")
+		require.NoError(t, err)
+		_, err = s.ReceivedRecordOf(ctx, dg("o1"))
+		require.NoError(t, err)
+	}
+	withinTime(t, func() { mustReceive(t, s, offer(t, "bob", "o2", 0), nil) })
+	assert.Equal(t, 1, asked)
+	_, err := s.ReceivedRecordOf(ctx, dg("o1"))
+	assert.NoError(t, err, "the answered offer is kept")
+	_, err = s.ReceivedRecordOf(ctx, dg("o2"))
+	assert.NoError(t, err)
+}
+
+// P1-3: a fork's position ends the counted prefix for good, whatever is
+// deleted later, also after a restart.
+func TestReceiveAForkSurvivesForgetAndRestart(t *testing.T) {
+	ctx := context.Background()
+	f, s := newReceiveFixture(t, ReceiveConfig{Retention: time.Hour})
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-x", 2, "a2-other", "a1"), nil)
+	want := CountedPrefix{Size: 1, Last: dg("a1"), ForkAt: 2}
+	require.Equal(t, want, prefixOf(t, s, "alice", "deal/a"))
+	gone, err := s.Forget(ctx, "deal-x", f.clock.t.Add(2*time.Hour), func(context.Context, string) (bool, error) { return true, nil })
+	require.NoError(t, err)
+	require.Equal(t, []string{dg("a2-other")}, gone)
+	assert.Equal(t, want, prefixOf(t, s, "alice", "deal/a"), "deleting one record of a fork does not undo it")
+	require.NoError(t, s.Release())
+	assert.Equal(t, want, prefixOf(t, f.open(t), "alice", "deal/a"))
+}
+
+// P1-4: repeated forks at one position keep one evidence row.
+func TestReceiveRepeatedForksAtOnePositionKeepOneEvidenceRow(t *testing.T) {
+	ctx := context.Background()
+	_, s := newReceiveFixture(t, ReceiveConfig{})
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
+	first := mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2-b", "a1"), nil)
+	assert.Equal(t, []string{"deal-1"}, first.Changes.Forked)
+	for _, name := range []string{"a2-c", "a2-d", "a2-e"} {
+		got := mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, name, "a1"), nil)
+		assert.Empty(t, got.Changes.Forked, "a fork already recorded at the position is not news")
+	}
+	evidence, err := s.Evidence(ctx)
+	require.NoError(t, err)
+	assert.Len(t, evidence, 1)
+}
+
+// P1-5: a proof past the records held grants no coverage; once the records
+// arrive, a smaller proof they contradict is evidence and the larger one
+// they recompute covers them.
+func TestReceiveAProofPastTheRecordsGrantsNoCoverageUntilTheyRecomputeIt(t *testing.T) {
+	ctx := context.Background()
+	small := newProofHolder(t, "1", "2")
+	large := newProofHolder(t, "x", "y", "z")
+	f, s := newReceiveFixture(t, ReceiveConfig{})
+	a, b := small.proof(t, AudienceCounterparty), large.proof(t, AudienceCounterparty)
+	f.profile.proofKeys[keyOf(t, a)] = "alice"
+	got := mustReceive(t, s, nil, &a)
+	assert.True(t, got.Proof.Accepted)
+	got = mustReceive(t, s, nil, &b)
+	assert.True(t, got.Proof.Accepted)
+	assert.Empty(t, got.Changes.Covered, "a proof past the records held grants no coverage")
+
+	var covered, forked []string
+	for _, r := range large.records(t, "alice", "deal-1") {
+		got := mustReceive(t, s, r, nil)
+		covered = append(covered, got.Changes.Covered...)
+		forked = append(forked, got.Changes.Forked...)
+	}
+	assert.Equal(t, []string{"deal-1"}, covered)
+	assert.Equal(t, []string{"deal-1"}, forked)
+	evidence, err := s.Evidence(ctx)
+	require.NoError(t, err)
+	require.Len(t, evidence, 1)
+	assert.Equal(t, EvidenceCheckpointRecords, evidence[0].Kind)
+	assert.Equal(t, a.BookCheckpoint, evidence[0].A)
+}
+
+// P2-6: a store or profile error in the proof part still returns the record
+// part's committed outcome and changes.
+func TestReceiveAProofErrorKeepsTheRecordsOutcome(t *testing.T) {
+	h := newProofHolder(t, "1")
+	f, s := newReceiveFixture(t, ReceiveConfig{})
+	p := h.proof(t, AudienceCounterparty)
+	boom := errors.New("profile store down")
+	f.profile.proofErr = boom
+	got, err := s.Receive(context.Background(), chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), &p)
+	assert.ErrorIs(t, err, boom)
+	require.NotNil(t, got.Record)
+	assert.True(t, got.Record.Stored)
+	assert.Nil(t, got.Proof)
+	assert.Equal(t, []string{"deal-1"}, got.Changes.Grew)
+}
+
+// P2-7: a proof held first covers the deal when the record that completes
+// the counted prefix up to its size arrives last.
+func TestReceiveAProofHeldFirstCoversWhenAGapIsFilledLast(t *testing.T) {
+	h := newProofHolder(t, "1", "2", "3")
+	f, s := newReceiveFixture(t, ReceiveConfig{})
+	p := h.proof(t, AudienceCounterparty)
+	f.profile.proofKeys[keyOf(t, p)] = "alice"
+	got := mustReceive(t, s, nil, &p)
+	assert.Empty(t, got.Changes.Covered)
+	records := h.records(t, "alice", "deal-1")
+	require.Greater(t, len(records), 2)
+	for i, r := range records {
+		if i == 1 {
+			continue
+		}
+		got := mustReceive(t, s, r, nil)
+		assert.Empty(t, got.Changes.Covered)
+	}
+	got = mustReceive(t, s, records[1], nil)
+	assert.Equal(t, []string{"deal-1"}, got.Changes.Covered)
+	assert.Equal(t, []string{"deal-1"}, got.Changes.Grew)
+}
+
+// P2-8: a dropped offer's deal shrank; it never grew, also when dropping it
+// leaves one record where two forked.
+func TestReceiveADroppedOfferIsReportedShrankOnly(t *testing.T) {
+	_, s := newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 1}})
+	mustReceive(t, s, offer(t, "bob", "o1", 0), nil)
+	got := mustReceive(t, s, offer(t, "bob", "o2", 0), nil)
+	assert.Equal(t, []string{"offer-o1"}, got.Changes.Shrank)
+	assert.Equal(t, []string{"offer-o2"}, got.Changes.Grew)
+
+	// Two offers at one position fork; dropping the older one does not
+	// resolve the fork, and its deal is not reported grown.
+	_, s = newReceiveFixture(t, ReceiveConfig{Bounds: ReceiveBounds{MaxOffersPerSender: 2}})
+	forkOffer := func(name string) []byte {
+		return rec(t, testRecord{Digest: dg(name), Sender: "bob", Log: "offers/shared", Pos: 1, Deal: "offer-" + name, Offer: true})
+	}
+	mustReceive(t, s, forkOffer("f1"), nil)
+	mustReceive(t, s, forkOffer("f2"), nil)
+	got = mustReceive(t, s, offer(t, "bob", "o3", 0), nil)
+	assert.NotContains(t, got.Changes.Grew, "offer-f1")
+	assert.NotContains(t, got.Changes.Grew, "offer-f2")
+	assert.Equal(t, uint64(1), prefixOf(t, s, "bob", "offers/shared").ForkAt)
+}
+
+// P3-9: Grew names the deals whose records entered the counted prefix, not
+// every deal held in the log.
+func TestReceiveGrewNamesOnlyDealsWhoseRecordsWereCounted(t *testing.T) {
+	_, s := newReceiveFixture(t, ReceiveConfig{})
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-2", 3, "a3", "a2"), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-3", 5, "a5", "a4"), nil)
+	got := mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
+	assert.Equal(t, []string{"deal-1", "deal-2"}, got.Changes.Grew, "deal-3 is past the next gap")
+	assert.Empty(t, got.Changes.Shrank)
 }
