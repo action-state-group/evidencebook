@@ -360,6 +360,12 @@ func TestApprovalMigration(t *testing.T) {
 	run("delegation-confirmed", "a proposal that hands the agent another choice is confirmed with the delegation in force", f, true)
 
 	f = newFlow()
+	f.intent("pay")
+	p = f.intent("pay", "commit")
+	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay", "commit"}, OrderedRepresentations: []string{"price"}})
+	run("confirmation-adds-a-member", "limits.new is exactly what the proposal asked: a member it did not ask for is refused", f, false)
+
+	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
 	ab := &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}

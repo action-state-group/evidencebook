@@ -497,7 +497,6 @@ func (l *limits) confirm(b *dealprofile.ApprovalBody, prop *dealprofile.IntentBo
 	if prop.BoundsCommitment == "" {
 		got = l.withoutUnknownBounds(got)
 	}
-	got.OrderedRepresentations = nil
 	if !sameJSON(got, next) {
 		return fmt.Errorf("limits.new is not what the intent proposed")
 	}

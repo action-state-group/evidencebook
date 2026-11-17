@@ -2955,6 +2955,81 @@
       ]
     },
     {
+      "name": "confirmation-adds-a-member",
+      "why": "limits.new is exactly what the proposal asked: a member it did not ask for is refused",
+      "journal": [
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "intent",
+            "at": "2026-11-01T10:01:00Z"
+          },
+          "body": {
+            "verbatim_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "allowed": [
+              "pay"
+            ]
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "intent",
+            "at": "2026-11-01T10:02:00Z"
+          },
+          "body": {
+            "verbatim_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "allowed": [
+              "pay",
+              "commit"
+            ]
+          }
+        },
+        {
+          "x-deal-v1": {
+            "profile": "x-deal-v1",
+            "canonicalization": "jcs",
+            "record_type": "approval",
+            "at": "2026-11-01T10:03:00Z",
+            "refs": [
+              {
+                "rel": "approves",
+                "type": "deal-record",
+                "digest_alg": "SHA-256",
+                "digest": "f418d50a9953a162c99a85607670a3fde86505ba48b9859094b0ef3f58b4196e"
+              }
+            ]
+          },
+          "body": {
+            "choice": "confirm_limits",
+            "proceed": true,
+            "approver": "user",
+            "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "limits": {
+              "previous": {
+                "allowed": [
+                  "pay"
+                ]
+              },
+              "new": {
+                "allowed": [
+                  "pay",
+                  "commit"
+                ],
+                "ordered_representations": [
+                  "price"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "acts": null,
+      "valid": false
+    },
+    {
       "name": "at-goes-back",
       "why": "a journal record's at never decreases, so nothing it relies on is sealed after the act",
       "journal": [
