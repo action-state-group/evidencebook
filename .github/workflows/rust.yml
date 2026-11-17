@@ -12,9 +12,9 @@ name: Rust CI
 on:
   push:
     branches: [main]
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "testdata/row-status/**", "rowstatus/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
   pull_request:
-    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
+    paths: ["rust/**", "testdata/refusal-interop/**", "testdata/evidence-request/**", "testdata/shelf/**", "testdata/staple/**", "testdata/standard-history-respond/**", "testdata/mesh-history/**", "testdata/row-status/**", "rowstatus/**", "test/interop/shelf/**", "test/interop/personal-history/**", "test/interop/responder/**", "test/interop/python-profile/**", "test/interop/python-personal/**", "dealprofile/**", "*.go", "go.mod", "go.sum", ".github/workflows/rust.yml", ".github/scripts/check_crate_metadata.py"]
 
 permissions:
   contents: read
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: action-state-group/agent-action-capsule
-          ref: 9d653f41419d2d2bac4714137b763315947ec754
+          ref: f143a18edb42f499a8837beeef1588fd70f71835
           path: agent-action-capsule
           persist-credentials: false
       # evidence-interop/1's vectors and the reference verifier that checks

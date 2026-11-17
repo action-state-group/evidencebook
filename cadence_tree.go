@@ -136,6 +136,11 @@ type TickLeaves struct {
 	// (DerivedFillers). The seed stays on the device, like the salts.
 	FillerSeed  string `json:"filler_seed,omitempty"`
 	FillerCount uint64 `json:"filler_count,omitempty"`
+	// Stamp is set on a tick cut after the shelf's format switch
+	// (evidencebook#461, shelf_stamp.go): the tick is a stamp, its entries
+	// are entry documents and not a tree root, and Deals holds, for each
+	// fact, the log's size and checkpoint.
+	Stamp *StampBatch `json:"stamp,omitempty"`
 }
 
 // positions hands out fresh, uniform, unused positions in the tree.

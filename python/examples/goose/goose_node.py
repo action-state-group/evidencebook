@@ -432,6 +432,9 @@ class Node:
     """One Goose node's shelf. Open it with :meth:`open`; one process holds
     a home at a time (the shelf's writer lock)."""
 
+    #: Extra :class:`~evidencebook.cadence.CadenceConfig` members (``interval``, ``no_jitter``): none by default.
+    CADENCE_OPTIONS: dict = {}
+
     def __init__(self, home: Path, operator: str, developer: str, now, witnesses: Any, witness_client: Any = None):
         self.home, self.operator, self.developer = home, operator, developer
         self._witnesses, self._witness_client = witnesses, witness_client
@@ -462,7 +465,8 @@ class Node:
             self._db.close()
             raise
         try:
-            self.cadence = self.shelf.cadence(CadenceConfig(CADENCE_LOG, ended=lambda _: False, witnesses=witnesses))
+            self.cadence = self.shelf.cadence(CadenceConfig(CADENCE_LOG, ended=lambda _: False, witnesses=witnesses,
+                                                            **self.CADENCE_OPTIONS))
         except BaseException:
             self.close()
             raise

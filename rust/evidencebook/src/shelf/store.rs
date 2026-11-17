@@ -4,7 +4,10 @@
 use super::ShelfError;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
-/// The shelf's tables, exactly Go's `sqliteStoreSchema`.
+/// The shelf's tables, exactly Go's `sqliteStoreSchema`. `shelf_entries`
+/// (every entry document after the format switch, by its position in the
+/// cadence log) and `shelf_migration` (the migration's progress) are empty
+/// in a version 1 file.
 pub(crate) const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS book_records (
 	book_id   TEXT    NOT NULL,
@@ -47,6 +50,18 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 );
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+CREATE TABLE IF NOT EXISTS shelf_entries (
+	entry_seq      INTEGER PRIMARY KEY,
+	kind           TEXT    NOT NULL,
+	book_id        TEXT    NOT NULL,
+	log_id         TEXT    NOT NULL,
+	doc            BLOB    NOT NULL,
+	link_opening   BLOB,
+	status_opening BLOB,
+	tick           INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
+CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 ";
 
 /// A write transaction, begun IMMEDIATE: it takes the file's write lock
@@ -59,9 +74,13 @@ pub(crate) fn write_tx(conn: &mut Connection) -> Result<Transaction<'_>, ShelfEr
     Ok(conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?)
 }
 
-/// The shelf file version this implementation writes and the only one it
-/// opens (`shelf_meta.version`).
+/// The shelf file version this implementation writes (`shelf_meta.version`).
 pub const SHELF_VERSION: i64 = 1;
+
+/// The shelf file version once [`super::Cadence::migrate`] has switched the
+/// shelf to a log of book facts (evidencebook#461). This build opens both
+/// versions; an older build refuses this one.
+pub const SHELF_VERSION_FACTS: i64 = 2;
 
 /// The kinds of `shelf_logs`.
 pub(crate) const KIND_BOOK: &str = "book";
@@ -92,9 +111,9 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), ShelfError> {
             .optional()?;
         match version {
             None => {}
-            Some(v) if v != SHELF_VERSION => {
+            Some(v) if v != SHELF_VERSION && v != SHELF_VERSION_FACTS => {
                 return Err(ShelfError::Unsupported(format!(
-                    "shelf file version {v} (this build opens version {SHELF_VERSION})"
+                    "shelf file version {v} (this build opens versions {SHELF_VERSION} and {SHELF_VERSION_FACTS})"
                 )))
             }
             Some(_) => versioned = true,
