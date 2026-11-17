@@ -187,6 +187,8 @@
     "journey.user.asked": "Asked",
     "journey.user.called_off": "Called off",
     "journey.user.changed": "Changed what you asked",
+    "journey.user.chose.other": "Chose a different option",
+    "journey.user.chose.verify_contact": "Chose to call them first",
     "journey.user.declined.commit": "Said no to agreeing to {amount}",
     "journey.user.declined.offer": "Said no to offering {amount}",
     "journey.user.declined.other": "Said no",

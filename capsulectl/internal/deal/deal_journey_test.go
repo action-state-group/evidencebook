@@ -741,8 +741,7 @@ func TestTheUsersAnswerIsTheirMove(t *testing.T) {
 }
 
 // An answer to an offer's or a commitment's check is worded by its amount,
-// in the card's currency; an answer not applied, or another choice, is no
-// move.
+// in the card's currency; an answer not applied is no move.
 func TestTheUsersAnswerToAnOfferNamesItsAmount(t *testing.T) {
 	amount := int64(190000)
 	events := []sealedEvent{
@@ -753,8 +752,8 @@ func TestTheUsersAnswerToAnOfferNamesItsAmount(t *testing.T) {
 		{CapsuleID: "snap2", Event: dealEvent{Kind: "snapshot", Snapshot: &dealSnapshot{Action: "commit", AmountMinor: &amount}}},
 		{CapsuleID: "check2", Event: dealEvent{Kind: "check", Check: &dealCheckResult{Action: "commit", Snapshot: "snap2", Verdict: "pause"}}},
 		{CapsuleID: "no", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check2", Approver: "user", Choice: "hold"}}},
-		// An answer not applied (the check was answered already) and a
-		// choice that is neither an OK nor a hold are no move.
+		// An answer not applied (the check was answered already) is no
+		// move; another choice (verify_contact) is the user's "chose" row.
 		{CapsuleID: "again", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check2", Approver: "user", Proceed: true, Reason: "answered"}}},
 		{CapsuleID: "verify", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check2", Approver: "user", Choice: "verify_contact"}}},
 		// The amount is in the card's currency, the snapshot's own.
@@ -771,7 +770,7 @@ func TestTheUsersAnswerToAnOfferNamesItsAmount(t *testing.T) {
 		labels = append(labels, s.By+": "+s.Label)
 	}
 	assert.Equal(t, []string{"user: Asked", "agent: Waited for your OK", "user: OK'd offering $1,900", "agent: Waited for your OK", "user: Said no to agreeing to $1,900",
-		"agent: Waited for your OK", "user: OK'd paying €1,900", "agent: Waited for your OK", "user: Said no"}, labels)
+		"user: Chose to call them first", "agent: Waited for your OK", "user: OK'd paying €1,900", "agent: Waited for your OK", "user: Said no"}, labels)
 }
 
 // A tapped button's label is the user's answer (capsule-cli#416): passed as
@@ -816,4 +815,32 @@ func TestATappedLabelIsTheUsersAnswer(t *testing.T) {
 	assert.Equal(t, "agent_card", approvals[0]["approver"], "without --said the answer is the card's")
 	assert.NotContains(t, approvals[0], "said_commitment")
 	assert.NotContains(t, journeyMoves(t, id), "user:approved")
+}
+
+// An applied answer other than an OK or a hold is the user's own "chose" row,
+// worded without a pack key it has no line for, with only the choice token
+// as its fact (capsule-cli#415).
+func TestTheUsersOtherAnswerToAPauseIsTheirOwnRow(t *testing.T) {
+	events := []sealedEvent{
+		{CapsuleID: "open", Event: dealEvent{Kind: "open", Open: &dealOpen{Terms: dealTerms{Currency: "USD"}}}},
+		{CapsuleID: "snap", Event: dealEvent{Kind: "snapshot", Snapshot: &dealSnapshot{Action: "share_contact"}}},
+		{CapsuleID: "check", Event: dealEvent{Kind: "check", Check: &dealCheckResult{Action: "share_contact", Snapshot: "snap", Verdict: "pause"}}},
+		{CapsuleID: "verify", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check", Approver: "user", Choice: "verify_contact"}}},
+		{CapsuleID: "other", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check", Approver: "user", Choice: "something_new"}}},
+		// Not the user's own, or not applied: still no row.
+		{CapsuleID: "agent", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check", Approver: "agent", Choice: "verify_contact"}}},
+		{CapsuleID: "late", Event: dealEvent{Kind: "approval", Approval: &dealApproval{Check: "check", Approver: "user", Choice: "verify_contact", Reason: "answered"}}},
+	}
+	var rows []dealJourneyStep
+	for _, s := range dealJourney(events, cli.BuiltinWording()) {
+		if s.Move == "chose" {
+			rows = append(rows, s)
+		}
+	}
+	require.Len(t, rows, 2)
+	assert.Equal(t, "user", rows[0].By)
+	assert.Equal(t, "Chose to call them first", rows[0].Label)
+	assert.Equal(t, map[string]interface{}{"choice": "verify_contact"}, rows[0].facts)
+	assert.Equal(t, "Chose a different option", rows[1].Label)
+	assert.Equal(t, "journey.user.chose.other", rows[1].Key)
 }

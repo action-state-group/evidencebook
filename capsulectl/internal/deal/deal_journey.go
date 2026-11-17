@@ -441,9 +441,9 @@ type dealJourneyStep struct {
 }
 
 // dealJourney is the errand's moves in order: the user's (asked, narrowed,
-// switched, raised, picked, approved, declined, called_off), the agent's (searched, options,
-// recommended, chose, asked_seller, checked, couldnt, paused, told, and
-// what it did) and the other side's (said, changed). An intent sealed
+// switched, raised, picked, approved, declined, chose, called_off), the
+// agent's (searched, options, recommended, chose, asked_seller, checked,
+// couldnt, paused, told, and what it did) and the other side's (said, changed). An intent sealed
 // before journey records is "changed". The report is the user's own copy:
 // a label may name the merchant, the item and the classes told.
 func dealJourney(events []sealedEvent, w cli.Wording) []dealJourneyStep {
@@ -530,21 +530,35 @@ func dealJourney(events []sealedEvent, w cli.Wording) []dealJourneyStep {
 			// answered (a payment, an offer or a commitment by its amount as
 			// the card said it, a share by the classes told). An answer that
 			// was not applied (the check was answered already, or changed
-			// since) is no move, as deal note says it; so is any other choice
-			// (verify_contact), a confirm_limits answer (the raised move) and
-			// an answer that is not the user's own (an agent's card answer, a
-			// standing intent).
+			// since) is no move, as deal note says it; so is a confirm_limits
+			// answer (the raised move) and an answer that is not the user's
+			// own (an agent's card answer, a standing intent). Any other
+			// applied choice (verify_contact) is the user's "chose" move,
+			// worded neutrally, with the choice token as its only fact, so
+			// the page never reads as the agent moving on alone
+			// (capsule-cli#415).
 			move := ""
 			switch {
 			case e.Approval.Proceed:
 				move = "approved"
 			case e.Approval.Choice == "hold":
 				move = "declined"
+			case e.Approval.Choice != "":
+				move = "chose"
 			default:
 				continue
 			}
 			check, _, ok := checkedCard(events[:i], e.Approval.Check)
 			if !ok {
+				continue
+			}
+			if move == "chose" {
+				key := "journey.user.chose." + e.Approval.Choice
+				if _, known := w.Entries[key]; !known {
+					key = "journey.user.chose.other"
+				}
+				add("user", move, key, se, nil)
+				out[len(out)-1].facts["choice"] = e.Approval.Choice
 				continue
 			}
 			action, snap := check.Event.Check.Action, answeredSnapshot(events[:i], check.Event.Check.Snapshot)
