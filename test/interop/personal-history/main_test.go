@@ -20,8 +20,8 @@ import (
 // The agent-action-capsule commit whose vectors/personal-history-basic-v0/
 // this command reproduces, and the SHA-256 of the files the guide relies on
 // there. testdata/vectors.json is that commit's vectors.json, unchanged, and
-// main.go is that commit's producer/main.go, unchanged (producer.diff is empty,
-// and CI checks it against the corpus).
+// main.go is that commit's producer/main.go, unchanged (CI compares it with the
+// corpus's copy).
 const (
 	aacCommit      = "f143a18edb42f499a8837beeef1588fd70f71835"
 	vectorsSHA256  = "884ca5aaf0751a4beec7c9c2215212f81edbe9c7d3f18c0a4592fdb5896859ad"
@@ -216,7 +216,7 @@ func TestRunIsThePublishedRun(t *testing.T) {
 // still describes the corpus README's copy step.
 func TestProducerIsTheCorpusProducer(t *testing.T) {
 	if got := sha(readFile(t, "main.go")); got != producerSHA256 {
-		t.Fatalf("main.go has SHA-256 %s, not the pinned %s: update producerSHA256 and producer.diff together", got, producerSHA256)
+		t.Fatalf("main.go has SHA-256 %s, not the pinned %s: update producerSHA256 together with the corpus pin", got, producerSHA256)
 	}
 }
 

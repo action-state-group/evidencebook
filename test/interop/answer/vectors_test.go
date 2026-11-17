@@ -142,6 +142,13 @@ func TestGuideQuotesTheVectors(t *testing.T) {
 		if n := len(set.FindAllStringSubmatch(string(script), -1)); n != 1 {
 			t.Errorf("run.sh sets %s %d times, want 1", p.name, n)
 		}
+		if p.name == "AAC" {
+			// §6.1's separate pin in run.sh.
+			ph := regexp.MustCompile(`(?m)^AAC_PH=(\S+)`).FindAllStringSubmatch(string(script), -1)
+			if len(ph) != 1 || ph[0][1] != historyCommit {
+				t.Errorf("run.sh's AAC_PH pins %v, want exactly %s", ph, historyCommit)
+			}
+		}
 	}
 	// Every digest and key run.sh holds the page's commands to is one the
 	// page states, so a typo in the page's copy fails here and not only for
