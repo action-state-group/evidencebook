@@ -232,3 +232,54 @@ doc = {"about": "Row status vectors (evidencebook#461, acceptance 6): each case'
 json.dump(doc, open(sys.argv[1], "w"), indent=1, ensure_ascii=False)
 open(sys.argv[1], "a").write("\n")
 print(len(cases), len(invalid))
+
+# Late statements and late disputes (evidencebook#461, Q9; docs/design/461-deal-profile.md section 9):
+# an output beside the status, written to late.json next to vectors.json. Each expect lists indices
+# into the input's statements and disputes, in input order, by hand from the rule: a statement held
+# as of T is late when its time is after the window end, or it has none and an earlier timed
+# statement of its side is (a concession is late too); a dispute held as of T is late as rule 2
+# says. Both are empty while the row is not reached or a date is unset.
+byname = {c["name"]: c["input"] for c in cases}
+late = []
+def late_case(name, why, expect_statements, expect_disputes, inp=None):
+    late.append({"name": name, "why": why, "input": copy.deepcopy(inp if inp is not None else byname[name]),
+                 "expect": {"late_statements": expect_statements, "late_disputes": expect_disputes}})
+late_case("r5-late-statement-ignored", "the buyer's statement after the window end is late", [1], [])
+late_case("cn-concession-counts", "a concession is late, though it counts", [2], [])
+late_case("cn-only-first-counts", "both concessions are late, the counted one and the other", [2, 3], [])
+late_case("l-untimed-after-late", "an untimed statement after a late one of its side is late too", [1, 2], [])
+late_case("l-untimed-is-never-a-concession", "an untimed statement whose side has no late timed one is not late", [], [])
+late_case("l-untimed-after-future", "statements not held as of T are never listed", [], [])
+late_case("b-statement-at-window-end-in-time", "a statement at the window end itself is in time", [], [])
+late_case("b-statement-one-second-after-late", "one second after the window end: late", [2], [])
+late_case("r2-late-dispute", "a late dispute on an agreed row", [], [0])
+late_case("r2-late-dispute-unseen", "a dispute whose claimant had not seen the statement in time is not late", [], [])
+late_case("r2-late-dispute-failed-check", "a dispute on a row whose check failed is not late", [], [])
+late_case("r2-late-dispute-on-disagreement", "a dispute on a row whose in-time statements differ is not late", [], [])
+late_case("r2-late-dispute-uncontested", "a late dispute on an uncontested row", [], [0])
+late_case("r2-late-dispute-ignores-concession", "the concession is late; the dispute, read against the in-time statements, is not", [2], [])
+late_case("b-dispute-at-window-end-not-late", "a dispute at the window end itself is not late", [], [])
+late_case("b-dispute-one-second-after-late", "one second after the window end: late", [], [0])
+late_case("l-untimed-dispute", "a dispute with no time is never late", [], [])
+late_case("d-not-reached", "a row not reached lists nothing", [], [])
+late_case("d-unset-up-to-latest", "a row whose dates are unset lists nothing", [], [])
+LATE_D = {"side": "seller", "time": "2026-11-06T10:00:00Z", "seen_in_time": True}
+late_case("late-dispute-ruled", "a late dispute is listed on a ruled row too", [], [0],
+          {"at": "2026-11-07T00:00:00Z", "parties": P, "row": ROW1, "statements": AGR1, "disputes": [LATE_D],
+           "rulings": [{"final": True, "value": "met", "time": "2026-11-06T12:00:00Z"}]})
+late_case("late-dispute-withdrawn", "a late dispute is listed though withdrawn", [], [0],
+          {"at": "2026-11-07T00:00:00Z", "parties": P, "row": ROW1, "statements": AGR1, "disputes": [LATE_D],
+           "withdrawals": [{"side": "seller", "time": "2026-11-06T11:00:00Z"}]})
+late_case("late-index-order", "indices are into the input: the second dispute is the late one", [], [1],
+          {"at": "2026-11-07T00:00:00Z", "parties": P, "row": ROW1, "statements": AGR1,
+           "disputes": [{"side": "buyer", "time": "2026-11-06T09:00:00Z", "seen_in_time": False}, LATE_D]})
+late_case("late-after-T-not-held", "a statement and a dispute dated after T are not held, so not listed", [], [],
+          {"at": "2026-11-05T12:00:00Z", "parties": P, "row": ROW1,
+           "statements": AGR1 + [st("buyer", "not_met", "2026-11-05T13:00:00Z")],
+           "disputes": [dict(LATE_D, time="2026-11-05T14:00:00Z")]})
+assert len({c["name"] for c in late}) == len(late)
+late_path = sys.argv[1].rsplit("/", 1)[0] + "/late.json" if "/" in sys.argv[1] else "late.json"
+json.dump({"about": "Late statement and late dispute vectors (evidencebook#461, Q9): each expect lists, by index into the input, the statements and disputes the rule sets aside as late as of input.at, written by hand from the rule in testdata/row-status/generate.py; each implementation's late output must give exactly expect.",
+           "cases": late}, open(late_path, "w"), indent=1, ensure_ascii=False)
+open(late_path, "a").write("\n")
+print(len(late), "late")
