@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import pytest
 
+from evidencebook.cadence import CadenceConfig
 from evidencebook.errors import InvalidError
 from evidencebook.shelf import JOURNAL_LOG_ID, _kind_of
 from evidencebook.shelf_facts import FACT_KIND_JOURNAL, PROFILE_NONE, _digest, verify_openings
@@ -145,3 +146,23 @@ def test_an_older_shelf_logs_table_takes_the_journal(fx):
         with shelf._read() as db:
             assert _kind_of(db, "deal/a") == "book"
             assert _kind_of(db, JOURNAL_LOG_ID) == "journal"
+
+
+def test_the_journal_refuses_the_cadence_logs_id(fx):
+    """A shelf whose cadence log is named as the journal refuses the journal
+    and changes nothing, in this process and after a reopen with no cadence
+    open (Go ``TestTheJournalRefusesTheCadenceLogsID``)."""
+    config = CadenceConfig(log_id=JOURNAL_LOG_ID, ended=lambda _: False, witnesses=script.DIRECTORY)
+    with fx.open() as shelf:
+        c = shelf.cadence(config)
+        shelf.open("deal/a").append(obs("a", "1"))
+        c.tick(START)
+        c.migrate(START + timedelta(minutes=1))
+        with pytest.raises(InvalidError, match="cadence log"):
+            shelf.journal()
+    with fx.open() as shelf:
+        with pytest.raises(InvalidError, match="another log's entries"):
+            shelf.journal()
+        with shelf._read() as db:
+            assert _kind_of(db, JOURNAL_LOG_ID) == "", "nothing was claimed"
+        shelf.cadence(config)  # the cadence still opens

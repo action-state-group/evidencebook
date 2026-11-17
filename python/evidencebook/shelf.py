@@ -888,11 +888,22 @@ class Shelf:
                 raise InvalidError("the journal needs a shelf of book facts; call migrate")
             if JOURNAL_LOG_ID in self._hosts:
                 raise InvalidError(f"{JOURNAL_LOG_ID} is a host log, not the journal")
+            if self._cadence is not None and self._cadence.log_id == JOURNAL_LOG_ID:
+                raise InvalidError(f"{JOURNAL_LOG_ID} is the cadence log, not the journal")
             with self._tx() as db:
                 records = _record_count(db, JOURNAL_LOG_ID)
                 kind = _kind_of(db, JOURNAL_LOG_ID)
                 if kind != _KIND_JOURNAL and (kind or records):
                     raise InvalidError(f"{JOURNAL_LOG_ID} is already a {kind or _KIND_BOOK} log, not the journal")
+                # A log with entries and no kind (the cadence log, which
+                # shelf_logs never records, or one this build does not know) is
+                # not the journal either: claiming it would leave its owner
+                # refused on the next open.
+                if not kind and db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+                                           "AND name = 'cll_entries'").fetchone()[0] and \
+                        db.execute("SELECT COUNT(*) FROM cll_entries WHERE log_id = ?",
+                                   (JOURNAL_LOG_ID,)).fetchone()[0]:
+                    raise InvalidError(f"{JOURNAL_LOG_ID} already holds another log's entries, not the journal")
                 _allow_journal_kind(db)
                 _claim_kind(db, JOURNAL_LOG_ID, _KIND_JOURNAL)
             return self._open_locked(JOURNAL_LOG_ID)
