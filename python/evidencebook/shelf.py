@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS shelf_receipts (
 	key_id            TEXT    NOT NULL,
 	receipt           TEXT    NOT NULL,
 	registered_at     INTEGER,
-	PRIMARY KEY (checkpoint_sha256, witness_id)
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 -- The store of what the other side pushes (evidencebook#461 §3,
@@ -1290,6 +1290,34 @@ class Shelf:
         self.release()
 
 
+# The shelf_receipts table as shelves before evidencebook#492 created it: one
+# receipt per checkpoint and witness URL, so a second key of the same witness
+# lost its receipt (Go receiptsKeyedByURL).
+RECEIPTS_KEYED_BY_URL = "PRIMARY KEY (checkpoint_sha256, witness_id)"
+
+
+def _migrate_shelf_receipts(db: sqlite3.Connection) -> None:
+    """Rebuild a shelf_receipts table keyed by checkpoint and witness URL
+    alone into one keyed by checkpoint, URL and key id, in the caller's
+    transaction, keeping every row (Go ``migrateShelfReceipts``): each held
+    one receipt per URL, so no two collide. It changes no shelf version."""
+    (ddl,) = db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_receipts'").fetchone()
+    if RECEIPTS_KEYED_BY_URL not in ddl:
+        return
+    db.execute("""CREATE TABLE shelf_receipts_492 (
+	checkpoint_sha256 TEXT    NOT NULL,
+	witness_id        TEXT    NOT NULL,
+	key_id            TEXT    NOT NULL,
+	receipt           TEXT    NOT NULL,
+	registered_at     INTEGER,
+	PRIMARY KEY (checkpoint_sha256, witness_id, key_id)
+)""")
+    db.execute("INSERT INTO shelf_receipts_492 (checkpoint_sha256, witness_id, key_id, receipt, registered_at) "
+               "SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts")
+    db.execute("DROP TABLE shelf_receipts")
+    db.execute("ALTER TABLE shelf_receipts_492 RENAME TO shelf_receipts")
+
+
 def _init(db: sqlite3.Connection) -> None:
     """Create the shelf's tables when absent, in one transaction, and apply
     §2.2's fill rules; refuse an unknown version before writing anything."""
@@ -1311,6 +1339,7 @@ def _init(db: sqlite3.Connection) -> None:
         for statement in SCHEMA.split(";"):
             if statement.strip():
                 db.execute(statement)
+        _migrate_shelf_receipts(db)
         if not versioned:
             db.execute("INSERT INTO shelf_meta (id, version) VALUES (1, ?)", (SHELF_VERSION,))
         if not had_logs:

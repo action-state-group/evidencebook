@@ -730,7 +730,7 @@ pub fn dump(dir: &Path) -> Result<String, Error> {
             ("receipt", r.get::<_, Option<String>>(8)?.map_or(Value::Null, Value::String)),
         ]))
     })?));
-    state.push(("shelf_receipts", rows(&db, "SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id", |r| {
+    state.push(("shelf_receipts", rows(&db, "SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id, key_id", |r| {
         Ok(object(vec![
             ("checkpoint_sha256", json!(r.get::<_, String>(0)?)),
             ("witness_id", json!(r.get::<_, String>(1)?)),

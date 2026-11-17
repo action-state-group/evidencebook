@@ -17,19 +17,23 @@ import (
 
 // Record time (evidencebook#461, docs/design/461-shelf-facts.md §2.3 and
 // §2.6): every receipt that verifies for a shelf checkpoint is kept in
-// shelf_receipts, one per witness, with the registration time the witness
-// put in it (the iat of its protected CWT claims) or none. A witness is
+// shelf_receipts, one per witness and key the receipt verified under
+// (evidencebook#492: a directory row may list several keys, and an agreement
+// names a witness by key), with the registration time the witness put in it
+// (the iat of its protected CWT claims) or none. A witness is
 // named by its receipt's URL (ts_url), the name a witness directory row is
 // found by, so a witness an agreement names is that URL. Each row also keeps
 // the directory key id the receipt verified under: a URL is a locator, and
 // the key id lets a later naming by key read the rows already held.
 
 // upsertReceipt keeps a verified receipt for the checkpoint whose SHA-256 is
-// checkpointSHA256. Another receipt from the same witness replaces the held
-// one only when it gives an earlier registration time, or the held one gives
-// none: a witness's earliest registration is the one a record time reads.
+// checkpointSHA256. Another receipt from the same witness under the same key
+// replaces the held one only when it gives an earlier registration time, or
+// the held one gives none: a witness's earliest registration is the one a
+// record time reads. A receipt under another key of the same witness is kept
+// beside it.
 const upsertReceipt = `INSERT INTO shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt, registered_at) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (checkpoint_sha256, witness_id) DO UPDATE SET key_id = excluded.key_id, receipt = excluded.receipt, registered_at = excluded.registered_at
+ON CONFLICT (checkpoint_sha256, witness_id, key_id) DO UPDATE SET receipt = excluded.receipt, registered_at = excluded.registered_at
 WHERE excluded.registered_at IS NOT NULL AND (shelf_receipts.registered_at IS NULL OR excluded.registered_at < shelf_receipts.registered_at)`
 
 type execer interface {
@@ -84,10 +88,13 @@ func (c *Cadence) backfillReceiptsLocked(ctx context.Context) error {
 			if err := json.Unmarshal([]byte(h.receipt), &receipt); err != nil {
 				return fmt.Errorf("%w: tick %d receipt: %v", ErrCorrupt, h.n, err)
 			}
+			// The same receipt already held needs no second verification; a
+			// held receipt of another key of the same witness does not cover
+			// this one.
 			sum := sha256.Sum256(h.statement)
 			var present int
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ?`,
-				hex.EncodeToString(sum[:]), receipt.TSURL).Scan(&present); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ? AND receipt = ?`,
+				hex.EncodeToString(sum[:]), receipt.TSURL, h.receipt).Scan(&present); err != nil {
 				return err
 			}
 			if present > 0 {

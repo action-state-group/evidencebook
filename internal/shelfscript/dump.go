@@ -97,7 +97,7 @@ func Dump(ctx context.Context, dir string) ([]byte, error) {
 			}
 			return out, err
 		}},
-		{"shelf_receipts", `SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id`, func(r *sql.Rows) (any, error) {
+		{"shelf_receipts", `SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id, key_id`, func(r *sql.Rows) (any, error) {
 			var sum, witness, key, receipt string
 			var at sql.NullInt64
 			err := r.Scan(&sum, &witness, &key, &receipt, &at)

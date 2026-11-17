@@ -46,7 +46,7 @@ type Handover struct {
 	Consistency []HandoverConsistency `json:"consistency"`
 	// Anchor is the shelf checkpoint the handover runs to, and Receipts the
 	// witness receipts the holder holds for it (shelf_receipts), one per
-	// witness in witness URL order.
+	// witness and key, in URL order.
 	Anchor   []byte           `json:"anchor"`
 	Receipts []WitnessReceipt `json:"receipts,omitempty"`
 	// Witnessed are the shelf checkpoints before the anchor, within it,
@@ -70,7 +70,7 @@ type HandoverDocument struct {
 }
 
 // HandoverCheckpoint is a shelf checkpoint before a handover's anchor and
-// the witness receipts held for it, one per witness in witness URL order.
+// the witness receipts held for it, one per witness and key, in URL order.
 type HandoverCheckpoint struct {
 	Checkpoint []byte           `json:"checkpoint"`
 	Receipts   []WitnessReceipt `json:"receipts"`

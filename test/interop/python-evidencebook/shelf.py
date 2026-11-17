@@ -284,7 +284,7 @@ def dump(directory: str) -> bytes:
         state["shelf_receipts"] = [
             {"checkpoint_sha256": c, "witness_id": w, "key_id": k, "receipt": r, "registered_at": at}
             for c, w, k, r, at in db.execute("SELECT checkpoint_sha256, witness_id, key_id, receipt, registered_at "
-                                             "FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id")]
+                                             "FROM shelf_receipts ORDER BY checkpoint_sha256, witness_id, key_id")]
         state["cll_entries"] = [
             {"log_id": i, "seq": s, "value": bytes(v).hex(), "appended_at": a}
             for i, s, v, a in db.execute("SELECT log_id, seq, value, appended_at FROM cll_entries ORDER BY log_id, seq")]

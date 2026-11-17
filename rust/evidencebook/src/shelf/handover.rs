@@ -61,7 +61,7 @@ pub struct Handover {
     #[serde(default, with = "bytes_b64")]
     pub anchor: Vec<u8>,
     /// The witness receipts the holder holds for the anchor
-    /// (`shelf_receipts`), one per witness in witness URL order.
+    /// (`shelf_receipts`), one per witness and key, in URL order.
     #[serde(
         default,
         deserialize_with = "nullable",
@@ -86,7 +86,7 @@ pub struct Handover {
 }
 
 /// A shelf checkpoint before a handover's anchor and the witness receipts
-/// held for it, one per witness in witness URL order (Go
+/// held for it, one per witness and key, in URL order (Go
 /// `HandoverCheckpoint`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HandoverCheckpoint {

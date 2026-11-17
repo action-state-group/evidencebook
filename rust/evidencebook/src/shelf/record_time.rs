@@ -1,8 +1,9 @@
 //! Record time (Go `shelf_record_time.go`; evidencebook#461,
 //! `docs/design/461-shelf-facts.md` §2.3 and §2.6): every receipt that
 //! verifies for a shelf checkpoint is kept in `shelf_receipts`, one per
-//! witness, with the registration time the witness put in it (the `iat` of
-//! its protected CWT claims) or none. A witness is named by its receipt's URL
+//! witness and key it verified under (evidencebook#492), with the
+//! registration time the witness put in it (the `iat` of its protected CWT
+//! claims) or none. A witness is named by its receipt's URL
 //! (`ts_url`), the name a witness directory row is found by, so a witness an
 //! agreement names is that URL. Each row also keeps the directory key id
 //! the receipt verified under: a URL is a locator, and the key id lets a
@@ -26,7 +27,7 @@ use std::collections::HashSet;
 /// the held one gives none: a witness's earliest registration is the one a
 /// record time reads.
 const UPSERT_RECEIPT: &str = "INSERT INTO shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt, registered_at) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (checkpoint_sha256, witness_id) DO UPDATE SET key_id = excluded.key_id, receipt = excluded.receipt, registered_at = excluded.registered_at
+ON CONFLICT (checkpoint_sha256, witness_id, key_id) DO UPDATE SET receipt = excluded.receipt, registered_at = excluded.registered_at
 WHERE excluded.registered_at IS NOT NULL AND (shelf_receipts.registered_at IS NULL OR excluded.registered_at < shelf_receipts.registered_at)";
 
 /// Store `receipt`, which verified for `statement`; `encoded` is its stored
@@ -74,9 +75,11 @@ pub(crate) fn backfill_receipts(
     for (n, statement, raw) in &ticks {
         let receipt: WitnessReceipt = serde_json::from_str(raw)
             .map_err(|e| ShelfError::Corrupt(format!("tick {n} receipt: {e}")))?;
+        // The same receipt already held needs no second verification; a held
+        // receipt of another key of the same witness does not cover this one.
         let present: i64 = tx.query_row(
-            "SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ?",
-            params![hex::encode(Sha256::digest(statement)), receipt.ts_url],
+            "SELECT COUNT(*) FROM shelf_receipts WHERE checkpoint_sha256 = ? AND witness_id = ? AND receipt = ?",
+            params![hex::encode(Sha256::digest(statement)), receipt.ts_url, raw],
             |r| r.get(0),
         )?;
         if present > 0 {

@@ -115,7 +115,8 @@ New tables, all in the same file:
   cadence's own, with no second table. (This note first proposed a `shelf_stamps` table and a
   `shelf_book_checkpoints` table; the tick row and its leaves hold the same data.)
 - `shelf_receipts (checkpoint_sha256, witness_id, key_id, receipt TEXT, registered_at, PRIMARY KEY
-  (checkpoint_sha256, witness_id))`: every receipt that verified, one per witness, with its
+  (checkpoint_sha256, witness_id, key_id))`: every receipt that verified, one per witness and key
+  it verified under (evidencebook#492; the key was not in the primary key before), with its
   registration time or null. `Witnessed` writes it (part 5, with `RecordTime`, which reads it), and
   a tick still keeps the first receipt in `cadence_ticks.receipt` for the readers that use it. A witness is named by its receipt's URL (`ts_url`), the name
   its directory row is found by, so one URL is one witness (a witness serving receipts from two URLs
@@ -182,7 +183,8 @@ then status salt, in append order; then the jitter of `due_next` (today's tick d
 Times leaving the device stay coarsened to the minute (`cadence.go:498-499`).
 
 `Witnessed(checkpoint, witness_id, receipt)` verifies a receipt for any shelf checkpoint and keeps
-it in `shelf_receipts`, one per witness, a later receipt from another witness kept beside it.
+it in `shelf_receipts`, one per witness and key, a later receipt from another witness or key kept
+beside it.
 
 ### 2.6 Record time
 
@@ -203,7 +205,8 @@ entries before the marker as the opaque ids they are), every entry document afte
 each book fact's status opening, no journal opening and no link opening, the COSE bytes of every
 book checkpoint a book fact carries, the consistency proof between each pair of consecutive book
 facts whose size grew, each genesis fact's tie when the holder has one (below), the anchor
-checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL order), every
+checkpoint, its receipts (every one `shelf_receipts` holds for it, in witness URL and then key id
+order), every
 earlier shelf checkpoint within the anchor for which `shelf_receipts` holds a receipt, with all of
 them (`Handover.Witnessed`, in tick order; invariant C of `461-deal-profile.md` §8.1: a record's
 time is the earliest named registration of any checkpoint that covers it, not only the anchor's),
