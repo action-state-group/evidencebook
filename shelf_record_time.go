@@ -118,6 +118,24 @@ func (c *Cadence) backfillReceiptsLocked(ctx context.Context) error {
 // reads in one transaction, so a stamp being finished is seen whole or not
 // at all.
 func (s *Shelf) RecordTime(ctx context.Context, bookID string, position uint64, witnesses []string) (t time.Time, ok bool, err error) {
+	return s.recordTime(ctx, bookID, position, witnesses, byURL)
+}
+
+// RecordTimeByKey is RecordTime with the witnesses named by their verified
+// key ids (lowercase hex), as an x-deal-v1 agreement names them (Steven,
+// #482 Q1, u604: a witness is its key, its URL only a hint, so a witness
+// that moved stays the same witness).
+func (s *Shelf) RecordTimeByKey(ctx context.Context, bookID string, position uint64, keyIDs []string) (t time.Time, ok bool, err error) {
+	return s.recordTime(ctx, bookID, position, keyIDs, byKey)
+}
+
+// How a record time names its witnesses: shelf_receipts' column it matches.
+const (
+	byURL = "witness_id"
+	byKey = "key_id"
+)
+
+func (s *Shelf) recordTime(ctx context.Context, bookID string, position uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
 	if err := s.live(); err != nil {
 		return time.Time{}, false, err
 	}
@@ -136,7 +154,7 @@ func (s *Shelf) RecordTime(ctx context.Context, bookID string, position uint64, 
 	if err != nil || !found {
 		return time.Time{}, false, err
 	}
-	return earliestNamedTime(ctx, tx, seq, witnesses)
+	return earliestNamedTime(ctx, tx, seq, witnesses, by)
 }
 
 // ReceivedRecordTime is the record time the holder's own stamps give a
@@ -151,6 +169,16 @@ func (s *Shelf) RecordTime(ctx context.Context, bookID string, position uint64, 
 //
 // It takes no lock and reads in one transaction, as RecordTime does.
 func (s *Shelf) ReceivedRecordTime(ctx context.Context, bookID, receivedLogID string, position uint64, witnesses []string) (t time.Time, ok bool, err error) {
+	return s.receivedRecordTime(ctx, bookID, receivedLogID, position, witnesses, byURL)
+}
+
+// ReceivedRecordTimeByKey is ReceivedRecordTime with the witnesses named by
+// their verified key ids, as RecordTimeByKey.
+func (s *Shelf) ReceivedRecordTimeByKey(ctx context.Context, bookID, receivedLogID string, position uint64, keyIDs []string) (t time.Time, ok bool, err error) {
+	return s.receivedRecordTime(ctx, bookID, receivedLogID, position, keyIDs, byKey)
+}
+
+func (s *Shelf) receivedRecordTime(ctx context.Context, bookID, receivedLogID string, position uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
 	if err := s.live(); err != nil {
 		return time.Time{}, false, err
 	}
@@ -172,13 +200,13 @@ func (s *Shelf) ReceivedRecordTime(ctx context.Context, bookID, receivedLogID st
 	if err != nil || !found {
 		return time.Time{}, false, err
 	}
-	return earliestNamedTime(ctx, tx, seq, witnesses)
+	return earliestNamedTime(ctx, tx, seq, witnesses, by)
 }
 
 // earliestNamedTime is the earliest registration time, among the receipts
-// from the witnesses named, of a shelf checkpoint whose tree holds the entry
-// at seq.
-func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []string) (t time.Time, ok bool, err error) {
+// from the witnesses named (by shelf_receipts' column by: their URL or
+// their key id), of a shelf checkpoint whose tree holds the entry at seq.
+func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []string, by string) (t time.Time, ok bool, err error) {
 	// A shelf checkpoint covers the fact's entry when its tree holds that
 	// entry: its MMR size is at least the size of seq leaves.
 	cps, err := tx.QueryContext(ctx, `SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick`, mmrSize(seq))
@@ -202,7 +230,8 @@ func earliestNamedTime(ctx context.Context, tx *sql.Tx, seq uint64, witnesses []
 	for _, w := range witnesses {
 		named[w] = true
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT checkpoint_sha256, witness_id, registered_at FROM shelf_receipts WHERE registered_at IS NOT NULL`)
+	// by is one of two constants, never input.
+	rows, err := tx.QueryContext(ctx, `SELECT checkpoint_sha256, `+by+`, registered_at FROM shelf_receipts WHERE registered_at IS NOT NULL`)
 	if err != nil {
 		return time.Time{}, false, err
 	}
