@@ -113,7 +113,7 @@ func (c *Cadence) Migrate(ctx context.Context, now time.Time) error {
 			if _, err := tx.ExecContext(ctx, `UPDATE shelf_meta SET version = ? WHERE id = 1`, ShelfVersionFacts); err != nil {
 				return err
 			}
-			_, err := tx.ExecContext(ctx, `INSERT INTO shelf_migration (id, state, backup_sha256, batch) VALUES (1, ?, '', '')`, migrationBackingUp)
+			_, err := tx.ExecContext(ctx, `INSERT INTO shelf_migration (id, state, backup_sha256) VALUES (1, ?, '')`, migrationBackingUp)
 			return err
 		}); err != nil {
 			return err
@@ -443,7 +443,10 @@ func (f pendingFact) changed(last lastFact) (bool, error) {
 // order), then the jitter, and returns the stamp as a tick to store.
 func (c *Cadence) buildStampLocked(ctx context.Context, n uint64, at, now time.Time, facts []pendingFact, head []BatchEntry) (CadenceTick, error) {
 	random := c.shelf.random
-	sort.Slice(facts, func(i, j int) bool { return facts[i].input.BookID < facts[j].input.BookID })
+	sort.Slice(facts, func(i, j int) bool {
+		a, b := facts[i].input, facts[j].input
+		return a.BookID < b.BookID || (a.BookID == b.BookID && a.LogID < b.LogID)
+	})
 	batch := StampBatch{V: 1, Entries: head}
 	leaves := TickLeaves{Deals: map[string]TickLeaf{}}
 	for _, f := range facts {

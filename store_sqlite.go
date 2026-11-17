@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS shelf_entries (
 	tick           INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS shelf_entries_log ON shelf_entries (log_id, entry_seq);
-CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL, batch TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS shelf_migration (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, backup_sha256 TEXT NOT NULL);
 `
 
 // ShelfVersion is the shelf file version this implementation writes and the

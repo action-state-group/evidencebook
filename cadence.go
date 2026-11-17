@@ -497,11 +497,16 @@ func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
 	if haveLast && now.Before(last.DueNext) {
 		return TickResult{DueNext: last.DueNext}, nil
 	}
-	// After the format switch every tick is a stamp (evidencebook#461).
-	if state, err := migrationState(ctx, s.db); err != nil {
+	// After the format switch every tick is a stamp (evidencebook#461);
+	// while a migration is under way no tick is cut, so no tree root ever
+	// follows the marker.
+	switch state, err := migrationState(ctx, s.db); {
+	case err != nil:
 		return TickResult{}, err
-	} else if state == migrationDone {
+	case state == migrationDone:
 		return c.stampLocked(ctx, now)
+	case state != "":
+		return TickResult{}, fmt.Errorf("%w: a migration is in progress; call Migrate", ErrInvalid)
 	}
 	n := uint64(1)
 	if haveLast {
@@ -738,6 +743,17 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	case check.State != WitnessVerified:
 		return check, nil
 	}
+	if tick.Leaves.Stamp != nil {
+		// A witnessed stamp is the tick's own state only: cadence_witnessed
+		// and the live set index the tree's ticks, which a cadence chain
+		// (Chain) proves a checkpoint by; a stamp's proof is the stamp proof
+		// (evidencebook#461).
+		_, err := s.db.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n)
+		if err != nil {
+			return WitnessCheck{}, err
+		}
+		return check, nil
+	}
 	ended := map[string]bool{}
 	for id := range tick.Leaves.Deals {
 		if ended[id], err = c.cfg.Ended(ctx, id); err != nil {
@@ -747,13 +763,6 @@ func (c *Cadence) Witnessed(ctx context.Context, n uint64, receipt WitnessReceip
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `UPDATE cadence_ticks SET witnessed = 1, receipt = COALESCE(receipt, ?) WHERE tick = ?`, string(encodedReceipt), n); err != nil {
 			return err
-		}
-		// cadence_witnessed and the live set index the tree's ticks, which a
-		// cadence chain (Chain) proves a checkpoint by; a stamp has no tree
-		// and its proof is the stamp proof (evidencebook#461), so a witnessed
-		// stamp is the tick's own state and touches neither.
-		if tick.Leaves.Stamp != nil {
-			return nil
 		}
 		for id, leaf := range tick.Leaves.Deals {
 			if _, err := tx.ExecContext(ctx,

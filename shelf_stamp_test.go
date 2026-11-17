@@ -284,3 +284,19 @@ func TestEachAudienceGetsExactlyItsOpenings(t *testing.T) {
 	_, err = shelf.Openings(ctx, last.fact.BookID, "stranger")
 	assert.ErrorIs(t, err, ErrInvalid)
 }
+
+func TestNoTickWhileAMigrationIsUnderWay(t *testing.T) {
+	ctx := context.Background()
+	f := newShelfFixture(t)
+	shelf := f.open(t)
+	c, _ := newStampCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	require.NoError(t, os.WriteFile(f.path+".v1.bak", []byte("not this shelf"), 0o600))
+	require.ErrorIs(t, c.Migrate(ctx, tickTime), ErrInvalid)
+	_, err := c.Tick(ctx, tickTime.Add(time.Hour))
+	require.ErrorIs(t, err, ErrInvalid, "no tree tick on a file whose migration started")
+	require.NoError(t, os.Remove(f.path+".v1.bak"))
+	require.NoError(t, c.Migrate(ctx, tickTime))
+	beat := mustTick(t, c, tickTime.Add(2*time.Hour))
+	assert.NotNil(t, beat.Leaves.Stamp)
+}

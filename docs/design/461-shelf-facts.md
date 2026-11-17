@@ -120,7 +120,7 @@ New tables, all in the same file:
   receipt `Witnessed` stores today.
 - `shelf_received`, `shelf_received_proofs`, `shelf_received_tombstones` and `shelf_evidence`: the
   store (section 3).
-- `shelf_migration (id = 1, state, backup_sha256, batch TEXT)`: the migration's progress (section 4).
+- `shelf_migration (id = 1, state, backup_sha256)`: the migration's progress (section 4); its batch is the migration's tick row, as a stamp's is.
 
 `cadence_ticks` and the tree tables are kept and no longer written after the marker.
 
