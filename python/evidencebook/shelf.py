@@ -58,7 +58,10 @@ SHELF_VERSION = 1
 #: of book facts (evidencebook#461); this build opens both.
 SHELF_VERSION_FACTS = 2
 
-_KIND_BOOK, _KIND_HOST = "book", "host"
+_KIND_BOOK, _KIND_HOST, _KIND_JOURNAL = "book", "host", "journal"
+
+#: The log id of the shelf's journal (evidencebook#461 §3).
+JOURNAL_LOG_ID = "journal"
 
 #: ``store_sqlite.go``'s schema, statement for statement.
 SCHEMA = """
@@ -102,7 +105,7 @@ CREATE TABLE IF NOT EXISTS book_checkpoints (
 	UNIQUE (book_id, checkpoint_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host')));
+CREATE TABLE IF NOT EXISTS shelf_logs (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('book', 'host', 'journal')));
 CREATE TABLE IF NOT EXISTS shelf_entries (
 	entry_seq      INTEGER PRIMARY KEY,
 	kind           TEXT    NOT NULL,
@@ -430,12 +433,14 @@ class SqliteStore:
     stored once (the same record again is a no-op, another under its id is
     corrupt), records list in seq order, checkpoints in the order kept, and
     every write is one transaction, durable when it returns. A record's
-    first row claims its id as a book (``shelf_logs``) and puts the book in
-    the cadence's live set in the same transaction."""
+    first row claims its id as ``kind`` (``shelf_logs``: a book's, or the
+    journal's, evidencebook#461 §3) and puts the book in the cadence's live
+    set in the same transaction."""
 
-    def __init__(self, shelf: Shelf, book_id: str):
+    def __init__(self, shelf: Shelf, book_id: str, kind: str = _KIND_BOOK):
         self._shelf = shelf
         self._book_id = book_id
+        self._kind = kind or _KIND_BOOK
 
     def _get(self, record_id: str) -> tuple[int, bytes] | None:
         with self._shelf._read() as db:
@@ -455,7 +460,7 @@ class SqliteStore:
                        "VALUES (?, ?, ?, ?, ?, ?)",
                        (self._book_id, record.seq, record.record_id, bytes(record.header), capsule,
                         bytes(record.envelope)))
-            _claim_kind(db, self._book_id, _KIND_BOOK)
+            _claim_kind(db, self._book_id, self._kind)
             _mark_live(db, self._book_id)
 
     def records(self) -> list[StoredRecord]:
@@ -509,6 +514,23 @@ def _claim_kind(db: sqlite3.Connection, log_id: str, kind: str) -> None:
     held = _kind_of(db, log_id)
     if held != kind:
         raise InvalidError(f"{log_id} is a {held} log, not a {kind} log")
+
+
+def _allow_journal_kind(db: sqlite3.Connection) -> None:
+    """Let ``shelf_logs`` hold the journal's kind in a file whose table was
+    created before it existed (evidencebook#461 §3; Go ``allowJournalKind``):
+    SQLite cannot change a CHECK, so the table is rebuilt with the same rows,
+    in the caller's transaction. A table that already allows it is left alone."""
+    create = db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shelf_logs'").fetchone()[0]
+    if "'journal'" in create:
+        return
+    for statement in (
+            "CREATE TABLE shelf_logs_journal (log_id TEXT PRIMARY KEY, kind TEXT NOT NULL "
+            "CHECK (kind IN ('book', 'host', 'journal')))",
+            "INSERT INTO shelf_logs_journal (log_id, kind) SELECT log_id, kind FROM shelf_logs",
+            "DROP TABLE shelf_logs",
+            "ALTER TABLE shelf_logs_journal RENAME TO shelf_logs"):
+        db.execute(statement)
 
 
 def _mark_live(db: sqlite3.Connection, log_id: str) -> None:
@@ -834,9 +856,46 @@ class Shelf:
 
     def open(self, log_id: str):
         """The book whose log id is ``log_id``, created on first use; the same
-        book for the shelf's lifetime. A host log's id is refused."""
+        book for the shelf's lifetime. A host log's id and the journal's are
+        refused."""
         with self._mu:
+            self._check_open()
+            with self._read() as db:
+                if _kind_of(db, log_id) == _KIND_JOURNAL:
+                    raise InvalidError(f"{log_id} is the shelf's journal; open it with journal()")
             return self._open_locked(log_id)
+
+    def journal(self):
+        """The shelf's journal (evidencebook#461 §3; Go ``Shelf.Journal``): a
+        book of kind journal, one per shelf, opened on first use, whose
+        records are full records. Its facts are journal facts: a whole-shelf
+        reader sees that it changed at a stamp, never its size, and its
+        openings go only to the owner and an auditor it appoints. It needs a
+        shelf of book facts (:meth:`Cadence.migrate`), and it refuses a shelf
+        on which a book or host log already has its log id."""
+        from . import shelf_stamp
+
+        with self._mu:
+            self._check_open()
+            book = self._books.get(JOURNAL_LOG_ID)
+            if book is not None:
+                # Opened before: as the journal, or as a book that holds its id.
+                with self._read() as db:
+                    if _kind_of(db, JOURNAL_LOG_ID) == _KIND_JOURNAL:
+                        return book
+                raise InvalidError(f"{JOURNAL_LOG_ID} is already a book, not the journal")
+            if shelf_stamp.migration_state(self) != shelf_stamp.MIGRATION_DONE:
+                raise InvalidError("the journal needs a shelf of book facts; call migrate")
+            if JOURNAL_LOG_ID in self._hosts:
+                raise InvalidError(f"{JOURNAL_LOG_ID} is a host log, not the journal")
+            with self._tx() as db:
+                records = _record_count(db, JOURNAL_LOG_ID)
+                kind = _kind_of(db, JOURNAL_LOG_ID)
+                if kind != _KIND_JOURNAL and (kind or records):
+                    raise InvalidError(f"{JOURNAL_LOG_ID} is already a {kind or _KIND_BOOK} log, not the journal")
+                _allow_journal_kind(db)
+                _claim_kind(db, JOURNAL_LOG_ID, _KIND_JOURNAL)
+            return self._open_locked(JOURNAL_LOG_ID)
 
     def _open_locked(self, log_id: str):
         from .book import Book
@@ -848,10 +907,11 @@ class Shelf:
             kind = _kind_of(db, log_id)
         if log_id in self._hosts or kind == _KIND_HOST:
             raise InvalidError(f"{log_id} is a host log, not a book")
+        store_kind = _KIND_JOURNAL if kind == _KIND_JOURNAL else _KIND_BOOK
         substrate = SqliteSubstrate.open(self._path, log_id, self._checkpoint_key)
         try:
             book = Book(log_id, self._operator, signer=self._signer, substrate=substrate,
-                        store=SqliteStore(self, log_id), originals=self._originals, developer=self._developer,
+                        store=SqliteStore(self, log_id, store_kind), originals=self._originals, developer=self._developer,
                         now=self._now, indexes=self._authenticated(log_id) if self._authenticated else None)
         except BaseException:
             substrate.close()
@@ -860,11 +920,15 @@ class Shelf:
         return book
 
     def books(self) -> list[str]:
-        """The ids of the books that hold records, in id order."""
+        """The ids of the books that hold records, in id order. The journal
+        is not among them: it counts toward no completeness and no tally
+        (evidencebook#461 §2.7)."""
         with self._mu:
             self._check_open()
             with self._read() as db:
-                return [row[0] for row in db.execute("SELECT DISTINCT book_id FROM book_records ORDER BY book_id")]
+                return [row[0] for row in db.execute(
+                    "SELECT DISTINCT book_id FROM book_records WHERE book_id NOT IN "
+                    "(SELECT log_id FROM shelf_logs WHERE kind = 'journal') ORDER BY book_id")]
 
     def records(self, *book_ids: str) -> ShelfRecords:
         """The committed records of the shelf's books (or of ``book_ids``),
@@ -943,7 +1007,10 @@ class Shelf:
         if self._cadence is not None and self._cadence.log_id == log_id:
             raise InvalidError(f"{log_id} is the cadence log")
         with self._read() as db:
-            if _kind_of(db, log_id) == _KIND_BOOK or _record_count(db, log_id):
+            kind = _kind_of(db, log_id)
+            if kind == _KIND_JOURNAL:
+                raise InvalidError(f"{log_id} is the shelf's journal, not a host log")
+            if kind == _KIND_BOOK or _record_count(db, log_id):
                 raise InvalidError(f"{log_id} is a book, not a host log")
         log = SqliteSubstrate.open(self._path, log_id, self._checkpoint_key, provision=provision)
         try:

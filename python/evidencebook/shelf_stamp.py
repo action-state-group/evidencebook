@@ -214,18 +214,27 @@ class _LastFact:
 
 def _last_fact_of(shelf: Any, log_id: str) -> _LastFact:
     with shelf._read() as db:
-        row = db.execute("SELECT doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? AND kind = ? "
-                         "ORDER BY entry_seq DESC LIMIT 1", (log_id, shelf_facts.FACT_KIND_BOOK)).fetchone()
+        row = db.execute("SELECT kind, doc, link_opening, status_opening FROM shelf_entries WHERE log_id = ? "
+                         "AND kind IN (?, ?) ORDER BY entry_seq DESC LIMIT 1",
+                         (log_id, shelf_facts.FACT_KIND_BOOK, shelf_facts.FACT_KIND_JOURNAL)).fetchone()
     if row is None:
         return _LastFact()
     try:
-        fact = json.loads(bytes(row[0]))
-        link, status = json.loads(bytes(row[1])), json.loads(bytes(row[2]))
+        fact = json.loads(bytes(row[1]))
+        link, status = json.loads(bytes(row[2])), json.loads(bytes(row[3]))
         if not isinstance(fact, dict) or not isinstance(link, dict) or not isinstance(status, dict):
             raise ValueError("not a JSON object")
-        return _LastFact(fact, link.get("value"), status.get("value"))
     except (ValueError, TypeError) as exc:
         raise CorruptError(f"a stored fact of {log_id}: {exc}") from None
+    if row[0] == shelf_facts.FACT_KIND_JOURNAL:
+        # The journal's true size and checkpoint are its status value's.
+        js = status.get("value")
+        try:
+            fact = {**fact, "size": int(js["size"]), "checkpoint_sha256": str(js["checkpoint_sha256"]),
+                    "prev_fact_size": int(js["prev_fact_size"])}
+        except (TypeError, KeyError, ValueError) as exc:
+            raise CorruptError(f"a stored journal fact: {exc}") from None
+    return _LastFact(fact, link.get("value"), status.get("value"))
 
 
 def _book_id_of(shelf: Any, log: Any) -> str:
@@ -260,6 +269,9 @@ class _PendingFact:
     status: Any
     statement: bytes | None
     grown: bool
+    # The journal's fact (§2.2): its size, checkpoint digest and previous
+    # size go inside its status commitment.
+    journal: bool = False
 
 
 _EMPTY_LINK = {"last_received": None, "checked_over": []}
@@ -269,13 +281,18 @@ def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None) -> _Pendin
     """What a log's fact would be now (§2.4); ``last`` is its previous fact,
     or ``None`` for a genesis fact."""
     shelf = c._shelf
-    book_id = _book_id_of(shelf, log)
+    from .shelf import _KIND_JOURNAL, JOURNAL_LOG_ID, _BookLog, _kind_of
+
+    journal = False
+    if isinstance(log, _BookLog) and log.log_id == JOURNAL_LOG_ID:
+        with shelf._read() as db:
+            journal = _kind_of(db, log.log_id) == _KIND_JOURNAL
+    book_id = hashlib.sha256(log.log_id.encode()).hexdigest() if journal else _book_id_of(shelf, log)
     profile, link, status = shelf_facts.PROFILE_NONE, None, None
     # Only a book is described by a profile; a host log's fact is always
-    # profile "none" with the empty link value and {} (§2.4, §4).
-    from .shelf import _BookLog
-
-    if isinstance(log, _BookLog) and c._cfg.status is not None:
+    # profile "none" with the empty link value and {} (§2.4, §4), and so is
+    # the journal's.
+    if isinstance(log, _BookLog) and not journal and c._cfg.status is not None:
         claimed = c._cfg.status(book_id, log.log_id)
         if claimed is not None:
             profile, link, status = claimed
@@ -290,7 +307,8 @@ def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None) -> _Pendin
         checkpoint_sha256 = hashlib.sha256(statement).hexdigest()
     else:
         checkpoint_sha256 = last.fact.get("checkpoint_sha256", "")
-    return _PendingFact(profile, book_id, log.log_id, size, checkpoint_sha256, prev, link, status, statement, grown)
+    return _PendingFact(profile, book_id, log.log_id, size, checkpoint_sha256, prev, link, status, statement, grown,
+                        journal)
 
 
 def _link_value(link: Any) -> dict:
@@ -320,6 +338,9 @@ def _changed(f: _PendingFact, last: _LastFact) -> bool:
     or a committed value differs. Values are compared, never commitments."""
     if not last.found or f.grown:
         return True
+    if f.journal:
+        # The journal's values follow its size: unchanged unless it grew.
+        return False
     return (_jcs(_link_value(f.link)) != _jcs(last.link)) or (_jcs(_status_value(f.status)) != _jcs(last.status))
 
 
@@ -342,14 +363,18 @@ def _build_stamp_locked(c: Any, n: int, at: datetime, now: datetime, facts: list
         # Go validates before it draws; so does this, so a refusal draws nothing.
         _check_fact_input(f)
         salts = (random.bytes(32), random.bytes(32))
+        kind = shelf_facts.FACT_KIND_JOURNAL if f.journal else shelf_facts.FACT_KIND_BOOK
         try:
-            fact = shelf_facts.book_fact(profile=f.profile, book_id=f.book_id, log_id=f.log_id, size=f.size,
-                                         checkpoint_sha256=f.checkpoint_sha256, prev_fact_size=f.prev_fact_size,
-                                         last_received=link["last_received"], checked_over=link["checked_over"],
-                                         status=status, salts=salts)
+            if f.journal:
+                fact = shelf_facts.journal_fact(f.log_id, f.size, f.checkpoint_sha256, f.prev_fact_size, salts)
+            else:
+                fact = shelf_facts.book_fact(profile=f.profile, book_id=f.book_id, log_id=f.log_id, size=f.size,
+                                             checkpoint_sha256=f.checkpoint_sha256, prev_fact_size=f.prev_fact_size,
+                                             last_received=link["last_received"], checked_over=link["checked_over"],
+                                             status=status, salts=salts)
         except shelf_facts.Invalid as exc:
             raise _invalid(exc) from None
-        entries.append(_cadence.BatchEntry(shelf_facts.FACT_KIND_BOOK, _jcs(fact.doc), fact.doc["book_id"],
+        entries.append(_cadence.BatchEntry(kind, _jcs(fact.doc), fact.doc["book_id"],
                                            fact.doc["log_id"], _opening_json(fact.link_opening),
                                            _opening_json(fact.status_opening)))
         statement = ""

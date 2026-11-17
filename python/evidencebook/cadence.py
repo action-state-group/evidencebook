@@ -926,11 +926,12 @@ class Cadence:
 
     def _extents_locked(self, n: int) -> dict[str, int]:
         """Per log, the largest MMR size any finished tick up to ``n`` carries,
-        as a record count."""
+        as a record count. The journal has no extent (evidencebook#461 §2.7)."""
         with self._shelf._read() as db:
             rows = db.execute(
                 "SELECT j.key, MAX(json_extract(j.value, '$.size')) FROM cadence_ticks AS t, "
-                "json_each(t.leaves, '$.deals') AS j WHERE t.tick <= ? AND t.checkpoint_size > 0 GROUP BY j.key",
+                "json_each(t.leaves, '$.deals') AS j WHERE t.tick <= ? AND t.checkpoint_size > 0 "
+                "AND j.key NOT IN (SELECT log_id FROM shelf_logs WHERE kind = 'journal') GROUP BY j.key",
                 (n,)).fetchall()
         extents = {}
         for log_id, size in rows:

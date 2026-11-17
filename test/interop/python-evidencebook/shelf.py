@@ -52,7 +52,7 @@ from evidencebook._gojson import go_json_indent
 from evidencebook._random import deterministic_stream
 from evidencebook.cadence import CadenceConfig, WitnessReceipt, WITNESS_VERIFIED
 from evidencebook.errors import NotFoundError
-from evidencebook.shelf import SHELF_VERSION_FACTS, Shelf
+from evidencebook.shelf import JOURNAL_LOG_ID, SHELF_VERSION_FACTS, Shelf
 from evidencebook.shelf_handover import Handover, verify_handover
 from evidencebook.signer import Ed25519Signer
 
@@ -120,7 +120,8 @@ class Env:
             self.db.close()
 
     def append(self, book: str, entry: Entry) -> None:
-        self.shelf.open(book).append(entry)
+        # Book "journal" is the shelf's journal (Shelf.journal).
+        (self.shelf.journal() if book == JOURNAL_LOG_ID else self.shelf.open(book)).append(entry)
 
     def host_append(self, n: int) -> None:
         value = hashlib.sha256(HOST_LOG.encode() + bytes([n])).digest()
