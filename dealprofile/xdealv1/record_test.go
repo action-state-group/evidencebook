@@ -40,6 +40,7 @@ func offerBody() *ProposeBody {
 			Named: map[string]Named{"paid": {Side: RoleBuyer, Latest: "2026-11-04T23:59:59Z"}},
 		},
 		Adjudicator: Some(Adjudicator{KeyID: "adjudicator-key", RulesDigest: hx('b'), RulesURL: "https://rules.test/r"}),
+		Forums:      []string{ForumAutoRef},
 		Witnesses:   []Witness{{KeyID: hx('4'), URL: "https://witness.test"}},
 	}
 }
@@ -68,6 +69,7 @@ func acceptorAgreement(offer Record) Record {
 		Kind: KindAgreement, Offer: RefTo(d), RowsDigest: rows, Side: SideAcceptor, Role: RoleSeller,
 		Admit: ref('e'), Witnesses: []Witness{{KeyID: hx('4'), URL: "https://witness.test"}},
 		Adjudicator:       Some(Adjudicator{KeyID: "adjudicator-key", RulesDigest: hx('b'), RulesURL: "https://rules.test/r"}),
+		Forums:            []string{ForumAutoRef},
 		CounterpartyLayer: &layer, CounterpartyKey: Some("buyer-key"), CheckpointKey: "seller-checkpoint", ShelfLogID: "seller-shelf",
 	})
 }

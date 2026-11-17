@@ -156,20 +156,23 @@ type AskAddress struct {
 // ProposeBody is a propose record's body: an offer or a counter-offer
 // (§3.3). To and Adjudicator are REQUIRED and may be null.
 type ProposeBody struct {
-	Role          string            `json:"role"`
-	To            Null[string]      `json:"to"`
-	CounterTo     *Ref              `json:"counter_to,omitzero"`
-	Terms         Terms             `json:"terms"`
-	PackDigest    string            `json:"pack_digest"`
-	PackURL       string            `json:"pack_url,omitzero"`
-	StatedAt      string            `json:"stated_at"`
-	AgreeBy       string            `json:"agree_by"`
-	TermsRows     TermsRows         `json:"terms_rows"`
-	Adjudicator   Null[Adjudicator] `json:"adjudicator"`
-	Witnesses     []Witness         `json:"witnesses"`
-	Ask           *AskAddress       `json:"ask,omitzero"`
-	Profiles      []string          `json:"profiles,omitzero"`
-	ListingDigest string            `json:"listing_digest,omitzero"`
+	Role        string            `json:"role"`
+	To          Null[string]      `json:"to"`
+	CounterTo   *Ref              `json:"counter_to,omitzero"`
+	Terms       Terms             `json:"terms"`
+	PackDigest  string            `json:"pack_digest"`
+	PackURL     string            `json:"pack_url,omitzero"`
+	StatedAt    string            `json:"stated_at"`
+	AgreeBy     string            `json:"agree_by"`
+	TermsRows   TermsRows         `json:"terms_rows"`
+	Adjudicator Null[Adjudicator] `json:"adjudicator"`
+	// Forums are the forums both sides accept for a dispute: the recourse
+	// clause (#404). Empty exactly when Adjudicator is null.
+	Forums        []string    `json:"forums"`
+	Witnesses     []Witness   `json:"witnesses"`
+	Ask           *AskAddress `json:"ask,omitzero"`
+	Profiles      []string    `json:"profiles,omitzero"`
+	ListingDigest string      `json:"listing_digest,omitzero"`
 }
 
 // AgreeBody is an agree record's body: an agreement, a decline or a
@@ -180,17 +183,22 @@ type AgreeBody struct {
 	Kind  string `json:"kind"`
 	Offer Ref    `json:"offer"`
 	// The agreement's members.
-	RowsDigest        string            `json:"rows_digest,omitzero"`
-	Side              string            `json:"side,omitzero"`
-	Role              string            `json:"role,omitzero"`
-	Admit             *Ref              `json:"admit,omitzero"`
-	Intent            *Ref              `json:"intent,omitzero"`
-	Witnesses         []Witness         `json:"witnesses,omitzero"`
-	Adjudicator       Null[Adjudicator] `json:"adjudicator,omitzero"`
-	CounterpartyLayer *bool             `json:"counterparty_layer,omitzero"`
-	CounterpartyKey   Null[string]      `json:"counterparty_key,omitzero"`
-	CheckpointKey     string            `json:"checkpoint_key,omitzero"`
-	ShelfLogID        string            `json:"shelf_log_id,omitzero"`
+	RowsDigest  string            `json:"rows_digest,omitzero"`
+	Side        string            `json:"side,omitzero"`
+	Role        string            `json:"role,omitzero"`
+	Admit       *Ref              `json:"admit,omitzero"`
+	Intent      *Ref              `json:"intent,omitzero"`
+	Witnesses   []Witness         `json:"witnesses,omitzero"`
+	Adjudicator Null[Adjudicator] `json:"adjudicator,omitzero"`
+	// Forums are the agreement's recourse clause, the offer's. An agreement
+	// always carries the member: with a null adjudicator set it to an empty,
+	// non-nil slice, since a nil one is left out (omitzero, as decline and
+	// cancellation carry no forums).
+	Forums            []string     `json:"forums,omitzero"`
+	CounterpartyLayer *bool        `json:"counterparty_layer,omitzero"`
+	CounterpartyKey   Null[string] `json:"counterparty_key,omitzero"`
+	CheckpointKey     string       `json:"checkpoint_key,omitzero"`
+	ShelfLogID        string       `json:"shelf_log_id,omitzero"`
 	// A decline's or a cancellation's.
 	Reason           string `json:"reason,omitzero"`
 	ReasonCommitment string `json:"reason_commitment,omitzero"`

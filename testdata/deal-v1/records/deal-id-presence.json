@@ -105,7 +105,7 @@
           "offer": {
             "type": "deal-record",
             "digest_alg": "SHA-256",
-            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb"
+            "digest": "818570cd54a13e5daa08b59b73c46e893c759a0345291c12d78071a2c54234f4"
           },
           "rows_digest": "726379c6fb72dd74af34d73ef8bde99523a5d1dad4954063accb9fb37c0ad2a7",
           "side": "acceptor",
@@ -126,6 +126,9 @@
             "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "rules_url": "https://rules.test/r"
           },
+          "forums": [
+            "auto:ref"
+          ],
           "counterparty_layer": true,
           "counterparty_key": "buyer-key",
           "checkpoint_key": "seller-checkpoint",
@@ -151,9 +154,12 @@
           "checkpoint_key": "seller-checkpoint",
           "counterparty_key": "buyer-key",
           "counterparty_layer": true,
+          "forums": [
+            "auto:ref"
+          ],
           "kind": "agreement",
           "offer": {
-            "digest": "34ccee7f6e7594cf5c9cff14ac3e6774a3b5a52d9ff2a2236440c5c6b3280dbb",
+            "digest": "818570cd54a13e5daa08b59b73c46e893c759a0345291c12d78071a2c54234f4",
             "digest_alg": "SHA-256",
             "type": "deal-record"
           },
@@ -1225,6 +1231,9 @@
             "rules_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "rules_url": "https://rules.test/r"
           },
+          "forums": [
+            "auto:ref"
+          ],
           "witnesses": [
             {
               "key_id": "4444444444444444444444444444444444444444444444444444444444444444",
@@ -1245,6 +1254,9 @@
             "rules_url": "https://rules.test/r"
           },
           "agree_by": "2026-11-02T10:00:00Z",
+          "forums": [
+            "auto:ref"
+          ],
           "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "role": "buyer",
           "stated_at": "2026-11-01T10:00:00Z",
