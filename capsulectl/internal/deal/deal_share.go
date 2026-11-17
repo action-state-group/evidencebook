@@ -988,6 +988,10 @@ func (s *dealSession) dealWithholdRecords(events []sealedEvent, audience string,
 		if !dealRecordShareable(record, "", audience, p) {
 			withhold[se.CapsuleID] = true
 		}
+		// TEMPORARY (evidencebook#462): the holder's own note is in no shared copy.
+		if se.Event.Kind == "outcome_note" {
+			withhold[se.CapsuleID] = true
+		}
 		// The holder's own choice (evidencebook-deal#191): a rules verdict is in
 		// a counterparty copy only when its share policy says so, and in no
 		// other shared copy.
@@ -1204,6 +1208,9 @@ func dealShareExtension(events []sealedEvent, report dealReport, audience string
 			line = "You said again what you asked, unchanged (your words withheld)"
 		}
 		kind := dealShareKind(se.Event.Kind)
+		if se.Event.Kind == "outcome_note" {
+			kind, line = dealSharePrivateKind, "A record kept for the user only (withheld)"
+		}
 		if se.Event.Kind == "rules_verdict" {
 			// The holder's own choice: carried, it says whose rules it is; withheld,
 			// the copy does not even say what the record is.

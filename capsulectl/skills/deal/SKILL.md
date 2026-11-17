@@ -435,6 +435,16 @@ standard-history declare`) shares none. When it is not shared the copy withholds
 of what it is (listed, contents withheld); the other side's receipt has no verdict to read and says "not shared". The pack is named by its digest alone, never by a name. It is never on a History
 card. Say it as "their own check (their rules)", never as the deal's result.
 
+### TEMPORARY: a finished deal that did not hold
+
+Until the target design's computed row status (evidencebook#461) replaces it, the holder can note that a
+finished deal did not hold with `deal outcome-note seal --deal ID --reason dispute_lost|settled_against|not_delivered|other`
+(after the final close; a deal takes one; evidencebook#462). It is the holder's own sealed note, never a
+counterparty's record, and it is in no shared copy. Each reason is your own failure
+(`not_delivered` means you did not deliver): a buyer whose seller failed does not write it, because the card
+counts it on the writer's own card. The reason is your own statement, never checked against any ruling. The History card then counts the deal `did_not_hold`;
+a deal without a note counts as before (a failed reconcile stays `undecided`).
+
 ### Cancellation (proving "I cancelled")
 
 A cancel only counts as evidence when it is sealed, and it only counts as the

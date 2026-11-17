@@ -1094,6 +1094,15 @@ func buildDealRecord(ev dealEvent, events []sealedEvent, key []byte) (map[string
 		if sn.NoProposal {
 			body["no_proposal"] = true
 		}
+	case "outcome_note":
+		// TEMPORARY (evidencebook#462): the holder's own note that the deal did not
+		// hold, sealed once after the final close, which it confirms.
+		rtype = "outcome_note"
+		if ev.Confirms == "" {
+			return nil, cli.InputError("an outcome note is sealed after the deal's final close")
+		}
+		block["refs"] = []interface{}{relRef("confirms", digestOf(ev.Confirms))}
+		body["outcome"], body["reason"] = "did_not_hold", ev.OutcomeNote.Reason
 	case "rules_verdict":
 		// The party's own overall rules word, sealed once after the final
 		// close, which it confirms as late evidence does.
