@@ -34,7 +34,7 @@ PARTIES = {
         "Your one tool, ard_seller_activity, shows what you did: the evidence requests you answered, any deal asked of you "
         "and how it went, the sale and payment, and your History card. Call it when the user asks what happened on your side, "
         "then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
-        "prompt": "Show me what your agent has done so far.",
+        "prompt": "Reply in English only. Show me what your agent has done so far.",
     },
     "kestrel": {
         "title": "Kestrel Print (seller)",
@@ -42,7 +42,7 @@ PARTIES = {
         "Your one tool, ard_seller_activity, shows what you did: the evidence requests you answered, any deal asked of you "
         "and how it went, and your History card. Call it when the user asks what happened on your side, "
         "then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
-        "prompt": "Show me what your agent has done so far.",
+        "prompt": "Reply in English only. Show me what your agent has done so far.",
     },
     "maya": {
         "title": "Maya buys conference badges (buyer)",
@@ -52,7 +52,7 @@ PARTIES = {
         "plain sentences what it showed. Do not repeat the tool's output: the audience reads it in the tool call. "
         "Never call ard_pay unless Maya has just told you to pay, and only for the seller she named. "
         "If a tool answers REFUSED, say so in one sentence and do not retry it.",
-        "prompt": "I am Maya. I need 200 conference badges by Friday, under 300 msat. Find sellers for me.",
+        "prompt": "Reply in English only. I am Maya. I need 200 conference badges by Friday, under 300 msat. Find sellers for me.",
     },
 }
 
