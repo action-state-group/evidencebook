@@ -66,6 +66,8 @@ func run(args []string) error {
 		return shelfscript.PlantTick(ctx, dir)
 	case "plant-migration":
 		return shelfscript.PlantMigration(ctx, dir, 2)
+	case "plant-migration-checkpointed":
+		return shelfscript.PlantMigrationCheckpointed(ctx, dir)
 	case "dump":
 		out, err := shelfscript.Dump(ctx, dir)
 		if err != nil {

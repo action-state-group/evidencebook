@@ -364,3 +364,54 @@ func TestMigrateReusesABackupItRecorded(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, migrated)
 }
+
+// A crash after part of a long batch is indexed and before its checkpoint:
+// the next CheckpointWhole indexes the rest and cuts one checkpoint.
+func TestCheckpointWholeAfterAPartialIndex(t *testing.T) {
+	ctx := context.Background()
+	log, err := openCLLSQLite(filepath.Join(t.TempDir(), "log.db"), "deal-cadence/0123456789abcdef", seededKey(11), []string{"https://witness.example"})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = log.Release() })
+	for i := 0; i < 2500; i++ {
+		_, err := log.Append(ctx, fmt.Sprintf("%064x", i+1), tickTime)
+		require.NoError(t, err)
+	}
+	changed, err := log.indexer.RunOnce(ctx, tickTime) // one scan, then the crash
+	require.NoError(t, err)
+	require.True(t, changed)
+	cp, err := log.CheckpointWhole(ctx, tickTime)
+	require.NoError(t, err)
+	assert.Equal(t, mmrSize(2500), cp.TreeSize)
+	pending, err := log.log.(interface {
+		PendingWitnesses(context.Context, time.Time, int) ([]cll.WitnessState, error)
+	}).PendingWitnesses(ctx, tickTime.Add(time.Hour), 1)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, cp.TreeSize, pending[0].CheckpointSize)
+}
+
+// A crash after a stamp's checkpoint is cut and before its row records it:
+// recovery records the checkpoint already cut, with no new one.
+func TestAStampCheckpointedButNotRecordedKeepsItsCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	c, _ := newStampCadence(t, shelf)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	require.NoError(t, c.Migrate(ctx, tickTime))
+	last, ok, err := c.Last(ctx)
+	require.NoError(t, err)
+	require.True(t, ok)
+	_, err = shelf.db.Exec(`UPDATE cadence_ticks SET entry_seq = 0, checkpoint_size = 0, checkpoint = x'' WHERE tick = ?`, last.N)
+	require.NoError(t, err)
+	_, err = shelf.db.Exec(`UPDATE shelf_migration SET state = ? WHERE id = 1`, migrationMigrating)
+	require.NoError(t, err)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Hour)))
+	again, err := c.Get(ctx, last.N)
+	require.NoError(t, err)
+	assert.Equal(t, last.Checkpoint, again.Checkpoint, "the checkpoint already cut")
+	assert.Equal(t, last.CheckpointSize, again.CheckpointSize)
+	assert.Equal(t, last.EntrySeq, again.EntrySeq)
+	latest, err := c.log.Latest(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, last.Checkpoint, latest.Statement, "no checkpoint after it")
+}

@@ -219,3 +219,61 @@ func copyFile(from, to string) error {
 	}
 	return out.Close()
 }
+
+// PlantMigrationCheckpointed leaves the shelf as a crash after Migrate's
+// stamp is checkpointed and before its tick row records the checkpoint and
+// the state becomes done: every entry appended, the checkpoint cut and queued
+// for the witness, the row and the state not yet updated. Recovering it must
+// record the checkpoint already cut, not cut or queue another.
+func PlantMigrationCheckpointed(ctx context.Context, dir string) error {
+	path := filepath.Join(dir, FileName)
+	scratch, err := os.MkdirTemp(dir, "plant-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(scratch)
+	copyPath := filepath.Join(scratch, FileName)
+	original, err := openDB(path)
+	if err != nil {
+		return err
+	}
+	_, err = original.ExecContext(ctx, `VACUUM INTO ?`, copyPath)
+	if err := errors.Join(err, original.Close()); err != nil {
+		return err
+	}
+	c, err := open(ctx, copyPath, plantStream, Start.Add(plantAt*time.Second))
+	if err != nil {
+		return err
+	}
+	if err := c.cadence.Migrate(ctx, c.clock.Now()); err != nil {
+		return errors.Join(err, c.release())
+	}
+	if err := c.release(); err != nil {
+		return err
+	}
+	copied, err := openDB(copyPath)
+	if err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`UPDATE cadence_ticks SET entry_seq = 0, checkpoint_size = 0, checkpoint = x'' WHERE tick = (SELECT MAX(tick) FROM cadence_ticks)`,
+		`UPDATE shelf_migration SET state = 'migrating' WHERE id = 1`,
+		`PRAGMA wal_checkpoint(TRUNCATE)`,
+	} {
+		if _, err := copied.ExecContext(ctx, statement); err != nil {
+			return errors.Join(err, copied.Close())
+		}
+	}
+	if err := copied.Close(); err != nil {
+		return err
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if err := copyFile(copyPath+".v1.bak", path+".v1.bak"); err != nil {
+		return err
+	}
+	return os.Rename(copyPath, path)
+}

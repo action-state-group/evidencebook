@@ -47,6 +47,23 @@ func TestShelfVectors(t *testing.T) {
 		require.NoError(t, err)
 		files[name] = got
 	}
+	// A crash after the migration's checkpoint is cut and before its row and
+	// state record it recovers to the same shelf: the checkpoint already cut
+	// is recorded, none is cut or queued again.
+	dir2 := t.TempDir()
+	require.NoError(t, Write(ctx, dir2))
+	require.NoError(t, Continue(ctx, dir2))
+	require.NoError(t, PlantMigrationCheckpointed(ctx, dir2))
+	require.NoError(t, Recover(ctx, dir2))
+	got, err := Dump(ctx, dir2)
+	require.NoError(t, err)
+	if os.Getenv("EB_WRITE_SHELF_VECTORS") != "1" {
+		want, err := os.ReadFile(filepath.Join(vectorDir, "after-recover-migration.json"))
+		require.NoError(t, err)
+		if !bytes.Equal(got, want) {
+			t.Error("a migration checkpointed before the crash recovers to after-recover-migration.json")
+		}
+	}
 	for name, got := range files {
 		path := filepath.Join(vectorDir, name)
 		if os.Getenv("EB_WRITE_SHELF_VECTORS") == "1" {
