@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The seller's own receipt lists each claim their agent made to the buyer with no authority (sealed unchecked, `deal_representations.go`) in its anomalies, agent side: "Your agent said this without your authority: “<words>” (<why>)", with the reason for each of the eight rules in plain words ("you hadn't approved it", "your approval had expired", …). Shared copies carry no such item (evidencebook-deal#200, capsule-cli#333).
+
 - Wording: a seller's offer card has its own words: the button reads "Send offer" ("Send offer anyway" when a limit is broken) and the question reads "Send {buyer} an offer of {amount}?", instead of the raw id "proceed" and "Go ahead with {buyer}?". A test fails if any card button shows its option id. Per Sherlock2's ruling (evidencebook-deal#198, capsule-cli#368).
 
 - Wording: the saved-receipt line says the receipt holds "what you asked, what was checked and what I did" (`say.receipt.saved`), and the first receipt's keep lines (`say.receipt.first.keep`, `.sold`) end "to check I did only what you asked", so no line claims a yes that was never sealed. Per Sherlock2's ruling and review (evidencebook-deal#196, capsule-cli#365).
