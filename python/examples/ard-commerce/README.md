@@ -76,32 +76,36 @@ note, not confirmed by the buyer or a ruling.
 
 ## In Goose Desktop
 
-The same story, run by the buyer's Goose in Goose Desktop instead of the script and the popup.
-`desktop_server.py` is a Goose extension (an MCP server over stdio) that drives the same `demo.Run`
-and returns the text the script prints:
+The same story, run by each party's own Goose in three Goose Desktop windows side by side: Maya (the
+buyer), Alder and Kestrel (the sellers). Each window is a recipe with its own embedded extension,
+`desktop_server.py` with `ARD_ROLE` set, so each party has its own process, keys and book (its own
+directory under the demo home) and sees only its own records. They meet only through the *stage*
+(`stage.py`: one private relay and the ARD catalogue on localhost, started by the first window that needs
+it) and a wire directory where the parties leave deal halves for each other; the sellers' agents answer
+Maya's evidence requests and deal halves on their own, as the sellers do in the script demo.
 
-| Tool | Step |
-|---|---|
-| `ard_find_sellers` | Maya's ask and ARD discovery |
-| `ard_show_history` | each seller's signed answers, checked, and the History cards |
-| `ard_assess` | the assessment under the pack, then with the rule tightened (`max_adverse_permille`, default 50) |
-| `ard_pick` | seals the pick; a seller over its limit ends here: no deal opens, nothing is paid |
-| `ard_pay` | opens the deal and pays on the rail (`ARD_RAIL=lightning` moves 289 msat); the one tool that moves money |
+| Window | Tools | What it shows |
+|---|---|---|
+| Maya | `ard_find_sellers`, `ard_show_history`, `ard_assess`, `ard_pick`, `ard_pay` | the steps of the script demo; `ard_pay` is the one tool that moves money |
+| Alder, Kestrel | `ard_seller_activity` | what that seller's agent did: requests answered, any deal, the sale and payment it receives, its card now |
 
-Set up (once): seed the home as above, then in Goose Desktop open Extensions, Add custom extension
-(type STDIO) with the command below. Goose Desktop keeps environment values of a custom extension as
-secrets it does not pass to the server, so put them in the command:
+Set up (once): seed the demo home as above, then
 
-```text
-/usr/bin/env CAPSULE_ENGINE=<engine> ARD_SKILLS=<skills checkout> ARD_RAIL=fake CAPSULE_WITNESS=off <python/.venv/bin/python> <this directory>/desktop_server.py
+```bash
+export CAPSULE_ENGINE=... ARD_SKILLS=...
+python/.venv/bin/python python/examples/ard-commerce/goose/open-windows.py --rail fake   # or lightning
 ```
 
-Use `ARD_RAIL=lightning` for the real payment (needs `gcloud`, as for the script). Import
-`goose/maya-buyer.recipe.yaml` (Recipes, Import Recipe) for the buyer's instructions, and turn
-Settings, Chat, Show Thinking off. One Goose chat at a time: a second chat's server refuses to start
-on the same home. A Claude-backed Goose provider reads the account's own instructions, so ask it for
-English in the first message if those say otherwise. The script demo above is unchanged and is the
-fallback.
+It opens one `goose://recipe?config=…` link per party (sellers first); Goose Desktop asks once per recipe,
+Trust and Execute. Tile the windows with Window, Move & Resize. Keep the global (Settings) copy of any
+`ard_demo` extension off. `ARD_ROLE=all` (the default of `desktop_server.py`) runs the whole story in one
+process and one window, with Maya's five tools.
+
+Things to know. Goose Desktop keeps environment values of a custom extension as secrets it does not pass
+to the server, so the recipes put them in the command (`/usr/bin/env`). One Goose chat per party and home:
+a second chat's server refuses to start. A Claude-backed provider (Claude Code ACP) reads the account's own
+instructions (language, tools, other sessions); ask it for English in the first message, or use a clean
+provider. The script demo above is unchanged and is the fallback.
 
 ## What differs from the design note
 
