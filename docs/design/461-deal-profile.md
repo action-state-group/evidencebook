@@ -44,12 +44,12 @@ These are not reopened here.
 6. **The ten record types and the mapping table of design §7**, with what is sealed in the
    journal and what in the deal book.
 7. **The seen field.** Its value is the library's `Shelf.CountedPrefix(senderKey, logID).Last`
-   (`shelf_receive.go:1110-1139`; #461 comment 6949048721). The profile decides which records
+   (`shelf_receive.go:1121-1136`; #461 comment 6949048721). The profile decides which records
    carry it.
 8. **The row status function exists** (`rowstatus/rowstatus.go`, #466). The profile supplies its
    inputs and does not redefine it.
 9. **Library layering.** The library knows no profile record format. `ReceiveProfile`
-   (`shelf_receive.go:47-75`) and `StatusProvider` (`shelf_stamp.go:44-46`) are the profile's
+   (`shelf_receive.go:47-70`) and `StatusProvider` (`shelf_stamp.go:44-46`) are the profile's
    hooks, and this profile implements them.
 10. **No release.** Merges in this repository also wait until the demo release batch is tagged
     (#461 comment 6938214546).
@@ -177,7 +177,7 @@ cited records use the same construction. This is v0's rule carried over (`PROFIL
 **Record id and record digest.** Two digests name a record and must not be confused. The
 **record digest** is the digest of the x-deal-v1 payload above, which `prev`, `agreement_ref`,
 `refs` and an agreement's `offer` cite. The **record id** is the Capsule id of the sealed book
-record (`record.go:184-187`). The store keys received records by record id
+record (`record.go:183-187`). The store keys received records by record id
 (`ReceivedRecord.Digest`, `shelf_receive.go:77-82`), so `seen` holds a record id.
 
 **Sealing a deal-book record (Decided in shape, by v0).** A deal-book record is appended to the
@@ -481,7 +481,7 @@ buyer. The losing buyer's copy is the decline.
 `x-deal-v1/sent/<record digest>`, `Position` 1, `Prev` "", `DealID` the offer's deal id, and
 `Offer` false. `Admit` takes a decline only from the key our offer was sent `to`, and a
 cancellation only from the signer of the offer it cites, which is the library's rule for "the reply
-to our own offer, before our deal book exists" (`shelf_receive.go:58-63`). The store keeps it in
+to our own offer, before our deal book exists" (`shelf_receive.go:51-56`). The store keeps it in
 `shelf_received` as received. It is not appended to any book, and no deal book is opened for it:
 for a declined offer, none exists on either side. The offerer's own journal holds nothing new. An
 acceptor that had already agreed and then receives a cancellation also keeps it in its store, and
@@ -1025,7 +1025,7 @@ holder chooses. A stamp proof never carries a link opening (`shelf_stamp_proof.g
 
 ### 8.3 ReceiveProfile
 
-`xdealv1.ReceiveProfile` implements the four methods of `shelf_receive.go:47-75`:
+`xdealv1.ReceiveProfile` implements the four methods of `shelf_receive.go:47-70`:
 
 - **`Read`** takes either a deal-book record (the bundle record form: Capsule, signature and key
   id, with its payload) or a sent journal record (the standalone Capsule of 3.1). It verifies the
@@ -1159,7 +1159,7 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
     whether that time came from a named witness.
 - `rests_on` says what the whole report rests on: the holder's book at the `deal_checkpoint` it is
   made at, and the counterparty's counted prefix it used (`CountedPrefix`,
-  `shelf_receive.go:1110-1139`), including a fork's position.
+  `shelf_receive.go:1121-1136`), including a fork's position.
 - **`settled`** (review round 1). It is true when all of these hold at `as_of`: the deal has
   started (`start.state` is `started`); and every row that is not `not_reached` is `agreed`,
   `uncontested`, or `ruled` with remedy `none` (the final ruling ordered nothing) or `made`. A
