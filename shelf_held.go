@@ -23,11 +23,26 @@ import (
 // refuse a sender whose log forks at its genesis before it filters by
 // anything else. It takes no lock.
 func (s *Shelf) HeldFirst(ctx context.Context, logID string) ([]HeldRecord, error) {
+	return s.held(ctx, `log_id = ? AND position = 1 ORDER BY sender_key, digest`, logID)
+}
+
+// HeldByDeal is every received record held for the deal dealID, the deal
+// id its profile's Read gave it: across senders and logs, forks included,
+// ordered by sender key, log id, position and digest. A profile reading a
+// deal's received books at a stamp reads them here, and the counted prefix
+// of each with CountedPrefix. It takes no lock.
+func (s *Shelf) HeldByDeal(ctx context.Context, dealID string) ([]HeldRecord, error) {
+	return s.held(ctx, `deal_id = ? ORDER BY sender_key, log_id, position, digest`, dealID)
+}
+
+// held reads the received records the condition where selects; where is one
+// of the constant clauses above, never input.
+func (s *Shelf) held(ctx context.Context, where string, arg string) ([]HeldRecord, error) {
 	if err := s.live(); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT digest, sender_key, log_id, position, prev, deal_id, offer, record, received_at FROM shelf_received WHERE log_id = ? AND position = 1 ORDER BY sender_key, digest`, logID)
+		`SELECT digest, sender_key, log_id, position, prev, deal_id, offer, record, received_at FROM shelf_received WHERE `+where, arg)
 	if err != nil {
 		return nil, err
 	}

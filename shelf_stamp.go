@@ -448,7 +448,7 @@ func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time
 			p, l, st, ok, err = c.cfg.Status.Values(ctx, bookID, log.LogID())
 		}
 		if err != nil {
-			return pendingFact{}, err
+			return pendingFact{}, &statusError{err}
 		}
 		if ok {
 			profile, link, status = p, l, st
@@ -624,6 +624,7 @@ func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, e
 		return TickResult{}, err
 	}
 	var facts []pendingFact
+	var unstated map[string]string
 	for _, id := range logs {
 		log, err := s.cadenceLogLocked(ctx, id)
 		if err != nil {
@@ -639,6 +640,14 @@ func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, e
 			return TickResult{}, err
 		}
 		f, err := c.factFor(ctx, n, log, at, &prev)
+		var se *statusError
+		if errors.As(err, &se) {
+			if unstated == nil {
+				unstated = map[string]string{}
+			}
+			unstated[id] = se.err.Error()
+			continue
+		}
 		if err != nil {
 			return TickResult{}, err
 		}
@@ -662,8 +671,17 @@ func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, e
 		tick.N, tick.At.Format(time.RFC3339), tick.DueNext.Format(time.RFC3339), string(encoded)); err != nil {
 		return TickResult{}, err
 	}
-	return c.finishStampLocked(ctx, tick)
+	res, err := c.finishStampLocked(ctx, tick)
+	res.Unstated = unstated
+	return res, err
 }
+
+// statusError is a status provider's error for one book: a stamp keeps that
+// book's last fact rather than fail (TickResult.Unstated).
+type statusError struct{ err error }
+
+func (e *statusError) Error() string { return "status values: " + e.err.Error() }
+func (e *statusError) Unwrap() error { return e.err }
 
 // finishStampLocked appends the batch's entries not yet in the cadence log,
 // in order, records each in shelf_entries, then cuts the checkpoint and

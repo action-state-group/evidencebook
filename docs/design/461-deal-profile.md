@@ -1120,9 +1120,14 @@ Forms §6.1). Section 9, PR 1, and Q8.
 
 ### 8.1 StatusProvider: the status value
 
-`xdealv1.StatusProvider.Values(ctx, book_id, log_id)` returns `("x-deal-v1", link, status, true,
-nil)` for a v1 deal book, and `ok` false for every other book (2.4). It reads only through calls
-that take no lock (`CountedPrefix`, `ReceivedRecordOf`, `RecordTime`; `shelf_receive.go:38-41`).
+`xdealv1.StatusProvider` is a `BookStatusProvider` (#525): at each stamp the shelf calls its
+`BookValues` with the stamp's tick, the book and the journal, and it returns `("x-deal-v1", link,
+status, true, nil)` for a v1 deal book and `ok` false for every other book (2.4). Its own `Values`
+claims no book. It reads its own book and the journal through those handles, and the received
+books only through readers that take no lock (`HeldByDeal`, `HeldFirst`, `CountedPrefix`,
+`HeldProofs`, `RecordTimeByKey`, `RecordStamp`, `ReceivedRecordTimeByKey`,
+`ReceivedRecordStamp`). A provider error for one book keeps that book's last fact and is reported
+in the stamp's `Unstated`; the other books' facts are written (PR 4c-2b-2 review).
 
 Decided: what the status holds is design §4.3, "The facts", and the shelf note's rule that it
 holds inputs, never a computed status, so a quiet book gets no new fact when a date passes
@@ -1269,6 +1274,59 @@ the witness receipts it is handed (A, above).
   status needs nothing more for it (Steven's AAC#626 ruling, items 1 and 2 (buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=bf79bafd5ab90fe17815ab4bae0bd4de8ebdf840a1076a7c30b18382ca9a2875; u603) replaced the four did-not-hold splits with it).
 - Disputes, withdrawals, the first final ruling with its date (or the conflicting flag) and
   remedies are in each row's `input`. The witnesses are deal-level (design §4.3, "For the deal").
+
+**Built in PR 4c-2b-2** (`xdealv1.StatusProvider`, `xdealv1.BuildStatus`, vectors
+`testdata/deal-v1/status/vectors.json`). It follows A above, and decides these points for review:
+
+- **Where it reads.** It is a `BookStatusProvider` (#525). It reads its own book and the journal
+  through the handles the stamp hands it. It reads the counterparty's counted prefix and the case
+  book through lock-free readers: `HeldByDeal`, `CountedPrefix` and the received records' `prev`.
+  The offer's sent pair comes from the host (`OfferPair`), because the library keeps no sent
+  Capsule. Without it, a payment row's check is not run.
+- **As of when.** The rows are read as of the latest time the fact states as known. The fact is
+  written after each of them, so a window end hanging on a named record is known once that
+  record's time is. Reading as of the agreement instead would leave every such window end unknown
+  and carry every statement.
+- **Ruling times.** A ruling is an input once either side's book names its arrival: a `statement`
+  whose `names.ruling` cites it, in the holder's book or the counterparty's counted prefix. It
+  takes the earliest such naming: a known time before a stamp, else the earlier time or the lower
+  stamp. So the side a ruling goes against cannot keep it off its own status by not naming it
+  while the winner names it (Sherlock2's twin, PR 4c-2b-2 review, P1). PROFILE says a receiving
+  library MUST name a counted ruling's arrival (#527).
+  - **Caveat** (Sherlock2, the same review). Until #527 lands, a ruling neither side has named is
+    not an input: its arrival has no time on the holder's shelf, whose stamps cover only its own
+    book and the counterparty's. An `open` outcome may then hide an unnamed ruling, so PR 5's
+    card must not present it as unresolved.
+- **Every case book.** One book per case (3.2), so the provider reads every log of the
+  adjudicator held for the deal. Each counted prefix is walked from position 1, one held follower
+  at a time, and the walk stops at a counted record not held for the deal: another deal's in the
+  same log, one received after the held records were read, or one forgotten under retention.
+- **A forked case book.** Each held branch of the adjudicator's log, from position 1 to a record
+  no other held record follows, applies its own first final ruling per row, as rowstatus does. A
+  row conflicts when two branches both have one and their decisions differ: `value`, `against`
+  or `remedy` (Codex, the same review). A later final after a common first one does not conflict.
+- **seen_in_time is recomputed.** A dispute's `seen_in_time` rests on times the fact may not
+  know. So a reader recomputes it once those times resolve (`xdealv1.ResolveRow`): the claimant's
+  book named the other side's standing statement (its `statement_named_by_other`, the first such
+  naming) at a time not after the row's window end. The value the fact states stands while the
+  window end is unknown (Codex, the same review, P1; vector `seen-in-time-resolves`).
+- **The payment check on the row.** `check` is `PaymentCheck`'s pass, fail or empty.
+  `check_reason` says why the check failed or did not run. `check_excluded` is how many settle
+  records it left out, never which: their digests are record digests, which the status value
+  never holds (no shared identifier). The digests the check ran over go in the link value's
+  `checked_over` (8.2).
+- **`counterparty_kind`** is `null` until the counterparty's profile record feeds it. No v1 record
+  carries SH §7's class yet.
+- **The u611 marking.** A deal whose counterparty runs no layer has `counterparty_layer` false and
+  `counterparty_proof_held` false. Counted from the holder's receipt only, that is what the
+  receipt and the card read to say the other side sent no stamp proof (PR 5).
+- **One dispute record is one entry** (Steven's #95 ruling, as Sherlock2 read it on
+  evidencebook-deal#224). A contest is the `dispute` record itself, with no `rebuts` link or
+  contest verb. `disputes` and the row's rowstatus input each carry it once
+  (`TestBuildStatusAppendixA`).
+- **A shared status shows earlier statements** (the twin's product note on 4c). The status
+  opening goes to the counterparty and a reader the holder chooses (8.2). It carries the holder's
+  statements that A keeps, earlier ones included, so that reader sees them.
 
 ### 8.2 StatusProvider: the link value
 

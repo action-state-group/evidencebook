@@ -24,6 +24,8 @@ type paymentDeal struct {
 	buyerLog, sellerLog    string
 	buyerAg, sellerAg      Record
 	buyerAgID, sellerAgID  string
+	buyerAgPair            []byte
+	sellerAgPair           []byte
 	buyerLast, sellerLast  Record
 	buyerSeq, sellerSeq    int64
 }
@@ -55,14 +57,14 @@ func newPaymentDeal(t *testing.T, edit func(*ProposeBody), terms bool) *paymentD
 	sb := journalBlock(TypeAgree, "2026-11-01T09:45:00Z", true)
 	sb.Seq, sb.Seen = 1, NullOf[string]()
 	d.sellerAg = Record{Block: sb, Body: sa}
-	d.sellerAgID, _ = d.seller.seal(d.sellerLog, d.sellerAg)
+	d.sellerAgID, d.sellerAgPair = d.seller.seal(d.sellerLog, d.sellerAg)
 
 	ba := fxAgreement(&od, ref('e'), ref('f'), SideOfferer, RoleBuyer, d.seller.key())
 	ba.CheckpointKey, ba.ShelfLogID = d.buyer.checkpointKey(), testCadenceLog
 	bb := journalBlock(TypeAgree, "2026-11-01T10:00:00Z", true)
 	bb.Seq, bb.Seen = 1, Some(d.sellerAgID)
 	d.buyerAg = Record{Block: bb, Body: ba}
-	d.buyerAgID, _ = d.buyer.seal(d.buyerLog, d.buyerAg)
+	d.buyerAgID, d.buyerAgPair = d.buyer.seal(d.buyerLog, d.buyerAg)
 	d.buyerLast, d.sellerLast, d.buyerSeq, d.sellerSeq = d.buyerAg, d.sellerAg, 1, 1
 	return d
 }
