@@ -15,12 +15,11 @@ As Go reads them:
   pointer, list or map to nil;
 - a value of another type is refused, and an integer must fit its field.
 
-One reading is not Go's: a list member given under several spellings, a
-later one shorter than an earlier and a still later one longer again. Go
-then reads the elements its slice kept past the shorter length, which
-depends on the capacity its runtime grew the slice to (rounded up to a
-size class of the element's size), not on the profile; here such an
-element is a zero value. No book writer spells a member twice.
+A list keeps, past its length, the elements an earlier spelling of the
+member decoded (Go's slice keeps them in its backing array, whose capacity
+is never below the longest length decoded): a later, longer spelling
+decodes into them. A null sets the list to nil and an empty array makes a
+new one, so both drop what was kept.
 
 A record (``Record.UnmarshalJSON``) and a status time
 (``StatusTime.UnmarshalJSON``) have their own readers, given by the caller.
@@ -33,6 +32,13 @@ from typing import Any, Callable
 from . import gotypes
 
 _RANGE = {"int64": (-(1 << 63), (1 << 63) - 1), "uint64": (0, (1 << 64) - 1)}
+
+
+class _Slice(list):
+    """A decoded Go slice: its elements, and ``backing``, the elements its
+    backing array holds up to the longest length decoded into it."""
+
+    backing: list
 
 
 class GoDecodeError(ValueError):
@@ -96,8 +102,14 @@ def read(v: Any, t: Any, custom: Custom, cur: Any = None) -> Any:
     if "slice" in t:
         if not isinstance(v, list):
             raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go slice")
-        old = cur or []
-        return [read(e, t["slice"], custom, old[i] if i < len(old) else None) for i, e in enumerate(v)]
+        if not v:
+            out = _Slice()
+            out.backing = []
+            return out
+        backing = cur.backing if isinstance(cur, _Slice) else list(cur or [])
+        out = _Slice(read(e, t["slice"], custom, backing[i] if i < len(backing) else None) for i, e in enumerate(v))
+        out.backing = list(out) + backing[len(out):]
+        return out
     if "map" in t:
         if not isinstance(v, dict):
             raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go map")

@@ -242,3 +242,19 @@ def test_an_unknown_member_is_ignored_wherever_it_is():
     rb = _copy.deepcopy(REPORT["books"])
     rb["Books"]["\x00decoded"] = True
     assert v1.build_report(rb, REPORT["copy"]) == v1.build_report(REPORT["books"], REPORT["copy"])
+
+
+@pytest.mark.parametrize("later, kept", [
+    (["unused"], True),   # 2, then 1, then 2: Go's slice kept the second element
+    ([], False),          # an empty array is a new slice
+    (None, False),        # a null sets it to nil
+])
+def test_a_list_keeps_what_an_earlier_spelling_decoded(later, kept):
+    # Go's answers, from the deal-v1 runner on the same books (#549 review r3).
+    b = books()
+    b.pop("conflicting_final_rulings", None)
+    b["conflicting_final_rulings"] = ["unused", ROW]
+    b["CONFLICTING_FINAL_RULINGS"] = later
+    b["Conflicting_Final_Rulings"] = [None, None]
+    flags = [r["input"].get("conflicting_final_rulings", False) for r in v1.build_status(b)["rows"]]
+    assert flags[0] is kept
