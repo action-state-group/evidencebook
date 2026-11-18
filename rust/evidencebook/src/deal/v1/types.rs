@@ -570,3 +570,10 @@ impl<'de> Deserialize<'de> for ApprovalBody {
         })
     }
 }
+
+/// Reads a list Go may write as `null` (a nil slice) as an empty list.
+pub(crate) fn null_as_empty<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
+    d: D,
+) -> Result<Vec<T>, D::Error> {
+    Ok(Option::<Vec<T>>::deserialize(d)?.unwrap_or_default())
+}

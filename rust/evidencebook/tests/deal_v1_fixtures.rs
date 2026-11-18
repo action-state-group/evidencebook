@@ -125,3 +125,26 @@ fn vendored_schema_is_the_profiles() {
     let go = fs::read(fixtures().join("../x-deal-v1.schema.json")).unwrap();
     assert_eq!(v1::profile_schema(), go.as_slice(), "x-deal-v1.schema.json is vendored byte for byte");
 }
+
+/// deal-id-presence (`testdata/deal-v1/records/`): each record passes or is
+/// refused at its stage, checked with its seal context when it has one.
+#[test]
+fn deal_id_presence_vectors() {
+    let v = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/deal-v1/records/deal-id-presence.json"));
+    let cases = v["cases"].as_array().unwrap();
+    assert!(!cases.is_empty());
+    for c in cases {
+        let name = c["name"].as_str().unwrap();
+        let text = serde_json::to_vec(&c["record"]).unwrap();
+        let got = match c.get("context") {
+            Some(ctx) => v1::check_sealed(&text, serde_json::from_value(ctx.clone()).unwrap()),
+            None => v1::check(&text),
+        };
+        if c["valid"].as_bool().unwrap() {
+            got.unwrap_or_else(|e| panic!("{name}: {e}"));
+        } else {
+            let err = got.expect_err(name);
+            assert_eq!(err.stage().map(|s| s.stage), c["stage"].as_str(), "{name}: {err}");
+        }
+    }
+}

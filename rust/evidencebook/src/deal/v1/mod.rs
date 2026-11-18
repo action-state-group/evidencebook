@@ -15,6 +15,7 @@
 mod check;
 mod names;
 mod record;
+mod start;
 mod types;
 
 pub use check::{
@@ -24,4 +25,9 @@ pub use check::{
 };
 pub use names::*;
 pub use record::{decode, Body, Record};
+pub use start::{
+    start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,
+    BY_ACCEPTOR_NAMED, BY_FIRST_ACT, BY_OFFERER_IN_TIME, STATE_AWAITING_AGREEMENT,
+    STATE_NOT_STARTED, STATE_STARTED,
+};
 pub use types::*;
