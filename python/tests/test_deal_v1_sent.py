@@ -122,3 +122,65 @@ def test_a_settle_member_read_as_go_reads_it():
     assert _settlement_member('{"leg": 5}') is None
     assert _settlement_member("null") == {"leg": "", "sealer_role": "", "terms_ref": ""}
     assert _settlement_member('{"LEG": "payer_observed", "x": 1}')["leg"] == "payer_observed"
+
+
+# -- pairs read and written as Go reads and writes them (#552 review r1) ---------------
+# Each outcome below is Go's, from a probe of VerifySent, VerifyBook, PaymentCheck
+# and BookPair on the same text.
+
+BASE = next(c for c in PAYMENT["payment"] if c["name"] == "base")["input"]
+OFFER = json.dumps(BASE["offer"])
+REC, AI = json.dumps(BASE["offer"]["record"]), json.dumps(BASE["offer"]["agent_input"])
+BOOK = json.dumps(next(c for c in PAYMENT["book"] if c["valid"])["pair"])
+
+
+@pytest.mark.parametrize("raw, stage", [
+    ('{"record":' + REC + ',"Record":{},"agent_input":' + AI + '}', None),  # the map merges
+    ('{"record":{"x-extra":1},"Record":' + REC + ',"agent_input":' + AI + '}', "sent"),
+    ('{"record":5,"Record":' + REC + ',"agent_input":' + AI + '}', "sent"),
+    (OFFER + " {}", "sent"),  # trailing data is the pair's refusal, not the text's
+    (OFFER + " garbage", "sent"),
+    (OFFER.replace('"record": {', '"record": {"x": ' + "[" * 127 + "]" * 127 + ", ", 1), "sent"),  # no pair-level bound
+])
+def test_a_sent_pair_read_as_go_reads_it(raw, stage):
+    if stage is None:
+        v1sent.verify_sent(raw.encode())
+    else:
+        with pytest.raises(StageError) as exc:
+            v1sent.verify_sent(raw.encode())
+        assert exc.value.stage == stage
+
+
+def test_a_signature_with_white_space_is_not_hex():
+    o = BASE["offer"]
+    bad = dict(o, record=dict(o["record"], signature=o["record"]["signature"][:2] + " " + o["record"]["signature"][2:]))
+    with pytest.raises(StageError) as exc:
+        v1sent.verify_sent(text(bad))
+    assert (exc.value.stage, exc.value.detail) == ("sent", "the signature is not hex")
+
+
+def test_a_book_pair_with_trailing_data_is_refused_at_book():
+    v1sent.verify_book(BOOK.encode())
+    with pytest.raises(StageError) as exc:
+        v1sent.verify_book((BOOK + " {}").encode())
+    assert exc.value.stage == "book"
+
+
+def test_payment_check_takes_a_record_member_in_another_case():
+    from evidencebook.deal.v1 import payment
+
+    inp = payment.PaymentInput(OFFER.replace('"record"', '"Record"', 1).encode(), BASE["offer_digest"],
+                               BASE["acceptor_key"], BASE["row"],
+                               [json.dumps(leg).replace('"record"', '"Record"', 1).encode() for leg in BASE["legs"]])
+    assert payment.payment_check(inp).check == "pass"
+
+
+def test_book_pair_takes_and_refuses_what_go_s_marshal_does():
+    case = PAYMENT["pair"][0]
+    h = bytes.fromhex
+    cap, env, hdr, pay = h(case["capsule"]), h(case["envelope"]), h(case["header"]), h(case["payload"])
+    assert v1sent.book_pair(cap.decode().replace('"capsule_id"', '"Capsule_ID"', 1).encode(), env, hdr, pay)
+    assert b'"header":null' in v1sent.book_pair(cap, env, None, pay)
+    for bad in ((cap + b"garbage", env, hdr, pay), (cap[:-1] + b",}", env, hdr, pay), (cap, env, hdr, b"1 2")):
+        with pytest.raises(ValueError):
+            v1sent.book_pair(*bad)

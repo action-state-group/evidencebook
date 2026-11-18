@@ -25,7 +25,7 @@ from agent_action_capsule.canonical import jcs
 from capsule_emit.produce import verify_capsule, verify_envelope
 
 from ..check import StageError, _go_quote
-from . import golenient, gotypes
+from . import golenient, gotypes, rawjson
 from .check import Record, _read_text, check, decode, digest, ref_to
 from .check import PLACEMENT_JOURNAL, placement_of
 from .names import KIND_CANCELLATION, KIND_DECLINE, TYPE_AGREE, TYPE_PROPOSE
@@ -91,43 +91,12 @@ def _compact(text: str) -> str:
 
 
 def _members(text: str) -> dict[str, str] | None:
-    """A JSON object's members as raw texts, by name (Go's
-    ``json.Unmarshal`` into ``map[string]json.RawMessage``: a later member
-    of a name replaces an earlier); ``None`` when the text is not an
-    object. ``null`` reads as no map."""
-    dec = json.JSONDecoder()
-    s = text.strip()
-    if s == "null":
-        return None
-    if not s.startswith("{"):
-        raise ValueError("not a JSON object")
-    out: dict[str, str] = {}
-    i = 1
-    ws = " \t\n\r"
-    while True:
-        while i < len(s) and s[i] in ws:
-            i += 1
-        if s[i] == "}":
-            return out
-        if s[i] != '"':
-            raise ValueError("a member name")
-        key, i = json.decoder.scanstring(s, i + 1)
-        while s[i] in ws:
-            i += 1
-        if s[i] != ":":
-            raise ValueError("a colon")
-        i += 1
-        while s[i] in ws:
-            i += 1
-        _, end = dec.raw_decode(s, i)
-        out[key] = s[i:end]
-        i = end
-        while s[i] in ws:
-            i += 1
-        if s[i] == ",":
-            i += 1
-        elif s[i] != "}":
-            raise ValueError("a comma")
+    """``json.Unmarshal`` into ``map[string]json.RawMessage``
+    (:func:`.rawjson.unmarshal_map`)."""
+    try:
+        return rawjson.unmarshal_map(text)
+    except rawjson.GoJSONError as exc:
+        raise ValueError(str(exc)) from None
 
 
 def _marshal_members(members: dict[str, str]) -> bytes:
@@ -161,10 +130,16 @@ def _string(raw: str | None) -> str | None:
 def _signed(capsule: bytes, envelope: bytes) -> dict[str, str]:
     """The Capsule's members with its signature and key_id beside them (Go
     ``signedCapsule``)."""
-    members = _members(_text(capsule))
+    text = _text(capsule)
+    try:
+        members = rawjson.unmarshal_map(text)
+        # Go reads the id into struct{CapsuleID string}: the member in any case.
+        capsule_id = rawjson.string_member(text, "capsule_id")
+    except rawjson.GoJSONError as exc:
+        raise ValueError(f"xdealv1: the Capsule is not a JSON object: {exc}") from None
     if members is None:
-        raise ValueError("xdealv1: the Capsule is not a JSON object")
-    capsule_id = _string(members.get("capsule_id")) or ""
+        # Go writes into the nil map Unmarshal leaves for null, which panics.
+        raise ValueError("xdealv1: the Capsule is null")
     try:
         verified = verify_envelope(capsule_id, bytes(envelope))
     except Exception as exc:  # noqa: BLE001 - the envelope's refusal
@@ -180,7 +155,7 @@ def pair(capsule: bytes, envelope: bytes, payload: bytes) -> bytes:
     and key_id}``."""
     members = _signed(capsule, envelope)
     return _marshal_members({"record": _marshal_members(members).decode("utf-8"),
-                             "agent_input": _text(payload)})
+                             "agent_input": _raw_message(payload)})
 
 
 def book_pair(capsule: bytes, envelope: bytes, header: bytes, payload: bytes) -> bytes:
@@ -188,8 +163,19 @@ def book_pair(capsule: bytes, envelope: bytes, header: bytes, payload: bytes) ->
     ``{"header", "payload", "record": the Capsule with its signature and
     key_id}``."""
     members = _signed(capsule, envelope)
-    return _marshal_members({"record": _marshal_members(members).decode("utf-8"), "header": _text(header),
-                             "payload": _text(payload)})
+    return _marshal_members({"record": _marshal_members(members).decode("utf-8"), "header": _raw_message(header),
+                             "payload": _raw_message(payload)})
+
+
+def _raw_message(v: Any) -> str:
+    """A ``json.RawMessage`` as ``json.Marshal`` takes it: nil writes null,
+    and text that is not one JSON value is refused."""
+    if v is None:
+        return "null"
+    text = _text(v)
+    if not rawjson.valid(text):
+        raise ValueError("json: error calling MarshalJSON for type json.RawMessage: invalid JSON")
+    return text
 
 
 def _verify_capsule(stage: str, members: dict[str, str]) -> tuple[bytes, str, str]:
@@ -210,10 +196,10 @@ def _verify_capsule(stage: str, members: dict[str, str]) -> tuple[bytes, str, st
         raise _err(stage, f"the Capsule does not verify: {exc}") from None
     if not result.ok or result.capsule_id is None:
         raise _err(stage, "the Capsule does not verify: <nil>")
-    try:
-        envelope = bytes.fromhex(sig)
-    except ValueError:
-        raise _err(stage, "the signature is not hex") from None
+    # Go's hex.DecodeString: an even number of hex digits and nothing else.
+    if len(sig) % 2 or not all(c in "0123456789abcdefABCDEF" for c in sig):
+        raise _err(stage, "the signature is not hex")
+    envelope = bytes.fromhex(sig)
     try:
         verified = verify_envelope(result.capsule_id, envelope)
     except Exception as exc:  # noqa: BLE001 - the envelope's refusal
@@ -230,35 +216,25 @@ def _agent_input_digest(capsule: bytes) -> str:
 
 
 def _pair_members(raw: bytes, stage: str, names: tuple[str, ...], what: str) -> dict[str, Any]:
-    """The pair's members, read strictly as Go's ``strictUnmarshal`` reads
-    a struct of these fields: each in any case, the later spelling winning,
-    no other member; ``record`` a map of raw members."""
-    # Go's checkText: valid UTF-8, no lone escaped surrogate, no member given
-    # twice; _read_text runs those checks and reads one JSON value.
-    _read_text(raw)
+    """The pair's members as Go reads them: its text check, then
+    ``strictUnmarshal`` into a struct of these fields, ``record`` a map of
+    raw members and the others raw (:mod:`.rawjson`)."""
+    text = rawjson.text_check(bytes(raw))
     try:
-        top = _members(raw.decode("utf-8"))
-    except ValueError as exc:
+        out = rawjson.strict_struct(text, {n: "map" if n == "record" else "raw" for n in names})
+    except rawjson.GoJSONError as exc:
         raise _err(stage, f"not a {what}: {exc}") from None
-    if top is None:
+    if any(out[n] is None for n in names):
         raise _err(stage, f"not a {what}: <nil>")
-    out: dict[str, Any] = {n: None for n in names}
-    for k, v in top.items():
-        name = k if k in names else next((n for n in names if golenient.fold(n) == golenient.fold(k)), None)
-        if name is None:
-            raise _err(stage, f"not a {what}: json: unknown field {json.dumps(k)}")
-        out[name] = v
-    for n in names:
-        if out[n] is None:
-            raise _err(stage, f"not a {what}: <nil>")
-    try:
-        rec = _members(out["record"])
-    except ValueError as exc:
-        raise _err(stage, f"not a {what}: {exc}") from None
-    if rec is None:
-        raise _err(stage, f"not a {what}: <nil>")
-    out["record"] = rec
     return out
+
+
+def _record_members(raw: bytes) -> dict[str, str]:
+    """A verified pair's record members, as Go's ``json.Unmarshal`` into
+    ``struct{Record map[string]json.RawMessage}`` reads them."""
+    out = rawjson.strict_struct(bytes(raw).decode("utf-8"), {"record": "map", "agent_input": "raw", "header": "raw",
+                                                                 "payload": "raw"})
+    return out["record"] or {}
 
 
 # -- sent pairs ------------------------------------------------------------------------

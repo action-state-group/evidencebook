@@ -23,7 +23,7 @@ from . import golenient
 from .check import ref_to
 from .names import ROLE_BUYER, ROLE_SELLER, TYPE_PROPOSE, TYPE_SETTLE
 from .sent import (
-    SETTLEMENT_MEMBER, _marshal_members, _members, _role, payment_rows, verify_book, verify_sent, _is_payment_row,
+    SETTLEMENT_MEMBER, _marshal_members, _record_members, _role, payment_rows, verify_book, verify_sent, _is_payment_row,
 )
 
 __all__ = [
@@ -168,7 +168,7 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
     if len(payment_rows(of["terms_rows"])) != 1:
         out.reason = REASON_SEVERAL_PAYMENTS
         return out
-    offer_members = _members(_members(bytes(inp.offer).decode("utf-8"))["record"])
+    offer_members = _record_members(inp.offer)
 
     offerer = of["role"]
     acceptor = ROLE_SELLER if offerer == ROLE_BUYER else ROLE_BUYER
@@ -191,7 +191,7 @@ def payment_check(inp: PaymentInput) -> PaymentResult:
             raise _bad(f"leg {i} is signed by neither party's key")
         if body["supersedes"] is not None:
             supersedes.append((read.key_id, body["supersedes"], read.seq))
-        members = _members(_members(bytes(raw).decode("utf-8"))["record"])
+        members = _record_members(raw)
         chain = members.get("chain")
         if chain is not None and chain.strip() != "null":
             raise _bad(f"leg {i}'s Capsule carries a chain; a deal-book record's has none")
