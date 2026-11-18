@@ -287,7 +287,7 @@ def ard_pay(seller: str) -> None:
                                  on_paid=lambda p: s.paid.add(key) if p.status == "succeeded" else None)
     who = ("the buyer's test node paid it" if run.banner == screens.BANNER else "the buyer's wallet paid it") if run.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
     print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status}"
-          + (f" (fee {payment.fee_msat} msat)" if payment.fee_msat is not None else ""))
+          + screens.fee_note(payment.fee_msat, run.banner != screens.BANNER_FAKE))
     if payment.status == "succeeded":
         s.paid.add(key)
     print(f"deal closed with {SELLERS[key]['label']}: both parties' records of the deal compared.")
@@ -348,7 +348,7 @@ def ard_show_receipt() -> None:
     if not ids:
         print(f"{label}: no deal yet, so no receipt")
         return
-    print(parties.receipt_view(node, label, ids[-1]))
+    print(parties.receipt_view(node, label, ids[-1], seller=ROLE in SELLERS))
 
 
 def main() -> None:
