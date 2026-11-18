@@ -239,8 +239,9 @@ forums next to `adjudicator` (the agreement takes them from the offer, as it tak
 terms pack states them, and a dispute and a ruling must name one of them. The `forums` member and its checks landed in evidencebook (#493, `bc082697`): the offer and the
 agreement carry `forums`, `CheckDispute` and `CheckRuling` keep a dispute or ruling inside them, and
 a dispute must cite its agreement. `deal offer` takes `--forum F` (repeatable). `deal dispute`
-writes into the deal book, so it lands with the deal book writers after `deal agree` (evidencebook
-PR 4).
+writes into the deal book, so it lands with the deal book writers after `deal agree`: the dispute and
+the withdrawal are built (evidencebook-deal#95); `--challenge RULING` waits for the ruling the adjudicator
+sends back.
 
 ## 6. Settled and local
 

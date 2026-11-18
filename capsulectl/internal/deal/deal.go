@@ -930,7 +930,7 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 
 func dealCommands() *cobra.Command {
 	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\n`deal close` and `deal terms-result` are for x-deal-v0 deals; an x-deal-v1 deal (deal set-version x-deal-v1) has neither."}
-	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAgreeCommand(), dealReceiveCommand())
+	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAgreeCommand(), dealReceiveCommand(), dealDisputeCommand())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
 	// A scheduled demo deal and the watcher that alarms when it stops.
@@ -970,6 +970,9 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 		if v1, verr := s.isV1Deal(ctx, dealID); verr != nil {
 			return verr
 		} else if v1 {
+			if kind, _ := c.Flags().GetString("kind"); c.Name() == "note" && kind == noteKindDispute {
+				return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: its disputes are sealed with `deal dispute`, not `deal note --kind dispute`")
+			}
 			return v1Refusal(c.Name(), dealID)
 		}
 		if err = s.useDeal(ctx, dealID, false); err != nil {
