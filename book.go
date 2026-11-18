@@ -634,6 +634,25 @@ func (b *Book) Get(_ context.Context, recordID string) (Record, error) {
 	return record.detached(), nil
 }
 
+// Sealed is the record as it was sealed: its canonical header, its Capsule
+// (without signature) and its Producer Envelope, as the store keeps them.
+// They are what another party verifies the record by on its own, as a
+// profile sending the record to its counterparty carries them. The bytes are
+// the store's; a caller changing them changes nothing held.
+func (b *Book) Sealed(ctx context.Context, recordID string) (StoredRecord, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.records[recordID]; !ok {
+		return StoredRecord{}, fmt.Errorf("%w: record %s", ErrNotFound, recordID)
+	}
+	sr, err := b.store.GetRecord(ctx, recordID)
+	if err != nil {
+		return StoredRecord{}, err
+	}
+	sr.Header, sr.Capsule, sr.Envelope = bytes.Clone(sr.Header), bytes.Clone(sr.Capsule), bytes.Clone(sr.Envelope)
+	return sr, nil
+}
+
 // Query answers from the operational index. Its result is a local lookup,
 // not a proof; use Bundle or Respond for anything a stranger must check.
 func (b *Book) Query(ctx context.Context, filter Filter) ([]Record, error) {
