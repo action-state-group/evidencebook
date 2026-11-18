@@ -128,6 +128,10 @@ pub struct ResponderPolicy {
     /// is refused for a limit, as a request over the limiter is. Zero is
     /// [`DEFAULT_MAX_ANSWER_ITEMS`].
     pub max_answer_items: usize,
+    /// The window a `history_card/2` states: how many of the newest
+    /// checkpoints it lists in full, 1 to 64. Zero is
+    /// [`answer::DEFAULT_HISTORY_WINDOW`].
+    pub history_window: usize,
 }
 
 /// The four-switch sharing policy, carried unchanged from the host's `share.*`
@@ -478,6 +482,7 @@ impl Run<'_, '_> {
         // A card of counts whatever the history's length: the item cap
         // bounds record lists, and the card lists none.
         let over = !is_standard_history(&req)
+            && !is_history_card_2(&req)
             && (leaves.len() > max_items
                 || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
                     && chain > max_items);
@@ -517,6 +522,7 @@ impl Run<'_, '_> {
                 derivations: Some(self.responder.derivations),
                 requester,
                 standard_card: standard_card.as_deref(),
+                history_window: self.responder.policy.history_window,
                 ..Options::default()
             },
             self.responder.signer,
@@ -575,6 +581,10 @@ fn standard_card(
 
 fn is_history_card(req: &Request) -> bool {
     matches!(&req.derivation, Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD)
+}
+
+fn is_history_card_2(req: &Request) -> bool {
+    matches!(&req.derivation, Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD_2)
 }
 
 fn encode_envelope(envelope: &Envelope, binding: Binding) -> Vec<u8> {
@@ -1133,7 +1143,9 @@ fn decide_inner(
     let form = req.subject.form();
     let mut registered: Option<&Registered> = None;
     match &req.derivation {
-        Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD => {
+        Some(Derivation::Token(t))
+            if t == answer::DERIVATION_HISTORY_CARD || t == answer::DERIVATION_HISTORY_CARD_2 =>
+        {
             if !matches!(req.subject, Subject::FullHistory | Subject::Checkpoints) {
                 return Refuse(Reason::NoSuchSubject);
             }
@@ -1184,7 +1196,8 @@ fn authorized(
     registered: Option<&Registered>,
 ) -> bool {
     let public = (matches!(req.subject, Subject::Checkpoints) && req.derivation.is_none())
-        || is_history_card(req);
+        || is_history_card(req)
+        || is_history_card_2(req);
     if public {
         return true; // commitments only
     }

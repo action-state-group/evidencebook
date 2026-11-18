@@ -32,8 +32,8 @@ import (
 // witness Receipts that travel beside a card (SH-4), are the carrier's.
 //
 // A staple never carries more than the standard card: only history_card/1
-// (over the checkpoints subject) and standard_history/1 (over full_history)
-// are stapled, both recipient-free, so the bytes are the ones every
+// or history_card/2 (over the checkpoints subject) and standard_history/1
+// (over full_history) are stapled, all recipient-free, so the bytes are the ones every
 // requester those cards are answered to gets.
 type Staple struct {
 	// Request is the holder's own request, as JSON.
@@ -46,10 +46,12 @@ type Staple struct {
 // one subject it is answered over.
 var stapleSubjects = map[string]SubjectKind{
 	DerivationHistoryCard:     SubjectCheckpoints,
+	DerivationHistoryCard2:    SubjectCheckpoints,
 	DerivationStandardHistory: SubjectFullHistory,
 }
 
-// Staple builds a staple of derivation, history_card/1 or standard_history/1,
+// Staple builds a staple of derivation, history_card/1, history_card/2 or
+// standard_history/1,
 // as of the book's newest checkpoint (cut now if the book grew). Any other
 // derivation is ErrInvalid: a staple is shown to whoever reads the message
 // it rides on, so it is capped at the standard card. Whether to staple at
@@ -82,7 +84,7 @@ func (b *Book) StapleForDeal(ctx context.Context, derivation, deal string) (Stap
 	}
 	subject, ok := stapleSubjects[derivation]
 	if !ok {
-		return Staple{}, fmt.Errorf("%w: a staple carries %s or %s, not %q", ErrInvalid, DerivationHistoryCard, DerivationStandardHistory, derivation)
+		return Staple{}, fmt.Errorf("%w: a staple carries %s, %s or %s, not %q", ErrInvalid, DerivationHistoryCard, DerivationHistoryCard2, DerivationStandardHistory, derivation)
 	}
 	checkpoint, err := b.Checkpoint(ctx)
 	if err != nil {
@@ -170,8 +172,8 @@ type StapleCheck struct {
 // CheckStaple checks that a staple is presented by holder (the lowercase
 // hex Ed25519 key the reader names for its counterparty) and stays inside
 // the cap: the envelope verifies under holder's key and answers this very
-// request, the derivation is history_card/1 over checkpoints or
-// standard_history/1 over full_history, the anchor and profile are the
+// request, the derivation is history_card/1 or history_card/2 over
+// checkpoints or standard_history/1 over full_history, the anchor and profile are the
 // ones the request named, and a standard_history/1 card is of the standard
 // card's form, and a history_card/1 artifact has the card's members and
 // nothing else (historyCardForm) and its checkpoints form one chain
@@ -189,8 +191,8 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 	req := parsed.request
 	subject, ok := stapleSubjects[req.Derivation]
 	if !ok || req.Subject.Kind != subject {
-		return StapleCheck{}, fmt.Errorf("%w: a staple carries %s over %s or %s over %s, not %q over %s", ErrInvalid,
-			DerivationHistoryCard, SubjectCheckpoints, DerivationStandardHistory, SubjectFullHistory, req.Derivation, req.Subject.Kind)
+		return StapleCheck{}, fmt.Errorf("%w: a staple carries %s or %s over %s or %s over %s, not %q over %s", ErrInvalid,
+			DerivationHistoryCard, DerivationHistoryCard2, SubjectCheckpoints, DerivationStandardHistory, SubjectFullHistory, req.Derivation, req.Subject.Kind)
 	}
 	if req.Coverage.ExpectedPin == "" || req.Nonce == "" {
 		return StapleCheck{}, fmt.Errorf("%w: a staple's request pins its anchor and carries a nonce", ErrInvalid)
@@ -224,6 +226,11 @@ func CheckStaple(s Staple, holder string) (StapleCheck, error) {
 			return StapleCheck{}, err
 		}
 		if err := historyCardChain(*e); err != nil {
+			return StapleCheck{}, err
+		}
+	}
+	if req.Derivation == DerivationHistoryCard2 {
+		if _, err := checkHistoryCard2(e.Artifact, e.Anchor.Digest, ""); err != nil {
 			return StapleCheck{}, err
 		}
 	}

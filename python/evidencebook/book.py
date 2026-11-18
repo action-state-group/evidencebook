@@ -90,6 +90,7 @@ from .record import (
     Record,
 )
 from .request import (
+    DERIVATION_HISTORY_CARD_2,
     PROFILE,
     PROFILE_V1,
     MEDIA_TYPE_CBOR,
@@ -322,6 +323,28 @@ class WindowLimiter:
             return True
 
 
+#: The window a history_card/2 states when the responder sets none, and the
+#: bounds a responder may choose (ER -03 §8.1.2).
+DEFAULT_HISTORY_WINDOW = 16
+MIN_HISTORY_WINDOW = 1
+MAX_HISTORY_WINDOW = 64
+
+
+def history_card_positions(n: int, window: int) -> list[int] | None:
+    """P(n, W) of ER -03 §8.1.2: position 0, the positions n - 2^k for every
+    2^k <= n, and the latest window max(0, n - W + 1) through n, ascending
+    and each once. None when the window is outside 1 to 64."""
+    if not MIN_HISTORY_WINDOW <= window <= MAX_HISTORY_WINDOW:
+        return None
+    positions = {0}
+    step = 1
+    while step <= n:
+        positions.add(n - step)
+        step <<= 1
+    positions.update(range(max(0, n - window + 1), n + 1))
+    return sorted(positions)
+
+
 @dataclass(frozen=True)
 class ResponderPolicy:
     """The responder's cost and abuse policy. The default answers
@@ -331,12 +354,22 @@ class ResponderPolicy:
     limiter: RequestLimiter | None = None
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
     max_answer_items: int = DEFAULT_MAX_ANSWER_ITEMS
+    #: The window a history_card/2 states: how many of the newest checkpoints
+    #: it lists in full, 1 to 64 (ER -03 §8.1.2). Zero reads as
+    #: DEFAULT_HISTORY_WINDOW.
+    history_window: int = 0
+
+    @property
+    def window(self) -> int:
+        return self.history_window or DEFAULT_HISTORY_WINDOW
 
     def validate(self) -> None:
         if self.refusal_policy not in ("", REFUSAL_POLICY_SPECIFIC, REFUSAL_POLICY_UNIFORM):
             raise InvalidError(f"refusal policy {self.refusal_policy!r} is neither specific nor uniform")
         if self.max_request_bytes < 0 or self.max_answer_items < 0:
             raise InvalidError("responder limits must not be negative")
+        if self.history_window != 0 and not MIN_HISTORY_WINDOW <= self.history_window <= MAX_HISTORY_WINDOW:
+            raise InvalidError(f"the history window is {MIN_HISTORY_WINDOW} to {MAX_HISTORY_WINDOW}, not {self.history_window}")
 
 
 @dataclass(frozen=True)
@@ -1288,6 +1321,10 @@ _HISTORY_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history
                             ("checkpoint", "consistency_from_previous"), "history")
 
 
+_HISTORY_2_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history", "subject", "window"),
+                              ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
+
+
 class _OverLimit:
     """An answer refused for the cost policy's item cap (see _Answer._build)."""
 
@@ -1408,13 +1445,17 @@ class _Answer:
         derivations = book._derivations
 
         def derivation(name: str):
+            if name == DERIVATION_HISTORY_CARD_2:
+                # Registered beside /1, which the decision knows by name: the
+                # same two subjects, no record content.
+                return ("full_history", "checkpoints")
             if name == DERIVATION_STANDARD_HISTORY:
                 return ("full_history",) if book._standard_history is not None else None
             entry = derivations.get(name)
             return None if entry is None else entry.forms
 
         def authorize(r: EvidenceRequest) -> bool:
-            if r.subject.form == "checkpoints" and r.derivation is None or r.derivation == DERIVATION_HISTORY_CARD:
+            if r.subject.form == "checkpoints" and r.derivation is None or r.derivation in (DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2):
                 return True  # public: commitments only
             if r.derivation == DERIVATION_STANDARD_HISTORY:
                 # Counts only, the same for every requester it is answered to
@@ -1453,12 +1494,19 @@ class _Answer:
             # disclosure scan has nothing to read.
             return self._standard_history_card(view, anchor, leaves), []
         max_items = book._responder.max_answer_items or DEFAULT_MAX_ANSWER_ITEMS
-        if len(leaves) > max_items:
+        # history_card/2 lists a logarithmic sample and no record, so neither
+        # the record cap nor the checkpoint cap applies to it.
+        if req.derivation != DERIVATION_HISTORY_CARD_2 and len(leaves) > max_items:
             return _OVER_LIMIT
         head: dict[str, Any] = {"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
                                 "subject": req.subject.to_wire()}
         definition = book._derivations.get(req.derivation) if req.derivation is not None else None
-        if req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
+        if req.derivation == DERIVATION_HISTORY_CARD_2:
+            chain = _checkpoints_through(view.checkpoints, anchor)
+            window = book._responder.window
+            head["derivation"], head["window"], declared = DERIVATION_HISTORY_CARD_2, window, _HISTORY_2_FIELDS
+            head["history"] = self._history_card_2(chain, anchor, history_card_positions(len(chain) - 1, window))
+        elif req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
             chain = _checkpoints_through(view.checkpoints, anchor)
             if len(chain) > max_items:
                 return _OVER_LIMIT
@@ -1519,6 +1567,25 @@ class _Answer:
             if i > 0 and chain[i - 1].tree_size < cp.tree_size:
                 consistency = self.log._substrate.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
             history.append({"checkpoint": cp.statement.hex(), "consistency_from_previous": consistency})
+        return history
+
+    def _history_card_2(self, chain: list[Checkpoint], anchor: Checkpoint, positions: list[int]) -> list[dict]:
+        """The entries of a history_card/2 (ER -03 §8.1.2): the checkpoint at
+        each position with its receipts (this book holds none) and the
+        consistency proof from the entry listed before it."""
+        history = []
+        for i, p in enumerate(positions):
+            if p >= len(chain):
+                raise InvalidError(f"checkpoint position {p} is past the stream's {len(chain)} checkpoints")
+            cp = chain[p]
+            consistency = None
+            if i > 0:
+                before = chain[positions[i - 1]]
+                if before.tree_size >= cp.tree_size:
+                    raise CorruptError(f"checkpoint {p} does not grow the log past checkpoint {positions[i - 1]}")
+                consistency = self.log._substrate.consistency_proof(before.tree_size, cp.tree_size, anchor).hex()
+            history.append({"position": p, "checkpoint": cp.statement.hex(), "receipts": [],
+                            "consistency_from_previous": consistency})
         return history
 
     def _project(self, leaves: Sequence[int], definition: DerivationDefinition) -> list[dict]:
@@ -1693,6 +1760,8 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     half_pin = req.subject.form == "exchange" and req.coverage.expected_pin == req.subject.content
     if req.subject.form == "record" and req.derivation is None:
         return [], _verify_record_inclusion(e, checkpoint_key)
+    if req.derivation == DERIVATION_HISTORY_CARD_2:
+        return [], check_history_card_2(e.artifact, e.anchor_digest, checkpoint_key)
     if req.subject.form == "checkpoints" or req.derivation == DERIVATION_HISTORY_CARD:
         return [], _verify_checkpoint_chain(e, checkpoint_key)
     # Record sets and registered derivations: the profile defines no
@@ -1749,6 +1818,91 @@ def _signed_checkpoint(statement: bytes, pinned: str) -> Checkpoint:
     if not pinned or cp.key_id != pinned:
         raise InvalidError(f"anchor_inclusion: checkpoint is signed by {cp.key_id}, not the pinned key")
     return cp
+
+
+_LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
+
+
+def check_history_card_2(artifact: bytes, anchor: str, checkpoint_key: str | None = None) -> bytes:
+    """A history_card/2 artifact by the seven ordered checks of ER -03
+    §8.1.2, as Go's ``CheckHistoryCard2`` runs them. ``anchor`` is the digest
+    the response resolved; ``checkpoint_key`` the key every checkpoint must be
+    signed by (None names the first checkpoint's, the reader's to judge). A
+    card whose checkpoints are not strictly growing in size is refused, as
+    is any card failing a check; which receipts count is the requester's
+    policy, so only each entry's receipts being a list is checked. Returns
+    the last checkpoint's statement. Every failure is InvalidError."""
+    def bad(why: str) -> InvalidError:
+        return InvalidError(f"the history_card/2 {why}")
+    try:
+        card = strict_json(artifact)
+    except ValueError:
+        card = None
+    if not isinstance(card, dict):
+        raise bad("is not a JSON object")
+    if set(card) != {"anchor", "derivation", "evidence_stream", "history", "subject", "window"}:
+        raise bad("has members other than the card's")
+    stream = card["evidence_stream"]
+    if card["derivation"] != DERIVATION_HISTORY_CARD_2 or card["anchor"] != anchor or not isinstance(stream, str) \
+            or not stream or card["subject"] not in ({"checkpoints": None}, {"full_history": None}):
+        raise bad("does not name its derivation, anchor, stream and subject")
+    # 1. the window.
+    window = card["window"]
+    if not _is_uint(window) or not MIN_HISTORY_WINDOW <= window <= MAX_HISTORY_WINDOW:
+        raise bad("window is not an integer from 1 to 64")
+    history = card["history"]
+    # 2. positions start at 0 and strictly increase.
+    if not isinstance(history, list) or not history:
+        raise bad("has no history")
+    positions: list[int] = []
+    statements: list[bytes] = []
+    proofs: list[bytes] = []
+    hex_text = lambda v: isinstance(v, str) and _LOWER_HEX.match(v) is not None  # noqa: E731
+    for i, entry in enumerate(history):
+        if not isinstance(entry, dict) or set(entry) != {"position", "checkpoint", "receipts", "consistency_from_previous"}:
+            raise bad(f"entry {i} has members other than a position, checkpoint, receipts and consistency proof")
+        position = entry["position"]
+        if not _is_uint(position):
+            raise bad(f"entry {i}'s position is not an unsigned integer")
+        if (position != 0) if i == 0 else (position <= positions[-1]):
+            raise bad(f"entry {i}'s position does not strictly increase from 0")
+        positions.append(position)
+        if not isinstance(entry["receipts"], list):
+            raise bad(f"entry {i}'s receipts are not a list")
+        proof = entry["consistency_from_previous"]
+        if not hex_text(entry["checkpoint"]):
+            raise bad(f"entry {i}'s checkpoint is not hex")
+        if (proof is None) != (i == 0) or (i > 0 and not hex_text(proof)):
+            raise bad(f"entry {i} is not a checkpoint with its consistency proof")
+        statements.append(bytes.fromhex(entry["checkpoint"]))
+        proofs.append(bytes.fromhex(proof) if proof else b"")
+    # 3. the positions are exactly P(n, window).
+    if positions != history_card_positions(positions[-1], window):
+        raise bad("positions are not those of P(n, window)")
+    # 4 and 5. one key, one log, a growing log, proofs that extend the entry
+    # listed before. The signed prev_size and prev_root name the checkpoint
+    # just before in the log, not the entry listed before, so they are not
+    # compared.
+    key = checkpoint_key if checkpoint_key is not None else read_checkpoint(statements[0]).key_id
+    previous: Checkpoint | None = None
+    for i, raw in enumerate(statements):
+        cp = _signed_checkpoint(raw, key)
+        if previous is not None:
+            if cp.log_id != previous.log_id or cp.tree_size <= previous.tree_size:
+                raise bad(f"entry {i} does not extend the log past entry {i - 1}")
+            try:
+                verify_cll_consistency(previous.peaks, cp.peaks, proofs[i])
+            except (VerificationError, ValueError) as exc:
+                raise InvalidError(f"the history_card/2's entry {i}: {exc}") from None
+        previous = cp
+    # 6. receipts: see above. 7. the last checkpoint is the anchor.
+    if _digest(statements[-1]) != anchor:
+        raise bad("does not end at its anchor")
+    return statements[-1]
+
+
+def _is_uint(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
 
 
 def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:

@@ -27,6 +27,9 @@ const (
 const (
 	RequestDraft01 = "draft-mih-agent-evidence-request-01"
 	RequestDraft02 = "draft-mih-agent-evidence-request-02"
+	// RequestDraft03 adds history_card/2 (§8.1.2) and a range on the
+	// checkpoints subject (§8.1.3).
+	RequestDraft03 = "draft-mih-agent-evidence-request-03"
 )
 
 // SubjectKind names one of the six subject forms (ER §3.1).

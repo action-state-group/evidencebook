@@ -56,6 +56,18 @@ type ResponderPolicy struct {
 	// larger answer is refused for a limit, as a request over the limiter is.
 	// Zero is DefaultMaxAnswerItems.
 	MaxAnswerItems int
+	// HistoryWindow is the window a history_card/2 states: how many of the
+	// newest checkpoints it lists in full, 1 to 64 (ER -03 §8.1.2). Zero is
+	// DefaultHistoryWindow.
+	HistoryWindow int
+}
+
+// historyWindow is the window the responder's /2 cards state.
+func (p ResponderPolicy) historyWindow() int {
+	if p.HistoryWindow == 0 {
+		return DefaultHistoryWindow
+	}
+	return p.HistoryWindow
 }
 
 func (p ResponderPolicy) validate() error {
@@ -64,6 +76,9 @@ func (p ResponderPolicy) validate() error {
 	}
 	if p.MaxRequestBytes < 0 || p.MaxAnswerItems < 0 {
 		return fmt.Errorf("%w: responder limits must not be negative", ErrInvalid)
+	}
+	if p.HistoryWindow != 0 && (p.HistoryWindow < MinHistoryWindow || p.HistoryWindow > MaxHistoryWindow) {
+		return fmt.Errorf("%w: the history window is %d to %d, not %d", ErrInvalid, MinHistoryWindow, MaxHistoryWindow, p.HistoryWindow)
 	}
 	return nil
 }
@@ -379,6 +394,11 @@ func (g gate) uniform(reason string) string {
 func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 	return evidencerequest.Policy{
 		Derivation: func(name string) ([]SubjectKind, bool) {
+			if name == DerivationHistoryCard2 {
+				// Registered beside /1, which the library knows by name:
+				// the same two subjects, no record content.
+				return []SubjectKind{SubjectFullHistory, SubjectCheckpoints}, true
+			}
 			if name == DerivationStandardHistory {
 				return []SubjectKind{SubjectFullHistory}, g.standardHistory
 			}
@@ -390,7 +410,7 @@ func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 		// subject names.
 		Authorize: func(req EvidenceRequest) bool {
 			switch {
-			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard:
+			case req.Subject.Kind == SubjectCheckpoints && req.Derivation == "", req.Derivation == DerivationHistoryCard, req.Derivation == DerivationHistoryCard2:
 				return true // public: commitments only
 			case req.Derivation == DerivationStandardHistory:
 				// Counts only, the same for every requester it is answered
@@ -479,7 +499,7 @@ func (a *answer) run() (Reply, error) {
 		return a.refuse(check.reason, check.detail)
 	}
 	req := check.request
-	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard {
+	if hasPolicy && held.UnsignedAsksPerWeek > 0 && !a.own && a.opts.AuthenticatedRequester == "" && req.Subject.Kind != SubjectCheckpoints && req.Derivation != DerivationHistoryCard && req.Derivation != DerivationHistoryCard2 {
 		b.mu.Lock()
 		allowed := b.unsignedAllowLocked(held.UnsignedAsksPerWeek, a.now)
 		b.mu.Unlock()

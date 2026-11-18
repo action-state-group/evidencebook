@@ -384,6 +384,9 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	case req.Subject.Kind == SubjectRecord && req.Derivation == "":
 		anchor, err := verifyRecordInclusion(e, checkpointKey)
 		return nil, anchor, err
+	case req.Derivation == DerivationHistoryCard2:
+		anchor, err := checkHistoryCard2(e.Artifact, e.Anchor.Digest, checkpointKey)
+		return nil, anchor, err
 	case req.Subject.Kind == SubjectCheckpoints || req.Derivation == DerivationHistoryCard:
 		anchor, err := verifyCheckpointChain(e, checkpointKey)
 		return nil, anchor, err

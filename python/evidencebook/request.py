@@ -39,10 +39,15 @@ from agent_action_capsule.interop_profile._common import is_profile_time, refusa
 from ._limits import MAX_REPLY_DEPTH, json_depth_over
 from .errors import InvalidError
 
+#: history_card/2 (ER -03 §8.1.2): a logarithmic sample of the stream's
+#: checkpoints, where history_card/1 lists every one.
+DERIVATION_HISTORY_CARD_2 = "history_card/2"
+
 __all__ = [
     "PROFILE",
     "PROFILE_V1",
     "DERIVATION_HISTORY_CARD",
+    "DERIVATION_HISTORY_CARD_2",
     "MEDIA_TYPE_JSON",
     "MEDIA_TYPE_CBOR",
     "Message",

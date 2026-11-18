@@ -304,6 +304,7 @@ fn beyond_the_profile_a_record_set_carries_its_checkpoint_and_each_inclusion() {
         derivations: None,
         requester: None,
         standard_card: None,
+        history_window: 0,
     };
     let env = go(&f, json!({"range": [1, 3]}), &at, beyond).unwrap();
     assert_eq!(
@@ -445,6 +446,7 @@ fn a_profile_derivation_is_answered_only_by_the_profiles_derive() {
         derivations: None,
         requester: None,
         standard_card: None,
+        history_window: 0,
     })
     .unwrap();
     let art: Value = serde_json::from_slice(&env.artifact).unwrap();
@@ -502,6 +504,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derivations: Some(&derivations),
                 requester: None,
                 standard_card: None,
+                history_window: 0,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -556,6 +559,7 @@ fn an_unregistered_digest_derivation_is_answered_by_the_profiles_derive() {
                 derivations: Some(&restricted),
                 requester,
                 standard_card: None,
+                history_window: 0,
             },
             &key("responder") as &dyn EnvelopeSigner,
             ISSUED_AT,
@@ -677,6 +681,7 @@ fn a_derived_value_with_no_canonical_form_is_an_error_not_a_panic() {
             derivations: None,
             requester: None,
             standard_card: None,
+            history_window: 0,
         },
         &key("responder") as &dyn EnvelopeSigner,
         ISSUED_AT,

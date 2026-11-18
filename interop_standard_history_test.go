@@ -193,7 +193,7 @@ func TestStandardHistoryConfiguration(t *testing.T) {
 		book := standardHistoryBook(t, &StandardHistorySource{HolderKind: "person", Inputs: dealsOf(nil)}, func(c *Config) { c.Responder.MaxAnswerItems = 1 })
 		mustEnvelope(t, askStandardHistory(t, book, "carol", "peers", anchorPin(t, book)))
 		manifest, err := book.Manifest(ManifestOptions{Bindings: []string{BindingStream}})
-		if err != nil || !bytes.Contains(manifest, []byte(`"derivations":["history_card/1","standard_history/1"]`)) {
+		if err != nil || !bytes.Contains(manifest, []byte(`"derivations":["history_card/1","history_card/2","standard_history/1"]`)) {
 			t.Fatalf("manifest %s %v", manifest, err)
 		}
 		// Only over full_history.

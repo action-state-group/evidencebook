@@ -1327,3 +1327,156 @@ fn the_default_refusal_policy_is_uniform_and_specific_is_an_opt_in() {
     );
     assert_eq!(reason(&reply), Reason::NotAuthorized);
 }
+
+/// ER -03 §8.1.2: `history_card/2` over a book of many checkpoints.
+mod history_card_2 {
+    use super::*;
+    use evidencebook::answer::history_card_positions;
+    use evidencebook::staple::{check_history_card_2, check_staple, staple_history_card_2};
+
+    /// A book with `n + 1` checkpoints, positions 0 through `n`.
+    fn many(n: usize) -> Mem {
+        let mut b = Mem::new();
+        b.add("observation", Some("alice"));
+        b.cut();
+        for _ in 0..n {
+            b.add("observation", Some("alice"));
+            b.cut();
+        }
+        b
+    }
+
+    fn ask_card(b: &mut Mem, policy: &ResponderPolicy, derivation: &str, subject: Value) -> Reply {
+        let pin = b.pin(b.checkpoints() - 1);
+        let request = serde_json::to_vec(&json!({
+            "subject": subject, "derivation": derivation, "profile": "evidence-interop/0",
+            "coverage": {"expected_pin": pin}, "nonce": "n",
+        }))
+        .unwrap();
+        run(b, policy, &request, Binding::Json, &ask(None)).0
+    }
+
+    fn policy(window: usize, max_answer_items: usize) -> ResponderPolicy {
+        ResponderPolicy {
+            refusal_policy: RefusalPolicy::Specific,
+            history_window: window,
+            max_answer_items,
+            ..Default::default()
+        }
+    }
+
+    fn positions(artifact: &[u8]) -> (u64, Vec<u64>) {
+        let card: Value = serde_json::from_slice(artifact).unwrap();
+        (
+            card["window"].as_u64().unwrap(),
+            card["history"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["position"].as_u64().unwrap())
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn the_positions_are_p_of_n_and_the_window() {
+        assert_eq!(history_card_positions(0, 1), Some(vec![0]));
+        assert_eq!(history_card_positions(1, 1), Some(vec![0, 1]));
+        assert_eq!(history_card_positions(5, 2), Some(vec![0, 1, 3, 4, 5]));
+        assert_eq!(history_card_positions(10, 3), Some(vec![0, 2, 6, 8, 9, 10]));
+        assert_eq!(
+            history_card_positions(16, 4),
+            Some(vec![0, 8, 12, 13, 14, 15, 16])
+        );
+        assert_eq!(history_card_positions(10, 0), None);
+        assert_eq!(history_card_positions(10, 65), None);
+        assert!(history_card_positions(1_000_000, 16).unwrap().len() <= 16 + 19 + 2);
+        let huge = history_card_positions(1 << 62, 3).unwrap();
+        assert!(huge.len() <= 3 + 62 + 2 && *huge.last().unwrap() == 1 << 62);
+    }
+
+    #[test]
+    fn a_stranger_is_answered_at_p_over_either_subject() {
+        let mut b = many(20);
+        for subject in [json!({"checkpoints": null}), json!({"full_history": null})] {
+            let reply = ask_card(&mut b, &policy(3, 0), "history_card/2", subject);
+            let Reply::Envelope(e) = reply else {
+                panic!("a refusal")
+            };
+            let (window, listed) = positions(&e.artifact);
+            assert_eq!((window, listed.last().copied()), (3, Some(20)));
+            assert_eq!(Some(listed), history_card_positions(20, 3));
+            check_history_card_2(&e.artifact, &e.anchor.digest).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_book_over_the_cap_for_card_one_still_serves_card_two() {
+        let mut b = many(12);
+        let capped = policy(4, 5);
+        let one = ask_card(
+            &mut b,
+            &capped,
+            "history_card/1",
+            json!({"checkpoints": null}),
+        );
+        assert_eq!(reason(&one), Reason::PolicyDeclined);
+        let Reply::Envelope(two) = ask_card(
+            &mut b,
+            &capped,
+            "history_card/2",
+            json!({"checkpoints": null}),
+        ) else {
+            panic!("a refusal")
+        };
+        check_history_card_2(&two.artifact, &two.anchor.digest).unwrap();
+    }
+
+    #[test]
+    fn card_two_over_another_subject_is_no_such_subject() {
+        let mut b = many(3);
+        let reply = ask_card(
+            &mut b,
+            &policy(4, 0),
+            "history_card/2",
+            json!({"range": [0, 1]}),
+        );
+        assert_eq!(reason(&reply), Reason::NoSuchSubject);
+    }
+
+    #[test]
+    fn one_checkpoint_lists_position_zero() {
+        let mut b = many(0);
+        let Reply::Envelope(e) = ask_card(
+            &mut b,
+            &policy(16, 0),
+            "history_card/2",
+            json!({"checkpoints": null}),
+        ) else {
+            panic!("a refusal")
+        };
+        assert_eq!(positions(&e.artifact).1, vec![0]);
+        check_history_card_2(&e.artifact, &e.anchor.digest).unwrap();
+    }
+
+    #[test]
+    fn a_staple_carries_card_two_and_grows_no_record() {
+        let mut b = many(20);
+        let signer = key("responder");
+        let derivations = Derivations::new();
+        let policy = policy(3, 0);
+        let responder = Responder {
+            signer: &signer,
+            derivations: &derivations,
+            policy: &policy,
+            standard_history: None,
+        };
+        let holder = hex::encode(signer.verifying_key().to_bytes());
+        let len = b.len();
+        let staple = staple_history_card_2(&mut b, &responder).unwrap();
+        assert_eq!(b.len(), len);
+        let got = check_staple(&staple.request, &staple.reply, &holder).unwrap();
+        assert_eq!(got.derivation, "history_card/2");
+        assert!(check_staple(&staple.request, &staple.reply, &"00".repeat(32)).is_err());
+    }
+}
