@@ -208,7 +208,10 @@ func TestMigrateResumesAfterABackupAndRefusesAForeignOne(t *testing.T) {
 	// A foreign <path>.v1.bak: Migrate refuses and writes nothing past the
 	// version switch.
 	require.NoError(t, os.WriteFile(f.path+".v1.bak", []byte("not this shelf"), 0o600))
-	require.ErrorIs(t, c.Migrate(ctx, tickTime), ErrInvalid)
+	err := c.Migrate(ctx, tickTime)
+	require.ErrorIs(t, err, ErrInvalid)
+	assert.Contains(t, err.Error(), f.path+".v1.bak", "the refusal names the file to move aside")
+	assert.Equal(t, ShelfVersionFacts, shelfVersion(t, shelf.db), "the version switch comes before the backup")
 	state, err := migrationState(ctx, shelf.db)
 	require.NoError(t, err)
 	assert.Equal(t, migrationBackingUp, state)

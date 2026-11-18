@@ -337,8 +337,11 @@ impl Cadence {
 
     /// Switch the shelf to a log of book facts (§4; Go `Migrate`). It is
     /// explicit and one-way, and recoverable at every step: a call after a
-    /// crash resumes from the stored state. It backs the file up first to
-    /// `<path>.v1.bak`, a version 1 file an older build opens.
+    /// crash resumes from the stored state. It first sets the file to version
+    /// 2, so no older build writes it from then on, and then backs it up to
+    /// `<path>.v1.bak`, a version 1 file an older build opens. It refuses a
+    /// `<path>.v1.bak` that is not this migration's backup, naming that path,
+    /// and leaves the file at version 2.
     pub fn migrate(&self, now: Time) -> Result<(), ShelfError> {
         let mut state = self.shelf.lock();
         if state.released {
@@ -1106,10 +1109,13 @@ mod tests {
             with_suffix(&path, ".v1.bak.tmp"),
         );
         std::fs::write(&bak, b"not this shelf").unwrap();
-        assert!(matches!(
-            c.migrate(tick_time()),
-            Err(ShelfError::Invalid(_))
-        ));
+        match c.migrate(tick_time()) {
+            Err(ShelfError::Invalid(msg)) => assert!(
+                msg.contains(&bak.display().to_string()),
+                "the refusal names the file to move aside: {msg}"
+            ),
+            other => panic!("expected an invalid backup, got {other:?}"),
+        }
         assert_eq!(
             migration_state(&shelf.shared().db()).unwrap(),
             MIGRATION_BACKING_UP

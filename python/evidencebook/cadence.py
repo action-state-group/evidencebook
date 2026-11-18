@@ -712,8 +712,11 @@ class Cadence:
 
     def migrate(self, now: datetime) -> None:
         """Switch the shelf to a log of book facts (Go ``Cadence.Migrate``):
-        explicit, one-way and resumable; it backs the file up first to
-        ``<path>.v1.bak``, a version 1 file an older build opens."""
+        explicit, one-way and resumable. It first sets the file to version 2,
+        so no older build writes it from then on, and then backs it up to
+        ``<path>.v1.bak``, a version 1 file an older build opens. It refuses a
+        ``<path>.v1.bak`` that is not this migration's backup, naming that
+        path, and leaves the file at version 2."""
         with self._shelf._mu:
             self._shelf._check_open()
             shelf_stamp.migrate_locked(self, now)

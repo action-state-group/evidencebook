@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -245,7 +246,7 @@ def test_migrate_resumes_after_a_backup_and_refuses_a_foreign_one(fx):
         # A foreign <path>.v1.bak: migrate refuses and writes nothing past the
         # version switch.
         Path(fx.path + ".v1.bak").write_bytes(b"not this shelf")
-        with pytest.raises(InvalidError):
+        with pytest.raises(InvalidError, match=re.escape(fx.path + ".v1.bak")):
             c.migrate(START)
         assert shelf_stamp.migration_state(shelf) == shelf_stamp.MIGRATION_BACKING_UP
         assert not c.migrated()
