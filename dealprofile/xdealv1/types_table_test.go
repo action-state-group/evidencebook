@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +38,9 @@ func TestTypesTable(t *testing.T) {
 		"status_books": typeRef(reflect.TypeFor[StatusBooks]()),
 		"row_books":    typeRef(reflect.TypeFor[RowBooks]()),
 		"report_books": typeRef(reflect.TypeFor[ReportBooks]()),
-		"structs":      tableStructs,
+		// A book record's header, which VerifyBook reads with json.Unmarshal.
+		"header":  typeRef(reflect.TypeFor[evidencebook.Header]()),
+		"structs": tableStructs,
 	}
 	got, err := json.MarshalIndent(out, "", " ")
 	require.NoError(t, err)
