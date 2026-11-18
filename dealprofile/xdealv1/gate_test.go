@@ -71,7 +71,7 @@ func TestGateActHoldsTheFirstAct(t *testing.T) {
 }
 
 // A counterparty without the layer: the first act runs unguarded, and says
-// so (u610, Sherlock2's second condition).
+// so (Steven, u611).
 func TestGateActWithoutALayerIsUnguarded(t *testing.T) {
 	h := newHandshake(t, nil)
 	own := []Record{gateBook(t, h, false)}
