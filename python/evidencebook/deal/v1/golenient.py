@@ -15,6 +15,13 @@ As Go reads them:
   pointer, list or map to nil;
 - a value of another type is refused, and an integer must fit its field.
 
+One reading is not Go's: a list member given under several spellings, a
+later one shorter than an earlier and a still later one longer again. Go
+then reads the elements its slice kept past the shorter length, which
+depends on the capacity its runtime grew the slice to (rounded up to a
+size class of the element's size), not on the profile; here such an
+element is a zero value. No book writer spells a member twice.
+
 A record (``Record.UnmarshalJSON``) and a status time
 (``StatusTime.UnmarshalJSON``) have their own readers, given by the caller.
 """

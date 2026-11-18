@@ -232,3 +232,13 @@ def test_a_settlement_of_another_type_is_refused(settlement):
 def test_a_settlement_of_its_types_is_taken():
     s = {"terms": "t", "payment_state": None, "differs": ["a"], "iso20022": {"x": "y"}, "delivery_state": "d"}
     assert v1.build_status(books(payments={ROW: {"settlement": s}}))["rows"]
+
+
+def test_an_unknown_member_is_ignored_wherever_it_is():
+    # Go ignores a member StatusBooks has no field for (#549 review r3).
+    b = books()
+    b["\x00decoded"] = True
+    assert v1.build_status(b) == v1.build_status(books())
+    rb = _copy.deepcopy(REPORT["books"])
+    rb["Books"]["\x00decoded"] = True
+    assert v1.build_report(rb, REPORT["copy"]) == v1.build_report(REPORT["books"], REPORT["copy"])

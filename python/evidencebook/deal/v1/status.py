@@ -132,10 +132,6 @@ def _decode(v: Any, books: str) -> dict:
         raise StatusError(str(exc)) from None
 
 
-#: Marks status books already decoded (the report's, read inside its own books).
-_DECODED = "\x00decoded"
-
-
 def _records(rs: Any) -> list[TimedRecord]:
     return [TimedRecord(r["record"] if r["record"] is not None else _zero_record(), r["record_id"], r["time"])
             for r in rs or ()]
@@ -158,7 +154,11 @@ def _read_books(b: Any) -> _Books:
     """Status books as Go's ``json.Unmarshal`` into ``StatusBooks`` reads them."""
     if isinstance(b, _Books):
         return b
-    d = b if isinstance(b, dict) and b.get(_DECODED) else _decode(b, "status_books")
+    return _books_of(_decode(b, "status_books"))
+
+
+def _books_of(d: dict) -> _Books:
+    """Status books already read into Go's ``StatusBooks`` (:func:`_decode`)."""
     payments = d["payments"] or {}
     return _Books(
         offer=d["offer"] if d["offer"] is not None else _zero_record(),

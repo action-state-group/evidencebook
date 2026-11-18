@@ -24,7 +24,7 @@ from .gotypes import NIL_RAW
 from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, TYPE_PERFORM, TYPE_SETTLE, VALUE_NOT_MET
 from .start import STATE_STARTED, FirstAct, StartInput, start
 from .status import (
-    _DECODED, StatusError, _decode, TimedRecord, _Books, _compute, _first_remedy, _read_books, _row_inputs, _Sources, build_status,
+    StatusError, _books_of, _decode, TimedRecord, _Books, _compute, _first_remedy, _row_inputs, _Sources, build_status,
     resolve_time,
 )
 
@@ -112,7 +112,7 @@ def build_report(books: dict, copy: dict) -> dict:
         raise _bad("only an adjudicator's copy names a referee")
     if utc_second(as_of) is None:
         raise _bad(f"as_of {_q(as_of)} is not RFC 3339 UTC to the second")
-    sb = _read_books(dict(rbooks["Books"], **{_DECODED: True}))
+    sb = _books_of(rbooks["Books"])
     v = build_status(sb)
     stamps = rbooks["Stamps"] or {}
     own = sb.own[0].record.body
