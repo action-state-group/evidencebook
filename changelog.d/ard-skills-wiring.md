@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- The ARD demo's Goose windows follow evidencebook-skills' `buy-with-evidence` and `sell-with-evidence` skills: each recipe is the party's facts and the rail, then the skill text read from the `ARD_SKILLS` checkout. The demo's admission pack is evidencebook-skills' `packs/ard-demo-buyer`, read from that checkout; the demo's own copy is removed (evidencebook-skills#169).

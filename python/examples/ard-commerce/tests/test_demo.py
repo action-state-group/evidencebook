@@ -39,7 +39,7 @@ def run(tmp_path_factory):
     r.discover()
     r.collect()
     r.start = packs.starting()
-    r.tight = packs.compile_source(packs.edited(packs.SOURCE.read_text(), 50, "1.1.0"), "1.1.0")
+    r.tight = packs.compile_source(packs.edited(packs.source_path().read_text(), 50, "1.1.0"), "1.1.0")
     yield r
     server.close()
     world.close()

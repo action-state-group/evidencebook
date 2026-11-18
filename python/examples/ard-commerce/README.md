@@ -20,7 +20,7 @@ deal profile still gives no *did not hold* from records ([#212](https://github.c
 |---|---|
 | 2 ARD discovery: `/.well-known/ard.json` with one entry per seller, each pointing at the seller's signed `evidence-commitment/1` | `ard.py`, `server.py` |
 | 3 evidence: `history_card/1` (the Goose reference's ask and poll), `standard_history/1` and the selection, each as a request sealed in Maya's book and answered over the sellers' mailbox | `buyer.gather`, `responder.py`, `relay.py` |
-| 4 assessment: `capsule-engine admission evaluate` under the demo pack, one decision per seller, sealed in Maya's book | `buyer.assess`, `pack.py`, `pack/pack-source.yaml` |
+| 4 assessment: `capsule-engine admission evaluate` under the demo pack, one decision per seller, sealed in Maya's book | `buyer.assess`, `pack.py`; the pack is evidencebook-skills' `packs/ard-demo-buyer`, read from the `ARD_SKILLS` checkout |
 | 4b the on-stage edit: `max_adverse_permille` 100 → 50, version 1.0.0 → 1.1.0, recompiled with evidencebook-skills' `pack_compile.py`, both sellers re-assessed on the saved evidence | `Run.edit` |
 | 5 the popup and the pick, sealed before any payment | `popup.html`, `buyer.seal_pick` |
 | 6 deal opened from the pick; Shockley's wallet issues an invoice for the picked price, Brattain's wallet pays it | `buyer.open_deal`, `pay.py` |
@@ -88,7 +88,9 @@ note, not confirmed by the buyer or a ruling.
 ## In Goose Desktop
 
 The same story, run by each party's own Goose in three Goose Desktop windows side by side: Maya (the
-buyer), Alder and Kestrel (the sellers). Each window is a recipe with its own embedded extension,
+buyer), Alder and Kestrel (the sellers). Each window is a thin recipe: the party's facts and the rail,
+then the evidencebook-skills skill it follows (`buy-with-evidence` for Maya, `sell-with-evidence` for the
+sellers), read from the `ARD_SKILLS` checkout. Each recipe has its own embedded extension,
 `desktop_server.py` with `ARD_ROLE` set, so each party has its own process, keys and book (its own
 directory under the demo home) and sees only its own records. They meet only through the *stage*
 (`stage.py`: one private relay and the ARD catalogue on localhost, started by the first window that needs

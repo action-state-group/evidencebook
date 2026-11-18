@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The demo's admission pack: compile it, edit its threshold, and run the evaluator on it.
 
-The pack is a demo copy of evidencebook-skills' ``admission-baseline`` (``pack/pack-source.yaml``).
+The pack is evidencebook-skills' ``packs/ard-demo-buyer`` (a demo pack derived from its ``admission-baseline``),
+read from the ``ARD_SKILLS`` checkout, as the buyer skill there names it (evidencebook-skills#169).
 Compiling is that repository's ``scripts/pack_compile.py`` (its ``--out`` must sit inside the
 checkout, so the work goes under ``<checkout>/demo-ard/``); deciding is ``capsule-engine admission
 evaluate``, run through :func:`evidencebook.evidence.evaluate`. Neither is reimplemented here."""
@@ -17,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "pack" / "pack-source.yaml"
+PACK = Path("packs") / "ard-demo-buyer" / "pack-source.yaml"  # in the ARD_SKILLS checkout
 
 
 @dataclass(frozen=True)
@@ -93,5 +94,13 @@ def compile_source(text: str, version: str, work: Path | None = None) -> Pack:
                 out_dir / "compiled" / "pack-definition.json", threshold(text), text)
 
 
+def source_path() -> Path:
+    """The demo pack's source in the evidencebook-skills checkout."""
+    path = skills_checkout() / PACK
+    if not path.is_file():
+        raise PackError(f"the ARD_SKILLS checkout has no {PACK}: use an evidencebook-skills commit that has the demo pack")
+    return path
+
+
 def starting() -> Pack:
-    return compile_source(SOURCE.read_text(), "1.0.0")
+    return compile_source(source_path().read_text(), "1.0.0")

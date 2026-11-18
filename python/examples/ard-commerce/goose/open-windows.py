@@ -24,39 +24,47 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent / "desktop_server.py"
 
-COMMON = """Write in English only.
-Use only the tools of your own extension. Do not use any other tool: no terminal, no file tools, no session or agent listing, no tool search except to load your own extension's tools.
-"""
-
+#: Each window's recipe is a thin wrapper: the party's own facts, then the skill it follows, read from the
+#: evidencebook-skills checkout (ARD_SKILLS) at the commit the run sheet pins (evidencebook-skills#169).
 PARTIES = {
     "alder": {
-        "title": "Alder Print Co. (seller)",
-        "instructions": "You are the selling agent of Alder Print Co., which sells 200 conference badges at 289 msat.\n" + COMMON +
-        "Your tools: ard_seller_activity shows what you did (the evidence requests you answered, any deal asked of you and how it went, "
-        "the sale and payment); ard_show_card shows your own History card; ard_show_receipt shows your own receipt for a deal. "
-        "Call the one the user asks for, then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
+        "title": "Alder Print Co. (seller)", "skill": "sell-with-evidence",
+        "facts": "You are the selling agent of Alder Print Co., which sells 200 conference badges at 289 msat.",
         "prompt": "Reply in English only. Call your ard_seller_activity tool now and tell me in two short sentences what it shows.",
     },
     "kestrel": {
-        "title": "Kestrel Print (seller)",
-        "instructions": "You are the selling agent of Kestrel Print, which sells 200 conference badges at 268 msat.\n" + COMMON +
-        "Your tools: ard_seller_activity shows what you did (the evidence requests you answered and any deal asked of you); "
-        "ard_show_card shows your own History card; ard_show_receipt shows your own receipt for a deal. "
-        "Call the one the user asks for, then say in at most two short plain sentences what it showed. Do not repeat its output: the audience reads it in the tool call.",
+        "title": "Kestrel Print (seller)", "skill": "sell-with-evidence",
+        "facts": "You are the selling agent of Kestrel Print, which sells 200 conference badges at 268 msat.",
         "prompt": "Reply in English only. Call your ard_seller_activity tool now and tell me in two short sentences what it shows.",
     },
     "maya": {
-        "title": "Maya buys conference badges (buyer)",
-        "instructions": "You are Maya's buying agent. Maya needs 200 conference badges by Friday, under 300 msat.\n" + COMMON +
-        "Your tools are ard_find_sellers, ard_show_history, ard_assess, ard_pick, ard_pay, ard_show_card (your own History card) and ard_show_receipt (your own receipt for the deal). "
-        "Call one tool per message from Maya, and only the one she asks for. After the tool returns, say in at most two short "
-        "plain sentences what it showed. Do not repeat the tool's output: the audience reads it in the tool call. "
-        "Before calling ard_pay, stop and ask Maya to confirm, in one sentence that names the seller and the amount and says {PAYS}. "
-        "Call ard_pay only after she answers yes in her next message, only for the seller she named, and never in the same message as ard_pick. "
-        "If a tool answers REFUSED, say so in one sentence and do not retry it on your own; if Maya asks again, start from her confirmation again.",
+        "title": "Maya buys conference badges (buyer)", "skill": "buy-with-evidence",
+        "facts": "You are Maya's buying agent. Maya needs 200 conference badges by Friday, under 300 msat. "
+                 "Your admission pack is the demo's, packs/ard-demo-buyer.",
         "prompt": "Reply in English only. I am Maya. I need 200 conference badges by Friday, under 300 msat (a msat is a thousandth of a satoshi: a token amount for this demo). Find sellers for me.",
     },
 }
+
+
+def skill_text(name: str) -> str:
+    """The skill's ``SKILL.md`` from the ARD_SKILLS checkout, without its front matter, and the commit it is at."""
+    root = Path(os.environ["ARD_SKILLS"])
+    text = (root / "skills" / name / "SKILL.md").read_text()
+    if text.startswith("---\n"):
+        text = text.split("\n---\n", 1)[1]
+    run = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                         stdin=subprocess.DEVNULL)
+    return text.strip(), (run.stdout.strip() if run.returncode == 0 else "")
+
+
+def instructions(role: str, rail: str) -> str:
+    """The recipe's instructions: the party's facts, this run's rail, and the skill it follows."""
+    p = PARTIES[role]
+    body, commit = skill_text(p["skill"])
+    pays = ("This run pays over real Lightning: real money moves." if rail in ("lightning", "local")
+            else "This run's payment rail is simulated: no money moves.")
+    at = f" at evidencebook-skills {commit}" if commit else ""
+    return f"{p['facts']}\nWrite in English only. {pays}\nFollow the {p['skill']} skill below{at}.\n\n{body}\n"
 
 
 def link(role: str, rail: str) -> str:
@@ -69,10 +77,8 @@ def link(role: str, rail: str) -> str:
             if os.environ.get(var):
                 env.append(f"{var}={os.environ[var]}")
     p = PARTIES[role]
-    pays = "that this moves real money over Lightning" if rail in ("lightning", "local") else "that no money moves, the rail is simulated"
-    p = {**p, "instructions": p["instructions"].replace("{PAYS}", pays)}
-    recipe = {"version": "1.0.0", "title": p["title"], "description": f"The ARD two-seller demo: {role}.",
-              "instructions": p["instructions"], "prompt": p["prompt"],
+    recipe = {"version": "1.0.0", "title": p["title"], "description": f"The ARD two-seller demo: {role}, following the {p['skill']} skill.",
+              "instructions": instructions(role, rail), "prompt": p["prompt"],
               "extensions": [{"type": "stdio", "name": f"ard_{role}", "description": f"The {role} side of the ARD demo",
                               "cmd": "/usr/bin/env", "args": [*env, sys.executable, str(SERVER)], "timeout": 300}]}
     return "goose://recipe?config=" + base64.urlsafe_b64encode(json.dumps(recipe).encode()).decode()

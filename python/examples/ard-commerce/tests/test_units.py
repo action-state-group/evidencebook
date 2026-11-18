@@ -4,6 +4,7 @@ wording, the wallet rail's refusals and the one-way scrub of secret material."""
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -11,6 +12,9 @@ import pack as packs
 import pay
 import screens
 from buyer import Assessment, Check, Evidence
+
+#: The demo pack lives in evidencebook-skills (packs/ard-demo-buyer); these tests read it from the ARD_SKILLS checkout.
+with_skills = pytest.mark.skipif(not os.environ.get("ARD_SKILLS"), reason="ARD_SKILLS names the evidencebook-skills checkout that holds the demo pack")
 
 
 def assessment(verdict: str, tier: str, price: int, cap: int | None = None, reasons=()) -> Assessment:
@@ -23,8 +27,9 @@ def card(held: int, bad: int) -> Evidence:
     return ev
 
 
+@with_skills
 def test_edit_changes_threshold_version_and_id_suffix_only():
-    source = packs.SOURCE.read_text()
+    source = packs.source_path().read_text()
     out = packs.edited(source, 50, "1.1.0")
     assert packs.threshold(source) == 100 and packs.threshold(out) == 50
     assert "pack_id: demo/ard_admission/1.1.0" in out and "pack_version: 1.1.0" in out
@@ -37,8 +42,9 @@ def test_threshold_refuses_a_pack_without_the_row():
         packs.threshold("pack_id: demo/x/1.0.0\n")
 
 
+@with_skills
 def test_the_pack_is_a_demo_fork_that_reads_no_claims():
-    source = packs.SOURCE.read_text()
+    source = packs.source_path().read_text()
     assert "pack_id: demo/ard_admission/1.0.0" in source and "asg/" not in source.split("rows:")[0].replace("evidencebook-skills", "")
     assert "claims-held" not in source.split("rows:")[1]
     assert "card.band_history_or_stake" in source and "BTC: {band: sat, scale: 8}" in source
@@ -178,3 +184,11 @@ def test_the_owners_note_makes_a_real_card_count_did_not_hold(tmp_path):
     finally:
         buyer.close()
         seller.close()
+
+
+def test_a_skills_checkout_without_the_demo_pack_is_refused(tmp_path, monkeypatch):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "pack_compile.py").write_text("")
+    monkeypatch.setenv("ARD_SKILLS", str(tmp_path))
+    with pytest.raises(packs.PackError, match="ard-demo-buyer"):
+        packs.source_path()
