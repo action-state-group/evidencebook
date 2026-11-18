@@ -1307,6 +1307,52 @@ class Shelf:
 
         return shelf_record_time.record_time(self, book_id, position, witnesses)
 
+    def record_time_by_key(self, book_id: str, position: int, key_ids: Sequence[str]) -> int | None:
+        """:meth:`record_time` with the witnesses named by their verified key
+        ids (lowercase hex), as an x-deal-v1 agreement names them (Go
+        ``RecordTimeByKey``; a witness is its key, its URL only a hint)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.record_time_by_key(self, book_id, position, key_ids)
+
+    def received_record_time(self, book_id: str, received_log_id: str, position: int,
+                             witnesses: Sequence[str]) -> int | None:
+        """The record time the holder's own stamps give a record it received
+        (design §4.3; Go ``ReceivedRecordTime``): the record at ``position``
+        (from 1) of the other side's log ``received_log_id``, as the
+        holder's book ``book_id`` names it, timed by the first fact of
+        ``book_id`` whose link value's ``last_received`` names that log at a
+        size reaching the position. An empty ``received_log_id`` is
+        :class:`InvalidError`. It takes no lock of the shelf's."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_time(self, book_id, received_log_id, position, witnesses)
+
+    def received_record_time_by_key(self, book_id: str, received_log_id: str, position: int,
+                                    key_ids: Sequence[str]) -> int | None:
+        """:meth:`received_record_time` with the witnesses named by their
+        verified key ids (Go ``ReceivedRecordTimeByKey``)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_time_by_key(self, book_id, received_log_id, position, key_ids)
+
+    def record_stamp(self, book_id: str, position: int) -> int | None:
+        """The stamp (its tick, from 1) whose fact is the first to cover the
+        record at ``position`` of the book ``book_id``, as
+        :meth:`record_time` finds that fact; ``None`` when no fact covers it
+        yet (Go ``RecordStamp``). It takes no lock of the shelf's."""
+        from . import shelf_record_time
+
+        return shelf_record_time.record_stamp(self, book_id, position)
+
+    def received_record_stamp(self, book_id: str, received_log_id: str, position: int) -> int | None:
+        """:meth:`record_stamp` for a received record, as
+        :meth:`received_record_time` finds its fact (Go
+        ``ReceivedRecordStamp``)."""
+        from . import shelf_record_time
+
+        return shelf_record_time.received_record_stamp(self, book_id, received_log_id, position)
+
     def __enter__(self) -> Shelf:
         return self
 

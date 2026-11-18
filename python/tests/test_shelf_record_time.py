@@ -379,3 +379,118 @@ def test_a_shelf_receipts_table_keyed_by_url_is_migrated(fx):
         assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 2
     with fx.open() as shelf:
         assert scalar(shelf, "SELECT COUNT(*) FROM shelf_receipts") == 2
+
+
+# -- by key, received records and record stamps (Go shelf_record_stamp_test.go,
+# shelf_record_time_test.go) --------------------------------------------------------------
+
+WITNESS_KEY_ID = script.KEYS["witness_public"]
+
+
+def _dg(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+class _Linking:
+    """A status provider for deal/a whose link value names deal/theirs at a
+    size the test sets."""
+
+    def __init__(self):
+        self.size = 0
+
+    def __call__(self, book_id: str, log_id: str):
+        if log_id != "deal/a":
+            return None
+        last = None if self.size == 0 else {"log_id": "deal/theirs", "size": self.size,
+                                           "record_digest": _dg(f"theirs{self.size}")}
+        return "deal", {"last_received": last, "checked_over": []}, {"row": "open"}
+
+
+def _linked(shelf):
+    """deal/a linking deal/theirs at size 2 in its first stamp after the
+    migration and at size 5 in its second."""
+    links = _Linking()
+    c = shelf.cadence(CadenceConfig(log_id=LOG_ID, ended=lambda _: False, witnesses=DIRECTORY, status=links))
+    a = shelf.open("deal/a")
+    a.append(obs("a", "1"))
+    c.tick(START)
+    c.migrate(at(1))
+    links.size = 2
+    a.append(obs("a", "2"))
+    s1 = c.stamp(at(2)).tick
+    links.size = 5
+    a.append(obs("a", "3"))
+    s2 = c.stamp(at(3)).tick
+    book_id = scalar(shelf, "SELECT book_id FROM shelf_entries WHERE log_id = 'deal/a' LIMIT 1")
+    return c, book_id, s1, s2
+
+
+def test_a_received_record_time_is_the_first_fact_that_links_it(fx):
+    with fx.open() as shelf:
+        c, book_id, s1, s2 = _linked(shelf)
+
+        def received(log, position, *witnesses):
+            return shelf.received_record_time(book_id, log, position, list(witnesses))
+
+        assert received("deal/theirs", 1, WITNESS_URL) is None, "no receipt yet"
+        t1, t2 = at(30), at(20)
+        witness_at(c, s1, WITNESS_URL, t1)
+        assert received("deal/theirs", 2, WITNESS_URL) == unix(t1), "the first stamp's fact reaches position 2"
+        assert received("deal/theirs", 3, WITNESS_URL) is None, "first reached at the second stamp"
+        witness_at(c, s2, WITNESS_URL, t2)
+        for p in (1, 2, 5):
+            assert received("deal/theirs", p, WITNESS_URL) == unix(t2), p
+        assert received("deal/theirs", 6, WITNESS_URL) is None, "a position no fact reaches"
+        assert received("deal/other", 1, WITNESS_URL) is None, "another log"
+        assert received("deal/theirs", 1, "https://other.test") is None, "a witness not named"
+        assert received("deal/theirs", 1) is None, "no witness named"
+        assert shelf.received_record_time("no-such-book", "deal/theirs", 1, [WITNESS_URL]) is None
+        for log, position in (("deal/theirs", 0), ("", 1)):
+            with pytest.raises(InvalidError):
+                shelf.received_record_time(book_id, log, position, [WITNESS_URL])
+        # By key id: the key a receipt verified under, never its URL.
+        assert shelf.received_record_time_by_key(book_id, "deal/theirs", 2, [WITNESS_KEY_ID]) == unix(t2)
+        assert shelf.received_record_time_by_key(book_id, "deal/theirs", 2, [WITNESS_URL]) is None
+        # The stamp whose fact first links each position.
+        for log, position, want in (("deal/theirs", 1, s1.n), ("deal/theirs", 2, s1.n), ("deal/theirs", 3, s2.n),
+                                    ("deal/theirs", 5, s2.n), ("deal/theirs", 6, None), ("deal/other", 1, None)):
+            assert shelf.received_record_stamp(book_id, log, position) == want, (log, position)
+        for log, position in (("", 1), ("deal/theirs", 0)):
+            with pytest.raises(InvalidError):
+                shelf.received_record_stamp(book_id, log, position)
+        shelf.release()
+        with pytest.raises(ReleasedError):
+            shelf.received_record_time(book_id, "deal/theirs", 1, [WITNESS_URL])
+
+
+def test_a_record_time_by_key_and_the_record_stamp(fx):
+    with fx.open() as shelf:
+        c, book_id, first, second = record_time_shelf(shelf)
+        witness_at(c, first, WITNESS_URL, at(10))
+        witness_at(c, second, WITNESS_URL, at(20))
+        last = leaves_of(shelf, "deal/a")
+        for p in range(1, last + 2):
+            by_url = shelf.record_time(book_id, p, [WITNESS_URL])
+            assert shelf.record_time_by_key(book_id, p, [WITNESS_KEY_ID]) == by_url, p
+            assert shelf.record_time_by_key(book_id, p, [OTHER_KEY.public_key().hex(), WITNESS_URL]) is None, p
+        assert shelf.record_time_by_key(book_id, last, [WITNESS_KEY_ID]) is not None
+        with pytest.raises(InvalidError):
+            shelf.record_time_by_key(book_id, 0, [WITNESS_KEY_ID])
+        # The record stamp: the migration's genesis fact for the first record,
+        # the second stamp's for the record after it, none past the end.
+        size, genesis = scalar(shelf, "SELECT json_extract(doc, '$.size') FROM shelf_entries WHERE log_id = 'deal/a' "
+                                      "ORDER BY entry_seq LIMIT 1"), scalar(
+            shelf, "SELECT tick FROM shelf_entries WHERE log_id = 'deal/a' ORDER BY entry_seq LIMIT 1")
+        from evidencebook.shelf_receive import _leaf_count
+
+        in_first = _leaf_count(size)
+        assert genesis < first.n
+        assert shelf.record_stamp(book_id, in_first) == genesis
+        assert shelf.record_stamp(book_id, last) == second.n
+        assert shelf.record_stamp(book_id, last + 1) is None
+        assert shelf.record_stamp("no-such-book", 1) is None
+        with pytest.raises(InvalidError):
+            shelf.record_stamp(book_id, 0)
+        shelf.release()
+        with pytest.raises(ReleasedError):
+            shelf.record_stamp(book_id, 1)

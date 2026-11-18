@@ -128,36 +128,159 @@ def _first_covering_fact(db: sqlite3.Connection, book_id: str, position: int) ->
     return None
 
 
-def record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str]) -> int | None:
-    """Go ``Shelf.RecordTime``; see :meth:`evidencebook.shelf.Shelf.record_time`."""
-    from .shelf import mmr_size
-    from .shelf_receive import _live, _reader
+# How a record time names its witnesses: the shelf_receipts column it
+# matches (Go byURL and byKey). Each is one of these constants, never input.
+_BY_URL = "witness_id"
+_BY_KEY = "key_id"
 
-    _live(shelf)
+
+def _check_position(position: Any) -> None:
     # Go and Rust take an unsigned 64-bit position.
     if isinstance(position, bool) or not isinstance(position, int) or not 1 <= position <= 2**64 - 1:
         raise InvalidError("a record position counts from 1, to 2^64 - 1")
-    if not witnesses:
-        return None
+
+
+def _check_received_log(received_log_id: str) -> None:
+    if not received_log_id:
+        raise InvalidError("a received record names its log")
+
+
+def _first_linking_fact(db: sqlite3.Connection, book_id: str, log_id: str, position: int) -> int | None:
+    """The entry position of the first book fact of ``book_id`` whose link
+    value's ``last_received`` names ``log_id`` at a size that reaches
+    ``position`` (Go ``firstLinkingFact``)."""
+    rows = db.execute("SELECT entry_seq, link_opening FROM shelf_entries WHERE book_id = ? AND kind = ? "
+                      "ORDER BY entry_seq", (book_id, shelf_facts.FACT_KIND_BOOK)).fetchall()
+    for seq, lo in rows:
+        if lo is None:
+            continue
+        try:
+            opening = json.loads(bytes(lo))
+            if not isinstance(opening, dict):
+                raise ValueError("the link opening is not a JSON object")
+            # Go reads the opening's value into a LinkValue: an absent value
+            # is refused; a null one, or a null last_received, names nothing.
+            value = opening["value"]
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                raise ValueError("the link value is not a JSON object")
+            last = value.get("last_received")
+            if last is None:
+                continue
+            if not isinstance(last, dict):
+                raise ValueError("last_received is not a JSON object")
+            named = last.get("log_id")
+            if named is None:
+                named = ""
+            if not isinstance(named, str):
+                raise ValueError("last_received's log_id is not a string")
+            size = _size(last.get("size"))
+        except (ValueError, TypeError, KeyError) as exc:
+            raise CorruptError(f"stored fact {seq}'s link opening: {exc}") from None
+        if named == log_id and size >= position:
+            return seq
+    return None
+
+
+def _earliest_named_time(db: sqlite3.Connection, seq: int, witnesses: Sequence[str], by: str) -> int | None:
+    """The earliest registration time, among the receipts from the
+    witnesses named (by ``by``: their URL or their key id), of a shelf
+    checkpoint whose tree holds the entry at ``seq`` (Go
+    ``earliestNamedTime``)."""
+    from .shelf import mmr_size
+
+    # A shelf checkpoint covers the fact's entry when its tree holds that
+    # entry: its MMR size is at least the size of seq leaves.
+    covering = {hashlib.sha256(bytes(cp)).hexdigest() for (cp,) in db.execute(
+        "SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick", (mmr_size(seq),))}
     named = set(witnesses)
+    earliest = None
+    for cp, witness, at in db.execute(f"SELECT checkpoint_sha256, {by}, registered_at FROM shelf_receipts "
+                                      "WHERE registered_at IS NOT NULL"):
+        if cp in covering and witness in named and (earliest is None or at < earliest):
+            earliest = at
+    return earliest
+
+
+def _read(shelf: Any, first: Any, then: Any) -> Any:
+    """``then(db, seq)`` over the entry ``first(db)`` finds, in one read
+    transaction: a stamp being finished is seen whole or not at all."""
+    from .shelf_receive import _reader
+
     with _reader(shelf) as db:
-        # One read transaction: a stamp being finished is seen whole or not at all.
         db.execute("BEGIN")
         try:
-            seq = _first_covering_fact(db, book_id, position)
-            if seq is None:
-                return None
-            # A shelf checkpoint covers the fact's entry when its tree holds
-            # that entry: its MMR size is at least the size of seq leaves.
-            covering = {hashlib.sha256(bytes(cp)).hexdigest() for (cp,) in db.execute(
-                "SELECT checkpoint FROM cadence_ticks WHERE checkpoint_size >= ? ORDER BY tick", (mmr_size(seq),))}
-            earliest = None
-            for cp, witness, at in db.execute("SELECT checkpoint_sha256, witness_id, registered_at FROM shelf_receipts "
-                                              "WHERE registered_at IS NOT NULL"):
-                if cp in covering and witness in named and (earliest is None or at < earliest):
-                    earliest = at
+            seq = first(db)
+            return None if seq is None else then(db, seq)
         finally:
             db.execute("ROLLBACK")
-    # Unix seconds, not a datetime: a registration time may be any integer
-    # to 2^53 - 1 (AAC's receipt verifier), past datetime's year 9999.
-    return earliest
+
+
+def _record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str], by: str) -> int | None:
+    from .shelf_receive import _live
+
+    _live(shelf)
+    _check_position(position)
+    if not witnesses:
+        return None
+    return _read(shelf, lambda db: _first_covering_fact(db, book_id, position),
+                 lambda db, seq: _earliest_named_time(db, seq, witnesses, by))
+
+
+def record_time(shelf: Any, book_id: str, position: int, witnesses: Sequence[str]) -> int | None:
+    """Go ``Shelf.RecordTime``; see :meth:`evidencebook.shelf.Shelf.record_time`.
+    Unix seconds, not a datetime: a registration time may be any integer to
+    2^53 - 1 (AAC's receipt verifier), past datetime's year 9999."""
+    return _record_time(shelf, book_id, position, witnesses, _BY_URL)
+
+
+def record_time_by_key(shelf: Any, book_id: str, position: int, key_ids: Sequence[str]) -> int | None:
+    """Go ``Shelf.RecordTimeByKey``."""
+    return _record_time(shelf, book_id, position, key_ids, _BY_KEY)
+
+
+def _received_record_time(shelf: Any, book_id: str, received_log_id: str, position: int,
+                          witnesses: Sequence[str], by: str) -> int | None:
+    from .shelf_receive import _live
+
+    _live(shelf)
+    _check_position(position)
+    _check_received_log(received_log_id)
+    if not witnesses:
+        return None
+    return _read(shelf, lambda db: _first_linking_fact(db, book_id, received_log_id, position),
+                 lambda db, seq: _earliest_named_time(db, seq, witnesses, by))
+
+
+def received_record_time(shelf: Any, book_id: str, received_log_id: str, position: int,
+                         witnesses: Sequence[str]) -> int | None:
+    """Go ``Shelf.ReceivedRecordTime``."""
+    return _received_record_time(shelf, book_id, received_log_id, position, witnesses, _BY_URL)
+
+
+def received_record_time_by_key(shelf: Any, book_id: str, received_log_id: str, position: int,
+                                key_ids: Sequence[str]) -> int | None:
+    """Go ``Shelf.ReceivedRecordTimeByKey``."""
+    return _received_record_time(shelf, book_id, received_log_id, position, key_ids, _BY_KEY)
+
+
+def _record_stamp(shelf: Any, position: int, first: Any) -> int | None:
+    from .shelf_receive import _live
+
+    _live(shelf)
+    _check_position(position)
+    return _read(shelf, first, lambda db, seq: db.execute(
+        "SELECT tick FROM shelf_entries WHERE entry_seq = ?", (seq,)).fetchone()[0])
+
+
+def record_stamp(shelf: Any, book_id: str, position: int) -> int | None:
+    """Go ``Shelf.RecordStamp``."""
+    return _record_stamp(shelf, position, lambda db: _first_covering_fact(db, book_id, position))
+
+
+def received_record_stamp(shelf: Any, book_id: str, received_log_id: str, position: int) -> int | None:
+    """Go ``Shelf.ReceivedRecordStamp``."""
+    _check_received_log(received_log_id)
+    return _record_stamp(shelf, position,
+                         lambda db: _first_linking_fact(db, book_id, received_log_id, position))
