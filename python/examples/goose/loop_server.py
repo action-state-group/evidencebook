@@ -327,14 +327,15 @@ def _admitted(peer: str) -> None:
 
 @_tool
 def loop_deal_open(peer_key_id: str, item: str, price_minor: int, currency: str, rail: str, asked: str,
-                   refundable: bool = False, deal_id: str = "") -> str:
+                   refundable: bool = False, deal_id: str = "", demo: bool = False) -> str:
     """Open a deal as the buyer with an admitted peer: its book's first step
     (the baseline: what was asked, of whom, on which terms). ``asked`` is the
-    user's own words; it stays on this node."""
+    user's own words; it stays on this node. ``demo`` marks a demonstration
+    deal (its baseline seals ``demo: true``)."""
     _admitted(peer_key_id)
     n = node()
     deal_id = deal_id or f"deal-{os.urandom(8).hex()}"
-    chain = n.new_deal(deal_id, dr.ROLE_BUYER, peer_key_id, dr.Terms(item, price_minor, currency, rail, refundable))
+    chain = n.new_deal(deal_id, dr.ROLE_BUYER, peer_key_id, dr.Terms(item, price_minor, currency, rail, refundable, demo))
     sealed = n.open_deal(chain, chain.open(_now(), asked))
     return _out(ok=True, step="05", deal_id=deal_id, records=[s.record_id for s in sealed])
 
@@ -365,7 +366,7 @@ def loop_deal_respond(request_file: str, asked: str) -> str:
         raise gn.Refused("the half does not open a deal as a buyer")
     body = baseline["body"]
     terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
-                     body["recourse"]["rail"], body["recourse"]["refundable"])
+                     body["recourse"]["rail"], body["recourse"]["refundable"], body.get("demo") is True)
     deal_id = verified["deal_id"]
     resumed = n.has_deal(deal_id)
     if resumed:

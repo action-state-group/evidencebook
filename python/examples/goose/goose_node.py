@@ -759,7 +759,7 @@ class Node:
             body = baseline["body"]
             role = body["intent"].get("party_role", dr.ROLE_BUYER)
             terms = dr.Terms(body["terms"]["item"], body["terms"]["price_minor"], body["terms"]["currency"],
-                             body["recourse"]["rail"], body["recourse"]["refundable"])
+                             body["recourse"]["rail"], body["recourse"]["refundable"], body.get("demo") is True)
             first = book.records()[0].record_id
             peer = json.loads(book.opening(first, deal.LOCAL_FIELD).text)["open"]["peer"]
             return dr.DealChain.resume(deal_id, role, self._deal_key(deal_id), peer, terms, payloads)
