@@ -150,6 +150,9 @@ func TestApprovalMigration(t *testing.T) {
 		// first intent the person must have signed (a standing intent;
 		// evidencebook#500, Steven's option b).
 		IntentSignature []bool `json:"intent_signature,omitempty"`
+		// Error is a refused case's error text, which every implementation
+		// gives word for word.
+		Error string `json:"error,omitempty"`
 	}
 	var cases []vcase
 	run := func(name, why string, f *authFlow, wantOK bool) {
@@ -176,6 +179,7 @@ func TestApprovalMigration(t *testing.T) {
 		} else {
 			require.Error(t, err, name)
 			assert.Equal(t, StageAuthorization, stageOf(err), "%s: %v", name, err)
+			c.Error = err.Error()
 		}
 		cases = append(cases, c)
 	}
@@ -403,7 +407,7 @@ func TestApprovalMigration(t *testing.T) {
 	run("check-not-held", "an act citing a check the journal does not hold is refused", f, false)
 
 	got, err := json.MarshalIndent(map[string]any{
-		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization with the error text given. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
 	}, "", "  ")
 	require.NoError(t, err)

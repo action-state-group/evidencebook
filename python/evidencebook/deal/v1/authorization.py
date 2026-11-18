@@ -12,12 +12,11 @@ A refusal is a :class:`~evidencebook.deal.check.StageError` at stage
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..check import StageError
-from . import gotypes
+from ..check import StageError, _go_quote
+from . import gotime, gotypes
 from .check import Record, decode, digest
 from .names import (
     CHOICE_CONFIRM, TYPE_ADMIT, TYPE_AGENT_MOVE, TYPE_APPROVAL, TYPE_CHECK, TYPE_DETAIL_CHANGE, TYPE_EVIDENCE,
@@ -57,48 +56,15 @@ def _err(detail: str) -> StageError:
 
 # -- times -----------------------------------------------------------------------------
 
-_RFC3339 = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?"
-                      r"(Z|[+-][0-9]{2}:[0-9]{2})\Z")
-_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-
-
-def _days(y: int, m: int, d: int) -> int:
-    """Days from 0000-03-01 in the proleptic Gregorian calendar."""
-    if m <= 2:
-        y -= 1
-        m += 12
-    return 365 * y + y // 4 - y // 100 + y // 400 + (153 * (m - 3) + 2) // 5 + d - 1
-
-
-def _instant(s: str) -> tuple[int, int] | None:
-    """Go's ``time.Parse(time.RFC3339, s)`` as an instant (seconds, nanos),
-    or ``None`` where it refuses: a fraction of any length and an offset
-    are taken."""
-    m = _RFC3339.match(s)
-    if not m:
-        return None
-    y, mo, d, h, mi, sec = (int(g) for g in m.groups()[:6])
-    leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
-    if not 1 <= mo <= 12 or h > 23 or mi > 59 or sec > 59:
-        return None
-    if not 1 <= d <= _DAYS[mo - 1] + (1 if mo == 2 and leap else 0):
-        return None
-    off = 0
-    if m.group(8) != "Z":
-        oh, om = int(m.group(8)[1:3]), int(m.group(8)[4:6])
-        if oh > 23 or om > 59:
-            return None
-        off = (oh * 60 + om) * 60 * (1 if m.group(8)[0] == "+" else -1)
-    frac = m.group(7) or ""
-    nanos = int((frac[1:] + "000000000")[:9]) if frac else 0
-    return _days(y, mo, d) * 86400 + h * 3600 + mi * 60 + sec - off, nanos
-
 
 def _at(r: Record) -> tuple[int, int]:
-    t = _instant(r.block["at"])
-    if t is None:
-        raise ValueError(f'its at "{r.block["at"]}": cannot parse it as RFC 3339')
-    return t
+    """A record's at as Go's ``parseAt`` reads it (``time.Parse(time.RFC3339,
+    at)``, :mod:`.gotime`): the instant, or a ``ValueError`` with Go's
+    text."""
+    try:
+        return gotime.parse(r.block["at"])
+    except gotime.GoTimeError as exc:
+        raise ValueError(f"its at {_go_quote(r.block['at'])}: {exc}") from None
 
 
 # -- acts ------------------------------------------------------------------------------
@@ -107,7 +73,7 @@ _PAY, _REFUND, _PERFORM = "payer settle", "refund", "perform"
 
 
 def _check_action(kind: str) -> str:
-    return {"payer settle": "pay", "refund": "cancel"}.get(kind, "commit")
+    return {_PAY: "pay", _REFUND: "cancel"}.get(kind, "commit")
 
 
 def _act_check(r: Record) -> tuple[Any, str, bool]:
@@ -157,8 +123,8 @@ def check_authorizations(journal: list[Any], acts: list[Any]) -> list[ActAuthori
         cb = w.check[ci]
         want = _check_action(kind)
         if cb["action"] != want:
-            raise bad(f'the act differs from the one checked: a {kind} rests on a "{want}" check, not '
-                      f'"{cb["action"]}"')
+            raise bad(f"the act differs from the one checked: a {kind} rests on a {_go_quote(want)} check, not "
+                      f"{_go_quote(cb['action'])}")
         if ci not in w.verdict_of:
             raise bad("its check has no verdict")
         vi = w.verdict_of[ci]
@@ -253,7 +219,8 @@ def _walk(journal: list[Record]) -> _Walk:
     confirmed: dict[int, bool] = {}
     confirmations: list[int] = []
     first_intent = -1
-    last: tuple[int, int] | None = None
+    # Go's zero Time: at never decreases from it, so a year-0 time is refused.
+    last: tuple[int, int] = (gotime.ZERO, 0)
     nonces: dict[str, int] = {}
     for i, r in enumerate(journal):
         def bad(detail: str) -> StageError:
@@ -269,7 +236,7 @@ def _walk(journal: list[Record]) -> _Walk:
             at = _at(r)
         except ValueError as exc:
             raise bad(str(exc)) from None
-        if last is not None and at < last:
+        if at < last:
             raise bad("its at is earlier than the record before it: at never decreases")
         last = at
 
