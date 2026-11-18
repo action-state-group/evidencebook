@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,6 +46,8 @@ func TestNameRulings(t *testing.T) {
 	require.Equal(t, uint64(2), book.Size(), "the ruling against the seller, named in the seller's own book by Receive")
 	recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: 2, ToSeq: 2})
 	require.NoError(t, err)
+	assert.Equal(t, dealprofile.StepRecordType, recs[0].Header.RecordType, "the sealed header's record_type is deal_step (design §3.1)")
+	assert.Equal(t, evidencebook.ProducerClaim, recs[0].Header.EpistemicType)
 	sealed, err := book.Sealed(ctx, recs[0].RecordID)
 	require.NoError(t, err)
 	rec, kind, err := v1Payload(ctx, book, recs[0])
@@ -84,7 +87,7 @@ func TestBookEntry(t *testing.T) {
 	require.Len(t, e.Links, 1)
 	assert.Equal(t, evidencebook.Cites, e.Links[0].Type)
 	assert.Equal(t, books[0].RecordID, e.Links[0].Target)
-	assert.Equal(t, r.Block.RecordType, e.RecordType)
+	assert.Equal(t, dealprofile.StepRecordType, e.RecordType, "the header's record_type is deal_step (design §3.1)")
 	assert.Equal(t, fxDealID, e.SubjectRef)
 	payload, digest, err := Encode(r)
 	require.NoError(t, err)

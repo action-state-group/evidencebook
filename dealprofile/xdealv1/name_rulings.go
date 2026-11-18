@@ -10,11 +10,14 @@ import (
 	"time"
 
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile"
 )
 
 // BookEntry is the entry that seals r in its deal book (design §3.1): its
-// JCS bytes as the one payload, whose digest is the record digest; its
-// record type; the deal id as the subject; and, past seq 1, a cites link to
+// JCS bytes as the one payload, whose digest is the record digest; header
+// record_type deal_step (dealprofile.StepRecordType), as v0's, the payload's
+// own record_type saying which x-deal-v1 type it is; the deal id as the
+// subject; and, past seq 1, a cites link to
 // prevRecordID, the record before it, which VerifyBook requires. Append it
 // with Book.AppendAt at r's seq, and on ErrBusy read the book again and
 // rebuild r: Receive names rulings in the same books (NameRulings), so a
@@ -24,7 +27,7 @@ func BookEntry(r Record, prevRecordID string) (evidencebook.Entry, error) {
 	if err != nil {
 		return evidencebook.Entry{}, err
 	}
-	e := evidencebook.Entry{RecordType: r.Block.RecordType, EpistemicType: evidencebook.ProducerClaim,
+	e := evidencebook.Entry{RecordType: dealprofile.StepRecordType, EpistemicType: evidencebook.ProducerClaim,
 		Payloads: [][]byte{payload}, SubjectRef: r.Block.DealID}
 	if r.Block.Seq > 1 {
 		if prevRecordID == "" {
