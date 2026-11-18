@@ -348,6 +348,12 @@ seven on a v0 deal keeps doing so; on a v1 deal it seals the v1 record named. On
 no v0 side book. The overlays' names were part of the vocabulary trim Steven decided (Q3,
 answered: the overlays as proposed).
 
+**v0 members not carried over.** v0's optional `demo` on a `baseline` (evidencebook#514, the demo's
+receipt badge) is not carried into the agreement, nor into any body v1 defines (Ethan,
+2026-11-18: "这个设计不要搬进 agreement 里了，没什么必要", do not move this into the agreement,
+it is not needed). v1's `sale` overlay reuses v0's `body_sale` unchanged
+(`x-deal-v1.schema.json`, `dealprofile.SaleBody`), so its optional `demo` stays as v0 has it.
+
 ### 3.3 Each type's body
 
 Members are closed: an unknown member fails the schema, as in v0 (`PROFILE.md:116`). A statement
