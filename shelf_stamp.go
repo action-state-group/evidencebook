@@ -61,7 +61,9 @@ type BookStatusProvider interface {
 
 // StatusInput is what a BookStatusProvider is handed for one book's fact: the
 // stamp's tick n (from 1), the book's id and log id, the book itself, and the
-// shelf's journal, nil when the shelf has none (before Migrate).
+// shelf's journal, nil when the shelf has none yet: before Migrate, or
+// before the host first opens it with Shelf.Journal. A stamp never creates
+// the journal.
 type StatusInput struct {
 	N       uint64
 	BookID  string
@@ -436,10 +438,8 @@ func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time
 		switch sp := c.cfg.Status.(type) {
 		case BookStatusProvider:
 			in := StatusInput{N: n, BookID: bookID, LogID: log.LogID(), Book: log.(bookLog).book}
-			if j, jerr := s.journalLocked(ctx); jerr == nil {
-				in.Journal = j
-			} else if !errors.Is(jerr, ErrInvalid) {
-				return pendingFact{}, jerr
+			if in.Journal, err = s.existingJournalLocked(ctx); err != nil {
+				return pendingFact{}, err
 			}
 			p, l, st, ok, err = sp.BookValues(ctx, in)
 		case StampStatusProvider:
@@ -785,4 +785,17 @@ func (s *Shelf) Openings(ctx context.Context, bookID string, audience Audience) 
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// existingJournalLocked is the shelf's journal if the shelf has one, nil
+// otherwise: a stamp hands it to a BookStatusProvider and must not create it.
+func (s *Shelf) existingJournalLocked(ctx context.Context) (*Book, error) {
+	if state, err := migrationState(ctx, s.db); err != nil || state != migrationDone {
+		return nil, err
+	}
+	kind, err := s.logKind(ctx, JournalLogID)
+	if err != nil || kind != logKindJournal {
+		return nil, err
+	}
+	return s.openLocked(ctx, JournalLogID)
 }
