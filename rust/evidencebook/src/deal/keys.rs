@@ -75,7 +75,7 @@ fn patterns() -> &'static Patterns {
     })
 }
 
-fn nfc(s: &str) -> String {
+pub(crate) fn nfc(s: &str) -> String {
     ComposingNormalizerBorrowed::new_nfc()
         .normalize(s)
         .into_owned()

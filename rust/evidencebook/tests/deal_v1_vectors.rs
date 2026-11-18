@@ -66,3 +66,68 @@ fn status_vectors() {
         }
     }
 }
+
+/// report/vectors.json: BuildReport over each case's books and copy gives
+/// its report, and its payload is the JCS of that report.
+#[test]
+fn report_vectors() {
+    for c in vectors("report/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let books: v1::ReportBooks = serde_json::from_value(c["books"].clone()).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let cp = &c["copy"];
+        let copy = v1::ReportCopy {
+            audience: cp["audience"].as_str().unwrap().into(),
+            nonce: cp["nonce"].as_str().unwrap().into(),
+            referee: cp.get("referee").and_then(Value::as_str).unwrap_or("").into(),
+            as_of: cp["as_of"].as_str().unwrap().into(),
+            text: cp.get("report").and_then(Value::as_object).cloned(),
+        };
+        let got = v1::build_report(&books, &copy).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(serde_json::to_value(&got).unwrap(), c["report"], "{name}");
+        let payload = v1::report_payload(&got).unwrap();
+        assert_eq!(payload, evidencebook::canonical::jcs(&c["report"]).unwrap(), "{name}: payload");
+    }
+}
+
+/// settled/vectors.json: each case's rows settle as given.
+#[test]
+fn settled_vectors() {
+    for c in vectors("settled/vectors.json") {
+        let name = c["name"].as_str().unwrap();
+        let rows: Vec<v1::ReportRow> = c["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| {
+                let s = s.as_str().unwrap();
+                let (s, made) = match s.strip_suffix("+made") {
+                    Some(rest) => (rest, true),
+                    None => (s, false),
+                };
+                let (status, extra) = s.split_once(':').unwrap_or((s, ""));
+                v1::ReportRow {
+                    id: String::new(),
+                    owed_by: String::new(),
+                    owed: Value::Null,
+                    due: String::new(),
+                    window_end: String::new(),
+                    status: status.into(),
+                    value: (status != "ruled" && !extra.is_empty()).then(|| extra.into()),
+                    remedy: (status == "ruled" && !extra.is_empty()).then(|| extra.into()),
+                    remedy_made: made,
+                    local: false,
+                    check: String::new(),
+                    late: Default::default(),
+                    ruling: None,
+                    relied_on: Vec::new(),
+                }
+            })
+            .collect();
+        let start = v1::StartResult {
+            state: if c["started"].as_bool().unwrap() { v1::STATE_STARTED } else { v1::STATE_NOT_STARTED }.into(),
+            local: false,
+            by: None,
+        };
+        assert_eq!(v1::settled(&start, &rows), c["settled"].as_bool().unwrap(), "{name}");
+    }
+}

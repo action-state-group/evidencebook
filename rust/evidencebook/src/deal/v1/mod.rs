@@ -15,6 +15,7 @@
 mod check;
 mod names;
 mod record;
+mod report;
 mod start;
 mod status_rows;
 mod status_value;
@@ -27,6 +28,14 @@ pub use check::{
 };
 pub use names::*;
 pub use record::{decode, Body, Record};
+pub use report::{
+    build_report, report_payload, settled, Report, ReportBooks, ReportCheckpoint,
+    ReportCounterpartLog, ReportCopy, ReportFact, ReportLate, ReportLateDispute,
+    ReportLateStatement, ReportLog, ReportRestsOn, ReportRow, ReportRuling, ReportSource,
+    CHECK_FAILED, CHECK_NOT_RECOMPUTED, CHECK_NOT_RUN, CHECK_PASSED, NOT_SET, PROOF_HELD,
+    PROOF_NOT_YET, PROOF_NO_LAYER, REMEDY_NOT_COUNTED, ROWS_LISTED, ROWS_NOT_STARTED,
+    ROWS_WITHHELD, SIDE_ADJUDICATOR,
+};
 pub use start::{
     start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,
     BY_ACCEPTOR_NAMED, BY_FIRST_ACT, BY_OFFERER_IN_TIME, STATE_AWAITING_AGREEMENT,
