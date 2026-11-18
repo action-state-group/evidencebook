@@ -164,7 +164,7 @@ func TestAStampStoredButNotFinishedIsFinishedFirst(t *testing.T) {
 	require.NoError(t, err)
 	prev, err := shelf.lastFactOf(ctx, logs[0])
 	require.NoError(t, err)
-	f, err := c.factFor(ctx, log, tickTime, &prev)
+	f, err := c.factFor(ctx, last.N+1, log, tickTime, &prev)
 	require.NoError(t, err)
 	tick, err := c.buildStampLocked(ctx, last.N+1, tickTime, tickTime, []pendingFact{f}, nil)
 	require.NoError(t, err)

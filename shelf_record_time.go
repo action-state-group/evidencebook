@@ -210,6 +210,53 @@ func (s *Shelf) receivedRecordTime(ctx context.Context, bookID, receivedLogID st
 	return earliestNamedTime(ctx, tx, seq, witnesses, by)
 }
 
+// RecordStamp is the stamp (its tick, from 1) whose fact is the first to
+// cover the record at position (from 1) of the book bookID, as RecordTime
+// finds that fact: a record's time can come from no earlier stamp. ok is
+// false when no fact covers the position yet, so the next stamp will be the
+// first (docs/design/461-deal-profile.md §8.1, "Times"). It takes no lock,
+// as RecordTime.
+func (s *Shelf) RecordStamp(ctx context.Context, bookID string, position uint64) (n uint64, ok bool, err error) {
+	return s.recordStamp(ctx, position, func(tx *sql.Tx) (uint64, bool, error) {
+		return firstCoveringFact(ctx, tx, bookID, position)
+	})
+}
+
+// ReceivedRecordStamp is RecordStamp for a record the holder received: the
+// stamp whose fact of bookID is the first whose link value's last_received
+// names receivedLogID at a size that reaches the position, as
+// ReceivedRecordTime finds it.
+func (s *Shelf) ReceivedRecordStamp(ctx context.Context, bookID, receivedLogID string, position uint64) (n uint64, ok bool, err error) {
+	if receivedLogID == "" {
+		return 0, false, fmt.Errorf("%w: a received record names its log", ErrInvalid)
+	}
+	return s.recordStamp(ctx, position, func(tx *sql.Tx) (uint64, bool, error) {
+		return firstLinkingFact(ctx, tx, bookID, receivedLogID, position)
+	})
+}
+
+func (s *Shelf) recordStamp(ctx context.Context, position uint64, first func(*sql.Tx) (uint64, bool, error)) (n uint64, ok bool, err error) {
+	if err := s.live(); err != nil {
+		return 0, false, err
+	}
+	if position == 0 {
+		return 0, false, fmt.Errorf("%w: a record position counts from 1", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return 0, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	seq, found, err := first(tx)
+	if err != nil || !found {
+		return 0, false, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT tick FROM shelf_entries WHERE entry_seq = ?`, seq).Scan(&n); err != nil {
+		return 0, false, err
+	}
+	return n, true, nil
+}
+
 // earliestNamedTime is the earliest registration time, among the receipts
 // from the witnesses named (by shelf_receipts' column by: their URL or
 // their key id), of a shelf checkpoint whose tree holds the entry at seq.

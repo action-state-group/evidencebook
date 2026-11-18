@@ -45,6 +45,16 @@ type StatusProvider interface {
 	Values(ctx context.Context, bookID, logID string) (profile string, link LinkValue, status json.RawMessage, ok bool, err error)
 }
 
+// StampStatusProvider is a StatusProvider that is also told the stamp it
+// gives values for: n, the tick the stamp will have (from 1), which a status
+// value may use to name a record its own stamp is the first to cover
+// (docs/design/461-deal-profile.md §8.1, "Times"). A shelf calls StampValues
+// in place of Values when its provider implements it.
+type StampStatusProvider interface {
+	StatusProvider
+	StampValues(ctx context.Context, n uint64, bookID, logID string) (profile string, link LinkValue, status json.RawMessage, ok bool, err error)
+}
+
 // StampBatch is a stamp's stored batch: its entry documents in append order,
 // the stamp entry last. Bytes are base64 in JSON.
 type StampBatch struct {
@@ -254,7 +264,7 @@ func (c *Cadence) storeMigrationBatchLocked(ctx context.Context, now time.Time) 
 		if size == 0 {
 			continue
 		}
-		f, err := c.factFor(ctx, log, at, nil)
+		f, err := c.factFor(ctx, lastTick+1, log, at, nil)
 		if err != nil {
 			return err
 		}
@@ -371,7 +381,7 @@ func (s *Shelf) bookIDOf(ctx context.Context, log CadenceLog) (string, error) {
 
 // factFor is what a log's fact would be now (§2.4); last is its previous
 // fact, or nil for a genesis fact. grown says whether its checkpoint grew.
-func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, last *lastFact) (pendingFact, error) {
+func (c *Cadence) factFor(ctx context.Context, n uint64, log CadenceLog, at time.Time, last *lastFact) (pendingFact, error) {
 	s := c.shelf
 	journal := false
 	if _, ok := log.(bookLog); ok && log.LogID() == JournalLogID {
@@ -393,7 +403,15 @@ func (c *Cadence) factFor(ctx context.Context, log CadenceLog, at time.Time, las
 	// Only a book is described by a profile; a host log's fact is always
 	// profile "none" with the empty link value and {} (§2.4, §4).
 	if _, isBook := log.(bookLog); isBook && !journal && c.cfg.Status != nil {
-		p, l, st, ok, err := c.cfg.Status.Values(ctx, bookID, log.LogID())
+		var p string
+		var l LinkValue
+		var st json.RawMessage
+		var ok bool
+		if sp, stamped := c.cfg.Status.(StampStatusProvider); stamped {
+			p, l, st, ok, err = sp.StampValues(ctx, n, bookID, log.LogID())
+		} else {
+			p, l, st, ok, err = c.cfg.Status.Values(ctx, bookID, log.LogID())
+		}
 		if err != nil {
 			return pendingFact{}, err
 		}
@@ -585,7 +603,7 @@ func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, e
 		if err != nil {
 			return TickResult{}, err
 		}
-		f, err := c.factFor(ctx, log, at, &prev)
+		f, err := c.factFor(ctx, n, log, at, &prev)
 		if err != nil {
 			return TickResult{}, err
 		}
