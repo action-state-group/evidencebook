@@ -156,6 +156,11 @@ pub enum ShelfError {
     /// keeps its tombstone, so it is deleted, not missing.
     #[error("deleted: {0}")]
     Deleted(String),
+    /// A payload whose record's retention state yields no bytes now
+    /// (`WITHHELD` or `DELETED`; Go `ErrUnavailable`): a withheld payload
+    /// may become available again ([`ShelfBook::resolve_payload`]).
+    #[error("payload unavailable: {0}")]
+    Unavailable(String),
     /// A received offer refused because the holder's books kept changing
     /// while room was made for it ([`Shelf::receive`]): sending it again
     /// later may succeed.
@@ -325,6 +330,19 @@ pub(crate) struct ShelfInner {
 #[derive(Clone)]
 pub struct Shelf(pub(crate) Arc<ShelfInner>);
 
+/// A handle on a shelf that does not keep it alive ([`Shelf::downgrade`]):
+/// what a [`ReceiveProfile`] the shelf owns holds of the shelf, so the two
+/// do not keep each other alive.
+#[derive(Clone)]
+pub struct WeakShelf(std::sync::Weak<ShelfInner>);
+
+impl WeakShelf {
+    /// The shelf, while any [`Shelf`] handle on it lives.
+    pub fn upgrade(&self) -> Option<Shelf> {
+        self.0.upgrade().map(Shelf)
+    }
+}
+
 impl Shelf {
     /// Take the writer lock (waiting up to `lock_timeout`) or check the
     /// host's held lock, and open the shelf's file, creating its tables when
@@ -391,6 +409,11 @@ impl Shelf {
                 lock,
             }),
         })))
+    }
+
+    /// A handle on this shelf that does not keep it alive.
+    pub fn downgrade(&self) -> WeakShelf {
+        WeakShelf(Arc::downgrade(&self.0))
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, ShelfState> {

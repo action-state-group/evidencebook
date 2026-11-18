@@ -1290,3 +1290,118 @@ fn append_at_is_the_next_record_only_and_counts_a_pending_one() {
     assert_eq!(r.seq, 3, "seq 3 follows the pending record");
     assert_eq!(book.size(), 3);
 }
+
+/// resolve_payload reads a payload the record's retention state allows
+/// (Go `ResolvePayload`): an available or held record's, not a withheld or
+/// deleted one's (`Unavailable`), and not one the record does not commit
+/// (`NotFound`).
+#[test]
+fn resolve_payload_follows_the_records_retention() {
+    use evidencebook::record::{Link, LinkType};
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    let digest = |p: &str| hex::encode(Sha256::digest(p.as_bytes()));
+    let available = book.append(&observation("a", "one")).unwrap();
+    assert_eq!(
+        book.resolve_payload(&available.record_id, &digest("one"))
+            .unwrap(),
+        b"one"
+    );
+    assert!(matches!(
+        book.resolve_payload(&available.record_id, &digest("two")),
+        Err(ShelfError::NotFound(_))
+    ));
+    assert!(matches!(
+        book.resolve_payload(&"0".repeat(64), &digest("one")),
+        Err(ShelfError::NotFound(_))
+    ));
+    let mark = |target: &str, state: &str| {
+        let mut lifecycle = BookEntry::new("lifecycle", EpistemicType::ObservedEvent);
+        lifecycle.links = vec![Link {
+            link_type: LinkType::Cites,
+            target: target.into(),
+        }];
+        lifecycle.statement = json!({"retention_state": state});
+        book.append(&lifecycle).unwrap();
+    };
+    let withheld = book.append(&observation("a", "two")).unwrap();
+    mark(&withheld.record_id, "WITHHELD");
+    assert!(matches!(
+        book.resolve_payload(&withheld.record_id, &digest("two")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    // Made available again, it reads.
+    mark(&withheld.record_id, "AVAILABLE");
+    assert_eq!(
+        book.resolve_payload(&withheld.record_id, &digest("two"))
+            .unwrap(),
+        b"two"
+    );
+    let deleted = book.append(&observation("a", "three")).unwrap();
+    mark(&deleted.record_id, "DELETED");
+    assert!(matches!(
+        book.resolve_payload(&deleted.record_id, &digest("three")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    // A live hold reads LEGAL_HOLD for an available record, and leaves a
+    // withheld one withheld.
+    let held = book.append(&observation("a", "four")).unwrap();
+    mark(&held.record_id, "WITHHELD");
+    let mut hold = BookEntry::new("retention_commitment", EpistemicType::ProducerClaim);
+    hold.statement =
+        json!({"subject": {"record": held.record_id}, "until": "2030-01-01T00:00:00Z"});
+    book.append(&hold).unwrap();
+    assert!(matches!(
+        book.resolve_payload(&held.record_id, &digest("four")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    // A lifecycle statement read as Go reads it: its state's name in any
+    // case, and a state that is not a string is corrupt.
+    let upper = book.append(&observation("a", "five")).unwrap();
+    let mut lifecycle = BookEntry::new("lifecycle", EpistemicType::ObservedEvent);
+    lifecycle.links = vec![Link {
+        link_type: LinkType::Cites,
+        target: upper.record_id.clone(),
+    }];
+    lifecycle.statement = json!({"RETENTION_STATE": "WITHHELD"});
+    book.append(&lifecycle).unwrap();
+    assert!(matches!(
+        book.resolve_payload(&upper.record_id, &digest("five")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    let listed = shelf.records(&["deal/a"]).unwrap();
+    let state_of = |id: &str| {
+        listed
+            .records
+            .iter()
+            .find(|r| r.record_id == id)
+            .unwrap()
+            .retention
+            .clone()
+    };
+    assert_eq!(state_of(&upper.record_id), "WITHHELD");
+    let numbered = book.append(&observation("a", "six")).unwrap();
+    lifecycle.links[0].target = numbered.record_id.clone();
+    lifecycle.statement = json!({"retention_state": 123});
+    book.append(&lifecycle).unwrap();
+    assert!(matches!(
+        book.resolve_payload(&numbered.record_id, &digest("six")),
+        Err(ShelfError::Corrupt(_))
+    ));
+    // A readable record whose original the store holds purged is corrupt.
+    let purged = book.append(&observation("a", "seven")).unwrap();
+    let conn = Connection::open(file(&dir)).unwrap();
+    conn.busy_timeout(Duration::from_secs(5)).unwrap();
+    let side =
+        ArtifactSqlite::new(conn, "test", [key("signer").verifying_key().to_bytes()]).unwrap();
+    side.purge(&purged.record_id).unwrap();
+    let err = book
+        .resolve_payload(&purged.record_id, &digest("seven"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, ShelfError::Corrupt(m) if m.contains("purged")),
+        "{err}"
+    );
+}
