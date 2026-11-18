@@ -72,15 +72,35 @@ pub fn pair(capsule: &[u8], envelope: &[u8], payload: &[u8]) -> Result<Vec<u8>, 
     members.insert("signature".into(), json!(hex::encode(envelope)));
     members.insert("key_id".into(), json!(hex::encode(&verified.public_key)));
     let agent_input: Value = serde_json::from_slice(payload)?;
-    // Go marshals a map: members sorted, agent_input first. The bytes match
-    // Go's but for its HTML escaping of <, > and &, which no reader needs.
+    // Go marshals a map: members sorted, agent_input first, and escapes as
+    // Go does (go_marshal).
     let mut sorted: Vec<(String, Value)> = members.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
     let record: Map<String, Value> = sorted.into_iter().collect();
     let mut out = Map::new();
     out.insert("agent_input".into(), agent_input);
     out.insert("record".into(), Value::Object(record));
-    Ok(serde_json::to_vec(&Value::Object(out))?)
+    Ok(go_marshal(&Value::Object(out))?)
+}
+
+/// `v` as Go's `json.Marshal` writes it, for a value whose strings came
+/// from JCS: serde_json's compact text, with `<`, `>`, `&`, U+2028 and
+/// U+2029 escaped as Go escapes them. Those characters occur only inside
+/// strings, so escaping them in the whole text escapes them there.
+pub(crate) fn go_marshal(v: &Value) -> Result<Vec<u8>, serde_json::Error> {
+    let text = serde_json::to_string(v)?;
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c => out.push(c),
+        }
+    }
+    Ok(out.into_bytes())
 }
 
 /// Checks a sent pair on its own (Go `VerifySent`): the Capsule verifies
@@ -103,50 +123,10 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     if !ok_shape {
         return Err(bad("not a pair {record, agent_input}".into()));
     }
-    let mut record = p["record"].as_object().cloned().unwrap_or_default();
+    let record = p["record"].as_object().cloned().unwrap_or_default();
     let agent_input = p["agent_input"].clone();
-    let sig_hex = record
-        .get("signature")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let key_id = record
-        .get("key_id")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if sig_hex.is_empty() || key_id.is_empty() {
-        return Err(bad("the Capsule carries no signature and key_id".into()));
-    }
-    record.remove("signature");
-    record.remove("key_id");
-    let capsule = Value::Object(record.clone());
-    let capsule_bytes = jcs(&capsule).map_err(|e| bad(format!("the Capsule: {e}")))?;
-    let format_ok = capsule.get("format_version").and_then(Value::as_str)
-        == Some(crate::seal::FORMAT_VERSION)
-        && capsule.get("canonicalization_id").and_then(Value::as_str)
-            == Some(crate::canonical::CANONICALIZATION_JCS);
-    let strict = agent_action_capsule::verify::decode_capsule_json(&capsule_bytes);
-    let result = strict
-        .as_ref()
-        .ok()
-        .map(|s| agent_action_capsule::verify::verify(s, None));
-    let capsule_id = match &result {
-        Some(r) if format_ok && r.ok && r.capsule_id.is_some() => r.capsule_id.clone().unwrap(),
-        _ => return Err(bad("the Capsule does not verify".into())),
-    };
-    let Ok(envelope) = hex::decode(&sig_hex) else {
-        return Err(bad("the signature is not hex".into()));
-    };
-    let verified = agent_action_capsule::envelope::verify(&capsule_id, &envelope);
-    if !verified.ok {
-        return Err(bad("the signature does not verify".into()));
-    }
-    if hex::encode(&verified.public_key) != key_id {
-        return Err(bad(
-            "the Capsule is signed by another key than its key_id".into()
-        ));
-    }
+    let (capsule, _, capsule_id, key_id) = verify_capsule(STAGE_SENT, &record)?;
+    let record = capsule.as_object().cloned().unwrap_or_default();
     let header = record.contains_key("evidence_record_header");
     let chained = record.get("chain").is_some_and(|c| !c.is_null());
     let fyi = capsule.get("action_type").and_then(Value::as_str) == Some("fyi");
@@ -222,6 +202,51 @@ pub fn verify_sent(pair: &[u8], offer: Option<&OfferContext>) -> Result<Sent, Er
     Ok(out)
 }
 
+/// Checks a signed Capsule's members (Go `verifyCapsule`): the Capsule
+/// verifies, and its `signature` verifies under its `key_id`. It returns the
+/// Capsule without `signature` and `key_id`, its JCS bytes, its id and the
+/// key, refusing at `stage`.
+pub(crate) fn verify_capsule(
+    stage: &'static str,
+    members: &Map<String, Value>,
+) -> Result<(Value, Vec<u8>, String, String), Error> {
+    let bad = |m: &str| stage_err(stage, m.to_string());
+    let text = |k: &str| members.get(k).and_then(Value::as_str).unwrap_or("");
+    let (sig_hex, key_id) = (text("signature").to_string(), text("key_id").to_string());
+    if sig_hex.is_empty() || key_id.is_empty() {
+        return Err(bad("the Capsule carries no signature and key_id"));
+    }
+    let mut rest = members.clone();
+    rest.remove("signature");
+    rest.remove("key_id");
+    let capsule = Value::Object(rest);
+    let capsule_bytes = jcs(&capsule).map_err(|e| stage_err(stage, format!("the Capsule: {e}")))?;
+    let format_ok = capsule.get("format_version").and_then(Value::as_str)
+        == Some(crate::seal::FORMAT_VERSION)
+        && capsule.get("canonicalization_id").and_then(Value::as_str)
+            == Some(crate::canonical::CANONICALIZATION_JCS);
+    let strict = agent_action_capsule::verify::decode_capsule_json(&capsule_bytes);
+    let result = strict
+        .as_ref()
+        .ok()
+        .map(|s| agent_action_capsule::verify::verify(s, None));
+    let capsule_id = match &result {
+        Some(r) if format_ok && r.ok && r.capsule_id.is_some() => r.capsule_id.clone().unwrap(),
+        _ => return Err(bad("the Capsule does not verify")),
+    };
+    let Ok(envelope) = hex::decode(&sig_hex) else {
+        return Err(bad("the signature is not hex"));
+    };
+    let verified = agent_action_capsule::envelope::verify(&capsule_id, &envelope);
+    if !verified.ok {
+        return Err(bad("the signature does not verify"));
+    }
+    if hex::encode(&verified.public_key) != key_id {
+        return Err(bad("the Capsule is signed by another key than its key_id"));
+    }
+    Ok((capsule, capsule_bytes, capsule_id, key_id))
+}
+
 /// A row's owed as a settlement amount: amount_minor as the value, the
 /// currency as the assetCode, and its assetScale (Go `owedAmount`).
 pub(crate) fn owed_amount(row: &Row) -> Option<Value> {
@@ -238,7 +263,7 @@ pub(crate) fn owed_amount(row: &Row) -> Option<Value> {
     Some(json!({"value": minor.to_string(), "assetCode": currency, "assetScale": scale}))
 }
 
-fn is_payment_row(row: &Row) -> bool {
+pub(crate) fn is_payment_row(row: &Row) -> bool {
     row.recomputed && owed_amount(row).is_some()
 }
 

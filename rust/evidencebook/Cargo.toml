@@ -67,7 +67,7 @@ default = []
 # profile.
 # Its record checks read numbers as written, as Go's json.Number does
 # (agent-action-capsule's `strict` already turns this on).
-deal = ["dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:icu_properties", "dep:idna", "dep:regex", "serde_json/arbitrary_precision"]
+deal = ["agent-action-capsule/settlement", "dep:boon", "dep:hmac", "dep:icu_casemap", "dep:icu_normalizer", "dep:icu_properties", "dep:idna", "dep:regex", "serde_json/arbitrary_precision"]
 
 # The shelf (evidencebook#254 §2, module `shelf`): one subject key's books in
 # one SQLite file, its writer lock or a host-held one, host logs, the heartbeat

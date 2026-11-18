@@ -28,6 +28,7 @@ checksum = "7e4ad5a4c1d7d2954570d78e7ffb2a7746a534a4dfbc6062d87cafac170a7dd6"
 dependencies = [
  "base64",
  "checkpointed-local-log",
+ "curve25519-dalek",
  "ed25519-dalek",
  "evidence-request",
  "hex",
