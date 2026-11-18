@@ -256,7 +256,10 @@ and returns per act the record digests the person signs:
 An act MUST NOT be relied on until the person's signature over each listed digest, from the
 person's own key, is held. The signature travels beside the approval record, never inside it, so
 it changes no record format; the member that carries it is defined in
-action-state-group/agent-action-capsule#627, not here (section 10).
+action-state-group/agent-action-capsule#627, not here (section 10). The person's signature
+certifies what the approval already says, no more: on a `user` approval, the person's own answer;
+on an `agent_card` approval, that the person answered the card the agent composed, which, as in
+x-deal-v0 §6 rule 6, is not consent in the person's own words.
 
 ## 9. Checks, stages and fixtures
 
@@ -288,3 +291,5 @@ When a deal has started (design note §5), the stamp proof order (§7), the stat
 and how a received record is read (§8), and the sealed deal report (§9) are later parts of
 evidencebook#461 step 5 (design note §11.1, PRs 3 to 5). The member that carries the person's
 signature beside an approval (section 8) is defined in action-state-group/agent-action-capsule#627.
+Whether an intent itself, which a `standing_intent` approval rests on, must also carry the
+person's signature is an open question; until it is answered, section 8 asks for none.
