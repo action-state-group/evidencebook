@@ -12,9 +12,10 @@ import (
 // covers the counterparty's agreement (CanAct), on both sides, whether or not
 // the agreement names a witness. A payee leg and a statement are never gated,
 // nor is any act after the first. A deal whose counterparty runs no layer has
-// no counterparty agreement or proof to wait for: its first act runs
-// unguarded, and the holder records that it did, never passing it silently
-// (Sherlock2's second condition on u610). The holder may refuse it instead.
+// no counterparty agreement or proof to wait for: its first act goes ahead,
+// unguarded, and is not refused (Steven, u611). The receipt and the card say
+// the other side sent no stamp proof, counted from the holder's receipt only;
+// the status value carries that as counterparty_layer false.
 
 // Why GateAct refused or marked an act (ActGate.Reason).
 const (

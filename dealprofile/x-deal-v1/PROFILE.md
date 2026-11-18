@@ -291,8 +291,9 @@ refused until the counterparty's stamp proof covers the counterparty's agreement
 whether or not the agreement names a witness (`xdealv1.ReceiveProfile.GateAct`, over `CanAct`). A
 payee leg, a statement and any later act are never gated. The offerer stamps its agreement at once
 when its first act waits on the acceptor's, so the two never wait on each other. With a
-counterparty that runs no layer, the first act runs unguarded and the holder records that it did;
-it is never passed silently.
+counterparty that runs no layer, the first act goes ahead unguarded and is not refused (Steven,
+u611); the receipt and the card say the other side sent no stamp proof, counted from the holder's
+receipt only.
 
 ## 9. Checks, stages and fixtures
 

@@ -1021,12 +1021,16 @@ margin, it stamps its agreement alone first.
 
 **Acceptor**, on the offerer's proof: the same `Receive` and the same checks. **Decided** (u610): its
 own gate applies to its first `perform` or payer `settle` after the offerer's agreement. A payee leg
-and a statement are never gated, nor is any act after the first.
+and a statement are never gated, nor is any act after the first. Appendix A has the seller write its
+payment received record (line 27) before the buyer's proof arrives (line 32), and deliver (line 37)
+after.
 
-**A counterparty without the layer** (u610, Sherlock2's second condition) has no agreement or proof
-to wait for. `GateAct` lets its first act run and marks it unguarded (`GateNoLayer`), and the holder
-records that it ran unguarded. It is never passed silently, and the holder may refuse it instead. Appendix A has the seller write its payment received record
-(line 27) before the buyer's proof arrives (line 32), and deliver (line 37) after.
+**A counterparty without the layer** (Steven, u611, "layer ii"; buzz 20704793, ops 8ff23c29) has
+no agreement or proof to wait for, and its first act goes ahead: it is not refused. `GateAct` allows
+it and marks it unguarded (`GateNoLayer`). The receipt and the card say the other side sent no
+stamp proof, so the deal is counted from the holder's receipt only. The status value carries this as
+`counterparty_layer` false with `counterparty_proof_held` false (8.1), and the report and card read
+those (section 9). A gate that never applies without that label is not adopted.
 
 **Later**, before either side treats the deal as settled or relies on the other's card, it asks
 for the witnessed checkpoint: a shelf checkpoint with a receipt from a named witness, the
