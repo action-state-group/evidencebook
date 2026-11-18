@@ -144,6 +144,10 @@ func TestApprovalMigration(t *testing.T) {
 		// LimitApprovals are, per authorized act, how many confirm_limits
 		// approvals its standing intent rested on.
 		LimitApprovals []int `json:"limit_approvals,omitempty"`
+		// IntentSignature is, per authorized act, whether it rests on a
+		// first intent the person must have signed (a standing intent;
+		// evidencebook#500, Steven's option b).
+		IntentSignature []bool `json:"intent_signature,omitempty"`
 	}
 	var cases []vcase
 	run := func(name, why string, f *authFlow, wantOK bool) {
@@ -155,6 +159,17 @@ func TestApprovalMigration(t *testing.T) {
 			for _, a := range got {
 				c.PersonSignature = append(c.PersonSignature, a.NeedsPersonSignature)
 				c.LimitApprovals = append(c.LimitApprovals, len(a.LimitApprovals))
+				c.IntentSignature = append(c.IntentSignature, a.Intent != "")
+				if a.Intent != "" {
+					// The first intent of the journal, never a later
+					// narrowing intent or a proposal.
+					for _, r := range f.journal {
+						if r.Block.RecordType == TypeIntent {
+							assert.Equal(t, r.digestRef(t).Digest, a.Intent, "%s: the first intent", name)
+							break
+						}
+					}
+				}
 			}
 		} else {
 			require.Error(t, err, name)
@@ -175,7 +190,13 @@ func TestApprovalMigration(t *testing.T) {
 	c = f.check("pay")
 	f.approve(f.verdict(c, "pass"), "standing_intent", true)
 	f.pay(c)
-	run("standing-intent-in-allowed", "a standing intent answers a passing verdict for an action in the allowed in force; no person signature", f, true)
+	run("standing-intent-in-allowed", "a standing intent answers a passing verdict for an action in the allowed in force; the approval needs no person signature, the first intent it rests on does", f, true)
+
+	f = newFlow()
+	c = f.check("pay")
+	f.approve(f.verdict(c, "pass"), "standing_intent", true)
+	f.pay(c)
+	run("standing-intent-without-intent", "a standing-intent approval rests on an intent the person signs; with none before it, it authorizes nothing", f, false)
 
 	f = newFlow()
 	c = f.check("pay")
@@ -380,7 +401,7 @@ func TestApprovalMigration(t *testing.T) {
 	run("check-not-held", "an act citing a check the journal does not hold is refused", f, false)
 
 	got, err := json.MarshalIndent(map[string]any{
-		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card) and limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "approval-migration (evidencebook#461, docs/design/461-deal-profile.md §3.2, invariant D): CheckAuthorizations(journal, acts) must pass the valid cases, giving person_signature per authorized act (its approval is the person's: approver user or agent_card), limit_approvals (how many confirm_limits approvals, each also needing the person's signature, its standing intent rested on) and intent_signature (whether it rests on a first intent the person must have signed: evidencebook#500), and refuse the others at stage authorization. Written by dealprofile/xdealv1's TestApprovalMigration (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
 	}, "", "  ")
 	require.NoError(t, err)
