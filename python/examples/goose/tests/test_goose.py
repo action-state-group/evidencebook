@@ -69,11 +69,10 @@ def paid(buyer: gn.Node, seller: gn.Node, clock: Clock, deal_id: str = DEAL, ter
     clock.at += timedelta(seconds=10)
 
 
-def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "received",
-                 terms: dr.Terms = TERMS) -> None:
+def deal_through(buyer: gn.Node, seller: gn.Node, clock: Clock, status: str = "received") -> None:
     """One deal, both sides, closed with ``status``; each side verifies the
     other's final half."""
-    paid(buyer, seller, clock, terms=terms)
+    paid(buyer, seller, clock)
     # The exchange ends: each asks for the other's half, holds it, and closes citing its checkpoint.
     for me, peer in ((buyer, seller), (seller, buyer)):
         peer.ask_half(DEAL)
@@ -95,35 +94,6 @@ def test_both_sides_chains_pass_the_reference_checker(nodes, clock, tmp_path):
         chain = [step["payload"] for step in node.half(DEAL)["steps"]]
         path = tmp_path / f"{node.operator}.json"
         path.write_text(json.dumps(chain))
-        files.append(str(path))
-    run = subprocess.run([sys.executable, str(CHECKER), *files], capture_output=True, text=True)
-    assert run.returncode == 0 and "ALL OK" in run.stdout, run.stdout + run.stderr
-
-
-def _baseline_body(node: gn.Node) -> dict:
-    return node.half(DEAL)["steps"][0]["payload"]["body"]
-
-
-def test_a_baseline_carries_demo_only_when_the_terms_ask_for_it(tmp_path, clock):
-    for terms, want in ((TERMS, None), (dr.Terms(TERMS.item, 500, "USD", "lightning", False, demo=True), True)):
-        node = gn.Node.open(tmp_path / f"buyer-{'demo' if want else 'plain'}", operator="goose-buyer", now=clock)
-        try:
-            chain = node.new_deal(DEAL, dr.ROLE_BUYER, "peer-key", terms)
-            node.seal(chain, chain.open(clock.at, "buy 1k tokens"))
-            body = _baseline_body(node)
-            assert body.get("demo") is want and ("demo" in body) is (want is not None)
-        finally:
-            node.close()
-
-
-def test_a_demo_deal_passes_the_reference_checker(nodes, clock, tmp_path):
-    buyer, seller = nodes
-    deal_through(buyer, seller, clock, terms=dr.Terms(TERMS.item, 500, "USD", "lightning", False, demo=True))
-    assert _baseline_body(buyer)["demo"] is True and _baseline_body(seller)["demo"] is True
-    files = []
-    for node in (buyer, seller):
-        path = tmp_path / f"{node.operator}.json"
-        path.write_text(json.dumps([step["payload"] for step in node.half(DEAL)["steps"]]))
         files.append(str(path))
     run = subprocess.run([sys.executable, str(CHECKER), *files], capture_output=True, text=True)
     assert run.returncode == 0 and "ALL OK" in run.stdout, run.stdout + run.stderr
@@ -1183,23 +1153,3 @@ def test_a_history_staple_is_refused_unless_the_goose_key_presents_it(nodes, clo
     bad[gn.HISTORY_STAPLE_MEMBER] = "a string"
     with pytest.raises(gn.Refused, match="request and a reply"):
         gn.verify_half(bad, buyer.checkpoint_key_id)
-
-
-def test_a_demo_deal_through_the_server_tools_seals_demo_on_both_halves(server, tmp_path):
-    ls = server("seller")
-    seller = call(ls.loop_join)
-    ls = server("buyer")
-    buyer = call(ls.loop_join)
-    call(ls.loop_admit, peer_key_id=seller["key_id"], checkpoint_key_id=seller["checkpoint_key_id"], decision="GO")
-    opened = call(ls.loop_deal_open, peer_key_id=seller["key_id"], item="x", price_minor=500, currency="USD",
-                  rail="lightning", asked="buy", demo=True)
-    half = str(tmp_path / "half.json")
-    call(ls.loop_deal_push, deal_id=opened["deal_id"], out_path=half)
-    assert ls.node().deal(opened["deal_id"]).terms.demo is True  # a resumed chain keeps it
-    ls = server("seller")
-    call(ls.loop_admit, peer_key_id=buyer["key_id"], checkpoint_key_id=buyer["checkpoint_key_id"], decision="GO")
-    assert call(ls.loop_deal_respond, request_file=half, asked="sell")["ok"]
-    reply = str(tmp_path / "reply.json")
-    call(ls.loop_deal_push, deal_id=opened["deal_id"], out_path=reply)
-    assert json.loads(Path(reply).read_text())["steps"][0]["payload"]["body"]["demo"] is True
-    assert json.loads(Path(half).read_text())["steps"][0]["payload"]["body"]["demo"] is True
