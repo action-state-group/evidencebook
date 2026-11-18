@@ -871,11 +871,6 @@ func (p receivedPrefixState) digests(n uint64) []string {
 	return out
 }
 
-// receivedPrefix computes a counted prefix from the store. The forks are
-// the ones recorded (shelf_received_conflicts), which deleting a record
-// never undoes, and any the records held show: a position whose claimed
-// digests differ (the records held there, and the predecessor each record
-// at the next position names).
 // receivedPrefixBetween, when set (tests), runs between receivedPrefix's
 // read of the records and its read of the recorded forks.
 var receivedPrefixBetween func(ctx context.Context)
@@ -892,6 +887,11 @@ func snapshotPrefix(ctx context.Context, db *sql.DB, k logKey) (receivedPrefixSt
 	return receivedPrefix(ctx, tx, k)
 }
 
+// receivedPrefix computes a counted prefix from the store. The forks are
+// the ones recorded (shelf_received_conflicts), which deleting a record
+// never undoes, and any the records held show: a position whose claimed
+// digests differ (the records held there, and the predecessor each record
+// at the next position names).
 func receivedPrefix(ctx context.Context, q queryer, k logKey) (receivedPrefixState, error) {
 	rows, err := q.QueryContext(ctx, `SELECT `+receivedColumns+` FROM shelf_received WHERE sender_key = ? AND log_id = ? ORDER BY position, digest`, k.sender, k.log)
 	if err != nil {
