@@ -181,8 +181,10 @@ func VerifyBook(pair []byte) (BookRead, error) {
 	if err != nil {
 		return BookRead{}, err
 	}
-	if !slices.Contains(h.PayloadCommitments, digest) {
-		return bad("the header does not commit this record")
+	// One payload, this record: a header committing two would let one
+	// record id be read as either.
+	if len(h.PayloadCommitments) != 1 || h.PayloadCommitments[0] != digest {
+		return bad("the header does not commit this record as its one payload")
 	}
 	if err := Check([]byte(p.Payload)); err != nil {
 		return BookRead{}, err
@@ -235,6 +237,7 @@ type ReceiveProfile struct {
 		digest string
 		rec    Record
 	}
+	cache holderCache
 }
 
 var _ evidencebook.ReceiveProfile = (*ReceiveProfile)(nil)
@@ -298,20 +301,17 @@ type ours struct {
 	agreements []Record
 }
 
-func (o ours) offer(dealID string) (ProposeBody, string, bool) {
+// offerByDigest is our journal's propose whose record digest is d: an offer
+// or a counter-offer, whichever a reply cites.
+func (o ours) offerByDigest(d string) (ProposeBody, Record, bool) {
 	for _, r := range o.journal {
-		if b, ok := asPropose(r.Body); ok && r.Block.DealID == dealID && b.CounterTo == nil {
-			d, _ := Digest(r)
-			return b, d, true
+		if b, ok := asPropose(r.Body); ok {
+			if rd, err := Digest(r); err == nil && rd == d {
+				return b, r, true
+			}
 		}
 	}
-	for _, r := range o.journal {
-		if b, ok := asPropose(r.Body); ok && r.Block.DealID == dealID {
-			d, _ := Digest(r)
-			return b, d, true
-		}
-	}
-	return ProposeBody{}, "", false
+	return ProposeBody{}, Record{}, false
 }
 
 func (o ours) agreement(dealID string) (AgreeBody, bool) {
@@ -346,49 +346,74 @@ func v1Payload(ctx context.Context, b *evidencebook.Book, r evidencebook.Record)
 	return rec, true, nil
 }
 
+// holderCache keeps what ours read, so a call reads only what is new: the
+// journal records past those read, and the first record of a deal book not
+// read yet. A book's first record never changes once sealed.
+type holderCache struct {
+	journalSeen uint64
+	journal     []Record
+	firsts      map[string]*Record // by log id; nil for a book that opens with no v1 agreement
+}
+
 func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
-	var o ours
 	if p.Shelf == nil {
-		return o, fmt.Errorf("xdealv1: the receive profile has no shelf")
+		return ours{}, fmt.Errorf("xdealv1: the receive profile has no shelf")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	c := &p.cache
+	if c.firsts == nil {
+		c.firsts = map[string]*Record{}
 	}
 	journal, err := p.Shelf.Journal(ctx)
 	if err != nil {
-		return o, err
+		return ours{}, err
 	}
-	records, err := journal.Query(ctx, evidencebook.Filter{})
-	if err != nil {
-		return o, err
-	}
-	for _, r := range records {
-		rec, ok, err := v1Payload(ctx, journal, r)
+	if size := journal.Size(); size > c.journalSeen {
+		records, err := journal.Query(ctx, evidencebook.Filter{FromSeq: c.journalSeen + 1, ToSeq: size})
 		if err != nil {
-			return o, err
+			return ours{}, err
 		}
-		if ok {
-			o.journal = append(o.journal, rec)
+		for _, r := range records {
+			rec, ok, err := v1Payload(ctx, journal, r)
+			if err != nil {
+				return ours{}, err
+			}
+			if ok {
+				c.journal = append(c.journal, rec)
+			}
 		}
+		c.journalSeen = size
 	}
 	logs, err := p.Shelf.Books(ctx)
 	if err != nil {
-		return o, err
+		return ours{}, err
 	}
+	o := ours{journal: c.journal}
 	for _, logID := range logs {
-		book, err := p.Shelf.Open(ctx, logID)
-		if err != nil {
-			return o, err
-		}
-		first, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
-		if err != nil {
-			return o, err
-		}
-		if len(first) == 1 {
-			rec, ok, err := v1Payload(ctx, book, first[0])
+		first, read := c.firsts[logID]
+		if !read {
+			book, err := p.Shelf.Open(ctx, logID)
 			if err != nil {
-				return o, err
+				return ours{}, err
 			}
-			if a, isAgree := asAgree(rec.Body); ok && isAgree && a.Kind == KindAgreement {
-				o.agreements = append(o.agreements, rec)
+			recs, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
+			if err != nil {
+				return ours{}, err
 			}
+			if len(recs) == 1 {
+				rec, ok, err := v1Payload(ctx, book, recs[0])
+				if err != nil {
+					return ours{}, err
+				}
+				if a, isAgree := asAgree(rec.Body); ok && isAgree && a.Kind == KindAgreement {
+					first = &rec
+				}
+			}
+			c.firsts[logID] = first
+		}
+		if first != nil {
+			o.agreements = append(o.agreements, *first)
 		}
 	}
 	return o, nil
@@ -410,60 +435,93 @@ func (p *ReceiveProfile) heldSent(ctx context.Context, digest string) (Record, s
 }
 
 // Admit is the push rule (design §8.3; evidencebook ReceiveProfile.Admit):
-// an offer from any key; a decline from the key an offer of ours was sent
-// to; a cancellation from the signer of the offer it cancels; a deal-book
-// record from our agreement's counterparty_key, or, at an offerer holding
-// only its offer, from the key the offer was sent to; a ruling from our
-// agreement's adjudicator.
+// an offer from any key; a decline of an offer of ours from the key it was
+// sent to; a cancellation of an offer of this deal from that offer's signer;
+// a ruling from our agreement's adjudicator; and a deal-book record from the
+// counterparty of the deal: our agreement's counterparty_key, or, at an
+// offerer holding only its offer, the key the offer was sent to. A deal-book
+// record is admitted only on a log whose first record from that sender is
+// the counterparty's agreement of this deal, citing the offer it answers.
 func (p *ReceiveProfile) Admit(ctx context.Context, r evidencebook.ReceivedRecord) (bool, error) {
 	if r.Offer {
 		return true, nil
+	}
+	rec, _, ok, err := p.heldOrPending(ctx, r)
+	if err != nil || !ok {
+		return false, err
 	}
 	o, err := p.ours(ctx)
 	if err != nil {
 		return false, err
 	}
 	if strings.HasPrefix(r.LogID, SentLogPrefix) {
-		rec, _, ok, err := p.heldOrPending(ctx, r)
-		if err != nil || !ok {
-			return false, err
-		}
 		ag, isAgree := asAgree(rec.Body)
 		if !isAgree {
 			return false, nil
 		}
 		switch ag.Kind {
 		case KindDecline:
-			of, digest, ok := o.offer(rec.Block.DealID)
-			return ok && digest == ag.Offer.Digest && of.To.V != nil && *of.To.V == r.SenderKey, nil
+			of, offer, ok := o.offerByDigest(ag.Offer.Digest)
+			return ok && offer.Block.DealID == rec.Block.DealID && of.To.V != nil && *of.To.V == r.SenderKey, nil
 		case KindCancellation:
-			_, signer, held, err := p.heldSent(ctx, ag.Offer.Digest)
-			return held && signer == r.SenderKey, err
+			offer, signer, held, err := p.heldSent(ctx, ag.Offer.Digest)
+			return held && signer == r.SenderKey && offer.Block.RecordType == TypePropose &&
+				offer.Block.DealID == rec.Block.DealID, err
 		}
 		return false, nil
-	}
-	rec, _, ok, err := p.heldOrPending(ctx, r)
-	if err != nil || !ok {
-		return false, err
 	}
 	if rec.Block.RecordType == TypeRuling {
 		a, held := o.agreement(rec.Block.DealID)
 		return held && a.Adjudicator.V != nil && a.Adjudicator.V.KeyID == r.SenderKey, nil
 	}
-	if a, held := o.agreement(rec.Block.DealID); held && a.CounterpartyKey.V != nil && *a.CounterpartyKey.V == r.SenderKey {
-		return true, nil
+	// The log's first record from this sender: this record, or the one held.
+	genesis := rec
+	if r.Position > 1 {
+		g, found, err := p.heldGenesis(ctx, r.SenderKey, r.LogID)
+		if err != nil || !found {
+			return false, err
+		}
+		genesis = g
 	}
-	// At an offerer holding only its offer: the acceptor's book, from the
-	// key the offer was sent to; its agreement must cite that offer.
-	of, digest, ok := o.offer(r.DealID)
-	if !ok || of.To.V == nil || *of.To.V != r.SenderKey {
+	gag, isAgree := asAgree(genesis.Body)
+	if !isAgree || gag.Kind != KindAgreement || genesis.Block.DealID != r.DealID {
 		return false, nil
 	}
-	if r.Position == 1 {
-		ag, isAgree := asAgree(rec.Body)
-		return isAgree && ag.Kind == KindAgreement && ag.Offer.Digest == digest, nil
+	if a, held := o.agreement(r.DealID); held {
+		// The counterparty of our deal, on a book that answers the same offer.
+		return a.CounterpartyKey.V != nil && *a.CounterpartyKey.V == r.SenderKey && gag.Offer.Digest == a.Offer.Digest, nil
 	}
-	return true, nil
+	// At an offerer holding only its offer: the acceptor's book answers it,
+	// from the key it was sent to.
+	of, offer, ok := o.offerByDigest(gag.Offer.Digest)
+	return ok && offer.Block.DealID == r.DealID && of.To.V != nil && *of.To.V == r.SenderKey, nil
+}
+
+// heldGenesis is the record held at position 1 of logID from senderKey, read
+// as a book pair, or found false when none (or a fork of two) is held.
+func (p *ReceiveProfile) heldGenesis(ctx context.Context, senderKey, logID string) (Record, bool, error) {
+	held, err := p.Shelf.HeldFirst(ctx, logID)
+	if err != nil {
+		return Record{}, false, err
+	}
+	var out *Record
+	for _, h := range held {
+		if h.SenderKey != senderKey {
+			continue
+		}
+		if out != nil {
+			return Record{}, false, nil
+		}
+		b, err := VerifyBook(h.Record)
+		if err != nil {
+			return Record{}, false, nil
+		}
+		out = &b.Record
+	}
+	if out == nil {
+		return Record{}, false, nil
+	}
+	return *out, true, nil
 }
 
 // heldOrPending is the record r names: the one Read last read, which the
@@ -562,7 +620,7 @@ func (p *ReceiveProfile) ProofSender(ctx context.Context, checkpointKeyID, logID
 		var expected string
 		if a, ours := o.agreement(deal); ours && a.CounterpartyKey.V != nil {
 			expected = *a.CounterpartyKey.V
-		} else if of, _, ok := o.offer(deal); ok && of.To.V != nil {
+		} else if of, offer, ok := o.offerByDigest(ag.Offer.Digest); ok && offer.Block.DealID == deal && of.To.V != nil {
 			expected = *of.To.V
 		}
 		if expected != "" && expected == h.SenderKey {

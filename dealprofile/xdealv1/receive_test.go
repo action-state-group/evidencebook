@@ -130,7 +130,15 @@ func (p *party) seal(logID string, r Record) (string, []byte) {
 	p.tick()
 	book, err := p.shelf.Open(context.Background(), logID)
 	require.NoError(p.t, err)
-	rec, err := book.Append(context.Background(), entryOf(p.t, r))
+	e := entryOf(p.t, r)
+	// A deal-book record cites the record before it (design §3.1).
+	if size := book.Size(); size > 0 {
+		last, err := book.Query(context.Background(), evidencebook.Filter{FromSeq: size, ToSeq: size})
+		require.NoError(p.t, err)
+		require.Len(p.t, last, 1)
+		e.Links = []evidencebook.Link{{Type: evidencebook.Cites, Target: last[0].RecordID}}
+	}
+	rec, err := book.Append(context.Background(), e)
 	require.NoError(p.t, err)
 	sealed, err := book.Sealed(context.Background(), rec.RecordID)
 	require.NoError(p.t, err)
@@ -314,6 +322,9 @@ func TestGenesisForkAfterProof(t *testing.T) {
 	ob := *h.agreement.Body.(*AgreeBody)
 	ob.Role = RoleSeller
 	ob.ShelfLogID = testCadenceLog
+	// The forked agreement names another checkpoint key: filtering by key
+	// would keep the first; the fork is refused before any filter.
+	ob.CheckpointKey = hex.EncodeToString(make([]byte, 32))
 	other.Body = &ob
 	other.Block.At = "2026-11-01T09:46:00Z"
 	_, forkPair := h.seller.sealOnNewShelf(h.sellerLog, other)
@@ -428,4 +439,160 @@ func mustDigest(t *testing.T, r Record) string {
 	d, err := Digest(r)
 	require.NoError(t, err)
 	return d
+}
+
+func settleRecord(t *testing.T, seq int64, prev, agreement Record, seen string) Record {
+	t.Helper()
+	b := journalBlock(TypeSettle, "2026-11-01T10:20:00Z", true)
+	pr, ag := RefTo(mustDigest(t, prev)), RefTo(mustDigest(t, agreement))
+	b.Seq, b.Prev, b.AgreementRef, b.Seen = seq, &pr, &ag, Some(seen)
+	r := Record{Block: b, Body: &SettleBody{Leg: LegPayee, Statements: statements(item("paid_as_agreed", ValueMet))}}
+	require.NoError(t, Check(r))
+	return r
+}
+
+// A later record of an admitted book is admitted, placed after the record it
+// cites; a later record of a log whose first record was never admitted is
+// refused.
+func TestLaterRecords(t *testing.T) {
+	h := newHandshake(t, nil)
+	h.buyer.receive(h.agreementPair, &h.proof)
+	next := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
+	id, pair := h.seller.seal(h.sellerLog, next)
+	b, err := VerifyBook(pair)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), b.Seq)
+	assert.Equal(t, h.agreementID, b.Prev, "it cites the record before it")
+	res := h.buyer.receive(pair, nil)
+	assert.True(t, res.Record.Stored && res.Record.Counted)
+	assert.Equal(t, id, res.Record.Digest)
+
+	// Another log of the seller's, whose agreement the buyer never received.
+	otherLog := "deal/" + hex.EncodeToString(seed("seller other log")[:16])
+	otherID, _ := h.seller.seal(otherLog, h.agreement)
+	_ = otherID
+	_, orphan := h.seller.seal(otherLog, settleRecord(t, 2, h.agreement, h.agreement, h.agreementID))
+	_, err = h.buyer.shelf.Receive(context.Background(), orphan, nil)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused, "no admitted first record on that log")
+}
+
+// An agreement citing our counter-offer, not our first offer of the deal,
+// is admitted.
+func TestAgreementOnACounterOffer(t *testing.T) {
+	buyer, seller := newParty(t, "buyer"), newParty(t, "seller")
+	first := fxOffer()
+	first.To = Some(seller.key())
+	o1 := Record{Block: journalBlock(TypePropose, "2026-11-01T09:30:00Z", true), Body: first}
+	seller.receive(buyer.sendOffer(o1), nil)
+	counter := fxOffer()
+	counter.To = Some(seller.key())
+	c := RefTo(label("the seller's counter-offer"))
+	counter.CounterTo = &c
+	counter.Terms.PriceMinor = amount(5500)
+	o2 := Record{Block: journalBlock(TypePropose, "2026-11-01T09:35:00Z", true), Body: counter}
+	seller.receive(buyer.sendOffer(o2), nil)
+	ab := fxAgreement(&Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: mustDigest(t, o2)}, ref('e'), nil, SideAcceptor, RoleSeller, buyer.key())
+	ab.CheckpointKey, ab.ShelfLogID = seller.checkpointKey(), testCadenceLog
+	b := journalBlock(TypeAgree, "2026-11-01T09:45:00Z", true)
+	b.Seq, b.Seen = 1, NullOf[string]()
+	_, pair := seller.seal("deal/"+hex.EncodeToString(seed("counter log")[:16]), Record{Block: b, Body: ab})
+	res := buyer.receive(pair, nil)
+	assert.True(t, res.Record.Stored, "the agreement on our counter-offer")
+}
+
+// A cancellation from the offer's signer, of an offer of this deal, is
+// admitted; one citing an offer of another deal is refused.
+func TestCancellation(t *testing.T) {
+	h := newHandshake(t, nil)
+	od := mustDigest(t, h.offer)
+	cancel := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:50:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: RefTo(od)}}
+	res := h.seller.receive(h.buyer.sendOffer(cancel), nil)
+	assert.True(t, res.Record.Stored)
+
+	ob := fxOffer()
+	ob.To = Some(h.seller.key())
+	other := Record{Block: journalBlock(TypePropose, "2026-11-01T09:31:00Z", true), Body: ob}
+	other.Block.DealID = "deal-2222222222222222"
+	h.seller.receive(h.buyer.sendOffer(other), nil)
+	wrong := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:51:00Z", true), Body: &AgreeBody{Kind: KindCancellation, Offer: RefTo(mustDigest(t, other))}}
+	_, err := h.seller.shelf.Receive(context.Background(), h.buyer.sendOffer(wrong), nil)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused, "a cancellation of another deal's offer")
+}
+
+// A ruling is admitted from our agreement's adjudicator only.
+func TestRulingFromTheAdjudicator(t *testing.T) {
+	adjudicator := newParty(t, "adjudicator")
+	h := newHandshake(t, func(a *AgreeBody) {
+		adj := fxAdjudicator
+		adj.KeyID = adjudicator.key()
+		a.Adjudicator = Some(adj)
+	})
+	rb := journalBlock(TypeRuling, "2026-11-13T10:00:00Z", true)
+	rb.Seq = 1
+	ruling := Record{Block: rb, Body: &RulingBody{Row: "as_described", Keys: RulingKeys{Buyer: h.buyer.key(), Seller: h.seller.key()},
+		Against: Some(RoleSeller), Value: ValueNotMet, Read: RulingRead{Buyer: NullOf[string](), Seller: Some(h.agreementID)},
+		Forum: fxForum, RulesDigest: fxAdjudicator.RulesDigest, Final: false}}
+	require.NoError(t, Check(ruling))
+	caseLog := "case/" + hex.EncodeToString(seed("case log")[:16])
+	_, pair := adjudicator.seal(caseLog, ruling)
+	res := h.seller.receive(pair, nil)
+	assert.True(t, res.Record.Stored)
+
+	stranger := newParty(t, "stranger")
+	_, forged := stranger.seal(caseLog, ruling)
+	_, err := h.seller.shelf.Receive(context.Background(), forged, nil)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused)
+}
+
+// A header committing two payloads is refused: one record id would read as
+// either record.
+func TestBookPairWithTwoPayloads(t *testing.T) {
+	seller := newParty(t, "seller")
+	h := newHandshake(t, nil)
+	book, err := seller.shelf.Open(context.Background(), "deal/"+hex.EncodeToString(seed("two payloads")[:16]))
+	require.NoError(t, err)
+	e := entryOf(t, h.agreement)
+	e.Payloads = append(e.Payloads, jcsOf(t, h.offer))
+	rec, err := book.Append(context.Background(), e)
+	require.NoError(t, err)
+	sealed, err := book.Sealed(context.Background(), rec.RecordID)
+	require.NoError(t, err)
+	pair, err := BookPair(sealed, jcsOf(t, h.agreement))
+	require.NoError(t, err)
+	_, err = VerifyBook(pair)
+	assert.ErrorContains(t, err, "one payload")
+}
+
+// Two sellers whose books share one log id (shared-log-id): ProofSender
+// returns the one agreement under the proof's checkpoint key, and refuses
+// when both name it.
+func TestSharedLogID(t *testing.T) {
+	for _, both := range []bool{false, true} {
+		h := newHandshake(t, nil)
+		h.buyer.receive(h.agreementPair, &h.proof)
+		seller2 := newParty(t, "seller two")
+		ob := fxOffer()
+		ob.To = Some(seller2.key())
+		o2 := Record{Block: journalBlock(TypePropose, "2026-11-01T09:32:00Z", true), Body: ob}
+		o2.Block.DealID = "deal-3333333333333333"
+		seller2.receive(h.buyer.sendOffer(o2), nil)
+		ab := fxAgreement(&Ref{Type: RecordRef, DigestAlg: DigestAlg, Digest: mustDigest(t, o2)}, ref('e'), nil, SideAcceptor, RoleSeller, h.buyer.key())
+		ab.CheckpointKey, ab.ShelfLogID = seller2.checkpointKey(), testCadenceLog
+		if both {
+			ab.CheckpointKey = h.seller.checkpointKey()
+		}
+		b := journalBlock(TypeAgree, "2026-11-01T09:46:00Z", true)
+		b.Seq, b.Seen, b.DealID = 1, NullOf[string](), o2.Block.DealID
+		_, pair := seller2.seal(h.sellerLog, Record{Block: b, Body: ab})
+		res := h.buyer.receive(pair, nil)
+		require.True(t, res.Record.Stored, "the second seller's agreement, on the same log id")
+		sender, ok, err := h.buyer.profile.ProofSender(context.Background(), h.seller.checkpointKey(), h.sellerLog)
+		require.NoError(t, err)
+		if both {
+			assert.False(t, ok, "two candidates name the key: refused rather than pick one")
+		} else {
+			require.True(t, ok)
+			assert.Equal(t, h.seller.key(), sender)
+		}
+	}
 }
