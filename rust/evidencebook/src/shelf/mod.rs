@@ -52,6 +52,8 @@ mod handover_tie_tests;
 mod handover_times;
 mod held;
 mod history;
+#[cfg(test)]
+mod hooks_tests;
 mod import;
 mod lock;
 mod log;
@@ -63,8 +65,6 @@ mod record_time;
 #[cfg(test)]
 mod record_time_tests;
 mod records;
-#[cfg(test)]
-mod hooks_tests;
 mod sent;
 mod stamp;
 mod stamp_proof;
@@ -99,9 +99,7 @@ pub use receive::{
 };
 pub use records::{ShelfRecord, ShelfRecords};
 pub use sent::{SealedSent, SentCapsule};
-pub use stamp::{
-    AudienceFact, BatchEntry, BookStatus, StampBatch, StatusInput, StatusValues,
-};
+pub use stamp::{AudienceFact, BatchEntry, BookStatus, StampBatch, StatusInput, StatusValues};
 pub use stamp_proof::{verify_stamp_proof, InclusionEvidence, StampProof, VerifiedStampProof};
 pub use store::{StoredRecord, SHELF_VERSION, SHELF_VERSION_FACTS};
 pub use time::Time;

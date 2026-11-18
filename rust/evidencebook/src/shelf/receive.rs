@@ -1076,7 +1076,11 @@ impl Shelf {
 
     /// Run the profile's [`ReceiveProfile::after_receive`] on `result` at
     /// the shelf's clock (Go `afterReceive`), giving its error.
-    fn after_receive(&self, profile: &dyn ReceiveProfile, result: &ReceiveResult) -> Option<ShelfError> {
+    fn after_receive(
+        &self,
+        profile: &dyn ReceiveProfile,
+        result: &ReceiveResult,
+    ) -> Option<ShelfError> {
         profile
             .after_receive(result, self.shared().now())
             .err()

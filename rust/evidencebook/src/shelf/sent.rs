@@ -82,9 +82,8 @@ impl Shelf {
                 "a sent Capsule carries no {RECORD_HEADER_MEMBER}"
             )));
         }
-        let decoded: Value = serde_json::from_slice(payload).map_err(|e| {
-            ShelfError::Invalid(format!("a sent record's payload is JSON: {e}"))
-        })?;
+        let decoded: Value = serde_json::from_slice(payload)
+            .map_err(|e| ShelfError::Invalid(format!("a sent record's payload is JSON: {e}")))?;
         if canonical::jcs(&decoded).ok().as_deref() != Some(payload.as_slice()) {
             return Err(ShelfError::Invalid(
                 "a sent record's payload is its canonical JSON (JCS) bytes".into(),

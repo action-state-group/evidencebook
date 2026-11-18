@@ -31,8 +31,8 @@ use crate::substrate::Signer;
 use ciborium::Value as Cbor;
 use evidence_request::time::parse_utc;
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 
 /// The `spec_version` of every record capsule (capsule-emit Go `SpecVersion`).
 pub const SPEC_VERSION: &str = "draft-mih-scitt-agent-action-capsule-05";
@@ -304,8 +304,7 @@ fn fyi_capsule(
         "assurance".into(),
         json!({"attestation_mode": "self_attested", "effect_mode": "not_applicable", "ledger_mode": "standalone"}),
     );
-    let attestation =
-        json!({"compute_attestation": {"agent_input_digest": agent_input_digest}});
+    let attestation = json!({"compute_attestation": {"agent_input_digest": agent_input_digest}});
     capsule.insert(ATTESTATION.into(), attestation);
     if !references.is_empty() {
         capsule.insert("references".into(), Value::Array(references));
@@ -320,7 +319,9 @@ fn fyi_capsule(
             )));
         }
         if BASE_MEMBERS.contains(&name.as_str()) {
-            return Err(invalid(format!("extension {name:?} is a base-profile member")));
+            return Err(invalid(format!(
+                "extension {name:?} is a base-profile member"
+            )));
         }
         if value.is_null() {
             return Err(invalid(format!("extension {name:?} must not be null")));

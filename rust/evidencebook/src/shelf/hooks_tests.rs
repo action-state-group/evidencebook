@@ -81,9 +81,7 @@ impl Values {
 impl BookStatus for Values {
     fn values(&self, input: &StatusInput<'_>) -> Result<Option<StatusValues>, String> {
         let records = input.book.records().len();
-        let journal = input
-            .journal
-            .map_or(-1, |j| j.records().len() as i64);
+        let journal = input.journal.map_or(-1, |j| j.records().len() as i64);
         let mut held = self.held.lock().unwrap();
         held.calls
             .push(format!("{} {} {records} {journal}", input.n, input.log_id));
@@ -97,7 +95,9 @@ impl BookStatus for Values {
             profile: "deal".into(),
             last_received: held.last_received.get(input.log_id).cloned(),
             checked_over: Vec::new(),
-            status: Some(json!({"stamp": input.n, "records": records, "journal": journal, "was": status})),
+            status: Some(
+                json!({"stamp": input.n, "records": records, "journal": journal, "was": status}),
+            ),
         }))
     }
 
@@ -207,15 +207,36 @@ fn a_received_record_time_is_the_first_fact_that_links_it() {
     // earlier, so it gives both positions their time.
     witness_at(c, &f.s2, TEST_WITNESS_URL, Some(t2));
     for p in [1, 2, 5] {
-        assert_eq!(received("deal/theirs", p, &[TEST_WITNESS_URL]), Some(t2), "{p}");
+        assert_eq!(
+            received("deal/theirs", p, &[TEST_WITNESS_URL]),
+            Some(t2),
+            "{p}"
+        );
     }
-    assert_eq!(received("deal/theirs", 6, &[TEST_WITNESS_URL]), None, "a position no fact reaches");
-    assert_eq!(received("deal/other", 1, &[TEST_WITNESS_URL]), None, "another log");
-    assert_eq!(received("deal/theirs", 1, &["https://other.test"]), None, "a witness not named");
+    assert_eq!(
+        received("deal/theirs", 6, &[TEST_WITNESS_URL]),
+        None,
+        "a position no fact reaches"
+    );
+    assert_eq!(
+        received("deal/other", 1, &[TEST_WITNESS_URL]),
+        None,
+        "another log"
+    );
+    assert_eq!(
+        received("deal/theirs", 1, &["https://other.test"]),
+        None,
+        "a witness not named"
+    );
     assert_eq!(received("deal/theirs", 1, &[]), None, "no witness named");
     assert_eq!(
         shelf
-            .received_record_time("no-such-book", "deal/theirs", 1, &names(&[TEST_WITNESS_URL]))
+            .received_record_time(
+                "no-such-book",
+                "deal/theirs",
+                1,
+                &names(&[TEST_WITNESS_URL])
+            )
             .unwrap(),
         None,
         "another book"
@@ -246,11 +267,17 @@ fn a_record_time_by_key() {
     let last = leaves_of(shelf, "deal/a");
     for p in 1..=last + 1 {
         let by_url = record_time(shelf, book_id, p, &[TEST_WITNESS_URL]);
-        let by_key = shelf.record_time_by_key(book_id, p, &names(&[key.as_str()])).unwrap();
+        let by_key = shelf
+            .record_time_by_key(book_id, p, &names(&[key.as_str()]))
+            .unwrap();
         assert_eq!(by_url, by_key, "{p}");
         assert_eq!(
             shelf
-                .record_time_by_key(book_id, p, &names(&[key_id(OTHER_WITNESS_URL).as_str(), TEST_WITNESS_URL]))
+                .record_time_by_key(
+                    book_id,
+                    p,
+                    &names(&[key_id(OTHER_WITNESS_URL).as_str(), TEST_WITNESS_URL])
+                )
                 .unwrap(),
             None,
             "a URL is not a key id, and the other key verified no receipt"
@@ -317,7 +344,11 @@ fn a_record_stamp_is_the_first_covering_fact() {
         (last, Some(f.second.n)),
         (last + 1, None),
     ] {
-        assert_eq!(shelf.record_stamp(book_id, position).unwrap(), want, "{position}");
+        assert_eq!(
+            shelf.record_stamp(book_id, position).unwrap(),
+            want,
+            "{position}"
+        );
     }
     assert_eq!(shelf.record_stamp("no-such-book", 1).unwrap(), None);
     assert!(matches!(
@@ -385,7 +416,10 @@ fn a_book_status_reads_the_stamp_the_book_and_the_journal() {
     let path = dir.path().join("shelf.db");
     let (shelf, c, values) = migrated(&path);
     let migration = values.last_call();
-    assert!(migration.ends_with(" -1"), "the migration's stamp: no journal ({migration})");
+    assert!(
+        migration.ends_with(" -1"),
+        "the migration's stamp: no journal ({migration})"
+    );
 
     append(&shelf, "deal/a", "2");
     let size = shelf.open("deal/a").unwrap().size();
@@ -416,8 +450,14 @@ fn a_book_status_reads_the_stamp_the_book_and_the_journal() {
     let s = c.stamp(minutes(3)).unwrap().tick.unwrap();
     let call = values.last_call();
     let journal: i64 = call.rsplit(' ').next().unwrap().parse().unwrap();
-    assert!(call.starts_with(&format!("{} deal/a {size} ", s.n)), "{call}");
-    assert!(journal >= 1, "the book status reads the journal's records ({call})");
+    assert!(
+        call.starts_with(&format!("{} deal/a {size} ", s.n)),
+        "{call}"
+    );
+    assert!(
+        journal >= 1,
+        "the book status reads the journal's records ({call})"
+    );
     assert!(
         status_at(&shelf, s.n).contains(&format!("\"records\":{size}")),
         "the fact commits what the book status read"
@@ -454,15 +494,30 @@ fn a_status_error_leaves_the_books_last_fact() {
     let s = c.stamp(minutes(2)).expect("the stamp goes on");
     assert_eq!(
         s.unstated,
-        BTreeMap::from([("deal/a".to_string(), "the deal's offer is not held".to_string())])
+        BTreeMap::from([(
+            "deal/a".to_string(),
+            "the deal's offer is not held".to_string()
+        )])
     );
-    assert_eq!(facts_of(&shelf, "deal/a"), before_a, "deal/a keeps its last fact");
-    assert_eq!(facts_of(&shelf, "deal/b"), before_b + 1, "deal/b gets its new fact");
+    assert_eq!(
+        facts_of(&shelf, "deal/a"),
+        before_a,
+        "deal/a keeps its last fact"
+    );
+    assert_eq!(
+        facts_of(&shelf, "deal/b"),
+        before_b + 1,
+        "deal/b gets its new fact"
+    );
 
     values.held.lock().unwrap().fail.clear();
     let s = c.stamp(minutes(3)).unwrap();
     assert!(s.unstated.is_empty());
-    assert_eq!(facts_of(&shelf, "deal/a"), before_a + 1, "the next stamp asks again");
+    assert_eq!(
+        facts_of(&shelf, "deal/a"),
+        before_a + 1,
+        "the next stamp asks again"
+    );
 }
 
 // before_stamp runs before each stamp `stamp` takes and before a due tick's
@@ -497,7 +552,10 @@ fn before_stamp_runs_before_each_stamp() {
     assert!(due.ticked);
     assert_eq!(calls(), 2, "a due tick's stamp runs it");
     assert_eq!(due.before_stamp, None);
-    assert!(!values.held.lock().unwrap().unlocked, "always under the receive lock");
+    assert!(
+        !values.held.lock().unwrap().unlocked,
+        "always under the receive lock"
+    );
 }
 
 // existing_journal never creates the journal: none on a shelf without one,
@@ -509,7 +567,10 @@ fn existing_journal_never_creates_it() {
     let (c, _) = stamp_cadence(&shelf, Arc::default());
     append(&shelf, "deal/a", "1");
     c.tick(tick_time()).unwrap();
-    assert!(shelf.existing_journal().unwrap().is_none(), "before migrate");
+    assert!(
+        shelf.existing_journal().unwrap().is_none(),
+        "before migrate"
+    );
     c.migrate(minutes(1)).unwrap();
     assert!(
         shelf.existing_journal().unwrap().is_none(),
@@ -550,7 +611,11 @@ fn seal_sent_seals_the_journal_record_and_its_standalone_capsule() {
     let before = journal.size();
     let members = BTreeMap::from([("deal_carried".to_string(), json!({"n": 1}))]);
     let sent = shelf
-        .seal_sent(&sent_entry(SENT_RECORD), &members, "deal-0123456789abcdef/sent")
+        .seal_sent(
+            &sent_entry(SENT_RECORD),
+            &members,
+            "deal-0123456789abcdef/sent",
+        )
         .unwrap();
     assert!(sent.error.is_none());
     let digest = dg(SENT_RECORD);
@@ -564,7 +629,10 @@ fn seal_sent_seals_the_journal_record_and_its_standalone_capsule() {
     assert_eq!(canonical::jcs(&doc).unwrap(), capsule.capsule, "its JCS");
     let mut body = doc.clone();
     body.as_object_mut().unwrap().remove("capsule_id");
-    assert_eq!(dg_bytes(&canonical::jcs(&body).unwrap()), capsule.capsule_id);
+    assert_eq!(
+        dg_bytes(&canonical::jcs(&body).unwrap()),
+        capsule.capsule_id
+    );
     assert_eq!(doc["capsule_id"], json!(capsule.capsule_id));
     assert_ne!(capsule.capsule_id, sent.record.record_id);
     assert_eq!(doc["action_id"], json!("deal-0123456789abcdef/sent"));
@@ -582,9 +650,29 @@ fn seal_sent_seals_the_journal_record_and_its_standalone_capsule() {
     assert_eq!(doc["timestamp"], json!("2026-10-31T12:00:30Z"));
     let envelope = Sign1::decode(&capsule.envelope).unwrap();
     assert_eq!(hex::encode(&envelope.payload), capsule.capsule_id);
-    let signer = super::record_time_tests::key("signer").verifying_key().to_bytes();
+    let signer = super::record_time_tests::key("signer")
+        .verifying_key()
+        .to_bytes();
     assert_eq!(envelope.kid(), Some(signer));
-    assert!(envelope.verifies_under(&signer), "signed by the journal's key");
+    assert!(
+        envelope.verifies_under(&signer),
+        "signed by the journal's key"
+    );
+    // Go's `SealSent` seals these bytes for the same inputs (its
+    // `emit.Seal` with the same key, operator, clock, action_id, payload and
+    // member; Ed25519 signs deterministically).
+    assert_eq!(
+        capsule.capsule_id,
+        "b23e34ad49c092d272ebd6686428078d43f7c95d07e8af38b1cee448e40263c0"
+    );
+    assert_eq!(
+        dg_bytes(&capsule.capsule),
+        "825d6696bc13399d31736d93fd938a44b19aaf4d760010dea696edf4036c6810"
+    );
+    assert_eq!(
+        dg_bytes(&capsule.envelope),
+        "196a9c1db5de93811cb9e1f69dae6e47b0a0a773f57322d9c802d70c8d9f38eb"
+    );
     // The journal record's own Capsule carries none of the members.
     let stored = String::from_utf8(sent.record.capsule.clone()).unwrap();
     assert!(!stored.contains("deal_carried"));
@@ -614,7 +702,12 @@ fn seal_sent_refuses_without_writing() {
         ),
         ("two payloads", two, "a/sent", &none),
         ("not JSON", sent_entry("offer"), "a/sent", &none),
-        ("not canonical", sent_entry(r#"{"b":1, "a":2}"#), "a/sent", &none),
+        (
+            "not canonical",
+            sent_entry(r#"{"b":1, "a":2}"#),
+            "a/sent",
+            &none,
+        ),
         (
             "trailing data",
             sent_entry(&format!("{SENT_RECORD}{{}}")),
@@ -624,7 +717,10 @@ fn seal_sent_refuses_without_writing() {
     ];
     for (name, entry, action_id, members) in invalid {
         assert!(
-            matches!(shelf.seal_sent(&entry, members, action_id), Err(ShelfError::Invalid(_))),
+            matches!(
+                shelf.seal_sent(&entry, members, action_id),
+                Err(ShelfError::Invalid(_))
+            ),
             "{name}"
         );
     }
@@ -652,7 +748,11 @@ fn seal_sent_refuses_without_writing() {
         shelf.seal_sent(&no_type, &none, "a/sent").is_err(),
         "an invalid header"
     );
-    assert_eq!(journal.size(), before, "a refused sent record writes nothing");
+    assert_eq!(
+        journal.size(),
+        before,
+        "a refused sent record writes nothing"
+    );
 }
 
 // seal_sent needs the journal: an unmigrated shelf has none, and a released
@@ -690,7 +790,11 @@ fn seal_sent_returns_a_pending_record_with_its_capsule() {
     )
     .unwrap();
     let sent = shelf
-        .seal_sent(&sent_entry(SENT_RECORD), &BTreeMap::new(), "deal-0123456789abcdef/sent")
+        .seal_sent(
+            &sent_entry(SENT_RECORD),
+            &BTreeMap::new(),
+            "deal-0123456789abcdef/sent",
+        )
         .expect("the stored record is returned");
     side.execute_batch("DROP TRIGGER block;").unwrap();
     assert!(matches!(sent.error, Some(ShelfError::Log(_))));
@@ -703,5 +807,8 @@ fn seal_sent_returns_a_pending_record_with_its_capsule() {
     next.payloads = vec![b"next".to_vec()];
     let next = journal.append(&next).unwrap();
     assert_eq!(next.seq, sent.record.seq + 1);
-    assert_eq!(journal.get(&sent.record.record_id).unwrap().seq, sent.record.seq);
+    assert_eq!(
+        journal.get(&sent.record.record_id).unwrap().seq,
+        sent.record.seq
+    );
 }
