@@ -482,10 +482,10 @@ pub fn build_status(b: &StatusBooks) -> Result<StatusValue, Error> {
                 remedy_due: r.remedy_due.clone(),
             });
         }
-        for i in 0..input.remedies.len() {
-            row.input.remedies.push(StatusTimeOnly {
-                time: time_of(src.remedies[i]),
-            });
+        for rf in src.remedies.iter().take(input.remedies.len()) {
+            row.input
+                .remedies
+                .push(StatusTimeOnly { time: time_of(*rf) });
         }
         let effective = effective_ruling(b, &input.row.id, input.conflicting_final_rulings);
         if let Some(e) = effective {
