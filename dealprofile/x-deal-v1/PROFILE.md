@@ -187,10 +187,21 @@ of the payment row's own payment has `terms_ref` set to the id of the offer's se
 carries the terms leg (section 7); a payer leg is the owing party's, a payee leg the other's.
 
 **`statement`.** `statements` and `names`, which names one arrived record: a `cancellation` or a
-`ruling`, never both. A statement with empty `statements` and no `names` is invalid. A receiving library
-MUST seal a statement naming a ruling when a counted ruling for one of the holder's deals arrives
-from that deal's adjudicator (evidencebook#527), so the holder's own status reads it whether or not
-the ruling went its way.
+`ruling`, never both. A statement with empty `statements` and no `names` is invalid. An implementation that
+receives a deal's records MUST seal a statement naming each counted ruling of one of the holder's
+deals from that deal's adjudicator, so the holder's own status reads it whether or not the ruling
+went its way (evidencebook#527). This library's `Shelf.Receive` does it before it returns:
+`xdealv1.ReceiveProfile.AfterReceive` calls `xdealv1.NameRulings` with the deals whose counted
+records grew and the received record's own deal, so a host cannot skip it. A failed naming is
+`Receive`'s error, and the holder's next stamp names it again, whether or not anything more
+arrives (`xdealv1.StatusProvider.BeforeStamp` runs `xdealv1.NameAllRulings` before each
+stamp); a later `Receive` of a record of that deal, the ruling sent again included, names it
+too. A deal book holding a record that is not x-deal-v1 (a lifecycle record) cannot take a
+statement at its seq and is never named. Until a ruling is named, the holder's status value
+counts it in `rulings_unnamed` (a count, no ids). Each record is sealed through
+`xdealv1.BookEntry` and appended with `Book.AppendAt` at the seq it was built for, read again
+and rebuilt on `ErrBusy`; a host writing its own deal-book records does the same, so a naming
+and a host write never seal two records for one place.
 
 **`dispute`.** Kind `dispute`: `row`, `statements` (the record digests of the statements on that
 row when it is sealed), `adjudicator` and `forum`. Read against its book's agreement

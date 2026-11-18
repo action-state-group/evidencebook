@@ -72,6 +72,37 @@ type StatusInput struct {
 	Journal *Book
 }
 
+// BeforeStampProvider is a StatusProvider that writes, before a stamp, what
+// that stamp's values must read: x-deal-v1 names each counted ruling a
+// Receive left unnamed (evidencebook#527), so a naming that failed is
+// retried by the holder's next stamp whether or not anything more arrives.
+// Stamp, and Tick when a stamp is due, call BeforeStamp before they take the
+// shelf's lock, holding the receive lock as AfterReceive does, so what it
+// reads of the received store stays as read until it appends (a naming's
+// seen is the counterparty's latest counted record when it is sealed): it
+// may call the shelf's methods but Receive, Forget, Stamp and Tick. at is
+// the time the stamp is taken at. Its error does not stop the stamp:
+// TickResult.BeforeStamp reports it, and the next stamp calls it again.
+type BeforeStampProvider interface {
+	StatusProvider
+	BeforeStamp(ctx context.Context, at time.Time) error
+}
+
+// beforeStamp runs the provider's BeforeStamp, if it has one, and gives its
+// error as text.
+func (c *Cadence) beforeStamp(ctx context.Context, now time.Time) string {
+	p, ok := c.cfg.Status.(BeforeStampProvider)
+	if !ok {
+		return ""
+	}
+	c.shelf.receiveMu.Lock()
+	defer c.shelf.receiveMu.Unlock()
+	if err := p.BeforeStamp(ctx, now); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
 // StampStatusProvider is a StatusProvider that is also told the stamp it
 // gives values for: n, the tick the stamp will have (from 1), which a status
 // value may use to name a record its own stamp is the first to cover
@@ -591,13 +622,16 @@ func (c *Cadence) buildStampLocked(ctx context.Context, n uint64, at, now time.T
 // schedule. A stamp stored but not finished is finished first, as the same
 // stamp. It needs a migrated shelf.
 func (c *Cadence) Stamp(ctx context.Context, now time.Time) (TickResult, error) {
+	before := c.beforeStamp(ctx, now)
 	s := c.shelf
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.released {
 		return TickResult{}, ErrReleased
 	}
-	return c.stampLocked(ctx, now)
+	res, err := c.stampLocked(ctx, now)
+	res.BeforeStamp = before
+	return res, err
 }
 
 func (c *Cadence) stampLocked(ctx context.Context, now time.Time) (TickResult, error) {

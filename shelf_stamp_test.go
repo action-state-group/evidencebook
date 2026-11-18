@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -417,4 +418,64 @@ func TestAStampCheckpointedButNotRecordedKeepsItsCheckpoint(t *testing.T) {
 	latest, err := c.log.Latest(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, last.Checkpoint, latest.Statement, "no checkpoint after it")
+}
+
+// beforeStampValues is statusValues that counts BeforeStamp calls and fails
+// the first when told to.
+type beforeStampValues struct {
+	*statusValues
+	shelf    *Shelf
+	calls    int
+	fail     bool
+	unlocked bool
+}
+
+func (v *beforeStampValues) BeforeStamp(context.Context, time.Time) error {
+	v.calls++
+	// It runs holding the receive lock, so no Receive moves what it read
+	// (Codex, #528 round 3).
+	if v.shelf.receiveMu.TryLock() {
+		v.shelf.receiveMu.Unlock()
+		v.unlocked = true
+	}
+	if v.fail {
+		v.fail = false
+		return errors.New("naming failed")
+	}
+	return nil
+}
+
+// BeforeStamp runs before each stamp Stamp takes and before a due Tick's
+// stamp, never before a Tick that cuts nothing; its error is reported and
+// the stamp is still taken (evidencebook#527).
+func TestBeforeStampRunsBeforeEachStamp(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	values := &beforeStampValues{statusValues: &statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}, shelf: shelf}
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t), Status: values})
+	require.NoError(t, err)
+	mustAppend(t, mustOpenBook(t, shelf, "deal/a"), observation("a", "1"))
+	mustTick(t, c, tickTime)
+	assert.Zero(t, values.calls, "no BeforeStamp before the shelf is migrated")
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+
+	values.fail = true
+	res, err := c.Stamp(ctx, tickTime.Add(2*time.Minute))
+	require.NoError(t, err)
+	assert.Equal(t, 1, values.calls)
+	assert.Equal(t, "naming failed", res.BeforeStamp, "reported, and the stamp taken")
+	require.True(t, res.Ticked)
+
+	early, err := c.Tick(ctx, tickTime.Add(3*time.Minute))
+	require.NoError(t, err)
+	assert.False(t, early.Ticked)
+	assert.Equal(t, 1, values.calls, "a Tick that cuts nothing runs no BeforeStamp")
+
+	due, err := c.Tick(ctx, res.Tick.DueNext)
+	require.NoError(t, err)
+	require.True(t, due.Ticked)
+	assert.Equal(t, 2, values.calls, "a due Tick's stamp runs it")
+	assert.Empty(t, due.BeforeStamp)
+	assert.False(t, values.unlocked, "always under the receive lock")
 }

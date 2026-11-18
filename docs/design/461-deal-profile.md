@@ -1293,10 +1293,43 @@ the witness receipts it is handed (A, above).
   stamp. So the side a ruling goes against cannot keep it off its own status by not naming it
   while the winner names it (Sherlock2's twin, PR 4c-2b-2 review, P1). PROFILE says a receiving
   library MUST name a counted ruling's arrival (#527).
-  - **Caveat** (Sherlock2, the same review). Until #527 lands, a ruling neither side has named is
-    not an input: its arrival has no time on the holder's shelf, whose stamps cover only its own
-    book and the counterparty's. An `open` outcome may then hide an unnamed ruling, so PR 5's
-    card must not present it as unresolved.
+  - **Naming is the receive call's** (#527). `Shelf.Receive` calls the profile's `AfterReceive`
+    before it returns, on every call, and x-deal-v1's runs `xdealv1.NameRulings` with
+    `Changes.Grew` and the received record's deal (`RecordOutcome.DealID`), so a duplicate retries
+    a naming an earlier call failed. That seals,
+    in the holder's deal book, a statement naming each counted ruling of the deal's adjudicator
+    that the book does not name yet. So a holder's own status reads every ruling it has received,
+    and no host can skip it.
+    - Each statement is built from a fresh read of the book and of the counterparty's counted
+      prefix (`seen`). It is appended at the place it was built for (`Book.AppendAt`), so a write
+      in between makes it read again.
+    - A book with a record not readable as x-deal-v1 (a withheld payload, a lifecycle record) is
+      never written to.
+    - **The next stamp retries** (Sherlock2 and the coordinator, #528 round 2). A ruling is often
+      a deal's last record, so nothing may arrive to retry a failed naming. The status provider
+      is a `BeforeStampProvider`: `Stamp`, and `Tick` when a stamp is due, call its
+      `BeforeStamp` before taking the shelf's lock, holding the receive lock so no `Receive`
+      moves the counterparty's counted prefix between its read and its append (Codex, #528
+      round 3), and it runs `xdealv1.NameAllRulings` over
+      every v1 deal book. So the stamp whose values would read a ruling unnamed names it first,
+      and the guarantee does not depend on the host. Its error does not stop the stamp
+      (`TickResult.BeforeStamp`).
+    - A book with a record that is not x-deal-v1 (a lifecycle record a retention change
+      appends) cannot take a statement at its seq, so it is never named, only counted.
+    - Every x-deal-v1 deal-book write, the host's own included, is `BookEntry` appended with
+      `Book.AppendAt` and rebuilt on `ErrBusy`, so a naming and a host write never take one place.
+  - **`rulings_unnamed`** (coordinator, #528 round 2). The status value counts the counted
+    rulings of the deal's adjudicator the holder holds that neither book names (a count, no ids;
+    left out at zero). The provider computes it beside the case book over the book's v1 prefix. A
+    nonzero count at a stamp is a naming that failed again just before it, or a book that is not
+    wholly x-deal-v1.
+  - **Caveat** (Sherlock2, PR 4c-2b-2 and #528 reviews). A ruling neither side has named is not an
+    input: its arrival has no time on the holder's shelf, whose stamps cover only its own book and
+    the counterparty's. That remains only where an implementation's receive does not name it, or
+    where a naming failed and no stamp or `Receive` has named it since, or the book is not wholly
+    x-deal-v1, and only while the counterparty names it neither. An `open` outcome
+    may then hide an unnamed ruling; `rulings_unnamed` says one is held, and PR 5's card shows it
+    beside the outcome rather than present the dispute as unresolved.
 - **Every case book.** One book per case (3.2), so the provider reads every log of the
   adjudicator held for the deal. Each counted prefix is walked from position 1, one held follower
   at a time, and the walk stops at a counted record not held for the deal: another deal's in the

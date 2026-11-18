@@ -216,6 +216,9 @@ type TickResult struct {
 	// book's fact is older than a stamp from the fact itself (its entry's
 	// tick), which is what a card shows.
 	Unstated map[string]string
+	// BeforeStamp is the status provider's BeforeStamp error before this
+	// stamp, "" for none (BeforeStampProvider); the stamp was still taken.
+	BeforeStamp string
 }
 
 // Cadence runs a shelf's heartbeat ticks.
@@ -522,6 +525,43 @@ func (s *Shelf) cadenceLogLocked(ctx context.Context, logID string) (CadenceLog,
 // is. A tick is due when now is at or after the last tick's DueNext, and
 // only then: its timing and size never depend on what the logs did.
 func (c *Cadence) Tick(ctx context.Context, now time.Time) (TickResult, error) {
+	var before string
+	if due, err := c.stampDue(ctx, now); err != nil {
+		return TickResult{}, err
+	} else if due {
+		before = c.beforeStamp(ctx, now)
+	}
+	res, err := c.tick(ctx, now)
+	if res.Ticked && res.Tick.Leaves.Stamp != nil {
+		res.BeforeStamp = before
+	}
+	return res, err
+}
+
+// stampDue reports whether Tick at now would cut a new stamp: the shelf is
+// migrated, no tick is left unfinished, and the last one's DueNext has come.
+func (c *Cadence) stampDue(ctx context.Context, now time.Time) (bool, error) {
+	if _, ok := c.cfg.Status.(BeforeStampProvider); !ok {
+		return false, nil
+	}
+	s := c.shelf
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.released {
+		return false, ErrReleased
+	}
+	last, haveLast, err := c.lastLocked(ctx)
+	if err != nil {
+		return false, err
+	}
+	if haveLast && (last.CheckpointSize == 0 || now.Before(last.DueNext)) {
+		return false, nil
+	}
+	state, err := migrationState(ctx, s.db)
+	return state == migrationDone, err
+}
+
+func (c *Cadence) tick(ctx context.Context, now time.Time) (TickResult, error) {
 	s := c.shelf
 	s.mu.Lock()
 	defer s.mu.Unlock()
