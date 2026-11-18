@@ -38,8 +38,11 @@
 //! - [`verify_book`] decodes the header as Go's typed `Header` does (each
 //!   member's Go type, null as the zero value, names in any case), except
 //!   that a header's `correlation` must hold only strings: Go ignores a
-//!   member there of a name it has no field for. No deal-book header
-//!   carries a correlation.
+//!   member there of a name it has no field for, and that a header giving
+//!   `links` or `payload_commitments` twice under two spellings, both
+//!   non-empty lists, is refused: Go decodes the second into the first's
+//!   slice, reusing its elements. No deal-book header carries a
+//!   correlation, and no book writes a member twice.
 
 mod authorization;
 mod book;

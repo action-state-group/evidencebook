@@ -456,6 +456,25 @@ func TestPaymentVectors(t *testing.T) {
 			})),
 			bookVectorOf("header/a-negative-seq", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["seq"] = json.Number("-2") })),
 			bookVectorOf("header/null-links", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["links"] = nil })),
+			bookVectorOf("header/a-null-type-after-Type", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["links"] = []any{map[string]any{"Type": "cites", "type": nil, "target": h.agreementID}}
+			})),
+			bookVectorOf("header/a-null-seq-after-Seq", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["Seq"] = hd["seq"]
+				hd["seq"] = nil
+			})),
+			bookVectorOf("header/a-null-book-id-after-BOOK_ID", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["BOOK_ID"] = hd["book_id"]
+				hd["book_id"] = nil
+			})),
+			bookVectorOf("header/null-links-after-Links", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["Links"] = hd["links"]
+				hd["links"] = nil
+			})),
+			bookVectorOf("header/empty-links-after-Links", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["Links"] = hd["links"]
+				hd["links"] = []any{}
+			})),
 		)
 		books = append(books, bookVectorOf("an-inline-header", func() []byte {
 			var m map[string]json.RawMessage

@@ -222,8 +222,12 @@ fn go_int(v: &Value, unsigned: bool) -> Result<(), String> {
 }
 
 /// An object of string members, as Go decodes a struct of strings (or a
-/// map of strings): `null` is none.
-fn go_strings_object(v: &Value, fields: Option<&[&str]>) -> Result<Vec<(String, String)>, String> {
+/// map of strings): `null` is none, and a member's `null` is `None`, which
+/// leaves the field it names as it was.
+fn go_strings_object(
+    v: &Value,
+    fields: Option<&[&str]>,
+) -> Result<Vec<(String, Option<String>)>, String> {
     match v {
         Value::Null => Ok(Vec::new()),
         Value::Object(o) => {
@@ -231,7 +235,7 @@ fn go_strings_object(v: &Value, fields: Option<&[&str]>) -> Result<Vec<(String, 
             for (k, item) in o {
                 let known = fields.is_none_or(|f| f.iter().any(|f| go_name_matches(k, f)));
                 if known {
-                    out.push((k.clone(), go_string(item)?.unwrap_or_default()));
+                    out.push((k.clone(), go_string(item)?));
                 }
             }
             Ok(out)
@@ -242,9 +246,12 @@ fn go_strings_object(v: &Value, fields: Option<&[&str]>) -> Result<Vec<(String, 
 
 /// The header as Go's `json.Unmarshal(hjcs, &evidencebook.Header{})` reads
 /// it: every member Go's `Header` types is checked against its Go type, a
-/// member of no field is ignored, names match as Go matches them, and a
-/// member given twice under two spellings is read in the JCS order the
-/// bytes give, the later one winning.
+/// member of no field is ignored, names match as Go matches them, a member
+/// given twice under two spellings is read in the JCS order the bytes give,
+/// the later one winning, and `null` leaves a scalar as it was (a list or
+/// object it empties). Go decodes a second non-empty list into the slice the
+/// first left, reusing its elements; that is refused here
+/// (the `deal::v1` module docs).
 fn go_header(header: &Value) -> Result<GoHeader, String> {
     let mut h = GoHeader {
         book_id: String::new(),
@@ -268,6 +275,17 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
         "principal_ref",
         "counterparty_ref",
     ];
+    // Whether the last value a list field took was a non-empty list, whose
+    // slice a later list would be decoded into.
+    let (mut commitments_set, mut links_set) = (false, false);
+    let reused = |set: &mut bool, v: &Value| -> Result<(), String> {
+        let non_empty = v.as_array().is_some_and(|a| !a.is_empty());
+        if *set && non_empty {
+            return Err("a list member is given twice under two spellings".into());
+        }
+        *set = non_empty;
+        Ok(())
+    };
     for (k, v) in o {
         let is = |f: &str| go_name_matches(k, f);
         if is("v") {
@@ -284,6 +302,7 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
         } else if STRINGS.iter().any(|f| is(f)) {
             go_string(v)?;
         } else if is("payload_commitments") {
+            reused(&mut commitments_set, v)?;
             h.payload_commitments = match v {
                 Value::Null => Vec::new(),
                 Value::Array(a) => a
@@ -295,6 +314,7 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
         } else if is("field_commitments") {
             go_strings_object(v, None)?;
         } else if is("links") {
+            reused(&mut links_set, v)?;
             h.links = match v {
                 Value::Null => Vec::new(),
                 Value::Array(a) => a
@@ -302,6 +322,7 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
                     .map(|l| {
                         let mut link = (String::new(), String::new());
                         for (name, value) in go_strings_object(l, Some(&["type", "target"]))? {
+                            let Some(value) = value else { continue };
                             if go_name_matches(&name, "type") {
                                 link.0 = value;
                             } else {
@@ -324,4 +345,42 @@ fn go_header(header: &Value) -> Result<GoHeader, String> {
         // `statement` is raw JSON in Go: any value.
     }
     Ok(h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::go_header;
+    use serde_json::json;
+
+    // A list given twice under two spellings, both non-empty, is refused:
+    // Go would decode the second into the first's slice. One empty or
+    // null, the later wins, as in Go.
+    #[test]
+    fn a_list_given_twice_is_refused_unless_one_is_empty() {
+        let cite = json!([{"type": "cites", "target": "x"}]);
+        let header = |links_upper: serde_json::Value, links: serde_json::Value| json!({"Links": links_upper, "book_id": "b", "links": links, "seq": 2});
+        assert!(go_header(&header(cite.clone(), json!([null]))).is_err());
+        assert!(go_header(&header(cite.clone(), cite.clone())).is_err());
+        assert!(go_header(&header(cite.clone(), json!(null)))
+            .unwrap()
+            .links
+            .is_empty());
+        assert!(
+            go_header(&header(json!([]), cite.clone()))
+                .unwrap()
+                .links
+                .len()
+                == 1
+        );
+        let h = go_header(&json!({"PAYLOAD_COMMITMENTS": ["a"], "payload_commitments": ["a"]}));
+        assert!(h.is_err());
+    }
+
+    // null leaves a scalar as an earlier spelling set it.
+    #[test]
+    fn null_keeps_the_earlier_value() {
+        let h = go_header(&json!({"Seq": 3, "book_id": "b", "links": [{"Type": "cites", "target": "x", "type": null}], "seq": null}))
+            .unwrap();
+        assert_eq!((h.seq, h.links[0].0.as_str()), (3, "cites"));
+    }
 }
