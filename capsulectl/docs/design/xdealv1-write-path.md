@@ -320,14 +320,14 @@ wiring), `deal agree` and the deal-book writer, and the first-act gate on eviden
   authenticated indexes (`deal_shelf.go`), which the other side's checkpoint recomputation needs
   (eb-461).
 - **The writer, `sealBookV1`.** One function seals every v1 deal-book record. The caller gives the
-  body (and refs, marks); the writer sets `deal_id`, `at`, `seq`, `prev` (the record digest of the
+  body (and marks); the writer sets `deal_id`, `at`, `seq`, `prev` (the record digest of the
   record before), `agreement_ref` and `seen` (`CountedPrefix(counterparty_key, counterparty_log_id).Last`,
   null when none), runs `Check` and the placement check before anything is stored, appends one
   record with one `cites` link to the one before, and returns the `BookPair`. The book's log id is
   random and stored before the book exists (`deal_versions.own_log_id`), so a run that stops after
   the append finds the book and records the agreement (`repairOpening`), never makes a second one.
   The book is read back for the gate from the book itself (`Query`, `ResolvePayload`). This is the
-  API deal-95's dispute record uses: `bookRecordIn{Body: DisputeBody{...}, Refs: ...}`.
+  API deal-95's dispute record uses: `bookRecordIn{Body: DisputeBody{...}}` (a deal-book record carries no block refs since evidencebook v0.17.0: it cites by its body's own fields).
 - **`deal receive FILE`.** FILE is one of: a sent record (an offer, a decline, a cancellation: the
   standalone pair `deal offer` wrote), a deal-book record (a pair), or a push `{"record": pair,
   "stamp_proof": proof}` (what the acceptor's `deal agree` writes); the proof may come alone. A

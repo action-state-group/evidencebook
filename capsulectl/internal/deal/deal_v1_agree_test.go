@@ -34,10 +34,14 @@ func (v v1Side) act(t *testing.T) { party(t, v.party.config) }
 // its record digest, as an agreement cites it.
 func sealAdmit(t *testing.T, outcome string) string {
 	t.Helper()
+	// A fresh nonce for every admit: the agreement cites it by digest, and
+	// without one the other side could test guesses at the outcome (u528).
+	nonce, err := xdealv1.NewNonce()
+	require.NoError(t, err)
 	rec := xdealv1.Record{
 		Block: xdealv1.Block{Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, RecordType: xdealv1.TypeAdmit, At: v1Now()},
 		Body: xdealv1.AdmitBody{Outcome: outcome, Tier: "standard", Rows: []string{"paid_as_agreed"}, Asks: []xdealv1.Ref{},
-			PackDigest: strings.Repeat("a", 64), CardDigest: strings.Repeat("b", 64), Answers: []xdealv1.Ref{}},
+			PackDigest: strings.Repeat("a", 64), CardDigest: strings.Repeat("b", 64), Answers: []xdealv1.Ref{}, Nonce: nonce},
 	}
 	payload, digest, err := xdealv1.Encode(rec)
 	require.NoError(t, err)
@@ -520,4 +524,12 @@ func TestAnAdmitThatIsNotAV1RecordIsSaidSo(t *testing.T) {
 	msg := v1Err(t, "agree", h.offer, "--admit", digest)
 	assert.Contains(t, msg, "is not an x-deal-v1 record")
 	assert.NotContains(t, msg, "type  in")
+}
+
+// Two admission decisions with the same outcome have different digests: each
+// carries its own fresh nonce, so a counterparty cannot test a guess at the
+// outcome against the digest an agreement cites (u528, evidencebook v0.17.0).
+func TestEachAdmitCarriesItsOwnNonce(t *testing.T) {
+	newV1Side(t)
+	assert.NotEqual(t, sealAdmit(t, "GO"), sealAdmit(t, "GO"))
 }
