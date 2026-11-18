@@ -1319,7 +1319,7 @@ _HISTORY_2_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "histo
                               ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
 
 
-_HISTORY_2_RANGE_FIELDS = _Declared(("history",), ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
+_HISTORY_2_RANGE_FIELDS = _Declared(("consistency_to_anchor", "history"), ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
 
 
 class _OverLimit:
@@ -1491,6 +1491,7 @@ class _Answer:
         # the record cap nor the checkpoint cap applies to it.
         if req.derivation != DERIVATION_HISTORY_CARD_2 and len(leaves) > max_items:
             return _OVER_LIMIT
+        ranged_material: list[tuple[str, bytes]] = []
         head: dict[str, Any] = {"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
                                 "subject": req.subject.to_wire()}
         definition = book._derivations.get(req.derivation) if req.derivation is not None else None
@@ -1503,8 +1504,16 @@ class _Answer:
                 raise CorruptError(f"checkpoint position {last} is past the anchor")
             if last - first + 1 > max_items:
                 return _OVER_LIMIT
-            head = {"history": self._history_card_2(chain, anchor, list(range(first, last + 1)))}
+            # consistency_to_anchor: from the checkpoint at b to the anchor's,
+            # null when b is the anchor's position; the anchor's checkpoint is
+            # the material a requester checks it against.
+            to_anchor = None
+            if last != len(chain) - 1:
+                to_anchor = self.log._substrate.consistency_proof(chain[last].tree_size, anchor.tree_size, anchor).hex()
+            head = {"history": self._history_card_2(chain, anchor, list(range(first, last + 1))),
+                    "consistency_to_anchor": to_anchor}
             declared = _HISTORY_2_RANGE_FIELDS
+            ranged_material = [(KIND_CLL_CHECKPOINT, anchor.statement)]
         elif req.derivation == DERIVATION_HISTORY_CARD_2:
             chain = _checkpoints_through(view.checkpoints, anchor)
             window = book._responder.window
@@ -1539,7 +1548,7 @@ class _Answer:
         artifact = jcs(head)
         if not self._clean(artifact, declared):
             return None
-        return artifact, []
+        return artifact, ranged_material
 
     def _standard_history_card(self, view: _View, anchor: Checkpoint, leaves: Sequence[int]) -> bytes:
         book = self.log
@@ -1880,8 +1889,9 @@ def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     fields = _json_object(e.artifact)
     history = fields.get("history")
     first, last = req.subject.content
-    if set(fields) != {"history"} or not isinstance(history, list) or len(history) != last - first + 1:
-        raise bad("does not hold one entry per position")
+    if set(fields) != {"history", "consistency_to_anchor"} or not isinstance(history, list) \
+            or len(history) != last - first + 1:
+        raise bad("does not hold one entry per position and a consistency_to_anchor")
     previous: Checkpoint | None = None
     raw = b""
     for i, entry in enumerate(history):
@@ -1906,7 +1916,28 @@ def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: 
             except (VerificationError, ValueError) as exc:
                 raise InvalidError(f"anchor_inclusion: entry {i}: {exc}") from None
         previous = cp
-    return raw
+    # consistency_to_anchor binds the answer to the coverage anchor: null when
+    # the last entry is the anchor, else a proof to the anchor's checkpoint,
+    # which the envelope carries as material.
+    proof = fields["consistency_to_anchor"]
+    if proof is None:
+        if _digest(raw) != e.anchor_digest:
+            raise bad("ends before its anchor and carries no consistency_to_anchor")
+        return raw
+    octets = strict_hex(proof) if isinstance(proof, str) else None
+    if octets is None:
+        raise bad("has a consistency_to_anchor that is not hex")
+    statement = next((item for kind, item in e.verification if kind == KIND_CLL_CHECKPOINT), None)
+    if statement is None or _digest(statement) != e.anchor_digest:
+        raise bad("carries no anchor checkpoint to check consistency_to_anchor against")
+    anchor_cp = _signed_checkpoint(statement, checkpoint_key)
+    if anchor_cp.log_id != previous.log_id or anchor_cp.tree_size <= previous.tree_size:
+        raise bad("does not reach an anchor that extends it")
+    try:
+        verify_cll_consistency(previous.peaks, anchor_cp.peaks, octets)
+    except (VerificationError, ValueError) as exc:
+        raise InvalidError(f"anchor_inclusion: consistency_to_anchor: {exc}") from None
+    return statement
 
 
 def _is_uint(v: Any) -> bool:

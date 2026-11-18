@@ -488,10 +488,28 @@ pub fn build(
         // the position before it (ER -03 §8.1.3).
         (None, Subject::CheckpointRange(a, b)) => {
             let positions: Vec<u64> = (*a..=*b).collect();
-            jcs(Map::from_iter([(
-                "history".to_owned(),
-                Value::Array(sampled(log, chain, &positions)?),
-            )]))?
+            let history = sampled(log, chain, &positions)?;
+            // consistency_to_anchor: from the checkpoint at b to the anchor's,
+            // null when b is the anchor's position; the anchor's checkpoint is
+            // the material a requester checks it against.
+            let end = usize::try_from(*b)
+                .ok()
+                .and_then(|i| chain.get(i))
+                .ok_or(AnswerError::AnchorNotFound)?;
+            let to_anchor = if end.checkpoint.mmr_size < at.checkpoint.mmr_size {
+                json!(hex::encode(consistency(
+                    log,
+                    end.checkpoint.mmr_size,
+                    at.checkpoint.mmr_size
+                )?))
+            } else {
+                Value::Null
+            };
+            material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
+            jcs(Map::from_iter([
+                ("history".to_owned(), Value::Array(history)),
+                ("consistency_to_anchor".to_owned(), to_anchor),
+            ]))?
         }
         (None, Subject::Record(d)) => {
             let [leaf] = selection.records[..] else {

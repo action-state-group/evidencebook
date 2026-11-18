@@ -64,7 +64,7 @@ var (
 	recordSetFields     = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
 	checkpointsFields   = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
 	history2Fields      = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject", "window"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
-	history2RangeFields = declaredFields{top: []string{"history"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
+	history2RangeFields = declaredFields{top: []string{"consistency_to_anchor", "history"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
 	historyFields       = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
 )
 
@@ -102,11 +102,15 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 		if last-first+1 > uint64(maxItems) {
 			return builtArtifact{overLimit: true}, nil
 		}
-		history, err := b.checkpointsRange(ctx, chain, anchor, first, last)
+		history, toAnchor, err := b.checkpointsRange(ctx, chain, anchor, first, last)
 		if err != nil {
 			return builtArtifact{}, err
 		}
-		head, declared = map[string]any{"history": history}, history2RangeFields
+		head, declared = map[string]any{"history": history, "consistency_to_anchor": toAnchor}, history2RangeFields
+		// The anchor's checkpoint is the material that lets a requester check
+		// consistency_to_anchor; its digest is the envelope's anchor.
+		built.verification = []VerificationEntry{{Kind: KindCLLCheckpoint, Digest: digestBytes(anchor.Statement)}}
+		built.material = [][]byte{anchor.Statement}
 	case req.Derivation == DerivationHistoryCard2:
 		chain := checkpointsThrough(view.checkpoints, anchor)
 		window := b.responder.historyWindow()

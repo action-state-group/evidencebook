@@ -72,12 +72,29 @@ func (b *Book) historyCard2(ctx context.Context, chain []Checkpoint, anchor Chec
 // checkpointsRange is the answer to a checkpoints subject with content
 // (first, last) (ER -03 §8.1.3): one entry per position from first through
 // last, each proof from the position before it, none in the first.
-func (b *Book) checkpointsRange(ctx context.Context, chain []Checkpoint, anchor Checkpoint, first, last uint64) ([]any, error) {
+func (b *Book) checkpointsRange(ctx context.Context, chain []Checkpoint, anchor Checkpoint, first, last uint64) (history []any, toAnchor any, err error) {
 	positions := make([]uint64, 0, last-first+1)
 	for p := first; p <= last; p++ {
 		positions = append(positions, p)
 	}
-	return historyEntries2(ctx, b.commitments.(cllMaterialSource), chain, anchor, positions)
+	src := b.commitments.(cllMaterialSource)
+	if history, err = historyEntries2(ctx, src, chain, anchor, positions); err != nil {
+		return nil, nil, err
+	}
+	// consistency_to_anchor: from the checkpoint at b to the anchor's, null
+	// when b is the anchor's position.
+	if last != uint64(len(chain)-1) {
+		prover, err := src.cllProver(ctx, anchor)
+		if err != nil {
+			return nil, nil, err
+		}
+		proof, err := prover.consistencyProof(chain[last].TreeSize, anchor.TreeSize)
+		if err != nil {
+			return nil, nil, err
+		}
+		toAnchor = hex.EncodeToString(proof)
+	}
+	return history, toAnchor, nil
 }
 
 // verifyCheckpointRange checks the artifact of a checkpoints subject with a
@@ -92,8 +109,8 @@ func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string
 	}
 	decoded, err := evidencerequest.DecodeJSON(e.Artifact)
 	card, ok := decoded.(map[string]any)
-	if err != nil || !ok || !keysExactly(card, "history") {
-		return nil, bad("is not a map with one member, history")
+	if err != nil || !ok || !keysExactly(card, "history", "consistency_to_anchor") {
+		return nil, bad("is not a map with the members history and consistency_to_anchor")
 	}
 	history, _ := card["history"].([]any)
 	first, last := req.Subject.Range[0], req.Subject.Range[1]
@@ -137,7 +154,41 @@ func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string
 		}
 		previous = cp
 	}
-	return raw, nil
+	// consistency_to_anchor binds the answer to the coverage anchor: null
+	// when the last entry is the anchor, else a proof to the anchor's
+	// checkpoint, which the envelope carries as material.
+	proof := card["consistency_to_anchor"]
+	if proof == nil {
+		if digestBytes(raw) != e.Anchor.Digest {
+			return nil, bad("ends before its anchor and carries no consistency_to_anchor")
+		}
+		return raw, nil
+	}
+	text, isText := proof.(string)
+	if !isText || !lowerHex(text) {
+		return nil, bad("has a consistency_to_anchor that is not hex")
+	}
+	var anchorStatement []byte
+	for i, entry := range e.Verification {
+		if entry.Kind == KindCLLCheckpoint {
+			anchorStatement = e.VerificationContent[i]
+		}
+	}
+	if anchorStatement == nil || digestBytes(anchorStatement) != e.Anchor.Digest {
+		return nil, bad("carries no anchor checkpoint to check consistency_to_anchor against")
+	}
+	anchorCp, err := readSignedCheckpoint(anchorStatement, checkpointKey)
+	if err != nil {
+		return nil, fmt.Errorf("anchor_inclusion: the anchor: %w", err)
+	}
+	if anchorCp.LogID != previous.LogID || anchorCp.TreeSize <= previous.TreeSize {
+		return nil, bad("does not reach an anchor that extends it")
+	}
+	octets, _ := hex.DecodeString(text)
+	if err := checkCLLConsistency(previous.commitment, anchorCp.commitment, octets); err != nil {
+		return nil, fmt.Errorf("anchor_inclusion: consistency_to_anchor: %w", err)
+	}
+	return anchorStatement, nil
 }
 
 // CheckHistoryCard2 checks a history_card/2 artifact by the seven ordered

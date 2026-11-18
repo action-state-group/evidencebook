@@ -370,6 +370,12 @@ func TestARangedCheckpointsRequestIsAnsweredAndVerified(t *testing.T) {
 		if uint64(len(answer.History)) != r[1]-r[0]+1 || answer.History[0].Position != r[0] || answer.History[0].Proof != nil {
 			t.Fatalf("range %v: %d entries", r, len(answer.History))
 		}
+		var tail struct {
+			ToAnchor any `json:"consistency_to_anchor"`
+		}
+		if err := json.Unmarshal(e.Artifact, &tail); err != nil || (tail.ToAnchor == nil) != (r[1] == 20) {
+			t.Fatalf("range %v: consistency_to_anchor %v (null only when b is the anchor's position)", r, tail.ToAnchor)
+		}
 		if got := recordFor(t, book, ask(r[0], r[1])); got.Outcome != OutcomeArtifact {
 			t.Fatalf("range %v recorded %s: %s", r, got.Outcome, got.Failure)
 		}
@@ -436,4 +442,48 @@ func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
 	}
 	mustEnvelope(t, ask(2, 4))
 	mustRefusal(t, ask(0, 7), ReasonPolicyDeclined)
+}
+
+// A ranged answer whose consistency_to_anchor is dropped, or taken from
+// another range, is not verified (ER -03 §8.1.3).
+func TestARangedAnswerMustReachItsAnchor(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
+	other := mustEnvelope(t, respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 14}}, Coverage: Coverage{ExpectedPin: pin}}), ""))
+	key := responderKeys(book, 9).Checkpoint
+	if _, err := verifyCheckpointRange(req, e, key); err != nil {
+		t.Fatal(err)
+	}
+	decode := func(a []byte) map[string]any {
+		v, err := evidencerequest.DecodeJSON(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v.(map[string]any)
+	}
+	reencode := func(m map[string]any) Envelope {
+		out := e
+		var err error
+		if out.Artifact, err = evidencerequest.EncodeJCS(m); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	dropped := decode(e.Artifact)
+	dropped["consistency_to_anchor"] = nil
+	if _, err := verifyCheckpointRange(req, reencode(dropped), key); err == nil {
+		t.Error("an answer ending before its anchor with a null proof passed")
+	}
+	swapped := decode(e.Artifact)
+	swapped["consistency_to_anchor"] = decode(other.Artifact)["consistency_to_anchor"]
+	if _, err := verifyCheckpointRange(req, reencode(swapped), key); err == nil {
+		t.Error("another range's consistency_to_anchor passed")
+	}
+	bare := e
+	bare.Verification, bare.VerificationContent = nil, nil
+	if _, err := verifyCheckpointRange(req, bare, key); err == nil {
+		t.Error("an answer without the anchor checkpoint passed")
+	}
 }

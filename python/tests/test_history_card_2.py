@@ -155,7 +155,8 @@ def test_a_ranged_checkpoints_request_is_answered_with_entries_alone(a: int, z: 
     e = ranged(b, a, z).envelope
     assert e is not None
     answer = json.loads(e.artifact)
-    assert set(answer) == {"history"} and len(answer["history"]) == z - a + 1
+    assert set(answer) == {"history", "consistency_to_anchor"} and len(answer["history"]) == z - a + 1
+    assert (answer["consistency_to_anchor"] is None) == (z == 20)
     for i, entry in enumerate(answer["history"]):
         assert entry["position"] == a + i and (entry["consistency_from_previous"] is None) == (i == 0)
         assert entry["receipts"] == []
@@ -186,3 +187,25 @@ def test_a_requester_verifies_a_ranged_answer_and_a_card() -> None:
     card = ask(b, eb.DERIVATION_HISTORY_CARD_2).envelope
     _verify_anchor_inclusion(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=card.anchor_digest),
                                                 derivation=eb.DERIVATION_HISTORY_CARD_2), card, key)
+
+
+def test_a_ranged_answer_must_reach_its_anchor() -> None:
+    from dataclasses import replace
+    from evidencebook.book import _verify_checkpoint_range
+    b = many(20)
+    key = b.checkpoints()[0].key_id
+    e = ranged(b, 4, 12).envelope
+    other = ranged(b, 4, 14).envelope
+    req = eb.EvidenceRequest(eb.Subject("checkpoints", (4, 12)), eb.Coverage(expected_pin=e.anchor_digest))
+    _verify_checkpoint_range(req, e, key)
+
+    def tampered(**changes):
+        card = json.loads(e.artifact)
+        card.update(changes)
+        return replace(e, artifact=json.dumps(card, separators=(",", ":")).encode())
+
+    for bad in (tampered(consistency_to_anchor=None),
+                tampered(consistency_to_anchor=json.loads(other.artifact)["consistency_to_anchor"]),
+                replace(e, verification=())):
+        with pytest.raises(eb.InvalidError):
+            _verify_checkpoint_range(req, bad, key)

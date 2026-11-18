@@ -1496,7 +1496,8 @@ mod history_card_2 {
                 panic!("a refusal")
             };
             let answer: Value = serde_json::from_slice(&e.artifact).unwrap();
-            assert_eq!(answer.as_object().unwrap().len(), 1);
+            assert_eq!(answer.as_object().unwrap().len(), 2);
+            assert_eq!(answer["consistency_to_anchor"].is_null(), z == 20);
             let history = answer["history"].as_array().unwrap();
             assert_eq!(history.len() as u64, z - a + 1);
             for (i, entry) in history.iter().enumerate() {
