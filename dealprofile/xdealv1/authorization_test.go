@@ -160,6 +160,16 @@ func TestApprovalMigration(t *testing.T) {
 				c.PersonSignature = append(c.PersonSignature, a.NeedsPersonSignature)
 				c.LimitApprovals = append(c.LimitApprovals, len(a.LimitApprovals))
 				c.IntentSignature = append(c.IntentSignature, a.Intent != "")
+				if a.Intent != "" {
+					// The first intent of the journal, never a later
+					// narrowing intent or a proposal.
+					for _, r := range f.journal {
+						if r.Block.RecordType == TypeIntent {
+							assert.Equal(t, r.digestRef(t).Digest, a.Intent, "%s: the first intent", name)
+							break
+						}
+					}
+				}
 			}
 		} else {
 			require.Error(t, err, name)
@@ -180,7 +190,7 @@ func TestApprovalMigration(t *testing.T) {
 	c = f.check("pay")
 	f.approve(f.verdict(c, "pass"), "standing_intent", true)
 	f.pay(c)
-	run("standing-intent-in-allowed", "a standing intent answers a passing verdict for an action in the allowed in force; no person signature", f, true)
+	run("standing-intent-in-allowed", "a standing intent answers a passing verdict for an action in the allowed in force; the approval needs no person signature, the first intent it rests on does", f, true)
 
 	f = newFlow()
 	c = f.check("pay")

@@ -110,7 +110,7 @@
     },
     {
       "name": "standing-intent-in-allowed",
-      "why": "a standing intent answers a passing verdict for an action in the allowed in force; no person signature",
+      "why": "a standing intent answers a passing verdict for an action in the allowed in force; the approval needs no person signature, the first intent it rests on does",
       "journal": [
         {
           "x-deal-v1": {
