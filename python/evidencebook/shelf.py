@@ -1254,7 +1254,11 @@ class Shelf:
         not raised. Any other exception is the store's or the profile's: one
         in the record part reports nothing, since nothing of it was
         committed; one in the proof part carries the record part's outcome
-        and changes as its ``receive_result`` attribute."""
+        and changes as its ``receive_result`` attribute. Once the parts
+        committed, a profile's ``after_receive(result, at)``, when it has
+        one, runs on the result (Go ``AfterReceive``); what it raises is
+        raised, carrying the committed result as ``receive_result``, and on a
+        proof part's error it is that error's ``after_receive_error``."""
         from . import shelf_receive
 
         return shelf_receive.receive(self, record, proof)

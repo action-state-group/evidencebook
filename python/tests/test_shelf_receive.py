@@ -966,3 +966,33 @@ def test_held_proofs_report_a_contradicted_proof(make, holder):
         prev = name
     got = s.held_proofs("alice", "deal/a")
     assert len(got) == 1 and got[0].contradicted and not got[0].recomputed and got[0].covers == 0
+
+
+def test_after_receive_runs_on_every_call(make):
+    # Go AfterReceive (#528): on every call, a duplicate and a refusal
+    # included, with the deal the profile read each record as; what it raises
+    # is the call's, and the parts' result stays committed.
+    fx, s = make()
+    seen = []
+    fail: list[Exception] = []
+
+    def after(result, at):
+        r = result.record
+        if r is not None:
+            seen.append((r.digest, r.deal_id, r.duplicate, r.refused is not None))
+        if fail:
+            raise fail[0]
+
+    fx.profile.after_receive = after
+    r1 = chain("alice", "deal/a", "deal-1", 1, "a1")
+    ok(s, r1)
+    ok(s, r1)
+    got = s.receive(chain("mallory", "deal/m", "deal-m", 1, "m1"))
+    assert isinstance(got.record.refused, RefusedError)
+    assert seen == [(dg("a1"), "deal-1", False, False), (dg("a1"), "deal-1", True, False),
+                    (dg("m1"), "deal-m", False, True)]
+    fail.append(RuntimeError("naming failed"))
+    with pytest.raises(RuntimeError, match="naming failed") as e:
+        s.receive(chain("alice", "deal/a", "deal-1", 2, "a2", "a1"))
+    assert e.value.receive_result.record.stored, "the parts' result stays committed"
+    assert count(s) == 2
