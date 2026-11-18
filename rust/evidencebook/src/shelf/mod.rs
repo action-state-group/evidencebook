@@ -50,6 +50,7 @@ mod handover_tie;
 #[cfg(test)]
 mod handover_tie_tests;
 mod handover_times;
+mod held;
 mod history;
 mod import;
 mod lock;
@@ -80,6 +81,7 @@ pub use handover::{
 };
 pub use handover_tie::HandoverTie;
 pub use handover_times::{verify_handover_times, HandoverTimes};
+pub use held::HeldProof;
 pub use history::StandardHistoryAnchor;
 
 /// The log id of the shelf's journal ([`Shelf::journal`]).

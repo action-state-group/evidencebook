@@ -1577,3 +1577,99 @@ fn receive_refuses_busy_when_the_mark_keeps_moving() {
     assert!(held(&s, "o1"), "nothing was dropped");
     assert!(!held(&s, "o2"), "nothing was stored");
 }
+
+/// held_first: every record at position 1 of a log id, across senders and
+/// both records of a genesis fork, by sender then digest (Go
+/// `TestHeldFirstReturnsEveryRecordAtPositionOneAcrossSenders`).
+#[test]
+fn held_first_returns_every_record_at_position_one_across_senders() {
+    let (f, s) = fx();
+    f.profile.st().admitted.insert("bob".into(), true);
+    assert!(s.held_first("deal/a").unwrap().is_empty());
+    must_record(&s, &chain("bob", "deal/a", "deal-2", 1, "b1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 2, "a2", "a1"));
+    must_record(&s, &chain("alice", "deal/b", "deal-3", 1, "c1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1-other", ""));
+    let got = s.held_first("deal/a").unwrap();
+    let keys: Vec<(String, String)> = got
+        .iter()
+        .map(|h| {
+            assert_eq!(h.received.log_id, "deal/a");
+            assert_eq!(h.received.position, 1);
+            assert!(!h.record.is_empty());
+            (h.received.sender_key.clone(), h.received.digest.clone())
+        })
+        .collect();
+    let mut want = vec![
+        ("alice".to_string(), dg("a1")),
+        ("alice".to_string(), dg("a1-other")),
+        ("bob".to_string(), dg("b1")),
+    ];
+    if dg("a1-other") < dg("a1") {
+        want.swap(0, 1);
+    }
+    assert_eq!(keys, want);
+}
+
+/// held_by_deal: every record held for a deal across senders and logs,
+/// forks included (Go `TestHeldByDealReturnsEveryRecordOfTheDeal`).
+#[test]
+fn held_by_deal_returns_every_record_of_the_deal() {
+    let (f, s) = fx();
+    f.profile.st().admitted.insert("bob".into(), true);
+    assert!(s.held_by_deal("deal-1").unwrap().is_empty());
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 2, "a2", "a1"));
+    must_record(&s, &chain("bob", "deal/c", "deal-1", 1, "c1", ""));
+    must_record(&s, &chain("alice", "deal/b", "deal-3", 1, "b1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1-other", ""));
+    let keys: Vec<String> = s
+        .held_by_deal("deal-1")
+        .unwrap()
+        .iter()
+        .map(|h| {
+            assert_eq!(h.received.deal_id, "deal-1");
+            format!(
+                "{} {} {}",
+                h.received.sender_key, h.received.log_id, h.received.position
+            )
+        })
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "alice deal/a 1",
+            "alice deal/a 1",
+            "alice deal/a 2",
+            "bob deal/c 1"
+        ]
+    );
+}
+
+/// held_proofs: a proof recomputed over the sender's records covers them,
+/// and one from another sender or log is none.
+#[test]
+fn held_proofs_cover_the_counted_records() {
+    let h = holder(&["1", "2", "3"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    assert!(s.held_proofs("alice", "deal/a").unwrap().is_empty());
+    for r in h.records("alice", "deal-1") {
+        must_record(&s, &r);
+    }
+    must(&s, None, Some(&p));
+    let held = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(held.len(), 1);
+    assert!(held[0].recomputed && !held[0].contradicted);
+    let counted = prefix(&s, "alice", "deal/a").size;
+    assert!(counted > 0);
+    assert_eq!(
+        held[0].covers,
+        held[0].verified.book_checkpoint.entries.min(counted)
+    );
+    assert_eq!(held[0].proof, p);
+    assert!(s.held_proofs("bob", "deal/a").unwrap().is_empty());
+    assert!(s.held_proofs("alice", "deal/b").unwrap().is_empty());
+}

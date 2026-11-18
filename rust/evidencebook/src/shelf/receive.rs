@@ -329,7 +329,7 @@ pub(super) fn received_time(t: Time) -> String {
     format!("{}.{nanos:09}Z", &date[..date.len() - 1])
 }
 
-fn parse_received_time(text: &str, what: &str) -> Result<Time, ShelfError> {
+pub(super) fn parse_received_time(text: &str, what: &str) -> Result<Time, ShelfError> {
     Time::parse(text).ok_or_else(|| ShelfError::Corrupt(format!("{what}'s time {text:?}")))
 }
 
@@ -481,7 +481,7 @@ fn read_own_mark(conn: &Connection) -> Result<OwnMark, ShelfError> {
 
 /// A stored record's columns but its bytes.
 #[derive(Clone, Debug)]
-struct ReceivedRow {
+pub(super) struct ReceivedRow {
     digest: String,
     sender: String,
     log: String,
@@ -492,7 +492,7 @@ struct ReceivedRow {
 }
 
 impl ReceivedRow {
-    fn record(&self) -> ReceivedRecord {
+    pub(super) fn record(&self) -> ReceivedRecord {
         ReceivedRecord {
             digest: self.digest.clone(),
             sender_key: self.sender.clone(),
@@ -504,7 +504,7 @@ impl ReceivedRow {
         }
     }
 
-    fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+    pub(super) fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
             digest: r.get(0)?,
             sender: r.get(1)?,
@@ -748,7 +748,7 @@ pub(super) fn note_conflict(
 /// records held, its root recomputed from them, or contradicted by them.
 pub(super) const PROOF_UNCHECKED: i64 = 0;
 pub(super) const PROOF_RECOMPUTED: i64 = 1;
-const PROOF_CONTRADICTED: i64 = 2;
+pub(super) const PROOF_CONTRADICTED: i64 = 2;
 
 /// Remember the positions deleted records held (dropped offers, or records
 /// [`Shelf::forget`] deleted), so another record arriving there later is a
