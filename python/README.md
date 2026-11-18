@@ -141,3 +141,23 @@ fp = deal.fingerprint(key, "domain", "https://www.Example.com/")
 
 It holds no deal logic and seals nothing: it returns bytes and plain Capsule members, and the
 producer seals them with its own key.
+
+## x-deal-v1
+
+`evidencebook.deal.v1` is the x-deal-v1 deal record profile, at byte parity with Go's
+`dealprofile/xdealv1` (see `dealprofile/x-deal-v1/PROFILE.md`): a record's strict reading
+(`decode`, which refuses text Go's types would not write back), its checks (`check`,
+`check_sealed`, and `check_agreement`, `check_dispute` and `check_ruling`, which read one record
+against another), its payload and digest (`encode`, `digest`, `rows_digest`), where it is sealed
+(`placement_of`), and when a deal has started (`start`, `start_from_books`).
+
+```python
+from evidencebook.deal import v1
+
+payload, digest = v1.encode(record_json)  # raises v1.StageError
+v1.check_agreement(agreement_json, offer_json, held_acceptor_agreement_id)
+```
+
+A record is read as Go's `encoding/json` reads it into the profile's types, through a table of
+those types that `dealprofile/xdealv1`'s `TestTypesTable` writes by reflection. The CI
+differential check (`test/interop/deal-v1`) compares it with Go on random records.

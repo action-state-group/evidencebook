@@ -57,10 +57,13 @@ python3 testdata/row-status/generate.py testdata/row-status/vectors.json && git 
 go build -o /tmp/rs-go ./test/interop/row-status && (cd rust && cargo build --locked -p evidencebook-interop --bin row-status) \
   && python/.venv/bin/python test/interop/row-status/diff.py /tmp/rs-go rust/target/debug/row-status
 
-# x-deal-v1 in Go and Rust (dealprofile/xdealv1, rust deal::v1): records mutated from the
-# fixtures and books from the vectors, on random inputs (CI: deal-v1-diff in ci.yml)
+# x-deal-v1 in Go, Rust and Python (dealprofile/xdealv1, rust deal::v1, python evidencebook.deal.v1):
+# records mutated from the fixtures and books from the vectors, on random inputs; Python on the
+# kinds it implements (CI: deal-v1-diff in ci.yml)
 go build -o /tmp/dv1-go ./test/interop/deal-v1 && (cd rust && cargo build --locked -p evidencebook-interop --bin deal-v1) \
-  && python3 test/interop/deal-v1/diff.py /tmp/dv1-go rust/target/debug/deal-v1 --n 4000 --seed 1
+  && python3 test/interop/deal-v1/diff.py /tmp/dv1-go rust/target/debug/deal-v1 --python python/.venv/bin/python --n 4000 --seed 1
+# The Go types Python reads x-deal-v1 records into; regenerate only for an intended change
+EB_WRITE_TYPES_TABLE=1 go test -run TestTypesTable ./dealprofile/xdealv1
 
 # The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
 # scripted two-node run over MCP stdio, Go's check of each node's card, and each node's deal half
@@ -107,7 +110,7 @@ text.
 | `capsulectl/` | the nested module `github.com/action-state-group/evidencebook/capsulectl`: `capsulectl-book`, the capsulectl plugin over books (its own CI workflow and `capsulectl/v*` releases) |
 | `rust/evidencebook/` | crate `evidencebook`, a Rust implementation of the same semantics |
 | `rust/interop/` | `evidencebook-interop` (not published): the crate's Personal-Agent History and interop-profile runs, which the Rust CI `interop` job checks against the vectors and the Go runs, and the Rust side of the shelf storage interlock (bin `shelf`, `shelf-interlock` in ci.yml) |
-| `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book, the shelf and its cadence, the evidence request interaction and `evidencebook.deal` (x-deal-v0), byte for byte with Go; not yet published |
+| `python/` | the Python package `capsule-evidencebook` (import `evidencebook`): the book, the shelf and its cadence, the evidence request interaction, `evidencebook.deal` (x-deal-v0) and `evidencebook.deal.v1` (x-deal-v1), byte for byte with Go; not yet published |
 | `test/interop/` | cross-implementation programs and checks that CI runs |
 | `testdata/` | vectors and fixtures the Go, Rust and Python tests read |
 | `schemas/`, `docs/` | the record header schema and vendored schemas; design notes, the interop PRD and the adapter and verifier guides |

@@ -9,7 +9,11 @@ same text at the record and agreement stages), alone or with a seal context, and
 status value and report built from mutated books is the same JCS text, or both
 refuse.
 
-    python3 test/interop/deal-v1/diff.py GO_BIN RUST_BIN [--n N] [--seed S]
+    python3 test/interop/deal-v1/diff.py GO_BIN RUST_BIN [--python CMD] [--n N] [--seed S]
+
+With --python, the Python side (python_side.py, run by CMD, a Python
+interpreter with the package installed) is compared with Go too, on the
+kinds it answers; it answers "skip" for the others.
 """
 
 import argparse
@@ -189,7 +193,8 @@ def requests(r, n):
 
 
 def run(binary, lines):
-    p = subprocess.run([binary], input="\n".join(lines) + "\n", capture_output=True, text=True, check=True)
+    cmd = binary if isinstance(binary, list) else [binary]
+    p = subprocess.run(cmd, input="\n".join(lines) + "\n", capture_output=True, text=True, check=True)
     return p.stdout.splitlines()
 
 
@@ -197,6 +202,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("go")
     ap.add_argument("rust")
+    ap.add_argument("--python", help="a Python interpreter with the package installed")
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
@@ -213,7 +219,17 @@ def main():
     print(f"seed {a.seed}: {len(lines)} inputs, {len(bad)} disagreements; by kind and refused: {kinds}")
     for i, kind, g, s in bad[:5]:
         print(f"  input {i} ({kind}):\n    request {lines[i][:600]}\n    go   {g[:300]}\n    rust {s[:300]}")
-    sys.exit(1 if bad else 0)
+    py_bad = []
+    if a.python:
+        py = run([a.python, str(Path(__file__).with_name("python_side.py"))], lines)
+        if len(py) != len(lines):
+            sys.exit(f"answer counts differ: {len(lines)} asked, Python {len(py)}")
+        answered = [i for i, p in enumerate(py) if p != '"skip"']
+        py_bad = [(i, reqs[i]["kind"], go[i], py[i]) for i in answered if go[i] != py[i]]
+        print(f"seed {a.seed}: Python answered {len(answered)} inputs, {len(py_bad)} disagreements with Go")
+        for i, kind, g, p in py_bad[:5]:
+            print(f"  input {i} ({kind}):\n    request {lines[i][:600]}\n    go     {g[:300]}\n    python {p[:300]}")
+    sys.exit(1 if bad or py_bad else 0)
 
 
 if __name__ == "__main__":

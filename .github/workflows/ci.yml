@@ -596,10 +596,10 @@ jobs:
 
   deal-v1-diff:
     # The x-deal-v1 differential check (evidencebook#461, design §11.1 item
-    # 6): Go and Rust accept or refuse each record mutated from a fixture at
-    # the same stage, and build the same status value and report from mutated
-    # books, on 20,000 random inputs; the shared vectors under testdata/deal-v1
-    # pin the profile by hand.
+    # 6): Go, Rust and Python accept or refuse each record mutated from a
+    # fixture at the same stage, and Go and Rust build the same status value
+    # and report from mutated books, on 20,000 random inputs; the shared
+    # vectors under testdata/deal-v1 pin the profile by hand.
     name: x-deal-v1 differential
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -624,10 +624,14 @@ jobs:
           go build -o "$RUNNER_TEMP/deal-v1-go" ./test/interop/deal-v1
           cargo build --locked --manifest-path rust/Cargo.toml -p evidencebook-interop --bin deal-v1
           cp rust/target/debug/deal-v1 "$RUNNER_TEMP/deal-v1-rs"
+      - name: Install the Python side
+        run: python -m pip install ./python "agent-action-capsule==0.17.0" "checkpointed-local-log==0.9.0" "capsule-emit==0.17.0" "cbor2==6.1.5"
       - name: Compare on random inputs
+        # Python answers the kinds its package implements and is compared
+        # with Go on those (python_side.py).
         run: |
           for seed in 1 2 3 4 5; do
-            python test/interop/deal-v1/diff.py "$RUNNER_TEMP/deal-v1-go" "$RUNNER_TEMP/deal-v1-rs" --n 4000 --seed "$seed"
+            python test/interop/deal-v1/diff.py "$RUNNER_TEMP/deal-v1-go" "$RUNNER_TEMP/deal-v1-rs" --python python --n 4000 --seed "$seed"
           done
 
   goose:
