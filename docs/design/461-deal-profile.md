@@ -895,7 +895,9 @@ counted).
   acceptor's book names the offerer's agreement or a later record.
 - **A late dispute's third condition** (design §4.2, rule 2; §8, "A dispute after the contest
   window"): `seen_in_time` is true when a record of the claimant's own book whose `seen` reaches
-  the uncontested statement's record has a time not after the row's window end.
+  the uncontested statement's record has a time not after the row's window end. The uncontested
+  statement is the other side's standing one on the row: its latest statement rowstatus does not
+  hold late (PR 4c-1 review round 1).
 - **The link value** (8.2): `last_received` is the record `seen` would name now.
 - **For each statement, when the other side's book first named it** (design §4.3, "The facts"):
   the time of the first record of the other book whose `seen` reaches it.
@@ -1046,6 +1048,35 @@ such record, a record whose time is not yet known, and a known time.
   (4.3), at every T at or after that fact's stamp, and for every later fact of the book.
 - **Owner:** PR 4 (the status value). Its encoding of times and its statement selection are that
   PR's to define against this invariant; this note fixes neither.
+- **Proposed by PR 4c** (for review):
+  - *Times.* A time in a fact is one of three values: a string, the record's known time; `null`,
+    no such record (a named record not yet written); or `{"stamp": n}`, a record whose time is not
+    known when the fact is written, where `n` is the holder's first stamp that covers it (its own
+    record, or a counterparty record its link value's `last_received` first reached). A reader
+    resolves `{"stamp": n}` to the earliest receipt, from a witness the agreement names, of stamp
+    `n`'s shelf checkpoint or of a later one (the library's `RecordTime` and
+    `ReceivedRecordTime` do the same for the holder), and, for a counterparty record, to the
+    earlier of that and the earliest named receipt of a counterparty stamp proof it holds that
+    covers the record (design §4.3: the first stamp on either shelf). That second source needs
+    receipts to travel with stamp proofs, which no form carries yet (section 9, Q8); until then a
+    counterparty record resolves from the holder's stamps only, which can be later than its §4.3
+    time. It stays untimed until a receipt exists. A fact never states a time for a record its
+    own stamp is the first to cover: such a record is `{"stamp": <this stamp>}`. `n` is a local
+    stamp index, not a digest, so it pairs with nothing on the other shelf.
+  - *Statements carried.* Per row and side, in book order: every statement whose time is not
+    known; for each of those, the earlier statement of that side with the greatest known time
+    (the lower bound rowstatus reads, `rowstatus.go:278-303`; a book's record times never
+    decrease, since a stamp covering a record covers those before it, so it is also the latest);
+    the latest statement with a known time
+    not after the window end; and every statement with a known time after the window end that
+    gives its author the other side's in-time value (a possible concession). While the window end
+    is not known (its named record has no time), every statement is carried. Anything else is
+    dropped, since rowstatus can never read it.
+  - *Check.* A randomized differential test holds the selection to the invariant: for generated
+    rows, statements and times, `Compute` over the carried statements equals `Compute` over all
+    statements at every T at or after the fact, with every `{"stamp": n}` resolved to a time not
+    before the fact for the holder's records, and to any time not before the record before it in
+    its book for the counterparty's (Sherlock2, on this proposal: P1 and P2).
 - **Vectors** (`testdata/deal-v1/status/`): **`times-three-cases`** (a named record not yet written,
   so its row's dates stay unset; a record first covered by this fact's stamp, resolved to a time and
   passed to rowstatus as that time; a record with a time already known); **`unwitnessed-then-witnessed`**
@@ -1058,7 +1089,7 @@ such record, a record whose time is not yet known, and a known time.
   `local` false (Codex ran it on the Python implementation); the fact's statements must give the
   same, although the earlier timed statement is neither in time nor a concession, because rowstatus
   uses a side's earlier timed statement to judge whether its later untimed one is late
-  (`rowstatus.go:275-300`, `445-451`).
+  (`rowstatus.go:278-303`, `449-467`).
 
 **The receipts a handover carries (C).** A reader handed the whole shelf resolves record times from
 the witness receipts it is handed (A, above).
@@ -1446,7 +1477,9 @@ same vectors, each in its own pull request.
 4. **The status value, the link value, `StatusProvider`, `ReceiveProfile`, `PaymentCheck`,
    `CanAct`**, with the order vectors (7.3), acceptance 3's two remaining vectors (the other side's
    stamp covering our record first; a statement whose in-time state is known only at its first
-   stamp), and status vectors. The status value meets invariant A (8.1), and `CanAct` gate B
+   stamp), and status vectors. The status value meets invariant A (8.1) with the holder's stamps;
+   a counterparty record's earlier time from its author's stamp waits for receipts to travel with
+   proofs (Q8). `CanAct` gate B
    (7.2). Acceptance: vectors `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward`,
    `carry-forward-lower-bound` (REQUIRED), and the order vectors of 7.3.
 5. **The v1 report** and its vectors (section 9).
