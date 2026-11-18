@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.0.20 (2026-11-17)
+
+- `shelf::Handover::witnessed` and `shelf::verify_handover_times`: a handover carries the earlier witnessed
+  shelf checkpoints and their receipts, `verify_handover` checks them, and a reader resolves record times
+  from them as Go does (evidencebook#461, invariant C; `testdata/shelf/handover/earliest-receipt-not-anchor.json`).
+
+- `shelf` (feature): `shelf_receipts` is keyed by checkpoint, witness URL and directory key id, as
+  Go's (evidencebook#492): a witness whose directory row lists two keys keeps a receipt under each.
+  Opening a shelf with the old table rebuilds it in place, keeping every row; the shelf version is
+  unchanged. `Cadence::handover` orders receipts by URL and then key.
+
+- `shelf` (feature): Go's genesis-fact ties in the whole-shelf handover (#461 §2.7), byte for byte on `testdata/shelf/handover.json` and `handover-result.json`. `Handover::ties` (`HandoverTie`, in book id order, always written, `[]` when none) carries, for each book whose log a witnessed tree tick held at or below its genesis size, that tick's leaf and 16-hash path, its root's position in the shelf log, the cadence checkpoint and its receipts, the old book checkpoint and, when the log grew since, a consistency proof to the genesis checkpoint; a leaf that kept no checkpoint statement gives no tie. `verify_handover` checks each tie against the handed-over entries and the reader's witness directory and fails on one that does not verify, on two ties of one book and on a tie whose book has no genesis fact in the handover; a genesis fact without one is still reported in `untied`.
+
 ## 0.0.19 (2026-11-17)
 
 Tag `crates/evidencebook-v0.0.19`. Pull requests since 0.0.18 that touch `rust/`: [#474](https://github.com/action-state-group/evidencebook/pull/474) (the shelf's journal), [#475](https://github.com/action-state-group/evidencebook/pull/475) (the store of received records and `Receive`), [#477](https://github.com/action-state-group/evidencebook/pull/477) (`RecordTime` and the witness receipts) and [#480](https://github.com/action-state-group/evidencebook/pull/480) (capsule-emit-artifact 0.0.4).
