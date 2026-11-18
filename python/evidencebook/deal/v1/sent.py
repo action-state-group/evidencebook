@@ -155,7 +155,7 @@ def pair(capsule: bytes, envelope: bytes, payload: bytes) -> bytes:
     ``{"agent_input": payload, "record": the Capsule with its signature
     and key_id}``."""
     members = _signed(capsule, envelope)
-    return _marshal_members({"record": _marshal_members(members).decode("utf-8"),
+    return _marshal_members({"record": rawjson.raw_text(_marshal_members(members)),
                              "agent_input": _raw_message(payload)})
 
 
@@ -164,7 +164,7 @@ def book_pair(capsule: bytes, envelope: bytes, header: bytes, payload: bytes) ->
     ``{"header", "payload", "record": the Capsule with its signature and
     key_id}``."""
     members = _signed(capsule, envelope)
-    return _marshal_members({"record": _marshal_members(members).decode("utf-8"), "header": _raw_message(header),
+    return _marshal_members({"record": rawjson.raw_text(_marshal_members(members)), "header": _raw_message(header),
                              "payload": _raw_message(payload)})
 
 

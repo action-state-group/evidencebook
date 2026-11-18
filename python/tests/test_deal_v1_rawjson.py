@@ -67,6 +67,14 @@ def test_raw_json_is_read_and_written_as_go_does(case):
     else:
         assert got and (m is None) == case["map"]["nil"]
         assert go_map(m) == (case["map"].get("members") or {})
+    got, out = ok(lambda: _marshal_members(rawjson.unmarshal_map(b) or {}) if rawjson.unmarshal_map(b) is not None
+                  else b"null")
+    if case["remarshal"] is None:
+        assert case["map"] is None or not got, "json.Marshal of the map refuses"
+    else:
+        assert got, "json.Marshal of the map writes it"
+        want = case["remarshal"]
+        assert (hashlib.sha256(out).hexdigest() == want[7:]) if want.startswith("sha256:") else out == bytes.fromhex(want)
     got, cid = ok(lambda: rawjson.string_member(b, "capsule_id"))
     assert (cid if got else None) == case["capsule_id"], "struct{CapsuleID}"
     got, out = ok(lambda: _marshal_members({"p": _raw_message(b)}))
@@ -79,3 +87,17 @@ def test_raw_json_is_read_and_written_as_go_does(case):
             assert hashlib.sha256(out).hexdigest() == want[7:]
         else:
             assert out == bytes.fromhex(want)
+
+
+def test_a_pair_builder_keeps_a_capsule_member_s_raw_bytes():
+    # Go's BookPair keeps a RawMessage's bytes, invalid UTF-8 included (#552 review).
+    from evidencebook.deal.v1 import sent
+
+    pc = json.loads((VECTORS.parent.parent / "payment" / "vectors.json").read_text())["pair"][0]
+    h = bytes.fromhex
+    cap = h(pc["capsule"])
+    cap = cap[:-1] + b',"x":"\xff"}'
+    out = sent.book_pair(cap, h(pc["envelope"]), h(pc["header"]), h(pc["payload"]))
+    assert b'"x":"\xff"' in out
+    out = sent.pair(cap, h(pc["envelope"]), h(pc["payload"]))
+    assert b'"x":"\xff"' in out

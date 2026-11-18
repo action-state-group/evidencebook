@@ -39,8 +39,10 @@ def go_utf8(b: bytes) -> str:
 
 
 def go_unquote(b: bytes) -> str:
-    """A JSON string literal as Go decodes it into a string."""
-    return json.loads(go_utf8(b))
+    """A JSON string literal as Go decodes it into a string: invalid UTF-8
+    and an escaped surrogate outside a pair are each U+FFFD (a pair is its
+    one character)."""
+    return "".join("\ufffd" if 0xD800 <= ord(c) <= 0xDFFF else c for c in json.loads(go_utf8(b)))
 
 
 class ScanError(ValueError):

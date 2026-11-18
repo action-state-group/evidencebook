@@ -40,6 +40,10 @@ type rawCase struct {
 	Map       *rawMapResult  `json:"map"`
 	CapsuleID *string        `json:"capsule_id"`
 	Marshal   *string        `json:"marshal"` // hex (sha256: for a long one), nil when refused
+	// Remarshal is json.Marshal of the map json.Unmarshal read (hex, sha256:
+	// for a long one), nil when either refuses: the members' names written
+	// again as Go writes decoded names, their texts compacted.
+	Remarshal *string `json:"remarshal"`
 }
 
 type rawGen struct {
@@ -69,6 +73,15 @@ type rawMapResult struct {
 	Members map[string]string `json:"members,omitempty"`
 }
 
+func hexOrSum(out []byte) *string {
+	s := hex.EncodeToString(out)
+	if len(out) > 512 {
+		sum := sha256.Sum256(out)
+		s = "sha256:" + hex.EncodeToString(sum[:])
+	}
+	return &s
+}
+
 func rawStrings(m map[string]json.RawMessage) map[string]string {
 	out := map[string]string{}
 	for k, v := range m {
@@ -91,6 +104,9 @@ func rawJSONCase(in []byte) rawCase {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(in, &m); err == nil {
 		c.Map = &rawMapResult{Nil: m == nil, Members: rawStrings(m)}
+		if out, err := json.Marshal(m); err == nil {
+			c.Remarshal = hexOrSum(out)
+		}
 	}
 	var id struct {
 		CapsuleID string `json:"capsule_id"`
@@ -99,12 +115,7 @@ func rawJSONCase(in []byte) rawCase {
 		c.CapsuleID = &id.CapsuleID
 	}
 	if out, err := json.Marshal(map[string]json.RawMessage{"p": in}); err == nil {
-		s := hex.EncodeToString(out)
-		if len(out) > 512 {
-			sum := sha256.Sum256(out)
-			s = "sha256:" + hex.EncodeToString(sum[:])
-		}
-		c.Marshal = &s
+		c.Marshal = hexOrSum(out)
 	}
 	return c
 }
@@ -122,7 +133,9 @@ func TestRawJSONVectors(t *testing.T) {
 		`{"record":{},"agent_input":1,"x":2}`, `{"capsule_id":"c1"}`, `{"capsule_id":5,"capsule_id":"c1"}`,
 		`{"capsule_id":"c1","Capsule_ID":null}`, `{"Capsule_ID":"c2"}`, `{"capsule_id":"cé","x":" "}`,
 		"{\"s\":\"  \"}", `{"s":"\ud800"}`, `{"s":"\x"}`, `{"s":"\u12"}`, "{\"s\":\"a\tb\"}", "\xef\xbb\xbf{}",
-		"{\"s\":\"\xff\"}", `{"a":[{"b":[]},{}],"c":{"d":{}}}`, `  {"a" : [ 1 , 2 ] }  `, `{"a":01}`, `{"a":1.}`, `{"a":.5}`,
+		"{\"s\":\"\xff\"}", `{"\ud800":1,"\ufffd":2}`, `{"capsule_id":"\ud800"}`, `{"capsule_id":"\ud83d\ude00"}`,
+		`{"\u0008\u001f\u007f<>&\u2028\ud800x":1,"\u0061":2,"b":"\u0008"}`, "{\"x\":\"\xff\",\"\xfe\":1}",
+		`{"a":[{"b":[]},{}],"c":{"d":{}}}`, `  {"a" : [ 1 , 2 ] }  `, `{"a":01}`, `{"a":1.}`, `{"a":.5}`,
 		`{"a":1e}`, `{"a":-}`, `{"a":tru}`, `{"a":"x"`, `{"a":`, `[[[`, `]`, `{"a":1}{"b":2}`,
 	}
 	alphabet := []byte("{}[]\":,0123456789.eE+-tfnul \\\"aR<&>\xe2\x80\xa8\xff")
@@ -157,7 +170,7 @@ func TestRawJSONVectors(t *testing.T) {
 		}
 	}
 	out, err := json.MarshalIndent(map[string]any{
-		"description": "Go's encoding/json on texts a sent or book pair may hold (evidencebook#461): each input (hex) with json.Valid, checkText, strictUnmarshal into {record map[string]json.RawMessage, agent_input json.RawMessage} (null when refused), json.Unmarshal into map[string]json.RawMessage (null when refused) and into struct{CapsuleID string} (null when refused), and json.Marshal(map[string]json.RawMessage{\"p\": in}) as hex (null when refused). Hand-picked texts, nesting at Go's bounds, then texts mutated by a fixed seed. Written by dealprofile/xdealv1's TestRawJSONVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "Go's encoding/json on texts a sent or book pair may hold (evidencebook#461): each input (hex) with json.Valid, checkText, strictUnmarshal into {record map[string]json.RawMessage, agent_input json.RawMessage} (null when refused), json.Unmarshal into map[string]json.RawMessage (null when refused) and into struct{CapsuleID string} (null when refused), json.Marshal(map[string]json.RawMessage{\"p\": in}) as hex (null when refused), and json.Marshal of the map json.Unmarshal read (remarshal). Hand-picked texts, nesting at Go's bounds, then texts mutated by a fixed seed. Written by dealprofile/xdealv1's TestRawJSONVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
 	}, "", " ")
 	require.NoError(t, err)
