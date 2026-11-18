@@ -41,7 +41,7 @@ type RowBooks struct {
 //
 // A recomputed row's check is the caller's, from b.Checks (a payment row's
 // PaymentCheck, §6.3); a recomputed row it holds none for is not run, and a
-// check given for a row that is not recomputed is refused. A remedy that is
+// check given for a row that is not recomputed, or not in the terms, is refused. A remedy that is
 // a payment (§6.1) is not counted: it needs its own terms leg, which the
 // profile does not define yet. A non-payment remedy counts when its act is
 // the effective ruling's remedy kind.
@@ -89,6 +89,11 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 		}
 	}
 
+	for id := range b.Checks {
+		if !slices.ContainsFunc(tr.Rows, func(r Row) bool { return r.ID == id }) {
+			return nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which the terms do not have", id)
+		}
+	}
 	var out []rowstatus.Input
 	for _, row := range tr.Rows {
 		in := rowstatus.Input{At: at, Parties: []string{RoleBuyer, RoleSeller}, Named: named,

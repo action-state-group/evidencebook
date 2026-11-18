@@ -6,9 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/action-state-group/agent-action-capsule/go/canonical"
 	"github.com/action-state-group/agent-action-capsule/go/settlement"
@@ -46,7 +44,8 @@ const (
 const (
 	ReasonSeveralPayments  = "several_payments"   // the terms have more than one payment row
 	ReasonRefundCitesOffer = "refund_cites_offer" // a refund or remedy leg cites the offer's terms leg
-	ReasonNotAgreed        = "not_agreed"         // the legs are not agreed (yet): AAC's PaymentState
+	ReasonNotAgreed        = "not_agreed"         // one side's legs, or none: AAC's terms_only, payer_stated, payee_stated
+	ReasonUnjoined         = "unjoined"           // both sides' legs, which AAC cannot join (payment_ref types, fees)
 	ReasonPending          = "pending"            // agreed, with status pending
 	ReasonMismatch         = "mismatch"           // the two sides' legs differ
 	ReasonStatus           = "status"             // agreed, with status failed or reversed
@@ -184,12 +183,16 @@ type PaymentInput struct {
 // PaymentResult is a payment check's outcome. Check is PaymentPass,
 // PaymentFail, or "" when the check was not run; Reason says why it failed
 // or was not run. CheckedOver are the record digests it ran over: the offer,
-// then the legs AAC's verifier read, in the order given. Settlement is AAC's
-// derived state of the legs that answer the offer's terms leg, when it ran.
+// then the legs AAC's verifier read, in the order given. Excluded are the
+// settle records that took no part: no readable settlement member, a leg of
+// another side or role than its signer's, or one AAC's verifier refuses.
+// Settlement is AAC's derived state of the legs that answer the offer's
+// terms leg, when it ran.
 type PaymentResult struct {
 	Check       string                 `json:"check"`
 	Reason      string                 `json:"reason,omitempty"`
 	CheckedOver []string               `json:"checked_over"`
+	Excluded    []string               `json:"excluded,omitempty"`
 	Settlement  *settlement.Settlement `json:"settlement,omitempty"`
 }
 
@@ -200,16 +203,19 @@ type PaymentResult struct {
 // or another amount; not run otherwise, and when the offer's terms have more
 // than one payment row (an offer with one carries its terms leg: VerifySent). Sealer conflation (both
 // observed legs under one key) cannot arise: the two parties' keys are
-// distinct, and a leg sealed by the key of the other role is refused.
+// distinct, and a leg sealed by the key of the other role takes no part.
 //
 // It refuses an offer that does not verify (VerifySent) or is not the one
 // both agreements cite, a row that is not a payment row, a leg that does not
-// verify (VerifyBook), is of another deal, or is signed by neither party's
-// key, and a leg whose side, leg or role disagree. A payer leg is the
-// payment row's owing party's, a payee leg the other's, and AAC's verifier
-// applies that as its key policy. A leg superseded (supersedes) by a later
+// verify (VerifyBook), is of another deal, is signed by neither party's key
+// or carries a chain. A payer leg is the payment row's owing party's, a
+// payee leg the other's, and AAC's verifier applies that as its key policy.
+// A leg's own content is the counterparty's to get wrong, so a leg whose
+// side, leg or role disagree, or that AAC refuses, takes no part (Excluded)
+// rather than stopping the check. A leg superseded (supersedes) by a later
 // leg of its side is not read; a refund or remedy leg (reverses,
-// remedy_for) that cites the offer's terms leg leaves the check not run.
+// remedy_for) that cites the offer's terms leg, and is not superseded,
+// leaves the check not run.
 func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	bad := func(format string, args ...any) (PaymentResult, error) {
 		return PaymentResult{}, stageErr(StagePayment, format, args...)
@@ -267,9 +273,17 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 	type legRead struct {
 		read    BookRead
 		capsule map[string]json.RawMessage
-		role    string
+		refund  bool
 	}
 	var legs []legRead
+	// Every settle record's supersedes counts, whichever terms leg it
+	// answers: a refund replaced by one under its own terms leg is replaced.
+	type supersession struct {
+		key    string
+		target Ref
+		seq    uint64
+	}
+	var supersedes []supersession
 	for i, raw := range in.Legs {
 		read, err := VerifyBook(raw)
 		if err != nil {
@@ -286,6 +300,9 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		if !known {
 			return bad("leg %d is signed by neither party's key", i)
 		}
+		if body.Supersedes != nil {
+			supersedes = append(supersedes, supersession{key: read.KeyID, target: *body.Supersedes, seq: read.Seq})
+		}
 		var pair struct {
 			Record map[string]json.RawMessage `json:"record"`
 		}
@@ -298,6 +315,10 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		if c := pair.Record["chain"]; c != nil && string(c) != "null" {
 			return bad("leg %d's Capsule carries a chain; a deal-book record's has none", i)
 		}
+		// From here a leg's own content is the counterparty's to get wrong:
+		// a leg that is not a leg of this payment takes no part, as AAC's
+		// verifier treats a leg that fails its checks, and the check reads
+		// the others (§6.3: every other case has not run).
 		var member struct {
 			Leg        string `json:"leg"`
 			SealerRole string `json:"sealer_role"`
@@ -305,31 +326,36 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		}
 		m := pair.Record[SettlementMember]
 		if m == nil || json.Unmarshal(m, &member) != nil {
-			return bad("leg %d carries no settlement member", i)
+			out.Excluded = append(out.Excluded, read.Digest)
+			continue
 		}
 		if member.TermsRef != sent.CapsuleID {
 			continue // it answers another terms leg
 		}
-		if body.Reverses != nil || body.RemedyFor != nil {
-			out.Reason = ReasonRefundCitesOffer
-			return out, nil
+		refund := body.Reverses != nil || body.RemedyFor != nil
+		if !refund && (body.Leg != role || member.Leg != role+"_observed" || member.SealerRole != role) {
+			out.Excluded = append(out.Excluded, read.Digest)
+			continue
 		}
-		if body.Leg != role || member.Leg != role+"_observed" || member.SealerRole != role {
-			return bad("leg %d is a %s leg (its settlement member a %s leg as %s) sealed by the %s's key", i, body.Leg, member.Leg, member.SealerRole, role)
-		}
-		legs = append(legs, legRead{read: read, capsule: pair.Record, role: role})
+		legs = append(legs, legRead{read: read, capsule: pair.Record, refund: refund})
 	}
 
 	// A leg superseded by a later leg of its side is not read: the book
 	// keeps the replaced one, and the deal reads the outcome (§4.2, §8).
 	superseded := map[string]bool{}
 	for _, l := range legs {
-		if b, _ := bodyOf[SettleBody](l.read.Record.Body); b != nil && b.Supersedes != nil {
-			for _, t := range legs {
-				if t.read.KeyID == l.read.KeyID && RefTo(t.read.Digest) == *b.Supersedes && t.read.Seq < l.read.Seq {
-					superseded[t.read.Digest] = true
-				}
+		for _, sp := range supersedes {
+			if sp.key == l.read.KeyID && sp.target == RefTo(l.read.Digest) && l.read.Seq < sp.seq {
+				superseded[l.read.Digest] = true
 			}
+		}
+	}
+	// A refund or remedy that is a payment needs its own terms leg; one
+	// that cites the offer's leaves the check not run.
+	for _, l := range legs {
+		if l.refund && !superseded[l.read.Digest] {
+			out.Reason = ReasonRefundCitesOffer
+			return out, nil
 		}
 	}
 	capsules := []any{}
@@ -338,6 +364,8 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		return bad("the offer's Capsule: %v", err)
 	}
 	capsules = append(capsules, offerCapsule)
+	digestOf := map[string]string{} // capsule id -> record digest
+	var read []string
 	for _, l := range legs {
 		if superseded[l.read.Digest] {
 			continue
@@ -347,20 +375,30 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 			return bad("a leg's Capsule: %v", err)
 		}
 		capsules = append(capsules, c)
-		out.CheckedOver = append(out.CheckedOver, l.read.Digest)
+		digestOf[l.read.RecordID] = l.read.Digest
+		read = append(read, l.read.Digest)
 	}
 	policy := map[string][]string{}
 	for key, role := range roleOf {
 		policy[role] = append(policy[role], key)
 	}
 	res := settlement.Verify(settlement.Input{Capsules: capsules, KeyPolicy: policy})
-	if len(res.Failures) > 0 {
-		var codes []string
-		for _, f := range res.Failures {
-			codes = append(codes, f.Code)
+	// A leg AAC's verifier refuses takes no part in its state.
+	refused := map[string]bool{}
+	for _, f := range res.Failures {
+		for _, r := range f.Records {
+			if r == nil || digestOf[*r] == "" {
+				return bad("AAC's verifier refuses the offer's terms leg: %s", f.Code)
+			}
+			refused[digestOf[*r]] = true
 		}
-		slices.Sort(codes)
-		return bad("the settlement legs do not verify: %s", strings.Join(slices.Compact(codes), ", "))
+	}
+	for _, d := range read {
+		if refused[d] {
+			out.Excluded = append(out.Excluded, d)
+		} else {
+			out.CheckedOver = append(out.CheckedOver, d)
+		}
 	}
 	for i := range res.Settlements {
 		if res.Settlements[i].Terms == sent.CapsuleID {
@@ -372,6 +410,8 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		return bad("AAC's verifier read no terms leg %s", sent.CapsuleID)
 	}
 	switch state := out.Settlement.PaymentState; {
+	case state != nil && *state == "unjoined":
+		out.Reason = ReasonUnjoined
 	case state == nil || (*state != "agreed" && *state != "mismatch"):
 		out.Reason = ReasonNotAgreed
 	case *state == "mismatch":

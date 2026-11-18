@@ -225,4 +225,7 @@ func TestRowInputsTakeTheChecks(t *testing.T) {
 	b.Checks = map[string]string{"delivered": PaymentPass}
 	_, err = RowInputs(b, "2026-11-26T12:00:00Z")
 	assert.ErrorContains(t, err, "not recomputed")
+	b.Checks = map[string]string{"paid_as_agred": PaymentPass}
+	_, err = RowInputs(b, "2026-11-26T12:00:00Z")
+	assert.ErrorContains(t, err, "the terms do not have")
 }

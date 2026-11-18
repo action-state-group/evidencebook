@@ -269,6 +269,21 @@ func TestPaymentCheckNotRun(t *testing.T) {
 	res = d.check(t, payer, payee, d.leg(t, false, remedy, d.payerMember("settled", "6000")))
 	assert.Equal(t, ReasonRefundCitesOffer, res.Reason)
 
+	// A refund leg its side later superseded is not read.
+	d2 := newPaymentDeal(t, nil, true)
+	p2 := d2.leg(t, true, payerBody(), d2.payerMember("settled", "6000"))
+	q2 := d2.leg(t, false, payeeBody(), d2.payeeMember("settled", "6000"))
+	p2Read, err := VerifyBook(p2)
+	require.NoError(t, err)
+	stale := d2.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(p2Read.Digest))}, d2.payerMember("pending", "6000"))
+	staleRead, err := VerifyBook(stale)
+	require.NoError(t, err)
+	own2 := d2.payerMember("failed", "6000")
+	own2["terms_ref"] = hex.EncodeToString(make([]byte, 32))
+	replaced := d2.leg(t, false, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('2'), Reverses: ptr(RefTo(p2Read.Digest)), Supersedes: ptr(RefTo(staleRead.Digest))}, own2)
+	res = d2.check(t, p2, q2, stale, replaced)
+	assert.Equal(t, PaymentPass, res.Check, "the stale refund leg no longer suppresses the check: %s", res.Reason)
+
 	// A refund under its own terms leg is passed over.
 	own := d.payerMember("settled", "6000")
 	own["terms_ref"] = hex.EncodeToString(make([]byte, 32))
@@ -315,17 +330,14 @@ func TestPaymentCheckRefuses(t *testing.T) {
 	}()
 
 	for name, edit := range map[string]func(*PaymentInput){
-		"another offer digest":        func(in *PaymentInput) { in.OfferDigest = hex.EncodeToString(make([]byte, 32)) },
-		"not a sent pair":             func(in *PaymentInput) { in.Offer = payer },
-		"another acceptor":            func(in *PaymentInput) { in.AcceptorKey = stranger.key() },
-		"the offerer as acceptor":     func(in *PaymentInput) { in.AcceptorKey = d.buyer.key() },
-		"not a payment row":           func(in *PaymentInput) { in.Row = "delivered" },
-		"no such row":                 func(in *PaymentInput) { in.Row = "nothing" },
-		"a leg that is not a pair":    func(in *PaymentInput) { in.Legs = append(in.Legs, []byte(`{}`)) },
-		"a stranger's leg":            func(in *PaymentInput) { in.Legs = append(in.Legs, strangerLeg) },
-		"a payer leg by the payee":    func(in *PaymentInput) { in.Legs = append(in.Legs, payerAsSeller) },
-		"a payer leg as payee":        func(in *PaymentInput) { in.Legs = append(in.Legs, payerWithPayeeMember) },
-		"a settle with no settlement": func(in *PaymentInput) { in.Legs = append(in.Legs, noMember) },
+		"another offer digest":     func(in *PaymentInput) { in.OfferDigest = hex.EncodeToString(make([]byte, 32)) },
+		"not a sent pair":          func(in *PaymentInput) { in.Offer = payer },
+		"another acceptor":         func(in *PaymentInput) { in.AcceptorKey = stranger.key() },
+		"the offerer as acceptor":  func(in *PaymentInput) { in.AcceptorKey = d.buyer.key() },
+		"not a payment row":        func(in *PaymentInput) { in.Row = "delivered" },
+		"no such row":              func(in *PaymentInput) { in.Row = "nothing" },
+		"a leg that is not a pair": func(in *PaymentInput) { in.Legs = append(in.Legs, []byte(`{}`)) },
+		"a stranger's leg":         func(in *PaymentInput) { in.Legs = append(in.Legs, strangerLeg) },
 	} {
 		in := base
 		in.Legs = append([][]byte{}, base.Legs...)
@@ -340,6 +352,44 @@ func TestPaymentCheckRefuses(t *testing.T) {
 	}
 	_, err = PaymentCheck(base)
 	require.NoError(t, err, "the base input runs")
+
+	// A leg's own content is the counterparty's to get wrong: such a leg
+	// takes no part, and the check reads the others.
+	malformed := d.payeeMember("settled", "6000")
+	malformed["status"] = "done"
+	badMember := d.leg(t, false, payeeBody(), malformed)
+	for name, leg := range map[string][]byte{
+		"a payer leg by the payee":    payerAsSeller,
+		"a payer leg as payee":        payerWithPayeeMember,
+		"a settle with no settlement": noMember,
+		"a malformed member":          badMember,
+	} {
+		in := base
+		in.Legs = append([][]byte{}, base.Legs...)
+		in.Legs = append(in.Legs, leg)
+		res, err := PaymentCheck(in)
+		require.NoError(t, err, name)
+		assert.Equal(t, PaymentPass, res.Check, name)
+		read, err := VerifyBook(leg)
+		require.NoError(t, err)
+		assert.Equal(t, []string{read.Digest}, res.Excluded, name)
+		assert.NotContains(t, res.CheckedOver, read.Digest, name)
+	}
+	// With the payee's only leg malformed, the check is not run.
+	res, err := PaymentCheck(PaymentInput{Offer: d.offerPair, OfferDigest: d.offerDigest, AcceptorKey: d.seller.key(), Row: "paid_as_agreed", Legs: [][]byte{payer, badMember}})
+	require.NoError(t, err)
+	assert.Empty(t, res.Check)
+	assert.Equal(t, ReasonNotAgreed, res.Reason)
+}
+
+// Legs AAC cannot join (another payment_ref type) are not run, as unjoined.
+func TestPaymentCheckUnjoined(t *testing.T) {
+	d := newPaymentDeal(t, nil, true)
+	payee := d.payeeMember("settled", "6000")
+	payee["payment_ref"] = map[string]any{"type": "ucp.order_id", "value": "order-0001"}
+	res := d.check(t, d.leg(t, true, payerBody(), d.payerMember("settled", "6000")), d.leg(t, false, payeeBody(), payee))
+	assert.Empty(t, res.Check)
+	assert.Equal(t, ReasonUnjoined, res.Reason)
 }
 
 func mustJSON(t *testing.T, v any) json.RawMessage {

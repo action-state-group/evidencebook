@@ -946,7 +946,12 @@ already is, and the x-deal agreement stays the acceptance.
     the sent Capsule's id. A leg answering another terms leg is passed over.
   - A payer leg is the payment row's owing party's, and a payee leg the other's. AAC's verifier
     applies the parties' keys as its key policy.
-  - A leg superseded (`supersedes`) by a later leg of its side is not read.
+  - A leg superseded (`supersedes`) by a later record of its side is not read, whichever terms
+    leg that record answers.
+  - A leg's content is the counterparty's to get wrong, so a leg AAC's verifier refuses (a
+    malformed `settlement` member), or one whose side, leg and role disagree, takes no part
+    (`PaymentResult.Excluded`) and the check reads the others, rather than stopping (PR 4a
+    review round 1). AAC's `unjoined` has its own reason.
   - AAC's `settlement.Verify` derives the state, so there is no second join here.
   - **Pass:** the legs are agreed, settled, at the terms' amount.
   - **Fail:** a mismatch, or agreed legs that are failed, reversed or at another amount.
