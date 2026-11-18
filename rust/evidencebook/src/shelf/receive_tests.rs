@@ -69,6 +69,10 @@ struct TestState {
     proof_keys: HashMap<String, String>,
     reads: usize,
     proof_err: Option<String>,
+    /// Each after_receive call's record part: digest, deal id, duplicate,
+    /// refused.
+    after: Vec<(String, String, bool, bool)>,
+    after_err: Option<String>,
 }
 
 /// The test profile (Go `testReceiveProfile`): JSON records whose `sig`
@@ -145,6 +149,22 @@ impl ReceiveProfile for TestProfile {
             return Err(e.clone());
         }
         Ok(st.proof_keys.get(key_id).cloned())
+    }
+
+    fn after_receive(&self, result: &ReceiveResult, _at: Time) -> Result<(), String> {
+        let mut st = self.st();
+        if let Some(r) = &result.record {
+            st.after.push((
+                r.digest.clone(),
+                r.deal_id.clone(),
+                r.duplicate,
+                r.refused.is_some(),
+            ));
+        }
+        match &st.after_err {
+            Some(e) => Err(e.clone()),
+            None => Ok(()),
+        }
     }
 }
 
@@ -333,7 +353,7 @@ fn stamp_cadence(shelf: &Shelf, values: &Values) -> Cadence {
             witnesses: None,
             pad_bucket: 1,
             ended: Arc::new(|_| Ok(false)),
-            status: Some(Arc::new(move |_, log_id| {
+            status: Some(Arc::new(move |_: &str, log_id: &str| {
                 Ok(held.lock().unwrap().get(log_id).map(|status| StatusValues {
                     profile: "deal".into(),
                     status: Some(status.clone()),
@@ -426,6 +446,48 @@ fn key_of(p: &StampProof) -> String {
     Checkpoint::from_statement(&p.book_checkpoint)
         .unwrap()
         .key_id
+}
+
+// after_receive runs on every call, a duplicate and a refusal included, with
+// the deal the profile read each record as; its error fails the call, and the
+// parts' result stays committed (Go `AfterReceive`).
+#[test]
+fn after_receive_runs_on_every_call() {
+    let (f, s) = fx();
+    let r1 = chain("alice", "deal/a", "deal-1", 1, "a1", "");
+    must_record(&s, &r1);
+    must_record(&s, &r1);
+    let e = s
+        .receive(
+            Some(&chain("mallory", "deal/m", "deal-m", 1, "m1", "")),
+            None,
+        )
+        .unwrap_err();
+    assert!(fails(&e, is_refused) && e.after.is_none());
+    assert_eq!(
+        f.profile.st().after,
+        vec![
+            (dg("a1"), "deal-1".to_string(), false, false),
+            (dg("a1"), "deal-1".to_string(), true, false),
+            (dg("m1"), "deal-m".to_string(), false, true),
+        ]
+    );
+
+    f.profile.st().after_err = Some("naming failed".into());
+    let e = s
+        .receive(
+            Some(&chain("alice", "deal/a", "deal-1", 2, "a2", "a1")),
+            None,
+        )
+        .unwrap_err();
+    assert!(e.error.is_none());
+    assert!(matches!(&e.after, Some(ShelfError::Profile(m)) if m.contains("naming failed")));
+    assert_eq!(e.errors().len(), 1);
+    assert!(
+        e.result.record.as_ref().unwrap().stored,
+        "the parts' result stays committed"
+    );
+    assert_eq!(received_count(&s), 2);
 }
 
 #[test]
@@ -1012,7 +1074,7 @@ fn the_received_stores_readers_run_inside_a_stamp() {
             witnesses: None,
             pad_bucket: 1,
             ended: Arc::new(|_| Ok(false)),
-            status: Some(Arc::new(move |_, _| {
+            status: Some(Arc::new(move |_: &str, _: &str| {
                 let p = reader
                     .counted_prefix("alice", "deal/a")
                     .map_err(|e| e.to_string())?;

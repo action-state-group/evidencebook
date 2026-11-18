@@ -20,16 +20,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub(super) const TEST_WITNESS_URL: &str = "https://witness.test";
-const OTHER_WITNESS_URL: &str = "https://other-witness.test";
+pub(super) const OTHER_WITNESS_URL: &str = "https://other-witness.test";
 const CADENCE_LOG: &str = "deal-cadence/0123456789abcdef";
 
-fn key(label: &str) -> SigningKey {
+pub(super) fn key(label: &str) -> SigningKey {
     SigningKey::from_bytes(&Sha256::digest(label.as_bytes()).into())
 }
 
 /// The witness key of `url`: the test witness's for [`TEST_WITNESS_URL`],
 /// the other witness's for any other URL.
-fn witness_key(url: &str) -> SigningKey {
+pub(super) fn witness_key(url: &str) -> SigningKey {
     key(if url == TEST_WITNESS_URL {
         "test witness"
     } else {
@@ -109,7 +109,7 @@ pub(super) fn append(shelf: &Shelf, book: &str, payload: &str) {
     book.append(&entry).unwrap();
 }
 
-fn count(shelf: &Shelf, sql: &str, params: impl rusqlite::Params) -> i64 {
+pub(super) fn count(shelf: &Shelf, sql: &str, params: impl rusqlite::Params) -> i64 {
     shelf
         .shared()
         .db()
@@ -118,7 +118,7 @@ fn count(shelf: &Shelf, sql: &str, params: impl rusqlite::Params) -> i64 {
 }
 
 /// The number of records a book's log holds.
-fn leaves_of(shelf: &Shelf, log_id: &str) -> u64 {
+pub(super) fn leaves_of(shelf: &Shelf, log_id: &str) -> u64 {
     count(
         shelf,
         "SELECT COUNT(*) FROM book_records WHERE book_id = ?",
@@ -211,7 +211,12 @@ pub(super) fn witness_at(c: &Cadence, tick: &CadenceTick, url: &str, iat: Option
     assert_eq!(check.state, WITNESS_VERIFIED, "{}", check.reason);
 }
 
-fn record_time(shelf: &Shelf, book_id: &str, position: u64, witnesses: &[&str]) -> Option<Time> {
+pub(super) fn record_time(
+    shelf: &Shelf,
+    book_id: &str,
+    position: u64,
+    witnesses: &[&str],
+) -> Option<Time> {
     let witnesses: Vec<String> = witnesses.iter().map(|w| w.to_string()).collect();
     shelf.record_time(book_id, position, &witnesses).unwrap()
 }
@@ -219,16 +224,16 @@ fn record_time(shelf: &Shelf, book_id: &str, position: u64, witnesses: &[&str]) 
 /// A migrated shelf whose book deal/a has its genesis fact in the
 /// migration's stamp and a second fact, after another append, in the second
 /// of two stamps after it (Go `recordTimeShelf`).
-struct Fixture {
-    _dir: tempfile::TempDir,
-    shelf: Shelf,
-    cadence: Cadence,
-    book_id: String,
-    first: CadenceTick,
-    second: CadenceTick,
+pub(super) struct Fixture {
+    pub(super) _dir: tempfile::TempDir,
+    pub(super) shelf: Shelf,
+    pub(super) cadence: Cadence,
+    pub(super) book_id: String,
+    pub(super) first: CadenceTick,
+    pub(super) second: CadenceTick,
 }
 
-fn record_time_shelf() -> Fixture {
+pub(super) fn record_time_shelf() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let shelf = open(&dir.path().join("shelf.db"));
     let cadence = shelf.cadence(config(directory())).unwrap();

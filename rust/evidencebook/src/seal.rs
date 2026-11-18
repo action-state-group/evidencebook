@@ -31,6 +31,7 @@ use crate::substrate::Signer;
 use ciborium::Value as Cbor;
 use evidence_request::time::parse_utc;
 use serde_json::{json, Map, Value};
+use std::collections::BTreeMap;
 use sha2::{Digest, Sha256};
 
 /// The `spec_version` of every record capsule (capsule-emit Go `SpecVersion`).
@@ -236,6 +237,103 @@ fn canonical_header(header: &Header) -> Result<Vec<u8>, SealRecordError> {
     Ok(canonical::jcs(&value)?)
 }
 
+/// The top-level member names the base profile defines (capsule-emit Go
+/// `baseMembers`), including the ones never written here and the local-only
+/// envelope fields `capsule_id` derivation strips: no extension may use one.
+const BASE_MEMBERS: &[&str] = &[
+    "spec_version",
+    "format_version",
+    "canonicalization_id",
+    "capsule_id",
+    "action_id",
+    "action_type",
+    "operator",
+    "developer",
+    "timestamp",
+    "epoch_id",
+    "domain",
+    "provenance",
+    "provenance_mode",
+    "disposition",
+    "effect",
+    "chain",
+    "assurance",
+    "cross_party",
+    ATTESTATION,
+    "references",
+    "constraints",
+    "compliance",
+    "signature",
+    "key_id",
+];
+
+/// An `fyi` Capsule's members (capsule-emit Go `Build` for the inputs a book
+/// gives it): its body, its id and its JCS with `capsule_id`. `extensions`
+/// are further top-level members, each named `[a-z][a-z0-9_]*`, not a base
+/// member, and not null (capsule-emit Go `extensionValue`); a float or an
+/// unsafe integer in one is refused by the JCS. A blank action id, operator
+/// or developer is refused.
+fn fyi_capsule(
+    action_id: &str,
+    timestamp: &str,
+    agent_input_digest: &str,
+    references: Vec<Value>,
+    extensions: &BTreeMap<String, Value>,
+    operator: &str,
+    developer: &str,
+) -> Result<(Vec<u8>, String, Vec<u8>), SealRecordError> {
+    if operator.trim().is_empty() || developer.trim().is_empty() {
+        return Err(invalid("operator and developer must not be empty"));
+    }
+    if action_id.trim().is_empty() {
+        return Err(invalid("action id is required"));
+    }
+    let mut capsule = Map::new();
+    capsule.insert("spec_version".into(), json!(SPEC_VERSION));
+    capsule.insert("format_version".into(), json!(FORMAT_VERSION));
+    capsule.insert(
+        "canonicalization_id".into(),
+        json!(canonical::CANONICALIZATION_JCS),
+    );
+    capsule.insert("action_id".into(), json!(action_id));
+    capsule.insert("action_type".into(), json!("fyi"));
+    capsule.insert("operator".into(), json!(operator));
+    capsule.insert("developer".into(), json!(developer));
+    capsule.insert("timestamp".into(), json!(timestamp));
+    capsule.insert(
+        "assurance".into(),
+        json!({"attestation_mode": "self_attested", "effect_mode": "not_applicable", "ledger_mode": "standalone"}),
+    );
+    let attestation =
+        json!({"compute_attestation": {"agent_input_digest": agent_input_digest}});
+    capsule.insert(ATTESTATION.into(), attestation);
+    if !references.is_empty() {
+        capsule.insert("references".into(), Value::Array(references));
+    }
+    for (name, value) in extensions {
+        let mut chars = name.chars();
+        let named = chars.next().is_some_and(|c| c.is_ascii_lowercase())
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+        if !named {
+            return Err(invalid(format!(
+                "extension name {name:?} must be lowercase letters, digits and underscores, starting with a letter"
+            )));
+        }
+        if BASE_MEMBERS.contains(&name.as_str()) {
+            return Err(invalid(format!("extension {name:?} is a base-profile member")));
+        }
+        if value.is_null() {
+            return Err(invalid(format!("extension {name:?} must not be null")));
+        }
+        capsule.insert(name.clone(), value.clone());
+    }
+    let body = canonical::jcs(&Value::Object(capsule.clone()))?;
+    let capsule_id = sha256_hex(&body);
+    capsule.insert("capsule_id".into(), json!(capsule_id));
+    let capsule = canonical::jcs(&Value::Object(capsule))?;
+    Ok((body, capsule_id, capsule))
+}
+
 /// The record capsule committing `header` (whose JCS is `header_bytes`):
 /// its committed body, its id and its JCS with `capsule_id`. A blank
 /// operator or developer is refused, whether sealing or verifying.
@@ -245,49 +343,46 @@ fn record_capsule(
     operator: &str,
     developer: &str,
 ) -> Result<(Vec<u8>, String, Vec<u8>), SealRecordError> {
-    if operator.trim().is_empty() || developer.trim().is_empty() {
-        return Err(invalid("operator and developer must not be empty"));
-    }
-    let mut capsule = Map::new();
-    capsule.insert("spec_version".into(), json!(SPEC_VERSION));
-    capsule.insert("format_version".into(), json!(FORMAT_VERSION));
-    capsule.insert(
-        "canonicalization_id".into(),
-        json!(canonical::CANONICALIZATION_JCS),
-    );
-    capsule.insert(
-        "action_id".into(),
-        json!(format!("{}#{}", header.book_id, header.seq)),
-    );
-    capsule.insert("action_type".into(), json!("fyi"));
-    capsule.insert("operator".into(), json!(operator));
-    capsule.insert("developer".into(), json!(developer));
-    capsule.insert(
-        "timestamp".into(),
-        json!(capsule_timestamp(&header.committed_at)),
-    );
-    capsule.insert(
-        "assurance".into(),
-        json!({"attestation_mode": "self_attested", "effect_mode": "not_applicable", "ledger_mode": "standalone"}),
-    );
-    let attestation =
-        json!({"compute_attestation": {"agent_input_digest": sha256_hex(header_bytes)}});
-    capsule.insert(ATTESTATION.into(), attestation);
     // Each link is also a reference, with no citation_purpose: a link type
     // is an Evidence Layer link type, carried and committed in the header.
-    if !header.links.is_empty() {
-        let references: Vec<Value> = header
-            .links
-            .iter()
-            .map(|l| json!({"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": l.target}))
-            .collect();
-        capsule.insert("references".into(), Value::Array(references));
+    let references: Vec<Value> = header
+        .links
+        .iter()
+        .map(|l| json!({"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": l.target}))
+        .collect();
+    fyi_capsule(
+        &format!("{}#{}", header.book_id, header.seq),
+        &capsule_timestamp(&header.committed_at),
+        &sha256_hex(header_bytes),
+        references,
+        &BTreeMap::new(),
+        operator,
+        developer,
+    )
+}
+
+/// The Producer Envelope (tagged COSE_Sign1) over the raw 32-byte
+/// `capsule_id`, signed by `signer` and checked under its key id.
+fn producer_envelope(capsule_id: &str, signer: &dyn Signer) -> Result<Vec<u8>, SealRecordError> {
+    let public_key = public_key_of(signer)?;
+    let protected = producer_protected(&public_key);
+    let id = hex::decode(capsule_id).expect("a SHA-256 hex digest decodes");
+    let to_be_signed = ed25519::to_be_signed(&protected, &id);
+    let signature = signer.sign(&to_be_signed)?;
+    if !ed25519::verify(&public_key, &to_be_signed, &signature) {
+        return Err(invalid(
+            "the signer's signature does not verify under its key id",
+        ));
     }
-    let body = canonical::jcs(&Value::Object(capsule.clone()))?;
-    let record_id = sha256_hex(&body);
-    capsule.insert("capsule_id".into(), json!(record_id));
-    let capsule = canonical::jcs(&Value::Object(capsule))?;
-    Ok((body, record_id, capsule))
+    Ok(ed25519::encode(&Cbor::Tag(
+        ed25519::COSE_SIGN1_TAG,
+        Box::new(Cbor::Array(vec![
+            Cbor::Bytes(protected),
+            Cbor::Map(Vec::new()),
+            Cbor::Bytes(id),
+            Cbor::Bytes(signature.to_vec()),
+        ])),
+    )))
 }
 
 /// Seal `header` as a record of `producer`'s book: its record capsule, id
@@ -300,33 +395,70 @@ pub fn seal_record(
     producer: &Producer<'_>,
 ) -> Result<SealedRecord, SealRecordError> {
     let header_bytes = canonical_header(header)?;
-    let public_key = public_key_of(producer.signer)?;
+    public_key_of(producer.signer)?;
     let (body, record_id, capsule) =
         record_capsule(header, &header_bytes, producer.operator, producer.developer)?;
-
-    let protected = producer_protected(&public_key);
-    let id = hex::decode(&record_id).expect("a SHA-256 hex digest decodes");
-    let to_be_signed = ed25519::to_be_signed(&protected, &id);
-    let signature = producer.signer.sign(&to_be_signed)?;
-    if !ed25519::verify(&public_key, &to_be_signed, &signature) {
-        return Err(invalid(
-            "the signer's signature does not verify under its key id",
-        ));
-    }
-    let envelope = ed25519::encode(&Cbor::Tag(
-        ed25519::COSE_SIGN1_TAG,
-        Box::new(Cbor::Array(vec![
-            Cbor::Bytes(protected),
-            Cbor::Map(Vec::new()),
-            Cbor::Bytes(id),
-            Cbor::Bytes(signature.to_vec()),
-        ])),
-    ));
+    let envelope = producer_envelope(&record_id, producer.signer)?;
     Ok(SealedRecord {
         record_id,
         header: header_bytes,
         capsule,
         body,
+        envelope,
+    })
+}
+
+/// A standalone `fyi` Capsule that carries a payload (capsule-emit Go
+/// `emit.Seal` with a payload): appended to no log, it travels with the
+/// bytes it commits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SealedCapsule {
+    /// Its `capsule_id`, 64 lowercase hex.
+    pub capsule_id: String,
+    /// Its JCS, `capsule_id` included.
+    pub capsule: Vec<u8>,
+    /// Its Producer Envelope (tagged COSE_Sign1) over the raw id.
+    pub envelope: Vec<u8>,
+}
+
+/// Seal `payload`, a JSON document's canonical JSON (JCS) bytes, as a
+/// standalone `fyi` Capsule under `action_id` at `at`, an RFC 3339 UTC time
+/// (cut to the microsecond and written as capsule-emit writes a timestamp): its
+/// `agent_input_digest` is the payload's SHA-256, it has no chain and no
+/// references, and `extensions` are further top-level members, in name
+/// order (Go `emit.Seal` as the shelf's `SealSent` calls it). Payload bytes
+/// that are not their own JCS are refused, since the digest would not be
+/// the digest of the JSON they hold.
+pub fn seal_payload(
+    action_id: &str,
+    at: &str,
+    payload: &[u8],
+    extensions: &BTreeMap<String, Value>,
+    producer: &Producer<'_>,
+) -> Result<SealedCapsule, SealRecordError> {
+    let decoded: Value = serde_json::from_slice(payload)
+        .map_err(|e| invalid(format!("the payload is not JSON: {e}")))?;
+    if canonical::jcs(&decoded)? != payload {
+        return Err(invalid("the payload is not its canonical JSON (JCS) bytes"));
+    }
+    // capsule-emit truncates a timestamp to the microsecond.
+    let Some(timestamp) = go_time(at, 6) else {
+        return Err(invalid("the capsule timestamp is not an RFC 3339 UTC time"));
+    };
+    public_key_of(producer.signer)?;
+    let (_, capsule_id, capsule) = fyi_capsule(
+        action_id,
+        &capsule_timestamp(&timestamp),
+        &sha256_hex(payload),
+        Vec::new(),
+        extensions,
+        producer.operator,
+        producer.developer,
+    )?;
+    let envelope = producer_envelope(&capsule_id, producer.signer)?;
+    Ok(SealedCapsule {
+        capsule_id,
+        capsule,
         envelope,
     })
 }

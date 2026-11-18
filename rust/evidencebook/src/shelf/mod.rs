@@ -63,6 +63,9 @@ mod record_time;
 #[cfg(test)]
 mod record_time_tests;
 mod records;
+#[cfg(test)]
+mod hooks_tests;
+mod sent;
 mod stamp;
 mod stamp_proof;
 mod store;
@@ -95,7 +98,10 @@ pub use receive::{
     EVIDENCE_CHECKPOINT, EVIDENCE_CHECKPOINT_RECORDS, EVIDENCE_FORK,
 };
 pub use records::{ShelfRecord, ShelfRecords};
-pub use stamp::{AudienceFact, BatchEntry, BookStatus, StampBatch, StatusValues};
+pub use sent::{SealedSent, SentCapsule};
+pub use stamp::{
+    AudienceFact, BatchEntry, BookStatus, StampBatch, StatusInput, StatusValues,
+};
 pub use stamp_proof::{verify_stamp_proof, InclusionEvidence, StampProof, VerifiedStampProof};
 pub use store::{StoredRecord, SHELF_VERSION, SHELF_VERSION_FACTS};
 pub use time::Time;
@@ -494,6 +500,34 @@ impl Shelf {
             tx.commit()?;
         }
         self.open_locked(&mut state, JOURNAL_LOG_ID)
+    }
+
+    /// The shelf's journal when the shelf has one, `None` otherwise (Go
+    /// `ExistingJournal`). Unlike [`Shelf::journal`] it never creates it, so
+    /// a reader (a report) changes nothing.
+    pub fn existing_journal(&self) -> Result<Option<ShelfBook>, ShelfError> {
+        let mut state = self.lock();
+        if state.released {
+            return Err(ShelfError::Released);
+        }
+        self.existing_journal_locked(&mut state)
+    }
+
+    /// The shelf's journal if the shelf has one, `None` otherwise: a stamp
+    /// hands it to a [`BookStatus`] and must not create it.
+    pub(crate) fn existing_journal_locked(
+        &self,
+        state: &mut ShelfState,
+    ) -> Result<Option<ShelfBook>, ShelfError> {
+        let shared = self.shared().clone();
+        if stamp::migration_state(&shared.db())? != stamp::MIGRATION_DONE {
+            return Ok(None);
+        }
+        let kind = store::log_kind(&shared.db(), JOURNAL_LOG_ID)?;
+        if kind.as_deref() != Some(KIND_JOURNAL) {
+            return Ok(None);
+        }
+        self.open_locked(state, JOURNAL_LOG_ID).map(Some)
     }
 
     pub(crate) fn open_locked(

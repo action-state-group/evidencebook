@@ -207,7 +207,7 @@ pub(crate) struct BookState {
     roots: HashMap<String, Value>,
     /// A record already stored whose log append failed: it holds the next
     /// position until the append succeeds.
-    pending: Option<BookRecord>,
+    pub(super) pending: Option<BookRecord>,
     pub(crate) released: bool,
 }
 
@@ -350,7 +350,7 @@ impl BookCore {
         self.state.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn now(&self) -> Time {
+    pub(super) fn now(&self) -> Time {
         self.shared.now()
     }
 
@@ -479,7 +479,7 @@ impl BookCore {
         }
     }
 
-    fn append_locked(
+    pub(super) fn append_locked(
         &self,
         state: &mut BookState,
         entry: &BookEntry,

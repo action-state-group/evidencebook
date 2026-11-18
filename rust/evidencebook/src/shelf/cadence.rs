@@ -55,7 +55,7 @@ pub struct CadenceConfig {
     /// Each book's profile and fact values once the shelf is a log of book
     /// facts ([`Cadence::migrate`]); `None` gives every book profile
     /// `none`.
-    pub status: Option<super::stamp::BookStatus>,
+    pub status: Option<Arc<dyn super::stamp::BookStatus>>,
 }
 
 impl CadenceConfig {
@@ -246,6 +246,16 @@ pub struct TickResult {
     pub ticked: bool,
     pub tick: Option<CadenceTick>,
     pub due_next: Time,
+    /// The books (by log id) whose book status failed at this stamp,
+    /// with its error: each keeps its last fact, and the other books' facts
+    /// are written. The next stamp asks again. It is this call's report
+    /// only: a stamp resumed after a crash does not repeat it. A reader
+    /// learns that a book's fact is older than a stamp from the fact itself
+    /// (its entry's tick).
+    pub unstated: BTreeMap<String, String>,
+    /// The book status's [`super::BookStatus::before_stamp`] error
+    /// before this stamp, `None` for none; the stamp was still taken.
+    pub before_stamp: Option<String>,
 }
 
 /// A shelf's heartbeat ticks (Go `Cadence`).
@@ -393,6 +403,21 @@ impl Cadence {
     /// `due_next`, and only then. A tick stored but not finished is finished
     /// first, as the same tick.
     pub fn tick(&self, now: Time) -> Result<TickResult, ShelfError> {
+        // A stamp due now first runs the book status's before_stamp,
+        // before the shelf's lock is taken, as Cadence::stamp does.
+        let before = if self.stamp_due(now)? {
+            self.before_stamp(now)
+        } else {
+            None
+        };
+        let mut res = self.tick_now(now)?;
+        if res.ticked && res.tick.as_ref().is_some_and(|t| t.leaves.stamp.is_some()) {
+            res.before_stamp = before;
+        }
+        Ok(res)
+    }
+
+    fn tick_now(&self, now: Time) -> Result<TickResult, ShelfError> {
         let mut state = self.shelf.lock();
         if state.released {
             return Err(ShelfError::Released);
@@ -410,6 +435,8 @@ impl Cadence {
                     ticked: false,
                     tick: None,
                     due_next: last.due_next,
+                    unstated: BTreeMap::new(),
+                    before_stamp: None,
                 });
             }
         }
@@ -569,6 +596,8 @@ impl Cadence {
             ticked: true,
             due_next: tick.due_next,
             tick: Some(tick),
+            unstated: BTreeMap::new(),
+            before_stamp: None,
         })
     }
 

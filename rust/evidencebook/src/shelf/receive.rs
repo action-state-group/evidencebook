@@ -68,6 +68,22 @@ pub trait ReceiveProfile: Send + Sync {
     /// whether that sender may push a proof now: `None` refuses the proof.
     fn proof_sender(&self, checkpoint_key_id: &str, log_id: &str)
         -> Result<Option<String>, String>;
+    /// Act on what a [`Shelf::receive`] took before it returns (Go
+    /// `AfterReceive`): x-deal-v1 names a counted ruling's arrival in the
+    /// holder's deal book (evidencebook#527), so no host can leave it
+    /// unnamed by skipping a call. The store calls it on every call, a
+    /// duplicate included, so a record sent again retries what an earlier
+    /// call failed to do. It runs once the parts' transactions committed (on
+    /// a proof part's store error too, with the record part's result),
+    /// holding only the receive lock: it may read the shelf and append to
+    /// the holder's own books, and must not call [`Shelf::receive`] or
+    /// [`Shelf::forget`]. `at` is the shelf's clock. An error is the call's
+    /// ([`ReceiveError::after`]), and the parts' result stays committed.
+    /// The default does nothing.
+    fn after_receive(&self, result: &ReceiveResult, at: Time) -> Result<(), String> {
+        let _ = (result, at);
+        Ok(())
+    }
 }
 
 /// What the store needs of a received record (Go `ReceivedRecord`).
@@ -202,6 +218,10 @@ pub struct ReceiveResult {
 #[derive(Debug, Default)]
 pub struct RecordOutcome {
     pub digest: String,
+    /// The deal the profile read the record as belonging to
+    /// ([`ReceivedRecord::deal_id`]), set once it read; `""` for a record it
+    /// could not read.
+    pub deal_id: String,
     /// Stored by this call.
     pub stored: bool,
     /// Already held: acknowledged, not stored again.
@@ -262,6 +282,9 @@ pub struct ReceiveError {
     /// The store's or the profile's error; `None` when the call failed only
     /// by its parts' refusals.
     pub error: Option<ShelfError>,
+    /// The profile's [`ReceiveProfile::after_receive`] error
+    /// ([`ShelfError::Profile`]); the parts' result stays committed.
+    pub after: Option<ShelfError>,
 }
 
 impl ReceiveError {
@@ -269,18 +292,21 @@ impl ReceiveError {
         Box::new(Self {
             result: ReceiveResult::default(),
             error: Some(error),
+            after: None,
         })
     }
 
     /// Every error the call reports: the store's or the profile's, else each
-    /// part's refusal, the record's first (Go's joined error).
+    /// part's refusal, the record's first, and then the after-receive error
+    /// (Go's joined error).
     pub fn errors(&self) -> Vec<&ShelfError> {
+        let after = self.after.as_ref();
         if let Some(e) = &self.error {
-            return vec![e];
+            return std::iter::once(e).chain(after).collect();
         }
         let record = self.result.record.as_ref().and_then(|r| r.refused.as_ref());
         let proof = self.result.proof.as_ref().and_then(|p| p.refused.as_ref());
-        record.into_iter().chain(proof).collect()
+        record.into_iter().chain(proof).chain(after).collect()
     }
 }
 
@@ -975,7 +1001,10 @@ impl Shelf {
     /// ([`ReceiveError`] with no `error`) with every part's outcome. Any
     /// other error is the store's or the profile's: one in the record part
     /// reports nothing, since nothing of it was committed; one in the proof
-    /// part returns the record part's outcome and changes beside it. A call
+    /// part returns the record part's outcome and changes beside it. Once
+    /// the parts committed, the profile's [`ReceiveProfile::after_receive`]
+    /// runs on the result (on a proof part's error too); its error fails the
+    /// call as [`ReceiveError::after`]. A call
     /// racing [`Shelf::release`] may fail with SQLite's error rather than
     /// [`ShelfError::Released`].
     pub fn receive(
@@ -1019,25 +1048,39 @@ impl Shelf {
                     result.proof = Some(out);
                 }
                 Err(e) => {
-                    // The record part, if any, is committed: report it.
+                    // The record part, if any, is committed: report it, and
+                    // act on it.
                     result.changes = changes.result();
+                    let after = self.after_receive(profile.as_ref(), &result);
                     return Err(Box::new(ReceiveError {
                         result,
                         error: Some(e),
+                        after,
                     }));
                 }
             }
         }
         result.changes = changes.result();
+        let after = self.after_receive(profile.as_ref(), &result);
         let refused = result.record.as_ref().is_some_and(|r| r.refused.is_some())
             || result.proof.as_ref().is_some_and(|p| p.refused.is_some());
-        if refused {
+        if refused || after.is_some() {
             return Err(Box::new(ReceiveError {
                 result,
                 error: None,
+                after,
             }));
         }
         Ok(result)
+    }
+
+    /// Run the profile's [`ReceiveProfile::after_receive`] on `result` at
+    /// the shelf's clock (Go `afterReceive`), giving its error.
+    fn after_receive(&self, profile: &dyn ReceiveProfile, result: &ReceiveResult) -> Option<ShelfError> {
+        profile
+            .after_receive(result, self.shared().now())
+            .err()
+            .map(|e| ShelfError::Profile(format!("after receive: {e}")))
     }
 
     fn receive_record(
@@ -1070,6 +1113,7 @@ impl Shelf {
             return refuse(out, ShelfError::Invalid(format!("a received record: {e}")));
         }
         out.digest = r.digest.clone();
+        out.deal_id = r.deal_id.clone();
         let key: LogKey = (r.sender_key.clone(), r.log_id.clone());
 
         let held: Option<Vec<u8>> = {
@@ -1357,7 +1401,7 @@ impl Shelf {
     /// A received record by its digest (Go `ReceivedRecordOf`): one deleted
     /// under retention is [`ShelfError::Deleted`], one never held
     /// [`ShelfError::NotFound`]. It takes no shelf lock: a
-    /// [`super::BookStatus`] callback or a [`ReceiveProfile`] may call it.
+    /// [`super::BookStatus`] or a [`ReceiveProfile`] may call it.
     pub fn received_record_of(&self, digest: &str) -> Result<HeldRecord, ShelfError> {
         self.live()?;
         let db = self.shared().db();
@@ -1396,7 +1440,7 @@ impl Shelf {
 
     /// The store's evidence of forks and contradicting checkpoints, oldest
     /// first (Go `Evidence`). It takes no shelf lock: a
-    /// [`super::BookStatus`] callback or a [`ReceiveProfile`] may call it.
+    /// [`super::BookStatus`] or a [`ReceiveProfile`] may call it.
     pub fn evidence(&self) -> Result<Vec<Evidence>, ShelfError> {
         self.live()?;
         let rows: Vec<(String, Vec<u8>, Vec<u8>, String)> = {
