@@ -28,11 +28,19 @@
 //!   takes it;
 //! - [`check_authorizations`] reads each `at` as the record checks admit it
 //!   (RFC 3339 UTC to the second); Go's also takes an offset on records
-//!   that were never checked.
+//!   that were never checked;
+//! - [`verify_book`] matches a book pair's `record`, `header` and `payload`
+//!   and [`payment_check`] a settlement member's `leg`, `sealer_role` and
+//!   `terms_ref` by their exact names; Go's reader also takes them in
+//!   another case. A leg so spelled answers no terms leg here, and in Go
+//!   AAC's verifier refuses it, so the payment check's outcome is the same
+//!   and only its `excluded` list differs.
 
 mod authorization;
+mod book;
 mod check;
 mod names;
+mod payment;
 mod record;
 mod report;
 mod sent;
@@ -42,12 +50,18 @@ mod status_value;
 mod types;
 
 pub use authorization::{check_authorizations, new_nonce, ActAuthorization, STAGE_AUTHORIZATION};
+pub use book::{book_pair, verify_book, BookRead, STAGE_BOOK};
 pub use check::{
     check, check_agreement, check_dispute, check_ruling, check_sealed, digest, encode,
     placement_of, profile_schema, record_digest, ref_to, rows_digest, Placement, SealContext,
     STAGE_AGREEMENT, STAGE_RECORD,
 };
 pub use names::*;
+pub use payment::{
+    payment_check, PaymentInput, PAYMENT_FAIL, PAYMENT_PASS, REASON_AMOUNT, REASON_MISMATCH,
+    REASON_NOT_AGREED, REASON_PENDING, REASON_REFUND_CITES_OFFER, REASON_SEVERAL_PAYMENTS,
+    REASON_STATUS, REASON_UNJOINED, STAGE_PAYMENT,
+};
 pub use record::{decode, Body, Record};
 pub use report::{
     build_report, report_payload, settled, Report, ReportBooks, ReportCheckpoint, ReportCopy,

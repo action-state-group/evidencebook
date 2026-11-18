@@ -294,3 +294,124 @@ fn pair_round_trips_through_verify_sent() {
     let sent = v1::verify_sent(&pair, None).unwrap();
     assert_eq!(Some(sent.digest.as_str()), c["digest"].as_str());
 }
+
+/// payment/vectors.json: PaymentCheck over each input gives its result (as
+/// Go marshals it) or refuses at its stage, and VerifyBook reads each book
+/// pair as given or refuses it at its stage.
+#[test]
+fn payment_vectors() {
+    // Pairs as written, so a reader sees Go's bytes.
+    #[derive(serde::Deserialize)]
+    struct Raw {
+        payment: Vec<RawPayment>,
+        book: Vec<RawBook>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawPayment {
+        name: String,
+        input: RawInput,
+        result: Option<Value>,
+        #[serde(default)]
+        refused: bool,
+        #[serde(default)]
+        stage: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawInput {
+        offer: Box<serde_json::value::RawValue>,
+        offer_digest: String,
+        acceptor_key: String,
+        row: String,
+        legs: Vec<Box<serde_json::value::RawValue>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawBook {
+        name: String,
+        pair: Box<serde_json::value::RawValue>,
+        valid: bool,
+        #[serde(default)]
+        stage: String,
+        #[serde(default)]
+        digest: String,
+        #[serde(default)]
+        record_id: String,
+        #[serde(default)]
+        key_id: String,
+        #[serde(default)]
+        log_id: String,
+        #[serde(default)]
+        seq: u64,
+        #[serde(default)]
+        prev: String,
+    }
+    let p =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/deal-v1/payment/vectors.json");
+    let raw: Raw = serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+    assert!(!raw.payment.is_empty() && !raw.book.is_empty());
+    for c in &raw.payment {
+        let input = v1::PaymentInput {
+            offer: c.input.offer.get().as_bytes().to_vec(),
+            offer_digest: c.input.offer_digest.clone(),
+            acceptor_key: c.input.acceptor_key.clone(),
+            row: c.input.row.clone(),
+            legs: c
+                .input
+                .legs
+                .iter()
+                .map(|l| l.get().as_bytes().to_vec())
+                .collect(),
+        };
+        let got = v1::payment_check(&input);
+        if c.refused {
+            let err = got.expect_err(&c.name);
+            assert_eq!(
+                err.stage().map(|s| s.stage).unwrap_or(""),
+                c.stage,
+                "{}: {err}",
+                c.name
+            );
+        } else {
+            let res = got.unwrap_or_else(|e| panic!("{}: {e}", c.name));
+            assert_eq!(
+                Some(&serde_json::to_value(&res).unwrap()),
+                c.result.as_ref(),
+                "{}",
+                c.name
+            );
+        }
+    }
+    for b in &raw.book {
+        let got = v1::verify_book(b.pair.get().as_bytes());
+        if b.valid {
+            let r = got.unwrap_or_else(|e| panic!("{}: {e}", b.name));
+            assert_eq!(
+                (
+                    &r.digest,
+                    &r.record_id,
+                    &r.key_id,
+                    &r.log_id,
+                    r.seq,
+                    &r.prev
+                ),
+                (
+                    &b.digest,
+                    &b.record_id,
+                    &b.key_id,
+                    &b.log_id,
+                    b.seq,
+                    &b.prev
+                ),
+                "{}",
+                b.name
+            );
+        } else {
+            let err = got.expect_err(&b.name);
+            assert_eq!(
+                err.stage().map(|s| s.stage).unwrap_or(""),
+                b.stage,
+                "{}: {err}",
+                b.name
+            );
+        }
+    }
+}
