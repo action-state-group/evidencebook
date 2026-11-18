@@ -16,8 +16,8 @@ from datetime import timezone
 from typing import Any
 
 from ._capsule import seal_payload
-from .book import RECORD_HEADER_MEMBER
-from .errors import CorruptError, InvalidError, ReleasedError
+from .book import RECORD_HEADER_MEMBER, _detached
+from .errors import InvalidError, ReleasedError
 
 
 @dataclass(frozen=True)
@@ -73,13 +73,18 @@ def seal_sent(shelf: Any, entry: Any, members: dict, action_id: str) -> SealedSe
             raise InvalidError(f"seal the sent record: {exc}") from None
         sent = SentCapsule(capsule_id, capsule, envelope, payload)
         pending_before = journal._pending
+        size_before = len(journal._order)
         try:
             record = journal._append(replace(entry, payloads=(payload,)))
-        except CorruptError as exc:
+        except Exception as exc:
             pending = journal._pending
             if pending is not None and pending is not pending_before:
                 # Stored, but its log append failed: the journal keeps it
                 # pending and commits it first on its next write or open.
-                return SealedSent(pending[0], sent, exc)
+                return SealedSent(_detached(pending[0]), sent, exc)
+            if len(journal._order) > size_before:
+                # Committed, and a later step (its indexing) failed: the
+                # record is in the journal, so it comes back with its Capsule.
+                return SealedSent(_detached(journal._records[journal._order[-1]]), sent, exc)
             raise
     return SealedSent(record, sent)

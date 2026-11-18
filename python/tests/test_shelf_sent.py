@@ -130,3 +130,47 @@ def test_seal_sent_returns_a_pending_record_with_its_capsule(tmp_path):
     nxt = journal.append(Entry("observation", OBSERVED_EVENT, payloads=(b"next",)))
     assert nxt.seq == sent.record.seq + 1
     shelf.release()
+
+
+def test_seal_sent_returns_a_committed_record_whose_indexing_failed(tmp_path):
+    # Go keeps a record committed before a later step failed: it comes back
+    # with its Capsule, so the caller sends it rather than seal it again.
+    shelf = migrated(tmp_path)
+    journal = shelf.journal()
+    before = journal.size()
+    real = journal._admit
+
+    def failing(*args, **kwargs):
+        real(*args, **kwargs)
+        raise RuntimeError("an index refused the record")
+
+    journal._admit = failing
+    sent = shelf.seal_sent(sent_entry(), {}, "deal-0123456789abcdef/sent")
+    journal._admit = real
+    assert isinstance(sent.error, RuntimeError)
+    assert sent.capsule.payload == SENT
+    assert journal.size() == before + 1 and sent.record.seq == before + 1
+    shelf.release()
+
+
+def test_a_pending_sent_record_is_the_callers_own_copy(tmp_path):
+    shelf = migrated(tmp_path)
+    journal = shelf.journal()
+    real = journal._substrate.append
+    calls = {"n": 0}
+
+    def failing(record_id, at=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("disk I/O error")
+        return real(record_id, at)
+
+    journal._substrate.append = failing
+    entry = Entry("deal_step", "producer_claim", payloads=(SENT,), statement={"kept": 1})
+    sent = shelf.seal_sent(entry, {}, "deal-0123456789abcdef/sent")
+    assert sent.error is not None
+    sent.record.header.statement["kept"] = 2
+    journal.append(Entry("observation", OBSERVED_EVENT, payloads=(b"next",)))
+    held = [r for r in journal.records() if r.record_id == sent.record.record_id][0]
+    assert held.header.statement == {"kept": 1}, "the journal's record is not the caller's"
+    shelf.release()

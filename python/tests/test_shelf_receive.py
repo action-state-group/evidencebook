@@ -996,3 +996,38 @@ def test_after_receive_runs_on_every_call(make):
         s.receive(chain("alice", "deal/a", "deal-1", 2, "a2", "a1"))
     assert e.value.receive_result.record.stored, "the parts' result stays committed"
     assert count(s) == 2
+
+
+def test_held_proofs_read_one_snapshot(make, holder, monkeypatch):
+    # The counted prefix and the proofs' states come from one read: a
+    # receive that commits between them is not seen by either.
+    from evidencebook import shelf_held
+
+    h = holder("1", "2", "3")
+    fx, s = make()
+    p = h.proof()
+    fx.profile.proof_keys[key_of(p)] = "alice"
+    ok(s, None, p)
+    records = h.records("alice", "deal-1")
+    for r in records[:-1]:
+        ok(s, r)
+    real = shelf_held._prefix
+    landed = []
+
+    def prefix_then_write(db, sender, log):
+        out = real(db, sender, log)
+        if not landed:
+            landed.append(True)
+            done = []
+            t = threading.Thread(target=lambda: done.append(ok(s, records[-1])))
+            t.start()
+            t.join(20)
+            assert done, "the write landed"
+        return out
+
+    monkeypatch.setattr(shelf_held, "_prefix", prefix_then_write)
+    got = s.held_proofs("alice", "deal/a")
+    assert len(got) == 1 and not got[0].recomputed and got[0].covers == 0, "the state before the write, whole"
+    monkeypatch.setattr(shelf_held, "_prefix", real)
+    after = s.held_proofs("alice", "deal/a")[0]
+    assert after.recomputed and after.covers == len(records)

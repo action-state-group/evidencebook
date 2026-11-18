@@ -80,12 +80,18 @@ def held_proofs(shelf: Any, sender_key: str, log_id: str) -> list[HeldProof]:
     def corrupt(what: str, e: object) -> CorruptError:
         return CorruptError(f"a held stamp proof of {log_id} from {sender_key}: {what}: {e}")
 
+    # One read transaction, as Go's: the counted prefix and the proofs'
+    # states are read from one snapshot of the store.
     with _reader(shelf) as db:
-        prefix = _prefix(db, sender_key, log_id)
-        rows = db.execute(
-            "SELECT book_checkpoint, fact, status_opening, inclusion_proof, shelf_checkpoint, received_at, verified "
-            "FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? ORDER BY size, shelf_checkpoint_sha256",
-            (sender_key, log_id)).fetchall()
+        db.execute("BEGIN")
+        try:
+            prefix = _prefix(db, sender_key, log_id)
+            rows = db.execute(
+                "SELECT book_checkpoint, fact, status_opening, inclusion_proof, shelf_checkpoint, received_at, "
+                "verified FROM shelf_received_proofs WHERE sender_key = ? AND log_id = ? "
+                "ORDER BY size, shelf_checkpoint_sha256", (sender_key, log_id)).fetchall()
+        finally:
+            db.execute("ROLLBACK")
     out = []
     for book_checkpoint, fact, opening, inclusion, shelf_checkpoint, at, state in rows:
         status_opening = None

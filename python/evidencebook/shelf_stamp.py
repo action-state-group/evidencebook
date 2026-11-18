@@ -175,7 +175,9 @@ def _store_migration_batch_locked(c: Any, now: datetime) -> None:
         try:
             facts.append(_fact_for(c, log, at, None, last_tick + 1))
         except _StatusError as exc:
-            raise InvalidError(f"status values: {exc}") from None
+            # The migration stops on the book status's own error, as Go's
+            # returns it.
+            raise exc.__cause__ from None
     try:
         marker = shelf_facts.format_switch(last_tick, sizes)
     except shelf_facts.Invalid as exc:
@@ -321,13 +323,13 @@ def _fact_for(c: Any, log: Any, at: datetime, last: _LastFact | None, n: int) ->
     # the journal's.
     if isinstance(log, _BookLog) and not journal and c._cfg.status is not None:
         book_status = c._cfg.status
+        book_values = getattr(book_status, "book_values", None)
+        # The journal is read before asking: a store error reading it is the
+        # stamp's, not this book's status error.
+        inp = None if book_values is None else StatusInput(n, book_id, log.log_id, log._book,
+                                                           shelf._existing_journal_locked())
         try:
-            book_values = getattr(book_status, "book_values", None)
-            if book_values is not None:
-                claimed = book_values(StatusInput(n, book_id, log.log_id, log._book,
-                                                  shelf._existing_journal_locked()))
-            else:
-                claimed = book_status(book_id, log.log_id)
+            claimed = book_values(inp) if book_values is not None else book_status(book_id, log.log_id)
         except Exception as exc:  # noqa: BLE001 - one book's error never stops a stamp
             raise _StatusError(str(exc)) from exc
         if claimed is not None:

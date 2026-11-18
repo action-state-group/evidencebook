@@ -743,6 +743,15 @@ class Book:
         with self._lock:
             return self._append(entry)
 
+    def _retention_locked(self, record: Record) -> str:
+        """The record's retention state now: Go's retention fold, whose port
+        shelf.py holds. The caller holds the book's lock."""
+        from .shelf import _retention
+
+        stated = [self._stated[i] for i in self._order]
+        return _retention([self._records[i].header for i in self._order], list(self._order), stated,
+                          record.seq - 1, nanos(utc(self._now())))
+
     def append_at(self, seq: int, entry: Entry) -> Record:
         """Append ``entry`` only as the book's record ``seq``, the next one
         (Go ``AppendAt``): a profile whose record names its own place builds
@@ -777,13 +786,7 @@ class Book:
             record = self._records.get(record_id)
             if record is None or digest not in record.header.payload_commitments:
                 raise NotFoundError(f"record {record_id} does not commit payload {digest}")
-            # Go's retention fold, as Book.opening reads it.
-            from .shelf import _retention
-
-            stated = [self._stated[i] for i in self._order]
-            now = utc(self._now())
-            state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
-                               record.seq - 1, nanos(now))
+            state = self._retention_locked(record)
             if state in ("WITHHELD", "DELETED"):
                 raise UnavailableError(f"payload {digest} of record {record_id} is {state}")
             if self._originals is None:
@@ -847,14 +850,8 @@ class Book:
             commitment = dict(record.header.field_commitments).get(name) if record is not None else None
             if commitment is None:
                 raise NotFoundError(f"record {record_id} commits no field {name!r}")
-            # Go's retention fold (shelf.py holds the port): a withheld or
-            # deleted record's openings are not given out.
-            from .shelf import _retention
-
-            stated = [self._stated[i] for i in self._order]
-            now = utc(self._now())
-            state = _retention([self._records[i].header for i in self._order], list(self._order), stated,
-                               record.seq - 1, nanos(now))
+            # A withheld or deleted record's openings are not given out.
+            state = self._retention_locked(record)
             if state in ("WITHHELD", "DELETED"):
                 raise UnavailableError(f"record {record_id} is {state}")
             if self._originals is None:
