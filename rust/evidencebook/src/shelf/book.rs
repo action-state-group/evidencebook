@@ -344,6 +344,13 @@ impl ShelfBook {
         self.0.lock().records.clone()
     }
 
+    /// The committed record at `seq` (from 1), `None` past the book's end
+    /// (Go `Query` over one seq).
+    pub fn record_by_seq(&self, seq: u64) -> Option<BookRecord> {
+        let i = usize::try_from(seq.checked_sub(1)?).ok()?;
+        self.0.lock().records.get(i).cloned()
+    }
+
     /// One payload, by its SHA-256 `digest`, of the record `record_id`,
     /// read from the artifact store when the record's retention state allows
     /// it (Go `ResolvePayload`). A record the book does not hold, or one that
@@ -369,17 +376,7 @@ impl ShelfBook {
                 "record {record_id} does not commit payload {digest}"
             )));
         };
-        let stored: Vec<super::records::Stored> = state
-            .records
-            .iter()
-            .map(|r| super::records::Stored {
-                book: self.0.id.clone(),
-                seq: r.seq,
-                record_id: r.record_id.clone(),
-                header: r.header.clone(),
-            })
-            .collect();
-        let view: Vec<&super::records::Stored> = stored.iter().collect();
+        let view: Vec<&BookRecord> = state.records.iter().collect();
         let retention = super::records::retention_of(&view, at, self.0.now())?;
         if retention == "WITHHELD" || retention == "DELETED" {
             return Err(ShelfError::Unavailable(format!(

@@ -39,11 +39,11 @@ pub struct ShelfRecords {
     pub pending: BTreeMap<String, u64>,
 }
 
-pub(super) struct Stored {
-    pub(super) book: String,
-    pub(super) seq: u64,
-    pub(super) record_id: String,
-    pub(super) header: Map<String, Value>,
+struct Stored {
+    book: String,
+    seq: u64,
+    record_id: String,
+    header: Map<String, Value>,
 }
 
 impl Shelf {
@@ -165,44 +165,108 @@ fn record_type(header: &Map<String, Value>) -> &str {
         .unwrap_or("")
 }
 
+/// What [`retention_of`] reads of a record: a stored row or a book's
+/// record, read in place.
+pub(super) trait HeldRecordView {
+    fn seq(&self) -> u64;
+    fn record_id(&self) -> &str;
+    fn header(&self) -> &Map<String, Value>;
+}
+
+impl HeldRecordView for Stored {
+    fn seq(&self) -> u64 {
+        self.seq
+    }
+    fn record_id(&self) -> &str {
+        &self.record_id
+    }
+    fn header(&self) -> &Map<String, Value> {
+        &self.header
+    }
+}
+
+impl HeldRecordView for super::BookRecord {
+    fn seq(&self) -> u64 {
+        self.seq
+    }
+    fn record_id(&self) -> &str {
+        &self.record_id
+    }
+    fn header(&self) -> &Map<String, Value> {
+        &self.header
+    }
+}
+
+/// Go's `encoding/json` match of an object member's name to a struct
+/// field's: exact, or equal under Unicode simple case folding, which for
+/// these ASCII names also takes U+017F for `s` and U+212A for `k`.
+fn go_name_matches(key: &str, field: &str) -> bool {
+    let fold = |c: char| match c {
+        '\u{017F}' => 's',
+        '\u{212A}' => 'k',
+        c => c.to_ascii_lowercase(),
+    };
+    key.chars().count() == field.chars().count()
+        && key
+            .chars()
+            .zip(field.chars())
+            .all(|(a, b)| fold(a) == fold(b))
+}
+
+/// A lifecycle record's statement as Go's `json.Unmarshal` into
+/// `LifecycleStatement` reads it: its state, `""` for none; `None` when Go
+/// refuses it (corrupt). A missing statement, or one that is not an object
+/// or null, is refused; `retention_state` and `reason` match in any case,
+/// the later spelling winning, a null leaving the field as it was, and a
+/// value of another type is refused; any other member is ignored.
+fn lifecycle_state(statement: Option<&Value>) -> Option<String> {
+    let mut state = String::new();
+    match statement? {
+        Value::Null => {}
+        Value::Object(o) => {
+            for (k, v) in o {
+                let state_member = go_name_matches(k, "retention_state");
+                if !state_member && !go_name_matches(k, "reason") {
+                    continue;
+                }
+                match v {
+                    Value::Null => {}
+                    Value::String(s) if state_member => state = s.clone(),
+                    Value::String(_) => {}
+                    _ => return None,
+                }
+            }
+        }
+        _ => return None,
+    }
+    Some(state)
+}
+
 /// The retention state of `records[at]` at `now` (Go `retentionOf`): the
 /// state its header committed, folded forward through every later
 /// lifecycle record that cites it; an `AVAILABLE` or `PARTIAL` record a
 /// live hold covers reads `LEGAL_HOLD`.
-pub(super) fn retention_of(
-    records: &[&Stored],
+pub(super) fn retention_of<R: HeldRecordView>(
+    records: &[&R],
     at: usize,
     now: Time,
 ) -> Result<String, ShelfError> {
     let record = records[at];
     let mut state = record
-        .header
+        .header()
         .get("retention_state")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
     for later in &records[at + 1..] {
-        if record_type(&later.header) != record_types::LIFECYCLE
-            || !links_to(&later.header, LinkType::Cites).contains(&record.record_id.as_str())
+        if record_type(later.header()) != record_types::LIFECYCLE
+            || !links_to(later.header(), LinkType::Cites).contains(&record.record_id())
         {
             continue;
         }
-        // As Go decodes it: a missing statement, or one that is not an object
-        // or null, is corrupt; null, or an object without a state, is none.
-        state = match later.header.get("statement") {
-            Some(Value::Null) => String::new(),
-            Some(statement @ Value::Object(_)) => statement
-                .get("retention_state")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            _ => {
-                return Err(ShelfError::Corrupt(format!(
-                    "lifecycle record {}",
-                    later.record_id
-                )))
-            }
-        };
+        state = lifecycle_state(later.header().get("statement")).ok_or_else(|| {
+            ShelfError::Corrupt(format!("lifecycle record {}", later.record_id()))
+        })?;
     }
     if state == "DELETED" {
         return Ok(state);
@@ -217,12 +281,12 @@ pub(super) fn retention_of(
 /// Whether an unexpired retention commitment covers `record` (Go `heldBy`):
 /// one naming it by id, a range of positions holding it, or an interaction
 /// half it cites.
-fn held_by(records: &[&Stored], record: &Stored, now: Time) -> bool {
+fn held_by<R: HeldRecordView>(records: &[&R], record: &R, now: Time) -> bool {
     records.iter().any(|r| {
-        if record_type(&r.header) != RETENTION_COMMITMENT {
+        if record_type(r.header()) != RETENTION_COMMITMENT {
             return false;
         }
-        let Some(statement) = r.header.get("statement") else {
+        let Some(statement) = r.header().get("statement") else {
             return false;
         };
         // The profile's whole-second form only (Go `ParseProfileTime`).
@@ -238,11 +302,11 @@ fn held_by(records: &[&Stored], record: &Stored, now: Time) -> bool {
         if now > until {
             return false;
         }
-        let cites = |half: &str| links_to(&record.header, LinkType::Cites).contains(&half);
+        let cites = |half: &str| links_to(record.header(), LinkType::Cites).contains(&half);
         match subject {
-            Subject::Record(digest) => digest == record.record_id,
+            Subject::Record(digest) => digest == record.record_id(),
             // A range names leaf indexes, from 0.
-            Subject::Range(a, b) => (a..=b).contains(&(record.seq - 1)),
+            Subject::Range(a, b) => (a..=b).contains(&(record.seq() - 1)),
             Subject::Exchange(half) => cites(&half), // the "exchange" form; vocabulary-gate: request-draft wire token
             _ => false,
         }

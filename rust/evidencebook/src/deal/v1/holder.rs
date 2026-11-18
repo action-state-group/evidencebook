@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use regex::Regex;
 use serde_json::Value;
 
 use super::book::verify_book;
@@ -127,8 +126,12 @@ fn is_v1(raw: &[u8]) -> bool {
     let Ok(Value::Object(top)) = serde_json::from_slice::<Value>(raw) else {
         return false;
     };
-    let name = Regex::new("^x-deal-v[0-9]+$").expect("a valid pattern");
-    let mut names = top.keys().filter(|k| name.is_match(k));
+    // Go's `^x-deal-v[0-9]+$`.
+    let versioned = |k: &&String| {
+        k.strip_prefix("x-deal-v")
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    let mut names = top.keys().filter(versioned);
     let (Some(only), None) = (names.next(), names.next()) else {
         return false;
     };
@@ -284,16 +287,15 @@ impl ReceiveProfile {
         let journal = shelf.journal()?;
         // Read the new journal records, and those not readable before, into
         // a batch committed only once every read succeeded.
-        let records = journal.records();
-        let size = records.len() as u64;
+        let size = journal.size();
         let mut seqs = c.retry.clone();
         seqs.extend(c.journal_seen + 1..=size);
         let (mut added, mut retry) = (Vec::new(), Vec::new());
         for &n in &seqs {
-            let Some(r) = records.get(n as usize - 1) else {
+            let Some(r) = journal.record_by_seq(n) else {
                 continue;
             };
-            match v1_payload(&journal, r)? {
+            match v1_payload(&journal, &r)? {
                 Payload::V1(rec) => added.push((n, *rec)),
                 Payload::Unavailable => retry.push(n),
                 Payload::Other => {}
@@ -317,8 +319,8 @@ impl ReceiveProfile {
                 None => {
                     let book = shelf.open(&log_id)?;
                     let (mut first, mut unavailable) = (None, false);
-                    if let Some(r) = book.records().first() {
-                        match v1_payload(&book, r)? {
+                    if let Some(r) = book.record_by_seq(1) {
+                        match v1_payload(&book, &r)? {
                             Payload::V1(rec)
                                 if rec.agree().is_some_and(|a| a.kind == KIND_AGREEMENT) =>
                             {

@@ -10,6 +10,8 @@
   Give the profile its shelf with `set_shelf` once the shelf is open. The profile holds a `WeakShelf`, so the two do not keep each other alive.
 - **`ReceiveProfile::can_act`** (`CanActInput`) is the first-act coverage gate: a held stamp proof must cover the counterparty's agreement. **`gate_act`** (`ActGateInput`, `ActGate`, `GATE_NO_PROOF`, `GATE_NO_LAYER`) holds a first perform or payer settle until that is so, and lets it through unguarded when the counterparty runs no layer.
 - **`ShelfBook::resolve_payload`** reads one payload of a record as the record's retention state allows. A `WITHHELD` or `DELETED` record's payload is the new `ShelfError::Unavailable`.
+- **`Shelf::records` and `resolve_payload` read a lifecycle record's statement as Go does.** `retention_state` and `reason` match in any case, and a state that is not a string makes the book's listing `Corrupt`. Before, Rust read only the lowercase name and took any other value as no state.
+- **`ShelfBook::record_by_seq`** returns one committed record.
 - **`Shelf::downgrade`** and **`WeakShelf`** give a handle on a shelf that does not keep it alive.
 
 Breaking for code that matches on every `ShelfError` variant: `ShelfError` gains `Unavailable`.
