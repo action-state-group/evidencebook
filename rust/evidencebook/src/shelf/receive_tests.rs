@@ -69,6 +69,10 @@ struct TestState {
     proof_keys: HashMap<String, String>,
     reads: usize,
     proof_err: Option<String>,
+    /// Each after_receive call's record part: digest, deal id, duplicate,
+    /// refused.
+    after: Vec<(String, String, bool, bool)>,
+    after_err: Option<String>,
 }
 
 /// The test profile (Go `testReceiveProfile`): JSON records whose `sig`
@@ -145,6 +149,22 @@ impl ReceiveProfile for TestProfile {
             return Err(e.clone());
         }
         Ok(st.proof_keys.get(key_id).cloned())
+    }
+
+    fn after_receive(&self, result: &ReceiveResult, _at: Time) -> Result<(), String> {
+        let mut st = self.st();
+        if let Some(r) = &result.record {
+            st.after.push((
+                r.digest.clone(),
+                r.deal_id.clone(),
+                r.duplicate,
+                r.refused.is_some(),
+            ));
+        }
+        match &st.after_err {
+            Some(e) => Err(e.clone()),
+            None => Ok(()),
+        }
     }
 }
 
@@ -333,7 +353,7 @@ fn stamp_cadence(shelf: &Shelf, values: &Values) -> Cadence {
             witnesses: None,
             pad_bucket: 1,
             ended: Arc::new(|_| Ok(false)),
-            status: Some(Arc::new(move |_, log_id| {
+            status: Some(Arc::new(move |_: &str, log_id: &str| {
                 Ok(held.lock().unwrap().get(log_id).map(|status| StatusValues {
                     profile: "deal".into(),
                     status: Some(status.clone()),
@@ -426,6 +446,48 @@ fn key_of(p: &StampProof) -> String {
     Checkpoint::from_statement(&p.book_checkpoint)
         .unwrap()
         .key_id
+}
+
+// after_receive runs on every call, a duplicate and a refusal included, with
+// the deal the profile read each record as; its error fails the call, and the
+// parts' result stays committed (Go `AfterReceive`).
+#[test]
+fn after_receive_runs_on_every_call() {
+    let (f, s) = fx();
+    let r1 = chain("alice", "deal/a", "deal-1", 1, "a1", "");
+    must_record(&s, &r1);
+    must_record(&s, &r1);
+    let e = s
+        .receive(
+            Some(&chain("mallory", "deal/m", "deal-m", 1, "m1", "")),
+            None,
+        )
+        .unwrap_err();
+    assert!(fails(&e, is_refused) && e.after.is_none());
+    assert_eq!(
+        f.profile.st().after,
+        vec![
+            (dg("a1"), "deal-1".to_string(), false, false),
+            (dg("a1"), "deal-1".to_string(), true, false),
+            (dg("m1"), "deal-m".to_string(), false, true),
+        ]
+    );
+
+    f.profile.st().after_err = Some("naming failed".into());
+    let e = s
+        .receive(
+            Some(&chain("alice", "deal/a", "deal-1", 2, "a2", "a1")),
+            None,
+        )
+        .unwrap_err();
+    assert!(e.error.is_none());
+    assert!(matches!(&e.after, Some(ShelfError::Profile(m)) if m.contains("naming failed")));
+    assert_eq!(e.errors().len(), 1);
+    assert!(
+        e.result.record.as_ref().unwrap().stored,
+        "the parts' result stays committed"
+    );
+    assert_eq!(received_count(&s), 2);
 }
 
 #[test]
@@ -1012,7 +1074,7 @@ fn the_received_stores_readers_run_inside_a_stamp() {
             witnesses: None,
             pad_bucket: 1,
             ended: Arc::new(|_| Ok(false)),
-            status: Some(Arc::new(move |_, _| {
+            status: Some(Arc::new(move |_: &str, _: &str| {
                 let p = reader
                     .counted_prefix("alice", "deal/a")
                     .map_err(|e| e.to_string())?;
@@ -1576,4 +1638,189 @@ fn receive_refuses_busy_when_the_mark_keeps_moving() {
     assert_eq!(*asked.lock().unwrap(), 3, "three plans, then the refusal");
     assert!(held(&s, "o1"), "nothing was dropped");
     assert!(!held(&s, "o2"), "nothing was stored");
+}
+
+/// held_first: every record at position 1 of a log id, across senders and
+/// both records of a genesis fork, by sender then digest (Go
+/// `TestHeldFirstReturnsEveryRecordAtPositionOneAcrossSenders`).
+#[test]
+fn held_first_returns_every_record_at_position_one_across_senders() {
+    let (f, s) = fx();
+    f.profile.st().admitted.insert("bob".into(), true);
+    assert!(s.held_first("deal/a").unwrap().is_empty());
+    must_record(&s, &chain("bob", "deal/a", "deal-2", 1, "b1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 2, "a2", "a1"));
+    must_record(&s, &chain("alice", "deal/b", "deal-3", 1, "c1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1-other", ""));
+    let got = s.held_first("deal/a").unwrap();
+    let keys: Vec<(String, String)> = got
+        .iter()
+        .map(|h| {
+            assert_eq!(h.received.log_id, "deal/a");
+            assert_eq!(h.received.position, 1);
+            assert!(!h.record.is_empty());
+            (h.received.sender_key.clone(), h.received.digest.clone())
+        })
+        .collect();
+    let mut want = vec![
+        ("alice".to_string(), dg("a1")),
+        ("alice".to_string(), dg("a1-other")),
+        ("bob".to_string(), dg("b1")),
+    ];
+    if dg("a1-other") < dg("a1") {
+        want.swap(0, 1);
+    }
+    assert_eq!(keys, want);
+}
+
+/// held_by_deal: every record held for a deal across senders and logs,
+/// forks included (Go `TestHeldByDealReturnsEveryRecordOfTheDeal`).
+#[test]
+fn held_by_deal_returns_every_record_of_the_deal() {
+    let (f, s) = fx();
+    f.profile.st().admitted.insert("bob".into(), true);
+    assert!(s.held_by_deal("deal-1").unwrap().is_empty());
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 2, "a2", "a1"));
+    must_record(&s, &chain("bob", "deal/c", "deal-1", 1, "c1", ""));
+    must_record(&s, &chain("alice", "deal/b", "deal-3", 1, "b1", ""));
+    must_record(&s, &chain("alice", "deal/a", "deal-1", 1, "a1-other", ""));
+    let keys: Vec<String> = s
+        .held_by_deal("deal-1")
+        .unwrap()
+        .iter()
+        .map(|h| {
+            assert_eq!(h.received.deal_id, "deal-1");
+            format!(
+                "{} {} {}",
+                h.received.sender_key, h.received.log_id, h.received.position
+            )
+        })
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "alice deal/a 1",
+            "alice deal/a 1",
+            "alice deal/a 2",
+            "bob deal/c 1"
+        ]
+    );
+}
+
+/// held_proofs: a proof recomputed over the sender's records covers them,
+/// and one from another sender or log is none.
+#[test]
+fn held_proofs_cover_the_counted_records() {
+    let h = holder(&["1", "2", "3"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    assert!(s.held_proofs("alice", "deal/a").unwrap().is_empty());
+    for r in h.records("alice", "deal-1") {
+        must_record(&s, &r);
+    }
+    must(&s, None, Some(&p));
+    let held = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(held.len(), 1);
+    assert!(held[0].recomputed && !held[0].contradicted);
+    let counted = prefix(&s, "alice", "deal/a").size;
+    assert!(counted > 0);
+    assert_eq!(
+        held[0].covers,
+        held[0].verified.book_checkpoint.entries.min(counted)
+    );
+    assert_eq!(held[0].proof, p);
+    assert!(s.held_proofs("bob", "deal/a").unwrap().is_empty());
+    assert!(s.held_proofs("alice", "deal/b").unwrap().is_empty());
+    s.release().unwrap();
+    assert!(matches!(
+        s.held_proofs("alice", "deal/a"),
+        Err(ShelfError::Released)
+    ));
+}
+
+/// genesis-fork-after-proof (docs/design/461-deal-profile.md §7.3; Go
+/// `TestHeldProofsCoverNothingAfterAGenesisFork`): a proof past the records
+/// held is unchecked and covers nothing; recomputed, it covers them; a fork
+/// at position 1 empties the counted prefix, so it stays recomputed and
+/// covers nothing, before and after a restart, with its bindings.
+#[test]
+fn held_proofs_cover_nothing_after_a_genesis_fork() {
+    let h = holder(&["1", "2", "3"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    must(&s, None, Some(&p));
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(got.len(), 1);
+    assert!(!got[0].recomputed && !got[0].contradicted);
+    assert_eq!(got[0].covers, 0);
+
+    let records = h.records("alice", "deal-1");
+    for r in &records {
+        must_record(&s, r);
+    }
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    let held = &got[0];
+    assert!(held.recomputed);
+    assert_eq!(held.covers, records.len() as u64);
+    assert_eq!(held.verified.book_checkpoint.entries, held.covers);
+    assert_eq!(held.verified.fact.book_id, h.book_id);
+    assert_eq!(held.verified.key_id, key_of(&p));
+    assert_eq!(held.verified.shelf_checkpoint.log_id, h.cadence.log_id());
+    assert_eq!(held.proof.fact, p.fact);
+
+    must_record(
+        &s,
+        &chain("alice", "deal/a", "deal-1", 1, "other-genesis", ""),
+    );
+    let check = |s: &Shelf| {
+        let got = s.held_proofs("alice", "deal/a").unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(got[0].recomputed, "the proof stays recomputed");
+        assert_eq!(
+            got[0].covers, 0,
+            "but covers nothing once the prefix is empty"
+        );
+        assert_eq!(got[0].verified.fact.book_id, h.book_id);
+        assert_eq!(got[0].verified.shelf_checkpoint.log_id, h.cadence.log_id());
+    };
+    check(&s);
+    s.release().unwrap();
+    check(&f.open());
+}
+
+/// A proof the records held do not recompute is contradicted and covers
+/// nothing (Go `TestHeldProofsReportAContradictedProof`).
+#[test]
+fn held_proofs_report_a_contradicted_proof() {
+    let h = holder(&["1", "2"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    must(&s, None, Some(&p));
+    // As many records as the proof's checkpoint holds, which do not
+    // recompute its root.
+    let mut prev = String::new();
+    for i in 0..h.records("alice", "deal-1").len() {
+        let name = format!("x{}", i + 1);
+        let _ = s.receive(
+            Some(&chain(
+                "alice",
+                "deal/a",
+                "deal-1",
+                i as u64 + 1,
+                &name,
+                &prev,
+            )),
+            None,
+        );
+        prev = name;
+    }
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(got.len(), 1);
+    assert!(got[0].contradicted && !got[0].recomputed);
+    assert_eq!(got[0].covers, 0);
 }

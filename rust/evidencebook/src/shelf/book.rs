@@ -207,7 +207,7 @@ pub(crate) struct BookState {
     roots: HashMap<String, Value>,
     /// A record already stored whose log append failed: it holds the next
     /// position until the append succeeds.
-    pending: Option<BookRecord>,
+    pub(super) pending: Option<BookRecord>,
     pub(crate) released: bool,
 }
 
@@ -291,6 +291,24 @@ impl ShelfBook {
         self.0.append_locked(&mut state, entry)
     }
 
+    /// Append `entry` only as the book's record `seq`, the next one (Go
+    /// `AppendAt`): a profile whose record names its own place builds it from
+    /// the tail it read, and a write that landed in between refuses it with
+    /// [`ShelfError::Busy`] instead of sealing a record whose place is wrong.
+    /// A stored record awaiting its log append takes its place first, so
+    /// `seq` is checked against the tail it makes.
+    pub fn append_at(&self, seq: u64, entry: &BookEntry) -> Result<BookRecord, ShelfError> {
+        let mut state = self.0.lock();
+        self.0.flush_pending(&mut state)?;
+        let next = state.records.len() as u64 + 1;
+        if seq != next {
+            return Err(ShelfError::Busy(format!(
+                "record {seq} is not the book's next, {next}"
+            )));
+        }
+        self.0.append_locked(&mut state, entry)
+    }
+
     /// Commit any changed index roots as records, then checkpoint the log
     /// at the shelf's clock (Go `Checkpoint`).
     pub fn checkpoint(&self) -> Result<Checkpoint, ShelfError> {
@@ -332,7 +350,7 @@ impl BookCore {
         self.state.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn now(&self) -> Time {
+    pub(super) fn now(&self) -> Time {
         self.shared.now()
     }
 
@@ -461,7 +479,7 @@ impl BookCore {
         }
     }
 
-    fn append_locked(
+    pub(super) fn append_locked(
         &self,
         state: &mut BookState,
         entry: &BookEntry,

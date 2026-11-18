@@ -1243,3 +1243,50 @@ fn the_cadence_history_card_is_bounded() {
         Err(ShelfError::NotFound(_))
     ));
 }
+
+/// append_at appends only as the book's next record, and places a stored
+/// record awaiting its log append first, so the tail a caller read counts
+/// it (Go `AppendAt`).
+#[test]
+fn append_at_is_the_next_record_only_and_counts_a_pending_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    assert_eq!(book.append_at(1, &observation("a", "one")).unwrap().seq, 1);
+    assert!(
+        matches!(
+            book.append_at(1, &observation("a", "x")),
+            Err(ShelfError::Busy(_))
+        ),
+        "record 1 is taken"
+    );
+    assert!(
+        matches!(
+            book.append_at(3, &observation("a", "x")),
+            Err(ShelfError::Busy(_))
+        ),
+        "record 3 is not next"
+    );
+    let side = Connection::open(file(&dir)).unwrap();
+    side.busy_timeout(Duration::from_secs(5)).unwrap();
+    side.execute_batch(
+        "CREATE TRIGGER block BEFORE INSERT ON cll_entries BEGIN SELECT RAISE(ABORT, 'blocked'); END;",
+    )
+    .unwrap();
+    assert!(matches!(
+        book.append(&observation("a", "two")),
+        Err(ShelfError::Log(_))
+    ));
+    side.execute_batch("DROP TRIGGER block;").unwrap();
+    assert!(
+        matches!(
+            book.append_at(2, &observation("a", "late")),
+            Err(ShelfError::Busy(_))
+        ),
+        "seq 2 is the pending record's"
+    );
+    let r = book.append_at(3, &observation("a", "three")).unwrap();
+    assert_eq!(r.seq, 3, "seq 3 follows the pending record");
+    assert_eq!(book.size(), 3);
+}

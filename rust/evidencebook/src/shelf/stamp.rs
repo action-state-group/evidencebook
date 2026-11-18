@@ -17,7 +17,7 @@ use super::cadence::{Cadence, CadenceLog, CadenceTick, TickResult};
 use super::store::{self, SHELF_VERSION_FACTS};
 use super::time::Time;
 use super::tree::{TickLeaf, TickLeaves};
-use super::{Shelf, ShelfError, ShelfState};
+use super::{Shelf, ShelfBook, ShelfError, ShelfState};
 use crate::shelf_facts::{
     self, book_fact, entry_id, format_switch, journal_fact, openings_for, stamp_entry, FactInput,
     Opening, ENTRY_KIND_FORMAT_SWITCH, ENTRY_KIND_STAMP, FACT_KIND_BOOK, FACT_KIND_JOURNAL,
@@ -29,8 +29,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::Duration;
 
 /// Migration states (`shelf_migration.state`).
@@ -52,11 +52,66 @@ pub struct StatusValues {
     pub status: Option<Value>,
 }
 
-/// Gives a book's fact values, by its book id and log id (Go's
-/// `StatusProvider`). The shelf asks it for each book at each stamp;
-/// `Ok(None)` (no profile claims the book) is profile `none`, the empty link
-/// value and `{}`. It must not call the shelf: the shelf's lock is held.
-pub type BookStatus = Arc<dyn Fn(&str, &str) -> Result<Option<StatusValues>, String> + Send + Sync>;
+/// What a [`BookStatus`] is handed for one book's fact (Go
+/// `StatusInput`): the stamp's tick `n` (from 1), the book's id and log id,
+/// the book itself, and the shelf's journal, `None` when the shelf has none
+/// yet: before [`super::Cadence::migrate`], or before the host first opens
+/// it with [`super::Shelf::journal`]. A stamp never creates the journal.
+pub struct StatusInput<'a> {
+    pub n: u64,
+    pub book_id: &'a str,
+    pub log_id: &'a str,
+    pub book: &'a ShelfBook,
+    pub journal: Option<&'a ShelfBook>,
+}
+
+/// Gives a book's profile and the values its fact commits to (§2.4; Go's
+/// four status interfaces, `StatusProvider` through `BeforeStampProvider`,
+/// in one): the shelf asks it for each book at each
+/// stamp. `Ok(None)` (no profile claims the book) is profile `none`, the
+/// empty link value and `{}`.
+///
+/// [`BookStatus::values`] runs under the shelf's lock, which a stamp
+/// holds while it asks: it may call the handles' readers (`query`,
+/// `records`, `sealed`) and the shelf's lock-free readers
+/// ([`super::Shelf::counted_prefix`], [`super::Shelf::record_time`],
+/// [`super::Shelf::record_stamp`] and the rest), never another shelf method.
+/// Its error does not stop the stamp: the book keeps its last fact,
+/// [`super::TickResult::unstated`] reports it, and the next stamp asks
+/// again.
+///
+/// A closure of a book id and log id is a `BookStatus` that reads nothing
+/// else.
+pub trait BookStatus: Send + Sync {
+    /// The values of the book `input` names, at the stamp `input.n`.
+    fn values(&self, input: &StatusInput<'_>) -> Result<Option<StatusValues>, String>;
+
+    /// Write, before a stamp, what that stamp's values must read (Go
+    /// `BeforeStamp`): x-deal-v1 names each counted ruling a receive left
+    /// unnamed (evidencebook#527), so a naming that failed is retried by the
+    /// holder's next stamp whether or not anything more arrives.
+    /// [`super::Cadence::stamp`], and [`super::Cadence::tick`] when a stamp
+    /// is due, call it before they take the shelf's lock, holding the
+    /// receive lock as a receive does, so what it reads of the received
+    /// store stays as read until it appends: it may call the shelf's methods
+    /// but [`super::Shelf::receive`], `forget`, `stamp` and `tick`. `at` is
+    /// the time the stamp is taken at. Its error does not stop the stamp:
+    /// [`super::TickResult::before_stamp`] reports it, and the next stamp
+    /// calls it again. The default writes nothing.
+    fn before_stamp(&self, at: Time) -> Result<(), String> {
+        let _ = at;
+        Ok(())
+    }
+}
+
+impl<F> BookStatus for F
+where
+    F: Fn(&str, &str) -> Result<Option<StatusValues>, String> + Send + Sync,
+{
+    fn values(&self, input: &StatusInput<'_>) -> Result<Option<StatusValues>, String> {
+        self(input.book_id, input.log_id)
+    }
+}
 
 /// A stamp's stored batch: its entry documents in append order, the stamp
 /// entry last (Go `StampBatch`). Bytes are standard base64 in JSON.
@@ -478,7 +533,8 @@ impl Cadence {
             if size == 0 {
                 continue;
             }
-            facts.push(self.fact_for(&log, at, None)?);
+            let fact = self.fact_for(state, last_tick + 1, &log, at, None)?;
+            facts.push(fact.map_err(|e| ShelfError::Invalid(format!("status values: {e}")))?);
         }
         let marker = format_switch(last_tick, sizes).map_err(invalid)?;
         let (_, marker_doc) = entry_id(&marker).map_err(invalid)?;
@@ -502,14 +558,17 @@ impl Cadence {
         Ok(())
     }
 
-    /// What a log's fact would be now (§2.4); `last` is its previous fact,
-    /// `None` for a genesis fact.
+    /// What a log's fact would be now at the stamp `n` (§2.4); `last` is
+    /// its previous fact, `None` for a genesis fact. The inner `Err` is the
+    /// book status's error for this book, which leaves it unstated.
     fn fact_for(
         &self,
+        state: &mut ShelfState,
+        n: u64,
         log: &CadenceLog,
         at: Time,
         last: Option<&LastFact>,
-    ) -> Result<PendingFact, ShelfError> {
+    ) -> Result<Result<PendingFact, String>, ShelfError> {
         let log_id = log.log().log_id.clone();
         // The journal (§2.2): a book of kind journal under its log id, whose
         // book id is SHA-256 of its log id and which no profile describes.
@@ -525,8 +584,19 @@ impl Cadence {
         // Only a book is described by a profile; a host log's fact is always
         // profile `none` with the empty link value and {} (§2.4, §4).
         let values = match (&self.cfg.status, log) {
-            (Some(status), CadenceLog::Book(_)) if !journal => {
-                status(&book_id, &log_id).map_err(ShelfError::Invalid)?
+            (Some(status), CadenceLog::Book(book)) if !journal => {
+                let existing = self.shelf.existing_journal_locked(state)?;
+                let input = StatusInput {
+                    n,
+                    book_id: &book_id,
+                    log_id: &log_id,
+                    book,
+                    journal: existing.as_ref(),
+                };
+                match status.values(&input) {
+                    Ok(values) => values,
+                    Err(e) => return Ok(Err(e)),
+                }
             }
             _ => None,
         };
@@ -550,7 +620,7 @@ impl Cadence {
                 None,
             )
         };
-        Ok(PendingFact {
+        Ok(Ok(PendingFact {
             profile: values.profile,
             book_id,
             log_id,
@@ -563,7 +633,7 @@ impl Cadence {
             statement,
             grown,
             journal,
-        })
+        }))
     }
 
     /// Draw each fact's salts in append order (facts in book id, then log
@@ -688,12 +758,52 @@ impl Cadence {
     /// Take a stamp now (§2.5; Go `Stamp`): on demand, whatever the
     /// heartbeat's schedule. A stamp stored but not finished is finished
     /// first, as the same stamp. It needs a migrated shelf.
+    ///
+    /// The book status's [`BookStatus::before_stamp`] runs first,
+    /// before the shelf's lock is taken; its error is
+    /// [`TickResult::before_stamp`].
     pub fn stamp(&self, now: Time) -> Result<TickResult, ShelfError> {
+        let before = self.before_stamp(now);
         let mut state = self.shelf.lock();
         if state.released {
             return Err(ShelfError::Released);
         }
-        self.stamp_locked(&mut state, now)
+        let mut res = self.stamp_locked(&mut state, now)?;
+        res.before_stamp = before;
+        Ok(res)
+    }
+
+    /// Run the book status's [`BookStatus::before_stamp`], if the cadence
+    /// has one, under the receive lock, and give its error (Go
+    /// `beforeStamp`).
+    pub(crate) fn before_stamp(&self, now: Time) -> Option<String> {
+        let status = self.cfg.status.as_ref()?;
+        let _serial = self
+            .shelf
+            .shared()
+            .receive_mu
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        status.before_stamp(now).err()
+    }
+
+    /// Whether [`Cadence::tick`] at `now` would cut a new stamp (Go
+    /// `stampDue`): the cadence has a book status and is migrated, no tick
+    /// is left unfinished, and the last one's `due_next` has come.
+    pub(crate) fn stamp_due(&self, now: Time) -> Result<bool, ShelfError> {
+        if self.cfg.status.is_none() {
+            return Ok(false);
+        }
+        let state = self.shelf.lock();
+        if state.released {
+            return Err(ShelfError::Released);
+        }
+        if let Some(last) = self.last_locked()? {
+            if last.checkpoint_size == 0 || now < last.due_next {
+                return Ok(false);
+            }
+        }
+        Ok(migration_state(&self.shelf.shared().db())? == MIGRATION_DONE)
     }
 
     pub(crate) fn stamp_locked(
@@ -715,13 +825,23 @@ impl Cadence {
         let n = last.as_ref().map_or(1, |l| l.n + 1);
         let at = now.truncate(Duration::from_secs(60));
         let mut facts = Vec::new();
+        let mut unstated = BTreeMap::new();
         for id in self.shelf.cadence_log_ids()? {
             let log = self.shelf.cadence_log_locked(state, &id)?;
             if log.mmr_size()? == 0 {
                 continue;
             }
             let prev = self.shelf.last_fact_of(&id)?;
-            let f = self.fact_for(&log, at, prev.as_ref())?;
+            // A book whose status failed keeps its last fact; the
+            // other books' facts are written, so one book's values never
+            // stop the shelf's stamps.
+            let f = match self.fact_for(state, n, &log, at, prev.as_ref())? {
+                Ok(f) => f,
+                Err(e) => {
+                    unstated.insert(id, e);
+                    continue;
+                }
+            };
             if f.changed(prev.as_ref())? {
                 facts.push(f);
             }
@@ -729,7 +849,9 @@ impl Cadence {
         let tick = self.build_stamp_locked(state, n, at, now, facts, Vec::new())?;
         // Stored before anything is appended, so a crash resumes this stamp.
         insert_tick(&self.shelf.shared().db(), &tick)?;
-        self.finish_stamp_locked(tick)
+        let mut res = self.finish_stamp_locked(tick)?;
+        res.unstated = unstated;
+        Ok(res)
     }
 
     /// Append the batch's entries not yet in the cadence log, in order,
@@ -794,6 +916,8 @@ impl Cadence {
             ticked: true,
             due_next: tick.due_next,
             tick: Some(tick),
+            unstated: BTreeMap::new(),
+            before_stamp: None,
         })
     }
 }
@@ -832,7 +956,7 @@ mod tests {
     use capsule_emit_artifact::Store as _;
     use ed25519_dalek::SigningKey;
     use std::collections::{BTreeMap, HashMap};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     fn key(label: &str) -> SigningKey {
         SigningKey::from_bytes(&Sha256::digest(label.as_bytes()).into())
@@ -884,7 +1008,7 @@ mod tests {
                 witnesses: None,
                 pad_bucket: 1,
                 ended: Arc::new(|_| Ok(false)),
-                status: Some(Arc::new(move |_, log_id| {
+                status: Some(Arc::new(move |_: &str, log_id: &str| {
                     Ok(held.lock().unwrap().get(log_id).map(|status| StatusValues {
                         profile: "deal".into(),
                         status: Some(status.clone()),
@@ -1050,7 +1174,10 @@ mod tests {
             let id = &shelf.cadence_log_ids().unwrap()[0];
             let log = shelf.cadence_log_locked(&mut state, id).unwrap();
             let prev = shelf.last_fact_of(id).unwrap();
-            let f = c.fact_for(&log, tick_time(), prev.as_ref()).unwrap();
+            let f = c
+                .fact_for(&mut state, last.n + 1, &log, tick_time(), prev.as_ref())
+                .unwrap()
+                .unwrap();
             let tick = c
                 .build_stamp_locked(
                     &mut state,
