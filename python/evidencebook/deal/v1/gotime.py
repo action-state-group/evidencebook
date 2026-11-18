@@ -126,10 +126,11 @@ def parse(value: str) -> tuple[int, int]:
         h = _getnum(hh, True)
         m = _getnum(mm, True) if h is not None else None
         hr, mi = h[0] if h else 0, m[0] if m else 0
-        if hr > 24:
-            raise _range(value, "time zone offset hour")
+        # Go sets each range error in turn, so the minute's overrides the hour's.
         if mi > 60:
             raise _range(value, "time zone offset minute")
+        if hr > 24:
+            raise _range(value, "time zone offset hour")
         if h is None or m is None or sign not in (b"+", b"-"):
             raise _cannot(value, v, "Z07:00")
         offset = (hr * 60 + mi) * 60 * (1 if sign == b"+" else -1)
