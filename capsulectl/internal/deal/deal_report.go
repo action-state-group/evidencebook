@@ -78,6 +78,14 @@ func (s *dealSession) dealReportBundleAt(ctx context.Context, events []sealedEve
 	var private dealPrivate
 	withhold := map[string]bool{}
 	if shared {
+		// TEMPORARY (evidencebook#462, evidencebook-deal#218): the holder's own
+		// note is never in a shared copy (u597). The note has one value, so a
+		// record that confirms the close would say what it says even with its
+		// payload withheld, and the copy is one log's chain: no copy of a log
+		// that holds the note is made until the computed row status replaces it.
+		if holdsOutcomeNote(events) {
+			return nil, cli.InputError("this deal holds your outcome note, which is never in a shared copy (u597), so no copy of it can be shared while the note exists; your own copy (`deal report --deal ID`) is not affected")
+		}
 		private = dealPrivateValues(events)
 		var err error
 		if withhold, err = s.dealWithholdRecords(events, audience, private); err != nil {
@@ -811,4 +819,15 @@ func cardOpenings(events []sealedEvent) []interface{} {
 		out = append(out, map[string]interface{}{"step": se.CapsuleID, "nonce": verdict.Event.Nonces["card"], "text": a.ShownCard})
 	}
 	return out
+}
+
+// holdsOutcomeNote is whether a deal holds the TEMPORARY outcome_note
+// (evidencebook#462): no shared copy is made of such a deal (u597).
+func holdsOutcomeNote(events []sealedEvent) bool {
+	for _, se := range events {
+		if se.Event.Kind == "outcome_note" {
+			return true
+		}
+	}
+	return false
 }

@@ -15,7 +15,9 @@ import (
 // seller failed does not write one, since the card counts it on the writer's card. Ethan and Steven's phone agreement (relayed by Ethan, evidencebook#462),
 // so a History card can count a deal did_not_hold. The note is the holder's:
 // nothing here derives it, and a counterparty's record is never appended to
-// the book. It is kept for the holder only, in no shared copy.
+// the book. It is kept for the holder only: no shared copy is made of a deal that holds it
+// (u597, evidencebook-deal#218), since a record confirming the close would say
+// what it says even with its payload withheld.
 
 // dealOutcomeNote is an outcome_note step: why the outcome did not hold.
 type dealOutcomeNote struct {
@@ -39,7 +41,9 @@ a dispute; settled_against, a dispute settled against you; not_delivered, you di
 deliver; other, any other way it did not hold for you). A buyer whose seller failed
 does not write it: the card counts it on the writer's own card. The reason is your own
 statement, not checked against any ruling. The History card then counts the deal
-did_not_hold. The note is yours alone: it is never in a shared copy, and a
+did_not_hold. The note is yours alone: it is never in a shared copy, so no
+shared copy (disclose, report --share) is made of a deal that holds one, until
+the computed row status replaces this record; your own copy is not affected. A
 counterparty never writes one into your book. A deal takes one.`, Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		reason, _ := c.Flags().GetString("reason")
 		if !slices.Contains(outcomeNoteReasons, reason) {
