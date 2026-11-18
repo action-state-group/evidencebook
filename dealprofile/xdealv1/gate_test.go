@@ -3,7 +3,8 @@
 package xdealv1
 
 import (
-	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,7 +45,7 @@ func gateAct(seq int64, body Body) Record {
 
 func gate(t *testing.T, h *handshake, own []Record, act Record) ActGate {
 	t.Helper()
-	g, err := h.buyer.profile.GateAct(context.Background(), ActGateInput{Own: own, Act: act, CounterpartAgreement: h.agreementID})
+	g, err := h.buyer.recGateAct(ActGateInput{Own: own, Act: act, CounterpartAgreement: h.agreementID})
 	require.NoError(t, err)
 	return g
 }
@@ -81,7 +82,7 @@ func TestGateActWithoutALayerIsUnguarded(t *testing.T) {
 	h := newHandshake(t, nil)
 	ag, _, _ := gateBook(t, h, false)
 	own := []Record{ag}
-	g, err := h.buyer.profile.GateAct(context.Background(), ActGateInput{Own: own, Act: gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')})})
+	g, err := h.buyer.recGateAct(ActGateInput{Own: own, Act: gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')})})
 	require.NoError(t, err)
 	assert.Equal(t, ActGate{Gated: true, Allowed: true, Unguarded: true, Reason: GateNoLayer}, g)
 }
@@ -103,15 +104,17 @@ func TestGateActRefusesAnotherBook(t *testing.T) {
 	other := pay
 	other.Block.DealID = "deal/" + "ffffffffffffffffffffffffffffffff"
 	notAgreement := gateAct(1, &StatementBody{Statements: statements()})
-	for name, in := range map[string]ActGateInput{
+	cases := map[string]ActGateInput{
 		"an empty book":                     {Act: pay},
 		"a book not opening an agreement":   {Own: []Record{notAgreement}, Act: pay},
 		"an act of another deal":            {Own: own, Act: other},
 		"a record of another deal":          {Own: append(own, other), Act: pay},
 		"another deal after the first act":  {Own: append(append([]Record{}, own...), pay, other), Act: pay},
 		"another deal, a payee leg to seal": {Own: append(append([]Record{}, own...), other), Act: gateAct(2, &SettleBody{Leg: LegPayee, Statements: statements()})},
-	} {
-		_, err := h.buyer.profile.GateAct(context.Background(), in)
+	}
+	// In name order, so the transcript (holder_vectors_test.go) is the same on every run.
+	for _, name := range slices.Sorted(maps.Keys(cases)) {
+		_, err := h.buyer.recGateAct(cases[name])
 		assert.Error(t, err, name)
 	}
 }
@@ -126,13 +129,13 @@ func TestGateActHoldsTheAcceptor(t *testing.T) {
 	in := ActGateInput{Own: []Record{h.agreement}, Act: perform, CounterpartAgreement: buyerID}
 
 	h.seller.receive(buyerPair, nil)
-	g, err := h.seller.profile.GateAct(context.Background(), in)
+	g, err := h.seller.recGateAct(in)
 	require.NoError(t, err)
 	assert.Equal(t, ActGate{Gated: true, Reason: GateNoProof}, g, "no offerer proof yet")
 
 	proof := h.buyer.stamp(buyerID)
 	h.seller.receive(buyerPair, &proof)
-	g, err = h.seller.profile.GateAct(context.Background(), in)
+	g, err = h.seller.recGateAct(in)
 	require.NoError(t, err)
 	assert.Equal(t, ActGate{Gated: true, Allowed: true}, g)
 }
@@ -142,7 +145,7 @@ func TestGateActHoldsTheAcceptor(t *testing.T) {
 func TestGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
 	h := newHandshake(t, nil)
 	pay := gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')})
-	_, err := h.buyer.profile.GateAct(context.Background(), ActGateInput{Own: []Record{h.agreement}, Act: pay})
+	_, err := h.buyer.recGateAct(ActGateInput{Own: []Record{h.agreement}, Act: pay})
 	assert.ErrorContains(t, err, "sealed no agreement", "the buyer holds none yet")
 
 	h2 := newHandshake(t, func(a *AgreeBody) { a.Witnesses = []Witness{} })
@@ -155,7 +158,7 @@ func TestGateActWithoutWitnessesAndWithoutAnAgreement(t *testing.T) {
 	b.Seq, b.Seen = 1, Some(h2.agreementID)
 	ag := Record{Block: b, Body: ab}
 	h2.buyer.seal("deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0", ag)
-	g, err := h2.buyer.profile.GateAct(context.Background(), ActGateInput{Own: []Record{ag}, Act: pay, CounterpartAgreement: h2.agreementID})
+	g, err := h2.buyer.recGateAct(ActGateInput{Own: []Record{ag}, Act: pay, CounterpartAgreement: h2.agreementID})
 	require.NoError(t, err)
 	assert.Equal(t, ActGate{Gated: true, Allowed: true}, g, "an unwitnessed deal's proof opens the gate")
 }
@@ -172,7 +175,7 @@ func TestGateActRefusesTheCounterpartysAgreement(t *testing.T) {
 	ab := *theirs.Body.(*AgreeBody)
 	ab.CounterpartyLayer, ab.CounterpartyKey = &f, NullOf[string]()
 	theirs.Body = &ab
-	_, err := h.buyer.profile.GateAct(context.Background(), ActGateInput{Own: []Record{theirs},
+	_, err := h.buyer.recGateAct(ActGateInput{Own: []Record{theirs},
 		Act: gateAct(2, &SettleBody{Leg: LegPayer, Statements: statements(), Check: ref('1')}), CounterpartAgreement: h.agreementID})
 	assert.ErrorContains(t, err, "the holder's own agreement")
 }
