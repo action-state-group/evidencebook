@@ -77,6 +77,9 @@ func openDealSessionRead(ctx context.Context, p cli.Profile, dealID string) (_ *
 		return nil, err
 	}
 	if steps == 0 {
+		if v1, verr := s.isV1Deal(ctx, dealID); verr == nil && v1 {
+			return nil, cli.InputError("deal " + dealID + " is an x-deal-v1 deal: this command is not served for x-deal-v1 deals yet")
+		}
 		return nil, cli.InputError("unknown deal: " + dealID)
 	}
 	s.dp = p
@@ -121,6 +124,9 @@ func runDealRead(c *cobra.Command, _ bool, fn func(ctx context.Context, s *dealS
 	defer func() { err = errors.Join(err, s.close()) }()
 	err = s.db.QueryRowContext(ctx, `SELECT deal_key FROM deal_keys WHERE deal_id=?`, dealID).Scan(&s.dkey)
 	if errors.Is(err, sql.ErrNoRows) {
+		if v1, verr := s.isV1Deal(ctx, dealID); verr == nil && v1 {
+			return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: this command is not served for x-deal-v1 deals yet")
+		}
 		return cli.InputError("unknown deal: " + dealID)
 	}
 	if err != nil {
