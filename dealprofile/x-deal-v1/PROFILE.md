@@ -214,15 +214,17 @@ the body MUST be valid under v0's closed `body_check`.
 
 **A journal record whose digest leaves the holder carries its own secret** (u528: the admission
 decision, and what the person checked, stay in the person's own book). A journal record whose
-digest leaves the holder, or is cited by one whose digest does, MUST carry a member of its own
-that nobody else can guess. Citing such a record is not enough, since the cited digest may itself
-be known: an act shows its check's digest. This covers a digest that is cited by a sent or
-deal-book record, signed beside a record (section 8's person's signatures), or disclosed.
-Otherwise whoever holds the digest could try each likely content against it.
+digest leaves the holder MUST carry a member of its own that nobody else can guess. A secret in a
+record it cites does not count, since the cited digest may itself be known: an act shows its
+check's digest. A digest leaves the holder when it is cited by a sent or deal-book record, signed
+beside a record (section 8's person's signatures over an approval, a `confirm_limits` and the
+first intent), or disclosed. Otherwise whoever holds the digest could try each likely content
+against it.
 - `admit`, `check`, `verdict` and `approval` carry `nonce`: a fresh random 256-bit value, 64
   lowercase hex, drawn for each record with `xdealv1.NewNonce` (`crypto/rand`) and never
   reused. `verdict` and `approval` are v0's bodies plus `nonce`, read against v0's closed bodies
-  without it.
+  without it. A verdict's digest does not leave the holder under this rule (section 8 signs the
+  approval, not the verdict); its nonce is defence in depth.
 - An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
 - `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
   `verbatim_commitment`.

@@ -470,15 +470,21 @@ it applies u528, so it needs no ruling from Steven).
   so the counterparty could try each outcome until one matches. That breaks u528: the admission
   decision stays in the person's own book. An act's `check` has the same shape, with its action,
   amount and currency guessable from the terms.
-- **The rule** (worded wider in the PR 4 nonce review round 1, Sherlock2). Any journal record
-  whose digest leaves the holder, or is cited by one whose digest does, MUST carry its own nonce
-  or a required salted member. That covers a digest cited by a sent or deal-book record, one
-  signed beside a record (§8's person's signatures, AAC#627), and one disclosed.
-  - Citing a record that carries one is not enough (Codex, round 2). The act shows its check's
-    digest, so once a verdict's or an approval's digest is known, its guessable members could be
-    tried against it with that known digest in its `refs`. So `verdict` and `approval` carry a
-    `nonce` too: v0's bodies plus `nonce`, read against v0's closed bodies without it
-    (`neg-verdict-without-nonce`, `neg-approval-without-nonce`).
+- **The rule** (worded in the PR 4 nonce review, Sherlock2, rounds 1 and 3). A journal record
+  whose digest leaves the holder MUST carry a member of its own that nobody else can guess. A
+  secret in a record it cites does not count, since the cited digest may itself be known: an act
+  shows its check's digest. A digest leaves the holder when it is cited by a sent or deal-book
+  record, signed beside a record (§8's person's signatures over an approval, a `confirm_limits`
+  and the first intent; AAC#627), or disclosed.
+  - Why a cited secret does not count (Codex, round 2). An approval's digest travels beside the
+    act. The approval's members are guessable, and its `refs` hold the verdict's digest, which
+    is guessable from the known check digest. So `approval` carries a `nonce`, as v0's body plus
+    `nonce`, read against v0's closed body without it (`neg-approval-without-nonce`).
+  - `verdict` carries one too, as defence in depth (`neg-verdict-without-nonce`). Its digest does
+    not leave the holder under the rule, since §8 signs the approval, not the verdict.
+  - The rule reaches only records whose own digest leaves. `admit` cites `ask` and `answer`
+    records, and those carry no nonce and need none: `admit`'s own nonce hides the digests it
+    cites.
   - A record sent whole (an offer, a decline, a cancellation) is exempt, since its content leaves
     with it (Codex, same round).
   - A deal-book record and an offer carry no block `refs`. Otherwise `refs` could cite any journal
