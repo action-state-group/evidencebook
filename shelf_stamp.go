@@ -82,8 +82,10 @@ func migrationState(ctx context.Context, db interface {
 
 // Migrate switches the shelf to a log of book facts (§4). It is explicit and
 // one-way, and recoverable at every step: a call after a crash resumes from
-// the stored state. It backs the file up first to <path>.v1.bak, a version 1
-// file an older build opens.
+// the stored state. It first sets the file to version 2, so no older build
+// writes it from then on, and then backs it up to <path>.v1.bak, a version 1
+// file an older build opens. It refuses a <path>.v1.bak that is not this
+// migration's backup, naming that path, and leaves the file at version 2.
 func (c *Cadence) Migrate(ctx context.Context, now time.Time) error {
 	s := c.shelf
 	s.mu.Lock()
