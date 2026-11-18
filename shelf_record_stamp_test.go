@@ -170,17 +170,22 @@ func (v *bookValues) last() string {
 	return v.calls[len(v.calls)-1]
 }
 
-// withinOrAbort runs f and fails the whole test binary if it has not returned in
-// 10 s: a deadlocked shelf would hang the fixture's Release cleanup too.
+// withinOrAbort runs f and, if it has not returned in 10 s, ends the whole
+// test binary from a watchdog goroutine: a panic there is not recovered by
+// the test runner, so no cleanup runs, where a deadlocked shelf's Release
+// would hang too.
 func withinOrAbort(t *testing.T, f func()) {
 	t.Helper()
 	done := make(chan struct{})
-	go func() { defer close(done); f() }()
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		panic("a stamp deadlocked on a provider reading its handles")
-	}
+	go func() {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			panic("a stamp deadlocked on a provider reading its handles")
+		}
+	}()
+	f()
+	close(done)
 }
 
 // A BookStatusProvider is handed the stamp's tick, the book and the journal,
