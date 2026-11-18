@@ -983,8 +983,11 @@ A lines 15a, 16a and 17a):
 
 Design §4.2 also says "The offerer stamps its agreement before the agree-by time ... and acts
 after it has written it". Step 3 meets both only when the first act comes before `agree_by`.
-**Proposed:** the offerer stamps after its first act, and if the first act has not happened by
-`agree_by` minus the owner's margin, it stamps its agreement alone first.
+**Decided** (Steven, u610, with Sherlock2's first condition): the offerer stamps after its first act,
+except that it stamps its agreement at once, and sends that proof, when its first act waits on the
+acceptor's. Since the acceptor's first act waits for the offerer's proof too (7.2), the two would
+otherwise wait on each other. If the first act has not happened by `agree_by` minus the owner's
+margin, it stamps its agreement alone first.
 
 ### 7.2 Calls on each side
 
@@ -1009,15 +1012,25 @@ after it has written it". Step 3 meets both only when the first act comes before
    `Receive` call's events or a stored flag alone. Owner: PR 1 (a lock-free library reader that lets
    the profile re-check every held proof's bindings) and PR 4 (`xdealv1.CanAct`). Vectors: 7.3.
 3. It writes its agreement (`seen` = the acceptor's agreement), and before its first `perform` or
-   payer `settle`, `xdealv1.CanAct(deal)` applies the gate of step 2. Without it the act is
-   refused.
+   payer `settle`, `xdealv1.ReceiveProfile.GateAct` applies the gate of step 2 (`CanAct`). Without
+   it the act is refused. **Decided** (Steven, u610, buzz 42c1e73f; ops company-oss 3797bda0): the
+   gate always applies, whether or not the agreement names a witness, to the first `perform` or
+   payer `settle` only.
 4. After the act: `Stamp`, `StampProof(..., AudienceCounterparty)`, and a push with the act's
    record.
 
-**Acceptor**, on the offerer's proof: the same `Receive` and the same checks. **Proposed:** its own
-gate applies to its first `perform` or payer `settle` after the offerer's agreement. A payee leg
-and a statement are never gated. Appendix A has the seller write its payment received record
-(line 27) before the buyer's proof arrives (line 32), and deliver (line 37) after.
+**Acceptor**, on the offerer's proof: the same `Receive` and the same checks. **Decided** (u610): its
+own gate applies to its first `perform` or payer `settle` after the offerer's agreement. A payee leg
+and a statement are never gated, nor is any act after the first. Appendix A has the seller write its
+payment received record (line 27) before the buyer's proof arrives (line 32), and deliver (line 37)
+after.
+
+**A counterparty without the layer** (Steven, u611, "layer ii"; buzz 20704793, ops 8ff23c29) has
+no agreement or proof to wait for, and its first act goes ahead: it is not refused. `GateAct` allows
+it and marks it unguarded (`GateNoLayer`). The receipt and the card say the other side sent no
+stamp proof, so the deal is counted from the holder's receipt only. The status value carries this as
+`counterparty_layer` false with `counterparty_proof_held` false (8.1), and the report and card read
+those (section 9). A gate that never applies without that label is not adopted.
 
 **Later**, before either side treats the deal as settled or relies on the other's card, it asks
 for the witnessed checkpoint: a shelf checkpoint with a receipt from a named witness, the

@@ -1,0 +1,3 @@
+### Added: x-deal-v1 first-act gate (Steven, u610 and u611)
+
+- `xdealv1.ReceiveProfile.GateAct` refuses a party's first `perform` or payer `settle` of a deal until the counterparty's stamp proof covers the counterparty's agreement (`CanAct`). It applies on both sides, whether or not a witness is named. A payee leg, a statement and any later act are never gated. When the counterparty runs no layer, the first act goes ahead and is not refused. It is marked unguarded (`GateNoLayer`), and the receipt and the card say the other side sent no stamp proof (u611). PROFILE §8 and design §7 record the ruling, including that the offerer stamps its agreement at once when its first act waits on the acceptor's.
