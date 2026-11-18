@@ -21,15 +21,15 @@ type TimedRecord struct {
 // RowBooks is what the row inputs are built from (design §6.1): the offer
 // whose terms_rows the deal agreed, the holder's deal book, the counted
 // prefix of the counterparty's, and the case book of the adjudicator the
-// agreement names, each in book order. ConflictingFinalRulings says the
-// holder holds two forks of that case book with different first final
-// rulings.
+// agreement names, each in book order. ConflictingFinalRulings are the rows
+// for which the holder holds two forks of that case book with different
+// first final rulings.
 type RowBooks struct {
 	Offer                   Record        `json:"offer"`
 	Own                     []TimedRecord `json:"own"`
 	Counterpart             []TimedRecord `json:"counterpart"`
 	CaseBook                []TimedRecord `json:"case_book"`
-	ConflictingFinalRulings bool          `json:"conflicting_final_rulings"`
+	ConflictingFinalRulings []string      `json:"conflicting_final_rulings,omitempty"`
 }
 
 // RowInputs projects the two books onto one rowstatus.Input per agreed row,
@@ -88,7 +88,7 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 	for _, row := range tr.Rows {
 		in := rowstatus.Input{At: at, Parties: []string{RoleBuyer, RoleSeller}, Named: named,
 			Row:                     rowstatus.Row{ID: row.ID, OwedBy: row.OwedBy, Due: projectDate(row.Due), WindowEnd: projectDate(row.WindowEnd), Recomputed: row.Recomputed},
-			ConflictingFinalRulings: b.ConflictingFinalRulings}
+			ConflictingFinalRulings: slices.Contains(b.ConflictingFinalRulings, row.ID)}
 		for _, side := range []string{RoleBuyer, RoleSeller} {
 			for _, r := range books[side] {
 				for _, it := range statementItems(r.Record) {
@@ -118,7 +118,7 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 				ru.RemedyDue = &due
 			}
 			in.Rulings = append(in.Rulings, ru)
-			if rb.Final && effective == nil && !b.ConflictingFinalRulings {
+			if rb.Final && effective == nil && !in.ConflictingFinalRulings {
 				effective = rb
 			}
 		}
@@ -149,22 +149,27 @@ func projectDate(d Date) rowstatus.Date {
 	return out
 }
 
-// statementItems are the statement items a record carries.
+// statementItems are the statement items a record carries, its body held as
+// a value or a pointer.
 func statementItems(r Record) []StatementItem {
-	switch b := r.Body.(type) {
-	case *PerformBody:
+	if b, ok := bodyOf[PerformBody](r.Body); ok {
 		return b.Statements
-	case *SettleBody:
+	}
+	if b, ok := bodyOf[SettleBody](r.Body); ok {
 		return b.Statements
-	case *StatementBody:
+	}
+	if b, ok := bodyOf[StatementBody](r.Body); ok {
 		return b.Statements
 	}
 	return nil
 }
 
 // seenInTime sets each dispute's seen_in_time (design §6.2): a record of the
-// claimant's own book, whose seen reaches the other side's statement on the
-// row, has a time not after the row's window end.
+// claimant's own book, timed not after the row's window end, whose seen
+// reaches the record of the statement the dispute did not contest: the other
+// side's standing statement, its latest statement on the row rowstatus does
+// not hold late (timed not after the window end, or untimed with no earlier
+// statement of its side timed after it; rowstatus.go:449-467).
 func seenInTime(in *rowstatus.Input, books map[string][]TimedRecord, rowID string) error {
 	if len(in.Disputes) == 0 {
 		return nil
@@ -175,21 +180,29 @@ func seenInTime(in *rowstatus.Input, books map[string][]TimedRecord, rowID strin
 	if err != nil {
 		return err
 	}
+	if res.WindowEnd == "" {
+		return nil
+	}
 	for i, d := range in.Disputes {
 		other := RoleBuyer
 		if d.Side == RoleBuyer {
 			other = RoleSeller
 		}
-		// The other side's statements on the row, by the record id each sits in.
-		var stated []int
+		standing := -1
+		var floor *string
 		for j, r := range books[other] {
-			for _, it := range statementItems(r.Record) {
-				if it.Row == rowID {
-					stated = append(stated, j)
-				}
+			if len(rowItems(r.Record, rowID)) == 0 {
+				continue
+			}
+			late := (r.Time != nil && *r.Time > res.WindowEnd) || (r.Time == nil && floor != nil && *floor > res.WindowEnd)
+			if !late {
+				standing = j
+			}
+			if r.Time != nil && (floor == nil || *r.Time > *floor) {
+				floor = r.Time
 			}
 		}
-		if len(stated) == 0 || res.WindowEnd == "" {
+		if standing < 0 {
 			continue
 		}
 		ids := map[string]int{}
@@ -201,11 +214,22 @@ func seenInTime(in *rowstatus.Input, books map[string][]TimedRecord, rowID strin
 			if s.V == nil || r.Time == nil || *r.Time > res.WindowEnd {
 				continue
 			}
-			if j, ok := ids[*s.V]; ok && j >= stated[0] {
+			if j, ok := ids[*s.V]; ok && j >= standing {
 				in.Disputes[i].SeenInTime = true
 				break
 			}
 		}
 	}
 	return nil
+}
+
+// rowItems are a record's statement items on one row.
+func rowItems(r Record, rowID string) []StatementItem {
+	var out []StatementItem
+	for _, it := range statementItems(r) {
+		if it.Row == rowID {
+			out = append(out, it)
+		}
+	}
+	return out
 }

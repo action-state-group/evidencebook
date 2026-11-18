@@ -895,7 +895,9 @@ counted).
   acceptor's book names the offerer's agreement or a later record.
 - **A late dispute's third condition** (design §4.2, rule 2; §8, "A dispute after the contest
   window"): `seen_in_time` is true when a record of the claimant's own book whose `seen` reaches
-  the uncontested statement's record has a time not after the row's window end.
+  the uncontested statement's record has a time not after the row's window end. The uncontested
+  statement is the other side's standing one on the row: its latest statement rowstatus does not
+  hold late (PR 4c-1 review round 1).
 - **The link value** (8.2): `last_received` is the record `seen` would name now.
 - **For each statement, when the other side's book first named it** (design §4.3, "The facts"):
   the time of the first record of the other book whose `seen` reaches it.
@@ -1063,7 +1065,7 @@ such record, a record whose time is not yet known, and a known time.
     stamp index, not a digest, so it pairs with nothing on the other shelf.
   - *Statements carried.* Per row and side, in book order: every statement whose time is not
     known; for each of those, the earlier statement of that side with the greatest known time
-    (the lower bound rowstatus reads, `rowstatus.go:275-300`; a book's record times never
+    (the lower bound rowstatus reads, `rowstatus.go:278-303`; a book's record times never
     decrease, since a stamp covering a record covers those before it, so it is also the latest);
     the latest statement with a known time
     not after the window end; and every statement with a known time after the window end that
@@ -1087,7 +1089,7 @@ such record, a record whose time is not yet known, and a known time.
   `local` false (Codex ran it on the Python implementation); the fact's statements must give the
   same, although the earlier timed statement is neither in time nor a concession, because rowstatus
   uses a side's earlier timed statement to judge whether its later untimed one is late
-  (`rowstatus.go:275-300`, `445-451`).
+  (`rowstatus.go:278-303`, `449-467`).
 
 **The receipts a handover carries (C).** A reader handed the whole shelf resolves record times from
 the witness receipts it is handed (A, above).

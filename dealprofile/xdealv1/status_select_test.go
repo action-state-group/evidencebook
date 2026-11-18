@@ -25,6 +25,20 @@ func TestCarriedStatementsKeepTheResult(t *testing.T) {
 		fact := rng.Intn(240)
 		dueAt, windowAt := ts(due), ts(window)
 		row := rowstatus.Row{ID: "r", OwedBy: RoleSeller, Due: rowstatus.Date{At: &dueAt}, WindowEnd: rowstatus.Date{At: &windowAt}}
+		// A third of the rows hang their dates on a named record, timed by
+		// the fact, or not yet, and timed later in each trial.
+		named := map[string]rowstatus.Named{}
+		hangs := rng.Intn(3) == 0
+		var namedAt rowstatus.Time
+		if hangs {
+			row.Due = rowstatus.Date{After: "x", Seconds: int64(rng.Intn(48)) * 3600}
+			row.WindowEnd = rowstatus.Date{After: "x", Seconds: int64(48+rng.Intn(96)) * 3600}
+			if rng.Intn(2) == 0 && fact > 0 {
+				t := ts(rng.Intn(fact))
+				namedAt = &t
+			}
+			named["x"] = rowstatus.Named{Time: namedAt, Latest: ts(fact + rng.Intn(200))}
+		}
 		// Each side's book: statements with times known at the fact (not
 		// after it, non-decreasing), then a suffix whose times are not known.
 		var stmts []rowstatus.Statement
@@ -45,7 +59,7 @@ func TestCarriedStatementsKeepTheResult(t *testing.T) {
 				stmts = append(stmts, st)
 			}
 		}
-		in := rowstatus.Input{At: ts(fact), Parties: []string{RoleBuyer, RoleSeller}, Row: row, Statements: stmts}
+		in := rowstatus.Input{At: ts(fact), Parties: []string{RoleBuyer, RoleSeller}, Row: row, Statements: stmts, Named: named}
 		res, err := rowstatus.Compute(in)
 		require.NoError(t, err)
 		kept := carriedStatements(stmts, res.WindowEnd)
@@ -94,6 +108,11 @@ func TestCarriedStatementsKeepTheResult(t *testing.T) {
 			at := ts(fact + rng.Intn(300))
 			full := in
 			full.At, full.Statements = at, resolved
+			if hangs && namedAt == nil && rng.Intn(2) == 0 {
+				// The named record is timed after the fact (its holder's stamp).
+				nt := ts(fact + rng.Intn(150))
+				full.Named = map[string]rowstatus.Named{"x": {Time: &nt, Latest: named["x"].Latest}}
+			}
 			part := full
 			part.Statements = sub
 			want, err := rowstatus.Compute(full)
