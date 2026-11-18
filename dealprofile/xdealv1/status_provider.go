@@ -61,74 +61,10 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 	if p.Shelf == nil {
 		return none(fmt.Errorf("xdealv1: the status provider has no shelf"))
 	}
-	own, err := p.ownBook(ctx, in)
-	if err != nil || len(own) == 0 {
+	b, link, _, ok, err := p.statusBooks(ctx, in)
+	if err != nil || !ok {
 		return none(err)
 	}
-	ag, _ := asAgree(own[0].rec.Record.Body)
-	deal := own[0].rec.Record.Block.DealID
-	offer, err := p.offer(ctx, in.Journal, ag.Offer.Digest)
-	if err != nil {
-		return none(err)
-	}
-	var keys []string
-	for _, w := range ag.Witnesses {
-		keys = append(keys, w.KeyID)
-	}
-	for i := range own {
-		if own[i].rec.Time, err = p.ownTime(ctx, in, uint64(i+1), keys); err != nil {
-			return none(err)
-		}
-	}
-	held, err := p.Shelf.HeldByDeal(ctx, deal)
-	if err != nil {
-		return none(err)
-	}
-	b := StatusBooks{Offer: offer}
-	for _, o := range own {
-		b.Own = append(b.Own, o.rec)
-	}
-	link := evidencebook.LinkValue{CheckedOver: []string{}}
-	var theirs []heldBookRecord
-	var theirLog string
-	if ag.CounterpartyKey.V != nil {
-		if logs := logsOf(held, *ag.CounterpartyKey.V, func(r Record) bool {
-			a, ok := asAgree(r.Body)
-			return ok && a.Kind == KindAgreement
-		}); len(logs) > 0 {
-			theirLog = logs[0]
-			if theirs, err = counted(ctx, p.Shelf, held, *ag.CounterpartyKey.V, theirLog); err != nil {
-				return none(err)
-			}
-		}
-		for i := range theirs {
-			if theirs[i].rec.Time, err = p.receivedTime(ctx, in, theirLog, uint64(i+1), keys); err != nil {
-				return none(err)
-			}
-			b.Counterpart = append(b.Counterpart, theirs[i].rec)
-		}
-		if len(theirs) > 0 {
-			last := theirs[len(theirs)-1]
-			link.LastReceived = &evidencebook.ReceivedPosition{LogID: theirLog, Size: uint64(len(theirs)), RecordDigest: last.rec.RecordID}
-			theirAg, _ := asAgree(theirs[0].rec.Record.Body)
-			if b.ProofHeld, err = proofCovers(ctx, p.Shelf, *ag.CounterpartyKey.V, theirLog, theirs[0].rec.RecordID, theirAg); err != nil {
-				return none(err)
-			}
-		}
-	}
-	if a := ag.Adjudicator.V; a != nil {
-		if b.CaseBook, b.ConflictingFinalRulings, b.RulingsUnnamed, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own, b.Counterpart); err != nil {
-			return none(err)
-		}
-	}
-	if b.Payments, err = p.payments(ctx, offer, ag, own, theirs); err != nil {
-		return none(err)
-	}
-	for _, r := range b.Payments {
-		link.CheckedOver = append(link.CheckedOver, r.CheckedOver...)
-	}
-	slices.Sort(link.CheckedOver)
-	link.CheckedOver = slices.Compact(link.CheckedOver)
 	v, err := BuildStatus(b)
 	if err != nil {
 		return none(err)
@@ -138,6 +74,91 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 		return none(err)
 	}
 	return Profile, link, raw, true, nil
+}
+
+// statusBooks is what a v1 deal book's status value is built from, read
+// through in's handles and the shelf's lock-free readers, with its link value
+// and the counterparty's counted prefix as a report rests on it, from the one
+// prefix read the status walked; ok false for a book that is not a v1 deal
+// book.
+func (p *StatusProvider) statusBooks(ctx context.Context, in evidencebook.StatusInput) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, bool, error) {
+	fail := func(err error) (StatusBooks, evidencebook.LinkValue, *ReportCounterpartLog, bool, error) {
+		return StatusBooks{}, evidencebook.LinkValue{}, nil, false, err
+	}
+	own, err := p.ownBook(ctx, in)
+	if err != nil || len(own) == 0 {
+		return fail(err)
+	}
+	ag, _ := asAgree(own[0].rec.Record.Body)
+	deal := own[0].rec.Record.Block.DealID
+	offer, err := p.offer(ctx, in.Journal, ag.Offer.Digest)
+	if err != nil {
+		return fail(err)
+	}
+	var keys []string
+	for _, w := range ag.Witnesses {
+		keys = append(keys, w.KeyID)
+	}
+	for i := range own {
+		if own[i].rec.Time, err = p.ownTime(ctx, in, uint64(i+1), keys); err != nil {
+			return fail(err)
+		}
+	}
+	held, err := p.Shelf.HeldByDeal(ctx, deal)
+	if err != nil {
+		return fail(err)
+	}
+	b := StatusBooks{Offer: offer}
+	for _, o := range own {
+		b.Own = append(b.Own, o.rec)
+	}
+	link := evidencebook.LinkValue{CheckedOver: []string{}}
+	var theirs []heldBookRecord
+	var theirLog string
+	var prefix evidencebook.CountedPrefix
+	if ag.CounterpartyKey.V != nil {
+		if logs := logsOf(held, *ag.CounterpartyKey.V, func(r Record) bool {
+			a, ok := asAgree(r.Body)
+			return ok && a.Kind == KindAgreement
+		}); len(logs) > 0 {
+			theirLog = logs[0]
+			if theirs, prefix, err = countedWith(ctx, p.Shelf, held, *ag.CounterpartyKey.V, theirLog); err != nil {
+				return fail(err)
+			}
+		}
+		for i := range theirs {
+			if theirs[i].rec.Time, err = p.receivedTime(ctx, in, theirLog, uint64(i+1), keys); err != nil {
+				return fail(err)
+			}
+			b.Counterpart = append(b.Counterpart, theirs[i].rec)
+		}
+		if len(theirs) > 0 {
+			last := theirs[len(theirs)-1]
+			link.LastReceived = &evidencebook.ReceivedPosition{LogID: theirLog, Size: uint64(len(theirs)), RecordDigest: last.rec.RecordID}
+			theirAg, _ := asAgree(theirs[0].rec.Record.Body)
+			if b.ProofHeld, err = proofCovers(ctx, p.Shelf, *ag.CounterpartyKey.V, theirLog, theirs[0].rec.RecordID, theirAg); err != nil {
+				return fail(err)
+			}
+		}
+	}
+	if a := ag.Adjudicator.V; a != nil {
+		if b.CaseBook, b.ConflictingFinalRulings, b.RulingsUnnamed, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own, b.Counterpart); err != nil {
+			return fail(err)
+		}
+	}
+	if b.Payments, err = p.payments(ctx, offer, ag, own, theirs); err != nil {
+		return fail(err)
+	}
+	for _, r := range b.Payments {
+		link.CheckedOver = append(link.CheckedOver, r.CheckedOver...)
+	}
+	slices.Sort(link.CheckedOver)
+	link.CheckedOver = slices.Compact(link.CheckedOver)
+	var cp *ReportCounterpartLog
+	if len(theirs) > 0 {
+		cp = &ReportCounterpartLog{LogID: theirLog, Counted: uint64(len(theirs)), Last: theirs[len(theirs)-1].rec.RecordID, ForkAt: prefix.ForkAt}
+	}
+	return b, link, cp, true, nil
 }
 
 // ownRecord is a record of the holder's book with its sealed pair.
@@ -283,9 +304,15 @@ func logsOf(held []evidencebook.HeldRecord, sender string, first func(Record) bo
 // one forgotten under retention. Data another party or retention controls
 // must not stop the stamp.
 func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, sender, logID string) ([]heldBookRecord, error) {
+	out, _, err := countedWith(ctx, shelf, held, sender, logID)
+	return out, err
+}
+
+// countedWith is counted with the counted prefix it walked.
+func countedWith(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, sender, logID string) ([]heldBookRecord, evidencebook.CountedPrefix, error) {
 	prefix, err := shelf.CountedPrefix(ctx, sender, logID)
 	if err != nil {
-		return nil, err
+		return nil, prefix, err
 	}
 	limit := prefix.Size
 	if prefix.ForkAt > 0 && prefix.ForkAt-1 < limit {
@@ -312,7 +339,7 @@ func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook
 		out = append(out, heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: h.Digest}, pair: h.Record})
 		prev = h.Digest
 	}
-	return out, nil
+	return out, prefix, nil
 }
 
 // caseBook is the adjudicator's rulings of the deal that either side has

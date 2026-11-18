@@ -489,3 +489,21 @@ func assertLoadsNothing(t *testing.T, html string) {
 	t.Helper()
 	assert.False(t, remoteLoad.MatchString(html), "the page loads nothing from the network")
 }
+
+// An x-deal-v1 deal's bundle is refused, before anything is verified or
+// rendered: v1 seals no Evidence Result, and its page reads the v1 deal
+// report (evidencebook#485).
+func TestBuildRefusesAnXDealV1Bundle(t *testing.T) {
+	v1 := edited(t, mustRead(t, bookFormBundle), func(value map[string]interface{}) {
+		extensions, _ := value["extensions"].(map[string]interface{})
+		if extensions == nil {
+			extensions = map[string]interface{}{}
+			value["extensions"] = extensions
+		}
+		extensions["x-deal-v1"] = map[string]interface{}{"sealed_report": "c"}
+	})
+	page, err := Build(v1, View{Card: "outcome"})
+	require.ErrorIs(t, err, ErrRefused)
+	assert.Nil(t, page)
+	assert.Contains(t, err.Error(), "v1 deal report")
+}

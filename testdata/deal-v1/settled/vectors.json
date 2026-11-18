@@ -1,0 +1,104 @@
+{
+  "cases": [
+    {
+      "name": "not-started",
+      "started": false,
+      "rows": [
+        "agreed"
+      ],
+      "settled": false
+    },
+    {
+      "name": "one-not-reached-rest-agreed",
+      "started": true,
+      "rows": [
+        "not_reached",
+        "agreed",
+        "uncontested"
+      ],
+      "settled": true
+    },
+    {
+      "name": "ruled-remedy-none",
+      "started": true,
+      "rows": [
+        "agreed",
+        "ruled:none"
+      ],
+      "settled": true
+    },
+    {
+      "name": "ruled-remedy-due",
+      "started": true,
+      "rows": [
+        "agreed",
+        "ruled:due"
+      ],
+      "settled": false
+    },
+    {
+      "name": "ruled-remedy-made",
+      "started": true,
+      "rows": [
+        "agreed",
+        "ruled:made"
+      ],
+      "settled": true
+    },
+    {
+      "name": "ruled-remedy-not-honoured",
+      "started": true,
+      "rows": [
+        "agreed",
+        "ruled:not_honoured"
+      ],
+      "settled": false
+    },
+    {
+      "name": "every-row-not-reached",
+      "started": true,
+      "rows": [
+        "not_reached",
+        "not_reached"
+      ],
+      "settled": true
+    },
+    {
+      "name": "in-dispute",
+      "started": true,
+      "rows": [
+        "agreed",
+        "in_dispute"
+      ],
+      "settled": false
+    },
+    {
+      "name": "ruled-remedy-not-counted",
+      "started": true,
+      "rows": [
+        "agreed",
+        "ruled:not_counted+made"
+      ],
+      "settled": false
+    },
+    {
+      "name": "conceded-not-met-without-remedy",
+      "started": true,
+      "rows": [
+        "agreed:met",
+        "agreed:not_met"
+      ],
+      "settled": false
+    },
+    {
+      "name": "conceded-not-met-remedy-made",
+      "started": true,
+      "rows": [
+        "agreed:met",
+        "agreed:not_met+made"
+      ],
+      "settled": true
+    }
+  ],
+  "description": "x-deal-v1 settled (docs/design/461-deal-profile.md §9): a deal is settled when it has started and every row that is not not_reached is agreed (met, or not met with a remedy made), uncontested, or ruled with remedy none or made. Each row is \"status\", \"ruled:remedy\" or \"agreed:value\", with \"+made\" for a remedy held. Written by dealprofile/xdealv1's TestSettled (EB_WRITE_DEAL_V1_VECTORS=1)."
+}

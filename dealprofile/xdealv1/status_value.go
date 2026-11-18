@@ -274,14 +274,8 @@ func BuildStatus(b StatusBooks) (StatusValue, error) {
 		}
 		return b.CaseBook[ref.i].Time
 	}
-	checks := map[string]string{}
-	for row, p := range b.Payments {
-		if p.Check != "" {
-			checks[row] = p.Check
-		}
-	}
 	rb := RowBooks{Offer: b.Offer, Own: timed(b.Own), Counterpart: timed(b.Counterpart), CaseBook: timed(b.CaseBook),
-		ConflictingFinalRulings: b.ConflictingFinalRulings, Checks: checks}
+		ConflictingFinalRulings: b.ConflictingFinalRulings, Checks: paymentChecks(b.Payments)}
 	agreedAt := b.Own[0].Record.Block.At
 	// The fact is written after every time it states as known, so the rows
 	// are read as of the latest of them: a window end hanging on a named
@@ -391,6 +385,18 @@ func rawJSON(v any) json.RawMessage {
 	return raw
 }
 
+// paymentChecks are the payment rows' checks that ran, by row id: a check
+// not run is left out, so RowInputs reads that row as not run.
+func paymentChecks(payments map[string]PaymentResult) map[string]string {
+	checks := map[string]string{}
+	for row, p := range payments {
+		if p.Check != "" {
+			checks[row] = p.Check
+		}
+	}
+	return checks
+}
+
 // statusStart is Start's input from the books, without at, its offerer's
 // agreement time as the books state it.
 func statusStart(b StatusBooks) (StatusStart, error) {
@@ -458,15 +464,26 @@ func effectiveRuling(b StatusBooks, row string, conflicting bool) *RulingBody {
 // remedyMade is the time of the owing side's first settle or perform whose
 // remedy_for is the row, ruled or not (design §8.1, Q5); None for none.
 func remedyMade(book []StatusRecord, row string) StatusTime {
-	for _, r := range book {
-		if p, ok := bodyOf[PerformBody](r.Record.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == row {
-			return r.Time
-		}
-		if s, ok := bodyOf[SettleBody](r.Record.Body); ok && s.RemedyFor != nil && s.RemedyFor.Row == row {
-			return r.Time
-		}
+	if i := firstRemedy(len(book), func(i int) Record { return book[i].Record }, row); i >= 0 {
+		return book[i].Time
 	}
 	return NoTime
+}
+
+// firstRemedy is the index of the first of n records (record(i)) that is a
+// settle or perform whose remedy_for is the row, -1 for none: the one rule
+// the status value and the report both read a remedy made by.
+func firstRemedy(n int, record func(i int) Record, row string) int {
+	for i := 0; i < n; i++ {
+		r := record(i)
+		if p, ok := bodyOf[PerformBody](r.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == row {
+			return i
+		}
+		if s, ok := bodyOf[SettleBody](r.Body); ok && s.RemedyFor != nil && s.RemedyFor.Row == row {
+			return i
+		}
+	}
+	return -1
 }
 
 // disputesOf is each dispute record of kind dispute on the row, of either
@@ -514,18 +531,7 @@ func disputesOf(books map[byte][]StatusRecord, bookOfRole map[string]byte, row s
 // statement_named_by_other, the first such naming, its book's times never
 // decreasing. While the window end is not known the fact's value stands.
 func ResolveRow(row StatusRow, at string, stamps map[uint64]string) (rowstatus.Input, error) {
-	r := func(st StatusTime) rowstatus.Time {
-		switch {
-		case st.Known != "":
-			k := st.Known
-			return &k
-		case st.Stamp != 0:
-			if s, ok := stamps[st.Stamp]; ok {
-				return &s
-			}
-		}
-		return nil
-	}
+	r := func(st StatusTime) rowstatus.Time { return resolveTime(st, stamps) }
 	in := row.Input
 	out := rowstatus.Input{At: at, Parties: in.Parties, Row: in.Row, Check: in.Check, ConflictingFinalRulings: in.ConflictingFinalRulings}
 	if in.Named != nil {

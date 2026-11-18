@@ -1459,6 +1459,54 @@ What exists: v0's report is a Capsule with `action_id` `capsulectl-deal-report`,
 deal's state from `lifecycle.state` alone (capsule-viewer `src/capsule_viewer/receipt/model.py:413-440`
 at `99d61f4`, `state` at line 425). v0's report stays unchanged.
 
+**Built in PR 5** (`xdealv1.BuildReport`, `xdealv1.StatusProvider.Report`, `xdealv1.ReportPayload`;
+PROFILE §10). It is as proposed below, with these additions and limits:
+
+- **Card members** (Sherlock2, #526 and #528 reviews; the coordinator made them PR 5's acceptance).
+  `rests_on.counterparty_kind` (the status value's, null: a page shows "not stated");
+  `rests_on.counterparty_proof`, one of `held`, `not_yet` and `no_layer`, reading the layer and the
+  held proof together (u611's no-layer marking); `disputes`, the status value's one entry per
+  dispute record; `rulings_unnamed` (#527), shown as "ruling held, unnamed" beside an `open`
+  outcome, absent at zero; and `status_fact`, null before the book's first status fact, else
+  `{"current": bool}`, whether that fact's status value is the one computed now (false after a
+  stamp left the book in `TickResult.Unstated`, or after a change no stamp has stated yet). An
+  adjudicator's copy carries neither `disputes` nor `rulings_unnamed`.
+- **`late`** is present: rowstatus's `ComputeLate` (Q9) landed in PR 1a (#484).
+- **Times.** A report reads each record's time as a stamp's status value does; a time only a
+  stamp of the holder's gives, with no witness receipt yet, is no time, so its rows are `local`.
+  `relied_on.witnessed` is true exactly when a time is given. `BuildReport` refuses books holding
+  a record timed after `as_of`, so disputes, rulings and `relied_on` read what was held then
+  (Codex and the stand-in, #530 review).
+- **The deal checkpoint** is the holder's book's latest checkpoint, which must cover the whole
+  book (a stamp cuts it). `Report` writes nothing: it reads the journal with
+  `Shelf.ExistingJournal`, which never creates it, and reads again, up to three times, when the
+  book moves during the read. A book holding a record not readable as x-deal-v1 is refused for
+  good, not as busy (Codex and the stand-in, #530 review).
+- **`relied_on`** includes the remedy record `remedy_made` rests on.
+- **A payment remedy is not counted** (Sherlock2, the twin and the coordinator, #530 review).
+  RowInputs counts no remedy that is a payment (6.1): it needs its own terms leg, which the
+  profile does not define. The report must never state a breach its records contradict, so a
+  ruled row whose ruling orders a payment has `remedy` `not_counted`, never `due` or
+  `not_honoured`, and keeps the deal unsettled. Its `remedy_made` says whether the owing side's
+  book holds a remedy for the row. Appendix A's refund reads `not_counted` with `remedy_made`
+  true from 25 Nov. Defining the remedy's terms leg is Sherlock2's and Steven's call; the
+  design's "26 Nov, remedy made, settled" vector waits for it. The two refund paths differ on
+  purpose: a refund after a concession settles its row on `remedy_made`, since nothing ordered an
+  amount or a date; a ruled refund stays `not_counted`, since the ruling sets an amount and a date
+  the report cannot check yet.
+- **Vectors built** (`testdata/deal-v1/report/`): Appendix A's buyer at each time above, the
+  books as held then; its counterparty and adjudicator copies; a not-started book (the seller
+  holding its own agreement only); an untimed own book; a counterparty without the layer; the
+  settled-without-ruling path (lines s1 to s12: the seller concedes row 3 not met and refunds
+  with no ruling, so the row is `agreed` `not_met` with `remedy_made`, and the deal is settled);
+  the same concession without the refund (`agreed` `not_met`, not settled); an empty witness
+  list (no record has a time, so the rows that rest on statements are `local`); and a ruling held
+  unnamed with a status fact that is not current.
+  `testdata/deal-v1/settled/` holds the `settled` cases.
+- **Not here:** the `x-deal-v1` bundle extension's `sealed_report` pointer and the sealing call
+  are the host's (evidencebook-deal#212); `report/` (`capsulectl book report`) refuses a bundle
+  carrying the `x-deal-v1` extension and points to this report (#485).
+
 **Proposed: the v1 report.**
 
 - **Type and Capsule.** The same Capsule form and names (`ReportActionID`, `ReportType`
@@ -1535,7 +1583,10 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
   `shelf_receive.go:1121-1136`), including a fork's position.
 - **`settled`** (review round 1). It is true when all of these hold at `as_of`: the deal has
   started (`start.state` is `started`); and every row that is not `not_reached` is `agreed`,
-  `uncontested`, or `ruled` with remedy `none` (the final ruling ordered nothing) or `made`. A
+  `uncontested`, or `ruled` with remedy `none` (the final ruling ordered nothing) or `made`. An
+  `agreed` row whose value is `not_met` counts only with a remedy made (`remedy_made`): under
+  Steven's SH-16 ruling (Q5) the remedy is what makes a conceded row remedied (Sherlock2, #530
+  review). A
   `not_reached` row is left out of settlement, as the design says (on the card it is `undecided`,
   Q12, answered) ("it is left out when the deal is settled",
   design §4.2, "A latest date"; line 372 of the export). A row `ruled` with remedy `due` or
@@ -1595,11 +1646,12 @@ at `99d61f4`, `state` at line 425). v0's report stays unchanged.
   | `rows_state` | `listed`, `not_started`, `withheld` |
   | row `status` | rowstatus's ten (`rowstatus.go:56-66`): `not_reached`, `not_due`, `no_statement`, `waiting`, `uncontested`, `agreed_so_far`, `agreed`, `in_disagreement`, `in_dispute`, `ruled` |
   | row `value` | `met`, `not_met`, or `null` (`cannot_tell` is never a value: rowstatus counts it as no statement) |
-  | row `remedy` | `none`, `due`, `made`, `not_honoured`, or `null` for a row that is not ruled |
+  | row `remedy` | `none`, `due`, `made`, `not_honoured`, `not_counted` (a ruled payment remedy, PR 5), or `null` for a row that is not ruled |
   | row `check` | `passed`, `failed`, `not_run`, `not_recomputed` |
   | row `due`, `window_end` | an RFC 3339 UTC time, or `not_set` |
   | `audience` | `keep`, `counterparty`, `adjudicator` |
-  | booleans | `local`, `witnessed`, `settled`, `final`, `counterparty_layer` |
+  | `rests_on.counterparty_proof` | `held`, `not_yet`, `no_layer` (PR 5) |
+  | booleans | `local`, `witnessed`, `settled`, `final`, `counterparty_layer`, `remedy_made`, `status_fact.current` |
 
 - A page shows `rows` and `start` as they are. It never recomputes them.
 

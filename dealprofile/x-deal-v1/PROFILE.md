@@ -318,7 +318,7 @@ and returns per act the record digests the person signs:
 An act MUST NOT be relied on until the person's signature over each listed digest, from the
 person's own key, is held. The signature travels beside the approval record, never inside it, so
 it changes no record format; the member that carries it is defined in
-action-state-group/agent-action-capsule#627, not here (section 10). The person's signature
+action-state-group/agent-action-capsule#627, not here (section 11). The person's signature
 certifies what the approval already says, no more: on a `user` approval, the person's own answer;
 on an `agent_card` approval, that the person answered the card the agent composed, which, as in
 x-deal-v0 §6 rule 6, is not consent in the person's own words.
@@ -362,9 +362,50 @@ not run, and ends "OK, reduced coverage". Given files, it checks each record on 
 not check the authorization of acts (section 8) or a pair sent whole (section 7): the Go package's
 vectors in `testdata/deal-v1/` do.
 
-## 10. Not defined here yet
+## 10. The sealed deal report
 
-When a deal has started (design note §5), the stamp proof order (§7), the status and link values
-and how a received record is read (§8), and the sealed deal report (§9) are later parts of
-evidencebook#461 step 5 (design note §11.1, PRs 3 to 5). The member that carries the person's
-signature beside an approval (section 8) is defined in action-state-group/agent-action-capsule#627.
+A v1 deal seals no Evidence Result (evidencebook#485). A receipt page reads one sealed report
+instead: a snapshot the holder signs of each row's status as it computed it at `as_of` from what
+it held, so a page displays it and never recomputes it (design note §9). It is v0's report
+Capsule (`action_id` `capsulectl-deal-report`, payload `type` `deal_report`) with `profile`
+`x-deal-v1`. It is always standalone: appended to no book, read by no status input, cited by no
+record. `xdealv1.BuildReport` computes a copy and `xdealv1.StatusProvider.Report` computes one
+from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v1/settled/`.
+
+- **Members.** `as_of`, `deal_checkpoint`, `pack_digest`, `start` (Start's result at `as_of`),
+  `settled`, `rows_state` and `rows` (each agreed row's rowstatus result at `as_of`, its `check`,
+  its `late` statements and disputes, its effective ruling and the records it relied on), and
+  `rests_on`, as design note §9 gives them. A page shows them as they are.
+- **What a page must not misread** (Sherlock2, evidencebook#526 and #528):
+  - `rests_on.counterparty_kind` is null while nothing states it; a page shows "not stated".
+  - `rests_on.counterparty_proof` reads the counterparty's layer and the held proof together:
+    `held`; `not_yet`, a layered counterparty whose proof has not arrived; or `no_layer`, a
+    counterparty that sends no stamp proof, which a page words as u611 does: the other side sent
+    no stamp proof, counted from our receipt only.
+  - A row's `remedy` is `not_counted` when its ruling orders a payment (a refund): no payment
+    remedy is counted until the profile defines its terms leg, so the report never says such a
+    remedy is due or not honoured. A page shows "remedy is a payment, not checked". The deal is not
+    settled while one is. `remedy_made` says the owing side's book holds a remedy for the row,
+    ruled or not, and that record is in the row's `relied_on`.
+  - A refund after a concession settles: an `agreed` row whose value is `not_met` counts toward
+    `settled` only with `remedy_made` (Steven's SH-16 ruling). A ruled refund does not settle yet,
+    because the ruling sets an amount and a date the report cannot check until the remedy's terms
+    leg is defined.
+  - `disputes` lists one entry per `dispute` record, with its outcome. `rulings_unnamed` (absent
+    at zero) counts the adjudicator's counted rulings the holder holds that neither book names; a
+    page shows "ruling held, unnamed" beside an `open` outcome.
+  - `status_fact` is null before the book's first status fact, else whether that fact is the
+    status computed now. A page never presents a fact that is not current as the deal's status.
+- **What it rests on.** A report is computed from what the holder held at `as_of`: no record it
+  rests on is timed after `as_of`. From a shelf, it rests on the holder's book at its latest
+  checkpoint, which covers the whole book; making a report writes nothing, the journal included.
+- **Audiences.** `keep` and `counterparty` copies list the rows. An `adjudicator` copy names its
+  `referee`, has `rows_state` `withheld` and no rows, and carries neither the counterparty's
+  prefix, the witnesses, the disputes nor `rulings_unnamed`.
+- **No close.** The payload has no `lifecycle` and no rules verdict. A page's deal-level line is
+  `start.state` and, for a started deal, `settled`.
+
+## 11. Not defined here yet
+
+The member that carries the person's signature beside an approval (section 8) is defined in
+action-state-group/agent-action-capsule#627.
