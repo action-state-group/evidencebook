@@ -190,7 +190,9 @@ carries the terms leg (section 7); a payer leg is the owing party's, a payee leg
 `ruling`, never both. A statement with empty `statements` and no `names` is invalid. A receiving library
 MUST seal a statement naming a ruling when a counted ruling for one of the holder's deals arrives
 from that deal's adjudicator (evidencebook#527), so the holder's own status reads it whether or not
-the ruling went its way.
+the ruling went its way. `xdealv1.NameRulings` does it: a host calls it after each `Receive` with
+the deals whose counted records grew (`ReceiveResult.Changes.Grew`). It seals each record through
+`xdealv1.BookEntry`, the entry that seals any x-deal-v1 deal-book record.
 
 **`dispute`.** Kind `dispute`: `row`, `statements` (the record digests of the statements on that
 row when it is sealed), `adjudicator` and `forum`. Read against its book's agreement

@@ -1293,10 +1293,15 @@ the witness receipts it is handed (A, above).
   stamp. So the side a ruling goes against cannot keep it off its own status by not naming it
   while the winner names it (Sherlock2's twin, PR 4c-2b-2 review, P1). PROFILE says a receiving
   library MUST name a counted ruling's arrival (#527).
-  - **Caveat** (Sherlock2, the same review). Until #527 lands, a ruling neither side has named is
-    not an input: its arrival has no time on the holder's shelf, whose stamps cover only its own
-    book and the counterparty's. An `open` outcome may then hide an unnamed ruling, so PR 5's
-    card must not present it as unresolved.
+  - **Naming is the library's** (#527). `xdealv1.NameRulings`, which a host calls after each
+    `Receive` with `Changes.Grew`, seals in the holder's deal book a statement naming each counted
+    ruling of the deal's adjudicator that the book does not name yet. So a holder's own status
+    reads every ruling it has received.
+  - **Caveat** (Sherlock2, PR 4c-2b-2 review). A ruling neither side has named is not an input:
+    its arrival has no time on the holder's shelf, whose stamps cover only its own book and the
+    counterparty's. That happens only with a host that does not call `NameRulings`, and only
+    while the counterparty names it neither. An `open` outcome may then hide an unnamed ruling, so
+    PR 5's card must not present it as unresolved.
 - **Every case book.** One book per case (3.2), so the provider reads every log of the
   adjudicator held for the deal. Each counted prefix is walked from position 1, one held follower
   at a time, and the walk stops at a counted record not held for the deal: another deal's in the
