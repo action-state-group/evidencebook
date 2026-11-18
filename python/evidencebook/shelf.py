@@ -792,6 +792,43 @@ def _held_by(headers: list[Header], ids: list[str], record_id: str, header: Head
     return False
 
 
+def _go_name_matches(key: str, field: str) -> bool:
+    """Go's ``encoding/json`` match of a member name to a struct field's:
+    exact, or equal under Unicode simple case folding, which for these ASCII
+    names also takes U+017F for ``s`` and U+212A for ``k``."""
+
+    def fold(c: str) -> str:
+        return {"\u017f": "s", "\u212a": "k"}.get(c, c.lower() if c.isascii() else c)
+
+    return len(key) == len(field) and all(fold(a) == fold(b) for a, b in zip(key, field))
+
+
+def _lifecycle_state(statement: Any) -> str | None:
+    """A lifecycle statement as Go's ``json.Unmarshal`` into
+    ``LifecycleStatement`` reads it: its state, ``""`` for none; ``None``
+    when Go refuses it (corrupt). A null statement reads as none and one
+    that is not an object is refused; ``retention_state`` and ``reason``
+    match in any case, the later spelling winning, a null leaving the field
+    as it was, and a value of another type is refused; any other member is
+    ignored. (A statement member that is absent is the caller's to refuse.)"""
+    if statement is None:
+        return ""
+    if not isinstance(statement, dict):
+        return None
+    state = ""
+    for k, v in statement.items():
+        is_state = _go_name_matches(k, "retention_state")
+        if not is_state and not _go_name_matches(k, "reason"):
+            continue
+        if v is None:
+            continue
+        if not isinstance(v, str):
+            return None
+        if is_state:
+            state = v
+    return state
+
+
 def _retention(headers: list[Header], ids: list[str], stated: list[bool], i: int, now_ns: int) -> str:
     """Go's ``retentionOf``: the header's state folded through every later
     lifecycle record citing it; an AVAILABLE or PARTIAL record under a live
@@ -802,13 +839,10 @@ def _retention(headers: list[Header], ids: list[str], stated: list[bool], i: int
     for later in headers[header.seq:]:
         if later.record_type != _LIFECYCLE or record_id not in later.links_to(CITES):
             continue
-        # As Go reads it into a LifecycleStatement: a null statement or no
-        # retention_state is the empty state; no statement member at all, or
-        # another shape, is corrupt (json.Unmarshal of nothing fails).
-        statement = {} if later.statement is None else later.statement
-        if not stated[later.seq - 1] or not isinstance(statement, dict) or not isinstance(statement.get("retention_state", ""), (str, type(None))):
+        found = _lifecycle_state(later.statement) if stated[later.seq - 1] else None
+        if found is None:
             raise CorruptError(f"lifecycle record {ids[later.seq - 1]} holds no lifecycle statement")
-        state = statement.get("retention_state") or ""
+        state = found
     if state == _DELETED:
         return state
     held = state == _LEGAL_HOLD or _held_by(headers, ids, record_id, header, now_ns)
