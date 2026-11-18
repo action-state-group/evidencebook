@@ -290,7 +290,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 	if r.Text == nil {
 		r.Text = map[string]any{}
 	}
-	var rows []ReportRow
+	rows := []ReportRow{}
 	for i, in := range ins {
 		row, err := reportRow(rb, of.TermsRows.Rows[i], in, srcs[i])
 		if err != nil {

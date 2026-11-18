@@ -22,15 +22,23 @@ fn invalid(m: impl Into<String>) -> Invalid {
 
 /// A row date: a fixed time, or a number of seconds after a named record's
 /// time.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Date {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub after: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub seconds: i64,
+}
+
+fn is_zero(v: &i64) -> bool {
+    *v == 0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 /// A record a date hangs on: its time once it has one, and the latest time
@@ -45,7 +53,7 @@ pub struct Named {
 }
 
 /// One term row.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Row {
     #[serde(default)]
@@ -56,7 +64,7 @@ pub struct Row {
     pub due: Date,
     #[serde(default)]
     pub window_end: Date,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub recomputed: bool,
 }
 
@@ -204,6 +212,8 @@ pub fn parse_input(bytes: &[u8]) -> Result<Input, Invalid> {
 }
 
 struct Stmt {
+    /// The statement's index in the input.
+    idx: usize,
     side: usize,
     value: String,
     t: Option<i64>,
@@ -219,7 +229,8 @@ struct Calc<'a> {
     reached: bool,
     local: bool,
     stmts: Vec<Stmt>,
-    disputes: Vec<(usize, Option<i64>, bool)>,
+    /// Each held dispute: its side, time, seen_in_time and input index.
+    disputes: Vec<(usize, Option<i64>, bool, usize)>,
     rulings: Vec<(&'a Ruling, Option<i64>)>,
     remedies: Vec<Option<i64>>,
     withdrawn: [bool; 2],
@@ -230,6 +241,44 @@ struct Calc<'a> {
 pub fn compute(input: &Input) -> Result<Outcome, Invalid> {
     let mut c = Calc::new(input)?;
     Ok(c.compute())
+}
+
+/// What the rule set aside as late on a row as of `at` (evidencebook#461,
+/// design §9, Q9): indices into the input's statements and disputes, in
+/// input order (Go `rowstatus.Late`). It changes no [`Outcome`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Late {
+    /// The statements held as of `at` that are after the end of the
+    /// contest window.
+    #[serde(rename = "late_statements")]
+    pub statements: Vec<usize>,
+    /// The held disputes rule 2 does not count because they are late.
+    #[serde(rename = "late_disputes")]
+    pub disputes: Vec<usize>,
+}
+
+/// The late statements and late disputes of one row as of `input.at`
+/// (Go `ComputeLate`). Both are empty while the row is not reached or a
+/// date is unset.
+pub fn compute_late(input: &Input) -> Result<Late, Invalid> {
+    let mut c = Calc::new(input)?;
+    let mut out = Late::default();
+    if !c.reached || c.unset {
+        return Ok(out);
+    }
+    for s in &c.stmts {
+        if c.late(s) {
+            out.statements.push(s.idx);
+        }
+    }
+    let in_time = c.values();
+    let failed = c.input.check == "fail";
+    for &(_, t, seen, idx) in &c.disputes.clone() {
+        if c.dispute_late(t, seen, &in_time, failed) {
+            out.disputes.push(idx);
+        }
+    }
+    Ok(out)
 }
 
 impl<'a> Calc<'a> {
@@ -271,7 +320,7 @@ impl<'a> Calc<'a> {
             }
         }
         let mut floors: [Option<i64>; 2] = [None, None];
-        for s in &input.statements {
+        for (idx, s) in input.statements.iter().enumerate() {
             let i = c.side(&s.side)?;
             if !matches!(s.value.as_str(), MET | NOT_MET | CANNOT_TELL) {
                 return Err(invalid(format!("statement value {:?}", s.value)));
@@ -291,6 +340,7 @@ impl<'a> Calc<'a> {
                 continue;
             }
             c.stmts.push(Stmt {
+                idx,
                 side: i,
                 value: s.value.clone(),
                 t,
@@ -304,10 +354,10 @@ impl<'a> Calc<'a> {
                 c.w_timed[i] |= t.is_some();
             }
         }
-        for d in &input.disputes {
+        for (idx, d) in input.disputes.iter().enumerate() {
             let i = c.side(&d.side)?;
             if let Some(t) = c.held(&d.time)? {
-                c.disputes.push((i, t, d.seen_in_time));
+                c.disputes.push((i, t, d.seen_in_time, idx));
             }
         }
         for r in &input.rulings {
@@ -503,7 +553,7 @@ impl<'a> Calc<'a> {
         // A withdrawal with no time is relied on only when no other dispute
         // counts: it is what keeps the row out of dispute.
         let mut rests_on_untimed_withdrawal = false;
-        for (side, t, seen) in disputes {
+        for (side, t, seen, _) in disputes {
             if self.dispute_late(t, seen, &in_time, failed) {
                 continue;
             }
@@ -585,7 +635,13 @@ impl<'a> Calc<'a> {
 
 /// Seconds since the Unix epoch of `YYYY-MM-DDTHH:MM:SSZ`, the one form the
 /// three implementations read.
-fn parse_time(s: &str) -> Result<i64, Invalid> {
+pub(crate) fn parse_time(s: &str) -> Result<i64, Invalid> {
+    parse_time_from(s, 1)
+}
+
+/// [`parse_time`] with the earliest year it reads: Go's `time.Parse`
+/// reads year 0000, which rowstatus refuses and Start takes.
+pub(crate) fn parse_time_from(s: &str, min_year: i64) -> Result<i64, Invalid> {
     let bad = || invalid(format!("time {s:?} is not YYYY-MM-DDTHH:MM:SSZ"));
     let b = s.as_bytes();
     if b.len() != 20
@@ -622,7 +678,7 @@ fn parse_time(s: &str) -> Result<i64, Invalid> {
         30,
         31,
     ];
-    if y < 1
+    if y < min_year
         || !(1..=12).contains(&mo)
         || d < 1
         || d > days_in[(mo - 1) as usize]

@@ -10,6 +10,9 @@
 //! `dealprofile/x-deal-v0/PROFILE.md`; its schemas are vendored here byte
 //! for byte.
 //!
+//! [`v1`] is the x-deal-v1 profile (evidencebook#461), the counterpart of
+//! Go's `dealprofile/xdealv1`.
+//!
 //! It is a profile the crate carries, not part of the Evidence Layer
 //! semantics: nothing else in the crate depends on it. It holds no deal
 //! logic: what a step says, what it is approved by and what a report's lines
@@ -46,6 +49,7 @@ mod schema;
 mod standard_history;
 mod step;
 mod types;
+pub mod v1;
 
 pub use capsule::{
     Capsule, Chain, Disposition, Effect, Extension, ACTION_TYPE_DECIDE, ACTION_TYPE_FYI,

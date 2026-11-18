@@ -57,6 +57,11 @@ python3 testdata/row-status/generate.py testdata/row-status/vectors.json && git 
 go build -o /tmp/rs-go ./test/interop/row-status && (cd rust && cargo build --locked -p evidencebook-interop --bin row-status) \
   && python/.venv/bin/python test/interop/row-status/diff.py /tmp/rs-go rust/target/debug/row-status
 
+# x-deal-v1 in Go and Rust (dealprofile/xdealv1, rust deal::v1): records mutated from the
+# fixtures and books from the vectors, on random inputs (CI: deal-v1-diff in ci.yml)
+go build -o /tmp/dv1-go ./test/interop/deal-v1 && (cd rust && cargo build --locked -p evidencebook-interop --bin deal-v1) \
+  && python3 test/interop/deal-v1/diff.py /tmp/dv1-go rust/target/debug/deal-v1 --n 4000 --seed 1
+
 # The Goose loop reference (python/examples/goose; CI: the goose job in ci.yml): its tests, the
 # scripted two-node run over MCP stdio, Go's check of each node's card, and each node's deal half
 # through a capsules-plugin v0.1.8 Mesh node's checks (each check skips when its variable is unset)
@@ -82,7 +87,7 @@ CI (`ci.yml`) also runs the evidence interop profile, personal-history and
 registry conformance jobs against pinned agent-action-capsule commits; read
 the job for the exact pins and steps before changing what they cover.
 `rust.yml` runs only when `rust/`, `testdata/refusal-interop/`,
-`testdata/evidence-request/`, `testdata/shelf/`, `testdata/staple/`, `testdata/history-card-2/`, `testdata/standard-history-respond/`, `testdata/row-status/`, `rowstatus/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
+`testdata/evidence-request/`, `testdata/shelf/`, `testdata/staple/`, `testdata/history-card-2/`, `testdata/standard-history-respond/`, `testdata/row-status/`, `testdata/deal-v1/`, `rowstatus/`, `test/interop/shelf/`, `dealprofile/` (the x-deal-v0 profile the
 crate's `deal` feature implements: its schemas, fixtures and Go package), the
 Go and Python interop programs it compares with (`test/interop/personal-history/`, `test/interop/responder/`,
 `test/interop/python-profile/`, `test/interop/python-personal/`, and the root
