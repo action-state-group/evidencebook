@@ -479,7 +479,8 @@ func (p *ReceiveProfile) heldSent(ctx context.Context, digest string) (Record, s
 	return Record{}, "", false, nil
 }
 
-// Admit is the push rule (design §8.3; evidencebook ReceiveProfile.Admit):
+// Admit is EBL's current push rule, which is not ruled yet (Forms SF-6, AAC
+// spec/shelf-forms-v0.md; design §8.3; evidencebook ReceiveProfile.Admit):
 // an offer from any key; a decline of an offer of ours from the key it was
 // sent to; a cancellation of an offer of this deal from that offer's signer;
 // a ruling from our agreement's adjudicator; and a deal-book record from the
@@ -688,6 +689,13 @@ type CanActInput struct {
 	CommitmentShelfLog   string
 }
 
+// Whether a holder must refuse its first act until CanAct is true is Steven's
+// to rule, not yet ruled: CanAct computes the gate, and the caller decides
+// whether to apply it. It does not apply to a deal whose counterparty runs no
+// layer (design §4.7), which holds no counterpart agreement, so CanAct is
+// false there. A stamp proof shows the counterparty stamped its book; only a
+// named witness's receipt shows anyone independent saw it.
+//
 // CanAct is the coverage gate before the holder's first act of a deal (design
 // §7.2, gate B). The counterparty's agreement must be of this deal, signed by
 // the key the deal expects (our agreement's counterparty_key, or the key our

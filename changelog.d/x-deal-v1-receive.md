@@ -4,11 +4,12 @@
     comes from `Book.Sealed`.
   - `xdealv1.ReceiveProfile` implements `evidencebook.ReceiveProfile`:
     - `Read` places a book record at its book log and seq, and a sent record in its own one-record log;
-    - `Admit` applies the push rule of design note §8.3;
+    - `Admit` applies EBL's current push rule (design note §8.3), which is not ruled yet (Forms SF-6);
     - `Answered` says whether our agreement, decline or counter-offer cites a held offer;
     - `ProofSender` relates a stamp proof to the counterparty whose agreement opens the log, refusing a
       fork at position 1 and anything but exactly one candidate.
-  - `ReceiveProfile.CanAct` is the gate before a first act of a deal. The counterparty's agreement must be
+  - `ReceiveProfile.CanAct` computes the gate before a first act of a deal. Whether a first act must wait for
+    it is not ruled yet, so the caller decides whether to apply it. The counterparty's agreement must be
     of that deal, signed by the key it expects and citing its offer, and counted now. A held stamp proof
     bound to it must cover it: its book id, its checkpoint key, and its shelf log, which is also the
     log the counterparty's evidence commitment names when one is given.

@@ -708,3 +708,12 @@ func TestCanActConcurrentWithACacheUpdate(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
+
+// A deal whose counterparty runs no layer holds no counterpart agreement:
+// CanAct is false, and the gate does not apply to it (design §4.7).
+func TestCanActWithoutALayerIsFalse(t *testing.T) {
+	h := newHandshake(t, nil)
+	ok, err := h.seller.profile.CanAct(context.Background(), CanActInput{DealID: fxDealID, CounterpartAgreement: ""})
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
