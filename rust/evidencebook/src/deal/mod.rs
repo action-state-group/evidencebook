@@ -28,7 +28,11 @@
 //! (`check_profile.py`).
 //!
 //! A refusal matches Go's in its stage, and in its text wherever the
-//! profile's fixtures name one. Two diagnostics are written differently: a
+//! profile's fixtures name one, with one stricter refusal: a member named
+//! `"$serde_json::private::Number"` or `"$serde_json::private::RawValue"`,
+//! which serde_json would read as something else, is refused at the
+//! canonicalization stage, and by [`decode`], where Go reads it as written
+//! (evidencebook#534). Two diagnostics are written differently: a
 //! `canonicalization` value that is not a string is shown as JSON, not as
 //! Go's `%v` prints it, and a quoted value is not escaped where Go's `%q`
 //! escapes a non-printable character beyond ASCII. The Unicode tables are

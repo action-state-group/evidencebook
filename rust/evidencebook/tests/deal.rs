@@ -1021,6 +1021,8 @@ fn the_reserved_number_member_is_refused() {
     for member in [
         "$serde_json::private::Number",
         "\\u0024serde_json::private::Number",
+        "$serde_json::private::RawValue",
+        "\\u0024serde_json::private::RawValue",
     ] {
         let bad = text.replacen(
             "\"terms\":{",
@@ -1031,6 +1033,36 @@ fn the_reserved_number_member_is_refused() {
         let err = deal::check(bad.as_bytes(), &[]).expect_err(member);
         assert_eq!(stage_of(&err), "canonicalization", "{member}: {err}");
         assert!(deal::digest(bad.as_bytes()).is_err(), "{member}: no digest");
+        assert!(
+            deal::decode::<deal::Record>(bad.as_bytes()).is_err(),
+            "{member}: decode refuses it"
+        );
+    }
+    // White space between the name and its colon: still the member.
+    for ws in [" ", "\t", "\n", "\r"] {
+        let bad = text.replacen(
+            "\"terms\":{",
+            &format!("\"terms\":{{\"x\":{{\"$serde_json::private::Number\"{ws}:\"1\"}},"),
+            1,
+        );
+        let err = deal::check(bad.as_bytes(), &[]).expect_err("refused");
+        assert_eq!(stage_of(&err), "canonicalization", "{ws:?}: {err}");
+    }
+    // The same name as a string value, plain or escaped, is no member: the
+    // record is read as written and has its digest.
+    for value in [
+        "$serde_json::private::Number",
+        "\\u0024serde_json::private::Number",
+    ] {
+        let ok = text.replacen("\"terms\":{", &format!("\"terms\":{{\"x\":\"{value}\","), 1);
+        assert_ne!(ok, text);
+        deal::digest(ok.as_bytes()).unwrap_or_else(|e| panic!("{value}: {e}"));
+        let refused = deal::check(ok.as_bytes(), &[]).err();
+        assert_ne!(
+            refused.as_ref().map(stage_of),
+            Some("canonicalization"),
+            "{value}: {refused:?}"
+        );
     }
     let zero = text.replacen("\"terms\":{", "\"terms\":{\"x\":-0,", 1);
     let refused = deal::check(zero.as_bytes(), &[]).err();

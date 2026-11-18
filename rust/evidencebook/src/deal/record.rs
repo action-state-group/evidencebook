@@ -206,13 +206,17 @@ impl<'de> Deserialize<'de> for Record {
 
 /// Reads a record's JSON text into `T`: a [`Record`], or one of the typed
 /// record or contract document types. It refuses a member `T` does not
-/// name, and text `T` would not encode back to (such as a null where `T`
-/// holds a required value). A key repeated in an object is read last-wins
+/// name, text `T` would not encode back to (such as a null where `T`
+/// holds a required value), and a member serde_json reads as something
+/// else (evidencebook#534). A key repeated in an object is read last-wins
 /// everywhere, as Go's `Decode` and `Check` and the reference checker read
 /// it. A record's digest is still that of its sealed bytes
 /// ([`digest`](super::digest)); `decode` only says `T` holds the same
 /// record.
 pub fn decode<T: DeserializeOwned + Serialize>(data: &[u8]) -> Result<T, Error> {
+    // A member serde_json reads as something else is refused, as `check`
+    // refuses it (evidencebook#534).
+    super::check::no_reserved_members(data)?;
     let doc: Value = serde_json::from_slice(data)?;
     let want = jcs(&doc)?;
     let v: T = serde_json::from_value(doc)?;
