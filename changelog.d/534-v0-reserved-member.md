@@ -1,0 +1,2 @@
+<!-- changelog: rust/evidencebook/CHANGELOG.md -->
+- **Fixed (`deal`, x-deal-v0):** a record that names a member `"$serde_json::private::Number"` is now refused at the canonicalization stage, whether or not the name is escaped (evidencebook#534). serde_json's `arbitrary_precision` reads an object holding only that member as a number, so the record was not read as written and two texts could share one digest. `deal::v1` already refused it; both now use one check.

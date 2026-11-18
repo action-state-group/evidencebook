@@ -117,7 +117,7 @@ pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
         match c {
             b'"' => {
                 in_string = false;
-                reserved_key(raw, start, i)?;
+                crate::deal::check::reserved_key(raw, start, i)?;
             }
             b'\\' if i + 1 < raw.len() => {
                 if raw[i + 1] == b'u' && i + 5 < raw.len() {
@@ -147,36 +147,6 @@ pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
     NoRepeats
         .deserialize(&mut de)
         .map_err(|e| stage_err(STAGE_CANONICALIZATION, e.to_string()))?;
-    Ok(())
-}
-
-/// The member name serde_json's `arbitrary_precision` reads an object
-/// holding only it as a number by.
-const RESERVED_MEMBER: &str = "$serde_json::private::Number";
-
-/// Refuses the string at `raw[start..=end]` when it is a member name (a
-/// colon follows it) that unescapes to [`RESERVED_MEMBER`]: serde_json would
-/// read its object as a number, so the record would not be read as written
-/// (Codex, #533 review). A value, or serde_json's own encoding of a number
-/// such as `-0`, is not text and passes.
-fn reserved_key(raw: &[u8], start: usize, end: usize) -> Result<(), Error> {
-    let mut j = end + 1;
-    while j < raw.len() && matches!(raw[j], b' ' | b'\t' | b'\n' | b'\r') {
-        j += 1;
-    }
-    if raw.get(j) != Some(&b':') {
-        return Ok(());
-    }
-    let name: Result<String, _> = serde_json::from_slice(&raw[start..=end]);
-    if name.ok().as_deref() == Some(RESERVED_MEMBER) {
-        return Err(stage_err(
-            STAGE_CANONICALIZATION,
-            format!(
-                "member {} is reserved by the JSON reader",
-                super::super::check::go_q(RESERVED_MEMBER)
-            ),
-        ));
-    }
     Ok(())
 }
 

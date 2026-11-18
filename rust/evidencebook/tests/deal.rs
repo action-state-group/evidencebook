@@ -1006,3 +1006,37 @@ fn report_lines_read_whole_floats_as_integers() {
     }
     assert!(deal::report_payload(&report(json!({"n": 9_007_199_254_740_992.0_f64}))).is_err());
 }
+
+/// A member named as serde_json's arbitrary_precision names its private
+/// number, `"$serde_json::private::Number"`, would be read as a number, so
+/// the record would not be read as written and two texts could share one
+/// digest: it is refused at the canonicalization stage, escaped or not
+/// (evidencebook#534). `-0`, which serde_json hands its readers through
+/// that member, is a number as written and passes the text check.
+#[test]
+fn the_reserved_number_member_is_refused() {
+    let raw = fs::read_to_string(fixtures_dir().join("positive/01-baseline.json")).unwrap();
+    let f: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let text = serde_json::to_string(&f["record"]).unwrap();
+    for member in [
+        "$serde_json::private::Number",
+        "\\u0024serde_json::private::Number",
+    ] {
+        let bad = text.replacen(
+            "\"terms\":{",
+            &format!("\"terms\":{{\"x\":{{\"{member}\":\"1\"}},"),
+            1,
+        );
+        assert_ne!(bad, text);
+        let err = deal::check(bad.as_bytes(), &[]).expect_err(member);
+        assert_eq!(stage_of(&err), "canonicalization", "{member}: {err}");
+        assert!(deal::digest(bad.as_bytes()).is_err(), "{member}: no digest");
+    }
+    let zero = text.replacen("\"terms\":{", "\"terms\":{\"x\":-0,", 1);
+    let refused = deal::check(zero.as_bytes(), &[]).err();
+    assert_ne!(
+        refused.as_ref().map(stage_of),
+        Some("canonicalization"),
+        "-0 is not the reserved member: {refused:?}"
+    );
+}
