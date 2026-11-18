@@ -3,7 +3,8 @@
 ``docs/design/461-deal-profile.md``), the Python counterpart of the Go
 package ``dealprofile/xdealv1``, producing the same bytes and refusals: its
 names, a record's strict reading and digest, the checks a record must pass,
-and when a deal has started. The normative text is
+when a deal has started, the deal book's status value and a copy of the
+report (:mod:`.status`, :mod:`.report`). The normative text is
 ``dealprofile/x-deal-v1/PROFILE.md``; its schema is vendored here byte for
 byte.
 
@@ -26,4 +27,13 @@ from .names import record_types
 from .start import (
     BY_ACCEPTOR_NAMED, BY_FIRST_ACT, BY_OFFERER_IN_TIME, STATE_AWAITING_AGREEMENT, STATE_NOT_STARTED,
     STATE_STARTED, BookRecord, FirstAct, StartBooks, StartInput, StartResult, start, start_from_books,
+)
+from .report import (
+    CHECK_FAILED, CHECK_NOT_RECOMPUTED, CHECK_NOT_RUN, CHECK_PASSED, NOT_SET, PROOF_HELD, PROOF_NO_LAYER, PROOF_NOT_YET,
+    REMEDY_NOT_COUNTED, ROWS_LISTED, ROWS_NOT_STARTED, ROWS_WITHHELD, SIDE_ADJUDICATOR, build_report, report_payload,
+    settled,
+)
+from .status import (
+    OUTCOME_AGAINST_CLAIMANT, OUTCOME_FOR_CLAIMANT, OUTCOME_NO_FINDING, OUTCOME_OPEN, OUTCOME_WITHDRAWN, StatusError,
+    TimedRecord, build_status, owed_amount, resolve_row, row_inputs, status_time, value_band,
 )

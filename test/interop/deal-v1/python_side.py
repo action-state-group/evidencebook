@@ -2,7 +2,7 @@
 """The Python side of the x-deal-v1 differential check (diff.py): one JSON
 request per line on stdin, and one answer line for each, as the Go side
 (main.go) answers. It answers the kinds the Python package implements
-(check, sealed, against) and "skip" for any other.
+(check, sealed, against, status, report) and "skip" for any other.
 
     python3 test/interop/deal-v1/python_side.py < requests
 """
@@ -13,6 +13,8 @@ import sys
 from agent_action_capsule.canonical import jcs
 
 import evidencebook.deal.v1 as v1
+from evidencebook.deal.v1 import report as v1_report
+from evidencebook.deal.v1 import status as v1_status
 
 COMPARED = {v1.STAGE_RECORD, v1.STAGE_AGREEMENT}
 
@@ -55,6 +57,18 @@ def answer(req):
         except v1.StageError as e:
             return refusal(e)
         return '"ok"'
+    if kind == "status":
+        try:
+            return jcs(v1_status.build_status(req["books"])).decode()
+        except ValueError:
+            return '{"error":true}'
+    if kind == "report":
+        if not isinstance(req.get("books"), dict) or req.get("copy") is None:
+            return '{"error":true}'
+        try:
+            return jcs(v1_report.build_report(req["books"], req["copy"])).decode()
+        except ValueError:
+            return '{"error":true}'
     return '"skip"'
 
 

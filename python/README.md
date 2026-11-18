@@ -149,7 +149,8 @@ producer seals them with its own key.
 (`decode`, which refuses text Go's types would not write back), its checks (`check`,
 `check_sealed`, and `check_agreement`, `check_dispute` and `check_ruling`, which read one record
 against another), its payload and digest (`encode`, `digest`, `rows_digest`), where it is sealed
-(`placement_of`), and when a deal has started (`start`, `start_from_books`).
+(`placement_of`), when a deal has started (`start`, `start_from_books`), the deal book's status
+value (`build_status`, `resolve_row`) and a copy of the report built from books (`build_report`).
 
 ```python
 from evidencebook.deal import v1

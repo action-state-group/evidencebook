@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- **Added (`evidencebook.deal.v1`):** the x-deal-v1 deal book's status value (`build_status`, `resolve_row`, `row_inputs`) and a copy of the report built from books (`build_report`, `report_payload`, `settled`), byte for byte with Go (evidencebook#461). `evidencebook.row_status.compute_late` gives a row's late statements and disputes, as Go's `rowstatus.ComputeLate` does, and passes `testdata/row-status/late.json`. The x-deal-v1 differential check now compares Python with Go on status values and reports too.
