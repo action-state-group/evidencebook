@@ -763,7 +763,8 @@ fn compile() -> Result<Compiled, String> {
     let mut schemas = Schemas::new();
     let mut c = Compiler::new();
     for (id, raw) in [(V0_SCHEMA_ID, V0_SCHEMA), (V1_SCHEMA_ID, V1_SCHEMA)] {
-        let doc: Value = serde_json::from_slice(raw).map_err(|e| e.to_string())?;
+        let mut doc: Value = serde_json::from_slice(raw).map_err(|e| e.to_string())?;
+        crate::deal::schema::re2_patterns(&mut doc)?;
         c.add_resource(id, doc).map_err(|e| e.to_string())?;
     }
     let profile = c

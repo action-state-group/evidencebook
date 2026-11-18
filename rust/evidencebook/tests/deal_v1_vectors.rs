@@ -448,3 +448,26 @@ fn payment_vectors() {
         }
     }
 }
+
+// evidencebook#546: x-deal-v1 reads the x-deal-v0 platform pattern as Go's
+// RE2 does: a no-break space or a vertical tab is not its \s, a tab is.
+// Go (TestSchemaPatternWhiteSpaceIsRE2 in dealprofile/xdealv1) and the Python package's
+// test_a_schema_white_space_class_is_re2s give the same.
+#[test]
+fn a_schema_white_space_class_is_re2s() {
+    let record = |platform: &str| {
+        serde_json::to_vec(&serde_json::json!({
+            "x-deal-v1": {"profile": "x-deal-v1", "canonicalization": "jcs", "record_type": "sale_unpost",
+                          "at": "2026-11-01T10:00:00Z"},
+            "body": {"platform": platform},
+        }))
+        .unwrap()
+    };
+    for p in ["shop\u{a0}x.example", "a\u{b}b.example", "market.test"] {
+        assert!(v1::check(&record(p)).is_ok(), "{p:?} passes, as in Go");
+    }
+    match v1::check(&record("a\tb.example")) {
+        Err(evidencebook::deal::Error::Stage(e)) => assert_eq!(e.stage, "schema"),
+        other => panic!("a tab is RE2 white space: {other:?}"),
+    }
+}

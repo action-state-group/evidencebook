@@ -297,6 +297,28 @@ func parityChecks(t *testing.T) []parityCheck {
 	require.NoError(t, json.Unmarshal(payFixture, &pfx))
 	var baselineMap map[string]any
 	require.NoError(t, json.Unmarshal(fx.Record, &baselineMap))
+	unpostFixture, err := os.ReadFile("x-deal-v0/fixtures/positive-sale-unpost/09-sale-unpost.json")
+	require.NoError(t, err)
+	var ufx struct {
+		Record map[string]any `json:"record"`
+	}
+	require.NoError(t, json.Unmarshal(unpostFixture, &ufx))
+	// unpost is the sale_unpost fixture with one member set: the schema's
+	// patterns as Go's validator (RE2) reads them (evidencebook#546). RE2's
+	// \s is [\t\n\f\r ] and its $ the end of the text.
+	unpost := func(block bool, member, value string) string {
+		c := maps.Clone(ufx.Record)
+		part := "body"
+		if block {
+			part = "x-deal-v0"
+		}
+		m := maps.Clone(c[part].(map[string]any))
+		m[member] = value
+		c[part] = m
+		out, err := json.Marshal(c)
+		require.NoError(t, err)
+		return string(out)
+	}
 	withClass := func(rec map[string]any, class any) string {
 		c := maps.Clone(rec)
 		c["counterparty_class"] = class
@@ -340,6 +362,11 @@ func parityChecks(t *testing.T) []parityCheck {
 		{"keys that sort by UTF-16 code unit", `{"x-deal-v0":{"canonicalization":"jcs"},"body":{"😀":1,"～":2,"ö":3}}`},
 		{"duplicate members", `{"x-deal-v0":{"canonicalization":"jcs"},"x-deal-v0":{"canonicalization":"jcs-n"},"body":{}}`},
 		{"white space around the text", " \n" + baseline + "\n "},
+		{"a pattern's $ before a final newline (at)", unpost(true, "at", "2026-10-06T08:00:00Z\n")},
+		{"a pattern's $ before a final newline (deal_id)", unpost(true, "deal_id", "sale-3c9e1a7b5d2f8064\n")},
+		{"a pattern's \\s: a no-break space, not RE2 white space", unpost(false, "platform", "shop\u00a0x.example")},
+		{"a pattern's \\s: a vertical tab, not RE2 white space", unpost(false, "platform", "a\vb.example")},
+		{"a pattern's \\s: a tab, RE2 white space", unpost(false, "platform", "a\tb.example")},
 	}
 	var out []parityCheck
 	add := func(name, text string, local []string) {

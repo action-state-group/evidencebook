@@ -22,6 +22,7 @@ from referencing import Registry, Resource
 
 from ..check import StageError, _Float, _float, _go_quote, _go_v, _leaves, _refuse_constant
 from . import gotypes
+from ..re2 import go_patterns as _go_patterns
 from .gotypes import ABSENT, GoTypeError
 from .names import (
     CANONICALIZATION, CHOICE_CONFIRM, DIGEST_ALG, KIND_AGREEMENT, KIND_DISPUTE, PROFILE, RECORD_REF,
@@ -311,57 +312,6 @@ def _no_floats(v: Any, path: str) -> None:
 def profile_schema() -> bytes:
     """The raw x-deal-v1 record schema."""
     return (_DATA / "x-deal-v1.schema.json").read_bytes()
-
-
-#: RE2's ``\s``: Python's also takes ``\v`` and Unicode white space.
-_RE2_SPACE = "\\t\\n\\f\\r "
-
-
-def _re2(p: str) -> str:
-    r"""A schema pattern read as Go's validator (RE2) reads it: ``\d``, ``\w``
-    and ``\b`` in ASCII, ``\s`` as RE2's four spaces and the space, and a
-    final ``$`` at the very end of the text (Python's also matches before a
-    final newline)."""
-    out, i, in_class = [], 0, False
-    while i < len(p):
-        c = p[i]
-        if c == "\\" and i + 1 < len(p):
-            e = p[i + 1]
-            if e in "sS":
-                body = _RE2_SPACE
-                if in_class:
-                    out.append(body if e == "s" else None)  # \S in a class: not written by the schemas
-                else:
-                    out.append(f"[{body}]" if e == "s" else f"[^{body}]")
-            else:
-                out.append(p[i:i + 2])
-            i += 2
-            continue
-        if c == "[" and not in_class:
-            in_class = True
-        elif c == "]" and in_class:
-            in_class = False
-        out.append(c)
-        i += 1
-    if None in out:
-        raise ValueError(f"schema pattern {p!r}: \\S inside a class")
-    s = "".join(out)
-    if s.endswith("$") and not s.endswith("\\$"):
-        s = s[:-1] + r"\Z"
-    return "(?a)" + s
-
-
-def _go_patterns(v: Any) -> Any:
-    """The schema with each pattern read as Go's validator reads it (:func:`_re2`)."""
-    if isinstance(v, dict):
-        out = {k: _go_patterns(e) for k, e in v.items()}
-        p = out.get("pattern")
-        if isinstance(p, str):
-            out["pattern"] = _re2(p)
-        return out
-    if isinstance(v, list):
-        return [_go_patterns(e) for e in v]
-    return v
 
 
 @lru_cache(maxsize=None)
