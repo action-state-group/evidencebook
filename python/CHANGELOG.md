@@ -295,3 +295,15 @@
   unchanged. The handover orders receipts by URL and then key.
 
 - The whole-shelf handover ties each genesis fact to the old witnessed tree when the holder can (#461 §2.7), as Go does. `Handover.ties` holds one `HandoverTie` per book, in book id order. Each tie carries the old witnessed tick's leaf and path, its root's position in the shelf log, the cadence checkpoint and its receipts, the old book checkpoint, and a consistency proof to the genesis checkpoint. `Cadence.handover` builds each tie from the witnessed tree tick with the log's largest size not past the genesis size. A log with no such tick, or a leaf that kept no checkpoint statement, gives no tie. `verify_handover` checks each tie and raises `InvalidError` on one that does not verify, on two ties of one book, and on a tie whose book has no genesis fact. A genesis fact without a tie is still reported in `untied`. Python's handover of the migrated vector shelf equals `testdata/shelf/handover.json`, and its replay equals `handover-result.json`.
+
+- The Goose reference's `Terms` takes `demo` (default `False`): a deal opened with `demo=True` seals `demo: true` in its
+  baseline, the x-deal-v0 baseline's optional member, which a receipt viewer shows as a demonstration deal. A deal
+  opened without it is sealed as before, with no `demo` member.
+
+- `history_card/2` (Evidence Request -03 §8.1.2, evidencebook#507), as Go's: `history_card_positions`
+  (P(n, W)), the answer a `Book` builds over `checkpoints` or `full_history`
+  (`ResponderPolicy.history_window`, 1 to 64, default 16, not capped by `max_answer_items`),
+  `check_history_card_2` (the spec's seven ordered checks, also run on a requester's verification) and
+  `staple(book, DERIVATION_HISTORY_CARD_2)`; `check_staple` accepts the card. A `checkpoints` subject
+  with a range is answered with the entries and a `consistency_to_anchor` proof, without a card, and verified by a requester. It reads the shared
+  vectors in `testdata/history-card-2`. Needs agent-action-capsule 0.17.0.

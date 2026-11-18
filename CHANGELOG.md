@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+## v0.16.0 (2026-11-18)
+
+### Added: x-deal-v1 payment check over AAC settlement legs, and `Entry.Members` (#461 step 5, PR 4a)
+
+- `Entry.Members` adds top-level members to the Capsule the book seals for a record, such as a settlement leg. The header does not carry them, and a base-profile name or `evidence_record_header` is refused. `SealSent` puts them on the standalone sent Capsule only, never on the journal record's. `AppendCapsule` refuses them, since its caller seals the Capsule.
+- `dealprofile.AssetScale` is the `assetScale` of a deal's `amount_minor` in a currency (it was the History card's internal rule).
+- x-deal-v1: an offer whose terms have exactly one payment row carries the settlement terms leg on its sent Capsule (`xdealv1.TermsLeg`). `VerifySent` refuses such an offer without it, and any other `settlement` member. `xdealv1.PaymentCheck` runs a payment row's recomputed check with AAC's `settlement.Verify` over that terms leg and the two sides' deal-book legs. It passes on agreed, settled legs at the terms' amount, fails on a mismatch or on failed, reversed or another amount, and is otherwise not run. It is also not run when a refund or remedy leg cites the offer's terms leg or when the terms have more than one payment row. `RowBooks.Checks` carries a recomputed row's check to rowstatus.
+
+### Added: a status provider is told its stamp, and a record's first covering stamp (#461 step 5, PR 4c-2a)
+
+- `StampStatusProvider` is a `StatusProvider` that also has `StampValues(ctx, n, bookID, logID)`: n is the tick of the stamp it gives values for, the migration's stamp included. A shelf calls it in place of `Values` when its provider implements it, so a status value can name a record its own stamp is the first to cover (`{"stamp": n}`, design §8.1).
+- `Shelf.RecordStamp(ctx, bookID, position)` and `Shelf.ReceivedRecordStamp(ctx, bookID, receivedLogID, position)` are the tick of the first fact that covers a record, or that first reaches a received one. They find that fact the same way `RecordTime` and `ReceivedRecordTime` do, and they take no lock, as those do.
+
+### Added: x-deal-v1 first-act gate (Steven, u610 and u611)
+
+- `xdealv1.ReceiveProfile.GateAct` refuses a party's first `perform` or payer `settle` of a deal until the counterparty's stamp proof covers the counterparty's agreement (`CanAct`). It applies on both sides, whether or not a witness is named. A payee leg, a statement and any later act are never gated. When the counterparty runs no layer, the first act goes ahead and is not refused. It is marked unguarded (`GateNoLayer`), and the receipt and the card say the other side sent no stamp proof (u611). PROFILE §8 and design §7 record the ruling, including that the offerer stamps its agreement at once when its first act waits on the acceptor's.
+
+- **`history_card/2`** (Evidence Request -03 §8.1.2, evidencebook#507): the default first question for
+  a node with many checkpoints. A card lists the first checkpoint, the checkpoints 1, 2, 4, 8 and so
+  on positions back from the anchor and the latest `window` checkpoints in full (agent-action-capsule's `HistoryPositions`), each
+  with its receipts and a consistency proof from the entry listed before it. Its size grows with
+  the logarithm of the number of checkpoints, and `MaxAnswerItems` does not cap it; `history_card/1`
+  lists every checkpoint and is refused past `MaxAnswerItems`. A book answers it to any requester over `checkpoints` or `full_history`, and
+  `ResponderPolicy.HistoryWindow` (1 to 64, default 16) is the window it states. `CheckHistoryCard2`
+  runs the spec's seven ordered checks, a requester verifies a /2 answer by them, and `Staple` and
+  `CheckStaple` carry the card. A `checkpoints` subject with a range `[a, b]` (§8.1.3) is answered with
+  the entries from a through b and verified by a requester. The manifest lists the derivation and
+  draft -03. `history_card/1` is unchanged. Needs agent-action-capsule go v0.22.0.
+
+### Changed: `report` and capsulectl-book render with capsule-viewer v0.19.1 (evidencebook-deal#220)
+
+- The `report` and `capsulectl` modules require capsule-viewer `go/v0.19.1` (was `v0.18.2`), whose pages verify with agent-action-capsule 0.14.0 and cll 0.4.0. The report-build pages in `report/testdata/presentation/` (`4-monthly-outcome`, `4b-monthly-outcome-informational`, `5-monthly-compliance`) are regenerated with `capsulectl book report build`. Their new text is the viewer's own:
+  - the totals note ("These totals count every rule in force…");
+  - the month in the outcome report's title;
+  - the "of 8" counts and the "Judged" chips;
+  - "requirement" in place of "test" on the compliance page, and its numbered notes.
+  - Each page still passes 10 of 10 checks.
+
 ## v0.15.0 (2026-11-17)
 
 ### Changed: checkpointed-local-log go/v0.4.0 (CLL 0.9.0, -02 checkpoint `sub`) (#452)
