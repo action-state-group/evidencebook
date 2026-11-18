@@ -39,11 +39,11 @@ pub struct ShelfRecords {
     pub pending: BTreeMap<String, u64>,
 }
 
-struct Stored {
-    book: String,
-    seq: u64,
-    record_id: String,
-    header: Map<String, Value>,
+pub(super) struct Stored {
+    pub(super) book: String,
+    pub(super) seq: u64,
+    pub(super) record_id: String,
+    pub(super) header: Map<String, Value>,
 }
 
 impl Shelf {
@@ -169,7 +169,11 @@ fn record_type(header: &Map<String, Value>) -> &str {
 /// state its header committed, folded forward through every later
 /// lifecycle record that cites it; an `AVAILABLE` or `PARTIAL` record a
 /// live hold covers reads `LEGAL_HOLD`.
-fn retention_of(records: &[&Stored], at: usize, now: Time) -> Result<String, ShelfError> {
+pub(super) fn retention_of(
+    records: &[&Stored],
+    at: usize,
+    now: Time,
+) -> Result<String, ShelfError> {
     let record = records[at];
     let mut state = record
         .header

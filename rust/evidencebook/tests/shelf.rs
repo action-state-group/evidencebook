@@ -1290,3 +1290,70 @@ fn append_at_is_the_next_record_only_and_counts_a_pending_one() {
     assert_eq!(r.seq, 3, "seq 3 follows the pending record");
     assert_eq!(book.size(), 3);
 }
+
+/// resolve_payload reads a payload the record's retention state allows
+/// (Go `ResolvePayload`): an available or held record's, not a withheld or
+/// deleted one's (`Unavailable`), and not one the record does not commit
+/// (`NotFound`).
+#[test]
+fn resolve_payload_follows_the_records_retention() {
+    use evidencebook::record::{Link, LinkType};
+    let dir = tempfile::tempdir().unwrap();
+    let clock = Clock::new();
+    let shelf = open(&file(&dir), &clock);
+    let book = shelf.open("deal/a").unwrap();
+    let digest = |p: &str| hex::encode(Sha256::digest(p.as_bytes()));
+    let available = book.append(&observation("a", "one")).unwrap();
+    assert_eq!(
+        book.resolve_payload(&available.record_id, &digest("one"))
+            .unwrap(),
+        b"one"
+    );
+    assert!(matches!(
+        book.resolve_payload(&available.record_id, &digest("two")),
+        Err(ShelfError::NotFound(_))
+    ));
+    assert!(matches!(
+        book.resolve_payload(&"0".repeat(64), &digest("one")),
+        Err(ShelfError::NotFound(_))
+    ));
+    let mark = |target: &str, state: &str| {
+        let mut lifecycle = BookEntry::new("lifecycle", EpistemicType::ObservedEvent);
+        lifecycle.links = vec![Link {
+            link_type: LinkType::Cites,
+            target: target.into(),
+        }];
+        lifecycle.statement = json!({"retention_state": state});
+        book.append(&lifecycle).unwrap();
+    };
+    let withheld = book.append(&observation("a", "two")).unwrap();
+    mark(&withheld.record_id, "WITHHELD");
+    assert!(matches!(
+        book.resolve_payload(&withheld.record_id, &digest("two")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    // Made available again, it reads.
+    mark(&withheld.record_id, "AVAILABLE");
+    assert_eq!(
+        book.resolve_payload(&withheld.record_id, &digest("two"))
+            .unwrap(),
+        b"two"
+    );
+    let deleted = book.append(&observation("a", "three")).unwrap();
+    mark(&deleted.record_id, "DELETED");
+    assert!(matches!(
+        book.resolve_payload(&deleted.record_id, &digest("three")),
+        Err(ShelfError::Unavailable(_))
+    ));
+    // A live hold keeps a record readable.
+    let held = book.append(&observation("a", "four")).unwrap();
+    let mut hold = BookEntry::new("retention_commitment", EpistemicType::ProducerClaim);
+    hold.statement =
+        json!({"subject": {"record": held.record_id}, "until": "2030-01-01T00:00:00Z"});
+    book.append(&hold).unwrap();
+    assert_eq!(
+        book.resolve_payload(&held.record_id, &digest("four"))
+            .unwrap(),
+        b"four"
+    );
+}

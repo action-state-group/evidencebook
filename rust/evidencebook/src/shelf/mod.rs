@@ -156,6 +156,11 @@ pub enum ShelfError {
     /// keeps its tombstone, so it is deleted, not missing.
     #[error("deleted: {0}")]
     Deleted(String),
+    /// A payload whose record's retention state yields no bytes now
+    /// (`WITHHELD` or `DELETED`; Go `ErrUnavailable`): a withheld payload
+    /// may become available again ([`ShelfBook::resolve_payload`]).
+    #[error("payload unavailable: {0}")]
+    Unavailable(String),
     /// A received offer refused because the holder's books kept changing
     /// while room was made for it ([`Shelf::receive`]): sending it again
     /// later may succeed.

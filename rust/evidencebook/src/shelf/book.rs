@@ -343,6 +343,79 @@ impl ShelfBook {
     pub fn records(&self) -> Vec<BookRecord> {
         self.0.lock().records.clone()
     }
+
+    /// One payload, by its SHA-256 `digest`, of the record `record_id`,
+    /// read from the artifact store when the record's retention state allows
+    /// it (Go `ResolvePayload`). A record the book does not hold, or one that
+    /// commits no such payload, is [`ShelfError::NotFound`]; a record whose
+    /// state is `WITHHELD` or `DELETED` is [`ShelfError::Unavailable`]; a
+    /// readable record whose original the store does not hold, or holds
+    /// purged, is [`ShelfError::Corrupt`].
+    pub fn resolve_payload(&self, record_id: &str, digest: &str) -> Result<Vec<u8>, ShelfError> {
+        let state = self.0.lock();
+        let commits = |r: &BookRecord| {
+            r.header
+                .get("payload_commitments")
+                .and_then(Value::as_array)
+                .is_some_and(|a| a.iter().any(|d| d.as_str() == Some(digest)))
+        };
+        let Some(at) = state
+            .by_id
+            .get(record_id)
+            .copied()
+            .filter(|&i| commits(&state.records[i]))
+        else {
+            return Err(ShelfError::NotFound(format!(
+                "record {record_id} does not commit payload {digest}"
+            )));
+        };
+        let stored: Vec<super::records::Stored> = state
+            .records
+            .iter()
+            .map(|r| super::records::Stored {
+                book: self.0.id.clone(),
+                seq: r.seq,
+                record_id: r.record_id.clone(),
+                header: r.header.clone(),
+            })
+            .collect();
+        let view: Vec<&super::records::Stored> = stored.iter().collect();
+        let retention = super::records::retention_of(&view, at, self.0.now())?;
+        if retention == "WITHHELD" || retention == "DELETED" {
+            return Err(ShelfError::Unavailable(format!(
+                "payload {digest} of record {record_id} is {retention}"
+            )));
+        }
+        let held = match self.0.shared.originals.get(record_id) {
+            Ok(held) => held,
+            Err(capsule_emit_artifact::ArtifactError::NotFound) => {
+                return Err(ShelfError::Corrupt(format!(
+                    "record {record_id} is {retention} but the artifact store holds none of its originals"
+                )))
+            }
+            Err(e) => return Err(ShelfError::Artifact(e.to_string())),
+        };
+        let mut found = false;
+        for a in &held.artifacts {
+            if a.content_sha256 != digest {
+                continue;
+            }
+            if let (Held::Present, Some(content)) = (a.state, &a.content) {
+                if hex::encode(Sha256::digest(content)) == digest {
+                    return Ok(content.clone());
+                }
+            }
+            found = true;
+        }
+        let what = if found {
+            "holds it purged"
+        } else {
+            "does not hold it"
+        };
+        Err(ShelfError::Corrupt(format!(
+            "payload {digest} of {record_id} is {retention} but the artifact store {what}"
+        )))
+    }
 }
 
 impl BookCore {
