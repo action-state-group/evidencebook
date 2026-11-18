@@ -366,6 +366,12 @@ func checkRecord(r Record) error {
 		if !b.Seen.Present {
 			return bad("a deal-book record carries seen (null when nothing is held from the other side)")
 		}
+		// A deal-book record leaves the holder, and refs could cite a journal
+		// record whose digest must not (PROFILE §5): it cites only through
+		// the members its type names.
+		if b.Refs != nil {
+			return bad("a deal-book record carries no refs: it cites only through its type's own members")
+		}
 		if (b.AgreementRef != nil) != (b.Seq > 1) {
 			return bad("a deal-book record carries agreement_ref exactly when its seq is past 1")
 		}
@@ -378,6 +384,9 @@ func checkRecord(r Record) error {
 	case PlacementJournal:
 		if b.Seq != 0 || b.Prev != nil || b.AgreementRef != nil || b.Seen.Present {
 			return bad("a journal record carries no seq, prev, agreement_ref or seen, so a record sent whole shows no place in the journal")
+		}
+		if t == TypePropose && b.Refs != nil {
+			return bad("an offer, sent whole, carries no refs: it cites only through counter_to")
 		}
 		if ag, ok := asAgree(r.Body); ok && (b.Refs != nil || b.Marks != nil || b.Counterparty != nil) {
 			return bad("a %s carries no refs, marks or counterparty fingerprint: it names nothing beyond the offer it answers", ag.Kind)

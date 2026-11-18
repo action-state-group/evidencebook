@@ -65,7 +65,7 @@ labels, not the version of the record that uses them, so every fingerprint keeps
 | `prev` | REQUIRED iff `seq` > 1 | digest ref of the book's record at `seq - 1`. |
 | `agreement_ref` | REQUIRED iff in a deal book and `seq` > 1 | digest ref of the book's agreement. |
 | `seen` | REQUIRED in a deal book | the record id of the last record its author held from the other side, or `null` (section 6). |
-| `refs` | per type | typed citations of earlier records, as v0's rel refs. |
+| `refs` | per type | typed citations of earlier records, as v0's rel refs. Only journal records that are not sent carry them (a `verdict`'s `checks`, an `approval`'s `approves`); a deal-book record and a record sent whole carry none (section 5, "A journal record whose digest leaves the holder"). |
 | `marks` | OPTIONAL | the named records (the `named` of the rows) this record is, such as `["paid"]`. |
 | `counterparty` | OPTIONAL | v0's fingerprint block. |
 | `producer`, `commit_alg` | OPTIONAL | as v0. |

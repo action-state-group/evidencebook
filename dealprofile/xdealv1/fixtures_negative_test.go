@@ -116,6 +116,16 @@ func negatives() []negative {
 		{name: "neg-nonce-not-256-bit-hex", description: "a nonce is 64 lowercase hex", base: nCheck, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { set(b, "nonce", strings.ToUpper(b["nonce"].(string))) }},
+		{name: "neg-perform-with-refs", description: "a deal-book record cites only through its type's members, never refs", base: nDelivery, check: "record",
+			stage: StageRecord, contains: "carries no refs",
+			edit: func(b, _ map[string]any) {
+				set(b, "refs", []any{map[string]any{"rel": "checks", "type": "deal-record", "digest_alg": "SHA-256", "digest": strings.Repeat("a", 64)}})
+			}},
+		{name: "neg-offer-with-refs", description: "an offer, sent whole, cites only through counter_to, never refs", base: nOffer, check: "record",
+			stage: StageRecord, contains: "carries no refs",
+			edit: func(b, _ map[string]any) {
+				set(b, "refs", []any{map[string]any{"rel": "checks", "type": "deal-record", "digest_alg": "SHA-256", "digest": strings.Repeat("a", 64)}})
+			}},
 		{name: "neg-intent-without-verbatim-commitment", description: "an intent, which an agreement cites, carries its salted verbatim_commitment", base: nIntent, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "verbatim_commitment") }},

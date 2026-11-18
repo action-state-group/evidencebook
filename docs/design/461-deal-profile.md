@@ -477,6 +477,10 @@ it applies u528, so it needs no ruling from Steven).
   - A verdict and an approval are covered through what they cite.
   - A record sent whole (an offer, a decline, a cancellation) is exempt, since its content leaves
     with it (Codex, same round).
+  - A deal-book record and an offer carry no block `refs`. Otherwise `refs` could cite any journal
+    record, such as a verdict or an ask, outside the members each type names (Kimi, same round;
+    `neg-perform-with-refs`, `neg-offer-with-refs`). Only a journal `verdict` and `approval`
+    carry `refs`.
 - **What carries it.**
   - `admit` and `check` carry `nonce`: 256 bits, 64 lowercase hex, fresh per record.
     `xdealv1.NewNonce` draws one from `crypto/rand`. `CheckAuthorizations` refuses a journal in

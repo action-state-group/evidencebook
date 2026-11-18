@@ -1584,7 +1584,7 @@
       "description": "The forums both sides accept for a dispute on this deal: the recourse clause (evidencebook#404; Terms Pack Studio PRD v5 §7, no forum shopping). Empty exactly when adjudicator is null, which allows no dispute."
     },
     "nonce": {
-      "description": "A fresh random 256-bit value (64 lowercase hex) in a journal record a sent or deal-book record can cite, so that the citing record's digest gives nobody a way to test a guess at the cited record's content (PROFILE section 3).",
+      "description": "A fresh random 256-bit value (64 lowercase hex) in a journal record a sent or deal-book record can cite, so that the citing record's digest gives nobody a way to test a guess at the cited record's content (PROFILE section 5).",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     }

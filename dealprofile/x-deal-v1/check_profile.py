@@ -300,6 +300,8 @@ def stage_record(rec):
         else:
             if "seen" not in blk:
                 raise bad("record", "a deal-book record carries seen (null when nothing is held from the other side)")
+            if "refs" in blk:
+                raise bad("record", "a deal-book record carries no refs: it cites only through its type's own members")
             if ("agreement_ref" in blk) != (seq > 1):
                 raise bad("record", "a deal-book record carries agreement_ref exactly when its seq is past 1")
             if t == "agree" and body.get("kind") == "agreement" and seq != 1:
@@ -309,6 +311,8 @@ def stage_record(rec):
     else:
         if seq != 0 or any(k in blk for k in ("prev", "agreement_ref", "seen")):
             raise bad("record", "a journal record carries no seq, prev, agreement_ref or seen, so a record sent whole shows no place in the journal")
+        if t == "propose" and "refs" in blk:
+            raise bad("record", "an offer, sent whole, carries no refs: it cites only through counter_to")
         if t == "agree" and any(k in blk for k in ("refs", "marks", "counterparty")):
             raise bad("record", f"a {body.get('kind')} carries no refs, marks or counterparty fingerprint: it names nothing beyond the offer it answers")
     check_dates(rec)

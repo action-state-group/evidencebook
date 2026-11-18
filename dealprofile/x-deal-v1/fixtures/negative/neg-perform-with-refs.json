@@ -1,0 +1,53 @@
+{
+  "fixture": "neg-perform-with-refs",
+  "expect": "invalid",
+  "description": "a deal-book record cites only through its type's members, never refs",
+  "base": "appendix-a/seller-book/03-delivery.json",
+  "check": "record",
+  "expected_stage": "record",
+  "expected_error_contains": "carries no refs",
+  "record": {
+    "body": {
+      "act": "deliver",
+      "detail_commitment": "dc90b5a1930ddf57acbe8125227636e58610a99d362721a24be4b9ead9151ad9",
+      "observed": "carrier_scan",
+      "statements": [
+        {
+          "row": "delivered",
+          "value": "met"
+        },
+        {
+          "row": "as_described",
+          "value": "met"
+        }
+      ]
+    },
+    "x-deal-v1": {
+      "agreement_ref": {
+        "digest": "0e91d7532b004e190000bee64a29a3b15c21cfb979c137fbba30da5335ee0215",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "at": "2026-11-04T10:00:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "prev": {
+        "digest": "88ee83ce53ed4a09b82096c639e4b5bc3d4aafa9b97cde4b1e152650c355bf72",
+        "digest_alg": "SHA-256",
+        "type": "deal-record"
+      },
+      "profile": "x-deal-v1",
+      "record_type": "perform",
+      "refs": [
+        {
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "digest_alg": "SHA-256",
+          "rel": "checks",
+          "type": "deal-record"
+        }
+      ],
+      "seen": "bd6bdd7f472e6c6c8db6adaeb37d3d54e70e377f6ac8c7bab237f18ff0ce9bf8",
+      "seq": 3
+    }
+  }
+}
