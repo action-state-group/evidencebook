@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.15.0 (2026-11-17)
+
 ### Changed: checkpointed-local-log go/v0.4.0 (CLL 0.9.0, -02 checkpoint `sub`) (#452)
 
 - The root, `capsulectl` and `report` modules require checkpointed-local-log `go/v0.4.0` (was `v0.3.0`). A checkpoint's CWT `sub` is now the bare log id, so every checkpoint pin changes: `testdata/derivation`, `testdata/standard-history-respond` and `testdata/shelf` are regenerated, and the third-party guide's pins, `sub` values and the invariance request's digest follow. `capsulectl`'s book witness store implements `PendingWitnessesFor`, which the CLL 0.9.0 witness-state contract adds.
@@ -49,6 +51,164 @@
   earliest kept; a witnessed tick missing there is filled in at the cadence's next open. `Handover` carries every
   receipt held for its anchor, and `VerifyHandover` reports `Witnessed` only for a receipt that gives a
   registration time.
+
+- **`Book.Sealed(ctx, recordID)`** returns a record as it was sealed: its canonical header, its
+  Capsule (without signature) and its Producer Envelope, as the store keeps them, in the caller's own
+  copies. They are what another party verifies the record by on its own. The x-deal-v1 profile sends
+  a deal-book record to the counterparty in this form (evidencebook#461 step 5, design note §8.3).
+
+- **The library calls the x-deal-v1 profile needs** (evidencebook#461, `docs/design/461-deal-profile.md`
+  §11.1, PR 1). Each is additive and profile-neutral:
+  - `rowstatus.ComputeLate` lists, by index into the input, the statements and disputes the rule
+    sets aside as late as of T, beside `Compute`'s result, which is unchanged
+    (`testdata/row-status/late.json`, hand-written from the rule).
+  - `Shelf.SealSent` appends a sent journal record and returns its standalone Capsule, signed by the
+    journal's key, so a record that leaves the shelf whole never shows its place in the journal.
+  - `Shelf.HeldFirst` returns every received record at position 1 of a log, across senders and both
+    records of a fork, and `Shelf.HeldProofs` every stamp proof held from a sender, re-verified, with
+    the records it covers against the counted prefix now (none after a fork at the genesis). Both
+    take no lock.
+  - `Shelf.ReceivedRecordTime` is a received record's time from the holder's own stamps: the first
+    fact whose link value reaches the record's position, and the earliest named receipt covering it.
+
+- A whole-shelf handover now carries the receipt history a reader needs for record times
+  (evidencebook#461, `docs/design/461-deal-profile.md` §8.1, invariant C). `Handover.Witnessed` lists every
+  shelf checkpoint before the anchor that the holder holds receipts for, with those receipts.
+  `VerifyHandover` checks that each is the holder's checkpoint of the shelf log, within the anchor, and
+  recomputed by the handed-over entries. The new `VerifyHandoverTimes` gives a book position the record time
+  the holder's `RecordTime` gives, even when the earliest receipt is not the anchor's
+  (`testdata/shelf/handover/earliest-receipt-not-anchor.json`).
+
+- **A witness's receipts are kept per key** (evidencebook#492). `shelf_receipts` is keyed by
+  checkpoint, witness URL and directory key id, so a witness whose directory row lists two keys keeps
+  a receipt under each for the same checkpoint, and `RecordTimeByKey` reads each key's own time.
+  Before, one receipt per URL was kept and the other key's was lost. Opening a shelf whose
+  table has the old key rebuilds it in place and keeps every row; the shelf version is unchanged.
+  The handover carries every receipt held, ordered by URL and then key.
+
+- **Record times by witness key id** (evidencebook#461; Steven, #482 Q1, u604: an x-deal-v1 agreement names each
+  witness by its verified key id, with its URL only a hint). `Shelf.RecordTimeByKey`,
+  `Shelf.ReceivedRecordTimeByKey` and `HandoverTimes.RecordTimeByKey` give the times `RecordTime`,
+  `ReceivedRecordTime` and `HandoverTimes.RecordTime` give, with witnesses matched on the key each receipt verified
+  under rather than its URL, so a witness that moved stays the same witness. The URL readers are unchanged.
+
+- The whole-shelf handover ties each genesis fact to the old witnessed tree when the holder can
+  (evidencebook#461 §2.7): `Handover.Ties` carries, per book, the old witnessed tick's leaf and path, its
+  root's position in the shelf log, the cadence checkpoint and its receipts, the old book checkpoint and a
+  consistency proof to the genesis checkpoint. `VerifyHandover` checks each tie and fails on one that does not
+  verify; a genesis fact without one is still reported in `Untied`.
+
+- **x-deal-v1 acts are authorized as v0's were** (evidencebook#461, `docs/design/461-deal-profile.md` §3.2,
+  invariant D; §11.1 PR 2c). `xdealv1.CheckAuthorizations(journal, acts)` holds a deal-book perform or settle to
+  v0's rules 5 and 6, through the check it cites:
+  - the check has exactly one verdict, the verdict's first approval proceeds, and a deny authorizes nothing;
+  - a standing intent answers only a passing verdict, for an action in the allowed in force;
+  - one approval authorizes at most one act;
+  - a change of identifiers between the check and the act needs a new check.
+
+  Each act's `ApprovalDigest` is defined and binds the check and the card that was answered, and
+  `NeedsPersonSignature` marks a person's own approval, which the agent's record key never stands for.
+  Vectors: `testdata/deal-v1/authorization/approval-migration.json`.
+
+- **x-deal-v1's Python reference checker** (evidencebook#461 step 5, PR 2e). `dealprofile/x-deal-v1/check_profile.py`
+  checks every x-deal-v1 fixture on its own, independent of the Go package: the canonicalization, schema
+  and record stages, the agreements against the offer, the dispute and rulings against the agreement, each
+  book's links, and that every negative is refused at its stage. CI's `deal-profile` job requires "ALL OK".
+- x-deal-v1's schema admits a row's `recomputed` only as `true`: Go already refused `false`, which it
+  would not encode back, so every implementation now refuses it at the schema stage (PROFILE.md §1).
+  Two negatives pin it and a pattern's `$` as the end of the text (`neg-recomputed-false`,
+  `neg-deal-id-trailing-newline`).
+
+- **x-deal-v1 agreements carry the recourse clause** (evidencebook#461; #404). An offer and its agreement name
+  `forums`, the forums both sides accept for a dispute. The list is empty exactly when there is no adjudicator,
+  which allows no dispute, and the agreement's forums must equal the offer's. `xdealv1.CheckDispute` and
+  `CheckRuling` refuse a dispute or ruling outside them, so no forum is picked at dispute time.
+
+- **A standing-intent act rests on a signed first intent** (evidencebook#500, Steven's option b).
+  `xdealv1.CheckAuthorizations` returns, for an act a `standing_intent` approval authorizes, the record
+  digest of the first intent it rests on (`ActAuthorization.Intent`). The caller refuses the act until the
+  person's signature over that digest is held, as for the approval and the `confirm_limits` approvals.
+  A `standing_intent` approval with no intent before it in the journal is refused. The approval-migration
+  vector gains `intent_signature` per authorized act, and a refused case.
+
+- **x-deal-v1's normative text and fixtures** (evidencebook#461 step 5, PR 2d). `dealprofile/x-deal-v1/PROFILE.md`
+  states the record rules the `xdealv1` checks apply: the block, where `deal_id` is present, the record
+  types and where each is sealed, the bodies, `seen`, records sent whole, the authorization of acts, and
+  the stages a refusal names. `dealprofile/x-deal-v1/fixtures/` holds the integrated design's Appendix A
+  deal record by record (both journals, both deal books, the adjudicator's case book, the path settled
+  without a ruling, and a declined and a cancelled offer), each with its record digest, and 45 negatives,
+  each one positive record with one change and the check and stage that refuse it. `TestFixtures` builds
+  and checks them (`EB_WRITE_DEAL_V1_FIXTURES=1` writes them). The Python reference checker for v1 follows.
+
+- **x-deal-v1's receive profile and the coverage gate** (evidencebook#461 step 5, PR 4b).
+  - `xdealv1.BookPair` and `VerifyBook`: a deal-book or case-book record travels as its Capsule with its
+    signature and key, the header the Capsule commits, and the record the header commits. The Capsule
+    comes from `Book.Sealed`.
+  - `xdealv1.ReceiveProfile` implements `evidencebook.ReceiveProfile`:
+    - `Read` places a book record at its book log and seq, and a sent record in its own one-record log;
+    - `Admit` applies EBL's current push rule (design note §8.3), which is not ruled yet (Forms SF-6);
+    - `Answered` says whether our agreement, decline or counter-offer cites a held offer;
+    - `ProofSender` relates a stamp proof to the counterparty whose agreement opens the log, refusing a
+      fork at position 1 and anything but exactly one candidate.
+  - `ReceiveProfile.CanAct` computes the gate before a first act of a deal. Whether a first act must wait for
+    it is not ruled yet, so the caller decides whether to apply it. The counterparty's agreement must be
+    of that deal, signed by the key it expects and citing its offer, and counted now. A held stamp proof
+    bound to it must cover it: its book id, its checkpoint key, and its shelf log, which is also the
+    log the counterparty's evidence commitment names when one is given.
+  - A v1 deal book needs no authenticated indexes, so its log holds the deal's records only.
+
+- **x-deal-v1 records, Go first** (evidencebook#461, `docs/design/461-deal-profile.md` §2.3, §3; §11.1 PR 2a).
+  New deals stay x-deal-v0 by default; x-deal-v0 is unchanged and stays readable.
+  - **The package:** `dealprofile/xdealv1` defines the ten record types (propose, agree for an agreement,
+    decline or cancellation, perform, settle, statement, dispute, ruling, ask, answer, admit), the journal
+    overlay (intent, check with `payment_ref`, verdict, approval), `rules_verdict` and the journey overlay.
+    The overlays reuse v0's bodies.
+  - **Reading a record:** strict `Decode`, and `Encode`, `Check` and `Digest`.
+  - **The record checks:** where each record is sealed (deal book, case book or journal), `deal_id` presence,
+    `seen` on agreements, and the rows. `CheckAgreement` reads an agreement against its offer.
+  - **The schema:** `dealprofile/x-deal-v1/x-deal-v1.schema.json`.
+  - **Telling the versions apart:** `dealprofile.Version` says whether a record is x-deal-v0 or x-deal-v1, so a
+    reader dispatches on it.
+  - **Vector:** `testdata/deal-v1/records/deal-id-presence.json`.
+
+- **x-deal-v1 row inputs and the statements a fact carries** (evidencebook#461 step 5, PR 4c-1).
+  - `xdealv1.RowInputs` projects the holder's deal book, the counterparty's counted prefix and the
+    adjudicator's case book onto one `rowstatus.Input` per agreed row: the row, the named records by
+    `marks`, each side's statements, disputes with `seen_in_time`, withdrawals, rulings and non-payment
+    remedies. The payment check and payment remedies follow with `PaymentCheck`.
+  - The statements a status fact carries are those `rowstatus` can still read at or after the fact.
+    A randomized differential test against `rowstatus.Compute` holds that.
+  - Design note §8.1 defines the status value's times: a known time, `null`, or `{"stamp": n}`.
+
+- **x-deal-v1 offers, declines and cancellations travel whole** (evidencebook#461,
+  `docs/design/461-deal-profile.md` §3.1, §3.5; §11.1 PR 2b).
+  - `xdealv1.Pair` builds the pair a sent record travels as from its standalone Capsule, envelope and
+    record: `{"record": <the Capsule with its signature and key_id>, "agent_input": <the record>}`.
+  - `xdealv1.VerifySent` checks such a pair on its own:
+    - the Capsule and its signature, and that it is a standalone `"<deal_id>/sent"` fyi Capsule;
+    - that `agent_input` is the record it commits;
+    - that the record is a valid offer, decline or cancellation.
+  - Given the offer, a decline must answer it and be signed by the key the offer was sent to, and a
+    cancellation by the offer's signer.
+  - Vectors: `testdata/deal-v1/decline/vectors.json`.
+
+- **`xdealv1.StartFromBooks`** (evidencebook#461 step 5, PR 3b) derives `Start`'s input from the two deal
+  books and computes it. It reads the holder's own book, the counted prefix of the counterparty's book,
+  and the offer, each record with its record id and the times witnesses gave it. The offerer's agreement
+  has a time only from a witness the agreements name. A record of the acceptor's book names the offerer's
+  agreement when its `seen` is that agreement or a later record of the offerer's book; a cancellation
+  named before that means not started. With no layer, the holder's first act starts the deal.
+  `testdata/deal-v1/start/books.json` holds 23 book-level cases, including a cancellation the acceptor named with none of the offerer's book held, a time from an unnamed
+  witness and an empty witness list. Reading the books from a shelf comes with the ReceiveProfile (PR 4).
+
+- **When an x-deal-v1 deal has started** (evidencebook#461 step 5, PR 3a). `xdealv1.Start(StartInput)`
+  computes `started`, `awaiting_agreement` or `not_started`, whether the result is local, and what
+  started it (`offerer_in_time`, `acceptor_named`, `first_act`, or null while nothing has yet), from the values of design note §5.2: the
+  two agreements' match, the offerer's agreement naming the acceptor's, its record time against
+  `agree_by`, the acceptor's book naming it or a cancellation first, and, with a counterparty that
+  runs no layer, the holder's first act. It refuses inconsistent input, such as a held counterpart
+  agreement with an unknown match. `testdata/deal-v1/start/vectors.json` holds 21 cases.
+  `StartFromBooks`, which reads these values from the two books, follows.
 
 ## v0.14.2 (2026-11-16)
 
