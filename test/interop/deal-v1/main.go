@@ -26,6 +26,8 @@ type request struct {
 	Record string          `json:"record"`
 	Books  json.RawMessage `json:"books"`
 	Copy   *reportCopy     `json:"copy"`
+	// Context is a sealed request's seal context.
+	Context *xdealv1.SealContext `json:"context"`
 }
 
 type reportCopy struct {
@@ -67,12 +69,18 @@ func answer(line []byte) (string, error) {
 	}
 	refused := `{"error":true}`
 	switch req.Kind {
-	case "check":
+	case "check", "sealed":
 		err := xdealv1.Check([]byte(req.Record))
+		if req.Kind == "sealed" && req.Context != nil {
+			err = xdealv1.CheckSealed([]byte(req.Record), *req.Context)
+		}
 		var se *dealprofile.StageError
 		switch {
 		case err == nil:
 			return `"ok"`, nil
+		case errors.As(err, &se) && (se.Stage == xdealv1.StageRecord || se.Stage == xdealv1.StageAgreement):
+			// The text is the profile's at these stages: compared too.
+			return jcsOf([]string{se.Stage, se.Detail})
 		case errors.As(err, &se):
 			return fmt.Sprintf("%q", se.Stage), nil
 		}

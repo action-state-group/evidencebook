@@ -86,13 +86,13 @@ pub struct ReportBooks {
     pub books: StatusBooks,
     #[serde(rename = "Stamps", default)]
     pub stamps: Option<BTreeMap<u64, String>>,
-    #[serde(rename = "Own")]
+    #[serde(rename = "Own", default)]
     pub own: ReportLog,
-    #[serde(rename = "Counterpart")]
+    #[serde(rename = "Counterpart", default)]
     pub counterpart: Option<ReportCounterpartLog>,
-    #[serde(rename = "Checkpoint")]
+    #[serde(rename = "Checkpoint", default)]
     pub checkpoint: ReportCheckpoint,
-    #[serde(rename = "Fact")]
+    #[serde(rename = "Fact", default)]
     pub fact: Option<ReportFact>,
 }
 

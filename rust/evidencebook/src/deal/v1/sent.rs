@@ -72,9 +72,15 @@ pub fn pair(capsule: &[u8], envelope: &[u8], payload: &[u8]) -> Result<Vec<u8>, 
     members.insert("signature".into(), json!(hex::encode(envelope)));
     members.insert("key_id".into(), json!(hex::encode(&verified.public_key)));
     let agent_input: Value = serde_json::from_slice(payload)?;
-    Ok(serde_json::to_vec(
-        &json!({"record": members, "agent_input": agent_input}),
-    )?)
+    // Go marshals a map: members sorted, agent_input first. The bytes match
+    // Go's but for its HTML escaping of <, > and &, which no reader needs.
+    let mut sorted: Vec<(String, Value)> = members.into_iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let record: Map<String, Value> = sorted.into_iter().collect();
+    let mut out = Map::new();
+    out.insert("agent_input".into(), agent_input);
+    out.insert("record".into(), Value::Object(record));
+    Ok(serde_json::to_vec(&Value::Object(out))?)
 }
 
 /// Checks a sent pair on its own (Go `VerifySent`): the Capsule verifies

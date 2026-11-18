@@ -636,6 +636,12 @@ impl<'a> Calc<'a> {
 /// Seconds since the Unix epoch of `YYYY-MM-DDTHH:MM:SSZ`, the one form the
 /// three implementations read.
 pub(crate) fn parse_time(s: &str) -> Result<i64, Invalid> {
+    parse_time_from(s, 1)
+}
+
+/// [`parse_time`] with the earliest year it reads: Go's `time.Parse`
+/// reads year 0000, which rowstatus refuses and Start takes.
+pub(crate) fn parse_time_from(s: &str, min_year: i64) -> Result<i64, Invalid> {
     let bad = || invalid(format!("time {s:?} is not YYYY-MM-DDTHH:MM:SSZ"));
     let b = s.as_bytes();
     if b.len() != 20
@@ -672,7 +678,7 @@ pub(crate) fn parse_time(s: &str) -> Result<i64, Invalid> {
         30,
         31,
     ];
-    if y < 1
+    if y < min_year
         || !(1..=12).contains(&mo)
         || d < 1
         || d > days_in[(mo - 1) as usize]

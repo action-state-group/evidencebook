@@ -271,3 +271,26 @@ fn new_nonce_is_fresh_256_bit_hex() {
         .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
     assert_ne!(a, b);
 }
+
+/// `pair` from a sent vector's Capsule, envelope and record gives a pair
+/// `verify_sent` reads as the vector's, with Go's member order.
+#[test]
+fn pair_round_trips_through_verify_sent() {
+    let c = &vectors("decline/vectors.json")[0];
+    let mut record = c["pair"]["record"].as_object().unwrap().clone();
+    let envelope = hex::decode(record.remove("signature").unwrap().as_str().unwrap()).unwrap();
+    record.remove("key_id");
+    let capsule = serde_json::to_vec(&Value::Object(record)).unwrap();
+    let payload = evidencebook::canonical::jcs(&c["pair"]["agent_input"]).unwrap();
+    let pair = v1::pair(&capsule, &envelope, &payload).unwrap();
+    let got: Value = serde_json::from_slice(&pair).unwrap();
+    assert_eq!(got, c["pair"], "the same pair, read back");
+    assert!(
+        std::str::from_utf8(&pair)
+            .unwrap()
+            .starts_with("{\"agent_input\":"),
+        "Go's order"
+    );
+    let sent = v1::verify_sent(&pair, None).unwrap();
+    assert_eq!(Some(sent.digest.as_str()), c["digest"].as_str());
+}

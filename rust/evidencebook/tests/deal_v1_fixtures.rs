@@ -175,3 +175,52 @@ fn deal_id_presence_vectors() {
         }
     }
 }
+
+/// A member named as serde_json's arbitrary_precision names its private
+/// number would be read as a number, not as written: it is refused at the
+/// canonicalization stage, so no two texts share one digest (Codex, #533).
+#[test]
+fn reserved_number_member_is_refused() {
+    let f = read(&fixtures().join("appendix-a/buyer-journal/05-offer.json"));
+    // serde_json itself would fold the member: the text is written by hand.
+    let raw = serde_json::to_string(&f["record"]).unwrap().replacen(
+        "\"owed\":{",
+        "\"owed\":{\"detail\":{\"$serde_json::private::Number\":\"1\"},",
+        1,
+    );
+    let err = v1::check(raw.as_bytes()).expect_err("refused");
+    assert_eq!(
+        err.stage().map(|s| s.stage),
+        Some("canonicalization"),
+        "{err}"
+    );
+    assert!(
+        v1::digest(raw.as_bytes()).is_err(),
+        "no digest for text not read as written"
+    );
+}
+
+/// Go's zero values: a status time "" is no time, and books may leave out
+/// the counterpart, the case book and proof_held.
+#[test]
+fn status_books_read_go_zero_values() {
+    let v: Value = serde_json::from_slice(
+        &fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../testdata/deal-v1/status/vectors.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut books = v["cases"][0]["books"].clone();
+    let o = books.as_object_mut().unwrap();
+    o.remove("proof_held");
+    o.remove("case_book");
+    let b: v1::StatusBooks = serde_json::from_value(books.clone()).expect("zero values");
+    assert!(!b.proof_held);
+    assert!(b.case_book.is_empty());
+    books["own"][1]["time"] = Value::String(String::new());
+    let b: v1::StatusBooks = serde_json::from_value(books).unwrap();
+    assert_eq!(b.own[1].time, v1::StatusTime::None);
+    v1::build_status(&b).expect("an untimed record, as Go reads it");
+}

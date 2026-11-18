@@ -24,11 +24,23 @@ fn answer(line: &str) -> Result<String, String> {
     let req: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
     let kind = req["kind"].as_str().unwrap_or_default();
     match kind {
-        "check" => {
+        "check" | "sealed" => {
             let text = req["record"].as_str().unwrap_or_default();
-            Ok(match v1::check(text.as_bytes()) {
+            let got = match req.get("context") {
+                Some(c) if kind == "sealed" => {
+                    let ctx: v1::SealContext =
+                        serde_json::from_value(c.clone()).map_err(|e| e.to_string())?;
+                    v1::check_sealed(text.as_bytes(), ctx)
+                }
+                _ => v1::check(text.as_bytes()),
+            };
+            Ok(match got {
                 Ok(()) => "\"ok\"".into(),
                 Err(e) => match e.stage() {
+                    Some(se) if se.stage == v1::STAGE_RECORD || se.stage == v1::STAGE_AGREEMENT => {
+                        String::from_utf8(jcs(&serde_json::json!([se.stage, se.detail])).unwrap())
+                            .unwrap()
+                    }
                     Some(se) => format!("{:?}", se.stage),
                     None => refused(e),
                 },

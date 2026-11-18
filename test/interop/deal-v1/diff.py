@@ -4,7 +4,8 @@
 The shared vectors (testdata/deal-v1, dealprofile/x-deal-v1/fixtures) pin the
 profile by hand; this check pins that the implementations agree with each
 other on inputs nobody wrote by hand, valid and not: each record mutated from
-a fixture is accepted by both or refused by both at the same stage, and each
+a fixture is accepted by both or refused by both at the same stage (with the
+same text at the record and agreement stages), alone or with a seal context, and each
 status value and report built from mutated books is the same JCS text, or both
 refuse.
 
@@ -133,7 +134,11 @@ def requests(r, n):
             rec = copy.deepcopy(r.choice(recs))
             for _ in range(r.randint(0, 3)):
                 rec = mutate(r, rec)
-            out.append({"kind": "check", "record": json.dumps(rec)})
+            if r.random() < 0.3:
+                ctx = {"offer_exists": r.random() < 0.5, "admission": r.random() < 0.5}
+                out.append({"kind": "sealed", "record": json.dumps(rec), "context": ctx})
+            else:
+                out.append({"kind": "check", "record": json.dumps(rec)})
         elif kind < 0.75:
             books = copy.deepcopy(r.choice(status)["books"])
             for _ in range(r.randint(0, 2)):

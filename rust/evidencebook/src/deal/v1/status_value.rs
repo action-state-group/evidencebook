@@ -74,6 +74,8 @@ impl<'de> Deserialize<'de> for StatusTime {
         };
         match Value::deserialize(d)? {
             Value::Null => Ok(StatusTime::None),
+            // Go's zero Known is no time: "" reads as null.
+            Value::String(s) if s.is_empty() => Ok(StatusTime::None),
             Value::String(s) => Ok(StatusTime::Known(s)),
             Value::Object(m) if m.len() == 1 => match m.get("stamp").and_then(Value::as_u64) {
                 Some(n) if n >= 1 => Ok(StatusTime::Stamp(n)),
@@ -90,7 +92,9 @@ impl<'de> Deserialize<'de> for StatusTime {
 #[serde(deny_unknown_fields)]
 pub struct StatusRecord {
     pub record: Record,
+    #[serde(default)]
     pub record_id: String,
+    #[serde(default)]
     pub time: StatusTime,
 }
 
@@ -98,10 +102,11 @@ pub struct StatusRecord {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PaymentResult {
+    #[serde(default)]
     pub check: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub checked_over: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub excluded: Vec<String>,
@@ -114,16 +119,17 @@ pub struct PaymentResult {
 #[serde(deny_unknown_fields)]
 pub struct StatusBooks {
     pub offer: Record,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub own: Vec<StatusRecord>,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub counterpart: Vec<StatusRecord>,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub case_book: Vec<StatusRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conflicting_final_rulings: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub payments: BTreeMap<String, PaymentResult>,
+    #[serde(default)]
     pub proof_held: bool,
     #[serde(default, skip_serializing_if = "is_zero_usize")]
     pub rulings_unnamed: usize,

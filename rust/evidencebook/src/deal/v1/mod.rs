@@ -11,6 +11,23 @@
 //! v1 keeps v0's canonicalization, digest, keys and fingerprints, and v0's
 //! body types for the journal and journey overlays. Like v0's module it
 //! seals nothing: it returns bytes and verdicts.
+//!
+//! The CI differential check (`test/interop/deal-v1`) holds Go and this
+//! module to the same results on random inputs. Where they still differ, it
+//! is on input no checked record can carry:
+//!
+//! - a record text with a member named `"$serde_json::private::Number"`,
+//!   which serde_json would read as a number, is refused here at the
+//!   canonicalization stage; Go reads it as written;
+//! - a record inside status, row or report books is read from a parsed
+//!   value, so a member given twice there is not seen (every text entry
+//!   point, [`decode`], [`check`] and [`verify_sent`], refuses it as Go
+//!   does); a required list written `null`, a member the types do not name
+//!   or a member name in another case is refused there, where Go's reader
+//!   takes it;
+//! - [`check_authorizations`] reads each `at` as the record checks admit it
+//!   (RFC 3339 UTC to the second); Go's also takes an offset on records
+//!   that were never checked.
 
 mod authorization;
 mod check;

@@ -78,7 +78,7 @@ fn start_err(msg: String) -> Error {
 
 /// The instant of an RFC 3339 UTC time to the second, as seconds.
 fn start_time(name: &str, s: &str) -> Result<i64, Error> {
-    crate::row_status::parse_time(s)
+    crate::row_status::parse_time_from(s, 0)
         .map_err(|_| start_err(format!("{name} {s:?} is not a UTC time to the second")))
 }
 
@@ -172,11 +172,12 @@ pub struct BookRecord {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StartBooks {
+    #[serde(default)]
     pub at: String,
     pub offer: Record,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub own: Vec<BookRecord>,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub counterpart: Vec<BookRecord>,
 }
 

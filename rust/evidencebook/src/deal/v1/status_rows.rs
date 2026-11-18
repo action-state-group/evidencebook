@@ -19,7 +19,9 @@ use crate::row_status::{self, Input, Named as RsNamed};
 #[serde(deny_unknown_fields)]
 pub struct TimedRecord {
     pub record: Record,
+    #[serde(default)]
     pub record_id: String,
+    #[serde(default)]
     pub time: Option<String>,
 }
 
@@ -32,11 +34,11 @@ pub struct TimedRecord {
 #[serde(deny_unknown_fields)]
 pub struct RowBooks {
     pub offer: Record,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub own: Vec<TimedRecord>,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub counterpart: Vec<TimedRecord>,
-    #[serde(deserialize_with = "null_as_empty")]
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub case_book: Vec<TimedRecord>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conflicting_final_rulings: Vec<String>,

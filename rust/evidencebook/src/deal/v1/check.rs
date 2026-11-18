@@ -187,6 +187,15 @@ impl<'de> Visitor<'de> for NoRepeatsVisitor {
     fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<(), A::Error> {
         let mut seen = BTreeSet::new();
         while let Some(k) = a.next_key::<String>()? {
+            // serde_json's arbitrary_precision reads an object holding only
+            // this member as a number, so the record would not be read as
+            // written (Codex, #533 review): it is refused.
+            if k == "$serde_json::private::Number" {
+                return Err(serde::de::Error::custom(format!(
+                    "member {} is reserved by the JSON reader",
+                    super::super::check::go_q(&k)
+                )));
+            }
             if !seen.insert(k.clone()) {
                 return Err(serde::de::Error::custom(format!(
                     "member {} given twice",
