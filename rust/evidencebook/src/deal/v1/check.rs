@@ -104,16 +104,21 @@ pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
         u16::from_str_radix(s, 16).ok()
     };
     let mut in_string = false;
+    let mut start = 0;
     let mut i = 0;
     while i < raw.len() {
         let c = raw[i];
         if !in_string {
             in_string = c == b'"';
+            start = i;
             i += 1;
             continue;
         }
         match c {
-            b'"' => in_string = false,
+            b'"' => {
+                in_string = false;
+                reserved_key(raw, start, i)?;
+            }
             b'\\' if i + 1 < raw.len() => {
                 if raw[i + 1] == b'u' && i + 5 < raw.len() {
                     if let Some(u) = hex4(i + 2).filter(|u| (0xD800..=0xDFFF).contains(u)) {
@@ -142,6 +147,36 @@ pub(crate) fn check_text(raw: &[u8]) -> Result<(), Error> {
     NoRepeats
         .deserialize(&mut de)
         .map_err(|e| stage_err(STAGE_CANONICALIZATION, e.to_string()))?;
+    Ok(())
+}
+
+/// The member name serde_json's `arbitrary_precision` reads an object
+/// holding only it as a number by.
+const RESERVED_MEMBER: &str = "$serde_json::private::Number";
+
+/// Refuses the string at `raw[start..=end]` when it is a member name (a
+/// colon follows it) that unescapes to [`RESERVED_MEMBER`]: serde_json would
+/// read its object as a number, so the record would not be read as written
+/// (Codex, #533 review). A value, or serde_json's own encoding of a number
+/// such as `-0`, is not text and passes.
+fn reserved_key(raw: &[u8], start: usize, end: usize) -> Result<(), Error> {
+    let mut j = end + 1;
+    while j < raw.len() && matches!(raw[j], b' ' | b'\t' | b'\n' | b'\r') {
+        j += 1;
+    }
+    if raw.get(j) != Some(&b':') {
+        return Ok(());
+    }
+    let name: Result<String, _> = serde_json::from_slice(&raw[start..=end]);
+    if name.ok().as_deref() == Some(RESERVED_MEMBER) {
+        return Err(stage_err(
+            STAGE_CANONICALIZATION,
+            format!(
+                "member {} is reserved by the JSON reader",
+                super::super::check::go_q(RESERVED_MEMBER)
+            ),
+        ));
+    }
     Ok(())
 }
 
@@ -187,15 +222,6 @@ impl<'de> Visitor<'de> for NoRepeatsVisitor {
     fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<(), A::Error> {
         let mut seen = BTreeSet::new();
         while let Some(k) = a.next_key::<String>()? {
-            // serde_json's arbitrary_precision reads an object holding only
-            // this member as a number, so the record would not be read as
-            // written (Codex, #533 review): it is refused.
-            if k == "$serde_json::private::Number" {
-                return Err(serde::de::Error::custom(format!(
-                    "member {} is reserved by the JSON reader",
-                    super::super::check::go_q(&k)
-                )));
-            }
             if !seen.insert(k.clone()) {
                 return Err(serde::de::Error::custom(format!(
                     "member {} given twice",

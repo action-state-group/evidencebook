@@ -224,3 +224,25 @@ fn status_books_read_go_zero_values() {
     assert_eq!(b.own[1].time, v1::StatusTime::None);
     v1::build_status(&b).expect("an untimed record, as Go reads it");
 }
+
+/// `-0`, which serde_json hands its readers as a number through the
+/// reserved member, is a number as written and passes; the member written
+/// with escapes is still refused.
+#[test]
+fn minus_zero_passes_and_escaped_reserved_member_is_refused() {
+    let f = read(&fixtures().join("appendix-a/buyer-journal/05-offer.json"));
+    let text = serde_json::to_string(&f["record"]).unwrap();
+    let zero = text.replacen("\"owed\":{", "\"owed\":{\"zero\":-0,", 1);
+    v1::check(zero.as_bytes()).expect("-0 passes, as Go reads it");
+    let escaped = text.replacen(
+        "\"owed\":{",
+        "\"owed\":{\"detail\":{\"\\u0024serde_json::private::Number\":\"1\"},",
+        1,
+    );
+    let err = v1::check(escaped.as_bytes()).expect_err("refused");
+    assert_eq!(
+        err.stage().map(|s| s.stage),
+        Some("canonicalization"),
+        "{err}"
+    );
+}

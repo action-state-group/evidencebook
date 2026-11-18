@@ -88,6 +88,33 @@ def fixtures():
     return out
 
 
+# Records read against another (CheckAgreement, CheckDispute, CheckRuling):
+# the fixture paths of each pair, and the acceptor agreement an offerer's
+# agreement names.
+AGAINST = [
+    ("agreement", "appendix-a/buyer-book/01-agreement.json", "appendix-a/buyer-journal/05-offer.json",
+     "appendix-a/seller-book/01-agreement.json"),
+    ("agreement", "appendix-a/seller-book/01-agreement.json", "appendix-a/buyer-journal/05-offer.json", None),
+    ("dispute", "appendix-a/buyer-book/05-dispute.json", "appendix-a/buyer-book/01-agreement.json", None),
+    ("ruling", "appendix-a/case-book/01-ruling.json", "appendix-a/buyer-book/01-agreement.json", None),
+    ("ruling", "appendix-a/case-book/02-ruling-final.json", "appendix-a/seller-book/01-agreement.json", None),
+]
+
+
+def against(r):
+    check, path, with_path, held_path = r.choice(AGAINST)
+    rec = json.loads((FIXTURES / path).read_text())["record"]
+    other = json.loads((FIXTURES / with_path).read_text())["record"]
+    held = json.loads((FIXTURES / held_path).read_text()).get("record_id", "") if held_path else ""
+    for _ in range(r.randint(0, 2)):
+        rec = mutate(r, rec)
+    if r.random() < 0.3:
+        other = mutate(r, other)
+    if r.random() < 0.1:
+        held = r.choice(STRINGS)
+    return {"kind": "against", "check": check, "record": json.dumps(rec), "with": json.dumps(other), "held": held}
+
+
 def cases(name):
     return json.loads((VECTORS / name).read_text())["cases"]
 
@@ -130,7 +157,9 @@ def requests(r, n):
     out = []
     for _ in range(n):
         kind = r.random()
-        if kind < 0.5:
+        if kind < 0.1:
+            out.append(against(r))
+        elif kind < 0.5:
             rec = copy.deepcopy(r.choice(recs))
             for _ in range(r.randint(0, 3)):
                 rec = mutate(r, rec)

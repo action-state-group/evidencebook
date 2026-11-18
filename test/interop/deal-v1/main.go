@@ -28,6 +28,11 @@ type request struct {
 	Copy   *reportCopy     `json:"copy"`
 	// Context is a sealed request's seal context.
 	Context *xdealv1.SealContext `json:"context"`
+	// An against request reads record against With: Check is agreement,
+	// dispute or ruling, and Held the acceptor agreement's record id.
+	Check string `json:"check"`
+	With  string `json:"with"`
+	Held  string `json:"held"`
 }
 
 type reportCopy struct {
@@ -80,6 +85,47 @@ func answer(line []byte) (string, error) {
 			return `"ok"`, nil
 		case errors.As(err, &se) && (se.Stage == xdealv1.StageRecord || se.Stage == xdealv1.StageAgreement):
 			// The text is the profile's at these stages: compared too.
+			return jcsOf([]string{se.Stage, se.Detail})
+		case errors.As(err, &se):
+			return fmt.Sprintf("%q", se.Stage), nil
+		}
+		return refused, nil
+	case "against":
+		// A record that does not decode is reported as its record check
+		// refuses it: the checks below run that check first, and the two
+		// readers differ only in which of the two refuses a record the
+		// schema refuses (a required list written null).
+		r, err1 := xdealv1.Decode([]byte(req.Record))
+		w, err2 := xdealv1.Decode([]byte(req.With))
+		var err error
+		switch {
+		case err1 != nil:
+			err = xdealv1.Check([]byte(req.Record))
+		case err2 != nil:
+			err = xdealv1.Check([]byte(req.With))
+		}
+		if err1 != nil || err2 != nil {
+			var se *dealprofile.StageError
+			if errors.As(err, &se) {
+				return fmt.Sprintf("%q", se.Stage), nil
+			}
+			return refused, nil
+		}
+		switch req.Check {
+		case "agreement":
+			err = xdealv1.CheckAgreement(r, w, req.Held)
+		case "dispute":
+			err = xdealv1.CheckDispute(r, w)
+		case "ruling":
+			err = xdealv1.CheckRuling(r, w)
+		default:
+			return "", fmt.Errorf("unknown check %q", req.Check)
+		}
+		var se *dealprofile.StageError
+		switch {
+		case err == nil:
+			return `"ok"`, nil
+		case errors.As(err, &se) && (se.Stage == xdealv1.StageRecord || se.Stage == xdealv1.StageAgreement):
 			return jcsOf([]string{se.Stage, se.Detail})
 		case errors.As(err, &se):
 			return fmt.Sprintf("%q", se.Stage), nil

@@ -46,6 +46,48 @@ fn answer(line: &str) -> Result<String, String> {
                 },
             })
         }
+        "against" => {
+            // As the Go side: a record that does not decode is reported as
+            // its record check refuses it.
+            let (rt, wt) = (
+                req["record"].as_str().unwrap_or_default(),
+                req["with"].as_str().unwrap_or_default(),
+            );
+            let (r, w) = match (v1::decode(rt.as_bytes()), v1::decode(wt.as_bytes())) {
+                (Ok(r), Ok(w)) => (r, w),
+                (r, _) => {
+                    let text = if r.is_err() { rt } else { wt };
+                    return Ok(
+                        match v1::check(text.as_bytes())
+                            .err()
+                            .and_then(|e| e.stage().cloned())
+                        {
+                            Some(se) => format!("{:?}", se.stage),
+                            None => REFUSED.into(),
+                        },
+                    );
+                }
+            };
+            let got = match req["check"].as_str().unwrap_or_default() {
+                "agreement" => {
+                    v1::check_agreement(&r, &w, req["held"].as_str().unwrap_or_default())
+                }
+                "dispute" => v1::check_dispute(&r, &w),
+                "ruling" => v1::check_ruling(&r, &w),
+                other => return Err(format!("unknown check {other:?}")),
+            };
+            Ok(match got {
+                Ok(()) => "\"ok\"".into(),
+                Err(e) => match e.stage() {
+                    Some(se) if se.stage == v1::STAGE_RECORD || se.stage == v1::STAGE_AGREEMENT => {
+                        String::from_utf8(jcs(&serde_json::json!([se.stage, se.detail])).unwrap())
+                            .unwrap()
+                    }
+                    Some(se) => format!("{:?}", se.stage),
+                    None => refused(e),
+                },
+            })
+        }
         "status" => {
             let b = match serde_json::from_value::<v1::StatusBooks>(req["books"].clone()) {
                 Ok(b) => b,
