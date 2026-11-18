@@ -197,86 +197,120 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 			return bookSealed{}, err
 		}
 	}
-	size := book.Size()
-	opening := size == 0
-	if opening && !isAgreement() {
-		return bookSealed{}, cli.InputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
-	}
-	block := xdealv1.Block{
-		Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID,
-		RecordType: in.Body.RecordType(), At: v1Now(), Marks: in.Marks,
-		Seq: int64(size) + 1,
-	}
-	var prevID string
-	if size > 0 {
-		last, err := book.Query(ctx, evidencebook.Filter{FromSeq: size, ToSeq: size})
+	attempt := func() (bookSealed, error) {
+		size := book.Size()
+		opening := size == 0
+		if opening && !isAgreement() {
+			return bookSealed{}, cli.InputError("deal " + dealID + " has no deal book yet: it opens at your agreement (`deal agree`)")
+		}
+		block := xdealv1.Block{
+			Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID,
+			RecordType: in.Body.RecordType(), At: v1Now(), Marks: in.Marks,
+			Seq: int64(size) + 1,
+		}
+		var prevID string
+		if size > 0 {
+			last, err := book.Query(ctx, evidencebook.Filter{FromSeq: size, ToSeq: size})
+			if err != nil {
+				return bookSealed{}, err
+			}
+			if len(last) != 1 || len(last[0].Header.PayloadCommitments) != 1 {
+				return bookSealed{}, fmt.Errorf("%w: the deal book's last record has no record digest", cli.ErrConflict)
+			}
+			prevID = last[0].RecordID
+			prev := xdealv1.RefTo(last[0].Header.PayloadCommitments[0])
+			block.Prev = &prev
+			agreement := xdealv1.RefTo(d.OwnAgreementDigest)
+			block.AgreementRef = &agreement
+		}
+		block.Seen = xdealv1.NullOf[string]()
+		if d.CounterpartyKey != "" && d.CounterpartyLogID != "" {
+			cp, err := s.shelf.CountedPrefix(ctx, d.CounterpartyKey, d.CounterpartyLogID)
+			if err != nil {
+				return bookSealed{}, err
+			}
+			if cp.Last != "" {
+				block.Seen = xdealv1.Some(cp.Last)
+			}
+		}
+		if in.Seen != "" {
+			block.Seen = xdealv1.Some(in.Seen)
+		}
+		rec := xdealv1.Record{Block: block, Body: in.Body}
+		if in.Validate != nil {
+			if err := in.Validate(rec); err != nil {
+				return bookSealed{}, err
+			}
+		}
+		if err := xdealv1.Check(rec); err != nil {
+			return bookSealed{}, cli.InputError("the record does not pass the x-deal-v1 checks: " + err.Error())
+		}
+		if xdealv1.PlacementOf(rec) != xdealv1.PlacementDealBook {
+			return bookSealed{}, cli.InputError("a " + block.RecordType + " record is not sealed in a deal book")
+		}
+		payload, digest, err := xdealv1.Encode(rec)
 		if err != nil {
 			return bookSealed{}, err
 		}
-		if len(last) != 1 || len(last[0].Header.PayloadCommitments) != 1 {
-			return bookSealed{}, fmt.Errorf("%w: the deal book's last record has no record digest", cli.ErrConflict)
-		}
-		prevID = last[0].RecordID
-		prev := xdealv1.RefTo(last[0].Header.PayloadCommitments[0])
-		block.Prev = &prev
-		agreement := xdealv1.RefTo(d.OwnAgreementDigest)
-		block.AgreementRef = &agreement
-	}
-	block.Seen = xdealv1.NullOf[string]()
-	if d.CounterpartyKey != "" && d.CounterpartyLogID != "" {
-		cp, err := s.shelf.CountedPrefix(ctx, d.CounterpartyKey, d.CounterpartyLogID)
+		entry, err := xdealv1.BookEntry(rec, prevID)
 		if err != nil {
 			return bookSealed{}, err
 		}
-		if cp.Last != "" {
-			block.Seen = xdealv1.Some(cp.Last)
-		}
-	}
-	if in.Seen != "" {
-		block.Seen = xdealv1.Some(in.Seen)
-	}
-	rec := xdealv1.Record{Block: block, Body: in.Body}
-	if in.Validate != nil {
-		if err := in.Validate(rec); err != nil {
+		// BookEntry seals the header's record type as deal_step (design §3.1;
+		// evidencebook v0.18.1, #531), which the test below pins.
+		bookAppendHook()
+		// The record names its own place, so it is appended only as the book's
+		// next record: a write that landed since the tail was read (Receive names a
+		// counted ruling in the same book) is refused with ErrBusy, and the
+		// caller reads the tail again and rebuilds the record.
+		stored, err := book.AppendAt(ctx, size+1, entry)
+		if err != nil {
+			if errors.Is(err, evidencebook.ErrBusy) {
+				return bookSealed{}, errPlaceTaken
+			}
 			return bookSealed{}, err
 		}
-	}
-	if err := xdealv1.Check(rec); err != nil {
-		return bookSealed{}, cli.InputError("the record does not pass the x-deal-v1 checks: " + err.Error())
-	}
-	if xdealv1.PlacementOf(rec) != xdealv1.PlacementDealBook {
-		return bookSealed{}, cli.InputError("a " + block.RecordType + " record is not sealed in a deal book")
-	}
-	payload, digest, err := xdealv1.Encode(rec)
-	if err != nil {
-		return bookSealed{}, err
-	}
-	entry := evidencebook.Entry{RecordType: "deal_step", EpistemicType: evidencebook.ProducerClaim, Payloads: [][]byte{payload}, SubjectRef: dealID}
-	if prevID != "" {
-		entry.Links = []evidencebook.Link{{Type: evidencebook.Cites, Target: prevID}}
-	}
-	stored, err := book.Append(ctx, entry)
-	if err != nil {
-		return bookSealed{}, err
-	}
-	sealed, err := book.Sealed(ctx, stored.RecordID)
-	if err != nil {
-		return bookSealed{}, err
-	}
-	pair, err := xdealv1.BookPair(sealed, payload)
-	if err != nil {
-		return bookSealed{}, err
-	}
-	if opening {
-		if _, err = s.db.ExecContext(ctx, `UPDATE deal_v1 SET own_agreement_id=?, own_agreement_digest=? WHERE deal_id=?`, stored.RecordID, digest, dealID); err != nil {
+		sealed, err := book.Sealed(ctx, stored.RecordID)
+		if err != nil {
 			return bookSealed{}, err
 		}
-		if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET state='agreed' WHERE deal_id=?`, dealID); err != nil {
+		pair, err := xdealv1.BookPair(sealed, payload)
+		if err != nil {
 			return bookSealed{}, err
 		}
+		if opening {
+			if _, err = s.db.ExecContext(ctx, `UPDATE deal_v1 SET own_agreement_id=?, own_agreement_digest=? WHERE deal_id=?`, stored.RecordID, digest, dealID); err != nil {
+				return bookSealed{}, err
+			}
+			if _, err = s.db.ExecContext(ctx, `UPDATE deal_versions SET state='agreed' WHERE deal_id=?`, dealID); err != nil {
+				return bookSealed{}, err
+			}
+		}
+		return bookSealed{Seq: size + 1, RecordID: stored.RecordID, Digest: digest, Record: rec, Pair: pair}, nil
 	}
-	return bookSealed{Seq: size + 1, RecordID: stored.RecordID, Digest: digest, Record: rec, Pair: pair}, nil
+	for try := 0; try < bookAppendTries; try++ {
+		sealed, err := attempt()
+		if !errors.Is(err, errPlaceTaken) {
+			return sealed, err
+		}
+	}
+	return bookSealed{}, fmt.Errorf("%w: the deal book kept changing while the record was sealed; run the command again", cli.ErrConflict)
 }
+
+// errPlaceTaken is what a try returns when the append itself was refused its
+// place (ErrBusy from AppendAt): the only error the writer retries. An ErrBusy
+// from anywhere else (the validation, a read, the sealed record after a
+// successful append) is returned as it is, never retried: a retry there could
+// append the record twice.
+var errPlaceTaken = errors.New("the record's place was taken")
+
+// bookAppendTries is how many times the writer rebuilds a record whose place
+// was taken by another write before it gives up.
+const bookAppendTries = 8
+
+// bookAppendHook is a seam for tests: it runs after a record is built and
+// before it is appended, where a write from elsewhere can land.
+var bookAppendHook = func() {}
 
 // repairOpening records the agreement a stopped run appended but did not
 // record: the first record of the deal book, from its header.
