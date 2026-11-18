@@ -139,16 +139,21 @@ fn check_text(raw: &[u8]) -> Result<(), Error> {
         u16::from_str_radix(s, 16).ok()
     };
     let mut in_string = false;
+    let mut start = 0;
     let mut i = 0;
     while i < raw.len() {
         let c = raw[i];
         if !in_string {
             in_string = c == b'"';
+            start = i;
             i += 1;
             continue;
         }
         match c {
-            b'"' => in_string = false,
+            b'"' => {
+                in_string = false;
+                reserved_key(raw, start, i)?;
+            }
             b'\\' => {
                 if i + 1 < raw.len() && raw[i + 1] == b'u' && i + 5 < raw.len() {
                     if let Some(u) = hex4(i + 2).filter(|u| (0xD800..=0xDFFF).contains(u)) {
@@ -173,6 +178,63 @@ fn check_text(raw: &[u8]) -> Result<(), Error> {
                 i += 1; // the escaped character
             }
             _ => {}
+        }
+        i += 1;
+    }
+    Ok(())
+}
+
+/// The member names serde_json reads an object by when the object's first
+/// member has one: `arbitrary_precision` reads it as a number, `raw_value`
+/// as the JSON in its string. The `deal` feature turns on the first, and a
+/// program that also links a crate turning on `raw_value` gets the second
+/// (Cargo merges features).
+const RESERVED_MEMBERS: &[&str] = &[
+    "$serde_json::private::Number",
+    "$serde_json::private::RawValue",
+];
+
+/// Refuses the string at `raw[start..=end]` when it is a member name (a
+/// colon follows it) that unescapes to one of [`RESERVED_MEMBERS`]:
+/// serde_json would read its object as something else, so the record would
+/// not be read as written (Codex, #533 review; #534). A value, or
+/// serde_json's own encoding of a number such as `-0`, is not text and
+/// passes.
+pub(crate) fn reserved_key(raw: &[u8], start: usize, end: usize) -> Result<(), Error> {
+    let mut j = end + 1;
+    while j < raw.len() && matches!(raw[j], b' ' | b'\t' | b'\n' | b'\r') {
+        j += 1;
+    }
+    if raw.get(j) != Some(&b':') {
+        return Ok(());
+    }
+    let name: Result<String, _> = serde_json::from_slice(&raw[start..=end]);
+    if let Some(m) = name.ok().filter(|n| RESERVED_MEMBERS.contains(&n.as_str())) {
+        return Err(stage_err(
+            STAGE_CANONICALIZATION,
+            format!("member {} is reserved by the JSON reader", go_q(&m)),
+        ));
+    }
+    Ok(())
+}
+
+/// Refuses a text with a reserved member name ([`reserved_key`]) and nothing
+/// else: the scan of [`check_text`] without its UTF-8 and surrogate checks,
+/// for a reader that, as Go's `Decode`, makes none.
+pub(crate) fn no_reserved_members(raw: &[u8]) -> Result<(), Error> {
+    let mut in_string = false;
+    let mut start = 0;
+    let mut i = 0;
+    while i < raw.len() {
+        let c = raw[i];
+        if !in_string {
+            in_string = c == b'"';
+            start = i;
+        } else if c == b'\\' {
+            i += 1;
+        } else if c == b'"' {
+            in_string = false;
+            reserved_key(raw, start, i)?;
         }
         i += 1;
     }
