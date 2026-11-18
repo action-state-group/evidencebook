@@ -1286,6 +1286,11 @@ the witness receipts it is handed (A, above).
   `statement` whose `names.ruling` cites it), and it takes that record's time. Before then its
   arrival has no time on the holder's shelf. The holder's stamps cover only its own book and the
   counterparty's (the link value names that log only).
+  - **Caveat** (Sherlock2, PR 4c-2b-2 review). Writing the naming `statement` is optional today,
+    so a holder ruled against can leave it unwritten. Its status then has no ruling, and its
+    dispute's `outcome` stays `open`, while the counterparty's status shows the ruling. Until the
+    receive call writes that statement itself when a counted ruling arrives (#527), an `open`
+    outcome may hide an unnamed ruling. PR 5's card must not present it as unresolved.
 - **A forked case book.** Rows are conflicting when the adjudicator's log has a fork (`ForkAt` >
   0) and its held final rulings on the row differ.
 - **The payment check on the row.** `check` is `PaymentCheck`'s pass, fail or empty.
