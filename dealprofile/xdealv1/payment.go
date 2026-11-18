@@ -80,16 +80,18 @@ func owedAmount(row Row) (map[string]any, bool) {
 	if len(row.Owed) == 0 || json.Unmarshal(row.Owed, &owed) != nil || len(owed) != 2 || owed["amount_minor"] == nil || owed["currency"] == nil {
 		return nil, false
 	}
-	var minor int64
-	var currency string
-	if json.Unmarshal(owed["amount_minor"], &minor) != nil || minor < 0 || json.Unmarshal(owed["currency"], &currency) != nil {
+	// Pointers, since a JSON null leaves a plain int64 or string unset.
+	var minor *int64
+	var currency *string
+	if json.Unmarshal(owed["amount_minor"], &minor) != nil || minor == nil || *minor < 0 ||
+		json.Unmarshal(owed["currency"], &currency) != nil || currency == nil {
 		return nil, false
 	}
-	scale, ok := dealprofile.AssetScale(currency)
+	scale, ok := dealprofile.AssetScale(*currency)
 	if !ok {
 		return nil, false
 	}
-	return map[string]any{"value": strconv.FormatInt(minor, 10), "assetCode": currency, "assetScale": json.Number(strconv.Itoa(scale))}, true
+	return map[string]any{"value": strconv.FormatInt(*minor, 10), "assetCode": *currency, "assetScale": json.Number(strconv.Itoa(scale))}, true
 }
 
 // TermsLeg is the terms leg an offer's sent Capsule carries as its

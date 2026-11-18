@@ -152,6 +152,12 @@ func TestTermsLeg(t *testing.T) {
 		"another case": func(o *ProposeBody) {
 			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":6000,"Currency":"USD"}`)
 		},
+		"a null amount": func(o *ProposeBody) {
+			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":null,"currency":"USD"}`)
+		},
+		"a null currency": func(o *ProposeBody) {
+			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":6000,"currency":null}`)
+		},
 		"a fractional amount": func(o *ProposeBody) {
 			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":60.5,"currency":"USD"}`)
 		},
