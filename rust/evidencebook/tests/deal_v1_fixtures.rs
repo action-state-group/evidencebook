@@ -46,7 +46,11 @@ fn positives_pass_and_keep_their_bytes() {
     json_files(&fixtures(), &mut files);
     let mut n = 0;
     for path in files {
-        let rel = path.strip_prefix(fixtures()).unwrap().to_string_lossy().to_string();
+        let rel = path
+            .strip_prefix(fixtures())
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         if rel.starts_with("negative/") || !rel.contains('/') {
             continue;
         }
@@ -63,7 +67,11 @@ fn positives_pass_and_keep_their_bytes() {
             "{rel}: encodes to the same bytes"
         );
         let (_, digest) = v1::encode(&text).unwrap_or_else(|e| panic!("{rel}: {e}"));
-        assert_eq!(digest, f["expected_digest"].as_str().unwrap(), "{rel}: digest");
+        assert_eq!(
+            digest,
+            f["expected_digest"].as_str().unwrap(),
+            "{rel}: digest"
+        );
         assert_eq!(
             v1::placement_of(&r).as_str(),
             f["placement"].as_str().unwrap(),
@@ -103,7 +111,9 @@ fn negatives_are_refused_at_their_stage() {
                     "agreement" => v1::check_agreement(
                         &r,
                         &with,
-                        f.get("held_acceptor_agreement").and_then(Value::as_str).unwrap_or(""),
+                        f.get("held_acceptor_agreement")
+                            .and_then(Value::as_str)
+                            .unwrap_or(""),
                     ),
                     "dispute" => v1::check_dispute(&r, &with),
                     "ruling" => v1::check_ruling(&r, &with),
@@ -112,10 +122,16 @@ fn negatives_are_refused_at_their_stage() {
             }
         }
         .expect_err(&name);
-        let se = err.stage().unwrap_or_else(|| panic!("{name}: not a stage refusal: {err}"));
+        let se = err
+            .stage()
+            .unwrap_or_else(|| panic!("{name}: not a stage refusal: {err}"));
         assert_eq!(se.stage, stage, "{name}: stage ({err})");
         if stage != "canonicalization" && stage != "schema" {
-            assert!(se.detail.contains(contains), "{name}: {:?} contains {contains:?}", se.detail);
+            assert!(
+                se.detail.contains(contains),
+                "{name}: {:?} contains {contains:?}",
+                se.detail
+            );
         }
     }
 }
@@ -123,14 +139,21 @@ fn negatives_are_refused_at_their_stage() {
 #[test]
 fn vendored_schema_is_the_profiles() {
     let go = fs::read(fixtures().join("../x-deal-v1.schema.json")).unwrap();
-    assert_eq!(v1::profile_schema(), go.as_slice(), "x-deal-v1.schema.json is vendored byte for byte");
+    assert_eq!(
+        v1::profile_schema(),
+        go.as_slice(),
+        "x-deal-v1.schema.json is vendored byte for byte"
+    );
 }
 
 /// deal-id-presence (`testdata/deal-v1/records/`): each record passes or is
 /// refused at its stage, checked with its seal context when it has one.
 #[test]
 fn deal_id_presence_vectors() {
-    let v = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/deal-v1/records/deal-id-presence.json"));
+    let v = read(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/deal-v1/records/deal-id-presence.json"),
+    );
     let cases = v["cases"].as_array().unwrap();
     assert!(!cases.is_empty());
     for c in cases {
@@ -144,7 +167,11 @@ fn deal_id_presence_vectors() {
             got.unwrap_or_else(|e| panic!("{name}: {e}"));
         } else {
             let err = got.expect_err(name);
-            assert_eq!(err.stage().map(|s| s.stage), c["stage"].as_str(), "{name}: {err}");
+            assert_eq!(
+                err.stage().map(|s| s.stage),
+                c["stage"].as_str(),
+                "{name}: {err}"
+            );
         }
     }
 }
