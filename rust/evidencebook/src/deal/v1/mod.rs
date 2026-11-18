@@ -34,7 +34,12 @@
 //!   `terms_ref` by their exact names; Go's reader also takes them in
 //!   another case. A leg so spelled answers no terms leg here, and in Go
 //!   AAC's verifier refuses it, so the payment check's outcome is the same
-//!   and only its `excluded` list differs.
+//!   and only its `excluded` list differs;
+//! - [`verify_book`] decodes the header as Go's typed `Header` does (each
+//!   member's Go type, null as the zero value, names in any case), except
+//!   that a header's `correlation` must hold only strings: Go ignores a
+//!   member there of a name it has no field for. No deal-book header
+//!   carries a correlation.
 
 mod authorization;
 mod book;

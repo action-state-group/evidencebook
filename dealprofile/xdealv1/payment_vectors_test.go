@@ -10,10 +10,29 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	emit "github.com/action-state-group/capsule-emit/go"
+	evidencebook "github.com/action-state-group/evidencebook"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// resealPayloadDeal is a settle leg of d's buyer book whose record names
+// another deal id.
+func resealPayloadDeal(t *testing.T, d *paymentDeal) []byte {
+	t.Helper()
+	d.buyerSeq++
+	b := journalBlock(TypeSettle, "2026-11-01T10:20:00Z", true)
+	b.DealID = "deal-fedcba9876543210"
+	pr, ar := RefTo(mustDigest(t, d.buyerLast)), RefTo(mustDigest(t, d.buyerAg))
+	b.Seq, b.Prev, b.AgreementRef, b.Seen = d.buyerSeq, &pr, &ar, Some(d.sellerAgID)
+	r := Record{Block: b, Body: payerBody()}
+	require.NoError(t, Check(r))
+	_, pair := d.buyer.sealWith(d.buyerLog, r, map[string]json.RawMessage{SettlementMember: mustJSON(t, d.payerMember("settled", "6000"))})
+	d.buyerLast = r
+	return pair
+}
 
 const paymentDir = "../../testdata/deal-v1/payment"
 
@@ -48,6 +67,90 @@ type bookVectorCase struct {
 	LogID    string `json:"log_id,omitempty"`
 	Seq      uint64 `json:"seq,omitempty"`
 	Prev     string `json:"prev,omitempty"`
+}
+
+// pairVectorCase is a book record as its book sealed it and the pair
+// BookPair makes of it, byte for byte.
+type pairVectorCase struct {
+	Name     string `json:"name"`
+	Header   string `json:"header"`
+	Capsule  string `json:"capsule"`
+	Envelope string `json:"envelope"`
+	Payload  string `json:"payload"`
+	Pair     string `json:"pair"`
+}
+
+func pairVectorOf(name string, sealed evidencebook.StoredRecord, payload, pair []byte) pairVectorCase {
+	x := hex.EncodeToString
+	return pairVectorCase{Name: name, Header: x(sealed.Header), Capsule: x(sealed.Capsule), Envelope: x(sealed.Envelope),
+		Payload: x(payload), Pair: x(pair)}
+}
+
+// resealHeader is pair with its header edited and its Capsule sealed again
+// over the new header by name's record key, so the Capsule commits it: a
+// header a book never writes, read by VerifyBook's typed header decode.
+func resealHeader(t *testing.T, name string, pair []byte, edit func(map[string]any)) []byte {
+	t.Helper()
+	var p struct {
+		Record  map[string]json.RawMessage `json:"record"`
+		Header  json.RawMessage            `json:"header"`
+		Payload json.RawMessage            `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(pair, &p))
+	doc, err := decodeJSON(p.Header)
+	require.NoError(t, err)
+	hd := doc.(map[string]any)
+	edit(hd)
+	header, err := jcsJSON(hd)
+	require.NoError(t, err)
+	var c struct {
+		ActionID   string `json:"action_id"`
+		Operator   string `json:"operator"`
+		Developer  string `json:"developer"`
+		Timestamp  string `json:"timestamp"`
+		References []struct {
+			Type      string `json:"type"`
+			DigestAlg string `json:"digest_alg"`
+			Digest    string `json:"digest"`
+		} `json:"references"`
+	}
+	raw, err := json.Marshal(p.Record)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &c))
+	at, err := time.Parse(time.RFC3339Nano, c.Timestamp)
+	require.NoError(t, err)
+	var refs []emit.Reference
+	for _, r := range c.References {
+		refs = append(refs, emit.Reference{Type: r.Type, DigestAlg: r.DigestAlg, Digest: r.Digest})
+	}
+	id, err := emit.NewEd25519SigningIdentity(seed(name + " record key"))
+	require.NoError(t, err)
+	sealed, err := emit.Seal(emit.SealInput{Capsule: emit.Input{ActionID: c.ActionID, ActionType: emit.ActionTypeFYI,
+		Operator: c.Operator, Developer: c.Developer, Timestamp: at, References: refs}, Payload: json.RawMessage(header), Identity: id})
+	require.NoError(t, err)
+	signed, err := signedCapsule(sealed.Payload, sealed.Envelope)
+	require.NoError(t, err)
+	out, err := json.Marshal(map[string]json.RawMessage{"record": signed, "header": header, "payload": p.Payload})
+	require.NoError(t, err)
+	return out
+}
+
+// appendPair appends r to p's book logID with the links given (none, not
+// the book's own cite) and returns its book pair and its sealed record.
+func appendPair(t *testing.T, p *party, logID string, r Record, links []evidencebook.Link) ([]byte, evidencebook.StoredRecord) {
+	t.Helper()
+	p.tick()
+	book, err := p.shelf.Open(t.Context(), logID)
+	require.NoError(t, err)
+	e := entryOf(t, r)
+	e.Links = links
+	rec, err := book.Append(t.Context(), e)
+	require.NoError(t, err)
+	sealed, err := book.Sealed(t.Context(), rec.RecordID)
+	require.NoError(t, err)
+	pair, err := BookPair(sealed, jcsOf(t, r))
+	require.NoError(t, err)
+	return pair, sealed
 }
 
 func paymentVectorOf(t *testing.T, name string, in PaymentInput) paymentVectorCase {
@@ -276,9 +379,95 @@ func TestPaymentVectors(t *testing.T) {
 		add("refused/a-chained-leg", d, pending, settled, payee)
 	}
 
+	// A leg of another deal.
+	{
+		d := newPaymentDeal(t, nil, true)
+		payer := d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
+		payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))
+		otherDeal := resealPayloadDeal(t, d)
+		add("refused/a-leg-of-another-deal", d, payer, payee, otherDeal)
+	}
+
+	var pairs []pairVectorCase
 	// Book pairs refused on their own.
 	{
 		h := newHandshake(t, nil)
+		// BookPair byte for byte, with a party whose operator name Go's
+		// json.Marshal escapes (&, <, >).
+		odd := newParty(t, "a&b<c>")
+		agreement := h.agreement
+		pair, sealed := appendPair(t, odd, "deal/odd", agreement, nil)
+		pairs = append(pairs, pairVectorOf("operator-with-html-characters", sealed, jcsOf(t, agreement), pair))
+		books = append(books, bookVectorOf("operator-with-html-characters", pair))
+		pair2, sealed2 := appendPair(t, h.seller, "deal/plain", agreement, nil)
+		pairs = append(pairs, pairVectorOf("agreement", sealed2, jcsOf(t, agreement), pair2))
+
+		// Placement and seq.
+		journal, _ := appendPair(t, h.seller, "deal/journal-type", h.offer, nil)
+		books = append(books, bookVectorOf("a-journal-record-in-a-book", journal))
+		at2 := h.agreement
+		at2.Block.Seq = 2
+		wrongSeq, _ := appendPair(t, h.seller, "deal/wrong-seq", at2, nil)
+		books = append(books, bookVectorOf("the-records-seq-is-not-the-headers", wrongSeq))
+		cite := []evidencebook.Link{{Type: evidencebook.Cites, Target: h.agreementID}}
+		firstCites, _ := appendPair(t, h.seller, "deal/first-cites", h.agreement, cite)
+		books = append(books, bookVectorOf("the-first-record-cites", firstCites))
+		// A second record (seq 2) citing none, and citing two.
+		second := settleRecord(t, 2, h.agreement, h.agreement, h.agreementID)
+		appendPair(t, h.seller, "deal/no-cite", h.agreement, nil)
+		noCite, _ := appendPair(t, h.seller, "deal/no-cite", second, nil)
+		books = append(books, bookVectorOf("a-second-record-cites-none", noCite))
+		appendPair(t, h.seller, "deal/two-cites", h.agreement, nil)
+		twoCites, _ := appendPair(t, h.seller, "deal/two-cites", second,
+			[]evidencebook.Link{{Type: evidencebook.Cites, Target: h.agreementID}, {Type: evidencebook.Cites, Target: hex.EncodeToString(make([]byte, 32))}})
+		books = append(books, bookVectorOf("a-second-record-cites-two", twoCites))
+		oneCite, _ := appendPair(t, h.seller, "deal/one-cite", h.agreement, nil)
+		_ = oneCite
+		seq2, _ := appendPair(t, h.seller, "deal/one-cite", second, []evidencebook.Link{{Type: evidencebook.Cites, Target: h.agreementID}})
+		books = append(books, bookVectorOf("a-second-record", seq2))
+
+		// The header as Go's typed decode reads it, each sealed again.
+		books = append(books,
+			bookVectorOf("header/a-number-among-the-commitments", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["payload_commitments"] = append(hd["payload_commitments"].([]any), json.Number("1"))
+			})),
+			bookVectorOf("header/a-null-among-the-commitments", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["payload_commitments"] = append(hd["payload_commitments"].([]any), nil)
+			})),
+			bookVectorOf("header/a-cite-with-a-number-target", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["links"] = append(hd["links"].([]any), map[string]any{"type": "cites", "target": json.Number("7")})
+			})),
+			bookVectorOf("header/a-cite-with-no-target", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["links"] = []any{map[string]any{"type": "cites"}}
+			})),
+			bookVectorOf("header/a-null-link", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["links"] = append(hd["links"].([]any), nil)
+			})),
+			bookVectorOf("header/v-as-a-string", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["v"] = "1" })),
+			bookVectorOf("header/a-record-type-number", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["record_type"] = json.Number("5") })),
+			bookVectorOf("header/a-committed-at-object", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["committed_at"] = map[string]any{} })),
+			bookVectorOf("header/a-correlation-number", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["correlation"] = json.Number("1") })),
+			bookVectorOf("header/an-unknown-member", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["extra"] = json.Number("1") })),
+			bookVectorOf("header/seq-as-Seq", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["Seq"] = hd["seq"]; delete(hd, "seq") })),
+			bookVectorOf("header/seq-twice-by-case", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["Seq"] = json.Number("9") })),
+			bookVectorOf("header/book-id-as-BOOK_ID", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["BOOK_ID"] = hd["book_id"]; delete(hd, "book_id") })),
+			bookVectorOf("header/a-links-Target", resealHeader(t, "seller", seq2, func(hd map[string]any) {
+				hd["links"] = []any{map[string]any{"type": "cites", "Target": h.agreementID}}
+			})),
+			bookVectorOf("header/a-negative-seq", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["seq"] = json.Number("-2") })),
+			bookVectorOf("header/null-links", resealHeader(t, "seller", seq2, func(hd map[string]any) { hd["links"] = nil })),
+		)
+		books = append(books, bookVectorOf("an-inline-header", func() []byte {
+			var m map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(h.agreementPair, &m))
+			var rec map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(m["record"], &rec))
+			rec[evidencebook.RecordHeaderMember] = m["header"]
+			m["record"], _ = json.Marshal(rec)
+			out, err := json.Marshal(m)
+			require.NoError(t, err)
+			return out
+		}()))
 		books = append(books, bookVectorOf("agreement", h.agreementPair))
 		tamper := func(f func(m map[string]json.RawMessage)) []byte {
 			var m map[string]json.RawMessage
@@ -311,17 +500,18 @@ func TestPaymentVectors(t *testing.T) {
 		e.Payloads = append(e.Payloads, jcsOf(t, h.offer))
 		rec, err := book.Append(t.Context(), e)
 		require.NoError(t, err)
-		sealed, err := book.Sealed(t.Context(), rec.RecordID)
+		sealedTwo, err := book.Sealed(t.Context(), rec.RecordID)
 		require.NoError(t, err)
-		pair, err := BookPair(sealed, jcsOf(t, h.agreement))
+		pairTwo, err := BookPair(sealedTwo, jcsOf(t, h.agreement))
 		require.NoError(t, err)
-		books = append(books, bookVectorOf("two-payloads", pair))
+		books = append(books, bookVectorOf("two-payloads", pairTwo))
 	}
 
 	got, err := json.MarshalIndent(map[string]any{
-		"description": "x-deal-v1 payment check and book pair vectors (evidencebook#461, docs/design/461-deal-profile.md §6.3, §8.3). payment: PaymentCheck(input) returns result (PaymentResult's JCS) or refuses (refused, at stage when it is a stage error); an input's offer is a sent pair, each leg a book pair {record, header, payload}. book: VerifyBook(pair) reads a valid pair as the digest, record_id, key_id, log_id, seq and prev given, and refuses the others at the stage given. Written by dealprofile/xdealv1's TestPaymentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+		"description": "x-deal-v1 payment check and book pair vectors (evidencebook#461, docs/design/461-deal-profile.md §6.3, §8.3). payment: PaymentCheck(input) returns result (PaymentResult's JCS) or refuses (refused, at stage when it is a stage error); an input's offer is a sent pair, each leg a book pair {record, header, payload}. book: VerifyBook(pair) reads a valid pair as the digest, record_id, key_id, log_id, seq and prev given, and refuses the others at the stage given. pair: BookPair(sealed, payload) of a book's sealed header, capsule and envelope (hex) gives pair (hex) byte for byte. Written by dealprofile/xdealv1's TestPaymentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"payment":     cases,
 		"book":        books,
+		"pair":        pairs,
 	}, "", "  ")
 	require.NoError(t, err)
 	got = append(got, '\n')

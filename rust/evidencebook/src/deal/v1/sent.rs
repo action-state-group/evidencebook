@@ -72,15 +72,35 @@ pub fn pair(capsule: &[u8], envelope: &[u8], payload: &[u8]) -> Result<Vec<u8>, 
     members.insert("signature".into(), json!(hex::encode(envelope)));
     members.insert("key_id".into(), json!(hex::encode(&verified.public_key)));
     let agent_input: Value = serde_json::from_slice(payload)?;
-    // Go marshals a map: members sorted, agent_input first. The bytes match
-    // Go's but for its HTML escaping of <, > and &, which no reader needs.
+    // Go marshals a map: members sorted, agent_input first, and escapes as
+    // Go does (go_marshal).
     let mut sorted: Vec<(String, Value)> = members.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
     let record: Map<String, Value> = sorted.into_iter().collect();
     let mut out = Map::new();
     out.insert("agent_input".into(), agent_input);
     out.insert("record".into(), Value::Object(record));
-    Ok(serde_json::to_vec(&Value::Object(out))?)
+    Ok(go_marshal(&Value::Object(out))?)
+}
+
+/// `v` as Go's `json.Marshal` writes it, for a value whose strings came
+/// from JCS: serde_json's compact text, with `<`, `>`, `&`, U+2028 and
+/// U+2029 escaped as Go escapes them. Those characters occur only inside
+/// strings, so escaping them in the whole text escapes them there.
+pub(crate) fn go_marshal(v: &Value) -> Result<Vec<u8>, serde_json::Error> {
+    let text = serde_json::to_string(v)?;
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '<' => out.push_str("\\u003c"),
+            '>' => out.push_str("\\u003e"),
+            '&' => out.push_str("\\u0026"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c => out.push(c),
+        }
+    }
+    Ok(out.into_bytes())
 }
 
 /// Checks a sent pair on its own (Go `VerifySent`): the Capsule verifies

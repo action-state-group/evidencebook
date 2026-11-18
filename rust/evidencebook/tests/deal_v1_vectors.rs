@@ -305,6 +305,16 @@ fn payment_vectors() {
     struct Raw {
         payment: Vec<RawPayment>,
         book: Vec<RawBook>,
+        pair: Vec<RawPair>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawPair {
+        name: String,
+        header: String,
+        capsule: String,
+        envelope: String,
+        payload: String,
+        pair: String,
     }
     #[derive(serde::Deserialize)]
     struct RawPayment {
@@ -347,7 +357,7 @@ fn payment_vectors() {
     let p =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/deal-v1/payment/vectors.json");
     let raw: Raw = serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
-    assert!(!raw.payment.is_empty() && !raw.book.is_empty());
+    assert!(!raw.payment.is_empty() && !raw.book.is_empty() && raw.pair.len() > 1);
     for c in &raw.payment {
         let input = v1::PaymentInput {
             offer: c.input.offer.get().as_bytes().to_vec(),
@@ -379,6 +389,29 @@ fn payment_vectors() {
                 c.name
             );
         }
+    }
+    for p in &raw.pair {
+        let x = |s: &str| hex::decode(s).unwrap();
+        let got = v1::book_pair(
+            &x(&p.header),
+            &x(&p.capsule),
+            &x(&p.envelope),
+            &x(&p.payload),
+        )
+        .unwrap_or_else(|e| panic!("{}: {e}", p.name));
+        assert_eq!(hex::encode(&got), p.pair, "{}: Go's bytes", p.name);
+        v1::verify_book(&got).unwrap_or_else(|e| panic!("{}: {e}", p.name));
+        // The Capsule as the book sealed it, with an envelope of another
+        // Capsule, and a Capsule that is not an object, are refused.
+        let other = raw.pair.iter().find(|o| o.name != p.name).unwrap();
+        assert!(v1::book_pair(
+            &x(&p.header),
+            &x(&p.capsule),
+            &x(&other.envelope),
+            &x(&p.payload)
+        )
+        .is_err());
+        assert!(v1::book_pair(&x(&p.header), b"[]", &x(&p.envelope), &x(&p.payload)).is_err());
     }
     for b in &raw.book {
         let got = v1::verify_book(b.pair.get().as_bytes());

@@ -6336,6 +6336,2549 @@
       "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
     },
     {
+      "name": "refused/a-leg-of-another-deal/leg-0",
+      "pair": {
+        "header": {
+          "book_id": "deal/9ee2253badea9ef028196672ed862d8d",
+          "committed_at": "2026-11-01T09:04:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "check": {
+              "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "leg": "payer",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/9ee2253badea9ef028196672ed862d8d#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "1da16208e8675e89ba54c60523911ef360ebb047e216f4bea3696d4bab4011f8"
+            }
+          },
+          "operator": "buyer",
+          "references": [
+            {
+              "digest": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "settlement": {
+            "amount": {
+              "assetCode": "USD",
+              "assetScale": 2,
+              "value": "6000"
+            },
+            "leg": "payer_observed",
+            "observed_at": "2026-11-01T10:15:00Z",
+            "payment_ref": {
+              "type": "acp.order_id",
+              "value": "order-0001"
+            },
+            "sealer_role": "payer",
+            "status": "settled",
+            "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+            "version": "0"
+          },
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458200c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b0127a058204e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc75840e574bbf010498a8be5bd9993d15f39c1aec27d0e981682ea23312c040caee46e83c35c807ad842d36b6277f2f97da8ad7ea0c2786c392fdfc98ee9c131f50500",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:04:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274",
+      "record_id": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+      "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+      "log_id": "deal/9ee2253badea9ef028196672ed862d8d",
+      "seq": 2,
+      "prev": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2"
+    },
+    {
+      "name": "refused/a-leg-of-another-deal/leg-1",
+      "pair": {
+        "header": {
+          "book_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4",
+          "committed_at": "2026-11-01T09:03:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "975feb755f225d1be778ef11586a5a0e56aceeffdc10b965f949856c0c9f84ab"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "04e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f5",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "fd6e0f00cc1c5140974c00261841105f07b920f0ef037a833dddb0e2aa569db8"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "settlement": {
+            "leg": "payee_observed",
+            "observed_at": "2026-11-01T10:18:00Z",
+            "payment_ref": {
+              "type": "acp.order_id",
+              "value": "order-0001"
+            },
+            "receive_fee": {
+              "assetCode": "USD",
+              "assetScale": 2,
+              "value": "0"
+            },
+            "received": {
+              "assetCode": "USD",
+              "assetScale": 2,
+              "value": "6000"
+            },
+            "sealer_role": "payee",
+            "status": "settled",
+            "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+            "version": "0"
+          },
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582004e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f55840f383c7a6a0feebbd8ef94c604e4349cc1282370ea156751eae952835625f921a252f7e90625bae9ca2e6c3472ef08fe627359b561907b41e89165b0a3ebdd80b",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:03:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "975feb755f225d1be778ef11586a5a0e56aceeffdc10b965f949856c0c9f84ab",
+      "record_id": "04e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f5",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "refused/a-leg-of-another-deal/leg-2",
+      "pair": {
+        "header": {
+          "book_id": "deal/9ee2253badea9ef028196672ed862d8d",
+          "committed_at": "2026-11-01T09:05:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "a91bb0e2252911373091759fd60aecc9b4b402aaac88aece3eb29a78913a325d"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 3,
+          "subject_ref": "deal-fedcba9876543210",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "check": {
+              "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "leg": "payer",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-fedcba9876543210",
+            "prev": {
+              "digest": "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 3
+          }
+        },
+        "record": {
+          "action_id": "deal/9ee2253badea9ef028196672ed862d8d#3",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "10a54267926cc9888ba905013c46688cd6c3f2d25b98425e13d443d5c8e34778",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "42049f645a083a53e3930f5bf30fe408f7c590ba60dd3ba1f806c3d8375111f5"
+            }
+          },
+          "operator": "buyer",
+          "references": [
+            {
+              "digest": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "settlement": {
+            "amount": {
+              "assetCode": "USD",
+              "assetScale": 2,
+              "value": "6000"
+            },
+            "leg": "payer_observed",
+            "observed_at": "2026-11-01T10:15:00Z",
+            "payment_ref": {
+              "type": "acp.order_id",
+              "value": "order-0001"
+            },
+            "sealer_role": "payer",
+            "status": "settled",
+            "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+            "version": "0"
+          },
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458200c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b0127a0582010a54267926cc9888ba905013c46688cd6c3f2d25b98425e13d443d5c8e34778584096c5ce315fec450023fbc5df8f0e4f4090cc78ec4ab836f25d18285a67fc2ed018884fa1eefd58cb2493802944a362c3490344c07760082cad733cf50762c307",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:05:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "a91bb0e2252911373091759fd60aecc9b4b402aaac88aece3eb29a78913a325d",
+      "record_id": "10a54267926cc9888ba905013c46688cd6c3f2d25b98425e13d443d5c8e34778",
+      "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+      "log_id": "deal/9ee2253badea9ef028196672ed862d8d",
+      "seq": 3,
+      "prev": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7"
+    },
+    {
+      "name": "operator-with-html-characters",
+      "pair": {
+        "header": {
+          "book_id": "deal/odd",
+          "committed_at": "2026-11-01T09:02:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [],
+          "payload_commitments": [
+            "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 1,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "admit": {
+              "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "checkpoint_key": "19cb73ee1b37203bcbfdea2aee530957c8ac3da24aa3bba15ab2825ab8e763a8",
+            "counterparty_key": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+            "counterparty_layer": true,
+            "forums": [
+              "auto:ref"
+            ],
+            "kind": "agreement",
+            "offer": {
+              "digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "role": "seller",
+            "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+            "shelf_log_id": "deal-cadence/0123456789abcdef",
+            "side": "acceptor",
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T09:45:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "profile": "x-deal-v1",
+            "record_type": "agree",
+            "seen": null,
+            "seq": 1
+          }
+        },
+        "record": {
+          "action_id": "deal/odd#1",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "ee45b206c3265b59bb618b744380fec4bc97e3a1b840fa88af762b07d5790210",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "97a5894eddcef8524205a44f938833b5cf6fb775828e44a3485a26a7c985e7de",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "8d7da52c624c23cbd6060faaab3667ab83a69afe3b46a6068eeb7c55efe68496"
+            }
+          },
+          "operator": "a\u0026b\u003cc\u003e",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582097a5894eddcef8524205a44f938833b5cf6fb775828e44a3485a26a7c985e7de0127a05820ee45b206c3265b59bb618b744380fec4bc97e3a1b840fa88af762b07d579021058403ed0fbcf38b141d4510f867b885052b321a0479ce597a31a821eec0956b6a0a47fa937acc377ff82c175383032c3c075af9b8743c1e06e7677f8a197c8aaff05",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:02:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+      "record_id": "ee45b206c3265b59bb618b744380fec4bc97e3a1b840fa88af762b07d5790210",
+      "key_id": "97a5894eddcef8524205a44f938833b5cf6fb775828e44a3485a26a7c985e7de",
+      "log_id": "deal/odd",
+      "seq": 1
+    },
+    {
+      "name": "a-journal-record-in-a-book",
+      "pair": {
+        "header": {
+          "book_id": "deal/journal-type",
+          "committed_at": "2026-11-01T09:05:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [],
+          "payload_commitments": [
+            "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 1,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "agree_by": "2026-11-02T23:59:59Z",
+            "ask": {
+              "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159",
+              "url": "https://buyer.example/ask"
+            },
+            "forums": [
+              "auto:ref"
+            ],
+            "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+            "role": "buyer",
+            "stated_at": "2026-11-01T09:30:00Z",
+            "terms": {
+              "currency": "USD",
+              "item": "ceramic lamp",
+              "price_minor": 6000,
+              "quantity": 1
+            },
+            "terms_rows": {
+              "named": {
+                "paid": {
+                  "latest": "2026-11-04T23:59:59Z",
+                  "side": "buyer"
+                },
+                "received": {
+                  "latest": "2026-12-01T23:59:59Z",
+                  "side": "buyer"
+                }
+              },
+              "rows": [
+                {
+                  "due": {
+                    "at": "2026-11-01T23:59:59Z"
+                  },
+                  "id": "paid_as_agreed",
+                  "owed": {
+                    "amount_minor": 6000,
+                    "currency": "USD"
+                  },
+                  "owed_by": "buyer",
+                  "recomputed": true,
+                  "window_end": {
+                    "at": "2026-11-04T23:59:59Z"
+                  }
+                },
+                {
+                  "due": {
+                    "after": "paid",
+                    "seconds": 345600
+                  },
+                  "id": "delivered",
+                  "owed": {
+                    "item": "ceramic lamp",
+                    "quantity": 1
+                  },
+                  "owed_by": "seller",
+                  "window_end": {
+                    "after": "paid",
+                    "seconds": 604800
+                  }
+                },
+                {
+                  "due": {
+                    "after": "received",
+                    "seconds": 0
+                  },
+                  "id": "as_described",
+                  "owed": {
+                    "listing": "as published"
+                  },
+                  "owed_by": "seller",
+                  "window_end": {
+                    "after": "received",
+                    "seconds": 1209600
+                  }
+                }
+              ]
+            },
+            "to": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T09:30:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "profile": "x-deal-v1",
+            "record_type": "propose"
+          }
+        },
+        "record": {
+          "action_id": "deal/journal-type#1",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "0ab31546a3347e8735fb431f8244250fb77c6889f60231e32d951438a17fe740",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "babe874a045b62944e1cae3bea80eec5ef2ca9893c9db475ed6a05c01ab74d80"
+            }
+          },
+          "operator": "seller",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a058200ab31546a3347e8735fb431f8244250fb77c6889f60231e32d951438a17fe7405840008e1fe4cb4c07f0d5a162594f04961016c679c979d03ebd4a20e791ecfea81e4b1e5986088925b1358a01fc63c155a83e8de9cd61ed470ba04b58d4fd490e08",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:05:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "the-records-seq-is-not-the-headers",
+      "pair": {
+        "header": {
+          "book_id": "deal/wrong-seq",
+          "committed_at": "2026-11-01T09:06:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [],
+          "payload_commitments": [
+            "83dfa0d4acc1406b275a3438713920b0ba184e63b3e5ab941736052b1aca886e"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 1,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "admit": {
+              "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "checkpoint_key": "19cb73ee1b37203bcbfdea2aee530957c8ac3da24aa3bba15ab2825ab8e763a8",
+            "counterparty_key": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+            "counterparty_layer": true,
+            "forums": [
+              "auto:ref"
+            ],
+            "kind": "agreement",
+            "offer": {
+              "digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "role": "seller",
+            "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+            "shelf_log_id": "deal-cadence/0123456789abcdef",
+            "side": "acceptor",
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T09:45:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "profile": "x-deal-v1",
+            "record_type": "agree",
+            "seen": null,
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/wrong-seq#1",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "b317afb28192803f208571e76d68b71cf077845fbc3a95a255d524cb96f53fef",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "cc3c1bd8c00136713f21f13df70fd6d53d223411f7301ed7e73527f33733ab02"
+            }
+          },
+          "operator": "seller",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820b317afb28192803f208571e76d68b71cf077845fbc3a95a255d524cb96f53fef5840c4f8a7d74d2a050273db2d900963d1b08eb7723d4674f447bbdc36d8261635b1f0933a8a02c07acc268eda145a5540499a2f0828802cc1ea5725a2fecf6ede07",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:06:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "record"
+    },
+    {
+      "name": "the-first-record-cites",
+      "pair": {
+        "header": {
+          "book_id": "deal/first-cites",
+          "committed_at": "2026-11-01T09:07:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 1,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "admit": {
+              "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "checkpoint_key": "19cb73ee1b37203bcbfdea2aee530957c8ac3da24aa3bba15ab2825ab8e763a8",
+            "counterparty_key": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+            "counterparty_layer": true,
+            "forums": [
+              "auto:ref"
+            ],
+            "kind": "agreement",
+            "offer": {
+              "digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "role": "seller",
+            "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+            "shelf_log_id": "deal-cadence/0123456789abcdef",
+            "side": "acceptor",
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T09:45:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "profile": "x-deal-v1",
+            "record_type": "agree",
+            "seen": null,
+            "seq": 1
+          }
+        },
+        "record": {
+          "action_id": "deal/first-cites#1",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "78cdaa0162e00122193f7b2a630db0aa290aef2cd4a5a95b5d22e148188a4570",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "f88c688a51914872b322695ac8a7dd9c32b8e509eabb62266dec9b4c99ba378f"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582078cdaa0162e00122193f7b2a630db0aa290aef2cd4a5a95b5d22e148188a457058404e31c82f8fbac1babb6df2df6cfbc66ee9c88934adfd0a94b47f648dff509c325a2b74ed5a6b2c3c868bc650a0940efbe9378d2df8e9aa69bc572d512e317d01",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:07:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "a-second-record-cites-none",
+      "pair": {
+        "header": {
+          "book_id": "deal/no-cite",
+          "committed_at": "2026-11-01T09:09:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/no-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "85e726ff52d3ecc3938d8a2c3ec3b9920123c3fab3a72015e81786e362c52997",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "16bdb883665b7b9e5127a2e854767c0dc63fac4209cee2ec9a6956e6f4215124"
+            }
+          },
+          "operator": "seller",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582085e726ff52d3ecc3938d8a2c3ec3b9920123c3fab3a72015e81786e362c529975840577be3bd2de3513979824a589cdb083c4c927d46622536b899ded60bd2648ab72b9ca4b4484aeead656f4ceda7119141eb9da4e139e2d5a6ed5d020967049d0c",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:09:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "a-second-record-cites-two",
+      "pair": {
+        "header": {
+          "book_id": "deal/two-cites",
+          "committed_at": "2026-11-01T09:11:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            },
+            {
+              "target": "0000000000000000000000000000000000000000000000000000000000000000",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/two-cites#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "e4d48e5665d719cf19906e4604d0675baffa4d459a32137293ecb871cc4356c2",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "58c62f1a49d7abe16c44daedd278b795cb37bc96d8a7b9f0d0bdde29e0955284"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            },
+            {
+              "digest": "0000000000000000000000000000000000000000000000000000000000000000",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820e4d48e5665d719cf19906e4604d0675baffa4d459a32137293ecb871cc4356c25840a978810ca0bd0528a915a338aba74696b47982b1592e6e348aba2b1210695f8fedec1503ea73f3e1ac53a78efa428a19523596d8858d6788a3d92aa63751dc09",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:11:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "a-second-record",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "0c7a0cc8c61e70305da042a525ba73b97fb4913cfe1a513f57626ddcc3715fe1",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "6d9e050807f0b1794453d39e589f8c1eb71dc1a543fc4894020f2e918859048a"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a058200c7a0cc8c61e70305da042a525ba73b97fb4913cfe1a513f57626ddcc3715fe15840cb39016a23a7007f1982915c72624d223f25b22b4d3b726d93d52a2d458ef2a80a55e650074111df876f8b9a6ec8ebec361b6b8fde50c6b29d833ab5e7a29602",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "0c7a0cc8c61e70305da042a525ba73b97fb4913cfe1a513f57626ddcc3715fe1",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/a-number-among-the-commitments",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+            1
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "bd9400bea82e7871fe600b3437cd9c7878fff5243877ca81f66d0596ce322132",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "c10a5a44d092c3bb2ac27ee4ebc6fe4795400dfd8b844dd8a04ec821d81d8757"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820bd9400bea82e7871fe600b3437cd9c7878fff5243877ca81f66d0596ce322132584099907f0414429470c19dfd0332ccc2465cedfe14641c616e86349dee78ee091976eb8566e5313c74da85b22b885bf82ccb621bec490869f802610bbd646b610e",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-null-among-the-commitments",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+            null
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "da4dc8fc5690aab4d87de021eed0c3f41c76abe21b28c76157edd60a64c6ef00",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "0e26644e221a81ac41942e33a2edcb683c7fe7c067bbb8b7fe8530c4cb0abe0e"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820da4dc8fc5690aab4d87de021eed0c3f41c76abe21b28c76157edd60a64c6ef0058406895014b4a90a4a2d81a1a9d111360a5715d92c6f4963df89fde6c6c241d85de741744002315682e7e91fc319e492b80842b7b95ffb0215c5f061847e8f19f03",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-cite-with-a-number-target",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            },
+            {
+              "target": 7,
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "32a65a7e6f8bca2b4d7832dcbbaf67777c05d3ff0de09588eecca39823c5ea3b",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "8bccdab123aa7c995eb9c19ce01d5f0b43f440978fb263867b3d403c7d643f9e"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582032a65a7e6f8bca2b4d7832dcbbaf67777c05d3ff0de09588eecca39823c5ea3b58404fd0421eeed66a78338f38a7cf8e60a4d5ac03d11eef2618a90714f3a2e2f5015b03b2daae7fc7a92052fdd3eae605066c74cade35745bc658004d6eda2d0b06",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-cite-with-no-target",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "a87208e3eec234e409b45c3d2dc6e17f2e02c61744e61eab971af2bce6527961",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "1891f02c02a24b8c047ce4a3edcc0381cc0da92f1872b0a2b318b1ec0d5eb44a"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820a87208e3eec234e409b45c3d2dc6e17f2e02c61744e61eab971af2bce65279615840e116aae92ba8866f59d59dcc6362e81e681d3103ee083862ef84abf56c9c89fd68f2658555e8333a05473e465da30f1563ed82bbe16078c19379a3ffa5381d01",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "a87208e3eec234e409b45c3d2dc6e17f2e02c61744e61eab971af2bce6527961",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2
+    },
+    {
+      "name": "header/a-null-link",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            },
+            null
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "1a71f1435b18383d8f6bbe82b4c0ebb5a62214b2d7c56e2dc7179f1287fc1b2d",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "dceb6fde5ee4a6700754378b20ea6e0f2f6c37e1ab430a044b3d6db01686d18f"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a058201a71f1435b18383d8f6bbe82b4c0ebb5a62214b2d7c56e2dc7179f1287fc1b2d58401a36cabc3a4b80d289a8fb46f13a3e0395a0da67db42b66db791e69ded5682c954509d6fc6ee032d965977d4dda3d144680bb526f097d269989b663ed35cb907",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "1a71f1435b18383d8f6bbe82b4c0ebb5a62214b2d7c56e2dc7179f1287fc1b2d",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/v-as-a-string",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": "1"
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "e71c6f11e37faf249b957ae8c01de1b445bea97e799a7a9b79b01fe70f050669",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "0a1228001326033aee08201984476df1aac6f015e9f5e63a017695d8ba88da45"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820e71c6f11e37faf249b957ae8c01de1b445bea97e799a7a9b79b01fe70f0506695840a1a1f2a8bea2d909dd5890ee0df03249a846db2d7347299df0856a0ba42bb1ebb63f0ff01e429c14cb4c07363282e73d8e779ea7f21a6d3ca977846801b11e07",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-record-type-number",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": 5,
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "db27c6be473e5f6619e6b87b591f752564a71f4ecdca208c535241169c01c4c0",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "ab2fca0328312238bc4f05222fd897c090143879a3424e67d2c0ce24f2fd43f9"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820db27c6be473e5f6619e6b87b591f752564a71f4ecdca208c535241169c01c4c05840b32378d50a771642d326b2c9bd00b371b8dbf383346f382e050be5eeb849f8b613e9ca240b1cd59808f1b695e1ac60d5c20d81e5cd39ca7fedbee184ffd0d20b",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-committed-at-object",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": {},
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "0fdc5a933d0ff3319fbd3fc24f54b0fe215b26d83a74bf00c8798fd2b2f2461f",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "5d1eb9b1a2bc149ca972582dc5ab1b53d4594032a80cf711ac20df1114fd7cb9"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a058200fdc5a933d0ff3319fbd3fc24f54b0fe215b26d83a74bf00c8798fd2b2f2461f58401713c3335fae3dd4dcd6c2b81966b07db34c42c9df175bb85233c8c6d92c78afa08c523224cccf392fdac87ca62fc795bc2e3ab87f3087285338ff9f58ca6100",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/a-correlation-number",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "correlation": 1,
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "ce9b26c8729935c2576d3ef8c0f2dab0541eb1e5397eae6a3c569c599731892f",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "876158ca29c0b06ac675fef53a357d9de2489dc5d3ced01a7fcf67ff89af37e0"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820ce9b26c8729935c2576d3ef8c0f2dab0541eb1e5397eae6a3c569c599731892f584009782a53cf1958490281d8ebb90eaec743a189312bccf436d837cdd4dd8ddf1783f479cbf9e755d881a03a2509bb93a632ce217af0778f5efbcf073733bdf60e",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/an-unknown-member",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "extra": 1,
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "025fdf944a0a32d5dda701c7f010146c5fc9b3486a421486dea7a8c6c65c1425",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "faea907d58dfc76841abe3fa59e38845972391d92677d36f9a4336611a9e0f01"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820025fdf944a0a32d5dda701c7f010146c5fc9b3486a421486dea7a8c6c65c1425584018617971ac95bbc6e7b6c514679d5ab59781a80a56b42965f8eaa0a8bdad53d2ce5927201a9393f9ba920ba1c1eaf44c4bf4f4d94c46adc4fba274d063286000",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "025fdf944a0a32d5dda701c7f010146c5fc9b3486a421486dea7a8c6c65c1425",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/seq-as-Seq",
+      "pair": {
+        "header": {
+          "Seq": 2,
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "eb0aaab56609c84cd85fa87e682bf9dd9ce2bb054346ebe0b5de94780c17316b",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "94df5d5c9d9530b11f19c11e61cf98f2697f2e54186af8d3d4b7fc7e99d400d5"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820eb0aaab56609c84cd85fa87e682bf9dd9ce2bb054346ebe0b5de94780c17316b58403082c6309899e7253235fb24d5ae1701c0ca102b6b56b1b508b458243f8e3d9c3a49cdce09e6fb11c0af9832e09e83715f2bd6b17249c3adb3a5ce4e8dc6e30e",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "eb0aaab56609c84cd85fa87e682bf9dd9ce2bb054346ebe0b5de94780c17316b",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/seq-twice-by-case",
+      "pair": {
+        "header": {
+          "Seq": 9,
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "f8ba48f4f6ecadd26599fe604dccfd819676b3a71b2907367690b49e4ee09627",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "6ca8b7321c839c1f32c1897909ab0acf21cd7057921b3743bf5cfe7dcaf4c9bb"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820f8ba48f4f6ecadd26599fe604dccfd819676b3a71b2907367690b49e4ee09627584048572fe7b6832ca8e3caad9af71e12f1236e255b1740b0559344c7c7dffe46b0f4a36cfa4cfa9ee64b3c85e5dc6f9c83472b3cec06c83688d823c69598647308",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "f8ba48f4f6ecadd26599fe604dccfd819676b3a71b2907367690b49e4ee09627",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/book-id-as-BOOK_ID",
+      "pair": {
+        "header": {
+          "BOOK_ID": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "e1a340f8a14c3198c7d75e2334f3044172789f650a5e750db7d795688ed3a71c",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "3dee95c94eb644a06145002b99882296043f4e3bcd670b4237f4261ba4b0f077"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820e1a340f8a14c3198c7d75e2334f3044172789f650a5e750db7d795688ed3a71c5840eda6161fba1aad6567d9e5cbd081daab79c0b671af82ac76ce28625d2e5940b9be6da10d4ab9bc7b2e365736b2d3a9e99d5e4415ffbddbb6e2411915e72a8902",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "e1a340f8a14c3198c7d75e2334f3044172789f650a5e750db7d795688ed3a71c",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/a-links-Target",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "Target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "0d21e957d151b595f0a57063fd1226a5ab1cc105df6f629f50156ce94f42f423",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "d738eaa1bc697a5bef1eaeeabf4e0b71335f31a68c8b368d848be570e0b3087a"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a058200d21e957d151b595f0a57063fd1226a5ab1cc105df6f629f50156ce94f42f4235840d831100ee58b87e73ae039c6d5d3e05ae79a34b520cdff67c05ffddf20cd9f892e7134e73fd1fca204b34066f5bd27660af5be6f27ccc854225d19cb490d0704",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": true,
+      "digest": "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46",
+      "record_id": "0d21e957d151b595f0a57063fd1226a5ab1cc105df6f629f50156ce94f42f423",
+      "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+      "log_id": "deal/one-cite",
+      "seq": 2,
+      "prev": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184"
+    },
+    {
+      "name": "header/a-negative-seq",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [
+            {
+              "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "type": "cites"
+            }
+          ],
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": -2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "a423b9ee5d77292f75942f277d892015e6295541f079794bf8ab9710304925c5",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "99f287af1359fc656d07b539d55b3fc6c8f908a25e4e5f415847c89c338db573"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820a423b9ee5d77292f75942f277d892015e6295541f079794bf8ab9710304925c558405828023dadc5c72672522f612c11638c37b308aeb392e5082b690e021e8d86110f2d2daff73b417a93840d818a44bddb837d5a342214d58a57b53aede0de0d09",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "header/null-links",
+      "pair": {
+        "header": {
+          "book_id": "deal/one-cite",
+          "committed_at": "2026-11-01T09:13:00Z",
+          "epistemic_type": "producer_claim",
+          "links": null,
+          "payload_commitments": [
+            "664bb4cc92a5720101c187790bcf433d73bb4664cf2fa09005c6daa11d432c46"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 2,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "leg": "payee",
+            "statements": [
+              {
+                "row": "paid_as_agreed",
+                "value": "met"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "agreement_ref": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "at": "2026-11-01T10:20:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "prev": {
+              "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "profile": "x-deal-v1",
+            "record_type": "settle",
+            "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+            "seq": 2
+          }
+        },
+        "record": {
+          "action_id": "deal/one-cite#2",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "db3a7be02600f8a1635c344a4d5defd15cab4b8c0c3d51dc1ac6803c88d705ea",
+          "developer": "evidencebook",
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "16e52e0461fc3a0603f0e4eda3cc301aab6372be00cf20c7ffaa1a0951679ade"
+            }
+          },
+          "operator": "seller",
+          "references": [
+            {
+              "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+              "digest_alg": "SHA-256",
+              "type": "agent-action-capsule"
+            }
+          ],
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820db3a7be02600f8a1635c344a4d5defd15cab4b8c0c3d51dc1ac6803c88d705ea58406aef96b5cd73d68b7d103ada08795ab10caa55fb2fb7c5f622835ad77c34cb0a53ccabf4deba04f64e2c710ccc69545c0897f16c136525a3cb2144c2f29acd00",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:13:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
+      "name": "an-inline-header",
+      "pair": {
+        "header": {
+          "book_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4",
+          "committed_at": "2026-11-01T09:02:00Z",
+          "epistemic_type": "producer_claim",
+          "links": [],
+          "payload_commitments": [
+            "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3"
+          ],
+          "record_type": "deal_step",
+          "retention_state": "AVAILABLE",
+          "seq": 1,
+          "subject_ref": "deal-6a1f0c93b27d4e58",
+          "v": 1
+        },
+        "payload": {
+          "body": {
+            "adjudicator": {
+              "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+              "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+              "rules_url": "https://adjudicator.example/rules"
+            },
+            "admit": {
+              "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "checkpoint_key": "19cb73ee1b37203bcbfdea2aee530957c8ac3da24aa3bba15ab2825ab8e763a8",
+            "counterparty_key": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+            "counterparty_layer": true,
+            "forums": [
+              "auto:ref"
+            ],
+            "kind": "agreement",
+            "offer": {
+              "digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9",
+              "digest_alg": "SHA-256",
+              "type": "deal-record"
+            },
+            "role": "seller",
+            "rows_digest": "7c7f457f9ee333bfe71ccb4a1191074224da5d854b184205b10ecddd6c0ee1ed",
+            "shelf_log_id": "deal-cadence/0123456789abcdef",
+            "side": "acceptor",
+            "witnesses": [
+              {
+                "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                "url": "https://witness.example"
+              }
+            ]
+          },
+          "x-deal-v1": {
+            "at": "2026-11-01T09:45:00Z",
+            "canonicalization": "jcs",
+            "deal_id": "deal-6a1f0c93b27d4e58",
+            "profile": "x-deal-v1",
+            "record_type": "agree",
+            "seen": null,
+            "seq": 1
+          }
+        },
+        "record": {
+          "action_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4#1",
+          "action_type": "fyi",
+          "assurance": {
+            "attestation_mode": "self_attested",
+            "effect_mode": "not_applicable",
+            "ledger_mode": "standalone"
+          },
+          "canonicalization_id": "jcs",
+          "capsule_id": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+          "developer": "evidencebook",
+          "evidence_record_header": {
+            "book_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4",
+            "committed_at": "2026-11-01T09:02:00Z",
+            "epistemic_type": "producer_claim",
+            "links": [],
+            "payload_commitments": [
+              "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3"
+            ],
+            "record_type": "deal_step",
+            "retention_state": "AVAILABLE",
+            "seq": 1,
+            "subject_ref": "deal-6a1f0c93b27d4e58",
+            "v": 1
+          },
+          "format_version": "4",
+          "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+          "model_attestation": {
+            "compute_attestation": {
+              "agent_input_digest": "c87d4f62acda74caebf080574f5b9599461d59ba81c29f644e7fddd65630f478"
+            }
+          },
+          "operator": "seller",
+          "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc81845840f78be3a46d0c0454e6eee297014d9e366b83c324ee60c65c5daaae8a9812d3434271e07e05ca489bde5f4303fd6c6815c1d3df8dea669d60c29e57da5ae54f00",
+          "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+          "timestamp": "2026-11-01T09:02:00Z"
+        }
+      },
+      "valid": false,
+      "stage": "book"
+    },
+    {
       "name": "agreement",
       "pair": {
         "header": {
@@ -6930,7 +9473,25 @@
       "stage": "book"
     }
   ],
-  "description": "x-deal-v1 payment check and book pair vectors (evidencebook#461, docs/design/461-deal-profile.md §6.3, §8.3). payment: PaymentCheck(input) returns result (PaymentResult's JCS) or refuses (refused, at stage when it is a stage error); an input's offer is a sent pair, each leg a book pair {record, header, payload}. book: VerifyBook(pair) reads a valid pair as the digest, record_id, key_id, log_id, seq and prev given, and refuses the others at the stage given. Written by dealprofile/xdealv1's TestPaymentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+  "description": "x-deal-v1 payment check and book pair vectors (evidencebook#461, docs/design/461-deal-profile.md §6.3, §8.3). payment: PaymentCheck(input) returns result (PaymentResult's JCS) or refuses (refused, at stage when it is a stage error); an input's offer is a sent pair, each leg a book pair {record, header, payload}. book: VerifyBook(pair) reads a valid pair as the digest, record_id, key_id, log_id, seq and prev given, and refuses the others at the stage given. pair: BookPair(sealed, payload) of a book's sealed header, capsule and envelope (hex) gives pair (hex) byte for byte. Written by dealprofile/xdealv1's TestPaymentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
+  "pair": [
+    {
+      "name": "operator-with-html-characters",
+      "header": "7b22626f6f6b5f6964223a226465616c2f6f6464222c22636f6d6d69747465645f6174223a22323032362d31312d30315430393a30323a30305a222c226570697374656d69635f74797065223a2270726f64756365725f636c61696d222c226c696e6b73223a5b5d2c227061796c6f61645f636f6d6d69746d656e7473223a5b2233623764616230633837656639636334623864356335623532653965303130366465643865323235393965346133623064336531633730366664646165306433225d2c227265636f72645f74797065223a226465616c5f73746570222c22726574656e74696f6e5f7374617465223a22415641494c41424c45222c22736571223a312c227375626a6563745f726566223a226465616c2d36613166306339336232376434653538222c2276223a317d",
+      "capsule": "7b22616374696f6e5f6964223a226465616c2f6f64642331222c22616374696f6e5f74797065223a22667969222c226173737572616e6365223a7b226174746573746174696f6e5f6d6f6465223a2273656c665f6174746573746564222c226566666563745f6d6f6465223a226e6f745f6170706c696361626c65222c226c65646765725f6d6f6465223a227374616e64616c6f6e65227d2c2263616e6f6e6963616c697a6174696f6e5f6964223a226a6373222c2263617073756c655f6964223a2265653435623230366333323635623539626236313862373434333830666563346263393765336131623834306661383861663736326230376435373930323130222c22646576656c6f706572223a2265766964656e6365626f6f6b222c22666f726d61745f76657273696f6e223a2234222c226d6f64656c5f6174746573746174696f6e223a7b22636f6d707574655f6174746573746174696f6e223a7b226167656e745f696e7075745f646967657374223a2238643764613532633632346332336362643630363066616161623336363761623833613639616665336234366136303638656562376335356566653638343936227d7d2c226f70657261746f72223a226126623c633e222c22737065635f76657273696f6e223a2264726166742d6d69682d73636974742d6167656e742d616374696f6e2d63617073756c652d3035222c2274696d657374616d70223a22323032362d31312d30315430393a30323a30305a227d",
+      "envelope": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582097a5894eddcef8524205a44f938833b5cf6fb775828e44a3485a26a7c985e7de0127a05820ee45b206c3265b59bb618b744380fec4bc97e3a1b840fa88af762b07d579021058403ed0fbcf38b141d4510f867b885052b321a0479ce597a31a821eec0956b6a0a47fa937acc377ff82c175383032c3c075af9b8743c1e06e7677f8a197c8aaff05",
+      "payload": "7b22626f6479223a7b2261646a7564696361746f72223a7b226b65795f6964223a2238363935653232346338323638303265303232333661633832396130303763326365626531626635623637363530396132633335363034636137313065653762222c2272756c65735f646967657374223a2239383831333865333162643461393666353562336261393333663638316465623435353163383132656534653139353535616562383433663232643764353931222c2272756c65735f75726c223a2268747470733a2f2f61646a7564696361746f722e6578616d706c652f72756c6573227d2c2261646d6974223a7b22646967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22636865636b706f696e745f6b6579223a2231396362373365653162333732303362636266646561326165653533303935376338616333646132346161336262613135616232383235616238653736336138222c22636f756e74657270617274795f6b6579223a2230633832653531393231613465353337666162393134636364366234623732356362356466646132383365326139303639623465633232323239626136323062222c22636f756e74657270617274795f6c61796572223a747275652c22666f72756d73223a5b226175746f3a726566225d2c226b696e64223a2261677265656d656e74222c226f66666572223a7b22646967657374223a2262333461343363333064613263313233623361613435363534313762613962313235333262663936633632303830333065656639643262323338373763326639222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22726f6c65223a2273656c6c6572222c22726f77735f646967657374223a2237633766343537663965653333336266653731636362346131313931303734323234646135643835346231383432303562313065636464643663306565316564222c227368656c665f6c6f675f6964223a226465616c2d636164656e63652f30313233343536373839616263646566222c2273696465223a226163636570746f72222c227769746e6573736573223a5b7b226b65795f6964223a2238306165363239353333636232366664326264323830653964333434356631663866306630373162363265333731326466306336393831303839333661616433222c2275726c223a2268747470733a2f2f7769746e6573732e6578616d706c65227d5d7d2c22782d6465616c2d7631223a7b226174223a22323032362d31312d30315430393a34353a30305a222c2263616e6f6e6963616c697a6174696f6e223a226a6373222c226465616c5f6964223a226465616c2d36613166306339336232376434653538222c2270726f66696c65223a22782d6465616c2d7631222c227265636f72645f74797065223a226167726565222c227365656e223a6e756c6c2c22736571223a317d7d",
+      "pair": "7b22686561646572223a7b22626f6f6b5f6964223a226465616c2f6f6464222c22636f6d6d69747465645f6174223a22323032362d31312d30315430393a30323a30305a222c226570697374656d69635f74797065223a2270726f64756365725f636c61696d222c226c696e6b73223a5b5d2c227061796c6f61645f636f6d6d69746d656e7473223a5b2233623764616230633837656639636334623864356335623532653965303130366465643865323235393965346133623064336531633730366664646165306433225d2c227265636f72645f74797065223a226465616c5f73746570222c22726574656e74696f6e5f7374617465223a22415641494c41424c45222c22736571223a312c227375626a6563745f726566223a226465616c2d36613166306339336232376434653538222c2276223a317d2c227061796c6f6164223a7b22626f6479223a7b2261646a7564696361746f72223a7b226b65795f6964223a2238363935653232346338323638303265303232333661633832396130303763326365626531626635623637363530396132633335363034636137313065653762222c2272756c65735f646967657374223a2239383831333865333162643461393666353562336261393333663638316465623435353163383132656534653139353535616562383433663232643764353931222c2272756c65735f75726c223a2268747470733a2f2f61646a7564696361746f722e6578616d706c652f72756c6573227d2c2261646d6974223a7b22646967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22636865636b706f696e745f6b6579223a2231396362373365653162333732303362636266646561326165653533303935376338616333646132346161336262613135616232383235616238653736336138222c22636f756e74657270617274795f6b6579223a2230633832653531393231613465353337666162393134636364366234623732356362356466646132383365326139303639623465633232323239626136323062222c22636f756e74657270617274795f6c61796572223a747275652c22666f72756d73223a5b226175746f3a726566225d2c226b696e64223a2261677265656d656e74222c226f66666572223a7b22646967657374223a2262333461343363333064613263313233623361613435363534313762613962313235333262663936633632303830333065656639643262323338373763326639222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22726f6c65223a2273656c6c6572222c22726f77735f646967657374223a2237633766343537663965653333336266653731636362346131313931303734323234646135643835346231383432303562313065636464643663306565316564222c227368656c665f6c6f675f6964223a226465616c2d636164656e63652f30313233343536373839616263646566222c2273696465223a226163636570746f72222c227769746e6573736573223a5b7b226b65795f6964223a2238306165363239353333636232366664326264323830653964333434356631663866306630373162363265333731326466306336393831303839333661616433222c2275726c223a2268747470733a2f2f7769746e6573732e6578616d706c65227d5d7d2c22782d6465616c2d7631223a7b226174223a22323032362d31312d30315430393a34353a30305a222c2263616e6f6e6963616c697a6174696f6e223a226a6373222c226465616c5f6964223a226465616c2d36613166306339336232376434653538222c2270726f66696c65223a22782d6465616c2d7631222c227265636f72645f74797065223a226167726565222c227365656e223a6e756c6c2c22736571223a317d7d2c227265636f7264223a7b22616374696f6e5f6964223a226465616c2f6f64642331222c22616374696f6e5f74797065223a22667969222c226173737572616e6365223a7b226174746573746174696f6e5f6d6f6465223a2273656c665f6174746573746564222c226566666563745f6d6f6465223a226e6f745f6170706c696361626c65222c226c65646765725f6d6f6465223a227374616e64616c6f6e65227d2c2263616e6f6e6963616c697a6174696f6e5f6964223a226a6373222c2263617073756c655f6964223a2265653435623230366333323635623539626236313862373434333830666563346263393765336131623834306661383861663736326230376435373930323130222c22646576656c6f706572223a2265766964656e6365626f6f6b222c22666f726d61745f76657273696f6e223a2234222c226b65795f6964223a2239376135383934656464636566383532343230356134346639333838333362356366366662373735383238653434613334383561323661376339383565376465222c226d6f64656c5f6174746573746174696f6e223a7b22636f6d707574655f6174746573746174696f6e223a7b226167656e745f696e7075745f646967657374223a2238643764613532633632346332336362643630363066616161623336363761623833613639616665336234366136303638656562376335356566653638343936227d7d2c226f70657261746f72223a22615c7530303236625c7530303363635c7530303365222c227369676e6174757265223a226432383435383463613330333738323336313730373036633639363336313734363936663665326636313637363536653734326436313633373436393666366532643633363137303733373536633635326436393634303435383230393761353839346564646365663835323432303561343466393338383333623563663666623737353832386534346133343835613236613763393835653764653031323761303538323065653435623230366333323635623539626236313862373434333830666563346263393765336131623834306661383861663736326230376435373930323130353834303365643066626366333862313431643435313066383637623838353035326233323161303437396365353937613331613832316565633039353662366130613437666139333761636333373766663832633137353338333033326333633037356166396238373433633165303665373637376638613139376338616166663035222c22737065635f76657273696f6e223a2264726166742d6d69682d73636974742d6167656e742d616374696f6e2d63617073756c652d3035222c2274696d657374616d70223a22323032362d31312d30315430393a30323a30305a227d7d"
+    },
+    {
+      "name": "agreement",
+      "header": "7b22626f6f6b5f6964223a226465616c2f706c61696e222c22636f6d6d69747465645f6174223a22323032362d31312d30315430393a30343a30305a222c226570697374656d69635f74797065223a2270726f64756365725f636c61696d222c226c696e6b73223a5b5d2c227061796c6f61645f636f6d6d69746d656e7473223a5b2233623764616230633837656639636334623864356335623532653965303130366465643865323235393965346133623064336531633730366664646165306433225d2c227265636f72645f74797065223a226465616c5f73746570222c22726574656e74696f6e5f7374617465223a22415641494c41424c45222c22736571223a312c227375626a6563745f726566223a226465616c2d36613166306339336232376434653538222c2276223a317d",
+      "capsule": "7b22616374696f6e5f6964223a226465616c2f706c61696e2331222c22616374696f6e5f74797065223a22667969222c226173737572616e6365223a7b226174746573746174696f6e5f6d6f6465223a2273656c665f6174746573746564222c226566666563745f6d6f6465223a226e6f745f6170706c696361626c65222c226c65646765725f6d6f6465223a227374616e64616c6f6e65227d2c2263616e6f6e6963616c697a6174696f6e5f6964223a226a6373222c2263617073756c655f6964223a2238343964633234303861613366316539353639343436363032613739643562633464646165303533363834646266316236666264363763633966393639633335222c22646576656c6f706572223a2265766964656e6365626f6f6b222c22666f726d61745f76657273696f6e223a2234222c226d6f64656c5f6174746573746174696f6e223a7b22636f6d707574655f6174746573746174696f6e223a7b226167656e745f696e7075745f646967657374223a2266663633616461336535363563306435663863326334626436613831656562333139653039343138633864366262326361383666623539656262343861363863227d7d2c226f70657261746f72223a2273656c6c6572222c22737065635f76657273696f6e223a2264726166742d6d69682d73636974742d6167656e742d616374696f6e2d63617073756c652d3035222c2274696d657374616d70223a22323032362d31312d30315430393a30343a30305a227d",
+      "envelope": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a05820849dc2408aa3f1e9569446602a79d5bc4ddae053684dbf1b6fbd67cc9f969c355840f895a18bce055361fabdcfbadeba876d9894fa67d3c2339d1008a8833bf959d5e9353d1d59fdae82aee0edeacc2570bb09d2e8ff0dd042bab8fef5be06b7c70d",
+      "payload": "7b22626f6479223a7b2261646a7564696361746f72223a7b226b65795f6964223a2238363935653232346338323638303265303232333661633832396130303763326365626531626635623637363530396132633335363034636137313065653762222c2272756c65735f646967657374223a2239383831333865333162643461393666353562336261393333663638316465623435353163383132656534653139353535616562383433663232643764353931222c2272756c65735f75726c223a2268747470733a2f2f61646a7564696361746f722e6578616d706c652f72756c6573227d2c2261646d6974223a7b22646967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22636865636b706f696e745f6b6579223a2231396362373365653162333732303362636266646561326165653533303935376338616333646132346161336262613135616232383235616238653736336138222c22636f756e74657270617274795f6b6579223a2230633832653531393231613465353337666162393134636364366234623732356362356466646132383365326139303639623465633232323239626136323062222c22636f756e74657270617274795f6c61796572223a747275652c22666f72756d73223a5b226175746f3a726566225d2c226b696e64223a2261677265656d656e74222c226f66666572223a7b22646967657374223a2262333461343363333064613263313233623361613435363534313762613962313235333262663936633632303830333065656639643262323338373763326639222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22726f6c65223a2273656c6c6572222c22726f77735f646967657374223a2237633766343537663965653333336266653731636362346131313931303734323234646135643835346231383432303562313065636464643663306565316564222c227368656c665f6c6f675f6964223a226465616c2d636164656e63652f30313233343536373839616263646566222c2273696465223a226163636570746f72222c227769746e6573736573223a5b7b226b65795f6964223a2238306165363239353333636232366664326264323830653964333434356631663866306630373162363265333731326466306336393831303839333661616433222c2275726c223a2268747470733a2f2f7769746e6573732e6578616d706c65227d5d7d2c22782d6465616c2d7631223a7b226174223a22323032362d31312d30315430393a34353a30305a222c2263616e6f6e6963616c697a6174696f6e223a226a6373222c226465616c5f6964223a226465616c2d36613166306339336232376434653538222c2270726f66696c65223a22782d6465616c2d7631222c227265636f72645f74797065223a226167726565222c227365656e223a6e756c6c2c22736571223a317d7d",
+      "pair": "7b22686561646572223a7b22626f6f6b5f6964223a226465616c2f706c61696e222c22636f6d6d69747465645f6174223a22323032362d31312d30315430393a30343a30305a222c226570697374656d69635f74797065223a2270726f64756365725f636c61696d222c226c696e6b73223a5b5d2c227061796c6f61645f636f6d6d69746d656e7473223a5b2233623764616230633837656639636334623864356335623532653965303130366465643865323235393965346133623064336531633730366664646165306433225d2c227265636f72645f74797065223a226465616c5f73746570222c22726574656e74696f6e5f7374617465223a22415641494c41424c45222c22736571223a312c227375626a6563745f726566223a226465616c2d36613166306339336232376434653538222c2276223a317d2c227061796c6f6164223a7b22626f6479223a7b2261646a7564696361746f72223a7b226b65795f6964223a2238363935653232346338323638303265303232333661633832396130303763326365626531626635623637363530396132633335363034636137313065653762222c2272756c65735f646967657374223a2239383831333865333162643461393666353562336261393333663638316465623435353163383132656534653139353535616562383433663232643764353931222c2272756c65735f75726c223a2268747470733a2f2f61646a7564696361746f722e6578616d706c652f72756c6573227d2c2261646d6974223a7b22646967657374223a2265656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565656565222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22636865636b706f696e745f6b6579223a2231396362373365653162333732303362636266646561326165653533303935376338616333646132346161336262613135616232383235616238653736336138222c22636f756e74657270617274795f6b6579223a2230633832653531393231613465353337666162393134636364366234623732356362356466646132383365326139303639623465633232323239626136323062222c22636f756e74657270617274795f6c61796572223a747275652c22666f72756d73223a5b226175746f3a726566225d2c226b696e64223a2261677265656d656e74222c226f66666572223a7b22646967657374223a2262333461343363333064613263313233623361613435363534313762613962313235333262663936633632303830333065656639643262323338373763326639222c226469676573745f616c67223a225348412d323536222c2274797065223a226465616c2d7265636f7264227d2c22726f6c65223a2273656c6c6572222c22726f77735f646967657374223a2237633766343537663965653333336266653731636362346131313931303734323234646135643835346231383432303562313065636464643663306565316564222c227368656c665f6c6f675f6964223a226465616c2d636164656e63652f30313233343536373839616263646566222c2273696465223a226163636570746f72222c227769746e6573736573223a5b7b226b65795f6964223a2238306165363239353333636232366664326264323830653964333434356631663866306630373162363265333731326466306336393831303839333661616433222c2275726c223a2268747470733a2f2f7769746e6573732e6578616d706c65227d5d7d2c22782d6465616c2d7631223a7b226174223a22323032362d31312d30315430393a34353a30305a222c2263616e6f6e6963616c697a6174696f6e223a226a6373222c226465616c5f6964223a226465616c2d36613166306339336232376434653538222c2270726f66696c65223a22782d6465616c2d7631222c227265636f72645f74797065223a226167726565222c227365656e223a6e756c6c2c22736571223a317d7d2c227265636f7264223a7b22616374696f6e5f6964223a226465616c2f706c61696e2331222c22616374696f6e5f74797065223a22667969222c226173737572616e6365223a7b226174746573746174696f6e5f6d6f6465223a2273656c665f6174746573746564222c226566666563745f6d6f6465223a226e6f745f6170706c696361626c65222c226c65646765725f6d6f6465223a227374616e64616c6f6e65227d2c2263616e6f6e6963616c697a6174696f6e5f6964223a226a6373222c2263617073756c655f6964223a2238343964633234303861613366316539353639343436363032613739643562633464646165303533363834646266316236666264363763633966393639633335222c22646576656c6f706572223a2265766964656e6365626f6f6b222c22666f726d61745f76657273696f6e223a2234222c226b65795f6964223a2232383034363533613137373765373933343138343162633237316137653137313563356536356138653363626630333939663332316632653564306165376333222c226d6f64656c5f6174746573746174696f6e223a7b22636f6d707574655f6174746573746174696f6e223a7b226167656e745f696e7075745f646967657374223a2266663633616461336535363563306435663863326334626436613831656562333139653039343138633864366262326361383666623539656262343861363863227d7d2c226f70657261746f72223a2273656c6c6572222c227369676e6174757265223a226432383435383463613330333738323336313730373036633639363336313734363936663665326636313637363536653734326436313633373436393666366532643633363137303733373536633635326436393634303435383230323830343635336131373737653739333431383431626332373161376531373135633565363561386533636266303339396633323166326535643061653763333031323761303538323038343964633234303861613366316539353639343436363032613739643562633464646165303533363834646266316236666264363763633966393639633335353834306638393561313862636530353533363166616264636662616465626138373664393839346661363764336332333339643130303861383833336266393539643565393335336431643539666461653832616565306564656163633235373062623039643265386666306464303432626162386665663562653036623763373064222c22737065635f76657273696f6e223a2264726166742d6d69682d73636974742d6167656e742d616374696f6e2d63617073756c652d3035222c2274696d657374616d70223a22323032362d31312d30315430393a30343a30305a227d7d"
+    }
+  ],
   "payment": [
     {
       "name": "settled-the-terms-amount",
@@ -19462,6 +22023,462 @@
               "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582004e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f55840f383c7a6a0feebbd8ef94c604e4349cc1282370ea156751eae952835625f921a252f7e90625bae9ca2e6c3472ef08fe627359b561907b41e89165b0a3ebdd80b",
               "spec_version": "draft-mih-scitt-agent-action-capsule-05",
               "timestamp": "2026-11-01T09:03:00Z"
+            }
+          }
+        ]
+      },
+      "refused": true,
+      "stage": "payment"
+    },
+    {
+      "name": "refused/a-leg-of-another-deal",
+      "input": {
+        "offer": {
+          "agent_input": {
+            "body": {
+              "adjudicator": {
+                "key_id": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
+                "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
+                "rules_url": "https://adjudicator.example/rules"
+              },
+              "agree_by": "2026-11-02T23:59:59Z",
+              "ask": {
+                "digest": "d4339113bf6f0f1f20ed660db9e22e8e46f37581b495a1c382c0d51a9bf3b159",
+                "url": "https://buyer.example/ask"
+              },
+              "forums": [
+                "auto:ref"
+              ],
+              "pack_digest": "c94cdaacd19bd6eb4085dbc01023d62fa4b0d3b910737c74daa505558e60f4e3",
+              "role": "buyer",
+              "stated_at": "2026-11-01T09:30:00Z",
+              "terms": {
+                "currency": "USD",
+                "item": "ceramic lamp",
+                "price_minor": 6000,
+                "quantity": 1
+              },
+              "terms_rows": {
+                "named": {
+                  "paid": {
+                    "latest": "2026-11-04T23:59:59Z",
+                    "side": "buyer"
+                  },
+                  "received": {
+                    "latest": "2026-12-01T23:59:59Z",
+                    "side": "buyer"
+                  }
+                },
+                "rows": [
+                  {
+                    "due": {
+                      "at": "2026-11-01T23:59:59Z"
+                    },
+                    "id": "paid_as_agreed",
+                    "owed": {
+                      "amount_minor": 6000,
+                      "currency": "USD"
+                    },
+                    "owed_by": "buyer",
+                    "recomputed": true,
+                    "window_end": {
+                      "at": "2026-11-04T23:59:59Z"
+                    }
+                  },
+                  {
+                    "due": {
+                      "after": "paid",
+                      "seconds": 345600
+                    },
+                    "id": "delivered",
+                    "owed": {
+                      "item": "ceramic lamp",
+                      "quantity": 1
+                    },
+                    "owed_by": "seller",
+                    "window_end": {
+                      "after": "paid",
+                      "seconds": 604800
+                    }
+                  },
+                  {
+                    "due": {
+                      "after": "received",
+                      "seconds": 0
+                    },
+                    "id": "as_described",
+                    "owed": {
+                      "listing": "as published"
+                    },
+                    "owed_by": "seller",
+                    "window_end": {
+                      "after": "received",
+                      "seconds": 1209600
+                    }
+                  }
+                ]
+              },
+              "to": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+              "witnesses": [
+                {
+                  "key_id": "80ae629533cb26fd2bd280e9d3445f1f8f0f071b62e3712df0c698108936aad3",
+                  "url": "https://witness.example"
+                }
+              ]
+            },
+            "x-deal-v1": {
+              "at": "2026-11-01T09:30:00Z",
+              "canonicalization": "jcs",
+              "deal_id": "deal-6a1f0c93b27d4e58",
+              "profile": "x-deal-v1",
+              "record_type": "propose"
+            }
+          },
+          "record": {
+            "action_id": "deal-6a1f0c93b27d4e58/sent",
+            "action_type": "fyi",
+            "assurance": {
+              "attestation_mode": "self_attested",
+              "effect_mode": "not_applicable",
+              "ledger_mode": "standalone"
+            },
+            "canonicalization_id": "jcs",
+            "capsule_id": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+            "developer": "evidencebook",
+            "format_version": "4",
+            "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+            "model_attestation": {
+              "compute_attestation": {
+                "agent_input_digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9"
+              }
+            },
+            "operator": "buyer",
+            "settlement": {
+              "amount": {
+                "assetCode": "USD",
+                "assetScale": 2,
+                "value": "6000"
+              },
+              "leg": "terms",
+              "sealer_role": "payer",
+              "version": "0"
+            },
+            "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458200c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b0127a058201541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547584028193e506b5e6cd009f02052c87daaf117b145221467c6565b391a40b870d5fbf78f44b79003281863c02eb73fa2ff181535424af2bba4da2ba8c84407cdaf0a",
+            "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+            "timestamp": "2026-11-01T09:02:00Z"
+          }
+        },
+        "offer_digest": "b34a43c30da2c123b3aa4565417ba9b12532bf96c6208030eef9d2b23877c2f9",
+        "acceptor_key": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+        "row": "paid_as_agreed",
+        "legs": [
+          {
+            "header": {
+              "book_id": "deal/9ee2253badea9ef028196672ed862d8d",
+              "committed_at": "2026-11-01T09:04:00Z",
+              "epistemic_type": "producer_claim",
+              "links": [
+                {
+                  "target": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+                  "type": "cites"
+                }
+              ],
+              "payload_commitments": [
+                "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274"
+              ],
+              "record_type": "deal_step",
+              "retention_state": "AVAILABLE",
+              "seq": 2,
+              "subject_ref": "deal-6a1f0c93b27d4e58",
+              "v": 1
+            },
+            "payload": {
+              "body": {
+                "check": {
+                  "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "leg": "payer",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ]
+              },
+              "x-deal-v1": {
+                "agreement_ref": {
+                  "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "at": "2026-11-01T10:20:00Z",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "prev": {
+                  "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "profile": "x-deal-v1",
+                "record_type": "settle",
+                "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+                "seq": 2
+              }
+            },
+            "record": {
+              "action_id": "deal/9ee2253badea9ef028196672ed862d8d#2",
+              "action_type": "fyi",
+              "assurance": {
+                "attestation_mode": "self_attested",
+                "effect_mode": "not_applicable",
+                "ledger_mode": "standalone"
+              },
+              "canonicalization_id": "jcs",
+              "capsule_id": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+              "developer": "evidencebook",
+              "format_version": "4",
+              "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+              "model_attestation": {
+                "compute_attestation": {
+                  "agent_input_digest": "1da16208e8675e89ba54c60523911ef360ebb047e216f4bea3696d4bab4011f8"
+                }
+              },
+              "operator": "buyer",
+              "references": [
+                {
+                  "digest": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+                  "digest_alg": "SHA-256",
+                  "type": "agent-action-capsule"
+                }
+              ],
+              "settlement": {
+                "amount": {
+                  "assetCode": "USD",
+                  "assetScale": 2,
+                  "value": "6000"
+                },
+                "leg": "payer_observed",
+                "observed_at": "2026-11-01T10:15:00Z",
+                "payment_ref": {
+                  "type": "acp.order_id",
+                  "value": "order-0001"
+                },
+                "sealer_role": "payer",
+                "status": "settled",
+                "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+                "version": "0"
+              },
+              "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458200c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b0127a058204e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc75840e574bbf010498a8be5bd9993d15f39c1aec27d0e981682ea23312c040caee46e83c35c807ad842d36b6277f2f97da8ad7ea0c2786c392fdfc98ee9c131f50500",
+              "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+              "timestamp": "2026-11-01T09:04:00Z"
+            }
+          },
+          {
+            "header": {
+              "book_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4",
+              "committed_at": "2026-11-01T09:03:00Z",
+              "epistemic_type": "producer_claim",
+              "links": [
+                {
+                  "target": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+                  "type": "cites"
+                }
+              ],
+              "payload_commitments": [
+                "975feb755f225d1be778ef11586a5a0e56aceeffdc10b965f949856c0c9f84ab"
+              ],
+              "record_type": "deal_step",
+              "retention_state": "AVAILABLE",
+              "seq": 2,
+              "subject_ref": "deal-6a1f0c93b27d4e58",
+              "v": 1
+            },
+            "payload": {
+              "body": {
+                "leg": "payee",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ]
+              },
+              "x-deal-v1": {
+                "agreement_ref": {
+                  "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "at": "2026-11-01T10:20:00Z",
+                "canonicalization": "jcs",
+                "deal_id": "deal-6a1f0c93b27d4e58",
+                "prev": {
+                  "digest": "3b7dab0c87ef9cc4b8d5c5b52e9e0106ded8e22599e4a3b0d3e1c706fddae0d3",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "profile": "x-deal-v1",
+                "record_type": "settle",
+                "seen": "606c94a7cb2b39de5f309e538daddedeed0b70beaba7569daaf1a7de6169f4e2",
+                "seq": 2
+              }
+            },
+            "record": {
+              "action_id": "deal/8cc4ab0342111e4b0fb0c1fd115fa3b4#2",
+              "action_type": "fyi",
+              "assurance": {
+                "attestation_mode": "self_attested",
+                "effect_mode": "not_applicable",
+                "ledger_mode": "standalone"
+              },
+              "canonicalization_id": "jcs",
+              "capsule_id": "04e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f5",
+              "developer": "evidencebook",
+              "format_version": "4",
+              "key_id": "2804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c3",
+              "model_attestation": {
+                "compute_attestation": {
+                  "agent_input_digest": "fd6e0f00cc1c5140974c00261841105f07b920f0ef037a833dddb0e2aa569db8"
+                }
+              },
+              "operator": "seller",
+              "references": [
+                {
+                  "digest": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+                  "digest_alg": "SHA-256",
+                  "type": "agent-action-capsule"
+                }
+              ],
+              "settlement": {
+                "leg": "payee_observed",
+                "observed_at": "2026-11-01T10:18:00Z",
+                "payment_ref": {
+                  "type": "acp.order_id",
+                  "value": "order-0001"
+                },
+                "receive_fee": {
+                  "assetCode": "USD",
+                  "assetScale": 2,
+                  "value": "0"
+                },
+                "received": {
+                  "assetCode": "USD",
+                  "assetScale": 2,
+                  "value": "6000"
+                },
+                "sealer_role": "payee",
+                "status": "settled",
+                "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+                "version": "0"
+              },
+              "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458202804653a1777e79341841bc271a7e1715c5e65a8e3cbf0399f321f2e5d0ae7c30127a0582004e8ffda084f7317b11646d34f01ad34faaaaeef04b019507094d211ca5c09f55840f383c7a6a0feebbd8ef94c604e4349cc1282370ea156751eae952835625f921a252f7e90625bae9ca2e6c3472ef08fe627359b561907b41e89165b0a3ebdd80b",
+              "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+              "timestamp": "2026-11-01T09:03:00Z"
+            }
+          },
+          {
+            "header": {
+              "book_id": "deal/9ee2253badea9ef028196672ed862d8d",
+              "committed_at": "2026-11-01T09:05:00Z",
+              "epistemic_type": "producer_claim",
+              "links": [
+                {
+                  "target": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+                  "type": "cites"
+                }
+              ],
+              "payload_commitments": [
+                "a91bb0e2252911373091759fd60aecc9b4b402aaac88aece3eb29a78913a325d"
+              ],
+              "record_type": "deal_step",
+              "retention_state": "AVAILABLE",
+              "seq": 3,
+              "subject_ref": "deal-fedcba9876543210",
+              "v": 1
+            },
+            "payload": {
+              "body": {
+                "check": {
+                  "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "leg": "payer",
+                "statements": [
+                  {
+                    "row": "paid_as_agreed",
+                    "value": "met"
+                  }
+                ]
+              },
+              "x-deal-v1": {
+                "agreement_ref": {
+                  "digest": "52a3e411be44850909aa3a312b492cb153535c0f67e7f527f60266eb65b4aa81",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "at": "2026-11-01T10:20:00Z",
+                "canonicalization": "jcs",
+                "deal_id": "deal-fedcba9876543210",
+                "prev": {
+                  "digest": "04915d0ac2d0e53b090650005044c0dd734c9f9a16c9124de1c2e711046ce274",
+                  "digest_alg": "SHA-256",
+                  "type": "deal-record"
+                },
+                "profile": "x-deal-v1",
+                "record_type": "settle",
+                "seen": "e7e5214f9d0aa3a04ef6c05b3f683ea01287e81cf790e1b987ef93f64ccc8184",
+                "seq": 3
+              }
+            },
+            "record": {
+              "action_id": "deal/9ee2253badea9ef028196672ed862d8d#3",
+              "action_type": "fyi",
+              "assurance": {
+                "attestation_mode": "self_attested",
+                "effect_mode": "not_applicable",
+                "ledger_mode": "standalone"
+              },
+              "canonicalization_id": "jcs",
+              "capsule_id": "10a54267926cc9888ba905013c46688cd6c3f2d25b98425e13d443d5c8e34778",
+              "developer": "evidencebook",
+              "format_version": "4",
+              "key_id": "0c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b",
+              "model_attestation": {
+                "compute_attestation": {
+                  "agent_input_digest": "42049f645a083a53e3930f5bf30fe408f7c590ba60dd3ba1f806c3d8375111f5"
+                }
+              },
+              "operator": "buyer",
+              "references": [
+                {
+                  "digest": "4e129ecc75b7c7978dbac480902818314358d9e66964649e105604de08767dc7",
+                  "digest_alg": "SHA-256",
+                  "type": "agent-action-capsule"
+                }
+              ],
+              "settlement": {
+                "amount": {
+                  "assetCode": "USD",
+                  "assetScale": 2,
+                  "value": "6000"
+                },
+                "leg": "payer_observed",
+                "observed_at": "2026-11-01T10:15:00Z",
+                "payment_ref": {
+                  "type": "acp.order_id",
+                  "value": "order-0001"
+                },
+                "sealer_role": "payer",
+                "status": "settled",
+                "terms_ref": "1541328968c8809594815351b3f1a8f6799ed81c3965855785f0e7559c8c1547",
+                "version": "0"
+              },
+              "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458200c82e51921a4e537fab914ccd6b4b725cb5dfda283e2a9069b4ec22229ba620b0127a0582010a54267926cc9888ba905013c46688cd6c3f2d25b98425e13d443d5c8e34778584096c5ce315fec450023fbc5df8f0e4f4090cc78ec4ab836f25d18285a67fc2ed018884fa1eefd58cb2493802944a362c3490344c07760082cad733cf50762c307",
+              "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+              "timestamp": "2026-11-01T09:05:00Z"
             }
           }
         ]

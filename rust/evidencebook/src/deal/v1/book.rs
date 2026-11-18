@@ -11,7 +11,7 @@ use sha2::{Digest as _, Sha256};
 
 use super::check::{check, check_text, digest, placement_of, stage_err, Placement};
 use super::record::{decode, Record};
-use super::sent::verify_capsule;
+use super::sent::{go_marshal, verify_capsule};
 use crate::canonical::jcs;
 use crate::deal::Error;
 
@@ -44,8 +44,9 @@ pub struct BookRead {
 
 /// A book record as it is sent (Go `BookPair`): `header`, `capsule` and
 /// `envelope` as its book sealed them (the shelf's `StoredRecord`), and
-/// `payload` the x-deal-v1 record's JCS bytes, its one payload. The pair's
-/// members are in name order, as Go marshals a map.
+/// `payload` the x-deal-v1 record's JCS bytes, its one payload. The bytes
+/// are Go's: members in name order, as Go marshals a map, escaped as Go
+/// escapes them.
 pub fn book_pair(
     header: &[u8],
     capsule: &[u8],
@@ -80,7 +81,7 @@ pub fn book_pair(
     out.insert("header".into(), serde_json::from_slice(header)?);
     out.insert("payload".into(), serde_json::from_slice(payload)?);
     out.insert("record".into(), Value::Object(record));
-    Ok(serde_json::to_vec(&Value::Object(out))?)
+    Ok(go_marshal(&Value::Object(out))?)
 }
 
 /// Checks a book pair on its own (Go `VerifyBook`): the Capsule verifies
@@ -118,17 +119,16 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
     if committed != Some(hex::encode(Sha256::digest(&header_bytes)).as_str()) {
         return Err(bad("the Capsule does not commit this header"));
     }
-    let header = &o["header"];
+    // Go reads the header's JCS into its typed Header: decoded the same
+    // way here, from the same bytes, so a member the types refuse refuses
+    // the pair and a member Go reads in another case is read.
+    let header: Value = serde_json::from_slice(&header_bytes)?;
+    let h = go_header(&header).map_err(|e| bad(format!("the header: {e}")))?;
     let payload_text = serde_json::to_vec(&o["payload"])?;
     let d = digest(&payload_text)?;
     // One payload, this record: a header committing two would let one
     // record id be read as either.
-    let commitments: Vec<&str> = header
-        .get("payload_commitments")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
-    if commitments != [d.as_str()] {
+    if h.payload_commitments != [d.as_str()] {
         return Err(bad(
             "the header does not commit this record as its one payload",
         ));
@@ -141,29 +141,19 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
             r.block.record_type
         )));
     }
-    let log_id = header
-        .get("book_id")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let seq = header.get("seq").and_then(Value::as_u64).unwrap_or(0);
+    let (log_id, seq) = (h.book_id, h.seq);
     if log_id.is_empty() || seq == 0 || u64::try_from(r.block.seq).ok() != Some(seq) {
         return Err(bad(format!(
             "the record's seq {} is not its header's {seq}",
             r.block.seq
         )));
     }
-    let cites: Vec<&str> = header
-        .get("links")
-        .and_then(Value::as_array)
-        .map(|links| {
-            links
-                .iter()
-                .filter(|l| l.get("type").and_then(Value::as_str) == Some("cites"))
-                .filter_map(|l| l.get("target").and_then(Value::as_str))
-                .collect()
-        })
-        .unwrap_or_default();
+    let cites: Vec<&str> = h
+        .links
+        .iter()
+        .filter(|(t, _)| t == "cites")
+        .map(|(_, target)| target.as_str())
+        .collect();
     let prev = match (seq, cites.as_slice()) {
         (1, []) => String::new(),
         (1, _) => return Err(bad("the first record of a book cites none before it")),
@@ -179,4 +169,159 @@ pub fn verify_book(pair: &[u8]) -> Result<BookRead, Error> {
         seq,
         prev,
     })
+}
+
+/// What [`verify_book`] reads of a header, as Go's `json.Unmarshal` into
+/// `evidencebook.Header` gives it.
+struct GoHeader {
+    book_id: String,
+    seq: u64,
+    payload_commitments: Vec<String>,
+    /// Each link's type and target.
+    links: Vec<(String, String)>,
+}
+
+/// Go's `encoding/json` field match: the exact name, or one equal to it
+/// under Unicode simple case folding (`bytes.EqualFold`), which for these
+/// ASCII names also takes U+017F for `s` and U+212A for `k`.
+fn go_name_matches(key: &str, field: &str) -> bool {
+    let fold = |c: char| match c {
+        '\u{017F}' => 's',
+        '\u{212A}' => 'k',
+        c => c.to_ascii_lowercase(),
+    };
+    key.chars().count() == field.chars().count()
+        && key
+            .chars()
+            .zip(field.chars())
+            .all(|(a, b)| fold(a) == fold(b))
+}
+
+/// `v` decoded into Go's type, as `json.Unmarshal` does: `null` leaves the
+/// zero value, a value of another JSON type is an error.
+fn go_string(v: &Value) -> Result<Option<String>, String> {
+    match v {
+        Value::Null => Ok(None),
+        Value::String(s) => Ok(Some(s.clone())),
+        _ => Err("a string member is not a string".into()),
+    }
+}
+
+fn go_int(v: &Value, unsigned: bool) -> Result<(), String> {
+    let ok = match v {
+        Value::Null => true,
+        Value::Number(n) if unsigned => n.as_u64().is_some(),
+        Value::Number(n) => n.as_i64().is_some(),
+        _ => false,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err("an integer member is not an integer of its type".into())
+    }
+}
+
+/// An object of string members, as Go decodes a struct of strings (or a
+/// map of strings): `null` is none.
+fn go_strings_object(v: &Value, fields: Option<&[&str]>) -> Result<Vec<(String, String)>, String> {
+    match v {
+        Value::Null => Ok(Vec::new()),
+        Value::Object(o) => {
+            let mut out = Vec::new();
+            for (k, item) in o {
+                let known = fields.is_none_or(|f| f.iter().any(|f| go_name_matches(k, f)));
+                if known {
+                    out.push((k.clone(), go_string(item)?.unwrap_or_default()));
+                }
+            }
+            Ok(out)
+        }
+        _ => Err("an object member is not an object".into()),
+    }
+}
+
+/// The header as Go's `json.Unmarshal(hjcs, &evidencebook.Header{})` reads
+/// it: every member Go's `Header` types is checked against its Go type, a
+/// member of no field is ignored, names match as Go matches them, and a
+/// member given twice under two spellings is read in the JCS order the
+/// bytes give, the later one winning.
+fn go_header(header: &Value) -> Result<GoHeader, String> {
+    let mut h = GoHeader {
+        book_id: String::new(),
+        seq: 0,
+        payload_commitments: Vec::new(),
+        links: Vec::new(),
+    };
+    let o = match header {
+        Value::Null => return Ok(h),
+        Value::Object(o) => o,
+        _ => return Err("not an object".into()),
+    };
+    const STRINGS: &[&str] = &[
+        "record_type",
+        "epistemic_type",
+        "committed_at",
+        "event_time_claim",
+        "commit_alg",
+        "retention_state",
+        "subject_ref",
+        "principal_ref",
+        "counterparty_ref",
+    ];
+    for (k, v) in o {
+        let is = |f: &str| go_name_matches(k, f);
+        if is("v") {
+            go_int(v, false)?;
+        } else if is("book_id") {
+            if let Some(s) = go_string(v)? {
+                h.book_id = s;
+            }
+        } else if is("seq") {
+            go_int(v, true)?;
+            if let Some(n) = v.as_u64() {
+                h.seq = n;
+            }
+        } else if STRINGS.iter().any(|f| is(f)) {
+            go_string(v)?;
+        } else if is("payload_commitments") {
+            h.payload_commitments = match v {
+                Value::Null => Vec::new(),
+                Value::Array(a) => a
+                    .iter()
+                    .map(|x| go_string(x).map(Option::unwrap_or_default))
+                    .collect::<Result<_, _>>()?,
+                _ => return Err("payload_commitments is not a list".into()),
+            };
+        } else if is("field_commitments") {
+            go_strings_object(v, None)?;
+        } else if is("links") {
+            h.links = match v {
+                Value::Null => Vec::new(),
+                Value::Array(a) => a
+                    .iter()
+                    .map(|l| {
+                        let mut link = (String::new(), String::new());
+                        for (name, value) in go_strings_object(l, Some(&["type", "target"]))? {
+                            if go_name_matches(&name, "type") {
+                                link.0 = value;
+                            } else {
+                                link.1 = value;
+                            }
+                        }
+                        Ok::<_, String>(link)
+                    })
+                    .collect::<Result<_, _>>()?,
+                _ => return Err("links is not a list".into()),
+            };
+        } else if is("correlation") {
+            // Every member a string, as each of Go's three is; Go ignores a
+            // member of another name, which this refuses when it is not a
+            // string (no deal-book header carries a correlation).
+            go_strings_object(v, None)?;
+        } else if is("reproduction") {
+            go_strings_object(v, Some(&["clock"]))?;
+        }
+        // `statement` is raw JSON in Go: any value.
+    }
+    Ok(h)
 }
