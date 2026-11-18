@@ -15,14 +15,14 @@
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "039b481e74cc572a62f2aaeaa9185db9ee161795a380bb4815c028eec262ed66"
+        "digest": "bfccf26cee496120f814cc58c48b23acf695844c975983e006e7158d4c4e1c93"
       },
       "agreement_ref": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
       },
-      "seen": "63d000510f6b7a727abcc4c0f303dc1a99fe910f969e6dcd962a05dc66e58c23"
+      "seen": "292fe2a536d2ae0788db5fc9d7bbeb65212aa17e29218adac625ee7b8bca8631"
     },
     "body": {
       "leg": "payee",
@@ -30,13 +30,13 @@
       "reverses": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "aa095eb54c7d4e519704a6fe250d88e481930103b1626cb91290bea3dadde34e"
+        "digest": "82ae32c59d91fb780bc72562f64a574bb3bd5c0c18c5e11fad54317eaaf7e04c"
       },
       "remedy_for": {
         "row": "as_described"
       }
     }
   },
-  "expected_digest": "cd21cb87a4a193ecce1597a37e9901316a709e3b755e69e949f7acec0142b443",
-  "record_id": "a42e07446c90b8b51c05577eb3e4694c39afadf7b6bf303a0159e27682a055e9"
+  "expected_digest": "3c2613884182520e6f1466e80e2ef863f8d9e88df7dfa21063c6ecd8f3da4c26",
+  "record_id": "4f7d0db396e7be491c5e47265ad6f091b9f61f7502c3a95c41eeef2f188e83a6"
 }

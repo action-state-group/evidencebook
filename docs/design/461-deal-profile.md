@@ -462,6 +462,26 @@ the store and originals, as received or sealed today.
 ids that decided it), `asks` (digest refs), `pack_digest`, `card_digest`, `answers` (digest refs).
 Decided: design §7, `admit`; Appendix A lines 9 and 9g.
 
+**A cited journal record carries its own secret** (decided: Sherlock2, on its twin's privacy P1,
+buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=6a07cefde698fa8db9dcafc2aa97914bb931a56995fea0736efb57bdf1e4d927;
+it applies u528, so it needs no ruling from Steven).
+- **The leak.** `admit` has no secret member: an outcome of four values, a short tier, rows from a
+  public pack, and `at` to the second. The agreement's `admit` hands the counterparty its digest,
+  so the counterparty could try each outcome until one matches. That breaks u528: the admission
+  decision stays in the person's own book. An act's `check` has the same shape, with its action,
+  amount and currency guessable from the terms.
+- **The rule.** Any journal record that a sent or deal-book record can cite MUST carry its own
+  nonce or a required salted member.
+- **What carries it.**
+  - `admit` and `check` carry `nonce`: 256 bits, 64 lowercase hex, fresh per record.
+  - An `intent` already carries the required `verbatim_commitment` (`sha256-jcs-nonce256`, as
+    v0 defines it). That covers `max_total_minor` and the other members it holds in clear.
+- **What stays as it is.** The citation stays a plain digest ref, the journal lookup in
+  `CheckAgreement` is unchanged, and the pattern is `reason_commitment`'s.
+- **Where it is enforced.** The schema requires the members, and the negatives
+  `neg-admit-without-nonce`, `neg-check-without-nonce`, `neg-nonce-not-256-bit-hex` and
+  `neg-intent-without-verbatim-commitment` pin them.
+
 **`rules_verdict`** (deal-book overlay). Members as v0: `word` (`met` | `not_met` | `unknown` |
 `out_of_scope`), `pack_digest`, optional `pack_id` (`types.go:472-476`; `PROFILE.md:220`). Decided
 (constraint 4; u195 as the How ack quotes it, #461 comment 6936343259): sealed in the party's own

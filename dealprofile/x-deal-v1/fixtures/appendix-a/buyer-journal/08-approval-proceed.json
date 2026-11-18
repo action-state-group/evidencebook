@@ -16,7 +16,7 @@
           "rel": "approves",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "4772111bd8b08c186526648c87d56e401e622d7e9ebc6864fabee19daa4bbdb1"
+          "digest": "151173b6b436d97f209a8896bc54f21e62ec6ba89e11644f38b8f06fb754c892"
         }
       ]
     },
@@ -26,5 +26,5 @@
       "approver": "standing_intent"
     }
   },
-  "expected_digest": "cc1ed33a8de643e9865b483fd1cfee34a8122b0074cf73a6fc19f1da0fe03836"
+  "expected_digest": "afbbf546d54d9f5ead262199b3f82c94b8b4b998407df423a967e7df68421b0f"
 }

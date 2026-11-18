@@ -14,7 +14,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -29,7 +30,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -37,7 +38,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -52,7 +53,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -61,7 +62,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -92,7 +93,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -136,7 +137,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -151,7 +153,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+                "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
               }
             ]
           },
@@ -159,7 +161,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "8e257587b8cce3969e7e7cf47feaee0c8e257587b8cce3969e7e7cf47feaee0c"
+            "card_commitment": "9e255713d4087225f4ee8206bc891b7a9e255713d4087225f4ee8206bc891b7a"
           }
         },
         {
@@ -174,7 +176,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "3b293fd6f42af16e26df9b81ef0114e3686a654eaff3650137683cfabdeed9f9"
+                "digest": "10b0113729d9eb963eb9350b7ceee1e2e4944212f9d5aabed4881608cbc965c4"
               }
             ]
           },
@@ -212,7 +214,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+              "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
             }
           }
         }
@@ -242,7 +244,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -257,7 +260,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -265,7 +268,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -280,7 +283,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -318,7 +321,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -339,7 +342,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -354,7 +358,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -362,7 +366,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -393,7 +397,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -414,7 +418,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -429,7 +434,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -445,7 +450,7 @@
               "hold",
               "proceed"
             ],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -460,7 +465,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1c3c64494f23ed2813c6e0d0e218b7429d752022995a5273d5794149f7a247d2"
+                "digest": "51601e85ab7753256577ab0f1f4eb6862094c515f837b3cd6239ac827d3314fa"
               }
             ]
           },
@@ -469,7 +474,7 @@
             "proceed": false,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -484,7 +489,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1c3c64494f23ed2813c6e0d0e218b7429d752022995a5273d5794149f7a247d2"
+                "digest": "51601e85ab7753256577ab0f1f4eb6862094c515f837b3cd6239ac827d3314fa"
               }
             ]
           },
@@ -493,7 +498,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -524,7 +529,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -545,7 +550,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -560,7 +566,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -568,7 +574,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -583,7 +589,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -592,7 +598,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -623,7 +629,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         },
@@ -653,7 +659,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -688,7 +694,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -703,7 +710,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+                "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
               }
             ]
           },
@@ -711,7 +718,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "8e257587b8cce3969e7e7cf47feaee0c8e257587b8cce3969e7e7cf47feaee0c"
+            "card_commitment": "9e255713d4087225f4ee8206bc891b7a9e255713d4087225f4ee8206bc891b7a"
           }
         },
         {
@@ -726,7 +733,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "3b293fd6f42af16e26df9b81ef0114e3686a654eaff3650137683cfabdeed9f9"
+                "digest": "10b0113729d9eb963eb9350b7ceee1e2e4944212f9d5aabed4881608cbc965c4"
               }
             ]
           },
@@ -764,7 +771,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+              "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
             }
           }
         }
@@ -814,7 +821,8 @@
           },
           "body": {
             "action": "commit",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -829,7 +837,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "38d07f5e460e5ceabdbd1bd79ed53711a2eb0eca801c801f5dc007f4541db710"
+                "digest": "7771685f0395d34229954e025202c91048fcfa9395d45758d354bb2a18ea6abd"
               }
             ]
           },
@@ -837,7 +845,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "38d07f5e460e5ceabdbd1bd79ed5371138d07f5e460e5ceabdbd1bd79ed53711"
+            "card_commitment": "7771685f0395d34229954e025202c9107771685f0395d34229954e025202c910"
           }
         },
         {
@@ -852,7 +860,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "0a0b1a589427d5369799b800c1864c6ebffd34c633c8fb4205240ca2fed2dd56"
+                "digest": "81279f9c94b99c25b16a8e1f1634e5b4ddd0ed3a8ae313d8ae9facbc500f3ac6"
               }
             ]
           },
@@ -891,7 +899,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "38d07f5e460e5ceabdbd1bd79ed53711a2eb0eca801c801f5dc007f4541db710"
+              "digest": "7771685f0395d34229954e025202c91048fcfa9395d45758d354bb2a18ea6abd"
             }
           }
         }
@@ -976,7 +984,8 @@
           },
           "body": {
             "action": "commit",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -991,7 +1000,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "c2c3aeb1d9ec7b544710fcc0c34671fd0fa4d97cc44aae6fb25a9e3db8853b03"
+                "digest": "8864d4e6bb41f2b45209330f3d507a65fdee472be2789ff473c25a0e04f4ceec"
               }
             ]
           },
@@ -999,7 +1008,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "c2c3aeb1d9ec7b544710fcc0c34671fdc2c3aeb1d9ec7b544710fcc0c34671fd"
+            "card_commitment": "8864d4e6bb41f2b45209330f3d507a658864d4e6bb41f2b45209330f3d507a65"
           }
         },
         {
@@ -1014,7 +1023,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "4065970f8687e5ce0f87da979b5b41167a1033b1c04f61176a4f943eb8432567"
+                "digest": "f23696da189d631c180e8e936c5a980255139724d1f9bf7457e7a51c7925db08"
               }
             ]
           },
@@ -1053,7 +1062,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "c2c3aeb1d9ec7b544710fcc0c34671fd0fa4d97cc44aae6fb25a9e3db8853b03"
+              "digest": "8864d4e6bb41f2b45209330f3d507a65fdee472be2789ff473c25a0e04f4ceec"
             }
           }
         }
@@ -1184,7 +1193,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1199,7 +1209,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "9e2e3c40e5537ecbc9997b4d2a6db728c86b2e18b26be914f8f081b48e1a28fd"
+                "digest": "b21ee63d648f2975359213eaa88fda2b6c572f243ec4993cd296b0c99394a7a3"
               }
             ]
           },
@@ -1207,7 +1217,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "9e2e3c40e5537ecbc9997b4d2a6db7289e2e3c40e5537ecbc9997b4d2a6db728"
+            "card_commitment": "b21ee63d648f2975359213eaa88fda2bb21ee63d648f2975359213eaa88fda2b"
           }
         },
         {
@@ -1222,7 +1232,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "db3bcdff3f3973efa9bd6afaa0ef05542258b3292a36c77ec1f8a8217fdc0bf1"
+                "digest": "8512b33ea707619e33378a30e4bd12f1b2c3b17da5f24fe012244d1d8dac0fe6"
               }
             ]
           },
@@ -1260,7 +1270,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "9e2e3c40e5537ecbc9997b4d2a6db728c86b2e18b26be914f8f081b48e1a28fd"
+              "digest": "b21ee63d648f2975359213eaa88fda2b6c572f243ec4993cd296b0c99394a7a3"
             }
           }
         }
@@ -1295,7 +1305,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1310,7 +1321,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+                "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
               }
             ]
           },
@@ -1318,7 +1329,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "8e257587b8cce3969e7e7cf47feaee0c8e257587b8cce3969e7e7cf47feaee0c"
+            "card_commitment": "9e255713d4087225f4ee8206bc891b7a9e255713d4087225f4ee8206bc891b7a"
           }
         },
         {
@@ -1345,7 +1356,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "3b293fd6f42af16e26df9b81ef0114e3686a654eaff3650137683cfabdeed9f9"
+                "digest": "10b0113729d9eb963eb9350b7ceee1e2e4944212f9d5aabed4881608cbc965c4"
               }
             ]
           },
@@ -1383,7 +1394,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+              "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
             }
           }
         }
@@ -1404,7 +1415,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1419,7 +1431,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -1427,7 +1439,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -1442,7 +1454,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -1451,7 +1463,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -1482,7 +1494,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -1503,7 +1515,8 @@
           },
           "body": {
             "action": "commit",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1518,7 +1531,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "d930a7c65e708af761e7a3d4b6774166985f0c772920aca6ef1d2c52ce490bac"
+                "digest": "e9cbdb1a0f2fbfe9123635ee9e080c1a3e60d754aea13bf73e2c282d83ae63ff"
               }
             ]
           },
@@ -1526,7 +1539,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "d930a7c65e708af761e7a3d4b6774166d930a7c65e708af761e7a3d4b6774166"
+            "card_commitment": "e9cbdb1a0f2fbfe9123635ee9e080c1ae9cbdb1a0f2fbfe9123635ee9e080c1a"
           }
         },
         {
@@ -1541,7 +1554,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "b161b7398a4dc7a4ee5c788a9bd3a89cb07d357966979d64b4815e09c6c2fc8b"
+                "digest": "6f669d77f03f7d9648355bc6bf3da18fd24d7929086332f4c334b83b2ab194e8"
               }
             ]
           },
@@ -1550,7 +1563,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "d930a7c65e708af761e7a3d4b6774166d930a7c65e708af761e7a3d4b6774166"
+            "card_commitment": "e9cbdb1a0f2fbfe9123635ee9e080c1ae9cbdb1a0f2fbfe9123635ee9e080c1a"
           }
         }
       ],
@@ -1581,7 +1594,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "d930a7c65e708af761e7a3d4b6774166985f0c772920aca6ef1d2c52ce490bac"
+              "digest": "e9cbdb1a0f2fbfe9123635ee9e080c1a3e60d754aea13bf73e2c282d83ae63ff"
             }
           }
         }
@@ -1602,7 +1615,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1617,7 +1631,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -1633,7 +1647,7 @@
               "hold",
               "proceed"
             ],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -1648,7 +1662,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1c3c64494f23ed2813c6e0d0e218b7429d752022995a5273d5794149f7a247d2"
+                "digest": "51601e85ab7753256577ab0f1f4eb6862094c515f837b3cd6239ac827d3314fa"
               }
             ]
           },
@@ -1657,7 +1671,7 @@
             "proceed": false,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -1688,7 +1702,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -1709,7 +1723,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1724,7 +1739,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -1732,7 +1747,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -1747,7 +1762,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -1787,7 +1802,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -1808,7 +1823,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1823,7 +1839,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -1831,7 +1847,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -1846,7 +1862,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -1885,7 +1901,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -1906,7 +1922,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -1921,7 +1938,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -1929,7 +1946,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -1944,7 +1961,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -1952,7 +1969,7 @@
             "choice": "proceed",
             "proceed": true,
             "approver": "agent_card",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -1983,7 +2000,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2013,7 +2030,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2028,7 +2046,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2036,7 +2054,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2051,7 +2069,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -2060,7 +2078,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2107,7 +2125,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2128,7 +2146,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2143,7 +2162,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2159,7 +2178,7 @@
               "hold",
               "proceed"
             ],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2174,7 +2193,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "1c3c64494f23ed2813c6e0d0e218b7429d752022995a5273d5794149f7a247d2"
+                "digest": "51601e85ab7753256577ab0f1f4eb6862094c515f837b3cd6239ac827d3314fa"
               }
             ]
           },
@@ -2212,7 +2231,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2233,7 +2252,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2248,7 +2268,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2266,7 +2286,7 @@
             "options": [
               "hold"
             ],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2281,7 +2301,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "26f4dcd278e280c09dd25705d26d362024bfa6e1c48d6bc73578da32347d580e"
+                "digest": "85b773f622f3176ebf8c5360638215a5e56a9c0fa4e55f00eca582a36f560f73"
               }
             ]
           },
@@ -2290,7 +2310,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -2321,7 +2341,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2342,7 +2362,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2357,7 +2378,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2365,7 +2386,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2380,7 +2401,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -2389,7 +2410,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2439,7 +2460,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2460,7 +2481,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2475,7 +2497,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2483,7 +2505,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2498,7 +2520,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2506,7 +2528,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2521,7 +2543,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -2530,7 +2552,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -2561,7 +2583,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2582,7 +2604,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2595,7 +2618,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2610,13 +2634,13 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               },
               {
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8e257587b8cce3969e7e7cf47feaee0c28b5242e3b8e7442fcdda74a49703fe5"
+                "digest": "9e255713d4087225f4ee8206bc891b7adfd8246247f173d258f9b2d15e45456b"
               }
             ]
           },
@@ -2624,7 +2648,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -2645,7 +2669,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2660,7 +2685,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -2668,7 +2693,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -2683,7 +2708,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -2692,7 +2717,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -2723,7 +2748,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }
@@ -2805,7 +2830,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2820,7 +2846,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "fd72254aa8c8087bcf8837b38ceb0a596e7ab380e5f2263dbc71db3e6ca8c16c"
+                "digest": "5a1ff47c0de7782f23996ea6dc109188b9801e8d5bb41851195b5be8f2d763a0"
               }
             ]
           },
@@ -2828,7 +2854,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "fd72254aa8c8087bcf8837b38ceb0a59fd72254aa8c8087bcf8837b38ceb0a59"
+            "card_commitment": "5a1ff47c0de7782f23996ea6dc1091885a1ff47c0de7782f23996ea6dc109188"
           }
         },
         {
@@ -2843,7 +2869,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "64b689149bc0e43c58b9249ac6e6b55c3787346d2adb14e03a3c99fc49bbf8cf"
+                "digest": "007e0280182bcc45724d2d70f86a345aa270114e66835214bacb4bf72686fec4"
               }
             ]
           },
@@ -2881,7 +2907,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "fd72254aa8c8087bcf8837b38ceb0a596e7ab380e5f2263dbc71db3e6ca8c16c"
+              "digest": "5a1ff47c0de7782f23996ea6dc109188b9801e8d5bb41851195b5be8f2d763a0"
             }
           }
         }
@@ -2977,7 +3003,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -2992,7 +3019,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "fd72254aa8c8087bcf8837b38ceb0a596e7ab380e5f2263dbc71db3e6ca8c16c"
+                "digest": "5a1ff47c0de7782f23996ea6dc109188b9801e8d5bb41851195b5be8f2d763a0"
               }
             ]
           },
@@ -3000,7 +3027,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "fd72254aa8c8087bcf8837b38ceb0a59fd72254aa8c8087bcf8837b38ceb0a59"
+            "card_commitment": "5a1ff47c0de7782f23996ea6dc1091885a1ff47c0de7782f23996ea6dc109188"
           }
         },
         {
@@ -3015,7 +3042,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "64b689149bc0e43c58b9249ac6e6b55c3787346d2adb14e03a3c99fc49bbf8cf"
+                "digest": "007e0280182bcc45724d2d70f86a345aa270114e66835214bacb4bf72686fec4"
               }
             ]
           },
@@ -3053,7 +3080,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "fd72254aa8c8087bcf8837b38ceb0a596e7ab380e5f2263dbc71db3e6ca8c16c"
+              "digest": "5a1ff47c0de7782f23996ea6dc109188b9801e8d5bb41851195b5be8f2d763a0"
             }
           }
         }
@@ -3158,7 +3185,8 @@
           },
           "body": {
             "action": "pay",
-            "payment_ref": "invoice-17"
+            "payment_ref": "invoice-17",
+            "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
           }
         },
         {
@@ -3173,7 +3201,7 @@
                 "rel": "checks",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+                "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
               }
             ]
           },
@@ -3181,7 +3209,7 @@
             "result": "pass",
             "differences": [],
             "options": [],
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         },
         {
@@ -3196,7 +3224,7 @@
                 "rel": "approves",
                 "type": "deal-record",
                 "digest_alg": "SHA-256",
-                "digest": "8cddd3a79d706221ef55a83a2e0161db951a9e3a3a46772c13542e2166141d94"
+                "digest": "19eec0bcf605d7ad5665c383cf846e481ff1f571c3b582051e6cc5b3a110ee6e"
               }
             ]
           },
@@ -3205,7 +3233,7 @@
             "proceed": true,
             "approver": "user",
             "said_commitment": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "card_commitment": "02e6711a0755b518f3dbce36dca0957b02e6711a0755b518f3dbce36dca0957b"
+            "card_commitment": "1d8d32b788591182b5c2f1c48de8db641d8d32b788591182b5c2f1c48de8db64"
           }
         }
       ],
@@ -3236,7 +3264,7 @@
             "check": {
               "type": "deal-record",
               "digest_alg": "SHA-256",
-              "digest": "02e6711a0755b518f3dbce36dca0957b5ce53902cca686ecb57d2b62c8c67afd"
+              "digest": "1d8d32b788591182b5c2f1c48de8db64c10850ebb42450c9826e93462cd332a3"
             }
           }
         }

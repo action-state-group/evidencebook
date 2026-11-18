@@ -322,6 +322,10 @@ type AdmitBody struct {
 	PackDigest string   `json:"pack_digest"`
 	CardDigest string   `json:"card_digest"`
 	Answers    []Ref    `json:"answers"`
+	// Nonce is a fresh random 256-bit value (64 lowercase hex): an
+	// agreement cites the admit by digest, and without it the counterparty
+	// could test guesses at the outcome against that digest (u528).
+	Nonce string `json:"nonce"`
 }
 
 // CheckBody is the journal overlay's check: v0's body and payment_ref, the
@@ -329,4 +333,8 @@ type AdmitBody struct {
 type CheckBody struct {
 	dealprofile.CheckBody
 	PaymentRef string `json:"payment_ref,omitzero"`
+	// Nonce is a fresh random 256-bit value (64 lowercase hex): an act
+	// cites the check by digest, and the check's members are otherwise
+	// guessable from the terms (u528).
+	Nonce string `json:"nonce"`
 }

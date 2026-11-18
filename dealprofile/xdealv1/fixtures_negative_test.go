@@ -39,6 +39,7 @@ const (
 	nIntent   = "appendix-a/buyer-journal/01-intent.json"
 	nAsk      = "appendix-a/buyer-journal/03-ask.json"
 	nCheck    = "appendix-a/buyer-journal/06-check-pay.json"
+	nAdmit    = "appendix-a/buyer-journal/04-admit-go.json"
 	nSellerAg = "appendix-a/seller-book/01-agreement.json"
 	nBuyerAg  = "appendix-a/buyer-book/01-agreement.json"
 	nPayment  = "appendix-a/buyer-book/02-payment.json"
@@ -104,6 +105,20 @@ func negatives() []negative {
 		{name: "neg-check-body-not-v0", description: "the check body without payment_ref is v0's body_check: its action is one v0 names", base: nCheck, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { set(b, "action", "teleport") }},
+		// Schema: a journal record another record cites carries its own
+		// nonce (§3, u528), so the citing record's digest tests no guess.
+		{name: "neg-admit-without-nonce", description: "an admit, which an agreement cites, carries its nonce", base: nAdmit, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-check-without-nonce", description: "a check, which an act cites, carries its nonce", base: nCheck, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-nonce-not-256-bit-hex", description: "a nonce is 64 lowercase hex", base: nCheck, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { set(b, "nonce", strings.ToUpper(b["nonce"].(string))) }},
+		{name: "neg-intent-without-verbatim-commitment", description: "an intent, which an agreement cites, carries its salted verbatim_commitment", base: nIntent, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "verbatim_commitment") }},
 		// Record: placement (§3.1, §3.2).
 		{name: "neg-book-record-without-seq", description: "a deal-book record carries its seq", base: nDelivery, check: "record",
 			stage: StageRecord, contains: "carries its seq",

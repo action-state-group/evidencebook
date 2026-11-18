@@ -15,20 +15,20 @@
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "cd21cb87a4a193ecce1597a37e9901316a709e3b755e69e949f7acec0142b443"
+        "digest": "3c2613884182520e6f1466e80e2ef863f8d9e88df7dfa21063c6ecd8f3da4c26"
       },
       "agreement_ref": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
       },
-      "seen": "63d000510f6b7a727abcc4c0f303dc1a99fe910f969e6dcd962a05dc66e58c23"
+      "seen": "292fe2a536d2ae0788db5fc9d7bbeb65212aa17e29218adac625ee7b8bca8631"
     },
     "body": {
       "kind": "withdrawal",
       "row": "as_described"
     }
   },
-  "expected_digest": "2ead4ed6dc9c847f59ba2dbad890353755c49bda191eaad45b83512e68ccbb1f",
-  "record_id": "6e9124782c40180cf499cd7a491ec535584435ccd7e2a9fec3fea058f7eae881"
+  "expected_digest": "2e01f0c4ca13cddd7ee0889250d8617462ee8b001dfe1efa6be2c404142d2578",
+  "record_id": "85b6bd182a059d45e13ad9795c182d819707138c3fd1adccb352aaf28c5c528e"
 }

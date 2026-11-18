@@ -228,7 +228,7 @@ func TestCheckAgreement(t *testing.T) {
 		"the offer's role": func(a *Record, _ *Record) { a.Body.(*AgreeBody).Role = RoleBuyer },
 		"not citing an offer": func(_ *Record, o *Record) {
 			o.Block.RecordType = TypeCheck
-			o.Body = &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}}
+			o.Body = &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}, Nonce: hx('7')}
 		},
 	} {
 		a, o := acceptorAgreement(offer), record(blk(TypePropose), offerBody())

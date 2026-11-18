@@ -274,11 +274,11 @@ def check_body(rec):
             if body["side"] == "acceptor" and blk.get("seen") is not None:
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
     elif t == "check":
-        # v0's body_check is closed, so the body without payment_ref is
+        # v0's body_check is closed, so the body without payment_ref and nonce is
         # checked against it here, after the record checks, as Go's checkBody.
         v = _validators().get("body_check")
         if v is not None:
-            errs = list(v.iter_errors({k: x for k, x in body.items() if k != "payment_ref"}))
+            errs = list(v.iter_errors({k: x for k, x in body.items() if k not in ("payment_ref", "nonce")}))
             if errs:
                 raise bad("schema", f"the check body is not v0's body_check: {errs[0].message}")
 

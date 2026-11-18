@@ -207,10 +207,23 @@ That the agreement's adjudicator signed it is the reader's, from the ruling's Ca
 `refusal` or `absence`) and `answer` (the digest ref of the library's answer document).
 
 **`admit`.** `outcome` (`GO`, `ASK`, `LIMIT` or `NO`), `tier`, `rows`, `asks`, `pack_digest`,
-`card_digest`, `answers`.
+`card_digest`, `answers`, `nonce`.
 
-**`check`.** v0's `body_check`, plus `payment_ref`. Without `payment_ref` the body MUST be valid
-under v0's closed `body_check`.
+**`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
+the body MUST be valid under v0's closed `body_check`.
+
+**A cited journal record carries its own secret** (u528: the admission decision, and what the
+person checked, stay in the person's own book). A journal record that a sent or deal-book record
+can cite by digest MUST carry a member a reader of the citing record cannot guess. Otherwise that
+reader could try each likely content against the digest. An agreement cites its `admit` and its
+`intent`, and an act cites its `check`.
+- `admit` and `check` carry `nonce`: a fresh random 256-bit value, 64 lowercase hex, drawn for
+  each record and never reused.
+- An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment,
+  which serves the same purpose.
+- The citation stays a plain digest ref, and the lookup in the holder's journal is unchanged, as
+  with `reason_commitment`.
+- A journal record type that a later version lets another record cite MUST meet this rule too.
 
 ## 6. `seen`
 

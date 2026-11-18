@@ -16,7 +16,7 @@
           "rel": "checks",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "d10026397365e4d3d84ff5e22a2479f05fb753f09c8af0e471f44c2dd8b3d29a"
+          "digest": "70476288825c348ddd0e5c1a1be9f2b2eb9dbcd76c945fd95f0e894134b4fb5f"
         }
       ]
     },
@@ -24,8 +24,8 @@
       "result": "pass",
       "differences": [],
       "options": [],
-      "card_commitment": "9659a85b2ac0ef7e6e157a2b83d500f18c2aecc111c361d918abab899b69a5c0"
+      "card_commitment": "526ca6b2066ede44cca50cb6c338de9a65a70a39385c48e594ae8c1725f7471b"
     }
   },
-  "expected_digest": "750165e54914221806fd24f9cc8310add2840187e807e53b7853050bd1bd1c91"
+  "expected_digest": "d9fdaaf9e0ba16f1a6557af7a55d3c9b7f7dc19b6958e235ed4690013f3897f5"
 }

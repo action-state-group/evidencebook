@@ -191,7 +191,7 @@ func fxAgreement(offer, admit, intent *Ref, side, role, counterpartyKey string) 
 // approvalOf seals a check, its passing verdict and the approval that
 // proceeds on it in a journal, returning the check.
 func (a *appendixA) approvedCheck(dir, n, line, action, paymentRef, approver string, at func(int) string) *Ref {
-	cb := &CheckBody{CheckBody: dealprofile.CheckBody{Action: action, AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: paymentRef}
+	cb := &CheckBody{CheckBody: dealprofile.CheckBody{Action: action, AmountMinor: amount(6000), Currency: fxCurrency}, PaymentRef: paymentRef, Nonce: label("check nonce " + dir + " " + n)}
 	check := a.add(fixture{Path: dir + "/" + n + "-check-" + action + ".json", Line: line,
 		Story:  "Its own rules check the act before it: " + action + " 60 dollars under payment reference " + paymentRef + ".",
 		Record: Record{Block: journalBlock(TypeCheck, at(0), true), Body: cb}})
@@ -241,13 +241,13 @@ func buildAppendixA(t *testing.T) *appendixA {
 			Body: &dealprofile.IntentBody{VerbatimCommitment: label("buy this, not over 60 dollars"), PartyRole: RoleBuyer, MaxTotalMinor: amount(6000), Allowed: []string{"pay"}}}})
 	a.add(fixture{Path: bj + "/02-admit-ask.json", Line: "9", Story: "The first admission decision: ASK, for selected records of the 10 to 100 dollar band with their proofs.",
 		Record: Record{Block: journalBlock(TypeAdmit, "2026-11-01T09:05:00Z", false),
-			Body: &AdmitBody{Outcome: "ASK", Tier: "first_deal_10_100", Rows: []string{"selected_records_in_band"}, Asks: []Ref{requestDoc}, PackDigest: packDigest, CardDigest: cardDigest, Answers: []Ref{}}}})
+			Body: &AdmitBody{Outcome: "ASK", Tier: "first_deal_10_100", Rows: []string{"selected_records_in_band"}, Asks: []Ref{requestDoc}, PackDigest: packDigest, CardDigest: cardDigest, Answers: []Ref{}, Nonce: label("seller admit ask nonce")}}})
 	a.add(fixture{Path: bj + "/03-ask.json", Line: "9a", Story: "The evidence request, sealed before it is sent; an ask of an admission carries no deal_id.",
 		Record:  Record{Block: journalBlock(TypeAsk, "2026-11-01T09:06:00Z", false), Body: &AskBody{Request: requestDoc, To: "counterparty"}},
 		Context: &SealContext{Admission: true}})
 	admitGo := a.add(fixture{Path: bj + "/04-admit-go.json", Line: "9g", Story: "The second admission decision: GO, with the answer as input.",
 		Record: Record{Block: journalBlock(TypeAdmit, "2026-11-01T09:20:00Z", false),
-			Body: &AdmitBody{Outcome: "GO", Tier: "first_deal_10_100", Rows: []string{"selected_records_in_band"}, Asks: []Ref{requestDoc}, PackDigest: packDigest, CardDigest: cardDigest, Answers: []Ref{answerDoc}}}})
+			Body: &AdmitBody{Outcome: "GO", Tier: "first_deal_10_100", Rows: []string{"selected_records_in_band"}, Asks: []Ref{requestDoc}, PackDigest: packDigest, CardDigest: cardDigest, Answers: []Ref{answerDoc}, Nonce: label("seller admit go nonce")}}})
 	offer := a.add(fixture{Path: bj + "/05-offer.json", Line: "11", Story: "The offer: the deal id, the lamp at 60 dollars, the pack digest, agree by 2 Nov, the adjudicator and witness taken from the listing, and the three rows.",
 		Record: Record{Block: journalBlock(TypePropose, "2026-11-01T09:30:00Z", true), Body: fxOffer()}})
 
@@ -258,7 +258,7 @@ func buildAppendixA(t *testing.T) *appendixA {
 		Context: &SealContext{Admission: true}})
 	sellerAdmit := a.add(fixture{Path: sj + "/02-admit-go.json", Line: "14", Story: "The seller's admission decision: GO; the buyer pays first.",
 		Record: Record{Block: journalBlock(TypeAdmit, "2026-11-01T09:40:00Z", false),
-			Body: &AdmitBody{Outcome: "GO", Tier: "buyer_pays_first", Rows: []string{}, Asks: []Ref{}, PackDigest: label("seller admission pack"), CardDigest: label("buyer card"), Answers: []Ref{}}}})
+			Body: &AdmitBody{Outcome: "GO", Tier: "buyer_pays_first", Rows: []string{}, Asks: []Ref{}, PackDigest: label("seller admission pack"), CardDigest: label("buyer card"), Answers: []Ref{}, Nonce: label("buyer admit nonce")}}})
 	a.add(fixture{Path: sb + "/01-agreement.json", Line: "15", Story: "The acceptor's agreement opens the seller's deal book; it names nothing held from the buyer.",
 		Record: Record{Block: a.bookBlock(sb, TypeAgree, "2026-11-01T09:45:00Z", 1, ""), Body: fxAgreement(&offer, &sellerAdmit, nil, SideAcceptor, RoleSeller, fxBuyerKey)}})
 

@@ -1,0 +1,25 @@
+{
+  "fixture": "neg-nonce-not-256-bit-hex",
+  "expect": "invalid",
+  "description": "a nonce is 64 lowercase hex",
+  "base": "appendix-a/buyer-journal/06-check-pay.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "action": "pay",
+      "amount_minor": 6000,
+      "currency": "USD",
+      "nonce": "5399B4C5C3C7C040B5AC7571A2D1AE9CF5E8497D20EE116435DC11397DC0CC95",
+      "payment_ref": "pay-ref-7731"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:10:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "check"
+    }
+  }
+}

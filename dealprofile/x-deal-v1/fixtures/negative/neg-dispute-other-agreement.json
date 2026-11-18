@@ -15,12 +15,12 @@
       "row": "as_described",
       "statements": [
         {
-          "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74",
+          "digest": "557ad751c2218090032e30660ec3048a47728d2fbc9449ca71e8327c5d921f9a",
           "digest_alg": "SHA-256",
           "type": "deal-record"
         },
         {
-          "digest": "e4fe7027d0f5cc905d0c969fd40dcc9c5a6e5d435ab2e1c03b808560fa1f6d05",
+          "digest": "91fe1a73e93c19514fdb1f50d39339db2980ec3c312718b17cf5412b23967504",
           "digest_alg": "SHA-256",
           "type": "deal-record"
         }
@@ -36,13 +36,13 @@
       "canonicalization": "jcs",
       "deal_id": "deal-6a1f0c93b27d4e58",
       "prev": {
-        "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74",
+        "digest": "557ad751c2218090032e30660ec3048a47728d2fbc9449ca71e8327c5d921f9a",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
       "profile": "x-deal-v1",
       "record_type": "dispute",
-      "seen": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2",
+      "seen": "68f7d5b890bc7f0962600bc0b290ae4862ebeec02a997955b07fdd27207a943e",
       "seq": 5
     }
   }

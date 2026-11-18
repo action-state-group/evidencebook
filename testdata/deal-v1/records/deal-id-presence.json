@@ -16,7 +16,8 @@
           "asks": [],
           "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
-          "answers": []
+          "answers": [],
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888"
         }
       },
       "valid": true
@@ -28,6 +29,7 @@
           "answers": [],
           "asks": [],
           "card_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+          "nonce": "8888888888888888888888888888888888888888888888888888888888888888",
           "outcome": "GO",
           "pack_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "rows": [],
@@ -544,7 +546,8 @@
         },
         "body": {
           "action": "pay",
-          "payment_ref": "invoice-17"
+          "payment_ref": "invoice-17",
+          "nonce": "7777777777777777777777777777777777777777777777777777777777777777"
         }
       },
       "valid": true
@@ -554,6 +557,7 @@
       "record": {
         "body": {
           "action": "pay",
+          "nonce": "7777777777777777777777777777777777777777777777777777777777777777",
           "payment_ref": "invoice-17"
         },
         "x-deal-v1": {

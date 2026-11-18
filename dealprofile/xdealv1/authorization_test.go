@@ -60,7 +60,7 @@ func (f *authFlow) intent(allowed ...string) Ref {
 }
 
 func (f *authFlow) check(action string) Ref {
-	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17"})
+	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17", Nonce: hx('7')})
 }
 
 func (f *authFlow) verdict(check Ref, result string) Ref {

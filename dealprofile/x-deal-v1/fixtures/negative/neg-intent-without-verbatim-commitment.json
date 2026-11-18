@@ -1,0 +1,24 @@
+{
+  "fixture": "neg-intent-without-verbatim-commitment",
+  "expect": "invalid",
+  "description": "an intent, which an agreement cites, carries its salted verbatim_commitment",
+  "base": "appendix-a/buyer-journal/01-intent.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "allowed": [
+        "pay"
+      ],
+      "max_total_minor": 6000,
+      "party_role": "buyer"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:00:00Z",
+      "canonicalization": "jcs",
+      "profile": "x-deal-v1",
+      "record_type": "intent"
+    }
+  }
+}
