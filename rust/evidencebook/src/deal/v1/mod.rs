@@ -54,6 +54,8 @@ mod payment;
 mod record;
 mod report;
 mod sent;
+#[cfg(feature = "shelf")]
+mod shelf_status;
 mod start;
 mod status_rows;
 mod status_value;
@@ -89,6 +91,10 @@ pub use report::{
 pub use sent::{
     pair, payment_rows, terms_leg, verify_sent, OfferContext, Sent, SENT_SUFFIX, SETTLEMENT_MEMBER,
     SETTLEMENT_VERSION, STAGE_SENT,
+};
+#[cfg(feature = "shelf")]
+pub use shelf_status::{
+    book_entry, name_all_rulings, name_rulings, DealStatus, NamingError, OfferPair,
 };
 pub use start::{
     start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,

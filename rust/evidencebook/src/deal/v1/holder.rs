@@ -95,7 +95,7 @@ impl Ours {
 }
 
 /// What a holder's book record carries.
-enum Payload {
+pub(super) enum Payload {
     V1(Box<Record>),
     Other,
     /// Not readable now (withheld under retention, which may make it
@@ -154,7 +154,10 @@ fn is_v1(raw: &[u8]) -> bool {
 
 /// The x-deal-v1 record a book record of the holder's carries (Go
 /// `v1Payload`).
-fn v1_payload(book: &ShelfBook, r: &crate::shelf::BookRecord) -> Result<Payload, ShelfError> {
+pub(super) fn v1_payload(
+    book: &ShelfBook,
+    r: &crate::shelf::BookRecord,
+) -> Result<Payload, ShelfError> {
     let commitments = r
         .header
         .get("payload_commitments")
@@ -606,13 +609,7 @@ impl ReceiveProfile {
         if shelf.counted_prefix(sender, log_id)?.size < 1 {
             return Ok(false);
         }
-        Ok(shelf.held_proofs(sender, log_id)?.iter().any(|hp| {
-            let v = &hp.verified;
-            v.fact.book_id == input.counterpart_agreement
-                && v.key_id == ag.checkpoint_key
-                && v.shelf_checkpoint.log_id == ag.shelf_log_id
-                && hp.covers >= 1
-        }))
+        super::shelf_status::proof_covers(&shelf, sender, log_id, &input.counterpart_agreement, ag)
     }
 
     /// Applies the first-act gate (Steven, u610; design §7.2; Go
@@ -780,5 +777,31 @@ impl ShelfReceiveProfile for ReceiveProfile {
     ) -> Result<Option<String>, String> {
         self.proof_sender_of(checkpoint_key_id, log_id)
             .map_err(profile_err)
+    }
+
+    /// Names, before the receive returns, each counted ruling of the deals
+    /// the call touched ([`super::name_rulings`]; Go `AfterReceive`): those
+    /// whose counted records grew, and the received record's own deal,
+    /// stored or held already, so a record sent again retries a naming an
+    /// earlier call failed (PROFILE §5; evidencebook#527).
+    fn after_receive(
+        &self,
+        result: &crate::shelf::ReceiveResult,
+        at: crate::shelf::Time,
+    ) -> Result<(), String> {
+        let mut deals = result.changes.grew.clone();
+        if let Some(r) = &result.record {
+            if r.refused.is_none()
+                && (r.stored || r.duplicate)
+                && !r.deal_id.is_empty()
+                && !deals.contains(&r.deal_id)
+            {
+                deals.push(r.deal_id.clone());
+            }
+        }
+        let shelf = self.shelf().map_err(profile_err)?;
+        super::shelf_status::name_rulings(&shelf, &deals, at)
+            .map(drop)
+            .map_err(|e| profile_err(e.error))
     }
 }
