@@ -96,10 +96,12 @@ func TestGateActRefusesAnotherBook(t *testing.T) {
 	other.Block.DealID = "deal/" + "ffffffffffffffffffffffffffffffff"
 	notAgreement := gateAct(1, &StatementBody{Statements: statements()})
 	for name, in := range map[string]ActGateInput{
-		"an empty book":                   {Act: pay},
-		"a book not opening an agreement": {Own: []Record{notAgreement}, Act: pay},
-		"an act of another deal":          {Own: own, Act: other},
-		"a record of another deal":        {Own: append(own, other), Act: pay},
+		"an empty book":                     {Act: pay},
+		"a book not opening an agreement":   {Own: []Record{notAgreement}, Act: pay},
+		"an act of another deal":            {Own: own, Act: other},
+		"a record of another deal":          {Own: append(own, other), Act: pay},
+		"another deal after the first act":  {Own: append(append([]Record{}, own...), pay, other), Act: pay},
+		"another deal, a payee leg to seal": {Own: append(append([]Record{}, own...), other), Act: gateAct(2, &SettleBody{Leg: LegPayee, Statements: statements()})},
 	} {
 		_, err := h.buyer.profile.GateAct(context.Background(), in)
 		assert.Error(t, err, name)

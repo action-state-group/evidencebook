@@ -59,16 +59,15 @@ func (p *ReceiveProfile) GateAct(ctx context.Context, in ActGateInput) (ActGate,
 	if in.Act.Block.DealID != deal {
 		return ActGate{}, fmt.Errorf("xdealv1: gate: the act is of deal %q, the book of %q", in.Act.Block.DealID, deal)
 	}
-	if !gatedAct(in.Act) {
-		return ActGate{Allowed: true}, nil
-	}
+	acted := false
 	for _, r := range in.Own[1:] {
 		if r.Block.DealID != deal {
 			return ActGate{}, fmt.Errorf("xdealv1: gate: a record of deal %q in the book of %q", r.Block.DealID, deal)
 		}
-		if gatedAct(r) {
-			return ActGate{Allowed: true}, nil // not the first act
-		}
+		acted = acted || gatedAct(r)
+	}
+	if !gatedAct(in.Act) || acted {
+		return ActGate{Allowed: true}, nil // not a first act
 	}
 	if ag.CounterpartyLayer == nil || !*ag.CounterpartyLayer {
 		return ActGate{Gated: true, Allowed: true, Unguarded: true, Reason: GateNoLayer}, nil
