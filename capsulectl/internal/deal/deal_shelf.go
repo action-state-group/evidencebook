@@ -13,6 +13,7 @@ import (
 	"github.com/action-state-group/capsule-cli/cli"
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 )
 
 // The deal store on an evidence-book shelf (capsule-cli#242 PR2b, design
@@ -73,8 +74,16 @@ func (s *dealSession) openShelf(ctx context.Context, dbPath string, originals ev
 	if err != nil {
 		return err
 	}
+	// An x-deal-v1 verb that takes a record from the other side asks, through
+	// its context, for the shelf's store of received records, with the v1
+	// profile that reads them (v1ReceiveContext); no other verb opens it.
+	var receive evidencebook.ReceiveConfig
+	if on, _ := ctx.Value(v1ReceiveKey{}).(bool); on {
+		s.v1Profile = &xdealv1.ReceiveProfile{}
+		receive = evidencebook.ReceiveConfig{Profile: s.v1Profile}
+	}
 	shelf, err := evidencebook.OpenSQLiteShelf(ctx, evidencebook.ShelfConfig{
-		Path: dbPath, LockPath: dbPath + ".deal.lock",
+		Path: dbPath, LockPath: dbPath + ".deal.lock", Receive: receive,
 		Operator: s.p.Name, Developer: "capsulectl-deal",
 		Signer: signer, CheckpointKey: checkpointKey, Originals: originals,
 		// The deal clock (cli.DealClock), or, while a book record is appended,
@@ -93,6 +102,9 @@ func (s *dealSession) openShelf(ctx context.Context, dbPath string, originals ev
 		return err
 	}
 	s.shelf = shelf
+	if s.v1Profile != nil {
+		s.v1Profile.Shelf = shelf
+	}
 	s.unlock = shelf.Release
 	return nil
 }

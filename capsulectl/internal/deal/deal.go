@@ -24,6 +24,7 @@ import (
 	"github.com/action-state-group/checkpointed-local-log/go/cll"
 	"github.com/action-state-group/evidencebook"
 	"github.com/action-state-group/evidencebook/dealprofile"
+	"github.com/action-state-group/evidencebook/dealprofile/xdealv1"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,9 @@ type dealSession struct {
 	// page is written until the email is sealed, and the result says so.
 	htmlDeferred bool
 	closed       bool
+	// v1Profile is the x-deal-v1 receive profile the shelf was opened with, set
+	// only for a verb that took v1ReceiveContext (deal_v1_book.go).
+	v1Profile *xdealv1.ReceiveProfile
 	// shelf is the deal store's one writer (deal_shelf.go), open from
 	// openDealSession until close; legacy is the current deal's log on it,
 	// and cadence the profile's cadence once opened.
@@ -926,7 +930,7 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 
 func dealCommands() *cobra.Command {
 	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\n`deal close` and `deal terms-result` are for x-deal-v0 deals; an x-deal-v1 deal (deal set-version x-deal-v1) has neither."}
-	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand())
+	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand(), dealAgreeCommand(), dealReceiveCommand())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
 	// A scheduled demo deal and the watcher that alarms when it stops.
