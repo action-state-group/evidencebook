@@ -689,12 +689,12 @@ type CanActInput struct {
 	CommitmentShelfLog   string
 }
 
-// Whether a holder must refuse its first act until CanAct is true is Steven's
-// to rule, not yet ruled: CanAct computes the gate, and the caller decides
-// whether to apply it. It does not apply to a deal whose counterparty runs no
-// layer (design §4.7), which holds no counterpart agreement, so CanAct is
-// false there. A stamp proof shows the counterparty stamped its book; only a
-// named witness's receipt shows anyone independent saw it.
+// A holder refuses its first perform or payer settle until CanAct is true
+// (Steven, u610); GateAct applies that. CanAct does not apply to a deal whose
+// counterparty runs no layer (design §4.7), which holds no counterpart
+// agreement, so CanAct is false there and GateAct marks the act unguarded. A
+// stamp proof shows the counterparty stamped its book; only a named
+// witness's receipt shows anyone independent saw it.
 //
 // CanAct is the coverage gate before the holder's first act of a deal (design
 // §7.2, gate B). The counterparty's agreement must be of this deal, signed by
