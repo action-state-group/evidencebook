@@ -27,7 +27,9 @@ const (
 // entry {position, checkpoint, receipts, consistency_from_previous} per
 // position, each proof from the entry listed before it. chain[i] is the
 // checkpoint at position i; positions ascend. This responder holds no
-// witness receipts for its checkpoints, so every list is empty.
+// witness receipts for its checkpoints, so every list is empty, and its cards
+// and ranges date nothing: they show only that each listed checkpoint extends
+// the one before.
 func historyEntries2(ctx context.Context, src cllMaterialSource, chain []Checkpoint, anchor Checkpoint, positions []uint64) ([]any, error) {
 	var prover *cllProver
 	history := make([]any, len(positions))
@@ -71,7 +73,9 @@ func (b *Book) historyCard2(ctx context.Context, chain []Checkpoint, anchor Chec
 
 // checkpointsRange is the answer to a checkpoints subject with content
 // (first, last) (ER -03 §8.1.3): one entry per position from first through
-// last, each proof from the position before it, none in the first.
+// last, each proof from the position before it, none in the first, and
+// `consistency_to_anchor` from last to the anchor, nil when last is the
+// anchor's position.
 func (b *Book) checkpointsRange(ctx context.Context, chain []Checkpoint, anchor Checkpoint, first, last uint64) (history []any, toAnchor any, err error) {
 	positions := make([]uint64, 0, last-first+1)
 	for p := first; p <= last; p++ {
@@ -110,9 +114,10 @@ func freshnessOfStatement(e Envelope, statement []byte) error {
 // verifyCheckpointRange checks the artifact of a checkpoints subject with a
 // range (ER -03 §8.1.3): one entry per position from a to b in order, every
 // checkpoint signed under the pinned key in one log, each proof extending the
-// entry before it, the first entry without one. It returns the last
-// checkpoint's statement; whether the range reaches the envelope's anchor is
-// the request's coverage, not the artifact's.
+// entry before it, the first entry without one. Then `consistency_to_anchor`
+// binds the range to the envelope's anchor: null only when the last entry is
+// the anchor, else a proof from it to the anchor's checkpoint carried as
+// material. It returns the anchor's checkpoint statement.
 func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string) ([]byte, error) {
 	bad := func(why string) error {
 		return fmt.Errorf("%w: anchor_inclusion: the checkpoint range %s", ErrInvalid, why)
