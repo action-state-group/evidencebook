@@ -1032,6 +1032,26 @@ class Shelf:
                 _claim_kind(db, JOURNAL_LOG_ID, _KIND_JOURNAL)
             return self._open_locked(JOURNAL_LOG_ID)
 
+    def existing_journal(self):
+        """The shelf's journal when the shelf has one, ``None`` otherwise
+        (Go ``ExistingJournal``). Unlike :meth:`journal` it never creates
+        it, so a reader (a report) changes nothing."""
+        with self._mu:
+            self._check_open()
+            return self._existing_journal_locked()
+
+    def _existing_journal_locked(self):
+        """The shelf's journal if it has one, ``None`` otherwise: a stamp
+        hands it to a book status and must not create it."""
+        from . import shelf_stamp
+
+        if shelf_stamp.migration_state(self) != shelf_stamp.MIGRATION_DONE:
+            return None
+        with self._read() as db:
+            if _kind_of(db, JOURNAL_LOG_ID) != _KIND_JOURNAL:
+                return None
+        return self._open_locked(JOURNAL_LOG_ID)
+
     def _open_locked(self, log_id: str):
         from .book import Book
 

@@ -21,7 +21,7 @@ from evidencebook import Entry, OBSERVED_EVENT
 from evidencebook import shelf_stamp
 from evidencebook.cadence import CadenceConfig, TickLeaves, WITNESS_VERIFIED
 from evidencebook.cadence import _rfc3339 as rfc3339
-from evidencebook.errors import InvalidError
+from evidencebook.errors import InvalidError, ReleasedError
 from evidencebook.shelf import SHELF_VERSION, SHELF_VERSION_FACTS, Shelf
 from evidencebook.shelf_facts import (ENTRY_KIND_FORMAT_SWITCH, ENTRY_KIND_STAMP, FACT_KIND_BOOK, openings_for,
                                       verify_openings)
@@ -201,7 +201,7 @@ def test_a_stamp_stored_but_not_finished_is_finished_first(fx):
             log_id = shelf_stamp._cadence_log_ids(shelf)[0]
             log = shelf._cadence_log_locked(log_id)
             prev = shelf_stamp._last_fact_of(shelf, log_id)
-            f = shelf_stamp._fact_for(c, log, START, prev)
+            f = shelf_stamp._fact_for(c, log, START, prev, last.n + 1)
             tick = shelf_stamp._build_stamp_locked(c, last.n + 1, START, START, [f], [])
             with shelf._tx() as db:
                 db.execute(shelf_stamp._INSERT_TICK, (tick.n, rfc3339(tick.at), rfc3339(tick.due_next),
@@ -512,3 +512,145 @@ def test_a_planted_crash_recovers_to_the_vector(tmp_path, scenario, plant):
     assert state == ([("migrating",)] if scenario == "migration" else [])
     script.run(path, script.SCRIPT["recover_phase"])
     assert script.dump(str(tmp_path)) == (VECTORS / f"after-recover-{scenario}.json").read_bytes()
+
+
+# -- the book status hooks (Go shelf_record_stamp_test.go, shelf_stamp_test.go,
+# shelf_journal_test.go) ------------------------------------------------------------------
+
+
+class _BookValues:
+    """A book status handed each book's StatusInput (Go ``BookStatusProvider``
+    and ``BeforeStampProvider``): it reads the handles, may fail for the
+    books named, and records each before_stamp, failing once when asked."""
+
+    def __init__(self, shelf):
+        self.shelf = shelf
+        self.status = {"deal/a": {"row": "a"}, "deal/b": {"row": "b"}}
+        self.fail: set[str] = set()
+        self.calls: list[str] = []
+        self.before = 0
+        self.fail_before = False
+        self.unlocked = False
+
+    def book_values(self, inp):
+        journal = -1 if inp.journal is None else len(inp.journal.records())
+        self.calls.append(f"{inp.n} {inp.log_id} {len(inp.book.records())} {journal}")
+        if inp.log_id in self.fail:
+            raise RuntimeError("the deal's offer is not held")
+        if inp.log_id not in self.status:
+            return None
+        return "deal", None, {"stamp": inp.n, "records": len(inp.book.records()), "was": self.status[inp.log_id]}
+
+    def before_stamp(self, at):
+        self.before += 1
+        # It runs holding the receive lock.
+        if self.shelf._receive_mu.acquire(blocking=False):
+            self.shelf._receive_mu.release()
+            self.unlocked = True
+        if self.fail_before:
+            self.fail_before = False
+            raise RuntimeError("naming failed")
+
+
+def _status_cadence(shelf, values):
+    return shelf.cadence(CadenceConfig(log_id="deal-cadence/0123456789abcdef", ended=lambda _: False,
+                                       witnesses=script.DIRECTORY, status=values))
+
+
+def _status_at(shelf, log_id: str, n: int) -> str:
+    with shelf._read() as db:
+        return bytes(db.execute("SELECT status_opening FROM shelf_entries WHERE log_id = ? AND tick = ?",
+                                (log_id, n)).fetchone()[0]).decode()
+
+
+def test_a_book_status_reads_the_stamp_the_book_and_the_journal(fx):
+    with fx.open() as shelf:
+        values = _BookValues(shelf)
+        c = _status_cadence(shelf, values)
+        a = shelf.open("deal/a")
+        a.append(obs("a", "1"))
+        c.tick(START)
+        c.migrate(START + timedelta(minutes=1))
+        migration = values.calls[-1]
+        assert migration.endswith(" -1"), "the migration's stamp: no journal"
+        a.append(obs("a", "2"))
+        size = len(a.records())
+        s = c.stamp(START + timedelta(minutes=2)).tick
+        assert values.calls[-1] == f"{s.n} deal/a {size} -1", "no journal yet, and the stamp does not create one"
+        assert int(migration.split()[0]) + 1 == s.n
+        assert f'"stamp":{s.n}' in _status_at(shelf, "deal/a", s.n)
+        assert shelf.existing_journal() is None
+        shelf.journal().append(obs("j", "1"))
+    with fx.open() as shelf:
+        values = _BookValues(shelf)
+        c = _status_cadence(shelf, values)
+        a = shelf.open("deal/a")
+        a.append(obs("a", "3"))
+        size = len(a.records())
+        s = c.stamp(START + timedelta(minutes=3)).tick
+        n, log, records, journal = values.calls[-1].split()
+        assert (int(n), log, int(records)) == (s.n, "deal/a", size) and int(journal) >= 1, values.calls[-1]
+        assert f'"records":{size}' in _status_at(shelf, "deal/a", s.n), "the fact commits what it read"
+
+
+def test_a_status_error_leaves_the_books_last_fact(fx):
+    from evidencebook.shelf_facts import FACT_KIND_BOOK
+
+    def facts_of(shelf, log_id):
+        with shelf._read() as db:
+            return db.execute("SELECT COUNT(*) FROM shelf_entries WHERE log_id = ? AND kind = ?",
+                              (log_id, FACT_KIND_BOOK)).fetchone()[0]
+
+    with fx.open() as shelf:
+        values = _BookValues(shelf)
+        c = _status_cadence(shelf, values)
+        a, b = shelf.open("deal/a"), shelf.open("deal/b")
+        a.append(obs("a", "1"))
+        b.append(obs("b", "1"))
+        c.tick(START)
+        c.migrate(START + timedelta(minutes=1))
+        before_a, before_b = facts_of(shelf, "deal/a"), facts_of(shelf, "deal/b")
+        values.fail.add("deal/a")
+        a.append(obs("a", "2"))
+        b.append(obs("b", "2"))
+        res = c.stamp(START + timedelta(minutes=2))
+        assert res.unstated == {"deal/a": "the deal's offer is not held"}
+        assert facts_of(shelf, "deal/a") == before_a, "deal/a keeps its last fact"
+        assert facts_of(shelf, "deal/b") == before_b + 1
+        values.fail.clear()
+        res = c.stamp(START + timedelta(minutes=3))
+        assert res.unstated == {}
+        assert facts_of(shelf, "deal/a") == before_a + 1, "the next stamp asks again"
+
+
+def test_before_stamp_runs_before_each_stamp(fx):
+    with fx.open() as shelf:
+        values = _BookValues(shelf)
+        c = _status_cadence(shelf, values)
+        shelf.open("deal/a").append(obs("a", "1"))
+        c.tick(START)
+        assert values.before == 0, "no before_stamp before the shelf is migrated"
+        c.migrate(START + timedelta(minutes=1))
+        values.fail_before = True
+        res = c.stamp(START + timedelta(minutes=2))
+        assert values.before == 1 and res.before_stamp == "naming failed" and res.ticked
+        early = c.tick(START + timedelta(minutes=3))
+        assert not early.ticked and values.before == 1, "a tick that cuts nothing runs none"
+        due = c.tick(res.tick.due_next)
+        assert due.ticked and values.before == 2 and due.before_stamp == ""
+        assert not values.unlocked, "always under the receive lock"
+
+
+def test_existing_journal_never_creates_it(fx):
+    with fx.open() as shelf:
+        c, _ = stamp_cadence(shelf)
+        shelf.open("deal/a").append(obs("a", "1"))
+        c.tick(START)
+        assert shelf.existing_journal() is None, "before migrate"
+        c.migrate(START + timedelta(minutes=1))
+        assert shelf.existing_journal() is None, "migrated, no journal yet"
+        journal = shelf.journal()
+        assert shelf.existing_journal() is journal
+        shelf.release()
+        with pytest.raises(ReleasedError):
+            shelf.existing_journal()
