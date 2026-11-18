@@ -323,35 +323,51 @@ func (o ours) agreement(dealID string) (AgreeBody, bool) {
 	return AgreeBody{}, false
 }
 
-// v1Payload is the x-deal-v1 record a book record of the holder's carries,
-// or ok false for another record.
-func v1Payload(ctx context.Context, b *evidencebook.Book, r evidencebook.Record) (Record, bool, error) {
+// payloadKind is what a holder's book record carries: an x-deal-v1 record,
+// something else, or a payload not readable now (withheld under retention,
+// which may make it available again).
+type payloadKind int
+
+const (
+	payloadV1 payloadKind = iota
+	payloadOther
+	payloadUnavailable
+)
+
+// v1Payload is the x-deal-v1 record a book record of the holder's carries.
+func v1Payload(ctx context.Context, b *evidencebook.Book, r evidencebook.Record) (Record, payloadKind, error) {
 	if len(r.Header.PayloadCommitments) != 1 {
-		return Record{}, false, nil
+		return Record{}, payloadOther, nil
 	}
 	raw, err := b.ResolvePayload(ctx, r.RecordID, r.Header.PayloadCommitments[0])
-	if errors.Is(err, evidencebook.ErrUnavailable) || errors.Is(err, evidencebook.ErrNotFound) {
-		return Record{}, false, nil
-	}
-	if err != nil {
-		return Record{}, false, err
+	switch {
+	case errors.Is(err, evidencebook.ErrUnavailable):
+		return Record{}, payloadUnavailable, nil
+	case errors.Is(err, evidencebook.ErrNotFound):
+		return Record{}, payloadOther, nil
+	case err != nil:
+		return Record{}, payloadOther, err
 	}
 	if v, err := dealprofile.Version(raw); err != nil || v != Profile {
-		return Record{}, false, nil
+		return Record{}, payloadOther, nil
 	}
 	rec, err := Decode(raw)
 	if err != nil {
-		return Record{}, false, nil
+		return Record{}, payloadOther, nil
 	}
-	return rec, true, nil
+	return rec, payloadV1, nil
 }
 
 // holderCache keeps what ours read, so a call reads only what is new: the
 // journal records past those read, and the first record of a deal book not
-// read yet. A book's first record never changes once sealed.
+// read yet. A book's first record never changes once sealed. A payload not
+// readable now is read again on the next call, so a record withheld and made
+// available again counts once it is.
 type holderCache struct {
 	journalSeen uint64
-	journal     []Record
+	journal     []Record // the v1 journal records read, by journal seq
+	journalSeq  []uint64
+	retry       []uint64           // journal seqs whose payload was not readable
 	firsts      map[string]*Record // by log id; nil for a book that opens with no v1 agreement
 }
 
@@ -369,21 +385,44 @@ func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
 	if err != nil {
 		return ours{}, err
 	}
-	if size := journal.Size(); size > c.journalSeen {
-		records, err := journal.Query(ctx, evidencebook.Filter{FromSeq: c.journalSeen + 1, ToSeq: size})
+	// Read the new journal records, and those not readable before, into a
+	// batch committed only once every read succeeded.
+	var seqs []uint64
+	seqs = append(seqs, c.retry...)
+	size := journal.Size()
+	for n := c.journalSeen + 1; n <= size; n++ {
+		seqs = append(seqs, n)
+	}
+	var (
+		added    []Record
+		addedSeq []uint64
+		retry    []uint64
+	)
+	for _, n := range seqs {
+		records, err := journal.Query(ctx, evidencebook.Filter{FromSeq: n, ToSeq: n})
 		if err != nil {
 			return ours{}, err
 		}
 		for _, r := range records {
-			rec, ok, err := v1Payload(ctx, journal, r)
+			rec, kind, err := v1Payload(ctx, journal, r)
 			if err != nil {
 				return ours{}, err
 			}
-			if ok {
-				c.journal = append(c.journal, rec)
+			switch kind {
+			case payloadV1:
+				added, addedSeq = append(added, rec), append(addedSeq, n)
+			case payloadUnavailable:
+				retry = append(retry, n)
 			}
 		}
-		c.journalSeen = size
+	}
+	if len(seqs) > 0 {
+		for i, n := range addedSeq {
+			at, _ := slices.BinarySearch(c.journalSeq, n)
+			c.journalSeq = slices.Insert(c.journalSeq, at, n)
+			c.journal = slices.Insert(c.journal, at, added[i])
+		}
+		c.journalSeen, c.retry = size, retry
 	}
 	logs, err := p.Shelf.Books(ctx)
 	if err != nil {
@@ -401,16 +440,20 @@ func (p *ReceiveProfile) ours(ctx context.Context) (ours, error) {
 			if err != nil {
 				return ours{}, err
 			}
+			unavailable := false
 			if len(recs) == 1 {
-				rec, ok, err := v1Payload(ctx, book, recs[0])
+				rec, kind, err := v1Payload(ctx, book, recs[0])
 				if err != nil {
 					return ours{}, err
 				}
-				if a, isAgree := asAgree(rec.Body); ok && isAgree && a.Kind == KindAgreement {
+				if a, isAgree := asAgree(rec.Body); kind == payloadV1 && isAgree && a.Kind == KindAgreement {
 					first = &rec
 				}
+				unavailable = kind == payloadUnavailable
 			}
-			c.firsts[logID] = first
+			if !unavailable {
+				c.firsts[logID] = first
+			}
 		}
 		if first != nil {
 			o.agreements = append(o.agreements, *first)

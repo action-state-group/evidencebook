@@ -596,3 +596,30 @@ func TestSharedLogID(t *testing.T) {
 		}
 	}
 }
+
+// A journal offer withheld under retention is read again once it is
+// available: a decline of it is refused while it is withheld, and admitted
+// after, though the profile read the journal in between.
+func TestWithheldOfferReadAgain(t *testing.T) {
+	ctx := context.Background()
+	h := newHandshake(t, nil)
+	journal, err := h.buyer.shelf.Journal(ctx)
+	require.NoError(t, err)
+	offers, err := journal.Query(ctx, evidencebook.Filter{})
+	require.NoError(t, err)
+	require.NotEmpty(t, offers)
+	offerID := offers[len(offers)-1].RecordID
+	_, err = journal.SetRetention(ctx, offerID, evidencebook.Withheld, "test")
+	require.NoError(t, err)
+
+	decline := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true),
+		Body: &AgreeBody{Kind: KindDecline, Offer: RefTo(mustDigest(t, h.offer)), Reason: ReasonOther}}
+	pair := h.seller.sendOffer(decline)
+	_, err = h.buyer.shelf.Receive(ctx, pair, nil)
+	assert.ErrorIs(t, err, evidencebook.ErrRefused, "the offer cannot be read while withheld")
+
+	_, err = journal.SetRetention(ctx, offerID, evidencebook.Available, "test")
+	require.NoError(t, err)
+	res := h.buyer.receive(pair, nil)
+	assert.True(t, res.Record.Stored, "read again once available")
+}
