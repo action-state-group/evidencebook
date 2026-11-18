@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- The ARD two-seller demo, including its Goose Desktop windows (#483), moved to evidencebook-skills as `demo/ard` (evidencebook-skills#169, #171). It sits there beside the buyer and seller skills it runs and its admission pack. `python/examples/ard-commerce` is removed. The demo reads this repository's Goose loop reference (`python/examples/goose`) and the x-deal-v0 checker from a pinned checkout, so nothing is copied.
