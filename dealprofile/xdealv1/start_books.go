@@ -32,7 +32,8 @@ type StartBooks struct {
 // computes it. The offerer's agreement's record time is the earliest time a
 // witness the agreements name gave it; a time from any other witness is no
 // time (§5.2, "offerer_agreement_time"). It refuses books out of order, of
-// another deal, or not opened by an agreement citing the offer.
+// another deal, a holder's book not opened by an agreement citing the offer,
+// and a counterpart's book not opened by an agreement.
 //
 // Reading the books from a shelf, the holder's own book records and the
 // counterparty's received records, is the profile's ReceiveProfile's
@@ -93,31 +94,15 @@ func startInput(b StartBooks) (StartInput, error) {
 		}
 		return in, nil
 	}
-	var cp *AgreeBody
-	if len(b.Counterpart) > 0 {
-		if c, ok := asAgree(b.Counterpart[0].Record.Body); ok && c.Kind == KindAgreement {
-			cp = &c
-		}
-	}
-	if cp == nil {
-		return in, nil
-	}
-	in.CounterpartAgreementHeld = true
-	same := cp.Offer.Digest == offerDigest && cp.RowsDigest == own.RowsDigest
-	in.SameOfferAndRows = &same
 	offererBook, acceptorBook := b.Own, b.Counterpart
 	if own.Side == SideAcceptor {
 		offererBook, acceptorBook = b.Counterpart, b.Own
 	}
-	seen := offererBook[0].Record.Block.Seen
-	names := seen.V != nil && *seen.V == acceptorBook[0].RecordID
-	in.OffererNamesAcceptor = &names
-	if in.OffererAgreementTime, err = recordTime(offererBook[0], own.Witnesses); err != nil {
-		return StartInput{}, err
-	}
 	// The acceptor's book names the offerer's agreement when a record's seen
 	// is that agreement's record id or a later one of the offerer's book; a
 	// cancellation it named before that settles the deal as never started.
+	// An acceptor reads its own book for both even before it holds any of
+	// the offerer's: a cancellation it named then still counts.
 	offererIDs := make([]string, len(offererBook))
 	for i, r := range offererBook {
 		offererIDs[i] = r.RecordID
@@ -130,21 +115,42 @@ func startInput(b StartBooks) (StartInput, error) {
 			in.AcceptorNamesOfferer = true
 		}
 	}
+	if len(b.Counterpart) == 0 {
+		return in, nil
+	}
+	cp, ok := asAgree(b.Counterpart[0].Record.Body)
+	if !ok || cp.Kind != KindAgreement {
+		return StartInput{}, bad("the counterpart's book does not open with its agreement")
+	}
+	in.CounterpartAgreementHeld = true
+	same := cp.Offer.Digest == offerDigest && cp.RowsDigest == own.RowsDigest
+	in.SameOfferAndRows = &same
+	seen := offererBook[0].Record.Block.Seen
+	names := seen.V != nil && *seen.V == acceptorBook[0].RecordID
+	in.OffererNamesAcceptor = &names
+	// The offerer's agreement's time comes from the witnesses it names.
+	offerer, _ := asAgree(offererBook[0].Record.Body)
+	if in.OffererAgreementTime, err = recordTime(offererBook[0], offerer.Witnesses); err != nil {
+		return StartInput{}, err
+	}
 	return in, nil
 }
 
 // recordTime is a record's record time from the witnesses named: the
 // earliest time one of them gave it, or nil for none. Times are UTC to the
 // second, so their text orders as their instants do.
+// A time from a witness not named is no time, and is not read.
 func recordTime(r BookRecord, witnesses []Witness) (*string, error) {
-	for key, t := range r.Times {
-		if _, err := startTime("the time witness "+key+" gave record "+r.RecordID, t); err != nil {
-			return nil, err
-		}
-	}
 	var earliest *string
 	for _, w := range witnesses {
-		if t, ok := r.Times[w.KeyID]; ok && (earliest == nil || t < *earliest) {
+		t, ok := r.Times[w.KeyID]
+		if !ok {
+			continue
+		}
+		if _, err := startTime("the time witness "+w.KeyID+" gave record "+r.RecordID, t); err != nil {
+			return nil, err
+		}
+		if earliest == nil || t < *earliest {
 			earliest = &t
 		}
 	}

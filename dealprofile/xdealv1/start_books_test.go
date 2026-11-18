@@ -96,20 +96,16 @@ func receipt() *StatementBody {
 // the StartInput StartFromBooks derives from them, and Start's result.
 // Written to testdata/deal-v1/start/books.json (EB_WRITE_DEAL_V1_VECTORS=1).
 func TestStartFromBooksVectors(t *testing.T) {
-	type vcase struct {
-		Name   string      `json:"name"`
-		Why    string      `json:"why"`
-		Books  StartBooks  `json:"books"`
-		Input  StartInput  `json:"input"`
-		Expect StartResult `json:"expect"`
-	}
-	var cases []vcase
+	var cases []booksCase
 	add := func(name, why string, b StartBooks, want StartResult) {
 		t.Helper()
 		in, got, err := StartFromBooks(b)
 		require.NoError(t, err, name)
 		require.Equal(t, want, got, name)
-		cases = append(cases, vcase{name, why, b, in, want})
+		// Encoded now: a later case may change a record a shared book holds.
+		raw, err := json.Marshal(b)
+		require.NoError(t, err)
+		cases = append(cases, booksCase{name, why, raw, in, want})
 	}
 	ws := []Witness{fxWitness}
 	inTime, late := "2026-11-01T10:05:00Z", "2026-11-03T10:05:00Z"
@@ -158,6 +154,14 @@ func TestStartFromBooksVectors(t *testing.T) {
 		seller(d, stAfter), notStarted)
 
 	d = newBookDeal(t, ws, true, "")
+	d.add(&d.seller, TypeStatement, "2026-11-01T11:00:00Z", "", namesCancellation())
+	cancelled := StartBooks{At: stBefore, Offer: d.offer, Own: d.seller}
+	add("cancellation-no-counterpart-before", "the acceptor agreed, then named the offerer's cancellation, and holds none of the offerer's book: not started, even before agree_by",
+		cancelled, notStarted)
+	cancelled.At = stAfter
+	add("cancellation-no-counterpart-after", "the same after agree_by: not started", cancelled, notStarted)
+
+	d = newBookDeal(t, ws, true, "")
 	d.add(&d.seller, TypeStatement, "2026-11-01T11:00:00Z", d.buyer[0].RecordID, receipt())
 	d.add(&d.seller, TypeStatement, "2026-11-01T12:00:00Z", d.buyer[0].RecordID, namesCancellation())
 	add("named-then-cancelled", "the acceptor named the offerer's agreement, then a cancellation: started", seller(d, stAfter), started(false, ByAcceptorNamed))
@@ -190,6 +194,9 @@ func TestStartFromBooksVectors(t *testing.T) {
 	d.seller[i].Times = map[string]string{fxWitness.KeyID: "2026-11-04T10:30:00Z"}
 	add("no-layer-timed-act", "no layer, after an act timed by a named witness: started, not local", noLayer, started(false, ByFirstAct))
 
+	for _, c := range cases {
+		replayBooksCase(t, c)
+	}
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "start from books (evidencebook#461, docs/design/461-deal-profile.md §5.2 and §5.4): StartFromBooks(books) must derive input from the holder's deal book (own), the counterparty's (counterpart) and the offer, and Start(input) must give expect. A record's time is the earliest a witness the agreements name gave it (times, by witness key id). Record ids stand in for the Capsule ids of sealed book records. Written by dealprofile/xdealv1's TestStartFromBooksVectors (EB_WRITE_DEAL_V1_VECTORS=1).",
 		"cases":       cases,
@@ -205,6 +212,63 @@ func TestStartFromBooksVectors(t *testing.T) {
 	want, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.True(t, bytes.Equal(want, got), "start books.json differs from this build's; regenerate only for an intended change")
+}
+
+// booksCase is one book-level start vector, its books as encoded.
+type booksCase struct {
+	Name   string          `json:"name"`
+	Why    string          `json:"why"`
+	Books  json.RawMessage `json:"books"`
+	Input  StartInput      `json:"input"`
+	Expect StartResult     `json:"expect"`
+}
+
+// replayBooksCase reads a case's books back as another implementation
+// would, and checks they give its input and result.
+func replayBooksCase(t *testing.T, c booksCase) {
+	t.Helper()
+	var b StartBooks
+	require.NoError(t, json.Unmarshal(c.Books, &b), c.Name)
+	in, got, err := StartFromBooks(b)
+	require.NoError(t, err, c.Name)
+	assert.Equal(t, c.Input, in, c.Name)
+	assert.Equal(t, c.Expect, got, c.Name)
+}
+
+// Every case in books.json, read from the file alone, gives its input and
+// result.
+func TestStartFromBooksVectorsReplay(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(startDir, "books.json"))
+	require.NoError(t, err)
+	var v struct {
+		Cases []booksCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &v))
+	require.NotEmpty(t, v.Cases)
+	for _, c := range v.Cases {
+		replayBooksCase(t, c)
+	}
+}
+
+// A time from a witness the agreements do not name is not read, even when
+// malformed; the offerer's agreement's time comes from the witnesses it
+// names.
+func TestStartFromBooksWitnessTimes(t *testing.T) {
+	d := newBookDeal(t, []Witness{fxWitness}, true, "")
+	d.buyer[0].Times = map[string]string{label("unnamed"): "yesterday", fxWitness.KeyID: "2026-11-01T10:05:00Z"}
+	in, _, err := StartFromBooks(StartBooks{At: stAfter, Offer: d.offer, Own: d.seller, Counterpart: d.buyer})
+	require.NoError(t, err)
+	require.NotNil(t, in.OffererAgreementTime)
+	assert.Equal(t, "2026-11-01T10:05:00Z", *in.OffererAgreementTime)
+
+	// The holder's agreement names another witness than the offerer's: the
+	// offerer's list decides.
+	other := Witness{KeyID: label("the acceptor's other witness")}
+	d.seller[0].Record.Body.(*AgreeBody).Witnesses = []Witness{other}
+	in, _, err = StartFromBooks(StartBooks{At: stAfter, Offer: d.offer, Own: d.seller, Counterpart: d.buyer})
+	require.NoError(t, err)
+	require.NotNil(t, in.OffererAgreementTime)
+	assert.Equal(t, "2026-11-01T10:05:00Z", *in.OffererAgreementTime)
 }
 
 func TestStartFromBooksRefuses(t *testing.T) {
@@ -233,6 +297,11 @@ func TestStartFromBooksRefuses(t *testing.T) {
 			own := append([]BookRecord(nil), d.seller...)
 			own[0].Record.Block.DealID = "deal-0000000000000000"
 			return StartBooks{At: stBefore, Offer: d.offer, Own: own}
+		},
+		"counterpart book not opened by an agreement": func(d *bookDeal) StartBooks {
+			cp := append([]BookRecord(nil), d.buyer...)
+			cp[0].Record.Body = receipt()
+			return StartBooks{At: stBefore, Offer: d.offer, Own: d.seller, Counterpart: cp}
 		},
 		"malformed time": func(d *bookDeal) StartBooks {
 			cp := append([]BookRecord(nil), d.buyer...)
