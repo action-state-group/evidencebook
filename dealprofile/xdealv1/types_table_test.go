@@ -32,7 +32,12 @@ func TestTypesTable(t *testing.T) {
 		"block":      typeRef(reflect.TypeFor[Block]()),
 		"terms_rows": typeRef(reflect.TypeFor[TermsRows]()),
 		"bodies":     bodies,
-		"structs":    tableStructs,
+		// The books a status value and a report are built from, which
+		// json.Unmarshal reads (not strictly): Python reads them as it does.
+		"status_books": typeRef(reflect.TypeFor[StatusBooks]()),
+		"row_books":    typeRef(reflect.TypeFor[RowBooks]()),
+		"report_books": typeRef(reflect.TypeFor[ReportBooks]()),
+		"structs":      tableStructs,
 	}
 	got, err := json.MarshalIndent(out, "", " ")
 	require.NoError(t, err)
@@ -49,6 +54,9 @@ type typeField struct {
 	Name     string `json:"name"`
 	Type     any    `json:"type"`
 	OmitZero bool   `json:"omitzero,omitempty"`
+	// OmitEmpty is only on the books' fields, which Python reads and never
+	// writes.
+	OmitEmpty bool `json:"omitempty,omitempty"`
 }
 
 var (
@@ -61,7 +69,21 @@ func goTypeName(t reflect.Type) string {
 	return strings.TrimPrefix(t.PkgPath(), "github.com/action-state-group/evidencebook/") + "." + t.Name()
 }
 
+// customKinds are the types with their own UnmarshalJSON a reader of the
+// table implements by name: a record, read strictly (Decode), and a status
+// time (string, null or {"stamp": n}).
+var customKinds = map[reflect.Type]string{
+	reflect.TypeFor[Record]():     "record",
+	reflect.TypeFor[StatusTime](): "status_time",
+}
+
 func typeRef(t reflect.Type) any {
+	if k, ok := customKinds[t]; ok {
+		return k
+	}
+	if t.Kind() == reflect.Interface && t.NumMethod() == 0 {
+		return "raw"
+	}
 	if t == rawType {
 		return "raw"
 	}
@@ -83,15 +105,20 @@ func typeRef(t reflect.Type) any {
 		return "bool"
 	case reflect.Int64, reflect.Int:
 		return "int64"
+	case reflect.Uint64:
+		return "uint64"
 	case reflect.Pointer:
 		return map[string]any{"ptr": typeRef(t.Elem())}
 	case reflect.Slice:
 		return map[string]any{"slice": typeRef(t.Elem())}
 	case reflect.Map:
-		if t.Key().Kind() != reflect.String {
-			panic(fmt.Sprintf("a map keyed by %s", t.Key()))
+		switch t.Key().Kind() {
+		case reflect.String:
+			return map[string]any{"map": typeRef(t.Elem())}
+		case reflect.Uint64:
+			return map[string]any{"map": typeRef(t.Elem()), "key": "uint64"}
 		}
-		return map[string]any{"map": typeRef(t.Elem())}
+		panic(fmt.Sprintf("a map keyed by %s", t.Key()))
 	case reflect.Struct:
 		name := goTypeName(t)
 		if _, done := tableStructs[name]; !done {
@@ -123,11 +150,12 @@ func typeFields(t reflect.Type) []typeField {
 			name = f.Name
 		}
 		for _, o := range strings.Split(opts, ",") {
-			if o != "" && o != "omitzero" {
+			if o != "" && o != "omitzero" && o != "omitempty" {
 				panic(fmt.Sprintf("%s.%s: tag option %q", t, f.Name, o))
 			}
 		}
-		out = append(out, typeField{Name: name, Type: typeRef(f.Type), OmitZero: strings.Contains(opts, "omitzero")})
+		out = append(out, typeField{Name: name, Type: typeRef(f.Type), OmitZero: strings.Contains(opts, "omitzero"),
+			OmitEmpty: strings.Contains(opts, "omitempty")})
 	}
 	seen := map[string]bool{}
 	for _, f := range out {

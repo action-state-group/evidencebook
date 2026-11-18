@@ -82,6 +82,15 @@
    "struct": "dealprofile/xdealv1.VerdictBody"
   }
  },
+ "report_books": {
+  "struct": "dealprofile/xdealv1.ReportBooks"
+ },
+ "row_books": {
+  "struct": "dealprofile/xdealv1.RowBooks"
+ },
+ "status_books": {
+  "struct": "dealprofile/xdealv1.StatusBooks"
+ },
  "structs": {
   "dealprofile.AgentMoveBody": [
    {
@@ -229,6 +238,20 @@
     "name": "attributed_to",
     "type": "string",
     "omitzero": true
+   }
+  ],
+  "dealprofile.Checkpoint": [
+   {
+    "name": "log_id",
+    "type": "string"
+   },
+   {
+    "name": "mmr_size",
+    "type": "uint64"
+   },
+   {
+    "name": "root",
+    "type": "string"
    }
   ],
   "dealprofile.Claim": [
@@ -1793,6 +1816,39 @@
     "type": "string"
    }
   ],
+  "dealprofile/xdealv1.PaymentResult": [
+   {
+    "name": "check",
+    "type": "string"
+   },
+   {
+    "name": "reason",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "checked_over",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "excluded",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "settlement",
+    "type": {
+     "ptr": {
+      "struct": "github.com/action-state-group/agent-action-capsule/go/settlement.Settlement"
+     }
+    },
+    "omitempty": true
+   }
+  ],
   "dealprofile/xdealv1.PerformBody": [
    {
     "name": "act",
@@ -1942,6 +1998,87 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.ReportBooks": [
+   {
+    "name": "Books",
+    "type": {
+     "struct": "dealprofile/xdealv1.StatusBooks"
+    }
+   },
+   {
+    "name": "Stamps",
+    "type": {
+     "key": "uint64",
+     "map": "string"
+    }
+   },
+   {
+    "name": "Own",
+    "type": {
+     "struct": "dealprofile/xdealv1.ReportLog"
+    }
+   },
+   {
+    "name": "Counterpart",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReportCounterpartLog"
+     }
+    }
+   },
+   {
+    "name": "Checkpoint",
+    "type": {
+     "struct": "dealprofile.Checkpoint"
+    }
+   },
+   {
+    "name": "Fact",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.ReportFact"
+     }
+    }
+   }
+  ],
+  "dealprofile/xdealv1.ReportCounterpartLog": [
+   {
+    "name": "log_id",
+    "type": "string"
+   },
+   {
+    "name": "counted",
+    "type": "uint64"
+   },
+   {
+    "name": "last",
+    "type": "string"
+   },
+   {
+    "name": "fork_at",
+    "type": "uint64"
+   }
+  ],
+  "dealprofile/xdealv1.ReportFact": [
+   {
+    "name": "current",
+    "type": "bool"
+   }
+  ],
+  "dealprofile/xdealv1.ReportLog": [
+   {
+    "name": "log_id",
+    "type": "string"
+   },
+   {
+    "name": "size",
+    "type": "uint64"
+   },
+   {
+    "name": "last",
+    "type": "string"
+   }
+  ],
   "dealprofile/xdealv1.Row": [
    {
     "name": "id",
@@ -1980,6 +2117,50 @@
      }
     },
     "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.RowBooks": [
+   {
+    "name": "offer",
+    "type": "record"
+   },
+   {
+    "name": "own",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.TimedRecord"
+     }
+    }
+   },
+   {
+    "name": "counterpart",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.TimedRecord"
+     }
+    }
+   },
+   {
+    "name": "case_book",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.TimedRecord"
+     }
+    }
+   },
+   {
+    "name": "conflicting_final_rulings",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "checks",
+    "type": {
+     "map": "string"
+    },
+    "omitempty": true
    }
   ],
   "dealprofile/xdealv1.RowRemedy": [
@@ -2191,6 +2372,75 @@
     "omitzero": true
    }
   ],
+  "dealprofile/xdealv1.StatusBooks": [
+   {
+    "name": "offer",
+    "type": "record"
+   },
+   {
+    "name": "own",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatusRecord"
+     }
+    }
+   },
+   {
+    "name": "counterpart",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatusRecord"
+     }
+    }
+   },
+   {
+    "name": "case_book",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatusRecord"
+     }
+    }
+   },
+   {
+    "name": "conflicting_final_rulings",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "payments",
+    "type": {
+     "map": {
+      "struct": "dealprofile/xdealv1.PaymentResult"
+     }
+    },
+    "omitempty": true
+   },
+   {
+    "name": "proof_held",
+    "type": "bool"
+   },
+   {
+    "name": "rulings_unnamed",
+    "type": "int64",
+    "omitempty": true
+   }
+  ],
+  "dealprofile/xdealv1.StatusRecord": [
+   {
+    "name": "record",
+    "type": "record"
+   },
+   {
+    "name": "record_id",
+    "type": "string"
+   },
+   {
+    "name": "time",
+    "type": "status_time"
+   }
+  ],
   "dealprofile/xdealv1.TermsRows": [
    {
     "name": "rows",
@@ -2206,6 +2456,22 @@
      "map": {
       "struct": "dealprofile/xdealv1.Named"
      }
+    }
+   }
+  ],
+  "dealprofile/xdealv1.TimedRecord": [
+   {
+    "name": "record",
+    "type": "record"
+   },
+   {
+    "name": "record_id",
+    "type": "string"
+   },
+   {
+    "name": "time",
+    "type": {
+     "ptr": "string"
     }
    }
   ],
@@ -2302,6 +2568,46 @@
     "name": "url",
     "type": "string",
     "omitzero": true
+   }
+  ],
+  "github.com/action-state-group/agent-action-capsule/go/settlement.Settlement": [
+   {
+    "name": "terms",
+    "type": "string"
+   },
+   {
+    "name": "payment_state",
+    "type": {
+     "ptr": "string"
+    }
+   },
+   {
+    "name": "agreed_status",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "terms_amount",
+    "type": "string",
+    "omitempty": true
+   },
+   {
+    "name": "differs",
+    "type": {
+     "slice": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "iso20022",
+    "type": {
+     "map": "string"
+    },
+    "omitempty": true
+   },
+   {
+    "name": "delivery_state",
+    "type": "string"
    }
   ]
  },

@@ -24,7 +24,7 @@ from .gotypes import NIL_RAW
 from .names import PROFILE, ROLE_BUYER, ROLE_SELLER, TYPE_PERFORM, TYPE_SETTLE, VALUE_NOT_MET
 from .start import STATE_STARTED, FirstAct, StartInput, start
 from .status import (
-    StatusError, TimedRecord, _Books, _compute, _first_remedy, _read_books, _row_inputs, _Sources, build_status,
+    _DECODED, StatusError, _decode, TimedRecord, _Books, _compute, _first_remedy, _read_books, _row_inputs, _Sources, build_status,
     resolve_time,
 )
 
@@ -61,34 +61,31 @@ def _bad(detail: str) -> StatusError:
     return StatusError("xdealv1: report: " + detail)
 
 
-def _stamps(v: Any) -> dict[int, str]:
-    """``Stamps`` as Go reads a ``map[uint64]string``: each key a decimal
-    uint64, a null value the empty string."""
-    out: dict[int, str] = {}
-    for k, t in (v or {}).items():
-        if not re.fullmatch(r"[0-9]+", k) or int(k) >= 1 << 64:
-            raise StatusError(f"xdealv1: report: stamp key {_q(k)} is not a uint64")
-        out[int(k)] = t
+#: The copy, as the report API takes it: its text is Go's map[string]any.
+_COPY_CUSTOM: golenient.Custom = {}
+
+
+def _copy_struct() -> dict:
+    return {"audience": "string", "nonce": "string", "referee": "string", "as_of": "string",
+            "text": {"map": "raw"}}
+
+
+def _read_copy(v: Any) -> dict:
+    """The copy read as Go reads a struct of these members."""
+    if v is None:
+        v = {}
+    if not isinstance(v, dict):
+        raise StatusError("xdealv1: report: a copy is an object")
+    fields = _copy_struct()
+    out = {name: golenient.zero(t) for name, t in fields.items()}
+    try:
+        for k, e in v.items():
+            name = k if k in fields else next((f for f in fields if golenient.fold(f) == golenient.fold(k)), None)
+            if name is not None:
+                out[name] = golenient.read(e, fields[name], _COPY_CUSTOM, out[name])
+    except golenient.GoDecodeError as exc:
+        raise StatusError(str(exc)) from None
     return out
-
-
-_LOG = golenient.struct(log_id="str", size="uint", last="str")
-_COUNTERPART_LOG = golenient.struct(log_id="str", counted="uint", last="str", fork_at="uint")
-_CHECKPOINT = golenient.struct(log_id="str", mmr_size="uint", root="str")
-_FACT = golenient.struct(current="bool")
-#: Go's ReportBooks: its fields carry no JSON tags, so each matches its Go
-#: name in any case.
-_REPORT_BOOKS = golenient.struct(
-    Books="raw", Stamps=("map", "str"), Own=_LOG, Counterpart=("ptr", _COUNTERPART_LOG), Checkpoint=_CHECKPOINT,
-    Fact=("ptr", _FACT))
-_COPY = golenient.struct(audience="str", nonce="str", referee="str", as_of="str",
-                         text=golenient.custom(lambda v: _text(v)))
-
-
-def _text(v: Any) -> Any:
-    if v is not None and not isinstance(v, dict):
-        raise StatusError("xdealv1: report: a copy's text is an object")
-    return v
 
 
 def build_report(books: dict, copy: dict) -> dict:
@@ -101,11 +98,8 @@ def build_report(books: dict, copy: dict) -> dict:
     referee on a copy that is not an adjudicator's or none on one that is,
     an as_of that is not RFC 3339 UTC to the second, and books holding a
     record timed after as_of."""
-    try:
-        rbooks = golenient.read(books, _REPORT_BOOKS)
-        c = golenient.read(copy, _COPY)
-    except golenient.GoDecodeError as exc:
-        raise StatusError(str(exc)) from None
+    rbooks = _decode(books, "report_books")
+    c = _read_copy(copy)
     audience, nonce, as_of = c["audience"], c["nonce"], c["as_of"]
     if audience not in (AUDIENCE_KEEP, AUDIENCE_COUNTERPARTY, AUDIENCE_ADJUDICATOR):
         raise _bad(f"audience {_q(audience)} is not a copy audience")
@@ -118,9 +112,9 @@ def build_report(books: dict, copy: dict) -> dict:
         raise _bad("only an adjudicator's copy names a referee")
     if utc_second(as_of) is None:
         raise _bad(f"as_of {_q(as_of)} is not RFC 3339 UTC to the second")
-    sb = _read_books(rbooks["Books"])
+    sb = _read_books(dict(rbooks["Books"], **{_DECODED: True}))
     v = build_status(sb)
-    stamps = _stamps(rbooks["Stamps"])
+    stamps = rbooks["Stamps"] or {}
     own = sb.own[0].record.body
 
     def resolve(rs: list[TimedRecord]) -> list[TimedRecord]:

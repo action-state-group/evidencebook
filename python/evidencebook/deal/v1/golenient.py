@@ -1,106 +1,118 @@
 # SPDX-License-Identifier: Apache-2.0
-"""A JSON value read as Go's ``encoding/json`` reads it into a plain struct
-(``json.Unmarshal``, no ``DisallowUnknownFields``): a member matches its
-field exactly, else in another case (the later spelling wins); a member no
-field names is ignored; a null leaves a string, number, bool or struct as
-it was and sets a list or map to nil; a value of another type is refused.
+"""A JSON value read as Go's ``encoding/json`` reads it into a typed value
+(``json.Unmarshal``, no ``DisallowUnknownFields``), the types from the
+table ``dealprofile/xdealv1``'s ``TestTypesTable`` writes by reflection
+(:mod:`.gotypes`): the status books, the row books and the report books.
 
-The status and report books are read so (Go ``StatusBooks``,
-``ReportBooks``, ``PaymentResult``). A record inside them is read strictly
-(:func:`.check.decode`), as Go's ``Record.UnmarshalJSON`` is.
+As Go reads them:
+
+- a member matches its field exactly, else in another case, and a member
+  no field names is ignored;
+- a later member decodes into what an earlier one left: a struct, a
+  pointer's value and a list's elements merge, a map's values are
+  replaced;
+- a null leaves a string, number, bool or struct as it was and sets a
+  pointer, list or map to nil;
+- a value of another type is refused, and an integer must fit its field.
+
+A record (``Record.UnmarshalJSON``) and a status time
+(``StatusTime.UnmarshalJSON``) have their own readers, given by the caller.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
-_INT64 = (-(1 << 63), (1 << 63) - 1)
-_UINT64 = (0, (1 << 64) - 1)
+from . import gotypes
+
+_RANGE = {"int64": (-(1 << 63), (1 << 63) - 1), "uint64": (0, (1 << 64) - 1)}
 
 
 class GoDecodeError(ValueError):
-    """A value Go's ``json.Unmarshal`` refuses for its field's type."""
+    """A value Go's ``json.Unmarshal`` refuses for its type."""
 
 
-def _fold(s: str) -> str:
+def fold(s: str) -> str:
     """Go's ``encoding/json`` name match: case-insensitive under simple
     folding, which also takes U+017F for ``s`` and U+212A for ``k``."""
     return s.replace("ſ", "s").replace("K", "k").lower()
 
 
-#: A field kind: "str", "bool", "int", "uint", "raw", ("list", kind),
-#: ("map", kind), ("struct", fields), ("ptr", kind), or a function of the
-#: value (called for a present member, a null included) for a type with its
-#: own UnmarshalJSON.
-Kind = Any
+def _fields(t: dict) -> list[dict]:
+    return gotypes.table()["structs"][t["struct"]]
 
 
-def zero(kind: Kind) -> Any:
-    if kind == "str":
+def zero(t: Any) -> Any:
+    if t == "string":
         return ""
-    if kind == "bool":
+    if t == "bool":
         return False
-    if kind in ("int", "uint"):
+    if isinstance(t, str) and t in _RANGE:
         return 0
-    if isinstance(kind, tuple) and kind[0] == "struct":
-        return {name: zero(k) for name, k in kind[1].items()}
-    return None
+    if isinstance(t, dict) and "struct" in t:
+        return {f["name"]: zero(f["type"]) for f in _fields(t)}
+    return None  # raw, ptr, slice, map, and a custom type's zero
 
 
-def read(v: Any, kind: Kind, cur: Any = None, where: str = "") -> Any:
-    """``v`` read into a field of ``kind`` holding ``cur``."""
-    if callable(kind):
-        return kind(v)
-    if cur is None and not (isinstance(kind, tuple) and kind[0] in ("list", "map", "ptr")) and kind != "raw":
-        cur = zero(kind)
-    if kind == "raw":
+Custom = dict[str, Callable[[Any], Any]]
+
+
+def read(v: Any, t: Any, custom: Custom, cur: Any = None) -> Any:
+    """``v`` read into a value of type ``t`` holding ``cur`` (its zero value
+    when ``None`` for a type whose zero is not nil)."""
+    if isinstance(t, str) and t in custom:
+        return custom[t](v)
+    if t == "raw":
         return v
+    if cur is None:
+        cur = zero(t)
     if v is None:
-        if isinstance(kind, tuple) and kind[0] in ("list", "map", "ptr"):
+        if isinstance(t, dict) and ("ptr" in t or "slice" in t or "map" in t):
             return None
         return cur
-    if kind == "str":
+    if t == "string":
         if not isinstance(v, str):
-            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a string{where}")
+            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go value of type string")
         return v
-    if kind == "bool":
+    if t == "bool":
         if not isinstance(v, bool):
-            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a bool{where}")
+            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go value of type bool")
         return v
-    if kind in ("int", "uint"):
-        lo, hi = _INT64 if kind == "int" else _UINT64
+    if isinstance(t, str) and t in _RANGE:
+        lo, hi = _RANGE[t]
         if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
-            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into an {kind}64{where}")
+            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go value of type {t}")
         return v
-    tag, inner = kind
-    if tag == "ptr":
-        return read(v, inner, None, where)
-    if tag == "list":
+    if "ptr" in t:
+        # A pointer already set decodes into what it points at.
+        return read(v, t["ptr"], custom, cur)
+    if "slice" in t:
         if not isinstance(v, list):
-            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a list{where}")
-        return [read(e, inner, None, where) for e in v]
-    if tag == "map":
+            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go slice")
+        old = cur or []
+        return [read(e, t["slice"], custom, old[i] if i < len(old) else None) for i, e in enumerate(v)]
+    if "map" in t:
         if not isinstance(v, dict):
-            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a map{where}")
+            raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go map")
         out = dict(cur or {})
         for k, e in v.items():
-            out[k] = read(e, inner, None, where)
+            if t.get("key") == "uint64":
+                if not re.fullmatch(r"[0-9]+", k) or int(k) >= 1 << 64:
+                    raise GoDecodeError(f"json: cannot unmarshal number {k} into a Go value of type uint64")
+                key: Any = int(k)
+            else:
+                key = k
+            out[key] = read(e, t["map"], custom)  # each value decodes into a fresh zero value
         return out
     if not isinstance(v, dict):
-        raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a struct{where}")
+        raise GoDecodeError(f"json: cannot unmarshal {_kind(v)} into a Go struct")
+    fields = {f["name"]: f["type"] for f in _fields(t)}
     out = dict(cur)
     for k, e in v.items():
-        name = k if k in inner else next((f for f in inner if _fold(f) == _fold(k)), None)
+        name = k if k in fields else next((f for f in fields if fold(f) == fold(k)), None)
         if name is not None:
-            out[name] = read(e, inner[name], out[name], f" (field {name}){where}")
+            out[name] = read(e, fields[name], custom, out[name])
     return out
-
-
-def struct(**fields: Kind) -> tuple[str, dict[str, Kind]]:
-    return ("struct", fields)
-
-
-def custom(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
-    return fn
 
 
 def _kind(v: Any) -> str:

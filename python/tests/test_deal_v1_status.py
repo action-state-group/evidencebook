@@ -55,7 +55,7 @@ def books(**change):
 @pytest.mark.parametrize("change, detail", [
     ({"own": []}, "the holder's book is empty"),
     ({"offer": None}, "a record has an x-deal-v1 block and a body"),
-    ({"proof_held": "yes"}, "cannot unmarshal string into a bool (field proof_held)"),
+    ({"proof_held": "yes"}, "cannot unmarshal string into a Go value of type bool"),
     ({"payments": {"no_such_row": {"check": "pass"}}}, "which the terms do not have"),
 ])
 def test_build_status_refuses(change, detail):
@@ -193,3 +193,42 @@ def test_row_inputs_reads_the_books_checks():
     assert [i.get("check") for i in ins if i["row"]["id"] == recomputed[0]] == ["fail"]
     with pytest.raises(v1.StatusError):
         v1.row_inputs(dict(b, checks={"no_such_row": "fail"}), "2026-11-26T12:00:00Z")
+
+
+# -- a later member decodes into what an earlier one left (#549 review r2) -------------
+# Each outcome below is Go's, from the deal-v1 runner on the same input.
+
+
+def test_a_later_spelling_of_a_pointer_merges_into_it():
+    rb = _copy.deepcopy(REPORT["books"])
+    rb["Fact"] = {"current": True}
+    rb["fact"] = {}
+    assert v1.build_report(rb, REPORT["copy"])["status_fact"] == {"current": True}
+
+
+def test_a_later_null_books_keeps_the_books():
+    rb = _copy.deepcopy(REPORT["books"])
+    rb["books"] = None
+    assert v1.build_report(rb, REPORT["copy"]) == v1.build_report(REPORT["books"], REPORT["copy"])
+
+
+def test_a_later_null_stamp_clears_it():
+    with pytest.raises(v1.StatusError):
+        v1.status_time({"stamp": 1, "STAMP": None})
+    assert v1.status_time({"STAMP": None, "stamp": 2}) == {"stamp": 2}
+
+
+def test_text_entries_merge_across_spellings():
+    got = v1.build_report(REPORT["books"], dict(REPORT["copy"], text={"a": 1}, TEXT={"b": 2}))
+    assert got["report"] == {"a": 1, "b": 2}
+
+
+@pytest.mark.parametrize("settlement", [{"terms": 7}, {"payment_state": 1}, {"differs": "x"}, {"iso20022": []}, 5])
+def test_a_settlement_of_another_type_is_refused(settlement):
+    with pytest.raises(v1.StatusError):
+        v1.build_status(books(payments={ROW: {"settlement": settlement}}))
+
+
+def test_a_settlement_of_its_types_is_taken():
+    s = {"terms": "t", "payment_state": None, "differs": ["a"], "iso20022": {"x": "y"}, "delivery_state": "d"}
+    assert v1.build_status(books(payments={ROW: {"settlement": s}}))["rows"]

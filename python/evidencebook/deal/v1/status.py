@@ -44,27 +44,32 @@ class StatusError(ValueError):
 
 
 def status_time(v: Any) -> Any:
-    """A status time as Go's ``StatusTime.UnmarshalJSON`` reads it: a known
-    time (a non-empty string), ``None`` for no such record (null, or an
-    empty string), or ``{"stamp": n}`` with ``n >= 1``. It is returned as it
-    is written: the string, ``None``, or ``{"stamp": n}``."""
+    """A status time as Go's ``StatusTime.UnmarshalJSON`` reads it: null for
+    no such record; a string, its known time (an empty one is no record);
+    else ``{"stamp": n}`` read strictly (no other member, the member in any
+    case, the later spelling winning, a null clearing it) with ``n >= 1``.
+    It is returned as it is written: the string, ``None``, or
+    ``{"stamp": n}``."""
     if v is None or v == "":
         return None
     if isinstance(v, str):
         return v
-    if isinstance(v, dict) and v and all(golenient._fold(k) == "stamp" for k in v):
-        # Go's strict decode of {"stamp": n}: the member in any case, the
-        # later spelling winning; a null leaves it unset.
-        n = None
-        for e in v.values():
-            if e is not None:
-                if isinstance(e, bool) or not isinstance(e, int) or not 0 <= e < 1 << 64:
-                    n = None
-                    break
-                n = e
-        if n:
-            return {"stamp": n}
-    raise StatusError('xdealv1: a status time is a string, null or {"stamp": n} with n >= 1')
+    bad = StatusError('xdealv1: a status time is a string, null or {"stamp": n} with n >= 1')
+    if not isinstance(v, dict):
+        raise bad
+    n = None
+    for k, e in v.items():
+        if golenient.fold(k) != "stamp":
+            raise bad
+        if e is None:
+            n = None
+        elif isinstance(e, bool) or not isinstance(e, int) or not 0 <= e < 1 << 64:
+            raise bad
+        else:
+            n = e
+    if not n:
+        raise bad
+    return {"stamp": n}
 
 
 def _known(t: Any) -> str | None:
@@ -115,33 +120,20 @@ def _zero_record() -> Record:
     return Record(gotypes.zero(gotypes.block_type()), {})
 
 
-_RECORD = golenient.custom(_record)
-_STATUS_RECORD = golenient.struct(record=_RECORD, record_id="str", time=golenient.custom(lambda v: status_time(v)))
-_TIMED_RECORD = golenient.struct(record=_RECORD, record_id="str", time=("ptr", "str"))
-_PAYMENT = golenient.struct(check="str", reason="str", checked_over=("list", "str"), excluded=("list", "str"),
-                            settlement=golenient.custom(lambda v: _settlement(v)))
-_STATUS_BOOKS = golenient.struct(
-    offer=_RECORD, own=("list", _STATUS_RECORD), counterpart=("list", _STATUS_RECORD),
-    case_book=("list", _STATUS_RECORD), conflicting_final_rulings=("list", "str"), payments=("map", _PAYMENT),
-    proof_held="bool", rulings_unnamed="int")
-_ROW_BOOKS = golenient.struct(
-    offer=_RECORD, own=("list", _TIMED_RECORD), counterpart=("list", _TIMED_RECORD),
-    case_book=("list", _TIMED_RECORD), conflicting_final_rulings=("list", "str"), checks=("map", "str"))
+_CUSTOM: golenient.Custom = {"record": lambda v: _record(v), "status_time": lambda v: status_time(v)}
 
 
-def _settlement(v: Any) -> Any:
-    # AAC's settlement.Settlement, a struct: an object or null. Its members
-    # are not read here (the status value reads none of them).
-    if v is not None and not isinstance(v, dict):
-        raise StatusError("xdealv1: a payment result's settlement is an object")
-    return v
-
-
-def _decode(v: Any, kind: Any) -> dict:
+def _decode(v: Any, books: str) -> dict:
+    """Books as Go's ``json.Unmarshal`` reads them into its type: books is
+    ``status_books``, ``row_books`` or ``report_books``."""
     try:
-        return golenient.read(v, kind)
+        return golenient.read(v, gotypes.table()[books], _CUSTOM)
     except golenient.GoDecodeError as exc:
         raise StatusError(str(exc)) from None
+
+
+#: Marks status books already decoded (the report's, read inside its own books).
+_DECODED = "\x00decoded"
 
 
 def _records(rs: Any) -> list[TimedRecord]:
@@ -166,7 +158,7 @@ def _read_books(b: Any) -> _Books:
     """Status books as Go's ``json.Unmarshal`` into ``StatusBooks`` reads them."""
     if isinstance(b, _Books):
         return b
-    d = _decode(b, _STATUS_BOOKS)
+    d = b if isinstance(b, dict) and b.get(_DECODED) else _decode(b, "status_books")
     payments = d["payments"] or {}
     return _Books(
         offer=d["offer"] if d["offer"] is not None else _zero_record(),
@@ -240,7 +232,7 @@ def row_inputs(books: Any, at: str) -> list[dict]:
     ``own``, ``counterpart`` and ``case_book`` (each record with its time, a
     known time or null), ``conflicting_final_rulings``, and ``checks``, the
     recomputed rows' check results by row id."""
-    d = _decode(books, _ROW_BOOKS)
+    d = _decode(books, "row_books")
     b = _Books(d["offer"] if d["offer"] is not None else _zero_record(), _records(d["own"]),
                _records(d["counterpart"]), _records(d["case_book"]), d["conflicting_final_rulings"] or [], {},
                d["checks"] or {})
