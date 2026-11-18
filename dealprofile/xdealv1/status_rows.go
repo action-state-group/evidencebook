@@ -23,23 +23,28 @@ type TimedRecord struct {
 // prefix of the counterparty's, and the case book of the adjudicator the
 // agreement names, each in book order. ConflictingFinalRulings are the rows
 // for which the holder holds two forks of that case book with different
-// first final rulings.
+// first final rulings. Checks are the recomputed rows' check results by row
+// id: a payment row's PaymentCheck Check ("pass", "fail", or "" for not
+// run).
 type RowBooks struct {
-	Offer                   Record        `json:"offer"`
-	Own                     []TimedRecord `json:"own"`
-	Counterpart             []TimedRecord `json:"counterpart"`
-	CaseBook                []TimedRecord `json:"case_book"`
-	ConflictingFinalRulings []string      `json:"conflicting_final_rulings,omitempty"`
+	Offer                   Record            `json:"offer"`
+	Own                     []TimedRecord     `json:"own"`
+	Counterpart             []TimedRecord     `json:"counterpart"`
+	CaseBook                []TimedRecord     `json:"case_book"`
+	ConflictingFinalRulings []string          `json:"conflicting_final_rulings,omitempty"`
+	Checks                  map[string]string `json:"checks,omitempty"`
 }
 
 // RowInputs projects the two books onto one rowstatus.Input per agreed row,
 // as of at (design §4.2, §4.4, §6.1). Only the records given count, so the
 // caller passes the counterparty's counted prefix only.
 //
-// The recomputed check of a payment row (§6.3) and a remedy that is a
-// payment (§6.1) need the payment check, which is not built yet: such a row's
-// check is not run, and a payment remedy is not counted. A non-payment
-// remedy counts when its act is the effective ruling's remedy kind.
+// A recomputed row's check is the caller's, from b.Checks (a payment row's
+// PaymentCheck, §6.3); a recomputed row it holds none for is not run, and a
+// check given for a row that is not recomputed, or not in the terms, is refused. A remedy that is
+// a payment (§6.1) is not counted: it needs its own terms leg, which the
+// profile does not define yet. A non-payment remedy counts when its act is
+// the effective ruling's remedy kind.
 func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 	of, ok := asPropose(b.Offer.Body)
 	if !ok {
@@ -84,11 +89,22 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 		}
 	}
 
+	for id := range b.Checks {
+		if !slices.ContainsFunc(tr.Rows, func(r Row) bool { return r.ID == id }) {
+			return nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which the terms do not have", id)
+		}
+	}
 	var out []rowstatus.Input
 	for _, row := range tr.Rows {
 		in := rowstatus.Input{At: at, Parties: []string{RoleBuyer, RoleSeller}, Named: named,
 			Row:                     rowstatus.Row{ID: row.ID, OwedBy: row.OwedBy, Due: projectDate(row.Due), WindowEnd: projectDate(row.WindowEnd), Recomputed: row.Recomputed},
 			ConflictingFinalRulings: slices.Contains(b.ConflictingFinalRulings, row.ID)}
+		if c, given := b.Checks[row.ID]; given {
+			if !row.Recomputed {
+				return nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which is not recomputed", row.ID)
+			}
+			in.Check = c
+		}
 		for _, side := range []string{RoleBuyer, RoleSeller} {
 			for _, r := range books[side] {
 				for _, it := range statementItems(r.Record) {

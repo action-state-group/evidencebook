@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -455,6 +457,9 @@ func (b *Book) AppendCapsule(ctx context.Context, entry Entry, originals []artif
 	if len(entry.Payloads) > 0 {
 		return Record{}, fmt.Errorf("%w: a caller-sealed record's payloads are passed as originals", ErrInvalid)
 	}
+	if len(entry.Members) > 0 {
+		return Record{}, fmt.Errorf("%w: a caller-sealed record's Capsule members are the caller's to seal", ErrInvalid)
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.commitEntryLocked(ctx, entry, originals, seal, nil)
@@ -474,6 +479,9 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	fieldOpenings, fieldCommitments, err := fieldOriginals(entry.Fields)
 	if err != nil {
 		return Record{}, err
+	}
+	if _, inline := entry.Members[RecordHeaderMember]; inline {
+		return Record{}, fmt.Errorf("%w: %s is the record header's member, not a Capsule member an entry adds", ErrInvalid, RecordHeaderMember)
 	}
 	for _, original := range originals {
 		if isOpening(original) {
@@ -532,7 +540,7 @@ func (b *Book) commitEntryLocked(ctx context.Context, entry Entry, originals []a
 	}
 	var sealed emit.Result
 	if callerSeal == nil {
-		sealed, err = b.seal(ctx, header, headerBytes, committedAt)
+		sealed, err = b.seal(ctx, header, headerBytes, committedAt, entry.Members)
 	} else {
 		sealed, err = b.checkCallerSealed(callerSeal, header, headerBytes)
 	}
@@ -593,7 +601,7 @@ func (b *Book) checkCallerSealed(seal CapsuleSealer, header Header, headerBytes 
 	return sealed, nil
 }
 
-func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at time.Time) (emit.Result, error) {
+func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at time.Time, members map[string]json.RawMessage) (emit.Result, error) {
 	identity, err := signingIdentity(ctx, b.signer)
 	if err != nil {
 		return emit.Result{}, err
@@ -610,6 +618,7 @@ func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at t
 		Capsule: emit.Input{
 			ActionID: recordLocator(b.id, header.Seq), ActionType: emit.ActionTypeFYI,
 			Operator: b.operator, Developer: b.developer, Timestamp: at, References: references,
+			Extensions: capsuleMembers(members),
 		},
 		Payload:  json.RawMessage(headerBytes),
 		Identity: identity,
@@ -621,6 +630,16 @@ func (b *Book) seal(ctx context.Context, header Header, headerBytes []byte, at t
 		return emit.Result{}, err
 	}
 	return sealed, nil
+}
+
+// capsuleMembers are an entry's Members as Capsule extensions, in name
+// order, so the same entry seals the same Capsule.
+func capsuleMembers(members map[string]json.RawMessage) []emit.Extension {
+	var out []emit.Extension
+	for _, name := range slices.Sorted(maps.Keys(members)) {
+		out = append(out, emit.Extension{Name: name, Value: bytes.Clone(members[name])})
+	}
+	return out
 }
 
 // Get returns one record by id.

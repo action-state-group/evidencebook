@@ -344,7 +344,13 @@ var historyAssetScales = map[string]int{"BTC": 11}
 
 // historyAssetScale is the assetScale of a deal's amount_minor in currency:
 // the explicit table above, else the ISO 4217 minor units.
-func historyAssetScale(currency string) (int, bool) {
+func historyAssetScale(currency string) (int, bool) { return AssetScale(currency) }
+
+// AssetScale is the assetScale of a deal's amount_minor in currency, the
+// scale an AAC amount ({value, assetCode, assetScale}) of it carries: BTC's
+// as PROFILE.md section 3 defines it, else the ISO 4217 minor units. ok is
+// false for a currency with neither.
+func AssetScale(currency string) (int, bool) {
 	if scale, ok := historyAssetScales[currency]; ok {
 		return scale, true
 	}

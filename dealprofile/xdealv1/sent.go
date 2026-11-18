@@ -75,7 +75,8 @@ type OfferContext struct {
 // decline or cancellation that passes Check and whose deal_id is the
 // action_id's. Given the offer, a decline must cite its record digest and be
 // signed by the key the offer was sent to, and a cancellation must cite it
-// and be signed by the offer's signer.
+// and be signed by the offer's signer. Only an offer's Capsule may carry a
+// settlement member, and then it is exactly the offer's TermsLeg (§6.3).
 func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	bad := func(format string, args ...any) (Sent, error) {
 		return Sent{}, stageErr(StageSent, format, args...)
@@ -155,6 +156,9 @@ func VerifySent(pair []byte, offer *OfferContext) (Sent, error) {
 	}
 	r, err := Decode(p.AgentInput)
 	if err != nil {
+		return Sent{}, err
+	}
+	if err := checkTermsMember(p.Record[SettlementMember], r); err != nil {
 		return Sent{}, err
 	}
 	if c.ActionID != r.Block.DealID+SentSuffix {

@@ -113,10 +113,15 @@ func entryOf(t *testing.T, r Record) evidencebook.Entry {
 
 // sendOffer seals the offer in the party's journal and its standalone
 // Capsule, and returns the sent pair.
-func (p *party) sendOffer(r Record) []byte {
+func (p *party) sendOffer(r Record) []byte { return p.sendOfferWith(r, termsMembers(p.t, r)) }
+
+// sendOfferWith is sendOffer with further members on the sent Capsule.
+func (p *party) sendOfferWith(r Record, members map[string]json.RawMessage) []byte {
 	p.t.Helper()
 	p.tick()
-	_, sent, err := p.shelf.SealSent(context.Background(), entryOf(p.t, r), r.Block.DealID+SentSuffix)
+	e := entryOf(p.t, r)
+	e.Members = members
+	_, sent, err := p.shelf.SealSent(context.Background(), e, r.Block.DealID+SentSuffix)
 	require.NoError(p.t, err)
 	pair, err := Pair(sent.Capsule, sent.Envelope, sent.Payload)
 	require.NoError(p.t, err)
@@ -125,12 +130,16 @@ func (p *party) sendOffer(r Record) []byte {
 
 // seal appends r to the party's book logID and returns its record id and
 // book pair.
-func (p *party) seal(logID string, r Record) (string, []byte) {
+func (p *party) seal(logID string, r Record) (string, []byte) { return p.sealWith(logID, r, nil) }
+
+// sealWith is seal with further members on the record's Capsule.
+func (p *party) sealWith(logID string, r Record, members map[string]json.RawMessage) (string, []byte) {
 	p.t.Helper()
 	p.tick()
 	book, err := p.shelf.Open(context.Background(), logID)
 	require.NoError(p.t, err)
 	e := entryOf(p.t, r)
+	e.Members = members
 	// A deal-book record cites the record before it (design §3.1).
 	if size := book.Size(); size > 0 {
 		last, err := book.Query(context.Background(), evidencebook.Filter{FromSeq: size, ToSeq: size})

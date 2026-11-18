@@ -876,7 +876,7 @@ rule.
 | `withdrawals` | each `dispute` of kind `withdrawal` on the row |
 | `rulings` | the case book rulings on the row by the agreement's adjudicator key, in case book order |
 | `conflicting_final_rulings` | the holder holds two forks of that case book with different first final rulings (design §8, "A forked case book") |
-| `remedies` | every `settle` or `perform` record whose `remedy_for.row` is the row, by the side the first final ruling is against, that gives what that ruling orders, whenever it was made and whichever ruling it points at, or none (design §8, "The remedy"; line 955 of the export). A payment remedy gives what is ordered when its two legs pass the check of 6.3 for the amount and currency the ruling's `remedy` names. A non-payment remedy gives it when its `act` is the ruling's `remedy.kind`. A record that gives something else is not a remedy of that ruling (review round 1) |
+| `remedies` | every `settle` or `perform` record whose `remedy_for.row` is the row, by the side the first final ruling is against, that gives what that ruling orders, whenever it was made and whichever ruling it points at, or none (design §8, "The remedy"; line 955 of the export). A payment remedy gives what is ordered when its two legs pass the check of 6.3 for the amount and currency the ruling's `remedy` names. Until a remedy has its own terms leg (6.3), a payment remedy is not counted. A non-payment remedy gives it when its `act` is the ruling's `remedy.kind`. A record that gives something else is not a remedy of that ruling (review round 1) |
 
 Only the counted prefix counts (`461-shelf-facts.md:294-298`): a record past a gap, or from a
 fork's position on, is not an input. Each `Receive` call reports the deal ids whose rows to
@@ -909,12 +909,65 @@ the agreed status is settled and the amount equals the terms. It fails on a mism
 conflation, and, with agreed legs, on a status of failed or reversed or a different amount. In
 every other case it has not run, and rowstatus gets an empty `check`.
 
-No leg-matching code exists in this repository (a search for `unjoined` across Go, Rust and Python
-finds none). **Proposed:** v1 adds `xdealv1.PaymentCheck(payerLeg, payeeLeg, owed)`, following the
-settlement draft's states as design §8 lists them, with vectors for each state. The other
-recomputed rows wait for design §13, step 3 ("Each recomputed deal row computed in one engine"),
-and until then report "not run". The digests the check ran over go in the link value's
-`checked_over` (design §4.3; Forms §4.2).
+**Decided (PR 4a):** option A. The coordinator's decision for Ethan: "A; reuse AAC
+settlement.Verify; no duplicate join". Sherlock2 confirmed that the terms leg has no product
+meaning beyond the agreed price, so there is no Steven ask
+(buzz://message?channel=0d760ea3-529d-4dec-b309-24184967f8e0&id=c67e727202ac7aebfeb723b664f1766b24216958c2db67dcf3e082b3d838619e).
+Its local twin gave the same answer, with the disclosure condition below. Settlement Records -01
+§Terms defines the terms leg as sealed by the party that set the terms, and a terms leg no
+counterparty leg cites as one party's statement of them, not an agreement. That is what an offer
+already is, and the x-deal agreement stays the acceptance.
+
+- **The terms leg.** The offer's sent Capsule (§7 of the profile) carries the terms leg as its
+  top-level `settlement` member, `xdealv1.TermsLeg(offer)`. It holds version `0`, leg `terms`, the
+  offerer's role in the payment, and the payment row's `owed` as its `amount`. The role is
+  `payer` when the offer's `role` owes the payment row, and `payee` otherwise; a counter-offer
+  makes its author the offerer.
+  - `owed` `{"amount_minor", "currency"}` is the amount `{value, assetCode, assetScale}`, where
+    `assetScale` is `dealprofile.AssetScale`: BTC's as x-deal-v0 defines it, else ISO 4217.
+  - A payment row is a recomputed row whose `owed` is exactly such an amount
+    (`xdealv1.PaymentRows`).
+  - An offer with exactly one payment row MUST carry it (Sherlock2, PR 4a review: otherwise such
+    a row would read "not run" with no sign of why). `VerifySent` refuses such an offer without
+    it, a `settlement` member on any other record, and one that is not exactly `TermsLeg` of
+    that offer. The sender seals it through `Entry.Members`, which `SealSent` puts on the
+    standalone Capsule only.
+- **One amount per terms leg** (both Sherlock2 answers). An offer carries a terms leg only when its
+  terms have exactly one payment row. The check runs on that row's own payment only. A refund or
+  another remedy that is a payment, and a second paid row (a deposit and a balance), need their own
+  terms leg, which the profile does not define yet. Until then:
+  - a refund or remedy leg (`reverses`, `remedy_for`) citing the offer's terms leg leaves the
+    check not run;
+  - terms with more than one payment row leave it not run, and a payment remedy is not counted
+    (6.1).
+- **The join is scoped to the started deal's offer.** `xdealv1.PaymentCheck` takes the sent offer
+  pair and the record digest both agreements cite, and refuses another offer.
+  - Each side's leg is a deal-book `settle` whose Capsule's `settlement` member's `terms_ref` is
+    the sent Capsule's id. A leg answering another terms leg is passed over.
+  - A payer leg is the payment row's owing party's, and a payee leg the other's. AAC's verifier
+    applies the parties' keys as its key policy.
+  - A leg superseded (`supersedes`) by a later record of its side is not read, whichever terms
+    leg that record answers.
+  - A leg's content is the counterparty's to get wrong, so a leg AAC's verifier refuses (a
+    malformed `settlement` member), or one whose side, leg and role disagree, takes no part
+    (`PaymentResult.Excluded`) and the check reads the others, rather than stopping (PR 4a
+    review round 1). AAC's `unjoined` has its own reason.
+  - AAC's `settlement.Verify` derives the state, so there is no second join here.
+  - **Pass:** the legs are agreed, settled, at the terms' amount.
+  - **Fail:** a mismatch, or agreed legs that are failed, reversed or at another amount.
+  - **Not run:** everything else (terms only, one side stated, unjoined, pending).
+  - Sealer conflation cannot arise: the parties' keys are distinct, and a leg under the other
+    role's key is refused.
+  - `RowBooks.Checks` carries the result to rowstatus.
+- **Disclosure** (the twin's condition). The terms leg puts the price at the Capsule's top level,
+  where it is in the clear. Nothing new is disclosed, because the sent Capsule travels only as the
+  §7 pair `{record, agent_input}`, and `agent_input` already holds the offer's terms. A copy that
+  carries the sent Capsule carries its record. No copy the library writes holds the Capsule
+  without it.
+
+The other recomputed rows wait for design §13, step 3 ("Each recomputed deal row computed in one
+engine"), and until then report "not run". The digests the check ran over
+(`PaymentResult.CheckedOver`) go in the link value's `checked_over` (design §4.3; Forms §4.2).
 
 ## 7. The stamp proof order
 

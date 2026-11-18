@@ -45,7 +45,48 @@ func sealSentWith(t *testing.T, r Record, key ed25519.PrivateKey, actionID strin
 	require.NoError(t, err)
 	sealed, err := emit.Seal(emit.SealInput{
 		Capsule: emit.Input{ActionID: actionID, ActionType: emit.ActionTypeFYI, Operator: "seller-agent", Developer: "xdealv1-test",
-			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Chain: chain, References: refs},
+			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Chain: chain, References: refs, Extensions: termsExtensions(t, r)},
+		Payload: json.RawMessage(payload), Identity: identity,
+	})
+	require.NoError(t, err)
+	pair, err := Pair(sealed.Payload, sealed.Envelope, payload)
+	require.NoError(t, err)
+	return pair
+}
+
+// termsExtensions is the terms leg an offer with one payment row carries on
+// its sent Capsule, as an extension; none for another record.
+func termsExtensions(t *testing.T, r Record) []emit.Extension {
+	t.Helper()
+	m := termsMembers(t, r)
+	if m == nil {
+		return nil
+	}
+	return []emit.Extension{{Name: SettlementMember, Value: m[SettlementMember]}}
+}
+
+// termsMembers is termsExtensions as Entry.Members.
+func termsMembers(t *testing.T, r Record) map[string]json.RawMessage {
+	t.Helper()
+	of, ok := asPropose(r.Body)
+	if !ok || len(PaymentRows(of.TermsRows)) != 1 {
+		return nil
+	}
+	leg, err := TermsLeg(r)
+	require.NoError(t, err)
+	return map[string]json.RawMessage{SettlementMember: leg}
+}
+
+// sealSentMembers seals r's sent Capsule with exactly the given extensions.
+func sealSentMembers(t *testing.T, r Record, key ed25519.PrivateKey, ext []emit.Extension) []byte {
+	t.Helper()
+	payload, _, err := Encode(r)
+	require.NoError(t, err)
+	identity, err := emit.NewEd25519SigningIdentity(key)
+	require.NoError(t, err)
+	sealed, err := emit.Seal(emit.SealInput{
+		Capsule: emit.Input{ActionID: r.Block.DealID + SentSuffix, ActionType: emit.ActionTypeFYI, Operator: "seller-agent", Developer: "xdealv1-test",
+			Timestamp: time.Date(2026, 11, 1, 10, 5, 0, 0, time.UTC), Extensions: ext},
 		Payload: json.RawMessage(payload), Identity: identity,
 	})
 	require.NoError(t, err)
@@ -141,6 +182,12 @@ func TestSentVectors(t *testing.T) {
 	notHex := mutatePair(t, declinePair, func(p map[string]any) { p["record"].(map[string]any)["signature"] = "zz" })
 	run("signature-not-hex", notHex, true, StageSent)
 	run("offer-with-offer-context", sealSent(t, offer, buyer, ""), true, "")
+	// An offer with one payment row carries exactly its terms leg (§6.3);
+	// nothing else carries a settlement member.
+	run("offer-without-terms-leg", sealSentMembers(t, offer, buyer, nil), false, StageSent)
+	otherLeg := []byte(`{"amount":{"assetCode":"USD","assetScale":2,"value":"5000"},"leg":"terms","sealer_role":"payer","version":"0"}`)
+	run("offer-with-another-terms-leg", sealSentMembers(t, offer, buyer, []emit.Extension{{Name: SettlementMember, Value: otherLeg}}), false, StageSent)
+	run("decline-with-terms-leg", sealSentMembers(t, decline, seller, termsExtensions(t, offer)), true, StageSent)
 
 	got, err := json.MarshalIndent(map[string]any{
 		"description": "Sent decline, cancellation and offer pairs (evidencebook#461, docs/design/461-deal-profile.md §3.1, §3.5): each pair is {record: the standalone Capsule with signature and key_id, agent_input: the x-deal-v1 record}. VerifySent(pair, offer?) must pass the valid cases with the digest given and refuse the others at the stage given. Written by dealprofile/xdealv1's TestSentVectors (EB_WRITE_DEAL_V1_VECTORS=1).",

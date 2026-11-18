@@ -222,6 +222,14 @@ type Entry struct {
 	CounterpartyRef string
 	Correlation     Correlation
 	Statement       json.RawMessage
+	// Members are further top-level members of the record's Capsule, by
+	// name, each a JSON value (a profile's own member, such as the
+	// settlement leg draft-mih-agent-settlement-records puts there). The
+	// Capsule's id and signature cover them; the header does not, and a
+	// base-profile name is refused. Only a Capsule the book or SealSent
+	// seals carries them: AppendCapsule refuses them, since the caller
+	// seals that Capsule itself.
+	Members map[string]json.RawMessage
 }
 
 func validateHeader(h Header) error {

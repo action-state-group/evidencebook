@@ -89,7 +89,7 @@ func TestReopenRecoversStoredButUncommittedRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := crashed.seal(ctx, header, headerBytes, f.clock.Now())
+	sealed, err := crashed.seal(ctx, header, headerBytes, f.clock.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
