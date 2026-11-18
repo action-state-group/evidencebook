@@ -326,6 +326,11 @@ fn fyi_capsule(
         if value.is_null() {
             return Err(invalid(format!("extension {name:?} must not be null")));
         }
+        // A float or an integer outside the interoperable range is the
+        // caller's input too (capsule-emit Go `checkExtensionNumbers`).
+        if let Err(e) = canonical::jcs(value) {
+            return Err(invalid(format!("extension {name:?}: {e}")));
+        }
         capsule.insert(name.clone(), value.clone());
     }
     let body = canonical::jcs(&Value::Object(capsule.clone()))?;

@@ -728,11 +728,15 @@ fn seal_sent_refuses_without_writing() {
     let bad_name = BTreeMap::from([("Bad".to_string(), json!(1))]);
     let base = BTreeMap::from([("operator".to_string(), json!("x"))]);
     let null = BTreeMap::from([("deal_x".to_string(), Value::Null)]);
+    let float = BTreeMap::from([("deal_x".to_string(), json!({"a": [1.5]}))]);
+    let unsafe_int = BTreeMap::from([("deal_x".to_string(), json!(9_007_199_254_740_992u64))]);
     for (name, members) in [
         ("an inline record header", &header),
         ("a name capsule-emit refuses", &bad_name),
         ("a base-profile member", &base),
         ("a null member", &null),
+        ("a float in a member", &float),
+        ("an unsafe integer in a member", &unsafe_int),
     ] {
         assert!(
             matches!(

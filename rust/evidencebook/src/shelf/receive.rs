@@ -41,7 +41,9 @@ use std::time::Duration;
 /// What a profile tells the store about received records (Go
 /// `ReceiveProfile`). The store calls it outside the shelf's lock and
 /// outside any transaction of its own, so it may read the shelf; it must
-/// not call [`Shelf::receive`] or [`Shelf::forget`]. An `Err` is the
+/// not call [`Shelf::receive`], [`Shelf::forget`], or, since the store holds
+/// the receive lock and a stamp takes it, [`super::Cadence::stamp`] or
+/// [`super::Cadence::tick`]. An `Err` is the
 /// profile's own failure ([`ShelfError::Profile`]), except from `read`.
 pub trait ReceiveProfile: Send + Sync {
     /// Check a received record's signature and return what the store needs
@@ -76,8 +78,10 @@ pub trait ReceiveProfile: Send + Sync {
     /// call failed to do. It runs once the parts' transactions committed (on
     /// a proof part's store error too, with the record part's result),
     /// holding only the receive lock: it may read the shelf and append to
-    /// the holder's own books, and must not call [`Shelf::receive`] or
-    /// [`Shelf::forget`]. `at` is the shelf's clock. An error is the call's
+    /// the holder's own books, and must not call [`Shelf::receive`],
+    /// [`Shelf::forget`], [`super::Cadence::stamp`] or
+    /// [`super::Cadence::tick`] (a stamp takes the receive lock to run
+    /// [`super::BookStatus::before_stamp`]). `at` is the shelf's clock. An error is the call's
     /// ([`ReceiveError::after`]), and the parts' result stays committed.
     /// The default does nothing.
     fn after_receive(&self, result: &ReceiveResult, at: Time) -> Result<(), String> {

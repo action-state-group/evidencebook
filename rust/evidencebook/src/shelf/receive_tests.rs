@@ -1734,4 +1734,93 @@ fn held_proofs_cover_the_counted_records() {
     assert_eq!(held[0].proof, p);
     assert!(s.held_proofs("bob", "deal/a").unwrap().is_empty());
     assert!(s.held_proofs("alice", "deal/b").unwrap().is_empty());
+    s.release().unwrap();
+    assert!(matches!(
+        s.held_proofs("alice", "deal/a"),
+        Err(ShelfError::Released)
+    ));
+}
+
+/// genesis-fork-after-proof (docs/design/461-deal-profile.md §7.3; Go
+/// `TestHeldProofsCoverNothingAfterAGenesisFork`): a proof past the records
+/// held is unchecked and covers nothing; recomputed, it covers them; a fork
+/// at position 1 empties the counted prefix, so it stays recomputed and
+/// covers nothing, before and after a restart, with its bindings.
+#[test]
+fn held_proofs_cover_nothing_after_a_genesis_fork() {
+    let h = holder(&["1", "2", "3"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    must(&s, None, Some(&p));
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(got.len(), 1);
+    assert!(!got[0].recomputed && !got[0].contradicted);
+    assert_eq!(got[0].covers, 0);
+
+    let records = h.records("alice", "deal-1");
+    for r in &records {
+        must_record(&s, r);
+    }
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    let held = &got[0];
+    assert!(held.recomputed);
+    assert_eq!(held.covers, records.len() as u64);
+    assert_eq!(held.verified.book_checkpoint.entries, held.covers);
+    assert_eq!(held.verified.fact.book_id, h.book_id);
+    assert_eq!(held.verified.key_id, key_of(&p));
+    assert_eq!(held.verified.shelf_checkpoint.log_id, h.cadence.log_id());
+    assert_eq!(held.proof.fact, p.fact);
+
+    must_record(
+        &s,
+        &chain("alice", "deal/a", "deal-1", 1, "other-genesis", ""),
+    );
+    let check = |s: &Shelf| {
+        let got = s.held_proofs("alice", "deal/a").unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(got[0].recomputed, "the proof stays recomputed");
+        assert_eq!(
+            got[0].covers, 0,
+            "but covers nothing once the prefix is empty"
+        );
+        assert_eq!(got[0].verified.fact.book_id, h.book_id);
+        assert_eq!(got[0].verified.shelf_checkpoint.log_id, h.cadence.log_id());
+    };
+    check(&s);
+    s.release().unwrap();
+    check(&f.open());
+}
+
+/// A proof the records held do not recompute is contradicted and covers
+/// nothing (Go `TestHeldProofsReportAContradictedProof`).
+#[test]
+fn held_proofs_report_a_contradicted_proof() {
+    let h = holder(&["1", "2"]);
+    let (f, s) = fx();
+    let p = h.proof("counterparty");
+    f.profile.st().proof_keys.insert(key_of(&p), "alice".into());
+    must(&s, None, Some(&p));
+    // As many records as the proof's checkpoint holds, which do not
+    // recompute its root.
+    let mut prev = String::new();
+    for i in 0..h.records("alice", "deal-1").len() {
+        let name = format!("x{}", i + 1);
+        let _ = s.receive(
+            Some(&chain(
+                "alice",
+                "deal/a",
+                "deal-1",
+                i as u64 + 1,
+                &name,
+                &prev,
+            )),
+            None,
+        );
+        prev = name;
+    }
+    let got = s.held_proofs("alice", "deal/a").unwrap();
+    assert_eq!(got.len(), 1);
+    assert!(got[0].contradicted && !got[0].recomputed);
+    assert_eq!(got[0].covers, 0);
 }
