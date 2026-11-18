@@ -25,8 +25,9 @@ These are not reopened here.
    version has a version mechanism, which the profile lacks today (design §13, step 5).
 2. **`x-deal-v0` stays unchanged.** Its 23 record types (`dealprofile/names.go:27-62`), its
    `outcome_note` record (`names.go:50-51`), `standard_history/1` and `/2`
-   (`dealprofile/standard_history.go`), and `python/examples/ard-commerce` keep their bytes and
-   behavior. A demo on 2026-11-19 depends on them. Old logs are never rewritten (design §13, step
+   (`dealprofile/standard_history.go`), `python/examples/goose` and the x-deal-v0 checker keep their
+   bytes and behavior. A demo on 2026-11-18 depends on them: evidencebook-skills `demo/ard` reads them
+   from a pinned checkout (2c1cc90). Old logs are never rewritten (design §13, step
    5: "New deals only; old logs are not rewritten"). Today's deals stay readable.
 3. **The key-derivation strings stay** (`dealprofile/keys.go:201`, `208`, `219`;
    `rust/evidencebook/src/deal/keys.rs:336`, `344`, `354`; `python/evidencebook/deal/keys.py:368`,

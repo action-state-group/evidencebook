@@ -259,11 +259,7 @@
 - `capsulectl`'s Go ↔ Python round trip now resolves evidencebook v0.14.2 and installs Python CLL from `python/v0.9.0` (the `python/` subdirectory), with agent-action-capsule 0.16.0 and capsule-emit 0.17.0 locked with hashes.
 - `capsulectl` keeps answering refusals with the specific tokens, explicitly (`ResponderPolicy{RefusalPolicy: RefusalPolicySpecific}`), because evidencebook v0.14.0 made uniform the library default; whether capsulectl should move to uniform is left to a disclosure decision.
 
-- `python/examples/ard-commerce`: the Goose ARD two-seller demo. Maya's agent finds two sellers through an ARD
-  catalogue, asks each for its evidence over the sellers' mailboxes, assesses each under a demo admission pack with
-  `capsule-engine admission evaluate`, and a presenter's pick (a popup) opens the deal and pays it over Lightning in
-  msat. Kestrel's card is a hand-written sample until the sentinel record ships. The Goose node takes
-  `CADENCE_OPTIONS` (the cadence's interval) as a class attribute.
+- The Goose node takes `CADENCE_OPTIONS` (the cadence's interval) as a class attribute.
 
 - `evidencebook.row_status` (new): the Go package `rowstatus`'s term row status, result for result over `testdata/row-status/vectors.json` (evidencebook#461, acceptance 6).
 
