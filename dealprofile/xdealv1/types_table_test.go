@@ -69,6 +69,13 @@ func typeRef(t reflect.Type) any {
 		v, _ := t.FieldByName("V")
 		return map[string]any{"null": typeRef(v.Type.Elem())}
 	}
+	// A type with its own JSON, text or zero methods reads and writes
+	// otherwise than its kind; the table cannot hold it.
+	for _, m := range []string{"MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText", "IsZero"} {
+		if _, ok := reflect.PointerTo(t).MethodByName(m); ok {
+			panic(fmt.Sprintf("%s has its own %s", t, m))
+		}
+	}
 	switch t.Kind() {
 	case reflect.String:
 		return "string"
@@ -100,9 +107,6 @@ func typeRef(t reflect.Type) any {
 // in its place (Go promotes them). A name given twice is refused: Go's
 // dominance rules are not reproduced.
 func typeFields(t reflect.Type) []typeField {
-	if _, ok := reflect.PointerTo(t).MethodByName("UnmarshalJSON"); ok {
-		panic(fmt.Sprintf("%s has its own JSON methods", t))
-	}
 	out := []typeField{}
 	for i := range t.NumField() {
 		f := t.Field(i)

@@ -12,12 +12,11 @@ counts and no card counts it.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..check import _go_quote
-from .check import Record, _record_of, decode, digest
+from .check import Record, _record_of, decode, digest, utc_second
 from .names import KIND_AGREEMENT, SIDE_ACCEPTOR, SIDE_OFFERER, TYPE_AGREE, TYPE_PERFORM, TYPE_PROPOSE, TYPE_SETTLE, TYPE_STATEMENT
 
 __all__ = [
@@ -90,29 +89,8 @@ class StartResult:
         return {"state": self.state, "local": self.local, "by": self.by}
 
 
-_TIME = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z\Z")
-_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-
-
-def _parse(s: str) -> tuple[int, ...] | None:
-    """An RFC 3339 UTC time to the second that exists, as a tuple that
-    orders as the instants do, or ``None``: what Go's
-    ``time.Parse(time.RFC3339, s)`` reads and prints back as ``s`` (year 0
-    included, which Go's proleptic calendar holds)."""
-    m = _TIME.match(s)
-    if not m:
-        return None
-    y, mo, d, h, mi, sec = (int(g) for g in m.groups())
-    leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
-    if not 1 <= mo <= 12 or h > 23 or mi > 59 or sec > 59:
-        return None
-    if not 1 <= d <= _DAYS[mo - 1] + (1 if mo == 2 and leap else 0):
-        return None
-    return (y, mo, d, h, mi, sec)
-
-
 def _start_time(name: str, s: str) -> tuple[int, ...]:
-    t = _parse(s)
+    t = utc_second(s)
     if t is None:
         raise ValueError(f"xdealv1: start: {name} {_go_quote(s)} is not a UTC time to the second")
     return t

@@ -12,16 +12,15 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from agent_action_capsule.canonical import jcs, json_digest
+from agent_action_capsule.canonical import jcs, json_digest, loads_bounded
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from ..check import StageError, _Float, _go_quote, _go_v, _refuse_constant
+from ..check import StageError, _Float, _float, _go_quote, _go_v, _leaves, _refuse_constant
 from . import gotypes
 from .gotypes import ABSENT, GoTypeError
 from .names import (
@@ -72,16 +71,24 @@ def _err(stage: str, detail: str) -> StageError:
 class Record:
     """A v1 record read into Go's types (Go ``xdealv1.Record``): ``block``
     and ``body`` are the Go values :mod:`gotypes` reads, a ``dict`` per
-    struct with every field, zero values included, and ``value`` the
-    record's JSON as the types write it."""
+    struct with every field, zero values included. As Go marshals a
+    record's current fields, :attr:`value`, and every check and digest of a
+    record, writes them as they are now."""
 
     block: dict
     body: dict
-    value: Any
 
     @property
     def record_type(self) -> str:
         return self.block["record_type"]
+
+    @property
+    def value(self) -> Any:
+        """The record's JSON as the types write it (Go ``Record.MarshalJSON``)."""
+        t = gotypes.body_type(self.block["record_type"])
+        if t is None:
+            raise ValueError(f"xdealv1: record type {_go_quote(self.block['record_type'])} is not an x-deal-v1 type")
+        return {PROFILE: gotypes.write(self.block, gotypes.block_type()), "body": gotypes.write(self.body, t)}
 
 
 def _record_of(doc: Any) -> Record:
@@ -105,10 +112,14 @@ def _record_of(doc: Any) -> Record:
         body = gotypes.read(doc["body"], t)
     except GoTypeError as exc:
         raise GoTypeError(f"xdealv1: a {block['record_type']} body: {exc}") from None
-    value = {PROFILE: gotypes.write(block, gotypes.block_type()), "body": gotypes.write(body, t)}
-    if jcs(value) != jcs(doc):
+    r = Record(block, body)
+    try:
+        want = jcs(doc)
+    except Exception as exc:  # noqa: BLE001 - Go's sameRecord refuses what JCS refuses (a float)
+        raise GoTypeError(f"xdealv1: {exc}") from None
+    if jcs(r.value) != want:
         raise GoTypeError("xdealv1: the record's text does not read as its type: it would encode to other bytes")
-    return Record(block, body, value)
+    return r
 
 
 def decode(record: Any) -> Record:
@@ -135,7 +146,10 @@ def _raw(record: Any) -> bytes:
             return record.encode("utf-8")
         except UnicodeEncodeError:
             raise _err(STAGE_CANONICALIZATION, "invalid UTF-8") from None
-    return json.dumps(record, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    try:
+        return json.dumps(record, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    except ValueError as exc:  # a float no JSON number holds, set on a Record by hand
+        raise _err(STAGE_CANONICALIZATION, f"not JCS-serializable: {exc}") from None
 
 
 def _hex4(b: bytes) -> int:
@@ -201,18 +215,14 @@ def _read_text(raw: bytes) -> Any:
     """The text check, then one JSON value with numbers as written."""
     _check_text(raw)
     try:
-        return json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_float=_float_of,
-                          parse_constant=_refuse_constant)
+        # Bounded as Go's JCS bounds nesting (AAC MAX_NESTING_DEPTH, 128 in
+        # both): deeper text is a canonicalization refusal in both.
+        return loads_bounded(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_float=_float,
+                             parse_constant=_refuse_constant)
     except _Repeat as exc:
         raise _err(STAGE_CANONICALIZATION, str(exc)) from None
     except ValueError as exc:
         raise _err(STAGE_CANONICALIZATION, f"not one JSON value: {exc}") from None
-
-
-def _float_of(text: str) -> _Float:
-    f = _Float(text)
-    f.text = text
-    return f
 
 
 # -- the stages ------------------------------------------------------------------------
@@ -241,9 +251,24 @@ def digest(record: Any) -> str:
 
 def rows_digest(terms_rows: Any) -> str:
     """The rows digest of an offer's terms_rows: SHA-256 over the JCS bytes
-    of rows and named together (§4.2). ``terms_rows`` is the Go value of a
-    :class:`Record` body or a JSON value as written."""
-    return json_digest(_read_text(_raw(terms_rows)))
+    of rows and named together, as Go's ``TermsRows`` writes them (§4.2,
+    Go ``RowsDigest``). ``terms_rows`` is JSON text, or a JSON value (the
+    Go value of a :class:`Record` body's ``terms_rows`` included): it is read
+    into the type and written back, so a zero value ``omitzero`` leaves out
+    is left out."""
+    t = gotypes.terms_rows_type()
+    if isinstance(terms_rows, (bytes, bytearray, str)):
+        terms_rows = _read_text(_raw(terms_rows))
+    return json_digest(gotypes.write(gotypes.read(_go_json(terms_rows), t), t))
+
+
+def _go_json(v: Any) -> Any:
+    """A Go value as JSON: the markers of an absent member as absent."""
+    if isinstance(v, dict):
+        return {k: _go_json(e) for k, e in v.items() if e is not ABSENT and e is not gotypes.NIL_RAW}
+    if isinstance(v, list):
+        return [_go_json(e) for e in v]
+    return v
 
 
 def ref_to(d: str) -> dict:
@@ -288,14 +313,51 @@ def profile_schema() -> bytes:
     return (_DATA / "x-deal-v1.schema.json").read_bytes()
 
 
+#: RE2's ``\s``: Python's also takes ``\v`` and Unicode white space.
+_RE2_SPACE = "\\t\\n\\f\\r "
+
+
+def _re2(p: str) -> str:
+    r"""A schema pattern read as Go's validator (RE2) reads it: ``\d``, ``\w``
+    and ``\b`` in ASCII, ``\s`` as RE2's four spaces and the space, and a
+    final ``$`` at the very end of the text (Python's also matches before a
+    final newline)."""
+    out, i, in_class = [], 0, False
+    while i < len(p):
+        c = p[i]
+        if c == "\\" and i + 1 < len(p):
+            e = p[i + 1]
+            if e in "sS":
+                body = _RE2_SPACE
+                if in_class:
+                    out.append(body if e == "s" else None)  # \S in a class: not written by the schemas
+                else:
+                    out.append(f"[{body}]" if e == "s" else f"[^{body}]")
+            else:
+                out.append(p[i:i + 2])
+            i += 2
+            continue
+        if c == "[" and not in_class:
+            in_class = True
+        elif c == "]" and in_class:
+            in_class = False
+        out.append(c)
+        i += 1
+    if None in out:
+        raise ValueError(f"schema pattern {p!r}: \\S inside a class")
+    s = "".join(out)
+    if s.endswith("$") and not s.endswith("\\$"):
+        s = s[:-1] + r"\Z"
+    return "(?a)" + s
+
+
 def _go_patterns(v: Any) -> Any:
-    """The schema with each pattern's ``$`` anchored at the very end, as Go's
-    validator reads it: Python's ``$`` also matches before a final newline."""
+    """The schema with each pattern read as Go's validator reads it (:func:`_re2`)."""
     if isinstance(v, dict):
         out = {k: _go_patterns(e) for k, e in v.items()}
         p = out.get("pattern")
-        if isinstance(p, str) and p.endswith("$") and not p.endswith("\\$"):
-            out["pattern"] = p[:-1] + r"\Z"
+        if isinstance(p, str):
+            out["pattern"] = _re2(p)
         return out
     if isinstance(v, list):
         return [_go_patterns(e) for e in v]
@@ -320,14 +382,6 @@ def _v0_body_validator(name: str) -> Draft202012Validator:
     registry = Registry().with_resource(
         "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json", Resource.from_contents(v0))
     return Draft202012Validator(schema, registry=registry)
-
-
-def _leaves(e: Any, out: list[str]) -> None:
-    if e.context:
-        for c in e.context:
-            _leaves(c, out)
-        return
-    out.append("/" + "/".join(str(p) for p in e.absolute_path) + ": " + e.message[:200])
 
 
 def _schema_errors(validator: Draft202012Validator, doc: Any) -> list[str]:
@@ -481,25 +535,32 @@ def _check_dates(r: Record) -> None:
             raise _err(STAGE_RECORD, f"{_go_quote(s)} is not a UTC time to the second that exists")
 
 
-_RFC3339 = re.compile(r"(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|[+-]\d{2}:\d{2})\Z",
-                      re.ASCII)
+_TIME = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})Z\Z")
+_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def utc_second(s: str) -> tuple[int, ...] | None:
+    """An RFC 3339 UTC time to the second that exists, as a tuple that
+    orders as the instants do, or ``None``: what Go's
+    ``time.Parse(time.RFC3339, s)`` reads and prints back in UTC as ``s``
+    (year 0 included, which Go's proleptic calendar holds)."""
+    m = _TIME.match(s)
+    if not m:
+        return None
+    y, mo, d, h, mi, sec = (int(g) for g in m.groups())
+    leap = y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+    if not 1 <= mo <= 12 or h > 23 or mi > 59 or sec > 59:
+        return None
+    if not 1 <= d <= _DAYS[mo - 1] + (1 if mo == 2 and leap else 0):
+        return None
+    return (y, mo, d, h, mi, sec)
 
 
 def _utc_second(s: str) -> bool:
-    """Whether Go's ``time.Parse(time.RFC3339, s)`` reads ``s`` and its UTC
-    form, printed in RFC 3339, is ``s`` (a year of 1 or later): RFC 3339
-    UTC to the second, naming a time that exists."""
-    m = _RFC3339.match(s)
-    if not m or m.group(7) or m.group(8) != "Z" or s[10] != "T":
-        return False
-    y, mo, d, h, mi, sec = (int(m.group(i)) for i in range(1, 7))
-    if y < 1:
-        return False
-    try:
-        datetime(y, mo, d, h, mi, sec, tzinfo=timezone.utc)
-    except ValueError:
-        return False
-    return True
+    """A record's time: :func:`utc_second`, of year 1 or later (rowstatus
+    reads no year before 1)."""
+    t = utc_second(s)
+    return t is not None and t[0] >= 1
 
 
 def _check_forums(adjudicator: Any, forums: Any) -> None:
@@ -630,7 +691,7 @@ def check_agreement(agreement: Any, offer: Any, held_acceptor_agreement: str) ->
         raise _err(STAGE_AGREEMENT, "the agreement does not cite this offer's record digest")
     if ag_r.block["deal_id"] != of_r.block["deal_id"]:
         raise _err(STAGE_AGREEMENT, "the agreement's deal_id is not the offer's")
-    rows = json_digest(gotypes.write(of["terms_rows"], gotypes.terms_rows_type()))
+    rows = rows_digest(gotypes.write(of["terms_rows"], gotypes.terms_rows_type()))
     if ag["rows_digest"] != rows:
         raise _err(STAGE_AGREEMENT, "rows_digest is not the offer's rows digest")
     if _witness_keys(ag["witnesses"]) != _witness_keys(of["witnesses"]):

@@ -299,3 +299,86 @@ def test_start_from_books_refuses_books_out_of_order():
     with pytest.raises(ValueError) as exc:
         start_from_books(StartBooks(b["at"], b["own"][0]["record"], own))
     assert "the offer is not a propose but a agree record" in str(exc.value)
+
+
+# -- review round 1 (#545) -------------------------------------------------------------
+
+
+def a_verdict_with_a_null_limit() -> dict:
+    v = fixture("appendix-a/buyer-journal/07-verdict-pass.json")["record"]
+    v["body"]["rules"] = {"status": "ran", "findings": [{"id": "r1", "verdict": "pass", "limit": None}]}
+    return v
+
+
+def test_a_raw_member_written_null_is_kept_as_go_keeps_it():
+    # json.RawMessage holds the text null, which is not zero: omitzero keeps it.
+    v = a_verdict_with_a_null_limit()
+    assert decode(text(v)).value == v
+    del v["x-deal-v1"]["deal_id"]
+    with pytest.raises(StageError) as exc:
+        check(text(v))
+    assert (exc.value.stage, exc.value.detail) == (STAGE_RECORD, "a verdict record carries deal_id")
+    t = {"struct": "dealprofile.VerdictBodyRulesFindingsItem"}
+    assert "limit" not in gotypes.write(gotypes.read({"id": "x", "verdict": "pass"}, t), t), "absent stays absent"
+
+
+def test_rows_digest_reads_rows_through_their_type():
+    offer = fixture("appendix-a/buyer-journal/05-offer.json")["record"]
+    want = fixture("appendix-a/buyer-book/01-agreement.json")["record"]["body"]["rows_digest"]
+    assert rows_digest(decode(text(offer)).body["terms_rows"]) == want, "the Go value, zero fields included"
+    rows = json.loads(json.dumps(offer["body"]["terms_rows"]))
+    rows["rows"][1]["recomputed"] = False  # a row with no recomputed member
+    assert rows_digest(rows) == want, "a zero value omitzero leaves out is left out"
+    assert rows_digest(text(offer["body"]["terms_rows"])) == want
+
+
+def test_a_record_is_checked_and_digested_as_it_is_now():
+    offer = fixture("appendix-a/buyer-journal/05-offer.json")["record"]
+    r = decode(text(offer))
+    before = digest(r)
+    r.body["agree_by"] = "2026-11-03T23:59:59Z"
+    changed = json.loads(json.dumps(offer))
+    changed["body"]["agree_by"] = "2026-11-03T23:59:59Z"
+    assert digest(r) == digest(text(changed)) != before
+    assert encode(r)[1] == digest(r)
+    r.body["agree_by"] = "2026-02-30T00:00:00Z"
+    with pytest.raises(StageError) as exc:
+        check(r)
+    assert exc.value.stage == STAGE_RECORD
+
+
+def test_text_nested_past_the_bound_is_a_canonicalization_refusal():
+    deep = '{"x-deal-v1": {"profile": "x-deal-v1", "canonicalization": "jcs"}, "body": ' + "[" * 200 + "]" * 200 + "}"
+    with pytest.raises(StageError) as exc:
+        check(deep.encode())
+    assert exc.value.stage == STAGE_CANONICALIZATION
+    with pytest.raises(StageError):
+        decode(deep.encode())
+
+
+@pytest.mark.parametrize("platform", ["shop x.example", "a\u000bb.example"])
+def test_a_schema_white_space_class_is_re2s(platform):
+    # RE2's \s is [\t\n\f\r ]: Go passes a platform with another space in it.
+    rec = {"x-deal-v1": {"profile": "x-deal-v1", "canonicalization": "jcs", "record_type": "sale_unpost",
+                         "at": "2026-11-01T10:00:00Z"}, "body": {"platform": platform}}
+    check(text(rec))
+    rec["body"]["platform"] = "shop x.example"
+    with pytest.raises(StageError) as exc:
+        check(text(rec))
+    assert exc.value.stage == STAGE_SCHEMA
+
+
+def test_decode_refuses_a_float_as_go_s_round_trip_does():
+    offer = fixture("appendix-a/buyer-journal/05-offer.json")["record"]
+    raw = text(offer).replace(b'"amount_minor": 6000', b'"amount_minor": 1e400', 1)
+    assert raw != text(offer)
+    with pytest.raises(GoTypeError):
+        decode(raw)
+
+
+def test_a_float_set_on_a_record_by_hand_is_a_canonicalization_refusal():
+    r = decode(text(fixture("appendix-a/buyer-journal/05-offer.json")["record"]))
+    r.body["terms_rows"]["rows"][0]["owed"] = {"a": float("inf")}
+    with pytest.raises(StageError) as exc:
+        check(r)
+    assert exc.value.stage == STAGE_CANONICALIZATION

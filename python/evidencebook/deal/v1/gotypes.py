@@ -39,6 +39,18 @@ class _AbsentType:
 ABSENT = _AbsentType()
 
 
+class _NilRawType:
+    """A nil ``json.RawMessage``: a raw member not present. A raw member
+    read from ``null`` holds the text ``null`` (``None`` here), which is not
+    zero, so ``omitzero`` keeps it."""
+
+    def __repr__(self) -> str:
+        return "NIL_RAW"
+
+
+NIL_RAW = _NilRawType()
+
+
 @lru_cache(maxsize=None)
 def table() -> dict:
     return json.loads(_TABLE.read_bytes())
@@ -73,7 +85,9 @@ def zero(t: Any) -> Any:
         return {f["name"]: zero(f["type"]) for f in _fields(t)}
     if isinstance(t, dict) and "null" in t:
         return ABSENT
-    return None  # raw, ptr, slice, map: nil
+    if t == "raw":
+        return NIL_RAW
+    return None  # ptr, slice, map: nil
 
 
 def is_zero(v: Any, t: Any) -> bool:
@@ -138,7 +152,7 @@ def read(v: Any, t: Any, cur: Any = None) -> Any:
 def write(v: Any, t: Any) -> Any:
     """A Go value of type ``t`` as ``json.Marshal`` writes it, as a JSON value."""
     if t == "raw":
-        return v  # a nil RawMessage writes null
+        return None if v is NIL_RAW else v  # a nil RawMessage writes null
     if isinstance(t, dict) and "null" in t:
         return None if v is ABSENT or v is None else write(v, t["null"])
     if t in ("string", "int64", "bool"):
