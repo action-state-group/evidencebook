@@ -1159,17 +1159,23 @@ holder chooses. A stamp proof never carries a link opening (`shelf_stamp_proof.g
   answered, or to which an offer in the journal was sent"). Forms SF-6 says that rule is not yet
   ruled. Its inputs from v1 records:
   - a `propose` from any key;
-  - a `decline` or `cancellation` only from the key an offer in our journal was sent `to`, or the
-    signer of the offer it cancels;
+  - a `decline` only of a `propose` in our journal (an offer or a counter-offer), matched by the
+    record digest it cites, of the same deal, from the key that `propose` was sent `to`; a
+    `cancellation` only of a held `propose` of the same deal, from that offer's signer (PR 4b
+    review round 1);
   - **the acceptor's first records, at an offerer that holds only its offer** (review round 1): a
     deal-book record of a book whose `seq` 1 is an `agree` of kind `agreement` that cites, by
     record digest, a `propose` in our journal, and whose signer is that offer's `to` key. The
     store holds the record part before the proof part (`shelf_receive.go:270-279`), and Admit is
     asked about the agreement itself, so the profile checks the agreement's `offer` and signer
-    there; a later record of the same book is admitted from the same key. This is the library's
-    "to which an offer in the journal was sent" branch;
+    there. This is the library's "to which an offer in the journal was sent" branch;
   - any other deal-book record only from the `counterparty_key` of our agreement for that
-    `deal_id`, or, for an acceptor still waiting, from the signer of the offer it agreed to;
+    `deal_id`, and only on a book that answers the same offer;
+  - every deal-book record, at any position, only on a log whose first record from that sender
+    (`HeldFirst`, or the record itself at position 1) is that sender's agreement of this deal,
+    citing the offer the deal answers: our agreement's `offer`, or, at an offerer holding only
+    its offer, a `propose` in our journal sent `to` that sender. A sender cannot open a log
+    without an admitted agreement and push records on it (PR 4b review round 1);
   - a `ruling` only from our agreement's `adjudicator.key_id`.
 - **`Answered(offer)`** (review round 1). The store hands the offer as held, with its record id
   (`shelf_receive.go:57-64`). The profile reads it (`ReceivedRecordOf`), takes its record digest
