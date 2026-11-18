@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## v0.18.0 (2026-11-18)
+
+### Added: `BookStatusProvider`, handed the book and journal a stamp gives values for (#461 step 5, PR 4c-2b-1)
+
+- A stamp holds the shelf's lock while it asks a status provider for a book's values. So a provider could not open the book or the journal it describes: `Shelf.Open` and `Shelf.Journal` take that lock.
+- `BookStatusProvider.BookValues(ctx, StatusInput{N, BookID, LogID, Book, Journal})` hands over the stamp's tick and the handles the shelf already holds. `Journal` is nil before `Migrate`, and until the host first opens it with `Shelf.Journal`; a stamp never creates it. A provider reads through them (`Query`, `ResolvePayload`, `Sealed`) and through the shelf's lock-free readers, never another `Shelf` method.
+- A shelf prefers it to `StampStatusProvider`, which it supersedes, and to `Values`.
+
+### Added: x-deal-v1 status value and `StatusProvider` (#461 step 5, PR 4c-2b-2)
+
+- `xdealv1.BuildStatus(StatusBooks)` builds a v1 deal book's status value (design §8.1). Its contents:
+  - the deal's inputs, with no shared identifier;
+  - each row's rowstatus input, carrying only the statements invariant A keeps;
+  - times as a string, `null` or `{"stamp": n}` (`StatusTime`);
+  - when the other side first named each statement;
+  - the effective ruling's `against` and the first remedy made;
+  - the payment check's result, reason and excluded count;
+  - one entry per dispute record;
+  - `counterparty_proof_held`.
+- `xdealv1.StatusProvider` is a `BookStatusProvider` that gives the profile, link value and status value at each stamp:
+  - it reads the counterparty's counted prefix and the adjudicator's case book lock-free (`HeldByDeal`, `CountedPrefix`);
+  - it runs the payment check when the host gives the offer's sent pair (`OfferPair`).
+- `xdealv1.ResolveRow` is a status row's input as a reader computes it once its `{"stamp": n}` times resolve, recomputing each dispute's `seen_in_time`. A ruling is timed by the earliest naming of its arrival in either book. PROFILE says a receiving library MUST name a counted ruling (#527).
+- `Shelf.HeldByDeal(ctx, dealID)` lists the received records of a deal, lock-free.
+- A status provider's error for one book no longer stops a stamp. That book keeps its last fact, the error is reported in `TickResult.Unstated`, and the other books' facts are written.
+- `testdata/deal-v1/status/vectors.json` holds the cases `appendix-a`, `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward`, `seen-in-time-resolves` and `carry-forward-lower-bound`. Each case holds the books, the status value they build, and the row results a reader resolves from the fact; those results equal the full books' results.
+
+### Added: x-deal-v1 `Receive` names a counted ruling's arrival; `AfterReceiveProfile`, `Book.AppendAt`, `BookEntry` (#527)
+
+- **`Shelf.Receive` acts on what it took.** On every call, a duplicate included, it calls an `AfterReceiveProfile`'s `AfterReceive(ctx, result, at)` before it returns, once the parts committed (on a proof part's store error too, with the record part's result), and holds only the receive lock while it does. `RecordOutcome.DealID` is the deal the profile read the record as.
+- **x-deal-v1 names rulings there.** Its `ReceiveProfile` runs `xdealv1.NameRulings` with `Changes.Grew` and the received record's deal, so a ruling sent again retries a naming that failed.
+  - It seals, in the holder's deal book, a `statement` naming each counted ruling of the deal's adjudicator that the book does not name yet. PROFILE §5 now requires this, so a holder's own status reads a ruling whichever way it went and no host can skip it.
+  - It builds each statement from a fresh read and appends it with `Book.AppendAt`.
+  - It never writes to a book that is not wholly x-deal-v1 (a withheld payload, a lifecycle record); the status value counts that book's ruling unnamed.
+  - It reports the record ids it sealed even on an error.
+- **The next stamp retries a failed naming.** A `BeforeStampProvider`'s `BeforeStamp(ctx, at)` runs before each stamp, from `Stamp` and from a due `Tick`, outside the shelf's lock and holding the receive lock; its error is `TickResult.BeforeStamp` and the stamp is still taken. `xdealv1.StatusProvider` implements it with `xdealv1.NameAllRulings(ctx, shelf, at)`, `NameRulings` over every v1 deal book, so a ruling that was a deal's last record is named without the host.
+- **`rulings_unnamed`** in the x-deal-v1 status value counts the counted rulings of the deal's adjudicator held and named by neither book (no ids; left out at zero), so an `open` outcome never hides one silently.
+- **`Book.AppendAt(ctx, seq, entry)`** appends only as the book's next record, and gives `ErrBusy` otherwise. A profile whose record names its own place uses it to build that record from the tail it read. A stored record awaiting its substrate append takes its place first. Every x-deal-v1 deal-book write, a host's own included, uses it, rebuilt on `ErrBusy`.
+- **`xdealv1.BookEntry(record, prevRecordID)`** is the entry that seals an x-deal-v1 deal-book record:
+  - one payload, the record's JCS bytes, whose digest is the record digest;
+  - its record type, with the deal id as the subject;
+  - past seq 1, a cites link to the record before it.
+
 ## v0.17.0 (2026-11-18)
 
 ### Changed: x-deal-v1 `admit`, `check`, `verdict` and `approval` carry a nonce (u528)

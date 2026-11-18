@@ -297,3 +297,5 @@
   `staple(book, DERIVATION_HISTORY_CARD_2)`; `check_staple` accepts the card. A `checkpoints` subject
   with a range is answered with the entries and a `consistency_to_anchor` proof, without a card, and verified by a requester. It reads the shared
   vectors in `testdata/history-card-2`. Needs agent-action-capsule 0.17.0.
+
+- The ARD two-seller demo moved to evidencebook-skills as `demo/ard` (evidencebook-skills#171; tracked in evidencebook-skills#169), with its work since the last release: its Goose Desktop windows (#483), the seller window that no longer retakes an answered request (#495), and the fee wording on a real rail (#499). It sits there beside the buyer and seller skills it runs and its admission pack. `python/examples/ard-commerce` is removed. The demo reads this repository's Goose loop reference (`python/examples/goose`) and the x-deal-v0 checker from a pinned checkout, so no code of this repository is copied.
