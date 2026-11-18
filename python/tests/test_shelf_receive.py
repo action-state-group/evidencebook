@@ -864,3 +864,105 @@ def test_the_inclusion_is_stored_as_its_canonical_json(make, holder):
     with s._read() as db:
         stored = bytes(db.execute("SELECT inclusion_proof FROM shelf_received_proofs").fetchone()[0])
     assert stored == jcs(dict(p.inclusion))
+
+
+# -- held readers (Go shelf_held_test.go) -----------------------------------------------
+
+
+def test_held_first_returns_every_record_at_position_one_across_senders(make):
+    fx, s = make(senders=("alice", "bob"))
+    assert s.held_first("deal/a") == []
+    ok(s, chain("bob", "deal/a", "deal-2", 1, "b1"))
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "a1"))
+    ok(s, chain("alice", "deal/a", "deal-1", 2, "a2", "a1"))
+    ok(s, chain("alice", "deal/b", "deal-3", 1, "c1"))
+    # A fork at the genesis: alice's second record at position 1 of deal/a.
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "a1-other"))
+    got = s.held_first("deal/a")
+    keys = [(h.received.sender_key, h.received.digest) for h in got]
+    for h in got:
+        assert h.received.log_id == "deal/a" and h.received.position == 1 and h.record
+    want = sorted([("alice", dg("a1")), ("alice", dg("a1-other"))]) + [("bob", dg("b1"))]
+    assert keys == want, "both forked records and the other sender's, by sender then digest"
+    s.release()
+    with pytest.raises(ReleasedError):
+        s.held_first("deal/a")
+
+
+def test_held_by_deal_returns_every_record_of_the_deal(make):
+    fx, s = make(senders=("alice", "bob"))
+    assert s.held_by_deal("deal-1") == []
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "a1"))
+    ok(s, chain("alice", "deal/a", "deal-1", 2, "a2", "a1"))
+    ok(s, chain("bob", "deal/c", "deal-1", 1, "c1"))
+    ok(s, chain("alice", "deal/b", "deal-3", 1, "b1"))
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "a1-other"))
+    keys = [f"{h.received.sender_key} {h.received.log_id} {h.received.position}" for h in s.held_by_deal("deal-1")]
+    assert all(h.received.deal_id == "deal-1" for h in s.held_by_deal("deal-1"))
+    assert keys == ["alice deal/a 1", "alice deal/a 1", "alice deal/a 2", "bob deal/c 1"]
+    s.release()
+    with pytest.raises(ReleasedError):
+        s.held_by_deal("deal-1")
+
+
+def test_held_proofs_cover_nothing_after_a_genesis_fork(make, holder):
+    # genesis-fork-after-proof (design §7.3): unchecked before the records,
+    # recomputed and covering them after, and covering nothing once a fork at
+    # position 1 empties the counted prefix, before and after a restart.
+    h = holder("1", "2", "3")
+    fx, s = make()
+    p = h.proof()
+    fx.profile.proof_keys[key_of(p)] = "alice"
+    ok(s, None, p)
+    got = s.held_proofs("alice", "deal/a")
+    assert len(got) == 1 and not got[0].recomputed and not got[0].contradicted and got[0].covers == 0
+    records = h.records("alice", "deal-1")
+    for r in records:
+        ok(s, r)
+    held = s.held_proofs("alice", "deal/a")[0]
+    assert held.recomputed and held.covers == len(records) == held.verified.book_checkpoint.entries
+    assert held.verified.fact["book_id"] == h.book_id
+    assert held.verified.key_id == key_of(p)
+    assert held.verified.shelf_checkpoint.log_id == h.cadence.log_id
+    assert held.proof.fact == p.fact
+    ok(s, chain("alice", "deal/a", "deal-1", 1, "other-genesis"))
+
+    def check(shelf):
+        got = shelf.held_proofs("alice", "deal/a")
+        assert len(got) == 1
+        assert got[0].recomputed, "the proof stays recomputed"
+        assert got[0].covers == 0, "but covers nothing once the prefix is empty"
+        assert got[0].verified.fact["book_id"] == h.book_id
+        assert got[0].verified.shelf_checkpoint.log_id == h.cadence.log_id
+
+    check(s)
+    s.release()
+    check(fx.open())
+
+
+def test_held_proofs_of_another_sender_or_log_are_none(make, holder):
+    h = holder("1")
+    fx, s = make()
+    p = h.proof()
+    fx.profile.proof_keys[key_of(p)] = "alice"
+    ok(s, None, p)
+    assert s.held_proofs("bob", "deal/a") == []
+    assert s.held_proofs("alice", "deal/b") == []
+    s.release()
+    with pytest.raises(ReleasedError):
+        s.held_proofs("alice", "deal/a")
+
+
+def test_held_proofs_report_a_contradicted_proof(make, holder):
+    h = holder("1", "2")
+    fx, s = make()
+    p = h.proof()
+    fx.profile.proof_keys[key_of(p)] = "alice"
+    ok(s, None, p)
+    prev = ""
+    for i in range(len(h.records("alice", "deal-1"))):
+        name = f"x{i + 1}"
+        s.receive(chain("alice", "deal/a", "deal-1", i + 1, name, prev))
+        prev = name
+    got = s.held_proofs("alice", "deal/a")
+    assert len(got) == 1 and got[0].contradicted and not got[0].recomputed and got[0].covers == 0

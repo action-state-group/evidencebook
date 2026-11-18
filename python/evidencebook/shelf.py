@@ -1260,6 +1260,30 @@ class Shelf:
 
         return shelf_receive.evidence(self)
 
+    def held_first(self, log_id: str) -> list:
+        """Every received record held at position 1 of ``log_id``, across
+        senders and forks, by sender key then digest (Go ``HeldFirst``). It
+        takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_first(self, log_id)
+
+    def held_by_deal(self, deal_id: str) -> list:
+        """Every received record held for ``deal_id``, across senders, logs
+        and forks, by sender key, log id, position and digest (Go
+        ``HeldByDeal``). It takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_by_deal(self, deal_id)
+
+    def held_proofs(self, sender_key: str, log_id: str) -> list:
+        """Every stamp proof held from ``sender_key`` for ``log_id``, each
+        set against the sender's counted prefix now (Go ``HeldProofs``). It
+        takes no lock of the shelf's."""
+        from . import shelf_held
+
+        return shelf_held.held_proofs(self, sender_key, log_id)
+
     # -- record time (evidencebook#461 §2.6) ----------------------------------------------
 
     def record_time(self, book_id: str, position: int, witnesses: Sequence[str]) -> datetime | None:
