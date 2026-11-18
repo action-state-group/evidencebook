@@ -19,7 +19,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const dealTermsResultLong = `Reconcile your final close of a deal with the counterparty's, and write the
+const dealTermsResultLong = `For x-deal-v0 deals only: an x-deal-v1 deal has no terms result.
+
+Reconcile your final close of a deal with the counterparty's, and write the
 result as an Evidence Result with one claim per requirement of the Deal
 Reconcile Contract, ec:deal-reconcile@1: whether both closes commit to the
 same amount, and to the same currency.

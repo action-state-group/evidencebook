@@ -209,6 +209,13 @@ func (s *dealSession) useDeal(ctx context.Context, dealID string, create bool) e
 	if !cli.DealIDPattern.MatchString(dealID) && !cli.SaleIDPattern.MatchString(dealID) {
 		return cli.InputError("--deal must be a deal id as printed by `deal open`: deal- followed by 16 hex characters")
 	}
+	// A deal id this profile holds as an x-deal-v1 deal is never opened or
+	// used as a v0 deal (xdealv1-write-path §3).
+	if v1, err := s.isV1Deal(ctx, dealID); err != nil {
+		return err
+	} else if v1 {
+		return cli.InputError("deal " + dealID + " is an x-deal-v1 deal: this command is not served for x-deal-v1 deals yet")
+	}
 	if create {
 		// The deal key is stored at open, so rotating the store secret later
 		// cannot break a deal in progress.
@@ -918,8 +925,8 @@ func (s *dealSession) milestone(ctx context.Context) (map[string]any, error) {
 }
 
 func dealCommands() *cobra.Command {
-	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it"}
-	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand())
+	deal := &cobra.Command{Use: "deal", Short: "Seal a deal's baseline and check every point of no return against it", Long: "Seal a deal's baseline and check every point of no return against it.\n\n`deal close` and `deal terms-result` are for x-deal-v0 deals; an x-deal-v1 deal (deal set-version x-deal-v1) has neither."}
+	deal.AddCommand(dealInitCommand(), dealOpenCommand(), dealNoteCommand(), dealCheckCommand(), dealCloseCommand(), dealReportCommand(), dealCountersignCommand(), dealExportCommand(), dealSaleCommands(), dealAuditHostCommand(), dealReconcileAlias(), dealTickCommand(), dealVerifyEmailCommand(), dealVerifyObjectCommand(), dealVerifierStatementCommand(), dealVerifyStatementCommand(), dealDeadlinesCommand(), dealCheckpointCommands(), dealDisclosuresCommand(), dealListCommand(), dealSettlementCommand(), dealTermsLegCommand(), dealHistoryCommand(), dealStandardHistoryCommand(), dealTermsResultCommand(), dealRulesVerdictCommand(), dealOutcomeNoteCommand(), dealSetVersionCommand(), dealOfferCommand())
 	// A deal profile's copies: asked for, answered, composed.
 	deal.AddCommand(dealEvidenceCommands()...)
 	// A scheduled demo deal and the watcher that alarms when it stops.
@@ -954,6 +961,13 @@ func runDeal(c *cobra.Command, needDeal bool, fn func(ctx context.Context, s *de
 	defer func() { err = errors.Join(err, s.close()) }()
 	var events []sealedEvent
 	if needDeal {
+		// An x-deal-v1 deal has no v0 form: refuse before anything loads, since
+		// a v1 book's records have no v0 opening (xdealv1-write-path §3, §7).
+		if v1, verr := s.isV1Deal(ctx, dealID); verr != nil {
+			return verr
+		} else if v1 {
+			return v1Refusal(c.Name(), dealID)
+		}
 		if err = s.useDeal(ctx, dealID, false); err != nil {
 			return err
 		}
@@ -2463,7 +2477,7 @@ func readReceivedCards(c *cobra.Command) ([]json.RawMessage, error) {
 }
 
 func dealCloseCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "close", Short: "Compare what was delivered with what was agreed: completed, mismatch or open", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "close", Short: "Compare what was delivered with what was agreed: completed, mismatch or open", Long: "Compare what was delivered with what was agreed: completed, mismatch or open.\n\nFor x-deal-v0 deals only: an x-deal-v1 deal has no close (each row is decided by statements, dates and disputes).", Args: cli.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		path, _ := c.Flags().GetString("input")
 		htmlPath, _ := c.Flags().GetString("html")
 		raw, err := cli.ReadInput(path)
