@@ -131,3 +131,37 @@ fn settled_vectors() {
         assert_eq!(v1::settled(&start, &rows), c["settled"].as_bool().unwrap(), "{name}");
     }
 }
+
+/// decline/vectors.json: VerifySent passes each valid pair with its digest
+/// and refuses the others at their stage.
+#[test]
+fn sent_vectors() {
+    // Each pair as written: one case gives a member twice, which a parsed
+    // value would drop.
+    #[derive(serde::Deserialize)]
+    struct Raw {
+        cases: Vec<RawCase>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RawCase {
+        pair: Box<serde_json::value::RawValue>,
+    }
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/deal-v1/decline/vectors.json");
+    let raw: Raw = serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+    for (k, c) in vectors("decline/vectors.json").into_iter().enumerate() {
+        let name = c["name"].as_str().unwrap();
+        let pair = raw.cases[k].pair.get().as_bytes().to_vec();
+        let ctx = c.get("offer").map(|o| v1::OfferContext {
+            offer: v1::decode(&serde_json::to_vec(o).unwrap()).unwrap(),
+            signer: c["offer_signer"].as_str().unwrap().into(),
+        });
+        let got = v1::verify_sent(&pair, ctx.as_ref());
+        if c["valid"].as_bool().unwrap() {
+            let sent = got.unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(Some(sent.digest.as_str()), c["digest"].as_str(), "{name}");
+        } else {
+            let err = got.expect_err(name);
+            assert_eq!(err.stage().map(|s| s.stage), c["stage"].as_str(), "{name}: {err}");
+        }
+    }
+}

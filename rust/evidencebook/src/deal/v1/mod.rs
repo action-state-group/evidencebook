@@ -16,6 +16,7 @@ mod check;
 mod names;
 mod record;
 mod report;
+mod sent;
 mod start;
 mod status_rows;
 mod status_value;
@@ -35,6 +36,10 @@ pub use report::{
     CHECK_FAILED, CHECK_NOT_RECOMPUTED, CHECK_NOT_RUN, CHECK_PASSED, NOT_SET, PROOF_HELD,
     PROOF_NOT_YET, PROOF_NO_LAYER, REMEDY_NOT_COUNTED, ROWS_LISTED, ROWS_NOT_STARTED,
     ROWS_WITHHELD, SIDE_ADJUDICATOR,
+};
+pub use sent::{
+    pair, payment_rows, terms_leg, verify_sent, OfferContext, Sent, SENT_SUFFIX,
+    SETTLEMENT_MEMBER, SETTLEMENT_VERSION, STAGE_SENT,
 };
 pub use start::{
     start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,
