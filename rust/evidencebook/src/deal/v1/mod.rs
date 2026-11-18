@@ -47,6 +47,8 @@
 mod authorization;
 mod book;
 mod check;
+#[cfg(feature = "shelf")]
+mod holder;
 mod names;
 mod payment;
 mod record;
@@ -63,6 +65,11 @@ pub use check::{
     check, check_agreement, check_dispute, check_ruling, check_sealed, digest, encode,
     placement_of, profile_schema, record_digest, ref_to, rows_digest, Placement, SealContext,
     STAGE_AGREEMENT, STAGE_RECORD,
+};
+#[cfg(feature = "shelf")]
+pub use holder::{
+    ActGate, ActGateInput, CanActInput, ReceiveProfile, GATE_NO_LAYER, GATE_NO_PROOF,
+    SENT_LOG_PREFIX,
 };
 pub use names::*;
 pub use payment::{
