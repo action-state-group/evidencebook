@@ -328,6 +328,22 @@ type AdmitBody struct {
 	Nonce string `json:"nonce"`
 }
 
+// VerdictBody is the journal overlay's verdict: v0's body and a nonce. An
+// act's person's signature carries its approval's digest (§8), which cites
+// the verdict, whose v0 members are guessable from the check, so each
+// carries its own secret (u528; PROFILE §5).
+type VerdictBody struct {
+	dealprofile.VerdictBody
+	Nonce string `json:"nonce"`
+}
+
+// ApprovalBody is the journal overlay's approval: v0's body and a nonce,
+// for the reason VerdictBody carries one.
+type ApprovalBody struct {
+	dealprofile.ApprovalBody
+	Nonce string `json:"nonce"`
+}
+
 // CheckBody is the journal overlay's check: v0's body and payment_ref, the
 // reference the payment will be made under (§3.2).
 type CheckBody struct {

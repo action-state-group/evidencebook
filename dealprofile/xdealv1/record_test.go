@@ -74,8 +74,8 @@ func acceptorAgreement(offer Record) Record {
 	})
 }
 
-func approval(choice string) *dealprofile.ApprovalBody {
-	a := &dealprofile.ApprovalBody{Choice: choice, Proceed: choice != "hold", Approver: "user", SaidCommitment: hx('f')}
+func approval(choice string) *ApprovalBody {
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: choice, Proceed: choice != "hold", Approver: "user", SaidCommitment: hx('f')}, Nonce: hx('6')}
 	if choice == ChoiceConfirm {
 		a.Limits = &dealprofile.ApprovalBodyLimits{}
 	}
@@ -121,7 +121,7 @@ func validRecords(t *testing.T) map[string]Record {
 		"admit":                record(noDeal(TypeAdmit), &AdmitBody{Outcome: "GO", Tier: "t1", Rows: []string{}, Asks: []Ref{}, PackDigest: hx('a'), CardDigest: hx('9'), Answers: []Ref{}, Nonce: hx('8')}),
 		"intent":               record(noDeal(TypeIntent), &dealprofile.IntentBody{VerbatimCommitment: hx('a')}),
 		"check":                record(blk(TypeCheck), checkBody),
-		"verdict":              record(blk(TypeVerdict), &dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}}),
+		"verdict":              record(blk(TypeVerdict), &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}}, Nonce: hx('5')}),
 		"approval/proceed":     record(blk(TypeApproval), approval("proceed")),
 		"approval/confirm":     record(noDeal(TypeApproval), approval(ChoiceConfirm)),
 		"rules_verdict":        record(inBook(TypeRulesVerdict, 8), &dealprofile.RulesVerdictBody{Word: "met", PackDigest: hx('a')}),

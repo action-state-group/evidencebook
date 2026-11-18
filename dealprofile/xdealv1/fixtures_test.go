@@ -199,10 +199,10 @@ func (a *appendixA) approvedCheck(dir, n, line, action, paymentRef, approver str
 	vb := journalBlock(TypeVerdict, at(1), true)
 	vb.Refs = []RelRef{rel("checks", check)}
 	verdict := a.add(fixture{Path: dir + "/" + next(n, 1) + "-verdict-pass.json", Line: line, Story: "The verdict on that one check: pass.",
-		Record: Record{Block: vb, Body: &dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}}})
+		Record: Record{Block: vb, Body: &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: card}, Nonce: label("VerdictBody nonce " + dir + " " + n)}}})
 	ab := journalBlock(TypeApproval, at(2), true)
 	ab.Refs = []RelRef{rel("approves", verdict)}
-	approval := &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: approver}
+	approval := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: approver}, Nonce: label("ApprovalBody nonce " + dir + " " + n)}
 	story := "The owner's standing intent answers the passing verdict: proceed."
 	if approver == "user" {
 		approval.SaidCommitment, approval.CardCommitment = label("owner said "+check.Digest), card

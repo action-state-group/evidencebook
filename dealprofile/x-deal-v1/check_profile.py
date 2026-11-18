@@ -125,7 +125,7 @@ _VALIDATORS = {}
 
 
 def _validators():
-    """The v1 record validator and v0's body_check validator, or None
+    """The v1 record validator and v0's closed overlay body validators, or None
     without jsonschema."""
     global SCHEMA_MODE
     if not _VALIDATORS:
@@ -148,7 +148,8 @@ def _validators():
                 yield ValidationError(f"{instance!r} does not match {patrn!r}")
         Strict = validators.extend(Draft202012Validator, {"pattern": pattern})
         _VALIDATORS["record"] = Strict(v1s, registry=registry)
-        _VALIDATORS["body_check"] = Strict({"$ref": v0s["$id"] + "#/$defs/body_check"}, registry=registry)
+        for d in ("body_check", "body_verdict", "body_approval"):
+            _VALIDATORS[d] = Strict({"$ref": v0s["$id"] + "#/$defs/" + d}, registry=registry)
         SCHEMA_MODE = "jsonschema (Draft 2020-12)"
     return _VALIDATORS
 
@@ -273,14 +274,14 @@ def check_body(rec):
                 raise bad("record", "an agreement with a counterparty that runs the layer names its record key in counterparty_key")
             if body["side"] == "acceptor" and blk.get("seen") is not None:
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
-    elif t == "check":
-        # v0's body_check is closed, so the body without payment_ref and nonce is
-        # checked against it here, after the record checks, as Go's checkBody.
-        v = _validators().get("body_check")
+    elif t in ("check", "verdict", "approval"):
+        # v0's overlay bodies are closed, so the body without v1's own members
+        # (payment_ref, nonce) is checked against v0's, as Go's checkV0Body.
+        v = _validators().get("body_" + t)
         if v is not None:
             errs = list(v.iter_errors({k: x for k, x in body.items() if k not in ("payment_ref", "nonce")}))
             if errs:
-                raise bad("schema", f"the check body is not v0's body_check: {errs[0].message}")
+                raise bad("schema", f"the {t} body is not v0's body_{t}: {errs[0].message}")
 
 
 def stage_record(rec):

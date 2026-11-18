@@ -273,7 +273,7 @@
       "then": {
         "properties": {
           "body": {
-            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_verdict"
+            "$ref": "#/$defs/body_verdict"
           }
         }
       }
@@ -293,7 +293,7 @@
       "then": {
         "properties": {
           "body": {
-            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_approval"
+            "$ref": "#/$defs/body_approval"
           }
         }
       }
@@ -1587,6 +1587,30 @@
       "description": "A fresh random 256-bit value (64 lowercase hex) in a journal record a sent or deal-book record can cite, so that the citing record's digest gives nobody a way to test a guess at the cited record's content (PROFILE section 5).",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "body_verdict": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_verdict and nonce. The record checks validate the body without nonce against v0's body_verdict, which is closed, so the two are not merged here."
+    },
+    "body_approval": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_approval and nonce. The record checks validate the body without nonce against v0's body_approval, which is closed, so the two are not merged here."
     }
   }
 }

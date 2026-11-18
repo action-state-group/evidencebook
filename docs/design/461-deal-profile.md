@@ -471,10 +471,14 @@ it applies u528, so it needs no ruling from Steven).
   decision stays in the person's own book. An act's `check` has the same shape, with its action,
   amount and currency guessable from the terms.
 - **The rule** (worded wider in the PR 4 nonce review round 1, Sherlock2). Any journal record
-  whose digest leaves the holder MUST carry its own nonce or a required salted member, or cite a
-  record that does. That covers a digest cited by a sent or deal-book record, one signed beside a
-  record (§8's person's signatures, AAC#627), and one disclosed.
-  - A verdict and an approval are covered through what they cite.
+  whose digest leaves the holder, or is cited by one whose digest does, MUST carry its own nonce
+  or a required salted member. That covers a digest cited by a sent or deal-book record, one
+  signed beside a record (§8's person's signatures, AAC#627), and one disclosed.
+  - Citing a record that carries one is not enough (Codex, round 2). The act shows its check's
+    digest, so once a verdict's or an approval's digest is known, its guessable members could be
+    tried against it with that known digest in its `refs`. So `verdict` and `approval` carry a
+    `nonce` too: v0's bodies plus `nonce`, read against v0's closed bodies without it
+    (`neg-verdict-without-nonce`, `neg-approval-without-nonce`).
   - A record sent whole (an offer, a decline, a cancellation) is exempt, since its content leaves
     with it (Codex, same round).
   - A deal-book record and an offer carry no block `refs`. Otherwise `refs` could cite any journal
@@ -482,10 +486,10 @@ it applies u528, so it needs no ruling from Steven).
     `neg-perform-with-refs`, `neg-offer-with-refs`). Only a journal `verdict` and `approval`
     carry `refs`.
 - **What carries it.**
-  - `admit` and `check` carry `nonce`: 256 bits, 64 lowercase hex, fresh per record.
-    `xdealv1.NewNonce` draws one from `crypto/rand`. `CheckAuthorizations` refuses a journal in
-    which two records share a nonce, a cheap backstop against a host that does not draw fresh
-    ones.
+  - `admit`, `check`, `verdict` and `approval` carry `nonce`: 256 bits, 64 lowercase hex,
+    fresh per record. `xdealv1.NewNonce` draws one from `crypto/rand`. `CheckAuthorizations`
+    refuses a journal in which two records share a nonce or an intent's `verbatim_commitment`,
+    a cheap backstop against a host that does not draw fresh ones.
   - An `intent` already carries the required `verbatim_commitment` (`sha256-jcs-nonce256`, as
     v0 defines it). That covers `max_total_minor` and the other members it holds in clear.
 - **What stays as it is.** The citation stays a plain digest ref, the journal lookup in

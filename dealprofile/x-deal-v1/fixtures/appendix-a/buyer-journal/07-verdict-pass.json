@@ -24,8 +24,9 @@
       "result": "pass",
       "differences": [],
       "options": [],
-      "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263"
+      "card_commitment": "7b9f6fe06aa834704172546896e1750d2bd7f9525ac52d2c7dbac0b75f3c7263",
+      "nonce": "3d71e7a94efde455dec1c49ff84556237e52277549167d0d178b04683ca1b2b0"
     }
   },
-  "expected_digest": "151173b6b436d97f209a8896bc54f21e62ec6ba89e11644f38b8f06fb754c892"
+  "expected_digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca"
 }

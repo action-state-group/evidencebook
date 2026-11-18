@@ -214,16 +214,18 @@ the body MUST be valid under v0's closed `body_check`.
 
 **A journal record whose digest leaves the holder carries its own secret** (u528: the admission
 decision, and what the person checked, stay in the person's own book). A journal record whose
-digest leaves the holder MUST carry a member nobody else can guess, or cite one that does. This
-covers a digest that is cited by a sent or deal-book record, signed beside a record (section 8's
-person's signatures), or disclosed. Otherwise whoever holds the digest could try each likely
-content against it.
-- `admit` and `check` carry `nonce`: a fresh random 256-bit value, 64 lowercase hex, drawn for
-  each record with `xdealv1.NewNonce` (`crypto/rand`) and never reused.
-  `xdealv1.CheckAuthorizations` refuses a journal in which two records share one.
+digest leaves the holder, or is cited by one whose digest does, MUST carry a member of its own
+that nobody else can guess. Citing such a record is not enough, since the cited digest may itself
+be known: an act shows its check's digest. This covers a digest that is cited by a sent or
+deal-book record, signed beside a record (section 8's person's signatures), or disclosed.
+Otherwise whoever holds the digest could try each likely content against it.
+- `admit`, `check`, `verdict` and `approval` carry `nonce`: a fresh random 256-bit value, 64
+  lowercase hex, drawn for each record with `xdealv1.NewNonce` (`crypto/rand`) and never
+  reused. `verdict` and `approval` are v0's bodies plus `nonce`, read against v0's closed bodies
+  without it.
 - An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
-- A `verdict` cites its `check`, and an `approval` its `verdict` or `intent`, so each is covered
-  by what it cites.
+- `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
+  `verbatim_commitment`.
 - A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content
   leaves with it, so its digest tells nobody anything the record does not.
 - The citation stays a plain digest ref, and the lookup in the holder's journal is unchanged, as

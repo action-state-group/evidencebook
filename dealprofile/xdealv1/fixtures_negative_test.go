@@ -40,6 +40,8 @@ const (
 	nAsk      = "appendix-a/buyer-journal/03-ask.json"
 	nCheck    = "appendix-a/buyer-journal/06-check-pay.json"
 	nAdmit    = "appendix-a/buyer-journal/04-admit-go.json"
+	nVerdict  = "appendix-a/buyer-journal/07-verdict-pass.json"
+	nApproval = "appendix-a/buyer-journal/08-approval-proceed.json"
 	nSellerAg = "appendix-a/seller-book/01-agreement.json"
 	nBuyerAg  = "appendix-a/buyer-book/01-agreement.json"
 	nPayment  = "appendix-a/buyer-book/02-payment.json"
@@ -111,6 +113,12 @@ func negatives() []negative {
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "nonce") }},
 		{name: "neg-check-without-nonce", description: "a check, which an act cites, carries its nonce", base: nCheck, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-verdict-without-nonce", description: "a verdict, which a signed approval cites, carries its nonce", base: nVerdict, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-approval-without-nonce", description: "an approval, whose digest the person signs beside the act, carries its nonce", base: nApproval, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { del(b, "nonce") }},
 		{name: "neg-nonce-not-256-bit-hex", description: "a nonce is 64 lowercase hex", base: nCheck, check: "record",

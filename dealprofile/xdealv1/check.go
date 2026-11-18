@@ -415,7 +415,7 @@ func checkDealID(r Record, place Placement) error {
 	case slices.Contains(noDealID, t):
 		absent = true
 	case t == TypeApproval:
-		a, _ := r.Body.(*dealprofile.ApprovalBody)
+		a, _ := bodyOf[ApprovalBody](r.Body)
 		if a != nil && a.Choice == ChoiceConfirm {
 			absent = true
 		} else {
@@ -465,22 +465,18 @@ func checkBody(r Record) error {
 			}
 		}
 	case *CheckBody:
-		// v0's body_check is closed, so the body without payment_ref is
-		// checked against it (x-deal-v1.schema.json, body_check).
-		v0, err := json.Marshal(body.CheckBody)
-		if err != nil {
+		// v0's body_check is closed, so the body without payment_ref and
+		// nonce is checked against it (x-deal-v1.schema.json, body_check).
+		if err := checkV0Body(body.CheckBody, "body_check"); err != nil {
 			return err
 		}
-		doc, err := decodeJSON(v0)
-		if err != nil {
+	case *VerdictBody:
+		if err := checkV0Body(body.VerdictBody, "body_verdict"); err != nil {
 			return err
 		}
-		s, err := v0BodyCheck()
-		if err != nil {
+	case *ApprovalBody:
+		if err := checkV0Body(body.ApprovalBody, "body_approval"); err != nil {
 			return err
-		}
-		if err := s.Validate(doc); err != nil {
-			return stageErr(StageSchema, "the check body is not v0's body_check: %v", err)
 		}
 	}
 	return nil
@@ -777,9 +773,34 @@ func sameAdjudicator(a, b Null[Adjudicator]) bool {
 	return *a.V == *b.V
 }
 
-var v0BodyCheck = sync.OnceValues(func() (*jsonschema.Schema, error) {
-	return dealprofile.ProfileSchemaAt("#/$defs/body_check")
-})
+// v0Bodies are v0's closed body schemas a v1 overlay body is read against
+// without its own members (payment_ref, nonce).
+var v0Bodies sync.Map
+
+// checkV0Body validates v0, the v0 part of a v1 overlay body, against v0's
+// closed $defs/def.
+func checkV0Body(v0 any, def string) error {
+	raw, err := json.Marshal(v0)
+	if err != nil {
+		return err
+	}
+	doc, err := decodeJSON(raw)
+	if err != nil {
+		return err
+	}
+	cached, ok := v0Bodies.Load(def)
+	if !ok {
+		s, err := dealprofile.ProfileSchemaAt("#/$defs/" + def)
+		if err != nil {
+			return err
+		}
+		cached, _ = v0Bodies.LoadOrStore(def, s)
+	}
+	if err := cached.(*jsonschema.Schema).Validate(doc); err != nil {
+		return stageErr(StageSchema, "the %s body is not v0's %s: %v", strings.TrimPrefix(def, "body_"), def, err)
+	}
+	return nil
+}
 
 var (
 	schemaOnce sync.Once
