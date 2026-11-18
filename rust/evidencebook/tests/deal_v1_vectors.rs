@@ -165,3 +165,42 @@ fn sent_vectors() {
         }
     }
 }
+
+/// authorization/approval-migration.json: CheckAuthorizations passes the
+/// valid cases with each act's person signature, limit approvals and intent
+/// signature, and refuses the others at the authorization stage.
+#[test]
+fn approval_migration_vectors() {
+    for c in vectors("authorization/approval-migration.json") {
+        let name = c["name"].as_str().unwrap();
+        let read = |k: &str| -> Vec<v1::Record> {
+            c[k].as_array()
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .map(|r| v1::decode(&serde_json::to_vec(r).unwrap()).unwrap_or_else(|e| panic!("{name}: {k}: {e}")))
+                .collect()
+        };
+        let got = v1::check_authorizations(&read("journal"), &read("acts"));
+        if c["valid"].as_bool().unwrap() {
+            let auths = got.unwrap_or_else(|e| panic!("{name}: {e}"));
+            let person: Vec<bool> = auths.iter().map(|a| a.needs_person_signature).collect();
+            let limits: Vec<usize> = auths.iter().map(|a| a.limit_approvals.len()).collect();
+            let intent: Vec<bool> = auths.iter().map(|a| !a.intent.is_empty()).collect();
+            assert_eq!(serde_json::to_value(person).unwrap(), c["person_signature"], "{name}: person_signature");
+            assert_eq!(serde_json::to_value(limits).unwrap(), c["limit_approvals"], "{name}: limit_approvals");
+            assert_eq!(serde_json::to_value(intent).unwrap(), c["intent_signature"], "{name}: intent_signature");
+        } else {
+            let err = got.expect_err(name);
+            assert_eq!(err.stage().map(|s| s.stage), Some(v1::STAGE_AUTHORIZATION), "{name}: {err}");
+        }
+    }
+}
+
+#[test]
+fn new_nonce_is_fresh_256_bit_hex() {
+    let (a, b) = (v1::new_nonce(), v1::new_nonce());
+    assert_eq!(a.len(), 64);
+    assert!(a.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    assert_ne!(a, b);
+}

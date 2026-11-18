@@ -12,6 +12,7 @@
 //! body types for the journal and journey overlays. Like v0's module it
 //! seals nothing: it returns bytes and verdicts.
 
+mod authorization;
 mod check;
 mod names;
 mod record;
@@ -22,6 +23,7 @@ mod status_rows;
 mod status_value;
 mod types;
 
+pub use authorization::{check_authorizations, new_nonce, ActAuthorization, STAGE_AUTHORIZATION};
 pub use check::{
     check, check_agreement, check_dispute, check_ruling, check_sealed, digest, encode,
     placement_of, profile_schema, record_digest, ref_to, rows_digest, Placement, SealContext,
