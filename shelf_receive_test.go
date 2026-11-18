@@ -1110,3 +1110,28 @@ func TestReceiveAFailedProofCommitReportsNoProofChanges(t *testing.T) {
 	assert.Empty(t, got.Changes.Covered, "the proof part did not")
 	assert.Zero(t, proofRows(t, s))
 }
+
+// evidencebook#543: CountedPrefix reads the records and the recorded forks
+// in one snapshot. Receives that commit between the two reads (the prefix
+// grows to a2, then two records at 5 fork it) are seen whole or not at all;
+// two snapshots would give the old size with the new fork, Size 1 ForkAt 5,
+// a state the store never held.
+func TestCountedPrefixReadsOneSnapshot(t *testing.T) {
+	_, s := newReceiveFixture(t, ReceiveConfig{})
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	fired := false
+	receivedPrefixBetween = func(context.Context) {
+		if fired {
+			return
+		}
+		fired = true
+		mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
+		mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 5, "a5", "a4"), nil)
+		mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 5, "a5-other", "a4"), nil)
+	}
+	t.Cleanup(func() { receivedPrefixBetween = nil })
+	got := prefixOf(t, s, "alice", "deal/a")
+	require.True(t, fired)
+	assert.Equal(t, CountedPrefix{Size: 1, Last: dg("a1")}, got, "the state before the receives")
+	assert.Equal(t, CountedPrefix{Size: 2, Last: dg("a2"), ForkAt: 5}, prefixOf(t, s, "alice", "deal/a"), "and after them")
+}

@@ -483,7 +483,7 @@ func (s *Shelf) receiveRecord(ctx context.Context, profile ReceiveProfile, recor
 			return refuse(fmt.Errorf("%w: another record is held under digest %s", ErrInvalid, r.Digest))
 		}
 		out.Duplicate = true
-		p, err := receivedPrefix(ctx, s.db, key)
+		p, err := snapshotPrefix(ctx, s.db, key)
 		if err != nil {
 			return RecordOutcome{}, err
 		}
@@ -871,6 +871,22 @@ func (p receivedPrefixState) digests(n uint64) []string {
 	return out
 }
 
+// receivedPrefixBetween, when set (tests), runs between receivedPrefix's
+// read of the records and its read of the recorded forks.
+var receivedPrefixBetween func(ctx context.Context)
+
+// snapshotPrefix is receivedPrefix outside a write transaction: its two
+// reads run in one read-only transaction, so the records and the recorded
+// forks are of one store state (evidencebook#543).
+func snapshotPrefix(ctx context.Context, db *sql.DB, k logKey) (receivedPrefixState, error) {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return receivedPrefixState{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	return receivedPrefix(ctx, tx, k)
+}
+
 // receivedPrefix computes a counted prefix from the store. The forks are
 // the ones recorded (shelf_received_conflicts), which deleting a record
 // never undoes, and any the records held show: a position whose claimed
@@ -884,6 +900,9 @@ func receivedPrefix(ctx context.Context, q queryer, k logKey) (receivedPrefixSta
 	held, err := scanReceived(rows)
 	if err != nil {
 		return receivedPrefixState{}, err
+	}
+	if receivedPrefixBetween != nil {
+		receivedPrefixBetween(ctx)
 	}
 	var out receivedPrefixState
 	if err := q.QueryRowContext(ctx, `SELECT COALESCE(MIN(at), 0) FROM shelf_received_conflicts WHERE sender_key = ? AND log_id = ? AND kind = ?`, k.sender, k.log, EvidenceFork).Scan(&out.forkAt); err != nil {
@@ -1160,7 +1179,7 @@ func (s *Shelf) CountedPrefix(ctx context.Context, senderKey, logID string) (Cou
 	if err := s.live(); err != nil {
 		return CountedPrefix{}, err
 	}
-	p, err := receivedPrefix(ctx, s.db, logKey{senderKey, logID})
+	p, err := snapshotPrefix(ctx, s.db, logKey{senderKey, logID})
 	if err != nil {
 		return CountedPrefix{}, err
 	}
