@@ -15,14 +15,14 @@
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74"
+        "digest": "557ad751c2218090032e30660ec3048a47728d2fbc9449ca71e8327c5d921f9a"
       },
       "agreement_ref": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
       },
-      "seen": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2"
+      "seen": "68f7d5b890bc7f0962600bc0b290ae4862ebeec02a997955b07fdd27207a943e"
     },
     "body": {
       "kind": "dispute",
@@ -31,18 +31,18 @@
         {
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "99e946782da2d0ad8884b4a70ae4fd004f31286ed9ff1d8942636b0760a18a74"
+          "digest": "557ad751c2218090032e30660ec3048a47728d2fbc9449ca71e8327c5d921f9a"
         },
         {
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "e4fe7027d0f5cc905d0c969fd40dcc9c5a6e5d435ab2e1c03b808560fa1f6d05"
+          "digest": "91fe1a73e93c19514fdb1f50d39339db2980ec3c312718b17cf5412b23967504"
         }
       ],
       "adjudicator": "8695e224c826802e02236ac829a007c2cebe1bf5b676509a2c35604ca710ee7b",
       "forum": "auto:ref"
     }
   },
-  "expected_digest": "039b481e74cc572a62f2aaeaa9185db9ee161795a380bb4815c028eec262ed66",
-  "record_id": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2"
+  "expected_digest": "bfccf26cee496120f814cc58c48b23acf695844c975983e006e7158d4c4e1c93",
+  "record_id": "7b1f37ef3e1fd334b7d4f6fac9bd39e0e614afe51fd4106333c51035a4cc5c68"
 }

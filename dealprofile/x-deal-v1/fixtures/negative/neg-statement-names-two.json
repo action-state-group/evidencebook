@@ -10,12 +10,12 @@
     "body": {
       "names": {
         "cancellation": {
-          "digest": "0ae9e19fd31fd841de15d65a3ba0287850d1abbecfb42b4c91d5a7e11e25fbe5",
+          "digest": "6b267a988b8c8a740551218ff0edb570dc63a33a41a0b09ac4d2ef81054c7a8e",
           "digest_alg": "SHA-256",
           "type": "deal-record"
         },
         "ruling": {
-          "digest": "0ae9e19fd31fd841de15d65a3ba0287850d1abbecfb42b4c91d5a7e11e25fbe5",
+          "digest": "6b267a988b8c8a740551218ff0edb570dc63a33a41a0b09ac4d2ef81054c7a8e",
           "digest_alg": "SHA-256",
           "type": "deal-record"
         }
@@ -24,7 +24,7 @@
     },
     "x-deal-v1": {
       "agreement_ref": {
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
@@ -32,13 +32,13 @@
       "canonicalization": "jcs",
       "deal_id": "deal-6a1f0c93b27d4e58",
       "prev": {
-        "digest": "039b481e74cc572a62f2aaeaa9185db9ee161795a380bb4815c028eec262ed66",
+        "digest": "bfccf26cee496120f814cc58c48b23acf695844c975983e006e7158d4c4e1c93",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
       "profile": "x-deal-v1",
       "record_type": "statement",
-      "seen": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2",
+      "seen": "68f7d5b890bc7f0962600bc0b290ae4862ebeec02a997955b07fdd27207a943e",
       "seq": 6
     }
   }

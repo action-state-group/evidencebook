@@ -273,7 +273,7 @@
       "then": {
         "properties": {
           "body": {
-            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_verdict"
+            "$ref": "#/$defs/body_verdict"
           }
         }
       }
@@ -293,7 +293,7 @@
       "then": {
         "properties": {
           "body": {
-            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_approval"
+            "$ref": "#/$defs/body_approval"
           }
         }
       }
@@ -1489,7 +1489,8 @@
         "asks",
         "pack_digest",
         "card_digest",
-        "answers"
+        "answers",
+        "nonce"
       ],
       "properties": {
         "outcome": {
@@ -1527,6 +1528,9 @@
           "items": {
             "$ref": "#/$defs/digest_ref"
           }
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
         }
       }
     },
@@ -1537,9 +1541,15 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 256
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
         }
       },
-      "description": "v0's body_check and payment_ref. The record checks validate the body without payment_ref against v0's body_check, which is closed, so the two are not merged here."
+      "description": "v0's body_check, payment_ref and nonce. The record checks validate the body without payment_ref and nonce against v0's body_check, which is closed, so the two are not merged here.",
+      "required": [
+        "nonce"
+      ]
     },
     "forum": {
       "type": "string",
@@ -1572,6 +1582,35 @@
         "$ref": "#/$defs/forum"
       },
       "description": "The forums both sides accept for a dispute on this deal: the recourse clause (evidencebook#404; Terms Pack Studio PRD v5 §7, no forum shopping). Empty exactly when adjudicator is null, which allows no dispute."
+    },
+    "nonce": {
+      "description": "A fresh random 256-bit value (64 lowercase hex) in a journal record a sent or deal-book record can cite, so that the citing record's digest gives nobody a way to test a guess at the cited record's content (PROFILE section 5).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "body_verdict": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_verdict and nonce. The record checks validate the body without nonce against v0's body_verdict, which is closed, so the two are not merged here."
+    },
+    "body_approval": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_approval and nonce. The record checks validate the body without nonce against v0's body_approval, which is closed, so the two are not merged here."
     }
   }
 }

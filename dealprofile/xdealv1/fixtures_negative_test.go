@@ -39,6 +39,9 @@ const (
 	nIntent   = "appendix-a/buyer-journal/01-intent.json"
 	nAsk      = "appendix-a/buyer-journal/03-ask.json"
 	nCheck    = "appendix-a/buyer-journal/06-check-pay.json"
+	nAdmit    = "appendix-a/buyer-journal/04-admit-go.json"
+	nVerdict  = "appendix-a/buyer-journal/07-verdict-pass.json"
+	nApproval = "appendix-a/buyer-journal/08-approval-proceed.json"
 	nSellerAg = "appendix-a/seller-book/01-agreement.json"
 	nBuyerAg  = "appendix-a/buyer-book/01-agreement.json"
 	nPayment  = "appendix-a/buyer-book/02-payment.json"
@@ -104,6 +107,42 @@ func negatives() []negative {
 		{name: "neg-check-body-not-v0", description: "the check body without payment_ref is v0's body_check: its action is one v0 names", base: nCheck, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(_, b map[string]any) { set(b, "action", "teleport") }},
+		// Schema: a journal record another record cites carries its own
+		// nonce (§3, u528), so the citing record's digest tests no guess.
+		{name: "neg-admit-without-nonce", description: "an admit, which an agreement cites, carries its nonce", base: nAdmit, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-check-without-nonce", description: "a check, which an act cites, carries its nonce", base: nCheck, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-verdict-without-nonce", description: "a verdict, which a signed approval cites, carries its nonce", base: nVerdict, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-approval-without-nonce", description: "an approval, whose digest the person signs beside the act, carries its nonce", base: nApproval, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "nonce") }},
+		{name: "neg-verdict-with-payment-ref", description: "payment_ref is a check's member, not a verdict's", base: nVerdict, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { set(b, "payment_ref", "unexpected") }},
+		{name: "neg-approval-with-payment-ref", description: "payment_ref is a check's member, not an approval's", base: nApproval, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { set(b, "payment_ref", "unexpected") }},
+		{name: "neg-nonce-not-256-bit-hex", description: "a nonce is 64 lowercase hex", base: nCheck, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { set(b, "nonce", strings.ToUpper(b["nonce"].(string))) }},
+		{name: "neg-perform-with-refs", description: "a deal-book record cites only through its type's members, never refs", base: nDelivery, check: "record",
+			stage: StageRecord, contains: "carries no refs",
+			edit: func(b, _ map[string]any) {
+				set(b, "refs", []any{map[string]any{"rel": "checks", "type": "deal-record", "digest_alg": "SHA-256", "digest": strings.Repeat("a", 64)}})
+			}},
+		{name: "neg-offer-with-refs", description: "an offer, sent whole, cites only through counter_to, never refs", base: nOffer, check: "record",
+			stage: StageRecord, contains: "carries no refs",
+			edit: func(b, _ map[string]any) {
+				set(b, "refs", []any{map[string]any{"rel": "checks", "type": "deal-record", "digest_alg": "SHA-256", "digest": strings.Repeat("a", 64)}})
+			}},
+		{name: "neg-intent-without-verbatim-commitment", description: "an intent, which an agreement cites, carries its salted verbatim_commitment", base: nIntent, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) { del(b, "verbatim_commitment") }},
 		// Record: placement (§3.1, §3.2).
 		{name: "neg-book-record-without-seq", description: "a deal-book record carries its seq", base: nDelivery, check: "record",
 			stage: StageRecord, contains: "carries its seq",

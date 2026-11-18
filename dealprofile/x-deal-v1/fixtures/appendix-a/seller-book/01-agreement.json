@@ -27,7 +27,7 @@
       "admit": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "d7e0919bd0cecafe95c3b1fec7a40b14ec1dbd7f95735782df52464a037ebc70"
+        "digest": "12368f61c238927a8638cf73374b7bd35d8149456f5dd9e6903c86e26dabb5b0"
       },
       "witnesses": [
         {
@@ -49,6 +49,6 @@
       "shelf_log_id": "339454e2bf986b16cdb650079dfc333a386a09d6b47d701804dd96b234cb63e5"
     }
   },
-  "expected_digest": "bf8a5223864ca07681d022c237adfb09f9c3fba1477edfbcf1b67cab6eebeb9e",
-  "record_id": "65c144472537ff0a16ef07e67b939ac25899c2a245b6a93133d06938f5dcef74"
+  "expected_digest": "0e91d7532b004e190000bee64a29a3b15c21cfb979c137fbba30da5335ee0215",
+  "record_id": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d"
 }

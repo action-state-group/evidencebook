@@ -1,0 +1,8 @@
+### Changed: x-deal-v1 `admit`, `check`, `verdict` and `approval` carry a nonce (u528)
+
+- **The leak.** An agreement cites its `admit` by digest, and an act cites its `check`. Neither record held anything the counterparty could not guess, so it could test each possible admission outcome, or check, against the digest.
+- **The fix.** `admit` and `check` now carry a required `nonce`: 256 random bits as 64 lowercase hex, fresh per record. So do the `verdict` and `approval` that an act's person's signature reaches. This follows Sherlock2's privacy rule: any journal record whose digest leaves the holder must carry its own nonce or a required salted member. A secret in a record it cites does not count. An `intent` already meets it with its required `sha256-jcs-nonce256` `verbatim_commitment`.
+- **Where it is in the code.** The rule is in PROFILE §5 and the schema: any journal record whose digest leaves the holder carries its own secret, and records sent whole are exempt. `xdealv1.AdmitBody.Nonce`, `xdealv1.CheckBody.Nonce` and `check_profile.py` carry it. `xdealv1.NewNonce` draws a nonce from `crypto/rand`, and `CheckAuthorizations` refuses a journal in which two records share a nonce or a `verbatim_commitment`. `xdealv1.VerdictBody` and `xdealv1.ApprovalBody` are v0's bodies plus `nonce`.
+- **Refs.** A deal-book record and an offer carry no block `refs`, so a record that leaves the holder cites only through its type's own members.
+- **What changes for fixtures.** The Appendix A fixtures and their digests change, and ten negatives are added (nonce, verbatim_commitment, refs and payment_ref placement).
+- **Not covered yet.** The Rust and Python x-deal-v1 ports (PR 6) will carry it too.

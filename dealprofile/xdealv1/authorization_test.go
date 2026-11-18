@@ -5,6 +5,7 @@ package xdealv1
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,15 +57,16 @@ func rel(name string, r Ref) RelRef {
 }
 
 func (f *authFlow) intent(allowed ...string) Ref {
-	return f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), Allowed: allowed})
+	return f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: allowed})
 }
 
 func (f *authFlow) check(action string) Ref {
-	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17"})
+	// A nonce per check, as NewNonce draws one, but fixed for the vectors.
+	return f.seal(TypeCheck, true, &CheckBody{CheckBody: dealprofile.CheckBody{Action: action}, PaymentRef: "invoice-17", Nonce: label(fmt.Sprint("check nonce ", len(f.journal)))})
 }
 
 func (f *authFlow) verdict(check Ref, result string) Ref {
-	vb := &dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check)}
+	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: result, Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(check)}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 0"))}
 	if result != "pass" {
 		vb.Differences = []dealprofile.Difference{{Question: "terms", Rule: "limit"}}
 		vb.Options = []string{"hold", "proceed"}
@@ -89,7 +91,7 @@ func (f *authFlow) approve(verdict Ref, approver string, proceed bool) Ref {
 	if proceed {
 		choice = "proceed"
 	}
-	a := &dealprofile.ApprovalBody{Choice: choice, Proceed: proceed, Approver: approver}
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: choice, Proceed: proceed, Approver: approver}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 0"))}
 	if approver == "user" {
 		a.SaidCommitment = hx('f')
 	}
@@ -102,15 +104,15 @@ func (f *authFlow) approve(verdict Ref, approver string, proceed bool) Ref {
 // confirm seals the person's confirm_limits approval of the proposal at
 // intent, from allowed previous to allowed next.
 func (f *authFlow) confirm(intent Ref, previous, next []string) Ref {
-	a := &dealprofile.ApprovalBody{Choice: ChoiceConfirm, Proceed: true, Approver: "user", SaidCommitment: hx('f'),
-		Limits: &dealprofile.ApprovalBodyLimits{Previous: dealprofile.LimitSet{Allowed: previous}, New: dealprofile.LimitSet{Allowed: next}}}
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: ChoiceConfirm, Proceed: true, Approver: "user", SaidCommitment: hx('f'),
+		Limits: &dealprofile.ApprovalBodyLimits{Previous: dealprofile.LimitSet{Allowed: previous}, New: dealprofile.LimitSet{Allowed: next}}}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 1"))}
 	return f.seal(TypeApproval, false, a, rel("approves", intent))
 }
 
 // confirmSets is confirm with whole limit sets.
 func (f *authFlow) confirmSets(intent Ref, previous, next dealprofile.LimitSet) Ref {
-	a := &dealprofile.ApprovalBody{Choice: ChoiceConfirm, Proceed: true, Approver: "user", SaidCommitment: hx('f'),
-		Limits: &dealprofile.ApprovalBodyLimits{Previous: previous, New: next}}
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: ChoiceConfirm, Proceed: true, Approver: "user", SaidCommitment: hx('f'),
+		Limits: &dealprofile.ApprovalBodyLimits{Previous: previous, New: next}}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 2"))}
 	return f.seal(TypeApproval, false, a, rel("approves", intent))
 }
 
@@ -261,7 +263,7 @@ func TestApprovalMigration(t *testing.T) {
 	f.intent("pay")
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), Allowed: []string{}})
+	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Allowed: []string{}})
 	f.approve(v, "standing_intent", true)
 	f.pay(c)
 	run("allowed-revoked-before-approval", "a standing intent is judged at the approval: the allowed was emptied after the check", f, false)
@@ -282,7 +284,7 @@ func TestApprovalMigration(t *testing.T) {
 	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pause")
-	a := &dealprofile.ApprovalBody{Choice: "verify_contact", Proceed: false, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "verify_contact", Proceed: false, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 3"))}
 	f.seal(TypeApproval, true, a, rel("approves", v))
 	f.pay(c)
 	run("choice-not-offered", "the person's choice is one of the verdict's options", f, false)
@@ -290,7 +292,7 @@ func TestApprovalMigration(t *testing.T) {
 	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	a = &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: hx('3')}
+	a = &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: hx('3')}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 4"))}
 	f.seal(TypeApproval, true, a, rel("approves", v))
 	f.pay(c)
 	run("card-not-the-checked-card", "the person's approval commits to the card the verdict rendered", f, false)
@@ -298,7 +300,7 @@ func TestApprovalMigration(t *testing.T) {
 	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	a = &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f')}
+	a = &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f')}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 5"))}
 	f.seal(TypeApproval, true, a, rel("approves", v))
 	f.pay(c)
 	run("person-approval-without-card", "the person's approval states which card it answered", f, false)
@@ -346,14 +348,14 @@ func TestApprovalMigration(t *testing.T) {
 	f = newFlow()
 	c = f.check("pay")
 	c2 := f.check("pay")
-	vb := &dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(c)}
+	vb := &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}, CardCommitment: cardOf(c)}, Nonce: label(fmt.Sprint("VerdictBody nonce ", len(f.journal), " 1"))}
 	f.seal(TypeVerdict, true, vb, rel("checks", c), rel("checks", c2))
 	run("verdict-checks-two", "a verdict answers exactly one check", f, false)
 
 	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	other := &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}
+	other := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 6"))}
 	ob := blk(TypeApproval)
 	ob.DealID, ob.At, ob.Refs = "deal-fedcba9876543210", f.at(), []RelRef{rel("approves", v)}
 	f.journal = append(f.journal, record(ob, other))
@@ -362,7 +364,7 @@ func TestApprovalMigration(t *testing.T) {
 
 	f = newFlow()
 	f.intent("pay")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), BoundsCommitment: hx('b')})
+	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), BoundsCommitment: hx('b')})
 	p = f.journal[len(f.journal)-1].digestRef(t)
 	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, BoundsCommitment: hx('b')})
 	c = f.check("pay")
@@ -372,7 +374,7 @@ func TestApprovalMigration(t *testing.T) {
 
 	f = newFlow()
 	f.intent("pay")
-	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: hx('a'), Delegated: []string{"item"}, DelegatedCommitment: hx('d')})
+	f.seal(TypeIntent, false, &dealprofile.IntentBody{VerbatimCommitment: label(fmt.Sprint("verbatim ", len(f.journal))), Delegated: []string{"item"}, DelegatedCommitment: hx('d')})
 	p = f.journal[len(f.journal)-1].digestRef(t)
 	f.confirmSets(p, dealprofile.LimitSet{Allowed: []string{"pay"}}, dealprofile.LimitSet{Allowed: []string{"pay"}, Delegated: []string{"item"}})
 	c = f.check("pay")
@@ -389,7 +391,7 @@ func TestApprovalMigration(t *testing.T) {
 	f = newFlow()
 	c = f.check("pay")
 	v = f.verdict(c, "pass")
-	ab := &dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}
+	ab := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: "proceed", Proceed: true, Approver: "user", SaidCommitment: hx('f'), CardCommitment: f.cards[v.Digest]}, Nonce: label(fmt.Sprint("ApprovalBody nonce ", len(f.journal), " 7"))}
 	back := blk(TypeApproval)
 	back.At, back.Refs = "2026-11-01T10:00:30Z", []RelRef{rel("approves", v)}
 	f.journal = append(f.journal, record(back, ab))
@@ -469,4 +471,37 @@ func (r Record) digestRef(t *testing.T) Ref {
 	d, err := Digest(r)
 	require.NoError(t, err)
 	return RefTo(d)
+}
+
+// NewNonce draws 64 lowercase hex, a different value each time.
+func TestNewNonce(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 64; i++ {
+		n, err := NewNonce()
+		require.NoError(t, err)
+		require.Regexp(t, `^[0-9a-f]{64}$`, n)
+		require.False(t, seen[n])
+		seen[n] = true
+	}
+}
+
+// Two journal records sharing a nonce are refused: it was not drawn fresh
+// (PROFILE §5).
+func TestCheckAuthorizationsRefusesASharedNonce(t *testing.T) {
+	f := &authFlow{t: t}
+	f.intent("pay")
+	c := f.check("pay")
+	v := f.verdict(c, "pass")
+	f.approve(v, "user", true)
+	f.pay(c)
+	_, err := CheckAuthorizations(f.journal, f.acts)
+	require.NoError(t, err)
+
+	again := f.journal[1]
+	body := *again.Body.(*CheckBody)
+	again.Body = &body
+	again.Block.At = f.at()
+	f.journal = append(f.journal, again)
+	_, err = CheckAuthorizations(f.journal, f.acts)
+	assert.ErrorContains(t, err, "a nonce is drawn fresh")
 }

@@ -1,0 +1,40 @@
+{
+  "fixture": "neg-admit-without-nonce",
+  "expect": "invalid",
+  "description": "an admit, which an agreement cites, carries its nonce",
+  "base": "appendix-a/buyer-journal/04-admit-go.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "answers": [
+        {
+          "digest": "b9a9e0d7d59a638baa1a770d324e66621f5fe79ed683385e4658f37d44ba445e",
+          "digest_alg": "SHA-256",
+          "type": "deal-record"
+        }
+      ],
+      "asks": [
+        {
+          "digest": "1913b98c35e7a01fdbf36e93e345f8b68b73543e697911ce2a1f7830bfa25f47",
+          "digest_alg": "SHA-256",
+          "type": "deal-record"
+        }
+      ],
+      "card_digest": "327c6ec0538c420f84fc41293a730ac51f7011ef89c9ffb00680e97e4168117a",
+      "outcome": "GO",
+      "pack_digest": "67b38b2ee2f5b469faf40c483d042b1115fd7660e5e0458b87c2bb007fd398ad",
+      "rows": [
+        "selected_records_in_band"
+      ],
+      "tier": "first_deal_10_100"
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T09:20:00Z",
+      "canonicalization": "jcs",
+      "profile": "x-deal-v1",
+      "record_type": "admit"
+    }
+  }
+}

@@ -15,7 +15,7 @@
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "0ae9e19fd31fd841de15d65a3ba0287850d1abbecfb42b4c91d5a7e11e25fbe5"
+        "digest": "6b267a988b8c8a740551218ff0edb570dc63a33a41a0b09ac4d2ef81054c7a8e"
       }
     },
     "body": {
@@ -33,14 +33,14 @@
         "due": "2026-11-27T23:59:59Z"
       },
       "read": {
-        "buyer": "9ed8ca8b7a0c2ccf4456e3ae1eb4f3875f76e71c3ac6205d35c7bac4800460f2",
-        "seller": "aa3ed5d65bb0e3564216df7b3c275333a5b8eeaa4da188438803ee58051db5d2"
+        "buyer": "7b1f37ef3e1fd334b7d4f6fac9bd39e0e614afe51fd4106333c51035a4cc5c68",
+        "seller": "68f7d5b890bc7f0962600bc0b290ae4862ebeec02a997955b07fdd27207a943e"
       },
       "forum": "auto:ref",
       "rules_digest": "988138e31bd4a96f55b3ba933f681deb4551c812ee4e19555aeb843f22d7d591",
       "final": true
     }
   },
-  "expected_digest": "2649094302993395ae966118b1a326c1785bc1d6440be43a4f2c44e207d9e2e6",
-  "record_id": "46bae749c9b3bbc79d38f2fecf6d04bfbc640c423bce44e8ad9485d1dcf9b204"
+  "expected_digest": "6f7d98688119855aeb41ce4339aca260b1785162003fc3ff53850cd24c9333c3",
+  "record_id": "2e76b582de3c889391ea4b977e075144494661563e21805c8b618e626e6abc44"
 }

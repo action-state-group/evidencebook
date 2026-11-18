@@ -16,7 +16,7 @@
           "rel": "approves",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "a1c9bae28004cec826954108533c8c2f7ed1fc0816aeedb1bae5c8e84523004c"
+          "digest": "befb496a1862919fb87a3a324f4a7b8e3abb96525dbab6fbde29d11f42f3c78e"
         }
       ]
     },
@@ -24,9 +24,10 @@
       "choice": "proceed",
       "proceed": true,
       "approver": "user",
-      "said_commitment": "05e58281a63ffd3b2ed7b5505c71d41a542a0c0eb4fb243b989c9a891d1620a3",
-      "card_commitment": "89da57ea7fb5912a97cd84552b2b2bbcc11e122c6bbacedd09a128cedbcb9e5b"
+      "said_commitment": "7b491b33e8353a339cf9db320c4d304f97713dc2803a89d8287e397d01818c0c",
+      "card_commitment": "e94e71bb8119fc77ac69d9f99047755515e8fddf2b24b4a55ba888eecfcb6d20",
+      "nonce": "5203f91b0d6f0c0b3c89dff95f0d4c843adddc56ec1caaeebbdbce7cd50282d7"
     }
   },
-  "expected_digest": "69cb603a3275518441deb4739c243b83796922e33c7a53f707e9da4d1309586d"
+  "expected_digest": "0000609d0e91857847d896e13fc003a34b460ebc38777bedf728ddf5855c9fc0"
 }

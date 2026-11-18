@@ -17,7 +17,7 @@
     },
     "x-deal-v1": {
       "agreement_ref": {
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
@@ -28,13 +28,13 @@
         "received"
       ],
       "prev": {
-        "digest": "aa095eb54c7d4e519704a6fe250d88e481930103b1626cb91290bea3dadde34e",
+        "digest": "82ae32c59d91fb780bc72562f64a574bb3bd5c0c18c5e11fad54317eaaf7e04c",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
       "profile": "x-deal-v1",
       "record_type": "statement",
-      "seen": "788cd522efb043b7448a388cf7ae55aea4827aa9185636a453267e0eb724e9aa",
+      "seen": "29e4c8d3debd2f4cefca12bd034ff7e5a4f48dc76c25ca0785250b1e67f6b885",
       "seq": 3
     }
   }

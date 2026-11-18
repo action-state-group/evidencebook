@@ -26,8 +26,9 @@
       ],
       "pack_digest": "67b38b2ee2f5b469faf40c483d042b1115fd7660e5e0458b87c2bb007fd398ad",
       "card_digest": "327c6ec0538c420f84fc41293a730ac51f7011ef89c9ffb00680e97e4168117a",
-      "answers": []
+      "answers": [],
+      "nonce": "c03fa671f1589567ce70538c4d9dd04c6f417ff0e46e79d7e0a87b4b0b07b7f1"
     }
   },
-  "expected_digest": "00bafd0ec4db7a79dd73cc81e2ff306ed285eb6f3879f831e5bfe6bab4caae29"
+  "expected_digest": "8a5b6eba4db9eecb22b96c98232730d5a46b0e0710c6c0c9216b1b2064ddb477"
 }

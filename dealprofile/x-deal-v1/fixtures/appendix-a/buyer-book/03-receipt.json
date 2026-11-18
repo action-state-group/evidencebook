@@ -15,14 +15,14 @@
       "prev": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "aa095eb54c7d4e519704a6fe250d88e481930103b1626cb91290bea3dadde34e"
+        "digest": "82ae32c59d91fb780bc72562f64a574bb3bd5c0c18c5e11fad54317eaaf7e04c"
       },
       "agreement_ref": {
         "type": "deal-record",
         "digest_alg": "SHA-256",
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da"
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85"
       },
-      "seen": "788cd522efb043b7448a388cf7ae55aea4827aa9185636a453267e0eb724e9aa",
+      "seen": "29e4c8d3debd2f4cefca12bd034ff7e5a4f48dc76c25ca0785250b1e67f6b885",
       "marks": [
         "received"
       ]
@@ -36,6 +36,6 @@
       ]
     }
   },
-  "expected_digest": "2736da94e93b972a72988f8ee7b28eb67f512ec2835d6ab6ac20b04d1ba17293",
-  "record_id": "b1110aff54317152320cb26318402a4c5c0677fe87af56375f0984ea876323b3"
+  "expected_digest": "04977fc5221e370f5c3857db680c6d6515d1110abc982250fef04ce7e89c355c",
+  "record_id": "82ca6367f3ed817d62f90d2c3ec7ab42b1b5be35854f9cb788213e5b31ca6493"
 }

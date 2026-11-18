@@ -14,7 +14,7 @@
         "rules_url": "https://adjudicator.example/rules"
       },
       "admit": {
-        "digest": "d7e0919bd0cecafe95c3b1fec7a40b14ec1dbd7f95735782df52464a037ebc70",
+        "digest": "12368f61c238927a8638cf73374b7bd35d8149456f5dd9e6903c86e26dabb5b0",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },

@@ -125,7 +125,7 @@ _VALIDATORS = {}
 
 
 def _validators():
-    """The v1 record validator and v0's body_check validator, or None
+    """The v1 record validator and v0's closed overlay body validators, or None
     without jsonschema."""
     global SCHEMA_MODE
     if not _VALIDATORS:
@@ -148,7 +148,8 @@ def _validators():
                 yield ValidationError(f"{instance!r} does not match {patrn!r}")
         Strict = validators.extend(Draft202012Validator, {"pattern": pattern})
         _VALIDATORS["record"] = Strict(v1s, registry=registry)
-        _VALIDATORS["body_check"] = Strict({"$ref": v0s["$id"] + "#/$defs/body_check"}, registry=registry)
+        for d in ("body_check", "body_verdict", "body_approval"):
+            _VALIDATORS[d] = Strict({"$ref": v0s["$id"] + "#/$defs/" + d}, registry=registry)
         SCHEMA_MODE = "jsonschema (Draft 2020-12)"
     return _VALIDATORS
 
@@ -273,14 +274,16 @@ def check_body(rec):
                 raise bad("record", "an agreement with a counterparty that runs the layer names its record key in counterparty_key")
             if body["side"] == "acceptor" and blk.get("seen") is not None:
                 raise bad("record", "the acceptor's agreement comes first: its seen is null")
-    elif t == "check":
-        # v0's body_check is closed, so the body without payment_ref is
-        # checked against it here, after the record checks, as Go's checkBody.
-        v = _validators().get("body_check")
+    elif t in ("check", "verdict", "approval"):
+        # v0's overlay bodies are closed, so the body without v1's own members
+        # (a check's payment_ref and nonce, a verdict's or approval's nonce) is
+        # checked against v0's, as Go's checkV0Body.
+        v = _validators().get("body_" + t)
         if v is not None:
-            errs = list(v.iter_errors({k: x for k, x in body.items() if k != "payment_ref"}))
+            own = ("payment_ref", "nonce") if t == "check" else ("nonce",)
+            errs = list(v.iter_errors({k: x for k, x in body.items() if k not in own}))
             if errs:
-                raise bad("schema", f"the check body is not v0's body_check: {errs[0].message}")
+                raise bad("schema", f"the {t} body is not v0's body_{t}: {errs[0].message}")
 
 
 def stage_record(rec):
@@ -300,6 +303,8 @@ def stage_record(rec):
         else:
             if "seen" not in blk:
                 raise bad("record", "a deal-book record carries seen (null when nothing is held from the other side)")
+            if "refs" in blk:
+                raise bad("record", "a deal-book record carries no refs: it cites only through its type's own members")
             if ("agreement_ref" in blk) != (seq > 1):
                 raise bad("record", "a deal-book record carries agreement_ref exactly when its seq is past 1")
             if t == "agree" and body.get("kind") == "agreement" and seq != 1:
@@ -309,6 +314,8 @@ def stage_record(rec):
     else:
         if seq != 0 or any(k in blk for k in ("prev", "agreement_ref", "seen")):
             raise bad("record", "a journal record carries no seq, prev, agreement_ref or seen, so a record sent whole shows no place in the journal")
+        if t == "propose" and "refs" in blk:
+            raise bad("record", "an offer, sent whole, carries no refs: it cites only through counter_to")
         if t == "agree" and any(k in blk for k in ("refs", "marks", "counterparty")):
             raise bad("record", f"a {body.get('kind')} carries no refs, marks or counterparty fingerprint: it names nothing beyond the offer it answers")
     check_dates(rec)

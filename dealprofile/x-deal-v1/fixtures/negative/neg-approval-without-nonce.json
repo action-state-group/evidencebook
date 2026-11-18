@@ -1,0 +1,31 @@
+{
+  "fixture": "neg-approval-without-nonce",
+  "expect": "invalid",
+  "description": "an approval, whose digest the person signs beside the act, carries its nonce",
+  "base": "appendix-a/buyer-journal/08-approval-proceed.json",
+  "check": "record",
+  "expected_stage": "schema",
+  "expected_error_contains": "",
+  "record": {
+    "body": {
+      "approver": "standing_intent",
+      "choice": "proceed",
+      "proceed": true
+    },
+    "x-deal-v1": {
+      "at": "2026-11-01T10:12:00Z",
+      "canonicalization": "jcs",
+      "deal_id": "deal-6a1f0c93b27d4e58",
+      "profile": "x-deal-v1",
+      "record_type": "approval",
+      "refs": [
+        {
+          "digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca",
+          "digest_alg": "SHA-256",
+          "rel": "approves",
+          "type": "deal-record"
+        }
+      ]
+    }
+  }
+}

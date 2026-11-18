@@ -16,8 +16,9 @@
       "action": "pay",
       "amount_minor": 6000,
       "currency": "USD",
-      "payment_ref": "pay-ref-7731"
+      "payment_ref": "pay-ref-7731",
+      "nonce": "5399b4c5c3c7c040b5ac7571a2d1ae9cf5e8497d20ee116435dc11397dc0cc95"
     }
   },
-  "expected_digest": "fd70943ccc9f6407cbe9d3f87b284743ef9209864b8a34c9140b6a01fc240cec"
+  "expected_digest": "c92275672ad7d9779c5d0ad2d5702da4f6f235ca73c3a5c5e0a39d736005013b"
 }

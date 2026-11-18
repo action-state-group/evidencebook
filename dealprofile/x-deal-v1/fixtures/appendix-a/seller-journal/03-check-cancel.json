@@ -16,8 +16,9 @@
       "action": "cancel",
       "amount_minor": 6000,
       "currency": "USD",
-      "payment_ref": "refund-ref-7731"
+      "payment_ref": "refund-ref-7731",
+      "nonce": "39e56229dfd51b495bc3b59011220f2879a02fce25bb78cb3a118f3b918248ee"
     }
   },
-  "expected_digest": "d10026397365e4d3d84ff5e22a2479f05fb753f09c8af0e471f44c2dd8b3d29a"
+  "expected_digest": "70476288825c348ddd0e5c1a1be9f2b2eb9dbcd76c945fd95f0e894134b4fb5f"
 }

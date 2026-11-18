@@ -5,7 +5,7 @@
   "base": "appendix-a/buyer-book/01-agreement.json",
   "check": "agreement",
   "with": "appendix-a/buyer-journal/05-offer.json",
-  "held_acceptor_agreement": "65c144472537ff0a16ef07e67b939ac25899c2a245b6a93133d06938f5dcef74",
+  "held_acceptor_agreement": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d",
   "expected_stage": "agreement",
   "expected_error_contains": "names the acceptor's agreement",
   "record": {
@@ -16,7 +16,7 @@
         "rules_url": "https://adjudicator.example/rules"
       },
       "admit": {
-        "digest": "bb70c70a22a41b2f09d25c78be93d81e150eac4a5f147b29fe27529a70556972",
+        "digest": "d69f3b3f5ec5cd7438a65b9ed8a8420893599ffd6e8b5ad3553c7c8f2a7e8bb3",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },

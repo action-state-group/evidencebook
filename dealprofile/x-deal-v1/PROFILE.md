@@ -65,7 +65,7 @@ labels, not the version of the record that uses them, so every fingerprint keeps
 | `prev` | REQUIRED iff `seq` > 1 | digest ref of the book's record at `seq - 1`. |
 | `agreement_ref` | REQUIRED iff in a deal book and `seq` > 1 | digest ref of the book's agreement. |
 | `seen` | REQUIRED in a deal book | the record id of the last record its author held from the other side, or `null` (section 6). |
-| `refs` | per type | typed citations of earlier records, as v0's rel refs. |
+| `refs` | per type | typed citations of earlier records, as v0's rel refs. Only journal records that are not sent carry them (a `verdict`'s `checks`, an `approval`'s `approves`); a deal-book record and a record sent whole carry none (section 5, "A journal record whose digest leaves the holder"). |
 | `marks` | OPTIONAL | the named records (the `named` of the rows) this record is, such as `["paid"]`. |
 | `counterparty` | OPTIONAL | v0's fingerprint block. |
 | `producer`, `commit_alg` | OPTIONAL | as v0. |
@@ -207,10 +207,33 @@ That the agreement's adjudicator signed it is the reader's, from the ruling's Ca
 `refusal` or `absence`) and `answer` (the digest ref of the library's answer document).
 
 **`admit`.** `outcome` (`GO`, `ASK`, `LIMIT` or `NO`), `tier`, `rows`, `asks`, `pack_digest`,
-`card_digest`, `answers`.
+`card_digest`, `answers`, `nonce`.
 
-**`check`.** v0's `body_check`, plus `payment_ref`. Without `payment_ref` the body MUST be valid
-under v0's closed `body_check`.
+**`check`.** v0's `body_check`, plus `payment_ref` and `nonce`. Without `payment_ref` and `nonce`
+the body MUST be valid under v0's closed `body_check`.
+
+**A journal record whose digest leaves the holder carries its own secret** (u528: the admission
+decision, and what the person checked, stay in the person's own book). A journal record whose
+digest leaves the holder MUST carry a member of its own that nobody else can guess. A secret in a
+record it cites does not count, since the cited digest may itself be known: an act shows its
+check's digest. A digest leaves the holder when it is cited by a sent or deal-book record, signed
+beside a record (section 8's person's signatures over an approval, a `confirm_limits` and the
+first intent), or disclosed. Otherwise whoever holds the digest could try each likely content
+against it.
+- `admit`, `check`, `verdict` and `approval` carry `nonce`: a fresh random 256-bit value, 64
+  lowercase hex, drawn for each record with `xdealv1.NewNonce` (`crypto/rand`) and never
+  reused. `verdict` and `approval` are v0's bodies plus `nonce`, read against v0's closed bodies
+  without it. A verdict's digest does not leave the holder under this rule (section 8 signs the
+  approval, not the verdict); its nonce is defence in depth.
+- An `intent` carries the required `verbatim_commitment`, a `sha256-jcs-nonce256` commitment.
+- `xdealv1.CheckAuthorizations` refuses a journal in which two records share a nonce or a
+  `verbatim_commitment`.
+- A record sent whole (an offer, a decline, a cancellation; section 7) is exempt. Its content
+  leaves with it, so its digest tells nobody anything the record does not.
+- The citation stays a plain digest ref, and the lookup in the holder's journal is unchanged, as
+  with `reason_commitment`.
+- A journal record type whose digest a later version lets leave the holder MUST meet this rule
+  too.
 
 ## 6. `seen`
 

@@ -74,8 +74,8 @@ func acceptorAgreement(offer Record) Record {
 	})
 }
 
-func approval(choice string) *dealprofile.ApprovalBody {
-	a := &dealprofile.ApprovalBody{Choice: choice, Proceed: choice != "hold", Approver: "user", SaidCommitment: hx('f')}
+func approval(choice string) *ApprovalBody {
+	a := &ApprovalBody{ApprovalBody: dealprofile.ApprovalBody{Choice: choice, Proceed: choice != "hold", Approver: "user", SaidCommitment: hx('f')}, Nonce: hx('6')}
 	if choice == ChoiceConfirm {
 		a.Limits = &dealprofile.ApprovalBodyLimits{}
 	}
@@ -100,7 +100,7 @@ func validRecords(t *testing.T) map[string]Record {
 	rulingBlock := blk(TypeRuling)
 	rulingBlock.Seq = 1
 	journalAsk := blk(TypeAsk)
-	checkBody := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}, PaymentRef: "invoice-17"}
+	checkBody := &CheckBody{CheckBody: dealprofile.CheckBody{Action: "pay"}, PaymentRef: "invoice-17", Nonce: hx('7')}
 	return map[string]Record{
 		"propose":              offer,
 		"agree/agreement":      acceptorAgreement(offer),
@@ -118,10 +118,10 @@ func validRecords(t *testing.T) map[string]Record {
 		"ask/journal":          record(journalAsk, &AskBody{Request: *ref('7'), To: "counterparty"}),
 		"ask/book":             record(inBook(TypeAsk, 7), &AskBody{Request: *ref('7'), To: "adjudicator"}),
 		"answer/journal":       record(noDeal(TypeAnswer), &AnswerBody{Request: *ref('7'), Outcome: "absence", Answer: *ref('8')}),
-		"admit":                record(noDeal(TypeAdmit), &AdmitBody{Outcome: "GO", Tier: "t1", Rows: []string{}, Asks: []Ref{}, PackDigest: hx('a'), CardDigest: hx('9'), Answers: []Ref{}}),
+		"admit":                record(noDeal(TypeAdmit), &AdmitBody{Outcome: "GO", Tier: "t1", Rows: []string{}, Asks: []Ref{}, PackDigest: hx('a'), CardDigest: hx('9'), Answers: []Ref{}, Nonce: hx('8')}),
 		"intent":               record(noDeal(TypeIntent), &dealprofile.IntentBody{VerbatimCommitment: hx('a')}),
 		"check":                record(blk(TypeCheck), checkBody),
-		"verdict":              record(blk(TypeVerdict), &dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}}),
+		"verdict":              record(blk(TypeVerdict), &VerdictBody{VerdictBody: dealprofile.VerdictBody{Result: "pass", Differences: []dealprofile.Difference{}, Options: []string{}}, Nonce: hx('5')}),
 		"approval/proceed":     record(blk(TypeApproval), approval("proceed")),
 		"approval/confirm":     record(noDeal(TypeApproval), approval(ChoiceConfirm)),
 		"rules_verdict":        record(inBook(TypeRulesVerdict, 8), &dealprofile.RulesVerdictBody{Word: "met", PackDigest: hx('a')}),

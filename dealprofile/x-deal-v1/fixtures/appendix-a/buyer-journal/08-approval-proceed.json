@@ -16,15 +16,16 @@
           "rel": "approves",
           "type": "deal-record",
           "digest_alg": "SHA-256",
-          "digest": "4772111bd8b08c186526648c87d56e401e622d7e9ebc6864fabee19daa4bbdb1"
+          "digest": "35544ac049d9274577d609ed1acdb4fe73ae2cf07239585202ee93da48d118ca"
         }
       ]
     },
     "body": {
       "choice": "proceed",
       "proceed": true,
-      "approver": "standing_intent"
+      "approver": "standing_intent",
+      "nonce": "aae67dbf0565b4eebfde4447d40dffaba706bf3dbdb28579ffa247a9ac6b5c90"
     }
   },
-  "expected_digest": "cc1ed33a8de643e9865b483fd1cfee34a8122b0074cf73a6fc19f1da0fe03836"
+  "expected_digest": "0d9393bd8c044a3b89aecc22c4aa1c78af80dd6eac1156eb54b6011ec693b31c"
 }

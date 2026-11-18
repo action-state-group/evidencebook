@@ -11,6 +11,7 @@
       "action": "teleport",
       "amount_minor": 6000,
       "currency": "USD",
+      "nonce": "5399b4c5c3c7c040b5ac7571a2d1ae9cf5e8497d20ee116435dc11397dc0cc95",
       "payment_ref": "pay-ref-7731"
     },
     "x-deal-v1": {

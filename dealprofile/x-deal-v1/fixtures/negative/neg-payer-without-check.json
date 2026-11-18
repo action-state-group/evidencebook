@@ -18,7 +18,7 @@
     },
     "x-deal-v1": {
       "agreement_ref": {
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
@@ -29,13 +29,13 @@
         "paid"
       ],
       "prev": {
-        "digest": "97d542256add6d5ca13998809f6cfd69a61ecf6dcd6bb145561a6da62ff173da",
+        "digest": "02419989baf62fa35ddfc95b4bf8ee154aaebaf0da7f5b6a558317462b227c85",
         "digest_alg": "SHA-256",
         "type": "deal-record"
       },
       "profile": "x-deal-v1",
       "record_type": "settle",
-      "seen": "65c144472537ff0a16ef07e67b939ac25899c2a245b6a93133d06938f5dcef74",
+      "seen": "f4bc4f74947fa9934274e9747b7b17e987c86ef15d15f038b0a0d24ed5772e2d",
       "seq": 2
     }
   }
