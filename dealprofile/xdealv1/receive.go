@@ -676,14 +676,27 @@ func (p *ReceiveProfile) ProofSender(ctx context.Context, checkpointKeyID, logID
 	return candidates[0], true, nil
 }
 
+// CanActInput names the deal a first act is of, the record id of the
+// counterparty's agreement for it (as the holder's index records it, design
+// §3.1), and, when the counterparty has published an evidence commitment, the
+// shelf log id that commitment names ("" when none is held).
+type CanActInput struct {
+	DealID               string
+	CounterpartAgreement string
+	CommitmentShelfLog   string
+}
+
 // CanAct is the coverage gate before the holder's first act of a deal (design
-// §7.2, gate B): the counterparty's agreement, whose record id is given, is
-// in its sender's counted prefix as the store computes it now, and a held
-// stamp proof bound to it covers it: its fact's book id is that record id,
-// its checkpoints are signed by the agreement's checkpoint_key, its shelf log
-// is the agreement's shelf_log_id, and it covers the agreement among the
-// records counted now.
-func (p *ReceiveProfile) CanAct(ctx context.Context, counterpartAgreement string) (bool, error) {
+// §7.2, gate B). The counterparty's agreement must be of this deal, signed by
+// the key the deal expects (our agreement's counterparty_key, or the key our
+// offer was sent to) and citing the offer the deal answers; it must be in its
+// sender's counted prefix as the store computes it now; and a held stamp proof
+// bound to it must cover it: its fact's book id is the agreement's record id,
+// its checkpoints are signed by the agreement's checkpoint_key, and its shelf
+// log is the agreement's shelf_log_id and, when given, the log the
+// counterparty's evidence commitment names.
+func (p *ReceiveProfile) CanAct(ctx context.Context, in CanActInput) (bool, error) {
+	counterpartAgreement := in.CounterpartAgreement
 	h, err := p.Shelf.ReceivedRecordOf(ctx, counterpartAgreement)
 	if errors.Is(err, evidencebook.ErrNotFound) || errors.Is(err, evidencebook.ErrDeleted) {
 		return false, nil
@@ -696,7 +709,21 @@ func (p *ReceiveProfile) CanAct(ctx context.Context, counterpartAgreement string
 		return false, nil
 	}
 	ag, ok := asAgree(b.Record.Body)
-	if !ok || ag.Kind != KindAgreement {
+	if !ok || ag.Kind != KindAgreement || b.Record.Block.DealID != in.DealID {
+		return false, nil
+	}
+	o, err := p.ours(ctx)
+	if err != nil {
+		return false, err
+	}
+	if a, held := o.agreement(in.DealID); held {
+		if a.CounterpartyKey.V == nil || *a.CounterpartyKey.V != h.SenderKey || ag.Offer.Digest != a.Offer.Digest {
+			return false, nil
+		}
+	} else if of, offer, ok := o.offerByDigest(ag.Offer.Digest); !ok || offer.Block.DealID != in.DealID || of.To.V == nil || *of.To.V != h.SenderKey {
+		return false, nil
+	}
+	if in.CommitmentShelfLog != "" && in.CommitmentShelfLog != ag.ShelfLogID {
 		return false, nil
 	}
 	prefix, err := p.Shelf.CountedPrefix(ctx, h.SenderKey, h.LogID)
