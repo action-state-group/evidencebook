@@ -246,8 +246,8 @@ until it has its own terms leg, which this profile does not define yet.
 `xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
 the record whose digest is `agent_input_digest`, that the record passes sections 1 to 5, and,
 given the offer, that `offer` cites it and the signer is the one section 5 names, and that an
-offer with one payment row carries exactly its terms leg and no other record a `settlement`
-member. The pair does
+offer with one payment row carries exactly its terms leg and that no other record carries a
+`settlement` member. The pair does
 not show the record's place in the sender's journal, nor when it was written: `at` is the
 sender's word.
 
