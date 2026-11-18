@@ -11,6 +11,7 @@ agreement.
 """
 from __future__ import annotations
 
+import bisect
 import re
 import threading
 from dataclasses import dataclass, field
@@ -26,7 +27,7 @@ from .rawjson import GoJSONError, string_member, string_value, unmarshal_map
 from .sent import SENT_LOG_PREFIX, STAGE_BOOK, BookRead, Sent, verify_book, verify_sent
 from ..check import StageError
 
-__all__ = ["GATE_NO_PROOF", "GATE_NO_LAYER", "ActGate", "ActGateInput", "CanActInput", "ReceiveProfile"]
+__all__ = ["GATE_NO_PROOF", "GATE_NO_LAYER", "ActGate", "ActGateInput", "CanActInput", "ReceiveProfile", "version"]
 
 #: No held stamp proof covers the counterparty's agreement.
 GATE_NO_PROOF = "no_counterparty_proof"
@@ -431,7 +432,8 @@ class ReceiveProfile:
             seqs = list(c.retry) + list(range(c.journal_seen + 1, size + 1))
             added: list[tuple[int, Record]] = []
             retry: list[int] = []
-            by_seq = {r.seq: r for r in journal.records()} if seqs else {}
+            wanted = set(seqs)
+            by_seq = {r.seq: r for r in journal.records() if r.seq in wanted} if seqs else {}
             for n in seqs:
                 r = by_seq.get(n)
                 if r is None:
@@ -443,8 +445,6 @@ class ReceiveProfile:
                     retry.append(n)
             if seqs:
                 for n, rec in added:
-                    import bisect
-
                     at = bisect.bisect_left(c.journal_seq, n)
                     c.journal_seq.insert(at, n)
                     c.journal.insert(at, rec)

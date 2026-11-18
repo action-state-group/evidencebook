@@ -84,6 +84,21 @@ func (p *party) recCanAct(in CanActInput) (bool, error) {
 	return ok, err
 }
 
+// recRetention sets the retention state of the holder's journal record at
+// seq, recorded with the lifecycle record it seals.
+func (p *party) recRetention(seq uint64, state evidencebook.RetentionState) {
+	ctx := context.Background()
+	journal, err := p.shelf.Journal(ctx)
+	require.NoError(p.t, err)
+	recs, err := journal.Query(ctx, evidencebook.Filter{FromSeq: seq, ToSeq: seq})
+	require.NoError(p.t, err)
+	require.Len(p.t, recs, 1)
+	rec, err := journal.SetRetention(ctx, recs[0].RecordID, state, "test")
+	require.NoError(p.t, err)
+	recordStep(txOp{Op: "retention", Party: p.name, In: map[string]any{"seq": seq, "state": state, "reason": "test"},
+		Out: rec.RecordID})
+}
+
 func (p *party) recProofSender(checkpointKeyID, logID string) (string, bool, error) {
 	sender, ok, err := p.profile.ProofSender(context.Background(), checkpointKeyID, logID)
 	recordStep(txOp{Op: "proof_sender", Party: p.name, In: []string{checkpointKeyID, logID},
@@ -111,9 +126,9 @@ func (p *party) recGateAct(in ActGateInput) (ActGate, error) {
 
 // TestHolderTranscripts writes and checks testdata/deal-v1/holder
 // (EB_WRITE_DEAL_V1_VECTORS=1): each scenario run again with its steps
-// recorded. The scenarios that change a shelf otherwise than through the
-// recorded steps (a journal record withheld, a book record with two
-// payloads) are Go's alone.
+// recorded. TestBookPairWithTwoPayloads, which appends a book record by
+// hand, and TestOursResultIsACopy, which reads the profile's cache, are Go's
+// alone; Python tests both of those on its own.
 func TestHolderTranscripts(t *testing.T) {
 	scenarios := []struct {
 		name string
@@ -132,6 +147,7 @@ func TestHolderTranscripts(t *testing.T) {
 		{"gate-refuses-another-book", TestGateActRefusesAnotherBook}, {"gate-holds-the-acceptor", TestGateActHoldsTheAcceptor},
 		{"gate-without-witnesses-and-an-agreement", TestGateActWithoutWitnessesAndWithoutAnAgreement},
 		{"gate-refuses-the-counterpartys-agreement", TestGateActRefusesTheCounterpartysAgreement},
+		{"withheld-offer-read-again", TestWithheldOfferReadAgain}, {"can-act-without-a-layer", TestCanActWithoutALayerIsFalse},
 	}
 	type transcript struct {
 		Name  string `json:"name"`

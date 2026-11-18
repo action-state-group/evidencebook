@@ -292,13 +292,17 @@ func TestHandshakeFromOffer(t *testing.T) {
 
 	// The gate is of one deal: the same agreement and proof do not open it
 	// for another deal, and a commitment naming another shelf log closes it.
-	for name, in := range map[string]CanActInput{
-		"another deal":                 {DealID: "deal-9999999999999999", CounterpartAgreement: h.agreementID},
-		"another commitment shelf log": {DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: "deal-cadence/ffffffffffffffff"},
+	// A slice, not a map: each call is a transcript step, in order.
+	for _, c := range []struct {
+		name string
+		in   CanActInput
+	}{
+		{"another deal", CanActInput{DealID: "deal-9999999999999999", CounterpartAgreement: h.agreementID}},
+		{"another commitment shelf log", CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: "deal-cadence/ffffffffffffffff"}},
 	} {
-		ok, err = h.buyer.recCanAct(in)
+		ok, err = h.buyer.recCanAct(c.in)
 		require.NoError(t, err)
-		assert.False(t, ok, name)
+		assert.False(t, ok, c.name)
 	}
 	ok, err = h.buyer.recCanAct(CanActInput{DealID: fxDealID, CounterpartAgreement: h.agreementID, CommitmentShelfLog: testCadenceLog})
 	require.NoError(t, err)
@@ -651,9 +655,8 @@ func TestWithheldOfferReadAgain(t *testing.T) {
 	offers, err := journal.Query(ctx, evidencebook.Filter{})
 	require.NoError(t, err)
 	require.NotEmpty(t, offers)
-	offerID := offers[len(offers)-1].RecordID
-	_, err = journal.SetRetention(ctx, offerID, evidencebook.Withheld, "test")
-	require.NoError(t, err)
+	offerSeq := offers[len(offers)-1].Header.Seq
+	h.buyer.recRetention(offerSeq, evidencebook.Withheld)
 
 	decline := Record{Block: journalBlock(TypeAgree, "2026-11-01T09:40:00Z", true),
 		Body: &AgreeBody{Kind: KindDecline, Offer: RefTo(mustDigest(t, h.offer)), Reason: ReasonOther}}
@@ -661,8 +664,7 @@ func TestWithheldOfferReadAgain(t *testing.T) {
 	_, err = h.buyer.receiveRaw(pair, nil)
 	assert.ErrorIs(t, err, evidencebook.ErrRefused, "the offer cannot be read while withheld")
 
-	_, err = journal.SetRetention(ctx, offerID, evidencebook.Available, "test")
-	require.NoError(t, err)
+	h.buyer.recRetention(offerSeq, evidencebook.Available)
 	res := h.buyer.receive(pair, nil)
 	assert.True(t, res.Record.Stored, "read again once available")
 }

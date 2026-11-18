@@ -19,7 +19,7 @@ from capsule_emit.artifact.sqlite import SqliteArtifactStore
 from evidencebook.cadence import CadenceConfig
 from evidencebook.deal.v1 import holder, sent
 from evidencebook.deal.v1.check import decode
-from evidencebook.record import Entry, Link
+from evidencebook.record import CITES, OBSERVED_EVENT, Entry, Link
 from evidencebook.shelf import Shelf
 from evidencebook.shelf_receive import ReceiveConfig
 from evidencebook.shelf_stamp_proof import StampProof
@@ -119,10 +119,20 @@ def nulls(v):
     return v
 
 
+def case(name: str) -> dict:
+    return next(c for c in CASES if c["name"] == name)
+
+
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_holder_transcript(case, tmp_path):
+    replay(case, tmp_path)
+
+
+def replay(case: dict, tmp_path: Path, upto: int | None = None) -> dict[str, Party]:
+    """Replays ``case``'s steps (before step ``upto``, when given) and
+    returns its parties."""
     parties: dict[str, Party] = {}
-    for i, step in enumerate(case["steps"]):
+    for i, step in enumerate(case["steps"][:upto]):
         op, name = step["op"], step.get("party")
         where = f"step {i} ({op} by {name})"
         if op == "party":
@@ -158,6 +168,14 @@ def test_holder_transcript(case, tmp_path):
             p.cadence.stamp(p.now)
             proof = p.cadence.stamp_proof(step["first"], 0, "counterparty")
             assert jcs(proof.value()) == jcs(step["out"]), where
+        elif op == "retention":
+            # Go's SetRetention: a lifecycle record citing the record.
+            journal = p.shelf.journal()
+            target = next(r for r in journal.records() if r.seq == step["in"]["seq"])
+            rec = journal.append(Entry("lifecycle", OBSERVED_EVENT, links=(Link(CITES, target.record_id),),
+                                       statement={"retention_state": step["in"]["state"],
+                                                  "reason": step["in"]["reason"]}))
+            assert rec.record_id == step["out"], where
         elif op == "receive":
             record = bytes.fromhex(step["pair"]) if step.get("pair") else None
             proof = go_proof(step["proof"]) if step.get("proof") else None
@@ -178,7 +196,7 @@ def test_holder_transcript(case, tmp_path):
             sender, ok = p.profile.proof_sender(*step["in"])
             assert {"sender": sender, "ok": ok, "error": None} == step["out"], where
         elif op == "answered":
-            held = next(h for h in [p.shelf.received_record_of(step["in"])])
+            held = p.shelf.received_record_of(step["in"])
             assert {"ok": p.profile.answered(held.received), "error": None} == step["out"], where
         elif op == "gate":
             i_ = step["in"]
@@ -193,3 +211,69 @@ def test_holder_transcript(case, tmp_path):
             assert got == step["out"], where
         else:
             raise AssertionError(f"unknown op {op}")
+    return parties
+
+
+def test_ours_result_is_a_copy(tmp_path):
+    # Go's TestOursResultIsACopy: the buyer's offer withheld, a cold profile
+    # reads none, then the offer read again once available; an earlier
+    # result is unchanged.
+    c = case("withheld-offer-read-again")
+    first = next(i for i, s in enumerate(c["steps"]) if s["op"] == "retention")
+    buyer = replay(c, tmp_path, first + 1)["buyer"]
+    cold = holder.ReceiveProfile(buyer.shelf)
+    before = cold._ours()
+    assert before.journal == [] and cold._cache.retry
+    journal = buyer.shelf.journal()
+    offer = next(r for r in journal.records() if r.seq == c["steps"][first]["in"]["seq"])
+    journal.append(Entry("lifecycle", OBSERVED_EVENT, links=(Link(CITES, offer.record_id),),
+                         statement={"retention_state": "AVAILABLE"}))
+    after = cold._ours()
+    assert len(after.journal) == 1 and not cold._cache.retry
+    assert before.journal == []
+
+
+def test_a_book_opening_with_two_payloads_is_not_an_agreement(tmp_path):
+    # Go's v1Payload: a record committing two payloads is not read as an
+    # x-deal-v1 record, so its book opens with no agreement of ours.
+    c = case("handshake-from-offer")
+    parties = replay(c, tmp_path)
+    seal = next(s for s in c["steps"] if s["op"] == "seal")
+    p = parties[seal["party"]]
+    agreements = len(p.profile._ours().agreements)
+    book = p.shelf.open("deal/" + hashlib.sha256(b"two payloads").hexdigest()[:32])
+    p.tick()
+    book.append(Entry("deal_step", "producer_claim", payloads=(jcs(seal["record"]), b"{}"),
+                      subject_ref=seal["record"]["x-deal-v1"]["deal_id"]))
+    assert len(p.profile._ours().agreements) == agreements
+    p.tick()
+    other = p.shelf.open("deal/" + hashlib.sha256(b"one payload").hexdigest()[:32])
+    other.append(entry_of(seal["record"]))
+    assert len(p.profile._ours().agreements) == agreements + 1, "the same record as one payload is read"
+
+
+@pytest.mark.parametrize("raw,want", [
+    ('{"x-deal-v0": {"profile": "x-deal-v0"}, "body": {}}', "x-deal-v0"),
+    ('{"type": "task-authority/v0", "body": {}}', "x-deal-v0"),
+    ('{"x-deal-v7": {"profile": "x-deal-v7"}, "body": {}}', "x-deal-v7"),
+    ('{"x-deal-v1": {"PROFILE": "x-deal-v1"}}', "x-deal-v1"),
+    ('{"x-deal-v1": {"profile": "x-deal-v1"}, "type": 7}', "x-deal-v1"),
+    ('{"x-deal-v0": {"profile": "x-deal-v0"}, "x-deal-v1": {"profile": "x-deal-v1"}}', ""),
+    ('{"x-deal-v1": {"profile": "x-deal-v1"}, "type": "action-record/v0"}', ""),
+    ('{"body": {}}', ""),
+    ('{"x-deal-v1": {"profile": "x-deal-v0"}}', ""),
+    ('{"x-deal-v1": {"profile": 1}}', ""),
+    ('{"x-deal-v1\n": {"profile": "x-deal-v1\n"}}', ""),
+    ("[1]", ""),
+    ("null", ""),
+    ('{"type": "deal_report"}', ""),
+])
+def test_version(raw, want):
+    # Go's TestVersion table, and how json.Unmarshal reads a member in
+    # another case, a type of another kind and a name ending in a newline.
+    assert holder.version(raw.encode()) == want
+
+
+def test_version_of_a_v1_record():
+    step = next(s for s in case("handshake-from-offer")["steps"] if s["op"] == "seal")
+    assert holder.version(jcs(step["record"])) == "x-deal-v1"
