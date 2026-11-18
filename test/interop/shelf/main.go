@@ -52,7 +52,7 @@ type lockHeld struct{ error }
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|dump|handover|record-time|hold|try DIR [ARG], or shelf verify-handover FILE")
+		return fmt.Errorf("usage: shelf write|continue|migrate|recover|plant-tick|plant-migration|plant-migration-checkpointed|plant-fields|dump|handover|record-time|hold|try DIR [ARG], or shelf verify-handover FILE")
 	}
 	ctx := context.Background()
 	dir := args[1]
@@ -74,6 +74,8 @@ func run(args []string) error {
 		return shelfscript.PlantMigration(ctx, dir, 2)
 	case "plant-migration-checkpointed":
 		return shelfscript.PlantMigrationCheckpointed(ctx, dir)
+	case "plant-fields":
+		return shelfscript.PlantFields(ctx, dir)
 	case "handover":
 		out, err := shelfscript.HandoverJSON(ctx, dir)
 		if err != nil {
