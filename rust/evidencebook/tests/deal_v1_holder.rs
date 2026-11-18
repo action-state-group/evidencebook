@@ -111,6 +111,7 @@ struct Party {
     checkpoint: SigningKey,
     clock: Arc<Mutex<Time>>,
     profile: Arc<v1::ReceiveProfile>,
+    status: Option<Arc<v1::DealStatus>>,
     shelf: Shelf,
     cadence: Cadence,
 }
@@ -121,6 +122,19 @@ impl Party {
     }
 
     fn with_signer(name: &str, signer: &str) -> Party {
+        Party::build(name, signer, None)
+    }
+
+    /// A party whose cadence asks a [`v1::DealStatus`] for each book.
+    fn with_status(name: &str) -> Party {
+        Party::build(
+            name,
+            &format!("{name} record key"),
+            Some(Arc::new(v1::DealStatus::new(None))),
+        )
+    }
+
+    fn build(name: &str, signer: &str, status: Option<Arc<v1::DealStatus>>) -> Party {
         let dir = Arc::new(tempfile::tempdir().unwrap());
         let path = dir.path().join("shelf.db");
         let clock = Arc::new(Mutex::new(Time::parse("2026-11-01T09:00:00Z").unwrap()));
@@ -132,6 +146,7 @@ impl Party {
             &key_of(&format!("{name} checkpoint key")),
             &clock,
             &profile,
+            status.as_ref(),
         );
         let p = Party {
             _dir: dir,
@@ -141,6 +156,7 @@ impl Party {
             checkpoint: key_of(&format!("{name} checkpoint key")),
             clock,
             profile,
+            status,
             shelf,
             cadence,
         };
@@ -171,6 +187,7 @@ impl Party {
             &self.checkpoint,
             &self.clock,
             &self.profile,
+            self.status.as_ref(),
         );
         self.shelf = shelf;
         self.cadence = cadence;
@@ -272,6 +289,7 @@ fn open(
     checkpoint: &SigningKey,
     clock: &Arc<Mutex<Time>>,
     profile: &Arc<v1::ReceiveProfile>,
+    status: Option<&Arc<v1::DealStatus>>,
 ) -> (Shelf, Cadence) {
     let conn = Connection::open(path).unwrap();
     conn.busy_timeout(Duration::from_secs(5)).unwrap();
@@ -302,6 +320,9 @@ fn open(
     })
     .unwrap();
     profile.set_shelf(&shelf);
+    if let Some(s) = status {
+        s.set_shelf(&shelf);
+    }
     let cadence = shelf
         .cadence(CadenceConfig {
             log_id: CADENCE_LOG.into(),
@@ -312,7 +333,7 @@ fn open(
             witnesses: None,
             pad_bucket: 1,
             ended: Arc::new(|_| Ok(false)),
-            status: None,
+            status: status.map(|s| s.clone() as Arc<dyn evidencebook::shelf::BookStatus>),
         })
         .unwrap();
     (shelf, cadence)
@@ -332,7 +353,10 @@ struct Handshake {
 }
 
 fn handshake(edit: impl FnOnce(&mut Value)) -> Handshake {
-    let (buyer, seller) = (Party::new("buyer"), Party::new("seller"));
+    handshake_of(Party::new("buyer"), Party::new("seller"), edit)
+}
+
+fn handshake_of(buyer: Party, seller: Party, edit: impl FnOnce(&mut Value)) -> Handshake {
     let o = offer(&seller.key());
     let res = seller.receive(Some(&buyer.send(&o)), None);
     assert!(res.record.unwrap().stored, "the seller holds the offer");
@@ -1043,4 +1067,397 @@ fn a_profile_with_no_shelf_or_a_released_one_errs() {
         .is_err(),
         "the profile does not keep its shelf alive"
     );
+}
+
+/// A handshake whose agreements name `adjudicator`, and a final ruling of
+/// the deal against the seller, in the adjudicator's case book (Go
+/// `rulingCase`).
+fn ruling_case(buyer: Party, seller: Party) -> (Handshake, Party, Value, String) {
+    let adjudicator = Party::new("adjudicator");
+    let key = adjudicator.key();
+    let h = handshake_of(buyer, seller, |a| {
+        a["body"]["adjudicator"]["key_id"] = json!(key)
+    });
+    let mut ruling = fixture("case-book/01-ruling.json");
+    ruling["body"]["keys"] = json!({"buyer": h.buyer.key(), "seller": h.seller.key()});
+    ruling["body"]["read"] = json!({"buyer": null, "seller": h.agreement_id});
+    ruling["body"]["final"] = json!(true);
+    record(&ruling);
+    let case_log = format!("case/{}", hex::encode(&seed("case log")[..16]));
+    (h, adjudicator, ruling, case_log)
+}
+
+/// The x-deal-v1 record at `seq` of `book`, as a verified book pair.
+fn read_back(book: &evidencebook::shelf::ShelfBook, seq: u64) -> v1::BookRead {
+    let r = book.record_by_seq(seq).unwrap();
+    let digest = r.header["payload_commitments"][0]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let payload = book.resolve_payload(&r.record_id, &digest).unwrap();
+    let pair = v1::book_pair(&r.header_bytes, &r.capsule, &r.envelope, &payload).unwrap();
+    v1::verify_book(&pair).unwrap()
+}
+
+/// Makes every book append fail before it stores the record, until dropped
+/// (Go's `nameRulingsBeforeAppend` returning an error).
+struct BlockAppends(Connection);
+
+impl BlockAppends {
+    fn on(p: &Party) -> BlockAppends {
+        let side = Connection::open(&p.path).unwrap();
+        side.busy_timeout(Duration::from_secs(5)).unwrap();
+        side.execute_batch(
+            "CREATE TRIGGER block_appends BEFORE INSERT ON book_records BEGIN SELECT RAISE(ABORT, 'the disk is full'); END;",
+        )
+        .unwrap();
+        BlockAppends(side)
+    }
+}
+
+impl Drop for BlockAppends {
+    fn drop(&mut self) {
+        self.0.execute_batch("DROP TRIGGER block_appends;").unwrap();
+    }
+}
+
+/// A counted ruling the holder's book does not name is named by the
+/// receive call itself, after the record before it, once (PROFILE §5;
+/// evidencebook#527; Go `TestNameRulings`).
+#[test]
+fn name_rulings_on_receive() {
+    let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    let res = h.seller.receive(Some(&pair), None);
+    assert!(res.record.unwrap().stored);
+    assert!(res.changes.grew.contains(&DEAL.to_string()));
+    let book = h.seller.shelf.open(&h.seller_log).unwrap();
+    assert_eq!(
+        book.size(),
+        2,
+        "named in the seller's own book by the receive call"
+    );
+    let r2 = book.record_by_seq(2).unwrap();
+    assert_eq!(r2.header["record_type"], json!("deal_step"));
+    assert_eq!(r2.header["epistemic_type"], json!("producer_claim"));
+    let read = read_back(&book, 2);
+    let v1::Body::Statement(st) = &read.record.body else {
+        panic!("a statement");
+    };
+    assert_eq!(
+        st.names.as_ref().unwrap().ruling.as_ref().unwrap().digest,
+        digest(&ruling)
+    );
+    assert_eq!(read.prev, h.agreement_id);
+    let again = v1::name_rulings(&h.seller.shelf, &[DEAL.to_string()], h.seller.now()).unwrap();
+    assert!(again.is_empty(), "named once");
+    h.seller.receive(Some(&pair), None);
+    assert_eq!(book.size(), 2, "the same ruling again names nothing");
+    let other = v1::name_rulings(
+        &h.seller.shelf,
+        &["deal-ffffffffffffffff".to_string()],
+        h.seller.now(),
+    )
+    .unwrap();
+    assert!(other.is_empty(), "another deal's book is passed over");
+}
+
+#[test]
+fn book_entry_is_the_deal_book_entry() {
+    let first = record(&fixture("buyer-book/01-agreement.json"));
+    let second = record(&fixture("buyer-book/02-payment.json"));
+    assert!(
+        v1::book_entry(&second, "").is_err(),
+        "past seq 1 a record cites the one before it"
+    );
+    let e = v1::book_entry(&second, "ab").unwrap();
+    assert_eq!(e.links.len(), 1);
+    assert_eq!(
+        (e.links[0].link_type, e.links[0].target.as_str()),
+        (LinkType::Cites, "ab")
+    );
+    assert_eq!(e.record_type, "deal_step");
+    assert_eq!(e.subject_ref.as_deref(), Some(DEAL));
+    let raw = jcs(&fixture("buyer-book/02-payment.json")).unwrap();
+    let (payload, d) = v1::encode(&raw).unwrap();
+    assert_eq!(e.payloads, vec![payload]);
+    assert_eq!(
+        d,
+        v1::digest(&raw).unwrap(),
+        "the one payload's digest is the record digest"
+    );
+    assert!(
+        v1::book_entry(&first, "").unwrap().links.is_empty(),
+        "seq 1 cites nothing"
+    );
+}
+
+/// The naming statement's block (Go `TestNameRulingsBlock`): prev and
+/// agreement_ref the buyer's agreement, seen the seller's agreement, the
+/// last of its counted prefix.
+#[test]
+fn name_rulings_block() {
+    let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
+    let mut ba = buyer_agreement(&h, true);
+    ba["body"]["adjudicator"]["key_id"] = json!(adjudicator.key());
+    record(&ba);
+    let log = "deal/b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0";
+    h.buyer.seal(log, &ba);
+    h.buyer.receive(Some(&h.agreement_pair), Some(&h.proof));
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    h.buyer.receive(Some(&pair), None);
+    let book = h.buyer.shelf.open(log).unwrap();
+    assert_eq!(book.size(), 2);
+    let b = read_back(&book, 2).record.block;
+    let ag = digest(&ba);
+    assert_eq!(b.prev.unwrap().digest, ag);
+    assert_eq!(b.agreement_ref.unwrap().digest, ag);
+    assert_eq!(
+        b.seen.value(),
+        Some(&h.agreement_id),
+        "seen: the seller's agreement"
+    );
+    assert_eq!(b.seq, 2);
+}
+
+/// Marks a record of `book` withheld with a lifecycle record.
+fn withhold(book: &evidencebook::shelf::ShelfBook, record_id: &str) {
+    let mut lifecycle = BookEntry::new("lifecycle", EpistemicType::ProducerClaim);
+    lifecycle.links = vec![Link {
+        link_type: LinkType::Cites,
+        target: record_id.into(),
+    }];
+    lifecycle.statement = json!({"retention_state": "WITHHELD", "reason": "test"});
+    book.append(&lifecycle).unwrap();
+}
+
+/// A book with a record not readable whole is left alone (Go
+/// `TestNameRulingsLeavesAPartBook`).
+#[test]
+fn name_rulings_leaves_a_part_book() {
+    let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
+    let book = h.seller.shelf.open(&h.seller_log).unwrap();
+    let next = record(&settle(2, &h.agreement, &h.agreement, &h.agreement_id));
+    let r2 = book
+        .append_at(2, &v1::book_entry(&next, &h.agreement_id).unwrap())
+        .unwrap();
+    withhold(&book, &r2.record_id);
+    let size = book.size();
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    h.seller.receive(Some(&pair), None);
+    assert_eq!(book.size(), size, "no statement from a part read");
+}
+
+/// A ruling of another deal in the same case log is not this deal's.
+#[test]
+fn name_rulings_only_the_deals_rulings() {
+    let (h, adjudicator, mut ruling, case_log) =
+        ruling_case(Party::new("buyer"), Party::new("seller"));
+    ruling["x-deal-v1"]["deal_id"] = json!("deal-ffffffffffffffff");
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    let _ = h.seller.shelf.receive(Some(&pair), None);
+    assert_eq!(h.seller.shelf.open(&h.seller_log).unwrap().size(), 1);
+}
+
+/// A naming that fails is the receive call's error and the ruling stays
+/// held; the same ruling sent again (a duplicate) names it; and
+/// name_all_rulings seals a naming left behind, once (Go
+/// `TestNameRulingsRetriedOnADuplicate`, `TestNameAllRulings`).
+#[test]
+fn a_failed_naming_is_retried() {
+    let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    let book = h.seller.shelf.open(&h.seller_log).unwrap();
+    {
+        let _block = BlockAppends::on(&h.seller);
+        let e = h.seller.shelf.receive(Some(&pair), None).unwrap_err();
+        assert!(e.to_string().contains("after receive"), "{e}");
+        let out = e.result.record.as_ref().unwrap();
+        assert!(out.stored, "the ruling stays committed");
+        assert_eq!(out.deal_id, DEAL);
+        assert_eq!(book.size(), 1);
+    }
+    let again = h.seller.receive(Some(&pair), None);
+    assert!(again.record.unwrap().duplicate);
+    assert!(again.changes.grew.is_empty(), "nothing grew");
+    assert_eq!(book.size(), 2, "the duplicate retried the naming");
+
+    let (h, adjudicator, ruling, case_log) = ruling_case(Party::new("buyer"), Party::new("seller"));
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    {
+        let _block = BlockAppends::on(&h.seller);
+        assert!(h.seller.shelf.receive(Some(&pair), None).is_err());
+    }
+    let sealed = v1::name_all_rulings(&h.seller.shelf, h.seller.now()).unwrap();
+    assert_eq!(sealed.len(), 1);
+    assert!(v1::name_all_rulings(&h.seller.shelf, h.seller.now())
+        .unwrap()
+        .is_empty());
+}
+
+/// The last status opening of the book whose first record is `book_id`.
+fn last_status(p: &Party, book_id: &str) -> Value {
+    p.shelf
+        .openings(book_id, "counterparty")
+        .unwrap()
+        .into_iter()
+        .filter_map(|f| f.status_opening)
+        .next_back()
+        .expect("a status opening")
+        .value
+}
+
+/// A naming that failed, with nothing received after it, is sealed by the
+/// holder's next stamp: DealStatus's before_stamp runs before the stamp
+/// takes its values (Go `TestNameRulingsAtTheNextStamp`).
+#[test]
+fn name_rulings_at_the_next_stamp() {
+    let (h, adjudicator, ruling, case_log) =
+        ruling_case(Party::new("buyer"), Party::with_status("seller"));
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    {
+        let _block = BlockAppends::on(&h.seller);
+        assert!(h.seller.shelf.receive(Some(&pair), None).is_err());
+    }
+    h.seller.tick();
+    let res = h.seller.cadence.stamp(h.seller.now()).unwrap();
+    assert_eq!(res.before_stamp, None);
+    assert_eq!(h.seller.shelf.open(&h.seller_log).unwrap().size(), 2);
+    let v = last_status(&h.seller, &h.agreement_id);
+    assert!(
+        v.get("rulings_unnamed").is_none(),
+        "that stamp's value reads the ruling named: {v}"
+    );
+}
+
+/// A book not readable whole is never written to, and the stamp's status
+/// value counts the ruling unnamed (Go
+/// `TestNameRulingsUnreadableBookIsCounted`).
+#[test]
+fn an_unreadable_book_counts_its_ruling_unnamed() {
+    let (h, adjudicator, ruling, case_log) =
+        ruling_case(Party::new("buyer"), Party::with_status("seller"));
+    let book = h.seller.shelf.open(&h.seller_log).unwrap();
+    let next = record(&settle(2, &h.agreement, &h.agreement, &h.agreement_id));
+    let r2 = book
+        .append_at(2, &v1::book_entry(&next, &h.agreement_id).unwrap())
+        .unwrap();
+    withhold(&book, &r2.record_id);
+    let size = book.size();
+    let (_, pair) = adjudicator.seal(&case_log, &ruling);
+    h.seller.receive(Some(&pair), None);
+    h.seller.tick();
+    let res = h.seller.cadence.stamp(h.seller.now()).unwrap();
+    assert_eq!(res.before_stamp, None);
+    assert_eq!(
+        book.size(),
+        size,
+        "nothing sealed into a book not readable whole"
+    );
+    assert_eq!(
+        last_status(&h.seller, &h.agreement_id)["rulings_unnamed"],
+        json!(1)
+    );
+}
+
+/// A v1 deal book's status at a stamp (Go `TestStatusProviderAtAStamp`,
+/// without the payment check, which `testdata/deal-v1/payment` holds):
+/// the fact's profile, the value's role and proof, the stamp a record not
+/// timed yet is read at, and the link value naming the counterparty's last
+/// counted record.
+#[test]
+fn deal_status_at_a_stamp() {
+    let h = handshake_of(Party::with_status("buyer"), Party::new("seller"), |a| {
+        a["body"]["witnesses"] = json!([])
+    });
+    let mut ba = buyer_agreement(&h, true);
+    ba["body"]["witnesses"] = json!([]);
+    let (buyer_id, _) = h.buyer.seal(&log_of("buyer log"), &ba);
+    h.buyer.receive(Some(&h.agreement_pair), Some(&h.proof));
+    let next = settle(2, &h.agreement, &h.agreement, &h.agreement_id);
+    let (next_id, next_pair) = h.seller.seal(&h.seller_log, &next);
+    h.buyer.receive(Some(&next_pair), None);
+    h.buyer.tick();
+    let tick = h.buyer.cadence.stamp(h.buyer.now()).unwrap().tick.unwrap();
+    let facts = h.buyer.shelf.openings(&buyer_id, "counterparty").unwrap();
+    let last = facts.last().unwrap();
+    assert_eq!(last.fact["profile"], json!(v1::PROFILE));
+    let v = &last.status_opening.as_ref().unwrap().value;
+    assert_eq!(v["role"], json!("buyer"));
+    assert_eq!(
+        v["counterparty_proof_held"],
+        json!(true),
+        "the seller's proof covers its agreement"
+    );
+    let raw = v.to_string();
+    assert!(raw.contains(&format!("{{\"stamp\":{}}}", tick.n)), "{raw}");
+    assert!(!raw.contains(&h.agreement_id) && !raw.contains(&buyer_id));
+    let link = &last.link_opening.as_ref().unwrap().value;
+    assert_eq!(
+        link["last_received"],
+        json!({"log_id": h.seller_log, "size": 2, "record_digest": next_id})
+    );
+}
+
+/// The report of a deal book from the shelf (Go `TestStatusProviderReport`):
+/// refused before a stamp checkpoints the book; then resting on the
+/// checkpoint, current until a record arrives that no stamp has stated;
+/// refused for no such book, and for a book holding a record not readable
+/// as x-deal-v1. A report writes nothing.
+#[test]
+fn deal_status_report() {
+    let h = handshake_of(Party::with_status("buyer"), Party::new("seller"), |a| {
+        a["body"]["witnesses"] = json!([])
+    });
+    let mut ba = buyer_agreement(&h, true);
+    ba["body"]["witnesses"] = json!([]);
+    let buyer_log = log_of("buyer log");
+    h.buyer.seal(&buyer_log, &ba);
+    h.buyer.receive(Some(&h.agreement_pair), Some(&h.proof));
+    let status = h.buyer.status.clone().unwrap();
+    let book = h.buyer.shelf.open(&buyer_log).unwrap();
+    let size = book.size();
+    let copy = v1::ReportCopy {
+        audience: "keep".into(),
+        nonce: "a".repeat(64),
+        referee: String::new(),
+        as_of: h.buyer.now().rfc3339(),
+        text: None,
+    };
+    let err = status.report(&buyer_log, &copy).unwrap_err();
+    assert!(
+        err.to_string().contains("no checkpoint at its size"),
+        "{err}"
+    );
+    assert_eq!(book.size(), size, "a report writes nothing");
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    let r = serde_json::to_value(status.report(&buyer_log, &copy).unwrap()).unwrap();
+    assert_eq!(book.size(), size, "a report writes nothing");
+    let cp = book.checkpoints().unwrap().pop().unwrap();
+    assert_eq!(
+        r["deal_checkpoint"],
+        json!({"log_id": buyer_log, "mmr_size": cp.tree_size, "root": cp.root})
+    );
+    assert_eq!(r["rests_on"]["own"]["size"], json!(size));
+    assert_eq!(r["status_fact"]["current"], json!(true));
+    assert_eq!(r["rests_on"]["counterparty"]["log_id"], json!(h.seller_log));
+    let next = settle(2, &h.agreement, &h.agreement, &h.agreement_id);
+    let (_, next_pair) = h.seller.seal(&h.seller_log, &next);
+    h.buyer.receive(Some(&next_pair), None);
+    let r = serde_json::to_value(status.report(&buyer_log, &copy).unwrap()).unwrap();
+    assert_eq!(
+        r["status_fact"]["current"],
+        json!(false),
+        "a record no stamp has stated yet"
+    );
+    assert_eq!(r["rests_on"]["counterparty"]["counted"], json!(2));
+    assert!(status
+        .report("deal/ffffffffffffffffffffffffffffffff", &copy)
+        .is_err());
+    withhold(&book, &book.record_by_seq(1).unwrap().record_id);
+    h.buyer.tick();
+    h.buyer.cadence.stamp(h.buyer.now()).unwrap();
+    let err = status.report(&buyer_log, &copy).unwrap_err();
+    assert!(!matches!(err, ShelfError::Busy(_)), "{err}");
 }
