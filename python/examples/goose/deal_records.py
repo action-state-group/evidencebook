@@ -58,16 +58,13 @@ _STATUSES = {"received": ("completed", "completed", "agent"), "not_received": ("
 @dataclass(frozen=True)
 class Terms:
     """What the two parties deal on: one item at a price in minor units, the
-    rail it is paid on, and whether a payment comes back. ``demo`` marks a
-    demonstration deal: its baseline carries ``demo: true`` (x-deal-v0 §3,
-    the baseline's optional ``demo``), which a receipt viewer shows."""
+    rail it is paid on, and whether a payment comes back."""
 
     item: str
     price_minor: int
     currency: str
     rail: str
     refundable: bool
-    demo: bool = False
 
 
 @dataclass
@@ -205,8 +202,6 @@ class DealChain:
         body = {"deal_type": "purchase", "intent": intent,
                 "terms": {"item": t.item, "price_minor": t.price_minor, "currency": t.currency},
                 "recourse": {"rail": t.rail, "refundable": t.refundable}}
-        if t.demo:
-            body["demo"] = True
         return self._step(self._untyped(deal.TYPE_BASELINE, at, body, channel="app_chat",
                                         counterparty=self._counterparty(deal.FP_ALG)),
                           at, {"open": {"asked": asked, "peer": self.peer}, "nonces": {"verbatim": nonce}})
