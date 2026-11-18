@@ -12,5 +12,7 @@
 - `xdealv1.StatusProvider` is a `BookStatusProvider` that gives the profile, link value and status value at each stamp:
   - it reads the counterparty's counted prefix and the adjudicator's case book lock-free (`HeldByDeal`, `CountedPrefix`);
   - it runs the payment check when the host gives the offer's sent pair (`OfferPair`).
+- `xdealv1.ResolveRow` is a status row's input as a reader computes it once its `{"stamp": n}` times resolve, recomputing each dispute's `seen_in_time`. A ruling is timed by the earliest naming of its arrival in either book. PROFILE says a receiving library MUST name a counted ruling (#527).
 - `Shelf.HeldByDeal(ctx, dealID)` lists the received records of a deal, lock-free.
-- `testdata/deal-v1/status/vectors.json` holds the cases `appendix-a`, `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward` and `carry-forward-lower-bound`. Each case holds the books, the status value they build, and the row results a reader resolves from the fact; those results equal the full books' results.
+- A status provider's error for one book no longer stops a stamp. That book keeps its last fact, the error is reported in `TickResult.Unstated`, and the other books' facts are written.
+- `testdata/deal-v1/status/vectors.json` holds the cases `appendix-a`, `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward`, `seen-in-time-resolves` and `carry-forward-lower-bound`. Each case holds the books, the status value they build, and the row results a reader resolves from the fact; those results equal the full books' results.

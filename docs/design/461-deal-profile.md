@@ -1120,9 +1120,14 @@ Forms §6.1). Section 9, PR 1, and Q8.
 
 ### 8.1 StatusProvider: the status value
 
-`xdealv1.StatusProvider.Values(ctx, book_id, log_id)` returns `("x-deal-v1", link, status, true,
-nil)` for a v1 deal book, and `ok` false for every other book (2.4). It reads only through calls
-that take no lock (`CountedPrefix`, `ReceivedRecordOf`, `RecordTime`; `shelf_receive.go:38-41`).
+`xdealv1.StatusProvider` is a `BookStatusProvider` (#525): at each stamp the shelf calls its
+`BookValues` with the stamp's tick, the book and the journal, and it returns `("x-deal-v1", link,
+status, true, nil)` for a v1 deal book and `ok` false for every other book (2.4). Its own `Values`
+claims no book. It reads its own book and the journal through those handles, and the received
+books only through readers that take no lock (`HeldByDeal`, `HeldFirst`, `CountedPrefix`,
+`HeldProofs`, `RecordTimeByKey`, `RecordStamp`, `ReceivedRecordTimeByKey`,
+`ReceivedRecordStamp`). A provider error for one book keeps that book's last fact and is reported
+in the stamp's `Unstated`; the other books' facts are written (PR 4c-2b-2 review).
 
 Decided: what the status holds is design §4.3, "The facts", and the shelf note's rule that it
 holds inputs, never a computed status, so a quiet book gets no new fact when a date passes
@@ -1282,17 +1287,29 @@ the witness receipts it is handed (A, above).
   written after each of them, so a window end hanging on a named record is known once that
   record's time is. Reading as of the agreement instead would leave every such window end unknown
   and carry every statement.
-- **Ruling times.** A ruling is an input once the holder's own book names its arrival (a
-  `statement` whose `names.ruling` cites it), and it takes that record's time. Before then its
-  arrival has no time on the holder's shelf. The holder's stamps cover only its own book and the
-  counterparty's (the link value names that log only).
-  - **Caveat** (Sherlock2, PR 4c-2b-2 review). Writing the naming `statement` is optional today,
-    so a holder ruled against can leave it unwritten. Its status then has no ruling, and its
-    dispute's `outcome` stays `open`, while the counterparty's status shows the ruling. Until the
-    receive call writes that statement itself when a counted ruling arrives (#527), an `open`
-    outcome may hide an unnamed ruling. PR 5's card must not present it as unresolved.
-- **A forked case book.** Rows are conflicting when the adjudicator's log has a fork (`ForkAt` >
-  0) and its held final rulings on the row differ.
+- **Ruling times.** A ruling is an input once either side's book names its arrival: a `statement`
+  whose `names.ruling` cites it, in the holder's book or the counterparty's counted prefix. It
+  takes the earliest such naming: a known time before a stamp, else the earlier time or the lower
+  stamp. So the side a ruling goes against cannot keep it off its own status by not naming it
+  while the winner names it (Sherlock2's twin, PR 4c-2b-2 review, P1). PROFILE says a receiving
+  library MUST name a counted ruling's arrival (#527).
+  - **Caveat** (Sherlock2, the same review). Until #527 lands, a ruling neither side has named is
+    not an input: its arrival has no time on the holder's shelf, whose stamps cover only its own
+    book and the counterparty's. An `open` outcome may then hide an unnamed ruling, so PR 5's
+    card must not present it as unresolved.
+- **Every case book.** One book per case (3.2), so the provider reads every log of the
+  adjudicator held for the deal. Each counted prefix is walked from position 1, one held follower
+  at a time, and the walk stops at a counted record not held for the deal: another deal's in the
+  same log, one received after the held records were read, or one forgotten under retention.
+- **A forked case book.** Each held branch of the adjudicator's log, from position 1 to a record
+  no other held record follows, applies its own first final ruling per row, as rowstatus does. A
+  row conflicts when two branches both have one and their decisions differ: `value`, `against`
+  or `remedy` (Codex, the same review). A later final after a common first one does not conflict.
+- **seen_in_time is recomputed.** A dispute's `seen_in_time` rests on times the fact may not
+  know. So a reader recomputes it once those times resolve (`xdealv1.ResolveRow`): the claimant's
+  book named the other side's standing statement (its `statement_named_by_other`, the first such
+  naming) at a time not after the row's window end. The value the fact states stands while the
+  window end is unknown (Codex, the same review, P1; vector `seen-in-time-resolves`).
 - **The payment check on the row.** `check` is `PaymentCheck`'s pass, fail or empty.
   `check_reason` says why the check failed or did not run. `check_excluded` is how many settle
   records it left out, never which: their digests are record digests, which the status value

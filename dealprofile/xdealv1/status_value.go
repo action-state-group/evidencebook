@@ -495,3 +495,84 @@ func disputesOf(books map[byte][]StatusRecord, bookOfRole map[string]byte, row s
 	}
 	return out
 }
+
+// ResolveRow is a status row's input as a reader computes it at at, once
+// each {"stamp": n} it can resolve has a time (stamps; an unresolved one
+// stays untimed): every time resolved, and each dispute's seen_in_time
+// recomputed from those times, since it rests on them (design §8.1, A). A
+// dispute is seen in time when the claimant's book named the other side's
+// standing statement (its latest statement rowstatus does not hold late) at
+// a time not after the row's window end: that statement's
+// statement_named_by_other, the first such naming, its book's times never
+// decreasing. While the window end is not known the fact's value stands.
+func ResolveRow(row StatusRow, at string, stamps map[uint64]string) (rowstatus.Input, error) {
+	r := func(st StatusTime) rowstatus.Time {
+		switch {
+		case st.Known != "":
+			k := st.Known
+			return &k
+		case st.Stamp != 0:
+			if s, ok := stamps[st.Stamp]; ok {
+				return &s
+			}
+		}
+		return nil
+	}
+	in := row.Input
+	out := rowstatus.Input{At: at, Parties: in.Parties, Row: in.Row, Check: in.Check, ConflictingFinalRulings: in.ConflictingFinalRulings}
+	if in.Named != nil {
+		out.Named = map[string]rowstatus.Named{}
+		for k, n := range in.Named {
+			out.Named[k] = rowstatus.Named{Time: r(n.Time), Latest: n.Latest}
+		}
+	}
+	for _, s := range in.Statements {
+		out.Statements = append(out.Statements, rowstatus.Statement{Side: s.Side, Value: s.Value, Time: r(s.Time)})
+	}
+	for _, w := range in.Withdrawals {
+		out.Withdrawals = append(out.Withdrawals, rowstatus.Withdrawal{Side: w.Side, Time: r(w.Time)})
+	}
+	for _, ru := range in.Rulings {
+		out.Rulings = append(out.Rulings, rowstatus.Ruling{Final: ru.Final, Value: ru.Value, Time: r(ru.Time), RemedyDue: ru.RemedyDue})
+	}
+	for _, m := range in.Remedies {
+		out.Remedies = append(out.Remedies, rowstatus.Remedy{Time: r(m.Time)})
+	}
+	if len(in.Disputes) == 0 {
+		return out, nil
+	}
+	plain := out
+	plain.Withdrawals, plain.Rulings, plain.Remedies = nil, nil, nil
+	res, err := rowstatus.Compute(plain)
+	if err != nil {
+		return rowstatus.Input{}, err
+	}
+	end := res.WindowEnd
+	for _, d := range in.Disputes {
+		seen := d.SeenInTime
+		if end != "" {
+			seen = false
+			standing := -1
+			var floor *string
+			for i, s := range out.Statements {
+				if s.Side == d.Side {
+					continue
+				}
+				late := (s.Time != nil && *s.Time > end) || (s.Time == nil && floor != nil && *floor > end)
+				if !late {
+					standing = i
+				}
+				if s.Time != nil && (floor == nil || *s.Time > *floor) {
+					floor = s.Time
+				}
+			}
+			if standing >= 0 && standing < len(row.StatementNamedByOther) {
+				if t := r(row.StatementNamedByOther[standing]); t != nil && *t <= end {
+					seen = true
+				}
+			}
+		}
+		out.Disputes = append(out.Disputes, rowstatus.Dispute{Side: d.Side, Time: r(d.Time), SeenInTime: seen})
+	}
+	return out, nil
+}

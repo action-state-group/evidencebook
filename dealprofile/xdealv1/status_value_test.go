@@ -4,12 +4,14 @@ package xdealv1
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/action-state-group/evidencebook"
+	"github.com/action-state-group/evidencebook/rowstatus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -223,4 +225,179 @@ func TestStatusProviderAtAStamp(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, payeeRead.RecordID, link.LastReceived.RecordDigest)
 	assert.Contains(t, link.CheckedOver, payeeRead.Digest, "the checked records, by record digest, in the link value only")
+}
+
+// forkedCaseBook seals a case book on two copies of the adjudicator's shelf
+// that share position 1 and then diverge, and returns every record as held,
+// with the adjudicator's key and the log id.
+func forkedCaseBook(t *testing.T, common []*RulingBody, left, right []*RulingBody) ([]evidencebook.HeldRecord, string, string) {
+	t.Helper()
+	a, b := newParty(t, "adjudicator"), newParty(t, "adjudicator")
+	log := "case/" + hex.EncodeToString(seed("case log")[:16])
+	var held []evidencebook.HeldRecord
+	seq := int64(0)
+	last := map[*party]Record{}
+	add := func(p *party, body *RulingBody, seq int64) {
+		blk := journalBlock(TypeRuling, "2026-11-13T10:00:00Z", true)
+		blk.Seq = seq
+		if prev, ok := last[p]; ok {
+			pr := RefTo(mustDigest(t, prev))
+			blk.Prev = &pr
+		}
+		r := Record{Block: blk, Body: body}
+		last[p] = r
+		require.NoError(t, Check(r))
+		_, pair := p.seal(log, r)
+		read, err := VerifyBook(pair)
+		require.NoError(t, err)
+		for _, h := range held {
+			if h.Digest == read.RecordID {
+				return
+			}
+		}
+		held = append(held, evidencebook.HeldRecord{ReceivedRecord: evidencebook.ReceivedRecord{Digest: read.RecordID, SenderKey: read.KeyID, LogID: log,
+			Position: read.Seq, Prev: read.Prev, DealID: fxDealID}, Record: pair})
+	}
+	for _, c := range common {
+		seq++
+		add(a, c, seq)
+		add(b, c, seq)
+	}
+	for i, l := range left {
+		add(a, l, seq+int64(i)+1)
+	}
+	for i, r := range right {
+		add(b, r, seq+int64(i)+1)
+	}
+	require.Equal(t, a.key(), b.key())
+	return held, a.key(), log
+}
+
+func ruling(row string, against string, value string, final bool, remedy *RulingRemedy) *RulingBody {
+	ag := NullOf[string]()
+	if against != "" {
+		ag = Some(against)
+	}
+	return &RulingBody{Row: row, Keys: RulingKeys{Buyer: fxBuyerKey, Seller: fxSellerKey}, Against: ag, Value: value, Remedy: remedy,
+		Read: RulingRead{Buyer: NullOf[string](), Seller: NullOf[string]()}, Forum: fxForum, RulesDigest: fxAdjudicator.RulesDigest, Final: final}
+}
+
+// A forked case book conflicts on a row only when two branches' first final
+// rulings differ in their decision: against, value or remedy (Codex, PR
+// 4c-2b-2 review); a later final after a common first one does not.
+func TestForkedFinals(t *testing.T) {
+	refund := &RulingRemedy{Kind: "refund", Due: "2026-11-20T23:59:59Z"}
+	replace := &RulingRemedy{Kind: "replace", Due: "2026-11-20T23:59:59Z"}
+	for name, c := range map[string]struct {
+		common, left, right []*RulingBody
+		want                []string
+	}{
+		"a linear book": {[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, nil)}, nil, nil, nil},
+		"against differs, value the same": {nil,
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, nil)},
+			[]*RulingBody{ruling("as_described", RoleBuyer, ValueNotMet, true, nil)}, []string{"as_described"}},
+		"remedy differs": {nil,
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, refund)},
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, replace)}, []string{"as_described"}},
+		"a common first final, later finals differ": {[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, nil)},
+			[]*RulingBody{ruling("as_described", RoleBuyer, ValueMet, true, nil)},
+			[]*RulingBody{ruling("as_described", "", ValueMet, true, nil)}, nil},
+		"one branch has no final": {nil,
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, nil)},
+			[]*RulingBody{ruling("as_described", RoleBuyer, ValueMet, false, nil)}, nil},
+		"the same decision on both": {nil,
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, refund), ruling("delivered", "", ValueMet, false, nil)},
+			[]*RulingBody{ruling("as_described", RoleSeller, ValueNotMet, true, refund)}, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			held, key, log := forkedCaseBook(t, c.common, c.left, c.right)
+			got, err := forkedFinals(held, key, log)
+			require.NoError(t, err)
+			assert.Equal(t, c.want, got)
+		})
+	}
+}
+
+// The side a ruling goes against cannot keep it off its own status by not
+// naming it: the counterparty's naming times it (Sherlock2's twin, PR
+// 4c-2b-2 review). Appendix A's final ruling goes against the seller; here
+// the seller is the holder and never names it, the buyer does.
+func TestRulingNamedByTheCounterparty(t *testing.T) {
+	a := buildAppendixA(t)
+	seller := statusBooksOf(t, a, "appendix-a/seller-book", nil)
+	buyer := statusBooksOf(t, a, "appendix-a/buyer-book", nil)
+	rulings := statusBooksOf(t, a, "appendix-a/case-book", map[int]StatusTime{0: NoTime, 1: NoTime})
+	// The seller's records that named the rulings name nothing: it stays
+	// silent, its book otherwise unchanged.
+	var silent []StatusRecord
+	dropped := 0
+	for _, r := range seller {
+		if st, ok := bodyOf[StatementBody](r.Record.Body); ok && st.Names != nil && st.Names.Ruling != nil {
+			r.Record.Body = &StatementBody{Statements: st.Statements}
+			dropped++
+		}
+		silent = append(silent, r)
+	}
+	require.Positive(t, dropped, "the seller's book named the rulings")
+	named, err := namedRulings(rulings, silent, buyer)
+	require.NoError(t, err)
+	require.Len(t, named, 2, "the buyer named both")
+	for _, r := range named {
+		assert.False(t, r.Time.IsNone())
+	}
+	v, err := BuildStatus(StatusBooks{Offer: a.record("appendix-a/buyer-journal/05-offer.json"), Own: silent, Counterpart: buyer, CaseBook: named})
+	require.NoError(t, err)
+	for _, r := range v.Rows {
+		if r.ID == "as_described" {
+			require.NotNil(t, r.RulingAgainst)
+			assert.Equal(t, RoleSeller, *r.RulingAgainst, "the silent holder's own status shows the ruling against it")
+			in, err := ResolveRow(r, "2026-11-26T12:00:00Z", nil)
+			require.NoError(t, err)
+			res, err := rowstatus.Compute(in)
+			require.NoError(t, err)
+			assert.Equal(t, rowstatus.Ruled, res.Status)
+		}
+	}
+	none, err := namedRulings(rulings, silent, nil)
+	require.NoError(t, err)
+	assert.Empty(t, none, "named by neither: not an input yet (#527)")
+
+	// Earliest naming wins, a known time before a stamp.
+	assert.True(t, earlier(KnownTime("2026-11-20T00:00:00Z"), StampTime(1)))
+	assert.True(t, earlier(KnownTime("2026-11-19T00:00:00Z"), KnownTime("2026-11-20T00:00:00Z")))
+	assert.True(t, earlier(StampTime(2), StampTime(3)))
+	assert.False(t, earlier(StampTime(3), KnownTime("2026-11-20T00:00:00Z")))
+}
+
+// The counted walk stops, never fails, at a counted record not held for the
+// deal (another deal's in the same log, one received after the held records
+// were read, or one forgotten): the stamp goes on (Claude stand-in for Kimi,
+// PR 4c-2b-2 review).
+func TestCountedStopsAtARecordNotHeld(t *testing.T) {
+	ctx := context.Background()
+	d := newPaymentDeal(t, nil, true)
+	d.leg(t, true, payerBody(), d.payerMember("settled", "6000"))
+	payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))
+	proof := d.seller.stamp(d.sellerAgID)
+	d.buyer.receive(d.sellerAgPair, &proof)
+	d.buyer.receive(payee, nil)
+	held, err := d.buyer.shelf.HeldByDeal(ctx, fxDealID)
+	require.NoError(t, err)
+	all, err := counted(ctx, d.buyer.shelf, held, d.seller.key(), d.sellerLog)
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	var first []evidencebook.HeldRecord
+	for _, h := range held {
+		if h.Position == 1 {
+			first = append(first, h)
+		}
+	}
+	part, err := counted(ctx, d.buyer.shelf, first, d.seller.key(), d.sellerLog)
+	require.NoError(t, err, "a counted record missing from the held records stops the walk")
+	require.Len(t, part, 1)
+	assert.Equal(t, d.sellerAgID, part[0].rec.RecordID)
+	assert.Equal(t, []string{d.sellerLog}, logsOf(held, d.seller.key(), func(r Record) bool {
+		a, ok := asAgree(r.Body)
+		return ok && a.Kind == KindAgreement
+	}))
 }

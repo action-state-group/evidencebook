@@ -208,6 +208,11 @@ type TickResult struct {
 	Ticked  bool
 	Tick    CadenceTick
 	DueNext time.Time
+	// Unstated are the books (by log id) whose status provider failed at
+	// this stamp, with its error: each keeps its last fact, and the other
+	// books' facts are written, so one book's values never stop the shelf's
+	// stamps. The next stamp asks again.
+	Unstated map[string]string
 }
 
 // Cadence runs a shelf's heartbeat ticks.

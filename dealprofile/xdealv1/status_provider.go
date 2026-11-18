@@ -76,12 +76,14 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 	var theirs []heldBookRecord
 	var theirLog string
 	if ag.CounterpartyKey.V != nil {
-		theirs, theirLog, err = counted(ctx, p.Shelf, held, *ag.CounterpartyKey.V, func(r Record) bool {
+		if logs := logsOf(held, *ag.CounterpartyKey.V, func(r Record) bool {
 			a, ok := asAgree(r.Body)
 			return ok && a.Kind == KindAgreement
-		})
-		if err != nil {
-			return none(err)
+		}); len(logs) > 0 {
+			theirLog = logs[0]
+			if theirs, err = counted(ctx, p.Shelf, held, *ag.CounterpartyKey.V, theirLog); err != nil {
+				return none(err)
+			}
 		}
 		for i := range theirs {
 			if theirs[i].rec.Time, err = p.receivedTime(ctx, in, theirLog, uint64(i+1), keys); err != nil {
@@ -99,7 +101,7 @@ func (p *StatusProvider) BookValues(ctx context.Context, in evidencebook.StatusI
 		}
 	}
 	if a := ag.Adjudicator.V; a != nil {
-		if b.CaseBook, b.ConflictingFinalRulings, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own); err != nil {
+		if b.CaseBook, b.ConflictingFinalRulings, err = caseBook(ctx, p.Shelf, held, a.KeyID, b.Own, b.Counterpart); err != nil {
 			return none(err)
 		}
 	}
@@ -240,106 +242,204 @@ type heldBookRecord struct {
 	pair []byte
 }
 
-// counted is sender's counted prefix of its deal book for the deal: the log
-// whose first held record from sender is opened (first) as the book's first
-// record must be, read back from the prefix's last record through prev.
-func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, sender string, first func(Record) bool) ([]heldBookRecord, string, error) {
-	byDigest := map[string]evidencebook.HeldRecord{}
-	logID := ""
+// logsOf are the logs of sender's records held for the deal whose first
+// held record is opened (first) as such a book's first record must be, in
+// log id order.
+func logsOf(held []evidencebook.HeldRecord, sender string, first func(Record) bool) []string {
+	var out []string
 	for _, h := range held {
-		if h.SenderKey != sender || strings.HasPrefix(h.LogID, SentLogPrefix) {
+		if h.SenderKey != sender || h.Position != 1 || strings.HasPrefix(h.LogID, SentLogPrefix) || slices.Contains(out, h.LogID) {
 			continue
 		}
-		byDigest[h.Digest] = h
-		if h.Position == 1 && logID == "" {
-			if b, err := VerifyBook(h.Record); err == nil && first(b.Record) {
-				logID = h.LogID
-			}
+		if b, err := VerifyBook(h.Record); err == nil && first(b.Record) {
+			out = append(out, h.LogID)
 		}
 	}
-	if logID == "" {
-		return nil, "", nil
-	}
-	prefix, err := shelf.CountedPrefix(ctx, sender, logID)
-	if err != nil {
-		return nil, "", err
-	}
-	out := make([]heldBookRecord, prefix.Size)
-	d := prefix.Last
-	for i := int(prefix.Size) - 1; i >= 0; i-- {
-		h, ok := byDigest[d]
-		if !ok || h.LogID != logID {
-			return nil, "", fmt.Errorf("xdealv1: status: the counted record %s is not held", d)
-		}
-		b, err := VerifyBook(h.Record)
-		if err != nil {
-			return nil, "", err
-		}
-		out[i] = heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: h.Digest}, pair: h.Record}
-		d = h.Prev
-	}
-	return out, logID, nil
+	slices.Sort(out)
+	return out
 }
 
-// caseBook is the adjudicator's rulings of the deal the holder has named
-// arriving (a statement of its own book whose names.ruling cites one), each
-// timed by that naming record, in case book order; and the rows whose case
-// book forked with different final rulings. A ruling the holder has not
-// named yet is not an input: its arrival has no time on the holder's shelf.
-func caseBook(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, adjudicator string, own []StatusRecord) ([]StatusRecord, []string, error) {
-	namedAt := map[string]StatusTime{}
-	for _, r := range own {
-		if s, ok := bodyOf[StatementBody](r.Record.Body); ok && s.Names != nil && s.Names.Ruling != nil {
-			if _, seen := namedAt[s.Names.Ruling.Digest]; !seen {
-				namedAt[s.Names.Ruling.Digest] = r.Time
-			}
+// counted is sender's counted prefix of logID, as far as this deal's held
+// records reach it: from position 1, each record the one held record that
+// follows the last, up to the prefix's size and before any fork. It stops,
+// never fails, at a counted record not held for the deal: one of another
+// deal in the same log, one received after the held records were read, or
+// one forgotten under retention. Data another party or retention controls
+// must not stop the stamp.
+func counted(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, sender, logID string) ([]heldBookRecord, error) {
+	prefix, err := shelf.CountedPrefix(ctx, sender, logID)
+	if err != nil {
+		return nil, err
+	}
+	limit := prefix.Size
+	if prefix.ForkAt > 0 && prefix.ForkAt-1 < limit {
+		limit = prefix.ForkAt - 1
+	}
+	next := map[string][]evidencebook.HeldRecord{} // prev -> held records that follow it
+	for _, h := range held {
+		if h.SenderKey == sender && h.LogID == logID {
+			next[h.Prev] = append(next[h.Prev], h)
 		}
 	}
-	recs, logID, err := counted(ctx, shelf, held, adjudicator, func(r Record) bool { return r.Block.RecordType == TypeRuling })
-	if err != nil || logID == "" {
-		return nil, nil, err
+	var out []heldBookRecord
+	prev := ""
+	for pos := uint64(1); pos <= limit; pos++ {
+		cands := next[prev]
+		if len(cands) != 1 || cands[0].Position != pos {
+			break
+		}
+		h := cands[0]
+		b, err := VerifyBook(h.Record)
+		if err != nil {
+			break
+		}
+		out = append(out, heldBookRecord{rec: StatusRecord{Record: b.Record, RecordID: h.Digest}, pair: h.Record})
+		prev = h.Digest
 	}
-	var out []StatusRecord
-	for _, r := range recs {
-		d, err := Digest(r.rec.Record)
+	return out, nil
+}
+
+// caseBook is the adjudicator's rulings of the deal that either side has
+// named arriving (a statement whose names.ruling cites one, in the holder's
+// book or the counterparty's counted prefix), each timed by the earliest
+// such naming, in case book order; and the rows whose case book forked with
+// different first final rulings. The side a ruling goes against cannot keep
+// it out by not naming it while the other side names it (Sherlock2's twin,
+// PR 4c-2b-2 review); a ruling neither side has named is not an input yet,
+// and the receive call is to name it (#527).
+func caseBook(ctx context.Context, shelf *evidencebook.Shelf, held []evidencebook.HeldRecord, adjudicator string, own, theirs []StatusRecord) ([]StatusRecord, []string, error) {
+	var rulings []StatusRecord
+	var conflicting []string
+	// One case book per case, so a deal may have several (design §3.2).
+	for _, logID := range logsOf(held, adjudicator, func(r Record) bool { return r.Block.RecordType == TypeRuling }) {
+		recs, err := counted(ctx, shelf, held, adjudicator, logID)
 		if err != nil {
 			return nil, nil, err
 		}
-		if t, ok := namedAt[d]; ok {
-			r.rec.Time = t
-			out = append(out, r.rec)
+		for _, r := range recs {
+			rulings = append(rulings, r.rec)
 		}
+		rows, err := forkedFinals(held, adjudicator, logID)
+		if err != nil {
+			return nil, nil, err
+		}
+		conflicting = append(conflicting, rows...)
 	}
-	prefix, err := shelf.CountedPrefix(ctx, adjudicator, logID)
-	if err != nil {
-		return nil, nil, err
-	}
-	var conflicting []string
-	if prefix.ForkAt > 0 {
-		finals := map[string]map[string]bool{}
-		for _, h := range held {
-			if h.SenderKey != adjudicator || h.LogID != logID {
-				continue
-			}
-			b, err := VerifyBook(h.Record)
-			if err != nil {
-				continue
-			}
-			if rb, ok := bodyOf[RulingBody](b.Record.Body); ok && rb.Final {
-				if finals[rb.Row] == nil {
-					finals[rb.Row] = map[string]bool{}
+	slices.Sort(conflicting)
+	conflicting = slices.Compact(conflicting)
+	out, err := namedRulings(rulings, own, theirs)
+	return out, conflicting, err
+}
+
+// namedRulings is the rulings either book names arriving, in case book
+// order, each timed by the earliest naming.
+func namedRulings(rulings, own, theirs []StatusRecord) ([]StatusRecord, error) {
+	namedAt := map[string]StatusTime{}
+	for _, book := range [][]StatusRecord{own, theirs} {
+		for _, r := range book {
+			if s, ok := bodyOf[StatementBody](r.Record.Body); ok && s.Names != nil && s.Names.Ruling != nil {
+				d := s.Names.Ruling.Digest
+				if t, seen := namedAt[d]; !seen || earlier(r.Time, t) {
+					namedAt[d] = r.Time
 				}
-				finals[rb.Row][rb.Value+"/"+fmt.Sprint(rb.Against.V != nil && *rb.Against.V != "")] = true
 			}
 		}
-		for row, vs := range finals {
-			if len(vs) > 1 {
-				conflicting = append(conflicting, row)
-			}
-		}
-		slices.Sort(conflicting)
 	}
-	return out, conflicting, nil
+	var out []StatusRecord
+	for _, r := range rulings {
+		d, err := Digest(r.Record)
+		if err != nil {
+			return nil, err
+		}
+		if t, ok := namedAt[d]; ok {
+			r.Time = t
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// earlier reports whether a is an earlier naming time than b: a known time
+// before a stamp (a stamp's time is not known yet), else the earlier known
+// time or the lower stamp. Every stamp here is the holder's own.
+func earlier(a, b StatusTime) bool {
+	switch {
+	case a.Known != "" && b.Known != "":
+		return a.Known < b.Known
+	case a.Known != "" || b.Known != "":
+		return a.Known != ""
+	}
+	return a.Stamp < b.Stamp
+}
+
+// forkedFinals is the rows whose first final ruling differs between two
+// branches of the adjudicator's case book the holder holds (design §8, "A
+// forked case book"): each branch, from position 1 to a record no other
+// held record follows, applies its own first final ruling per row, as
+// rowstatus does, and two branches conflict on a row when both have one and
+// their decisions (value, against, remedy) differ.
+func forkedFinals(held []evidencebook.HeldRecord, adjudicator, logID string) ([]string, error) {
+	type node struct {
+		prev   string
+		ruling *RulingBody
+	}
+	nodes := map[string]node{}
+	followed := map[string]bool{}
+	for _, h := range held {
+		if h.SenderKey != adjudicator || h.LogID != logID {
+			continue
+		}
+		b, err := VerifyBook(h.Record)
+		if err != nil {
+			continue
+		}
+		rb, _ := bodyOf[RulingBody](b.Record.Body)
+		nodes[h.Digest] = node{prev: h.Prev, ruling: rb}
+		followed[h.Prev] = true
+	}
+	decision := func(rb *RulingBody) string {
+		raw, _ := json.Marshal(struct {
+			Value   string        `json:"value"`
+			Against Null[string]  `json:"against"`
+			Remedy  *RulingRemedy `json:"remedy"`
+		}{rb.Value, rb.Against, rb.Remedy})
+		return string(raw)
+	}
+	firsts := map[string]map[string]bool{} // row -> the first final decisions across branches
+	for leaf := range nodes {
+		if followed[leaf] {
+			continue
+		}
+		var chain []node
+		for d := leaf; d != ""; {
+			n, ok := nodes[d]
+			if !ok {
+				break
+			}
+			chain = append(chain, n)
+			d = n.prev
+		}
+		seen := map[string]bool{}
+		for k := len(chain) - 1; k >= 0; k-- {
+			rb := chain[k].ruling
+			if rb == nil || !rb.Final || seen[rb.Row] {
+				continue
+			}
+			seen[rb.Row] = true
+			if firsts[rb.Row] == nil {
+				firsts[rb.Row] = map[string]bool{}
+			}
+			firsts[rb.Row][decision(rb)] = true
+		}
+	}
+	var out []string
+	for row, ds := range firsts {
+		if len(ds) > 1 {
+			out = append(out, row)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // payments runs each payment row's check over both books, when the host

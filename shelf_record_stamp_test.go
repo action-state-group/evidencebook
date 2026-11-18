@@ -250,3 +250,55 @@ func TestABookStatusProviderReadsTheHandles(t *testing.T) {
 	require.NoError(t, shelf.db.QueryRow(`SELECT status_opening FROM shelf_entries WHERE log_id = 'deal/a' AND tick = ?`, s.Tick.N).Scan(&status))
 	assert.Contains(t, string(status), fmt.Sprintf(`"records":%d`, size), "the fact commits what the provider read")
 }
+
+// failingValues fails for the books named, as a provider whose data another
+// party or retention controls might.
+type failingValues struct {
+	statusValues
+	fail map[string]bool
+}
+
+func (v *failingValues) BookValues(ctx context.Context, in StatusInput) (string, LinkValue, json.RawMessage, bool, error) {
+	if v.fail[in.LogID] {
+		return "", LinkValue{}, nil, false, fmt.Errorf("the deal's offer is not held")
+	}
+	return v.statusValues.Values(ctx, in.BookID, in.LogID)
+}
+
+// One book's provider error never stops the shelf's stamp: that book keeps
+// its last fact and is reported Unstated, the others get theirs, and the
+// next stamp asks again.
+func TestAProviderErrorLeavesTheBooksLastFact(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	values := &failingValues{statusValues: statusValues{status: map[string]json.RawMessage{}, link: map[string]LinkValue{}}, fail: map[string]bool{}}
+	values.set("deal/a", `{"row":"a"}`)
+	values.set("deal/b", `{"row":"b"}`)
+	c, err := shelf.Cadence(ctx, CadenceConfig{LogID: "deal-cadence/0123456789abcdef",
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Witnesses: testWitnesses(t), Status: values})
+	require.NoError(t, err)
+	a, b := mustOpenBook(t, shelf, "deal/a"), mustOpenBook(t, shelf, "deal/b")
+	mustAppend(t, a, observation("a", "1"))
+	mustAppend(t, b, observation("b", "1"))
+	mustTick(t, c, tickTime)
+	require.NoError(t, c.Migrate(ctx, tickTime.Add(time.Minute)))
+	factsOf := func(log string) int {
+		return countRows(t, shelf, `SELECT COUNT(*) FROM shelf_entries WHERE log_id = ? AND kind = ?`, log, FactKindBook)
+	}
+	beforeA, beforeB := factsOf("deal/a"), factsOf("deal/b")
+
+	values.fail["deal/a"] = true
+	mustAppend(t, a, observation("a", "2"))
+	mustAppend(t, b, observation("b", "2"))
+	s, err := c.Stamp(ctx, tickTime.Add(2*time.Minute))
+	require.NoError(t, err, "the stamp goes on")
+	assert.Equal(t, map[string]string{"deal/a": "the deal's offer is not held"}, s.Unstated)
+	assert.Equal(t, beforeA, factsOf("deal/a"), "deal/a keeps its last fact")
+	assert.Equal(t, beforeB+1, factsOf("deal/b"), "deal/b gets its new fact")
+
+	values.fail["deal/a"] = false
+	s, err = c.Stamp(ctx, tickTime.Add(3*time.Minute))
+	require.NoError(t, err)
+	assert.Empty(t, s.Unstated)
+	assert.Equal(t, beforeA+1, factsOf("deal/a"), "the next stamp asks again")
+}

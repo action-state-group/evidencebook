@@ -187,7 +187,10 @@ of the payment row's own payment has `terms_ref` set to the id of the offer's se
 carries the terms leg (section 7); a payer leg is the owing party's, a payee leg the other's.
 
 **`statement`.** `statements` and `names`, which names one arrived record: a `cancellation` or a
-`ruling`, never both. A statement with empty `statements` and no `names` is invalid.
+`ruling`, never both. A statement with empty `statements` and no `names` is invalid. A receiving library
+MUST seal a statement naming a ruling when a counted ruling for one of the holder's deals arrives
+from that deal's adjudicator (evidencebook#527), so the holder's own status reads it whether or not
+the ruling went its way.
 
 **`dispute`.** Kind `dispute`: `row`, `statements` (the record digests of the statements on that
 row when it is sealed), `adjudicator` and `forum`. Read against its book's agreement

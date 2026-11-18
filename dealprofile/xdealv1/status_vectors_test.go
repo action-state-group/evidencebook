@@ -16,45 +16,12 @@ import (
 
 const statusDir = "../../testdata/deal-v1/status"
 
-// resolve is a status row's input as a reader resolves it once every
-// {"stamp": n} has a time: stamps maps n to the time, at is the T asked.
-func resolve(t *testing.T, in StatusRowInput, at string, stamps map[uint64]string) rowstatus.Input {
+// resolve is ResolveRow, failing the test on an error.
+func resolve(t *testing.T, row StatusRow, at string, stamps map[uint64]string) rowstatus.Input {
 	t.Helper()
-	r := func(st StatusTime) rowstatus.Time {
-		switch {
-		case st.Known != "":
-			k := st.Known
-			return &k
-		case st.Stamp != 0:
-			if s, ok := stamps[st.Stamp]; ok {
-				return &s
-			}
-		}
-		return nil
-	}
-	out := rowstatus.Input{At: at, Parties: in.Parties, Row: in.Row, Check: in.Check, ConflictingFinalRulings: in.ConflictingFinalRulings}
-	if in.Named != nil {
-		out.Named = map[string]rowstatus.Named{}
-		for k, n := range in.Named {
-			out.Named[k] = rowstatus.Named{Time: r(n.Time), Latest: n.Latest}
-		}
-	}
-	for _, s := range in.Statements {
-		out.Statements = append(out.Statements, rowstatus.Statement{Side: s.Side, Value: s.Value, Time: r(s.Time)})
-	}
-	for _, d := range in.Disputes {
-		out.Disputes = append(out.Disputes, rowstatus.Dispute{Side: d.Side, Time: r(d.Time), SeenInTime: d.SeenInTime})
-	}
-	for _, w := range in.Withdrawals {
-		out.Withdrawals = append(out.Withdrawals, rowstatus.Withdrawal{Side: w.Side, Time: r(w.Time)})
-	}
-	for _, ru := range in.Rulings {
-		out.Rulings = append(out.Rulings, rowstatus.Ruling{Final: ru.Final, Value: ru.Value, Time: r(ru.Time), RemedyDue: ru.RemedyDue})
-	}
-	for _, m := range in.Remedies {
-		out.Remedies = append(out.Remedies, rowstatus.Remedy{Time: r(m.Time)})
-	}
-	return out
+	in, err := ResolveRow(row, at, stamps)
+	require.NoError(t, err)
+	return in
 }
 
 // lowerBoundBooks is carry-forward-lower-bound (design §8.1, REQUIRED): past
@@ -118,7 +85,7 @@ func TestStatusVectors(t *testing.T) {
 		for i, row := range v.Rows {
 			want, err := rowstatus.Compute(ins[i])
 			require.NoError(t, err, name)
-			got, err := rowstatus.Compute(resolve(t, row.Input, at, stamps))
+			got, err := rowstatus.Compute(resolve(t, row, at, stamps))
 			require.NoError(t, err, name)
 			require.Equal(t, want, got, "%s, row %s: the fact's input resolves to the full books' result", name, row.ID)
 			rows[row.ID] = got.Status
@@ -150,6 +117,38 @@ func TestStatusVectors(t *testing.T) {
 	cf.Counterpart = statusBooksOf(t, a, "appendix-a/seller-book", map[int]StatusTime{3: StampTime(7)})
 	add("carry-forward", cf, "2026-11-26T12:00:00Z", map[uint64]string{7: "2026-11-10T00:00:00Z"})
 
+	// seen-in-time-resolves (Codex, PR 4c-2b-2 review): the seller states
+	// met again in time; the buyer names that standing statement in a
+	// record first covered by stamp 5, then
+	// disputes in one first covered by stamp 6. Resolved, the naming is in
+	// time and the dispute late, so seen_in_time is true over the full
+	// books though the fact could not know it.
+	sit := base
+	sit.Own = statusBooksOf(t, a, "appendix-a/buyer-book", nil)[:3]
+	sit.Counterpart = statusBooksOf(t, a, "appendix-a/seller-book", nil)[:3]
+	sit.CaseBook = nil
+	again := stmtRecord(4, "", item("as_described", ValueMet))
+	again.Block.At = "2026-11-12T09:00:00Z"
+	sit.Counterpart = append(sit.Counterpart, StatusRecord{Record: again, RecordID: label("seller met again"), Time: KnownTime("2026-11-12T09:00:00Z")})
+	standing := label("seller met again")
+	naming := stmtRecord(4, standing, item("delivered", ValueMet))
+	naming.Block.At = "2026-11-13T09:00:00Z"
+	db := journalBlock(TypeDispute, "2026-11-20T09:00:00Z", true)
+	db.Seq, db.Seen = 5, Some(standing)
+	sit.Own = append(sit.Own,
+		StatusRecord{Record: naming, RecordID: label("buyer names delivery"), Time: StampTime(5)},
+		StatusRecord{Record: Record{Block: db, Body: &DisputeBody{Kind: KindDispute, Row: "as_described", Forum: fxForum}}, RecordID: label("buyer late dispute"), Time: StampTime(6)})
+	add("seen-in-time-resolves", sit, "2026-11-26T12:00:00Z", map[uint64]string{5: "2026-11-13T09:00:00Z", 6: "2026-11-20T09:00:00Z"})
+	sitCase := cases[len(cases)-1]
+	for _, r := range sitCase.Status.Rows {
+		if r.ID == "as_described" {
+			require.Len(t, r.Input.Disputes, 1)
+			assert.False(t, r.Input.Disputes[0].SeenInTime, "the fact cannot know it")
+			in := resolve(t, r, sitCase.At, sitCase.Stamps)
+			assert.True(t, in.Disputes[0].SeenInTime, "the reader recomputes it from the resolved times")
+		}
+	}
+
 	// carry-forward-lower-bound (REQUIRED).
 	lb := lowerBoundBooks(t)
 	add("carry-forward-lower-bound", lb, "2026-11-26T12:00:00Z", nil)
@@ -166,7 +165,7 @@ func TestStatusVectors(t *testing.T) {
 		values = append(values, s.Side+":"+s.Value)
 	}
 	assert.Contains(t, values, "seller:cannot_tell", "the earlier timed statement is carried: rowstatus reads it as the untimed one's lower bound")
-	res, err := rowstatus.Compute(resolve(t, asDescribed.Input, lbCase.At, nil))
+	res, err := rowstatus.Compute(resolve(t, asDescribed, lbCase.At, nil))
 	require.NoError(t, err)
 	assert.False(t, res.Local, "local false, as over the full input")
 
