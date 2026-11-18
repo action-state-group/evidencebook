@@ -1474,18 +1474,28 @@ PROFILE §10). It is as proposed below, with these additions and limits:
 - **`late`** is present: rowstatus's `ComputeLate` (Q9) landed in PR 1a (#484).
 - **Times.** A report reads each record's time as a stamp's status value does; a time only a
   stamp of the holder's gives, with no witness receipt yet, is no time, so its rows are `local`.
-  `relied_on.witnessed` is true exactly when a time is given.
-- **The deal checkpoint** is `Book.Checkpoint` of the holder's book when the report is made.
-- **Limit: a payment remedy is not counted.** RowInputs counts no remedy that is a payment (6.1):
-  it needs its own terms leg, which the profile does not define. Appendix A's refund is one, so
-  the vectors at 26 Nov read the ruled row's remedy `due` and at 28 Nov `not_honoured`, though the
-  seller refunded. The design's "26 Nov, remedy made, settled" vector waits for that terms leg.
+  `relied_on.witnessed` is true exactly when a time is given. `BuildReport` refuses books holding
+  a record timed after `as_of`, so disputes, rulings and `relied_on` read what was held then
+  (Codex and the stand-in, #530 review).
+- **The deal checkpoint** is the holder's book's latest checkpoint, which must cover the whole
+  book (a stamp cuts it); `Report` writes nothing to the book, and reads again, up to three
+  times, when the book moves during the read (Codex, #530 review).
+- **A payment remedy is not counted** (Sherlock2, the twin and the coordinator, #530 review).
+  RowInputs counts no remedy that is a payment (6.1): it needs its own terms leg, which the
+  profile does not define. The report must never state a breach its records contradict, so a
+  ruled row whose ruling orders a payment has `remedy` `not_counted`, never `due` or
+  `not_honoured`, and keeps the deal unsettled. Its `remedy_made` says whether the owing side's
+  book holds a remedy for the row. Appendix A's refund reads `not_counted` with `remedy_made`
+  true from 25 Nov. Defining the remedy's terms leg is Sherlock2's and Steven's call; the
+  design's "26 Nov, remedy made, settled" vector waits for it.
 - **Vectors built** (`testdata/deal-v1/report/`): Appendix A's buyer at each time above, the
   books as held then; its counterparty and adjudicator copies; a not-started book (the seller
-  holding its own agreement only); an untimed own book; a counterparty without the layer; and a
-  ruling held unnamed with a status fact that is not current. `testdata/deal-v1/settled/` holds
-  the `settled` cases. Not built: the settled-without-ruling path (Appendix A lines s1 to s12 has
-  no fixture yet) and an empty witness list (the untimed own book stands in for its local rows).
+  holding its own agreement only); an untimed own book; a counterparty without the layer; the
+  settled-without-ruling path (lines s1 to s12: the seller concedes row 3 not met and refunds
+  with no ruling, so the row is `agreed` `not_met` with `remedy_made`, and the deal is settled);
+  an empty witness list (no record has a time, so the rows that rest on statements are
+  `local`); and a ruling held unnamed with a status fact that is not current.
+  `testdata/deal-v1/settled/` holds the `settled` cases.
 - **Not here:** the `x-deal-v1` bundle extension's `sealed_report` pointer and the sealing call
   are the host's (evidencebook-deal#212); `report/` (`capsulectl book report`) refuses a bundle
   carrying the `x-deal-v1` extension and points to this report (#485).

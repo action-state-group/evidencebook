@@ -102,17 +102,24 @@ func TestBuildReportAppendixA(t *testing.T) {
 	r = at("2026-11-21T12:00:00Z")
 	row := rowByID(t, r, "as_described")
 	assert.Equal(t, rowstatus.Ruled, row.Status)
-	assert.Equal(t, strp(rowstatus.RemedyDue), row.Remedy)
+	assert.Equal(t, strp(RemedyNotCounted), row.Remedy, "the ruling orders a refund, a payment rowstatus does not count yet")
+	assert.False(t, row.RemedyMade, "no refund held on 21 Nov")
 	require.NotNil(t, row.Ruling)
 	assert.True(t, row.Ruling.Final)
 	assert.Equal(t, strp(RoleSeller), row.Ruling.Against)
 	assert.Equal(t, b.CaseBook[1].RecordID, row.Ruling.Record, "the first final ruling")
 	assert.Contains(t, row.ReliedOn, ReportSource{Record: b.CaseBook[1].RecordID, Side: SideAdjudicator, Time: b.CaseBook[1].Time.known(), Witnessed: true})
-	assert.False(t, r.Settled, "a ruled row with remedy due keeps the deal unsettled")
+	assert.False(t, r.Settled, "a remedy not counted keeps the deal unsettled")
 
+	// The seller refunded on 25 Nov: the report never says the remedy was
+	// not honoured (Sherlock2, the twin and the coordinator, #530 review).
+	for _, as := range []string{"2026-11-26T12:00:00Z", "2026-11-28T12:00:00Z"} {
+		row := rowByID(t, at(as), "as_described")
+		assert.Equal(t, strp(RemedyNotCounted), row.Remedy, as)
+		assert.True(t, row.RemedyMade, "%s: the refund is held", as)
+	}
 	r = at("2026-11-28T12:00:00Z")
-	assert.Equal(t, strp(rowstatus.RemedyNotHonoured), rowByID(t, r, "as_described").Remedy,
-		"the refund is a payment remedy, which rowstatus does not count yet (RowInputs), so it reads not honoured")
+	assert.False(t, r.Settled)
 	assert.Len(t, r.Disputes, 1, "one dispute record, one entry")
 	assert.Equal(t, rowstatus.AgreedSoFar, at("2026-11-01T12:00:00Z").Rows[0].Status)
 }
@@ -121,7 +128,8 @@ func TestBuildReportAppendixA(t *testing.T) {
 // withholds the rows, the counterparty's prefix, the witnesses, disputes and
 // the unnamed count, and names its referee; the others do not.
 func TestBuildReportAudiences(t *testing.T) {
-	_, b := appendixAStatus(t)
+	_, full := appendixAStatus(t)
+	b := heldAt(full, "2026-11-21T12:00:00Z")
 	b.RulingsUnnamed = 1
 	rb := reportBooks(t, b)
 	keep, err := BuildReport(rb, keepCopy("2026-11-21T12:00:00Z"))
@@ -243,6 +251,74 @@ func TestBuildReportNotStartedAndLocal(t *testing.T) {
 	assert.Equal(t, strp("2026-11-01T10:00:00Z"), r.Rows[0].ReliedOn[0].Time, "resolved from the stamp's time")
 }
 
+// settledWithoutRuling is Appendix A's settled-without-ruling path (design
+// §9, §10; lines s1 to s12) from the buyer's side: the buyer states row 3
+// not met, the seller concedes not met and refunds with no ruling. Row 3 is
+// agreed not_met with its remedy made, and the deal is settled.
+func settledWithoutRuling(t *testing.T) StatusBooks {
+	a, b := appendixAStatus(t)
+	b.Own, b.Counterpart, b.CaseBook = b.Own[:4], b.Counterpart[:3], nil
+	concede := stmtRecord(4, b.Own[3].RecordID, item("as_described", ValueNotMet))
+	concede.Block.At = "2026-11-10T14:00:00Z"
+	refund := a.record("appendix-a/seller-book/07-refund.json")
+	body := *refund.Body.(*SettleBody)
+	rf := *body.RemedyFor
+	rf.Ruling = nil
+	body.RemedyFor = &rf
+	refund.Body = &body
+	refund.Block.Seq, refund.Block.At = 5, "2026-11-11T10:00:00Z"
+	b.Counterpart = append(append([]StatusRecord(nil), b.Counterpart...),
+		StatusRecord{Record: concede, RecordID: label("seller concedes row 3"), Time: KnownTime("2026-11-10T14:00:00Z")},
+		StatusRecord{Record: refund, RecordID: label("seller refunds without a ruling"), Time: KnownTime("2026-11-11T10:00:00Z")})
+	return b
+}
+
+// noWitnesses is Appendix A's buyer with an empty witness list: no record
+// has a time, since only a witness the agreement names gives one (design
+// §4.3), so every row is local.
+func noWitnesses(t *testing.T, as string) StatusBooks {
+	_, full := appendixAStatus(t)
+	b := heldAt(full, as)
+	b.Own = append([]StatusRecord(nil), b.Own...)
+	ag := *b.Own[0].Record.Body.(*AgreeBody)
+	ag.Witnesses = []Witness{}
+	b.Own[0].Record.Body = &ag
+	for _, book := range []*[]StatusRecord{&b.Own, &b.Counterpart, &b.CaseBook} {
+		rs := append([]StatusRecord(nil), (*book)...)
+		for i := range rs {
+			rs[i].Time = NoTime
+		}
+		*book = rs
+	}
+	return b
+}
+
+func TestBuildReportSettledWithoutRuling(t *testing.T) {
+	r, err := BuildReport(reportBooks(t, settledWithoutRuling(t)), keepCopy("2026-12-01T12:00:00Z"))
+	require.NoError(t, err)
+	row := rowByID(t, r, "as_described")
+	assert.Equal(t, rowstatus.Agreed, row.Status)
+	assert.Equal(t, strp(ValueNotMet), row.Value)
+	assert.Nil(t, row.Remedy, "not ruled")
+	assert.True(t, row.RemedyMade, "the refund outside a ruling (Q5)")
+	assert.Nil(t, row.Ruling)
+	assert.True(t, r.Settled)
+}
+
+func TestBuildReportNoWitnesses(t *testing.T) {
+	r, err := BuildReport(reportBooks(t, noWitnesses(t, "2026-11-09T12:00:00Z")), keepCopy("2026-11-09T12:00:00Z"))
+	require.NoError(t, err)
+	assert.Empty(t, r.RestsOn.Witnesses)
+	require.NotEmpty(t, r.Rows)
+	for _, row := range r.Rows {
+		for _, src := range row.ReliedOn {
+			assert.Nil(t, src.Time)
+		}
+	}
+	assert.True(t, rowByID(t, r, "paid_as_agreed").Local, "agreed on untimed statements: local")
+	assert.Equal(t, rowstatus.NotReached, rowByID(t, r, "delivered").Status, "a named record with no time past its latest date")
+}
+
 func TestBuildReportRefuses(t *testing.T) {
 	_, b := appendixAStatus(t)
 	rb := reportBooks(t, b)
@@ -256,9 +332,11 @@ func TestBuildReportRefuses(t *testing.T) {
 		_, err := BuildReport(rb, c)
 		assert.Error(t, err, name)
 	}
+	_, err := BuildReport(rb, keepCopy("2026-11-05T12:00:00Z"))
+	assert.ErrorContains(t, err, "after as_of", "a record timed after as_of was not held then")
 	empty := rb
 	empty.Books.Own = nil
-	_, err := BuildReport(empty, keepCopy("2026-11-05T12:00:00Z"))
+	_, err = BuildReport(empty, keepCopy("2026-11-05T12:00:00Z"))
 	assert.Error(t, err)
 }
 
@@ -358,6 +436,9 @@ func TestReportVectors(t *testing.T) {
 	noLayer.ProofHeld = false
 	add("counterparty-without-layer", reportBooks(t, noLayer), keepCopy("2026-11-09T12:00:00Z"))
 
+	add("settled-without-ruling", reportBooks(t, settledWithoutRuling(t)), keepCopy("2026-12-01T12:00:00Z"))
+	add("no-witnesses", reportBooks(t, noWitnesses(t, "2026-11-09T12:00:00Z")), keepCopy("2026-11-09T12:00:00Z"))
+
 	unnamed := heldAt(b, "2026-11-21T12:00:00Z")
 	unnamed.CaseBook, unnamed.RulingsUnnamed = nil, 2
 	rb := reportBooks(t, unnamed)
@@ -418,11 +499,12 @@ func writeOrCompare(t *testing.T, path string, v any) {
 	assert.True(t, bytes.Equal(want, got), "%s differs from this build's; regenerate only for an intended change", path)
 }
 
-// The report from a real shelf (StatusProvider.Report): it rests on the
-// holder's book at its checkpoint and the seller's counted prefix, and says
-// whether the book's last status fact is the status computed now: none
-// before the first stamp, current right after it, and not current once a
-// received record changes the status no stamp has stated yet.
+// The report from a real shelf (StatusProvider.Report): it writes nothing,
+// rests on the holder's book at its latest checkpoint, which must cover the
+// whole book, and on the seller's counted prefix, and says whether the
+// book's last status fact is the status computed now: current right after a
+// stamp, not current once a received record changes the status no stamp has
+// stated yet.
 func TestStatusProviderReport(t *testing.T) {
 	ctx := context.Background()
 	d := newPaymentDeal(t, func(o *ProposeBody) { o.Witnesses = []Witness{} }, true)
@@ -438,23 +520,31 @@ func TestStatusProviderReport(t *testing.T) {
 	proof := d.seller.stamp(d.sellerAgID)
 	d.buyer.receive(d.sellerAgPair, &proof)
 	at := d.buyer.now.UTC().Truncate(time.Second).Format(time.RFC3339)
-
-	r, err := d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	book, err := d.buyer.shelf.Open(ctx, d.buyerLog)
 	require.NoError(t, err)
-	assert.Nil(t, r.StatusFact, "no fact before the first stamp")
-	assert.Equal(t, d.buyerLog, r.RestsOn.Own.LogID)
-	assert.Equal(t, d.buyerLog, r.DealCheckpoint.LogID)
-	assert.NotEmpty(t, r.DealCheckpoint.Root)
-	require.NotNil(t, r.RestsOn.Counterparty)
-	assert.Equal(t, d.sellerLog, r.RestsOn.Counterparty.LogID)
+	size := book.Size()
+
+	_, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	require.ErrorContains(t, err, "no checkpoint at its size", "before a stamp checkpoints the book")
+	assert.Equal(t, size, book.Size(), "a report writes nothing")
 
 	d.buyer.tick()
 	_, err = d.buyer.cadence.Stamp(ctx, d.buyer.now)
 	require.NoError(t, err)
-	r, err = d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
+	r, err := d.buyer.status.Report(ctx, d.buyerLog, keepCopy(at))
 	require.NoError(t, err)
+	assert.Equal(t, size, book.Size(), "a report writes nothing")
+	cps, err := book.Checkpoints(ctx)
+	require.NoError(t, err)
+	last := cps[len(cps)-1]
+	assert.Equal(t, dealprofile.Checkpoint{LogID: d.buyerLog, MMRSize: last.TreeSize, Root: last.Root}, r.DealCheckpoint)
+	assert.Equal(t, size, r.RestsOn.Own.Size)
+	assert.Equal(t, last.Entries, r.RestsOn.Own.Size, "the checkpoint covers exactly the records the rows read")
 	require.NotNil(t, r.StatusFact)
 	assert.True(t, r.StatusFact.Current, "the last fact is the status computed now")
+	require.NotNil(t, r.RestsOn.Counterparty)
+	assert.Equal(t, d.sellerLog, r.RestsOn.Counterparty.LogID)
+	assert.Zero(t, r.RestsOn.Counterparty.ForkAt)
 	assert.Equal(t, ProofNotYet, r.RestsOn.CounterpartyProof, "the seller's proof covers two records and one is held")
 
 	d.buyer.receive(payee, nil)

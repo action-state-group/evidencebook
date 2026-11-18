@@ -17,7 +17,7 @@ import (
 	"github.com/action-state-group/evidencebook/rowstatus"
 )
 
-// The v1 sealed deal report (design §9, PROFILE §9): a snapshot the holder
+// The v1 sealed deal report (design §9, PROFILE §10): a snapshot the holder
 // signs of what it computed at as_of from what it held, so a receipt page
 // displays each row's status and never recomputes it. It is the same Capsule
 // form as v0's (dealprofile.ReportActionID, type deal_report) with profile
@@ -37,6 +37,13 @@ const (
 	ProofHeld    = "held"
 	ProofNotYet  = "not_yet"
 	ProofNoLayer = "no_layer"
+
+	// RemedyNotCounted is a ruled row's remedy when the ruling orders a
+	// payment (a refund): rowstatus counts no payment remedy until the
+	// profile defines its terms leg (RowInputs), so the report says the
+	// remedy is not counted rather than due or not honoured (Sherlock2 and
+	// the coordinator, #530 review).
+	RemedyNotCounted = "not_counted"
 
 	CheckPassed        = "passed"
 	CheckFailed        = "failed"
@@ -150,11 +157,15 @@ type ReportRow struct {
 	Status    string          `json:"status"`
 	Value     *string         `json:"value"`
 	Remedy    *string         `json:"remedy"`
-	Local     bool            `json:"local"`
-	Check     string          `json:"check"`
-	Late      ReportLate      `json:"late"`
-	Ruling    *ReportRuling   `json:"ruling"`
-	ReliedOn  []ReportSource  `json:"relied_on"`
+	// RemedyMade says the owing side's book holds a remedy for the row (a
+	// settle or perform whose remedy_for names it), ruled or not (design
+	// §8.1, Q5).
+	RemedyMade bool           `json:"remedy_made"`
+	Local      bool           `json:"local"`
+	Check      string         `json:"check"`
+	Late       ReportLate     `json:"late"`
+	Ruling     *ReportRuling  `json:"ruling"`
+	ReliedOn   []ReportSource `json:"relied_on"`
 }
 
 // ReportLate are the row's late statements and disputes (rowstatus
@@ -206,8 +217,8 @@ var reportNonce = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // §9): start and each row as Start and rowstatus give them, settled, and the
 // members c.Audience may have. It refuses what BuildStatus refuses, an
 // unknown audience, a nonce that is not 64 lowercase hex, a referee on a copy
-// that is not an adjudicator's or none on one that is, and an as_of that is
-// not RFC 3339 UTC to the second.
+// that is not an adjudicator's or none on one that is, an as_of that is not
+// RFC 3339 UTC to the second, and books holding a record timed after as_of.
 func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 	bad := func(format string, args ...any) (Report, error) {
 		return Report{}, fmt.Errorf("xdealv1: report: "+format, args...)
@@ -245,9 +256,17 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 		return out
 	}
 	rb := RowBooks{Offer: b.Books.Offer, Own: resolve(b.Books.Own), Counterpart: resolve(b.Books.Counterpart),
-		CaseBook: resolve(b.Books.CaseBook), ConflictingFinalRulings: b.Books.ConflictingFinalRulings, Checks: map[string]string{}}
-	for id, p := range b.Books.Payments {
-		rb.Checks[id] = p.Check
+		CaseBook: resolve(b.Books.CaseBook), ConflictingFinalRulings: b.Books.ConflictingFinalRulings, Checks: paymentChecks(b.Books.Payments)}
+	// A report is what the holder computed at as_of from what it held then:
+	// a record timed after as_of was not held, and the status value's
+	// disputes and unnamed count read every record given (Codex and the
+	// stand-in, #530 review).
+	for _, rs := range [][]TimedRecord{rb.Own, rb.Counterpart, rb.CaseBook} {
+		for _, r := range rs {
+			if r.Time != nil && *r.Time > c.AsOf {
+				return bad("record %s is timed %s, after as_of %s", r.RecordID, *r.Time, c.AsOf)
+			}
+		}
 	}
 	ins, srcs, err := rowInputs(rb, c.AsOf)
 	if err != nil {
@@ -302,17 +321,7 @@ func BuildReport(b ReportBooks, c ReportCopy) (Report, error) {
 }
 
 // ReportPayload is the report's payload bytes: its JCS form.
-func ReportPayload(r Report) ([]byte, error) {
-	raw, err := json.Marshal(r)
-	if err != nil {
-		return nil, err
-	}
-	doc, err := decodeJSON(raw)
-	if err != nil {
-		return nil, err
-	}
-	return canonical.JCS(doc)
-}
+func ReportPayload(r Report) ([]byte, error) { return jcsJSON(r) }
 
 // resolveTime is a status time as a reader resolves it: a known time, a
 // stamp's time from stamps, or no time.
@@ -412,7 +421,23 @@ func reportRow(b RowBooks, agreed Row, in rowstatus.Input, src rowSources) (Repo
 			r, _ := rec(src.rulings[k])
 			body, _ := bodyOf[RulingBody](r.Record.Body)
 			row.Ruling = &ReportRuling{Record: r.RecordID, Value: ru.Value, Against: body.Against.V, Final: true, RemedyDue: ru.RemedyDue}
+			if body.Remedy != nil && body.Remedy.AmountMinor != nil {
+				nc := RemedyNotCounted
+				row.Remedy = &nc
+			}
 			break
+		}
+	}
+	owing := b.Counterpart
+	if own, _ := asAgree(b.Own[0].Record.Body); own.Role == agreed.OwedBy {
+		owing = b.Own
+	}
+	for _, r := range owing {
+		if p, ok := bodyOf[PerformBody](r.Record.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == agreed.ID {
+			row.RemedyMade = true
+		}
+		if st, ok := bodyOf[SettleBody](r.Record.Body); ok && st.RemedyFor != nil && st.RemedyFor.Row == agreed.ID {
+			row.RemedyMade = true
 		}
 	}
 	var refs []recRef
@@ -458,7 +483,8 @@ func reportCheck(agreed Row, check string) string {
 }
 
 // settled is design §9's: the deal has started, and every row that is not
-// not_reached is agreed, uncontested, or ruled with remedy none or made.
+// not_reached is agreed, uncontested, or ruled with remedy none or made. A
+// remedy not counted keeps the deal unsettled.
 func settled(start StartResult, rows []ReportRow) bool {
 	if start.State != StateStarted {
 		return false
@@ -480,11 +506,13 @@ func settled(start StartResult, rows []ReportRow) bool {
 // Report is a copy of the v1 report of the holder's deal book logID (design
 // §9), computed from what the shelf holds now, as of c.AsOf: the books a
 // stamp's status value reads (each time a named witness gives, no time
-// otherwise), the book's checkpoint (Book.Checkpoint), and whether the book's
-// last status fact is the status computed now. The host seals ReportPayload
-// with dealprofile.ReportCapsule as a standalone Capsule. It refuses a book
-// that is not a v1 deal book, and a shelf whose journal is not open yet.
-// It takes the shelf's lock, so it is never called from a stamp or a Receive.
+// otherwise), at the book's latest checkpoint, which must cover the whole
+// book (a stamp checkpoints it; Report writes nothing), and whether the
+// book's last status fact is the status computed now. The host seals
+// ReportPayload with dealprofile.ReportCapsule as a standalone Capsule. It
+// refuses a book that is not a v1 deal book, and a book that grew past its
+// checkpoint or kept changing while it was read. Each shelf call takes the
+// shelf's lock, so it is never called from a stamp or a Receive.
 func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy) (Report, error) {
 	if p.Shelf == nil {
 		return Report{}, fmt.Errorf("xdealv1: the status provider has no shelf")
@@ -493,43 +521,74 @@ func (p *StatusProvider) Report(ctx context.Context, logID string, c ReportCopy)
 	if err != nil {
 		return Report{}, err
 	}
-	journal, err := p.Shelf.Journal(ctx)
-	if err != nil {
-		return Report{}, err
-	}
 	first, err := book.Query(ctx, evidencebook.Filter{FromSeq: 1, ToSeq: 1})
 	if err != nil {
 		return Report{}, err
 	}
+	notV1 := fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	if len(first) != 1 {
-		return Report{}, fmt.Errorf("xdealv1: report: book %s is empty", logID)
+		return Report{}, notV1
+	}
+	// Checked before the journal is opened, so a refused report leaves the
+	// shelf as it was.
+	if rec, kind, err := v1Payload(ctx, book, first[0]); err != nil {
+		return Report{}, err
+	} else if a, ok := asAgree(rec.Body); kind != payloadV1 || !ok || a.Kind != KindAgreement {
+		return Report{}, notV1
+	}
+	journal, err := p.Shelf.Journal(ctx)
+	if err != nil {
+		return Report{}, err
 	}
 	bookID := first[0].RecordID
+	for attempt := 0; attempt < 3; attempt++ {
+		rb, stable, err := p.reportBooks(ctx, logID, bookID, book, journal)
+		if err != nil {
+			return Report{}, err
+		}
+		if stable {
+			return BuildReport(rb, c)
+		}
+	}
+	return Report{}, fmt.Errorf("%w: report: book %s kept changing while it was read", evidencebook.ErrBusy, logID)
+}
+
+// reportBooks reads one snapshot of what a report rests on; stable false
+// when the book moved during the read. The counterparty's prefix is the one
+// read the status walked.
+func (p *StatusProvider) reportBooks(ctx context.Context, logID, bookID string, book, journal *evidencebook.Book) (ReportBooks, bool, error) {
+	cps, err := book.Checkpoints(ctx)
+	if err != nil {
+		return ReportBooks{}, false, err
+	}
+	size := book.Size()
+	if len(cps) == 0 || cps[len(cps)-1].Entries != size {
+		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s has no checkpoint at its size %d; a stamp checkpoints it", logID, size)
+	}
+	cp := cps[len(cps)-1]
 	b, _, counterpart, ok, err := p.statusBooks(ctx, evidencebook.StatusInput{BookID: bookID, LogID: logID, Book: book, Journal: journal})
 	if err != nil {
-		return Report{}, err
+		return ReportBooks{}, false, err
 	}
 	if !ok {
-		return Report{}, fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
+		return ReportBooks{}, false, fmt.Errorf("xdealv1: report: book %s is not an x-deal-v1 deal book", logID)
 	}
-	cp, err := book.Checkpoint(ctx)
-	if err != nil {
-		return Report{}, err
+	if uint64(len(b.Own)) != size || book.Size() != size {
+		return ReportBooks{}, false, nil
 	}
 	rb := ReportBooks{Books: b, Counterpart: counterpart,
-		Own:        ReportLog{LogID: logID, Size: uint64(len(b.Own)), Last: b.Own[len(b.Own)-1].RecordID},
+		Own:        ReportLog{LogID: logID, Size: size, Last: b.Own[len(b.Own)-1].RecordID},
 		Checkpoint: dealprofile.Checkpoint{LogID: logID, MMRSize: cp.TreeSize, Root: cp.Root}}
 	if rb.Fact, err = p.factCurrent(ctx, bookID, b); err != nil {
-		return Report{}, err
+		return ReportBooks{}, false, err
 	}
-	return BuildReport(rb, c)
+	return rb, true, nil
 }
 
 // factCurrent is the book's last status fact against the status value b
-// builds now, nil before the book's first fact.
+// builds now, compared in JCS form; nil before the book's first fact.
 func (p *StatusProvider) factCurrent(ctx context.Context, bookID string, b StatusBooks) (*ReportFact, error) {
-	// The status opening holds the same value for every audience given it.
-	facts, err := p.Shelf.Openings(ctx, bookID, evidencebook.AudienceCounterparty)
+	facts, err := p.Shelf.Openings(ctx, bookID, evidencebook.AudienceOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -546,17 +605,30 @@ func (p *StatusProvider) factCurrent(ctx context.Context, bookID string, b Statu
 	if err != nil {
 		return nil, err
 	}
-	now, err := json.Marshal(v)
+	now, err := jcsJSON(v)
 	if err != nil {
 		return nil, err
 	}
-	var held StatusValue
-	if err := json.Unmarshal(last.Value, &held); err != nil {
-		return &ReportFact{Current: false}, nil
+	held, err := decodeJSON(last.Value)
+	if err != nil {
+		return nil, fmt.Errorf("%w: book %s's last status opening: %v", evidencebook.ErrCorrupt, bookID, err)
 	}
-	was, err := json.Marshal(held)
+	was, err := canonical.JCS(held)
 	if err != nil {
 		return nil, err
 	}
 	return &ReportFact{Current: bytes.Equal(now, was)}, nil
+}
+
+// jcsJSON is v's JSON in JCS form.
+func jcsJSON(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	doc, err := decodeJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	return canonical.JCS(doc)
 }

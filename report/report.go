@@ -589,16 +589,16 @@ func resultCandidates(id string, members map[string]interface{}, inline bool) []
 	return found
 }
 
-// resultRootOf is the Go mirror of the viewer's root gate: the root carries
-// the one Result the page is built on, and no other disclosed member of the
-// bundle -- the root's other member, or any other record -- carries one, so
-// what the report renders is never a matter of which Result was found
-// first. It names what it found when the root is not a Result.
 // dealV1Extension is the bundle extension an x-deal-v1 deal's bundle
 // carries (docs/design/461-deal-profile.md §2.3, §9): the record version's
 // name, xdealv1.Profile.
 const dealV1Extension = "x-deal-v1"
 
+// resultRootOf is the Go mirror of the viewer's root gate: the root carries
+// the one Result the page is built on, and no other disclosed member of the
+// bundle -- the root's other member, or any other record -- carries one, so
+// what the report renders is never a matter of which Result was found
+// first. It names what it found when the root is not a Result.
 func resultRootOf(value map[string]interface{}) (resultRoot, error) {
 	id, _ := value["root"].(string)
 	var rootRecord map[string]interface{}

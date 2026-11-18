@@ -380,12 +380,21 @@ from a shelf; the vectors are in `testdata/deal-v1/report/` and `testdata/deal-v
   - `rests_on.counterparty_kind` is null while nothing states it; a page shows "not stated".
   - `rests_on.counterparty_proof` reads the counterparty's layer and the held proof together:
     `held`; `not_yet`, a layered counterparty whose proof has not arrived; or `no_layer`, a
-    counterparty that sends no stamp proof, so the deal is unguarded (u611).
+    counterparty that sends no stamp proof, which a page words as u611 does: the other side sent
+    no stamp proof, counted from our receipt only.
+  - A row's `remedy` is `not_counted` when its ruling orders a payment (a refund): no payment
+    remedy is counted until the profile defines its terms leg, so the report never says such a
+    remedy is due or not honoured. A page shows "remedy is a payment, not checked". The deal is not
+    settled while one is. `remedy_made` says the owing side's book holds a remedy for the row,
+    ruled or not.
   - `disputes` lists one entry per `dispute` record, with its outcome. `rulings_unnamed` (absent
     at zero) counts the adjudicator's counted rulings the holder holds that neither book names; a
     page shows "ruling held, unnamed" beside an `open` outcome.
   - `status_fact` is null before the book's first status fact, else whether that fact is the
     status computed now. A page never presents a fact that is not current as the deal's status.
+- **What it rests on.** A report is computed from what the holder held at `as_of`: no record it
+  rests on is timed after `as_of`. From a shelf, it rests on the holder's book at its latest
+  checkpoint, which covers the whole book; making a report writes nothing.
 - **Audiences.** `keep` and `counterparty` copies list the rows. An `adjudicator` copy names its
   `referee`, has `rows_state` `withheld` and no rows, and carries neither the counterparty's
   prefix, the witnesses, the disputes nor `rulings_unnamed`.

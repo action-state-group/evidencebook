@@ -13,4 +13,6 @@
   - `status_fact` says whether the book's last status fact is current.
 - **The adjudicator's copy** withholds the rows, the counterparty's prefix, the witnesses, the disputes and the unnamed count.
 - **Vectors:** `testdata/deal-v1/report/` and `testdata/deal-v1/settled/`.
-- **A payment remedy is not counted yet:** it needs its own terms leg. So Appendix A's refunded ruling reads remedy `due`, then `not_honoured`.
+- **A payment remedy is not counted yet,** because it needs its own terms leg. A ruled row whose ruling orders a payment reads remedy `not_counted`, never `due` or `not_honoured`, and the deal stays unsettled. `remedy_made` says whether a remedy for the row is held.
+- **Snapshot rules:** a report refuses books holding a record timed after `as_of`. From a shelf, it rests on the book's latest checkpoint covering the whole book, and writes nothing.
+- **Fixed:** `xdealv1.BookEntry` seals the header `record_type` `deal_step`, as design §3.1 and v0 say. It had sealed the payload's own x-deal-v1 type since v0.18.0. No reader checks the header's record type, so books already sealed stay valid.

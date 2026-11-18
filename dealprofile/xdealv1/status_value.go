@@ -274,14 +274,8 @@ func BuildStatus(b StatusBooks) (StatusValue, error) {
 		}
 		return b.CaseBook[ref.i].Time
 	}
-	checks := map[string]string{}
-	for row, p := range b.Payments {
-		if p.Check != "" {
-			checks[row] = p.Check
-		}
-	}
 	rb := RowBooks{Offer: b.Offer, Own: timed(b.Own), Counterpart: timed(b.Counterpart), CaseBook: timed(b.CaseBook),
-		ConflictingFinalRulings: b.ConflictingFinalRulings, Checks: checks}
+		ConflictingFinalRulings: b.ConflictingFinalRulings, Checks: paymentChecks(b.Payments)}
 	agreedAt := b.Own[0].Record.Block.At
 	// The fact is written after every time it states as known, so the rows
 	// are read as of the latest of them: a window end hanging on a named
@@ -389,6 +383,18 @@ func valueBand(t Terms) *ValueBand {
 func rawJSON(v any) json.RawMessage {
 	raw, _ := json.Marshal(v)
 	return raw
+}
+
+// paymentChecks are the payment rows' checks that ran, by row id: a check
+// not run is left out, so RowInputs reads that row as not run.
+func paymentChecks(payments map[string]PaymentResult) map[string]string {
+	checks := map[string]string{}
+	for row, p := range payments {
+		if p.Check != "" {
+			checks[row] = p.Check
+		}
+	}
+	return checks
 }
 
 // statusStart is Start's input from the books, without at, its offerer's
@@ -514,18 +520,7 @@ func disputesOf(books map[byte][]StatusRecord, bookOfRole map[string]byte, row s
 // statement_named_by_other, the first such naming, its book's times never
 // decreasing. While the window end is not known the fact's value stands.
 func ResolveRow(row StatusRow, at string, stamps map[uint64]string) (rowstatus.Input, error) {
-	r := func(st StatusTime) rowstatus.Time {
-		switch {
-		case st.Known != "":
-			k := st.Known
-			return &k
-		case st.Stamp != 0:
-			if s, ok := stamps[st.Stamp]; ok {
-				return &s
-			}
-		}
-		return nil
-	}
+	r := func(st StatusTime) rowstatus.Time { return resolveTime(st, stamps) }
 	in := row.Input
 	out := rowstatus.Input{At: at, Parties: in.Parties, Row: in.Row, Check: in.Check, ConflictingFinalRulings: in.ConflictingFinalRulings}
 	if in.Named != nil {
