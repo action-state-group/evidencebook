@@ -129,12 +129,12 @@ type bookSealed struct {
 	Pair     []byte
 }
 
-// bookRecordIn is what a v1 deal-book verb gives the writer: the body, and the
-// typed citations and marks the type carries. The writer fills the block's
+// bookRecordIn is what a v1 deal-book verb gives the writer: the body and the
+// marks the type carries. A deal-book record carries no block refs (evidencebook
+// v0.17.0 refuses them): it cites by its body's own fields. The writer fills the block's
 // chain: deal_id, at, seq, prev, agreement_ref and seen.
 type bookRecordIn struct {
 	Body  xdealv1.Body
-	Refs  []xdealv1.RelRef
 	Marks []string
 	// Seen, when set, is the record id `seen` names instead of the other
 	// side's last counted record: the offerer's agreement names the
@@ -204,7 +204,7 @@ func (s *dealSession) sealBookV1(ctx context.Context, dealID string, in bookReco
 	}
 	block := xdealv1.Block{
 		Profile: xdealv1.Profile, Canonicalization: xdealv1.Canonicalization, DealID: dealID,
-		RecordType: in.Body.RecordType(), At: v1Now(), Refs: in.Refs, Marks: in.Marks,
+		RecordType: in.Body.RecordType(), At: v1Now(), Marks: in.Marks,
 		Seq: int64(size) + 1,
 	}
 	var prevID string
