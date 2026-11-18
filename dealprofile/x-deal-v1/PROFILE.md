@@ -182,7 +182,9 @@ check it rests on), `remedy_for`.
 **`settle`.** `leg` (`payer` or `payee`), `statements`, `check` (REQUIRED on a payer leg),
 `supersedes`, `reverses` (the leg a refund reverses), `remedy_for` (`{"row", "ruling"?}`; a
 remedy counts by what it gives, so the ruling is never required). The leg itself travels as the
-Capsule's `settlement` member, as v0 carries it.
+Capsule's `settlement` member, as v0 carries it (draft-mih-agent-settlement-records-01). A leg
+of the payment row's own payment has `terms_ref` set to the id of the offer's sent Capsule, which
+carries the terms leg (section 7); a payer leg is the owing party's, a payee leg the other's.
 
 **`statement`.** `statements` and `names`, which names one arrived record: a `cancellation` or a
 `ruling`, never both. A statement with empty `statements` and no `names` is invalid.
@@ -227,9 +229,21 @@ no log, with `action_id` `"<deal_id>/sent"`, `action_type` `fyi`, no chain, no `
 no `evidence_record_header`, and the record as its payload, so its `agent_input_digest` is the
 record digest. It travels as `{"record": <the Capsule>, "agent_input": <the record>}`.
 
+An offer whose terms have exactly one payment row (a recomputed row whose `owed` is exactly
+`{"amount_minor", "currency"}` in a currency with a known `assetScale`) may carry, on its sent
+Capsule only, the settlement terms leg as a top-level `settlement` member: `{"version": "0",
+"leg": "terms", "sealer_role", "amount"}`. `sealer_role` is `payer` when the offer's `role` owes
+that row, else `payee`. `amount` is the row's `owed` as `{"value": <amount_minor as a string>,
+"assetCode": <currency>, "assetScale": <its scale>}` (`xdealv1.TermsLeg`). No other sent record
+carries a `settlement` member. The price this puts at the Capsule's top level is the offer's own
+terms, which `agent_input` carries beside it. Without a terms leg, or with more than one payment
+row, the payment check is not run. The check is `xdealv1.PaymentCheck`, AAC's `settlement.Verify`
+over the terms leg and the two sides' legs.
+
 `xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
 the record whose digest is `agent_input_digest`, that the record passes sections 1 to 5, and,
-given the offer, that `offer` cites it and the signer is the one section 5 names. The pair does
+given the offer, that `offer` cites it and the signer is the one section 5 names, and that a
+`settlement` member is on an offer only and is exactly its terms leg. The pair does
 not show the record's place in the sender's journal, nor when it was written: `at` is the
 sender's word.
 

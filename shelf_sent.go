@@ -35,7 +35,9 @@ type SentCapsule struct {
 }
 
 // SealSent appends entry to the shelf's journal and seals its standalone
-// Capsule under actionID. entry carries exactly one payload, the record's
+// Capsule under actionID, with entry's Members as further top-level members
+// of that Capsule only (the journal record's Capsule carries none: the
+// record stays in the journal, and the members travel). entry carries exactly one payload, the record's
 // canonical JSON (JCS) bytes, so the journal record's payload commitment and
 // the Capsule's payload are the same bytes. The Capsule is sealed first and
 // the journal record appended under the journal's lock. An error with an
@@ -50,6 +52,9 @@ func (s *Shelf) SealSent(ctx context.Context, entry Entry, actionID string) (Rec
 	}
 	if len(entry.Payloads) != 1 {
 		return Record{}, SentCapsule{}, fmt.Errorf("%w: a sent record carries exactly one payload, its record", ErrInvalid)
+	}
+	if _, inline := entry.Members[RecordHeaderMember]; inline {
+		return Record{}, SentCapsule{}, fmt.Errorf("%w: a sent Capsule carries no %s", ErrInvalid, RecordHeaderMember)
 	}
 	payload := entry.Payloads[0]
 	decoded, err := decodeJSON(payload)
@@ -76,7 +81,8 @@ func (s *Shelf) SealSent(ctx context.Context, entry Entry, actionID string) (Rec
 		Capsule: emit.Input{
 			ActionID: actionID, ActionType: emit.ActionTypeFYI,
 			Operator: journal.operator, Developer: journal.developer,
-			Timestamp: journal.now().UTC().Truncate(time.Second),
+			Timestamp:  journal.now().UTC().Truncate(time.Second),
+			Extensions: capsuleMembers(entry.Members),
 		},
 		Payload:  json.RawMessage(payload),
 		Identity: identity,
@@ -85,6 +91,7 @@ func (s *Shelf) SealSent(ctx context.Context, entry Entry, actionID string) (Rec
 		return Record{}, SentCapsule{}, fmt.Errorf("seal the sent record: %w", err)
 	}
 	entry.Payloads = [][]byte{bytes.Clone(payload)}
+	entry.Members = nil
 	pendingBefore := journal.pending
 	record, err := journal.appendLocked(ctx, entry)
 	if record.RecordID == "" && journal.pending != nil && journal.pending != pendingBefore {

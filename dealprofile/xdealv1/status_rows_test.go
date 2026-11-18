@@ -202,3 +202,27 @@ func TestNonPaymentRemedyCounts(t *testing.T) {
 	assert.Equal(t, rowstatus.Ruled, r.Status)
 	assert.Equal(t, rowstatus.RemedyMade, r.Remedy)
 }
+
+// A recomputed row's check is the caller's (the payment check): it reaches
+// rowstatus for that row; none leaves it not run; one for a row that is not
+// recomputed is refused.
+func TestRowInputsTakeTheChecks(t *testing.T) {
+	a := buildAppendixA(t)
+	b := RowBooks{Offer: a.record("appendix-a/buyer-journal/05-offer.json"),
+		Own: appendixABooks(t, a, "appendix-a/buyer-book"), Counterpart: appendixABooks(t, a, "appendix-a/seller-book")}
+	ins, err := RowInputs(b, "2026-11-26T12:00:00Z")
+	require.NoError(t, err)
+	assert.Empty(t, ins[0].Check, "no check given: not run")
+
+	for _, c := range []string{PaymentPass, PaymentFail} {
+		b.Checks = map[string]string{"paid_as_agreed": c}
+		ins, err = RowInputs(b, "2026-11-26T12:00:00Z")
+		require.NoError(t, err)
+		assert.Equal(t, c, ins[0].Check)
+		_, err = rowstatus.Compute(ins[0])
+		require.NoError(t, err)
+	}
+	b.Checks = map[string]string{"delivered": PaymentPass}
+	_, err = RowInputs(b, "2026-11-26T12:00:00Z")
+	assert.ErrorContains(t, err, "not recomputed")
+}
