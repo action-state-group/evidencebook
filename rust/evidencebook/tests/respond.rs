@@ -1331,7 +1331,7 @@ fn the_default_refusal_policy_is_uniform_and_specific_is_an_opt_in() {
 /// ER -03 §8.1.2: `history_card/2` over a book of many checkpoints.
 mod history_card_2 {
     use super::*;
-    use evidencebook::answer::history_card_positions;
+    use evidence_request::history_card::positions as history_card_positions;
     use evidencebook::staple::{check_history_card_2, check_staple, staple_history_card_2};
 
     /// A book with `n + 1` checkpoints, positions 0 through `n`.
@@ -1379,23 +1379,6 @@ mod history_card_2 {
     }
 
     #[test]
-    fn the_positions_are_p_of_n_and_the_window() {
-        assert_eq!(history_card_positions(0, 1), Some(vec![0]));
-        assert_eq!(history_card_positions(1, 1), Some(vec![0, 1]));
-        assert_eq!(history_card_positions(5, 2), Some(vec![0, 1, 3, 4, 5]));
-        assert_eq!(history_card_positions(10, 3), Some(vec![0, 2, 6, 8, 9, 10]));
-        assert_eq!(
-            history_card_positions(16, 4),
-            Some(vec![0, 8, 12, 13, 14, 15, 16])
-        );
-        assert_eq!(history_card_positions(10, 0), None);
-        assert_eq!(history_card_positions(10, 65), None);
-        assert!(history_card_positions(1_000_000, 16).unwrap().len() <= 16 + 19 + 2);
-        let huge = history_card_positions(1 << 62, 3).unwrap();
-        assert!(huge.len() <= 3 + 62 + 2 && *huge.last().unwrap() == 1 << 62);
-    }
-
-    #[test]
     fn a_stranger_is_answered_at_p_over_either_subject() {
         let mut b = many(20);
         for subject in [json!({"checkpoints": null}), json!({"full_history": null})] {
@@ -1405,7 +1388,7 @@ mod history_card_2 {
             };
             let (window, listed) = positions(&e.artifact);
             assert_eq!((window, listed.last().copied()), (3, Some(20)));
-            assert_eq!(Some(listed), history_card_positions(20, 3));
+            assert_eq!(Some(listed), Some(history_card_positions(20, 3)));
             check_history_card_2(&e.artifact, &e.anchor.digest).unwrap();
         }
     }
@@ -1478,5 +1461,73 @@ mod history_card_2 {
         let got = check_staple(&staple.request, &staple.reply, &holder).unwrap();
         assert_eq!(got.derivation, "history_card/2");
         assert!(check_staple(&staple.request, &staple.reply, &"00".repeat(32)).is_err());
+    }
+
+    /// ER -03 §8.1.3: the checkpoints at positions a through b.
+    fn ask_range(
+        b: &mut Mem,
+        policy: &ResponderPolicy,
+        derivation: Option<&str>,
+        range: Value,
+    ) -> Reply {
+        let pin = b.pin(b.checkpoints() - 1);
+        let mut request = json!({
+            "subject": {"checkpoints": range}, "profile": "evidence-interop/0",
+            "coverage": {"expected_pin": pin}, "nonce": "n",
+        });
+        if let Some(d) = derivation {
+            request["derivation"] = json!(d);
+        }
+        run(
+            b,
+            policy,
+            &serde_json::to_vec(&request).unwrap(),
+            Binding::Json,
+            &ask(None),
+        )
+        .0
+    }
+
+    #[test]
+    fn a_ranged_checkpoints_request_is_answered_with_entries_alone() {
+        let mut b = many(20);
+        for (a, z) in [(4u64, 12u64), (0, 20), (7, 7)] {
+            let Reply::Envelope(e) = ask_range(&mut b, &policy(3, 0), None, json!([a, z])) else {
+                panic!("a refusal")
+            };
+            let answer: Value = serde_json::from_slice(&e.artifact).unwrap();
+            assert_eq!(answer.as_object().unwrap().len(), 1);
+            let history = answer["history"].as_array().unwrap();
+            assert_eq!(history.len() as u64, z - a + 1);
+            for (i, entry) in history.iter().enumerate() {
+                assert_eq!(entry["position"], json!(a + i as u64));
+                assert_eq!(entry["consistency_from_previous"].is_null(), i == 0);
+                assert_eq!(entry["receipts"], json!([]));
+            }
+        }
+    }
+
+    #[test]
+    fn a_ranged_checkpoints_request_is_refused_by_reason() {
+        let mut b = many(20);
+        let p = policy(3, 0);
+        let past = ask_range(&mut b, &p, None, json!([5, 21]));
+        assert_eq!(reason(&past), Reason::CoverageUnsatisfiable);
+        for derivation in ["history_card/1", "history_card/2"] {
+            let reply = ask_range(&mut b, &p, Some(derivation), json!([1, 2]));
+            assert_eq!(reason(&reply), Reason::NoSuchSubject, "{derivation}");
+        }
+        let malformed = ask_range(&mut b, &p, None, json!([5, 2]));
+        assert_eq!(reason(&malformed), Reason::RequestMalformed);
+        // More checkpoints than the responder serves in one answer.
+        let capped = policy(3, 3);
+        assert!(matches!(
+            ask_range(&mut b, &capped, None, json!([2, 4])),
+            Reply::Envelope(_)
+        ));
+        assert_eq!(
+            reason(&ask_range(&mut b, &capped, None, json!([0, 7]))),
+            Reason::PolicyDeclined
+        );
     }
 }

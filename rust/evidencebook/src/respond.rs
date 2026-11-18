@@ -485,7 +485,9 @@ impl Run<'_, '_> {
             && !is_history_card_2(&req)
             && (leaves.len() > max_items
                 || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
-                    && chain > max_items);
+                    && chain > max_items
+                || matches!(req.subject, Subject::CheckpointRange(a, b)
+                    if b - a + 1 > max_items as u64));
         if over {
             return self.refuse(limit_reason(self.octets, self.binding), None);
         }
@@ -636,7 +638,7 @@ fn encode_refusal(
 fn subject_kind(subject: &Subject) -> SubjectKind {
     match subject {
         Subject::FullHistory => SubjectKind::FullHistory,
-        Subject::Checkpoints => SubjectKind::Checkpoints,
+        Subject::Checkpoints | Subject::CheckpointRange(..) => SubjectKind::Checkpoints,
         Subject::Record(_) => SubjectKind::Record,
         Subject::Range(..) => SubjectKind::Range,
         Subject::Correlation(_) => SubjectKind::Correlation,
@@ -1195,7 +1197,10 @@ fn authorized(
     gate: &Gate<'_>,
     registered: Option<&Registered>,
 ) -> bool {
-    let public = (matches!(req.subject, Subject::Checkpoints) && req.derivation.is_none())
+    let public = (matches!(
+        req.subject,
+        Subject::Checkpoints | Subject::CheckpointRange(..)
+    ) && req.derivation.is_none())
         || is_history_card(req)
         || is_history_card_2(req);
     if public {
@@ -1330,6 +1335,15 @@ fn resolve_subject(
     };
     match &req.subject {
         Subject::Checkpoints => serve(Vec::new()),
+        // The anchors are the checkpoints in the order issued, so an anchor's
+        // index is its checkpoint position: a range past it is not covered
+        // (ER -03 §8.1.3).
+        Subject::CheckpointRange(_, end) => {
+            if *end > anchor as u64 {
+                return Refuse(Reason::CoverageUnsatisfiable);
+            }
+            serve(Vec::new())
+        }
         Subject::FullHistory => {
             let leaves: Vec<u64> = (0..covered).filter(|&l| view.servable(l)).collect();
             if leaves.is_empty() && req.derivation.is_none() {

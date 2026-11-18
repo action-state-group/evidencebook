@@ -17,7 +17,7 @@ import (
 // ER -03 §8.1.2: history_card/2 lists P(n, W), at most W + floor(log2 n) + 2
 // positions, whatever the number of checkpoints.
 
-func TestHistoryCardPositions(t *testing.T) {
+func TestHistoryPositions(t *testing.T) {
 	cases := []struct {
 		n    uint64
 		w    int
@@ -32,20 +32,15 @@ func TestHistoryCardPositions(t *testing.T) {
 		{16, 4, []uint64{0, 8, 12, 13, 14, 15, 16}},
 	}
 	for _, c := range cases {
-		if got := HistoryCardPositions(c.n, c.w); !slices.Equal(got, c.want) {
+		if got := positionsOf(c.n, c.w); !slices.Equal(got, c.want) {
 			t.Errorf("P(%d, %d) = %v, want %v", c.n, c.w, got, c.want)
 		}
 	}
-	for _, w := range []int{0, -1, 65} {
-		if HistoryCardPositions(10, w) != nil {
-			t.Errorf("window %d gave positions", w)
-		}
-	}
 	// A million checkpoints, 20 positions of the log, plus the window.
-	if got := len(HistoryCardPositions(1_000_000, 16)); got > 16+19+2 {
+	if got := len(positionsOf(1_000_000, 16)); got > 16+19+2 {
 		t.Errorf("a million checkpoints list %d positions", got)
 	}
-	huge := HistoryCardPositions(1<<62, 3)
+	huge := positionsOf(1<<62, 3)
 	if len(huge) > 3+62+2 || huge[len(huge)-1] != 1<<62 {
 		t.Errorf("2^62 gives %d positions ending at %d", len(huge), huge[len(huge)-1])
 	}
@@ -102,7 +97,7 @@ func TestHistoryCard2IsAnsweredToStrangersAtP(t *testing.T) {
 		}
 		window, positions := cardPositions(t, e.Artifact)
 		n := positions[len(positions)-1]
-		if window != 3 || n != 20 || !slices.Equal(positions, HistoryCardPositions(n, 3)) {
+		if window != 3 || n != 20 || !slices.Equal(positions, positionsOf(n, 3)) {
 			t.Fatalf("%s: window %d positions %v", kind, window, positions)
 		}
 		if err := CheckHistoryCard2(e.Artifact, e.Anchor.Digest); err != nil {
@@ -203,16 +198,16 @@ func TestCheckHistoryCard2RefusesWhatIsNotTheCard(t *testing.T) {
 		edit func(map[string]any)
 		want string
 	}{
-		{"window zero", func(c map[string]any) { c["window"] = uint64(0) }, "window"},
-		{"window 65", func(c map[string]any) { c["window"] = uint64(65) }, "window"},
-		{"window text", func(c map[string]any) { c["window"] = "3" }, "window"},
-		{"window changed", func(c map[string]any) { c["window"] = uint64(5) }, "P(n, window)"},
+		{"window zero", func(c map[string]any) { c["window"] = uint64(0) }, "window_out_of_range"},
+		{"window 65", func(c map[string]any) { c["window"] = uint64(65) }, "window_out_of_range"},
+		{"window text", func(c map[string]any) { c["window"] = "3" }, "card_malformed"},
+		{"window changed", func(c map[string]any) { c["window"] = uint64(5) }, "position_missing"},
 		{"no window", func(c map[string]any) { delete(c, "window") }, "members"},
 		{"extra member", func(c map[string]any) { c["x"] = uint64(1) }, "members"},
-		{"no history", func(c map[string]any) { c["history"] = []any{} }, "no history"},
-		{"first not zero", func(c map[string]any) { entry(c, 0)["position"] = uint64(1) }, "strictly increase"},
-		{"positions repeat", func(c map[string]any) { entry(c, 1)["position"] = uint64(0) }, "strictly increase"},
-		{"position missing", func(c map[string]any) { c["history"] = slices.Delete(entries(c), 2, 3) }, "P(n, window)"},
+		{"no history", func(c map[string]any) { c["history"] = []any{} }, "positions_not_increasing_from_zero"},
+		{"first not zero", func(c map[string]any) { entry(c, 0)["position"] = uint64(1) }, "positions_not_increasing_from_zero"},
+		{"positions repeat", func(c map[string]any) { entry(c, 1)["position"] = uint64(0) }, "positions_not_increasing_from_zero"},
+		{"position missing", func(c map[string]any) { c["history"] = slices.Delete(entries(c), 2, 3) }, "position_missing"},
 		{"position added", func(c map[string]any) {
 			extra := map[string]any{}
 			for k, v := range entry(c, 1) {
@@ -220,12 +215,12 @@ func TestCheckHistoryCard2RefusesWhatIsNotTheCard(t *testing.T) {
 			}
 			extra["position"] = uint64(5)
 			c["history"] = slices.Insert(entries(c), 2, any(extra))
-		}, "P(n, window)"},
-		{"position negative", func(c map[string]any) { entry(c, 1)["position"] = evidencerequest.JSONNumber("-1") }, "unsigned"},
+		}, "position_unexpected"},
+		{"position negative", func(c map[string]any) { entry(c, 1)["position"] = evidencerequest.JSONNumber("-1") }, "card_malformed"},
 		{"first carries a proof", func(c map[string]any) {
 			entry(c, 0)["consistency_from_previous"] = entry(c, 1)["consistency_from_previous"]
-		}, "consistency proof"},
-		{"later entry has no proof", func(c map[string]any) { entry(c, 2)["consistency_from_previous"] = nil }, "consistency proof"},
+		}, "proof_invalid"},
+		{"later entry has no proof", func(c map[string]any) { entry(c, 2)["consistency_from_previous"] = nil }, "proof_invalid"},
 		{"proof from another pair", func(c map[string]any) {
 			entry(c, 3)["consistency_from_previous"] = entry(c, 2)["consistency_from_previous"]
 		}, ""},
@@ -233,7 +228,7 @@ func TestCheckHistoryCard2RefusesWhatIsNotTheCard(t *testing.T) {
 			a, b := entry(c, 1)["checkpoint"], entry(c, 2)["checkpoint"]
 			entry(c, 1)["checkpoint"], entry(c, 2)["checkpoint"] = b, a
 		}, ""},
-		{"receipts not a list", func(c map[string]any) { entry(c, 1)["receipts"] = "x" }, "receipts"},
+		{"receipts not a list", func(c map[string]any) { entry(c, 1)["receipts"] = "x" }, "card_malformed"},
 		{"last is not the anchor", func(c map[string]any) { c["history"] = entries(c)[:len(entries(c))-1] }, ""},
 		{"wrong derivation", func(c map[string]any) { c["derivation"] = DerivationHistoryCard }, "derivation"},
 	}
@@ -319,4 +314,126 @@ func reply2Tampered(t *testing.T, book *Book, s Staple) Reply {
 		t.Fatal(err)
 	}
 	return Reply{Message: reply.Message, Envelope: &e}
+}
+
+func positionsOf(n uint64, w int) []uint64 { return evidencerequest.HistoryPositions(n, uint64(w)) }
+
+// recordFor has a fresh requester ask responder for req, as a stranger would,
+// and returns the outcome the requester recorded.
+func recordFor(t *testing.T, responder *Book, req EvidenceRequest) ResponseStatement {
+	t.Helper()
+	ctx := context.Background()
+	requester := newFixture(t, "requester-hc2", 31).open(t)
+	sent, err := requester.Request(ctx, req, "book-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := respondAs(t, responder, sent.Message(), "")
+	recorded, err := requester.RecordResponse(ctx, sent.RecordID, reply.Message, responderKeys(responder, 9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statement ResponseStatement
+	if err := json.Unmarshal(recorded.Header.Statement, &statement); err != nil {
+		t.Fatal(err)
+	}
+	return statement
+}
+
+func TestARequesterVerifiesHistoryCard2(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	got := recordFor(t, book, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard2, Coverage: Coverage{ExpectedPin: anchorPin(t, book)}})
+	if got.Outcome != OutcomeArtifact {
+		t.Fatalf("recorded %s: %s", got.Outcome, got.Failure)
+	}
+}
+
+// ER -03 §8.1.3: the checkpoints at positions a through b.
+func TestARangedCheckpointsRequestIsAnsweredAndVerified(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	ask := func(a, b uint64) EvidenceRequest {
+		return EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}
+	}
+	for _, r := range [][2]uint64{{4, 12}, {0, 20}, {7, 7}} {
+		reply := respondAs(t, book, jsonRequest(t, ask(r[0], r[1])), "")
+		e := mustEnvelope(t, reply)
+		var answer struct {
+			History []struct {
+				Position uint64 `json:"position"`
+				Proof    any    `json:"consistency_from_previous"`
+			} `json:"history"`
+		}
+		if err := json.Unmarshal(e.Artifact, &answer); err != nil {
+			t.Fatal(err)
+		}
+		if uint64(len(answer.History)) != r[1]-r[0]+1 || answer.History[0].Position != r[0] || answer.History[0].Proof != nil {
+			t.Fatalf("range %v: %d entries", r, len(answer.History))
+		}
+		if got := recordFor(t, book, ask(r[0], r[1])); got.Outcome != OutcomeArtifact {
+			t.Fatalf("range %v recorded %s: %s", r, got.Outcome, got.Failure)
+		}
+	}
+	// The entries are the ones the card lists at those positions.
+	card := mustEnvelope(t, askCard2(t, book, SubjectCheckpoints))
+	var listed struct {
+		History []struct {
+			Position   uint64 `json:"position"`
+			Checkpoint string `json:"checkpoint"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal(card.Artifact, &listed); err != nil {
+		t.Fatal(err)
+	}
+	ranged := mustEnvelope(t, respondAs(t, book, jsonRequest(t, ask(4, 12)), ""))
+	var got struct {
+		History []struct {
+			Position   uint64 `json:"position"`
+			Checkpoint string `json:"checkpoint"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal(ranged.Artifact, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range listed.History {
+		if c.Position >= 4 && c.Position <= 12 && got.History[c.Position-4].Checkpoint != c.Checkpoint {
+			t.Fatalf("position %d differs from the card's", c.Position)
+		}
+	}
+}
+
+func TestARangedCheckpointsRequestIsRefusedByReason(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	ranged := func(a, b uint64, derivation string) Reply {
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Derivation: derivation, Coverage: Coverage{ExpectedPin: pin}}), "")
+	}
+	mustRefusal(t, ranged(5, 21, ""), ReasonCoverageUnsatisfiable)
+	mustRefusal(t, ranged(5, 5000, ""), ReasonCoverageUnsatisfiable)
+	mustRefusal(t, ranged(1, 2, DerivationHistoryCard), ReasonNoSuchSubject)
+	mustRefusal(t, ranged(1, 2, DerivationHistoryCard2), ReasonNoSuchSubject)
+	// a > b is a malformed request, which the request reader refuses.
+	bad := []byte(`{"coverage":{"expected_pin":"` + pin + `"},"nonce":"n","profile":"evidence-interop/0","subject":{"checkpoints":[5,2]}}`)
+	reply, _, err := book.Respond(context.Background(), Message{Octets: bad, MediaType: MediaTypeJSON}, RespondOptions{Policy: policyWith("peers")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustRefusal(t, reply, ReasonRequestMalformed)
+}
+
+func TestARangedCheckpointsRequestOverTheCapIsDeclined(t *testing.T) {
+	book := standardHistoryBook(t, nil, func(c *Config) { c.Responder.MaxAnswerItems = 3 })
+	ctx := context.Background()
+	for i := 0; i < 8; i++ {
+		mustAppend(t, book, observation("cap", fmt.Sprint(i)))
+		if _, err := book.Checkpoint(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pin := anchorPin(t, book)
+	ask := func(a, b uint64) Reply {
+		return respondAs(t, book, jsonRequest(t, EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{a, b}}, Coverage: Coverage{ExpectedPin: pin}}), "")
+	}
+	mustEnvelope(t, ask(2, 4))
+	mustRefusal(t, ask(0, 7), ReasonPolicyDeclined)
 }

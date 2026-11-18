@@ -313,24 +313,14 @@ fn history_card_chain(artifact: &[u8]) -> Result<(), StapleError> {
     Ok(())
 }
 
-/// A `history_card/2` artifact (ER -03 §8.1.2) by the seven ordered checks,
-/// as Go's `CheckHistoryCard2` runs them: the card's members; (1) the
-/// window is an integer from 1 to 64; (2) the positions start at 0 and
-/// strictly increase; (3) they are exactly `P(n, window)`; (4, 5) every
-/// checkpoint verifies under the key of the first, in one log, growing, and
-/// each proof extends the entry before it; (6) each entry's receipts are a
-/// list, which receipts count being the requester's policy; (7) the last checkpoint is the anchor. The
-/// signed `prev_size` and `prev_root` name the checkpoint just before in
-/// the log, not the entry listed before, so they are not compared.
+/// A `history_card/2` artifact (ER -03 §8.1.2): the card's members and
+/// nothing else, then the seven ordered checks, which are
+/// `evidence_request::cll_material::check_history_card_2`'s, as Go's
+/// `CheckHistoryCard2` runs them. The key every checkpoint must be signed by
+/// is the first checkpoint's, which the reader judges; which receipts count
+/// is the requester's policy.
 pub fn check_history_card_2(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
     let bad = |why: &str| StapleError(format!("the history_card/2 {why}"));
-    let hex_text = |v: &Value| {
-        v.as_str().is_some_and(|s| {
-            !s.is_empty()
-                && s.len() % 2 == 0
-                && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
-        })
-    };
     let card = decode_strict(artifact).map_err(|_| bad("is not a JSON object"))?;
     let Some(members) = card.as_object() else {
         return Err(bad("is not a JSON object"));
@@ -363,24 +353,16 @@ pub fn check_history_card_2(artifact: &[u8], anchor: &str) -> Result<(), StapleE
             "does not name its derivation, anchor, stream and subject",
         ));
     }
-    // 1. the window.
-    let window = match members["window"].as_u64() {
-        Some(w) if (1..=64).contains(&w) => w as usize,
-        _ => return Err(bad("window is not an integer from 1 to 64")),
-    };
-    let history = match members["history"].as_array() {
-        Some(h) if !h.is_empty() => h,
-        _ => return Err(bad("has no history")),
-    };
-    // 2. positions start at 0 and strictly increase.
-    let mut positions = Vec::with_capacity(history.len());
-    let mut statements = Vec::with_capacity(history.len());
-    let mut proofs = Vec::with_capacity(history.len());
-    for (i, entry) in history.iter().enumerate() {
-        let Some(entry) = entry.as_object() else {
-            return Err(bad(&format!("entry {i} is not a map")));
-        };
-        let mut names: Vec<&str> = entry.keys().map(String::as_str).collect();
+    // The profile's entry has these members and no other.
+    for (i, entry) in members["history"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .enumerate()
+    {
+        let mut names: Vec<&str> = entry
+            .as_object()
+            .map_or(Vec::new(), |m| m.keys().map(String::as_str).collect());
         names.sort_unstable();
         if names
             != [
@@ -394,84 +376,19 @@ pub fn check_history_card_2(artifact: &[u8], anchor: &str) -> Result<(), StapleE
                 "entry {i} has members other than a position, checkpoint, receipts and consistency proof"
             )));
         }
-        let Some(position) = entry["position"].as_u64() else {
-            return Err(bad(&format!(
-                "entry {i}'s position is not an unsigned integer"
-            )));
-        };
-        let increases = match positions.last() {
-            None => position == 0,
-            Some(&last) => position > last,
-        };
-        if !increases {
-            return Err(bad(&format!(
-                "entry {i}'s position does not strictly increase from 0"
-            )));
-        }
-        positions.push(position);
-        if !entry["receipts"].is_array() {
-            return Err(bad(&format!("entry {i}'s receipts are not a list")));
-        }
-        if !hex_text(&entry["checkpoint"]) {
-            return Err(bad(&format!("entry {i}'s checkpoint is not hex")));
-        }
-        let proof = &entry["consistency_from_previous"];
-        if proof.is_null() != (i == 0) || (i > 0 && !hex_text(proof)) {
-            return Err(bad(&format!(
-                "entry {i} is not a checkpoint with its consistency proof"
-            )));
-        }
-        statements.push(hex::decode(entry["checkpoint"].as_str().unwrap_or_default()).unwrap());
-        proofs.push(hex::decode(proof.as_str().unwrap_or_default()).unwrap_or_default());
     }
-    // 3. the positions are exactly P(n, window).
-    let n = positions[positions.len() - 1];
-    if answer::history_card_positions(n, window).as_deref() != Some(positions.as_slice()) {
-        return Err(bad("positions are not those of P(n, window)"));
+    let first_key = members["history"][0]["checkpoint"]
+        .as_str()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|raw| {
+            let verified = cll::checkpoint::verify_checkpoint_cose_offline(&raw);
+            verified.decoded.map(|cp| cp.key_id)
+        })
+        .unwrap_or_default();
+    match evidence_request::cll_material::check_history_card_2(&card, anchor, &[first_key]) {
+        None => Ok(()),
+        Some(finding) => Err(bad(&format!("fails {finding}"))),
     }
-    // 4 and 5. one key, one log, a growing log, proofs that extend.
-    let chain = |i: usize, why: &str| {
-        StapleError(format!(
-            "the history_card/2's checkpoints are not one chain: entry {i} {why}"
-        ))
-    };
-    let mut previous: Option<DecodedCheckpointCose> = None;
-    let mut key = String::new();
-    for (i, statement) in statements.iter().enumerate() {
-        if !crate::ed25519::statement_verifies(statement) {
-            return Err(chain(i, "has a checkpoint that does not verify"));
-        }
-        let verified = cll::checkpoint::verify_checkpoint_cose_offline(statement);
-        let cp = match verified.decoded {
-            Some(cp) if verified.ok => cp,
-            _ => return Err(chain(i, "has a checkpoint that does not verify")),
-        };
-        if i == 0 {
-            key = cp.key_id.clone();
-        } else if cp.key_id != key {
-            return Err(chain(
-                i,
-                "is signed by another key than the first checkpoint",
-            ));
-        }
-        if let Some(prev) = &previous {
-            if cp.log_id != prev.log_id || cp.mmr_size <= prev.mmr_size {
-                return Err(chain(i, "does not extend the log"));
-            }
-            if !consistency_holds(prev, &cp, &proofs[i]) {
-                return Err(chain(i, "has a consistency proof that does not verify"));
-            }
-        }
-        previous = Some(cp);
-    }
-    // 6. receipts: a receipt's form is the deployment's and which count is
-    // the requester's policy, so only that each entry's receipts are a list
-    // is checked above, as for a stapled `history_card/1`.
-    // 7. the last checkpoint is the anchor.
-    if hex::encode(Sha256::digest(&statements[statements.len() - 1])) != anchor {
-        return Err(bad("does not end at its anchor"));
-    }
-    Ok(())
 }
 
 /// Whether `proof` (consistency-proof octets, deterministic CBOR) shows
@@ -702,25 +619,6 @@ mod tests {
             if let Ok(c) = got {
                 assert_eq!((c.nonce, c.anchor), (v.nonce, v.anchor), "{}", v.name);
             }
-        }
-        #[derive(serde::Deserialize)]
-        struct Positions {
-            n: u64,
-            window: usize,
-            positions: Vec<u64>,
-        }
-        let positions: Vec<Positions> =
-            serde_json::from_slice(&std::fs::read(format!("{dir}/positions.json")).unwrap())
-                .unwrap();
-        assert!(positions.len() >= 10);
-        for p in positions {
-            assert_eq!(
-                answer::history_card_positions(p.n, p.window),
-                Some(p.positions),
-                "P({}, {})",
-                p.n,
-                p.window
-            );
         }
     }
 

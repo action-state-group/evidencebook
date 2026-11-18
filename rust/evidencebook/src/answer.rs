@@ -77,33 +77,14 @@ pub const DERIVATION_HISTORY_CARD: &str = "history_card/1";
 
 /// The token of `history_card/2` (ER -03 §8.1.2): a logarithmic sample of
 /// the stream's checkpoints, where `history_card/1` lists every one.
-pub const DERIVATION_HISTORY_CARD_2: &str = "history_card/2";
+pub use evidence_request::history_card::DERIVATION_HISTORY_CARD_2;
 
 /// The window a `history_card/2` states when the responder sets none: the
 /// number of newest checkpoints it lists in full.
 pub const DEFAULT_HISTORY_WINDOW: usize = 16;
 /// The smallest and largest window a responder may choose (ER -03 §8.1.2).
 pub const MIN_HISTORY_WINDOW: usize = 1;
-pub const MAX_HISTORY_WINDOW: usize = 64;
-
-/// `P(n, w)` of ER -03 §8.1.2: position 0, the positions `n - 2^k` for
-/// every `2^k <= n`, and the latest window `max(0, n - w + 1)` through `n`,
-/// ascending and each once. `None` when `w` is outside 1 to 64.
-pub fn history_card_positions(n: u64, w: usize) -> Option<Vec<u64>> {
-    if !(MIN_HISTORY_WINDOW..=MAX_HISTORY_WINDOW).contains(&w) {
-        return None;
-    }
-    let mut set = std::collections::BTreeSet::from([0u64]);
-    for k in 0..64 {
-        let step = 1u64 << k;
-        if step > n {
-            break;
-        }
-        set.insert(n - step);
-    }
-    set.extend(n.saturating_sub(w as u64 - 1)..=n);
-    Some(set.into_iter().collect())
-}
+pub const MAX_HISTORY_WINDOW: usize = evidence_request::history_card::MAX_WINDOW as usize;
 
 /// The registered token of the standard card ([`crate::standard_history`]).
 pub const DERIVATION_STANDARD_HISTORY: &str = crate::standard_history::DERIVATION;
@@ -340,6 +321,15 @@ pub fn select(
             }
             Vec::new()
         }
+        // The checkpoints at positions a through b (ER -03 §8.1.3): more
+        // than the limit is an over-limit answer. The range lies under the
+        // anchor, which the decision checked.
+        (_, Subject::CheckpointRange(a, b)) => {
+            if b - a + 1 > limit {
+                return Err(AnswerError::OverLimit);
+            }
+            Vec::new()
+        }
         (_, Subject::Record(_)) if limit == 0 => return Err(AnswerError::OverLimit),
         (_, Subject::Record(d)) => {
             let leaf = records
@@ -443,8 +433,11 @@ pub fn build(
                 0 => DEFAULT_HISTORY_WINDOW,
                 w => w,
             };
-            let positions = history_card_positions(selection.at as u64, window)
-                .ok_or(AnswerError::HistoryWindow(window))?;
+            if !(MIN_HISTORY_WINDOW..=MAX_HISTORY_WINDOW).contains(&window) {
+                return Err(AnswerError::HistoryWindow(window));
+            }
+            let positions =
+                evidence_request::history_card::positions(selection.at as u64, window as u64);
             head.insert("derivation".into(), json!(DERIVATION_HISTORY_CARD_2));
             head.insert(
                 "history".into(),
@@ -490,6 +483,15 @@ pub fn build(
                 .collect();
             head.insert("checkpoints".into(), Value::Array(list));
             jcs(head)?
+        }
+        // The entries alone, one per position from a to b, each proof from
+        // the position before it (ER -03 §8.1.3).
+        (None, Subject::CheckpointRange(a, b)) => {
+            let positions: Vec<u64> = (*a..=*b).collect();
+            jcs(Map::from_iter([(
+                "history".to_owned(),
+                Value::Array(sampled(log, chain, &positions)?),
+            )]))?
         }
         (None, Subject::Record(d)) => {
             let [leaf] = selection.records[..] else {

@@ -61,10 +61,11 @@ type declaredFields struct {
 }
 
 var (
-	recordSetFields   = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
-	checkpointsFields = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
-	history2Fields    = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject", "window"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
-	historyFields     = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
+	recordSetFields     = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
+	checkpointsFields   = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
+	history2Fields      = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject", "window"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
+	history2RangeFields = declaredFields{top: []string{"history"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
+	historyFields       = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
 )
 
 // buildArtifact builds the canonical Artifact from view's snapshot. It
@@ -89,6 +90,23 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 	var built builtArtifact
 	var declared declaredFields
 	switch {
+	case req.Derivation == "" && req.Subject.Kind == SubjectCheckpoints && req.Subject.Ranged:
+		// The checkpoints at positions a through b (ER -03 §8.1.3): the
+		// artifact is the entries alone, and the envelope's anchor is the
+		// checkpoint the request's coverage resolved.
+		first, last := req.Subject.Range[0], req.Subject.Range[1]
+		chain := checkpointsThrough(view.checkpoints, anchor)
+		if last >= uint64(len(chain)) {
+			return builtArtifact{}, fmt.Errorf("%w: checkpoint position %d is past the anchor", ErrCorrupt, last)
+		}
+		if last-first+1 > uint64(maxItems) {
+			return builtArtifact{overLimit: true}, nil
+		}
+		history, err := b.checkpointsRange(ctx, chain, anchor, first, last)
+		if err != nil {
+			return builtArtifact{}, err
+		}
+		head, declared = map[string]any{"history": history}, history2RangeFields
 	case req.Derivation == DerivationHistoryCard2:
 		chain := checkpointsThrough(view.checkpoints, anchor)
 		window := b.responder.historyWindow()

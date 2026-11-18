@@ -20,18 +20,12 @@ from test_book import Clock, book
 
 DIR = Path(__file__).resolve().parents[2] / "testdata" / "history-card-2"
 STAPLES = json.loads((DIR / "staples.json").read_text())
-POSITIONS = json.loads((DIR / "positions.json").read_text())
-
-
-@pytest.mark.parametrize("v", POSITIONS, ids=lambda v: f"P({v['n']},{v['window']})")
-def test_positions_agree_with_go(v: dict) -> None:
-    assert history_card_positions(v["n"], v["window"]) == v["positions"]
 
 
 def test_positions_out_of_window_are_none() -> None:
     assert history_card_positions(10, 0) is None
     assert history_card_positions(10, 65) is None
-    assert len(history_card_positions(1_000_000, 16)) <= 16 + 19 + 2
+    assert history_card_positions(10, 3) == [0, 2, 6, 8, 9, 10]
 
 
 @pytest.mark.parametrize("v", STAPLES, ids=lambda v: v["name"])
@@ -124,20 +118,20 @@ def edit(artifact: bytes, change) -> bytes:
 
 
 @pytest.mark.parametrize("name,change,match", [
-    ("window zero", lambda c: c.update(window=0), "window"),
-    ("window 65", lambda c: c.update(window=65), "window"),
-    ("window text", lambda c: c.update(window="3"), "window"),
-    ("window changed", lambda c: c.update(window=5), "P\\(n, window\\)"),
+    ("window zero", lambda c: c.update(window=0), "window_out_of_range"),
+    ("window 65", lambda c: c.update(window=65), "window_out_of_range"),
+    ("window text", lambda c: c.update(window="3"), "card_malformed"),
+    ("window changed", lambda c: c.update(window=5), "position_missing"),
     ("no window", lambda c: c.pop("window"), "members"),
-    ("no history", lambda c: c.update(history=[]), "no history"),
-    ("first not zero", lambda c: c["history"][0].update(position=1), "strictly increase"),
-    ("position missing", lambda c: c["history"].pop(2), "P\\(n, window\\)"),
-    ("position negative", lambda c: c["history"][1].update(position=-1), "unsigned"),
-    ("receipts not a list", lambda c: c["history"][1].update(receipts="x"), "receipts"),
-    ("first carries a proof", lambda c: c["history"][0].update(consistency_from_previous="00"), "consistency proof"),
-    ("later without a proof", lambda c: c["history"][2].update(consistency_from_previous=None), "consistency proof"),
+    ("no history", lambda c: c.update(history=[]), "positions_not_increasing_from_zero"),
+    ("first not zero", lambda c: c["history"][0].update(position=1), "positions_not_increasing_from_zero"),
+    ("position missing", lambda c: c["history"].pop(2), "position_missing"),
+    ("position negative", lambda c: c["history"][1].update(position=-1), "card_malformed"),
+    ("receipts not a list", lambda c: c["history"][1].update(receipts="x"), "card_malformed"),
+    ("first carries a proof", lambda c: c["history"][0].update(consistency_from_previous="00"), "proof_invalid"),
+    ("later without a proof", lambda c: c["history"][2].update(consistency_from_previous=None), "proof_invalid"),
     ("another derivation", lambda c: c.update(derivation=eb.DERIVATION_HISTORY_CARD), "derivation"),
-    ("dropped last", lambda c: c.update(history=c["history"][:-1]), None),
+    ("dropped last", lambda c: c.update(history=c["history"][:-1]), "position_missing"),
 ])
 def test_the_card_checks_refuse(name: str, change, match: str) -> None:
     b = many(20)
@@ -146,3 +140,49 @@ def test_the_card_checks_refuse(name: str, change, match: str) -> None:
         check_history_card_2(edit(e.artifact, change), e.anchor_digest)
     with pytest.raises(eb.InvalidError):
         check_history_card_2(e.artifact, "00" * 32)
+
+
+def ranged(b, a: int, z: int, derivation: str | None = None):
+    pin = b.checkpoints()[-1].anchor_digest
+    request = eb.Message(eb.encode_request(eb.EvidenceRequest(
+        eb.Subject("checkpoints", (a, z)), eb.Coverage(expected_pin=pin), derivation=derivation)))
+    return b.respond(request)[0]
+
+
+@pytest.mark.parametrize("a,z", [(4, 12), (0, 20), (7, 7)])
+def test_a_ranged_checkpoints_request_is_answered_with_entries_alone(a: int, z: int) -> None:
+    b = many(20)
+    e = ranged(b, a, z).envelope
+    assert e is not None
+    answer = json.loads(e.artifact)
+    assert set(answer) == {"history"} and len(answer["history"]) == z - a + 1
+    for i, entry in enumerate(answer["history"]):
+        assert entry["position"] == a + i and (entry["consistency_from_previous"] is None) == (i == 0)
+        assert entry["receipts"] == []
+
+
+def test_a_ranged_checkpoints_request_is_refused_by_reason() -> None:
+    b = many(20)
+    assert ranged(b, 5, 21).refusal.reason == "coverage_unsatisfiable"
+    for derivation in (eb.DERIVATION_HISTORY_CARD, eb.DERIVATION_HISTORY_CARD_2):
+        assert ranged(b, 1, 2, derivation).refusal.reason == "no_such_subject"
+    capped = many(8, max_answer_items=3)
+    assert ranged(capped, 2, 4).envelope is not None
+    assert ranged(capped, 0, 7).refusal is not None
+
+
+def test_a_requester_verifies_a_ranged_answer_and_a_card() -> None:
+    from evidencebook.book import _verify_anchor_inclusion
+    b = many(20)
+    key = b.checkpoints()[0].key_id
+    e = ranged(b, 4, 12).envelope
+    req = eb.EvidenceRequest(eb.Subject("checkpoints", (4, 12)), eb.Coverage(expected_pin=e.anchor_digest))
+    _verify_anchor_inclusion(req, e, key)
+    with pytest.raises(eb.InvalidError):
+        _verify_anchor_inclusion(req, e, "00" * 32)
+    wrong = eb.EvidenceRequest(eb.Subject("checkpoints", (4, 13)), eb.Coverage(expected_pin=e.anchor_digest))
+    with pytest.raises(eb.InvalidError):
+        _verify_anchor_inclusion(wrong, e, key)
+    card = ask(b, eb.DERIVATION_HISTORY_CARD_2).envelope
+    _verify_anchor_inclusion(eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=card.anchor_digest),
+                                                derivation=eb.DERIVATION_HISTORY_CARD_2), card, key)

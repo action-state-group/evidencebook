@@ -16,29 +16,12 @@ import (
 // in one of the seven ordered checks. EB_WRITE_STAPLE_VECTORS=1 writes them
 // anew, for an intended change only: a staple carries a fresh nonce.
 const (
-	historyCard2PositionsPath = "testdata/history-card-2/positions.json"
-	historyCard2StaplesPath   = "testdata/history-card-2/staples.json"
+	historyCard2StaplesPath = "testdata/history-card-2/staples.json"
 )
-
-type positionsVector struct {
-	N         uint64   `json:"n"`
-	Window    int      `json:"window"`
-	Positions []uint64 `json:"positions"`
-}
 
 func TestHistoryCard2Vectors(t *testing.T) {
 	if os.Getenv("EB_WRITE_STAPLE_VECTORS") == "1" {
 		writeHistoryCard2Vectors(t)
-	}
-	var positions []positionsVector
-	readJSONFile(t, historyCard2PositionsPath, &positions)
-	if len(positions) < 10 {
-		t.Fatal("no positions vectors")
-	}
-	for _, v := range positions {
-		if got := HistoryCardPositions(v.N, v.Window); !slices.Equal(got, v.Positions) {
-			t.Errorf("P(%d, %d) = %v, want %v", v.N, v.Window, got, v.Positions)
-		}
 	}
 	var staples []stapleVector
 	readJSONFile(t, historyCard2StaplesPath, &staples)
@@ -81,15 +64,6 @@ func writeJSONFile(t *testing.T, path string, v any) {
 
 func writeHistoryCard2Vectors(t *testing.T) {
 	ctx := context.Background()
-	var positions []positionsVector
-	for _, c := range []struct {
-		n uint64
-		w int
-	}{{0, 1}, {0, 64}, {1, 1}, {1, 64}, {2, 1}, {5, 2}, {10, 3}, {10, 64}, {16, 4}, {17, 1}, {63, 8}, {64, 8}, {1000, 16}, {1_000_000, 64}, {1 << 40, 3}} {
-		positions = append(positions, positionsVector{N: c.n, Window: c.w, Positions: HistoryCardPositions(c.n, c.w)})
-	}
-	writeJSONFile(t, historyCard2PositionsPath, positions)
-
 	book := cardBook(t, 3, 20)
 	holder := KeyID(book.signer)
 	card, err := book.Staple(ctx, DerivationHistoryCard2)
