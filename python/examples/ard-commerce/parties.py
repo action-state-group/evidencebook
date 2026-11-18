@@ -350,15 +350,19 @@ def card_view(node: gn.Node, label: str) -> str:
 _MILESTONES = {"offer": "offer", "commit": "commit (agreement accepted)", "pay": "payment"}
 
 
-def receipt_view(node: gn.Node, label: str, deal_id: str) -> str:
+def receipt_view(node: gn.Node, label: str, deal_id: str, seller: bool = False, real: bool = False) -> str:
     """The party's receipt for one deal, read from its own deal book and its own notes: the terms, the steps it
-    sealed, the payment's commitment, how it closed and what it checked against the other party's half."""
+    sealed, the payment's commitment, how it closed and what it checked against the other party's half. On a
+    real rail (``real``, from the caller's rail) a seller's receipt also says that what its wallet was credited
+    is not in these records."""
     payloads = [json.loads(p) for p in node.deal_payloads(deal_id)]
     first = payloads[0]["body"]
     t = first["terms"]
     lines = [f"{label}: its receipt for {deal_id}, from its own sealed deal book ({len(payloads)} records)",
              f"  terms: {t['item']} at {t['price_minor']} msat, rail {first['recourse']['rail']}"]
-    simulated = " (simulated rail: no money moved)" if os.environ.get("ARD_RAIL", "fake") == "fake" else ""
+    if seller and real:
+        lines.append("  " + screens.seller_credit_note(t["price_minor"]))
+    simulated = "" if real else " (simulated rail: no money moved)"
     for d in payloads:
         body = d.get("body", {})
         meta = d.get("x-deal-v0")

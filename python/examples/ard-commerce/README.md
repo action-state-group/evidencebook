@@ -62,8 +62,9 @@ shortest cadence the profile allows), so a run within a minute of the previous t
 nodes over `gcloud compute ssh` (Shockley `mc53-u755-provider` issues the invoice, Brattain
 `mc53-u755-payer` pays it, `max_fee_msat` 1,000). Pricing, wallet policy and config are never touched.
 One payment per run, for the picked price in msat; the screen shows the invoice amount, never a
-balance difference (Shockley's wallet keeps a flat 100 msat receive fee, a presenter note, not on
-screen). Preimages are never printed or kept. You need `gcloud` signed in to the project.
+balance difference. On a real rail Maya's line shows the routing fee as her wallet reports it, and
+the seller's receipt says that what its wallet was credited is not in its records: the seller's
+wallet provider may deduct a receiving fee. Preimages are never printed or kept. You need `gcloud` signed in to the project.
 
 ### The local rail
 

@@ -25,6 +25,21 @@ ASSESSMENT_NOTE = ("the agent's assessment of each seller; the presenter's pick 
                    "and nothing is paid above a seller's limit")
 
 
+def fee_note(fee_msat: int | None, real: bool) -> str:
+    """The fee on Maya's payment line: on a real rail it is the routing fee her own wallet reports for the
+    send. It says nothing about what the seller's wallet was credited (Maya has no record of that)."""
+    if fee_msat is None:
+        return ""
+    return f" (routing fee {fee_msat} msat, as her wallet reports it)" if real else f" (fee {fee_msat} msat)"
+
+
+def seller_credit_note(price_msat: int) -> str:
+    """The seller's receipt line on a real rail: the agreed price is in its records, the amount its wallet
+    was credited is not (the wallet provider may keep a receiving fee)."""
+    return (f"Agreed price {price_msat} msat. What this seller's wallet was credited is not in these records: "
+            "its wallet provider may deduct a receiving fee.")
+
+
 def msat(n: int) -> str:
     return f"{n:,} msat"
 

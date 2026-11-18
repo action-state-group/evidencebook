@@ -186,8 +186,8 @@ class Run:
             self.started_payment = True
             payment = self.rail.pay(a.price_msat)
             paid.append(payment)
-            who = ("Brattain's wallet paid it" if self.banner == screens.BANNER else "the buyer's wallet paid it") if self.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
-            print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status} (fee {payment.fee_msat} msat)")
+            who = ("the buyer's test node paid it" if self.banner == screens.BANNER else "the buyer's wallet paid it") if self.banner != screens.BANNER_FAKE else "the simulated rail paid it (no money moved)"
+            print(f"invoice {screens.msat(payment.invoice_msat)}; {who}: {payment.status}{screens.fee_note(payment.fee_msat, self.banner != screens.BANNER_FAKE)}")
             return payment.reference
 
         deals.run_deal(self.maya, seller, chain.terms, ASK, "", opened=chain, pay=send)
