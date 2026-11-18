@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `deal dispute --deal ID --row ROW [--forum F] [--withdraw] [--out FILE]` (x-deal-v1 deals): seals a `dispute` record of kind dispute, or of kind withdrawal with `--withdraw`, in the holder's deal book and writes the file to send; the other side counts it with `deal receive`. The record is the one place a dispute lives, and a row's status reads it. The dispute names the agreement's adjudicator and one of its forums (`--forum` may be left out when there is one), cites the holder's own statements on the row, and is checked against the holder's agreement before it is stored; an agreement with no adjudicator allows none. Run again with the same `--out`, it rewrites the same file and seals nothing new; an `--out` file that already exists is refused for a new dispute or withdrawal, before anything is sealed. A challenge of a ruling is not here (evidencebook-deal#95).
+
 ## v0.1.0-rc42
 
 This release pairs with capsulectl `v0.1.0-rc42` (go.mod requires it).
