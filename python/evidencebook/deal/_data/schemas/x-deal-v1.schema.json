@@ -1,0 +1,1616 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentactioncapsule.org/profiles/x-deal-v1/record.schema.json",
+  "title": "x-deal-v1 deal record",
+  "description": "One x-deal-v1 record (evidencebook#461, docs/design/461-deal-profile.md section 3): the x-deal-v1 block and a body whose shape is fixed by record_type. The journal and journey overlays keep v0's bodies by reference to the x-deal-v0 schema. Digest input is SHA-256 over the RFC 8785 (JCS) bytes of the whole record. Structural rules only: where a record is sealed, deal_id presence and the rules between records are the record checks of package xdealv1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "x-deal-v1",
+    "body"
+  ],
+  "properties": {
+    "x-deal-v1": {
+      "$ref": "#/$defs/block"
+    },
+    "body": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "propose"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_propose"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "agree"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_agree"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "perform"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_perform"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "settle"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_settle"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "statement"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_statement"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "dispute"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_dispute"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "ruling"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_ruling"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "ask"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_ask"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "answer"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_answer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "admit"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_admit"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "check"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_check"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "intent"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_intent"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "verdict"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_verdict"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "approval"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "#/$defs/body_approval"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "rules_verdict"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_rules_verdict"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "message"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_message"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "claim"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_claim"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "evidence"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_evidence"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "detail_change"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_detail_change"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "agent_move"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_agent_move"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "disclosure"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_disclosure"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "sale"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_sale"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "thread"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_thread"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "thread_opened"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_thread_opened"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "sale_unpost"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_sale_unpost"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "x-deal-v1": {
+            "properties": {
+              "record_type": {
+                "const": "counterparty_profile"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/body_counterparty_profile"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "RFC 3339 UTC to the second, written with Z."
+    },
+    "token": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}(:[a-z][a-z0-9_.-]{0,63})?$",
+      "description": "A lowercase token, or a namespaced one (ns:token)."
+    },
+    "row_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "safe_uint": {
+      "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/safe_uint"
+    },
+    "role": {
+      "enum": [
+        "buyer",
+        "seller"
+      ]
+    },
+    "digest_ref": {
+      "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/digest_ref"
+    },
+    "rel_ref": {
+      "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/rel_ref"
+    },
+    "record_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "A record id: the Capsule id of a sealed book record."
+    },
+    "statement_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row",
+        "value"
+      ],
+      "properties": {
+        "row": {
+          "$ref": "#/$defs/row_id"
+        },
+        "value": {
+          "enum": [
+            "met",
+            "not_met",
+            "cannot_tell"
+          ]
+        },
+        "remedy": {
+          "$ref": "#/$defs/row_id"
+        }
+      }
+    },
+    "statements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/statement_item"
+      }
+    },
+    "date": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "at"
+          ],
+          "properties": {
+            "at": {
+              "$ref": "#/$defs/utc"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "after"
+          ],
+          "properties": {
+            "after": {
+              "$ref": "#/$defs/row_id"
+            },
+            "seconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3162240000
+            }
+          }
+        }
+      ]
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "owed_by",
+        "owed",
+        "due",
+        "window_end"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/row_id"
+        },
+        "owed_by": {
+          "$ref": "#/$defs/role"
+        },
+        "owed": {
+          "type": "object"
+        },
+        "due": {
+          "$ref": "#/$defs/date"
+        },
+        "window_end": {
+          "$ref": "#/$defs/date"
+        },
+        "recomputed": {
+          "const": true,
+          "description": "Present only as true: an optional member is absent rather than holding its zero value."
+        },
+        "remedies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "within_seconds"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/row_id"
+              },
+              "within_seconds": {
+                "$ref": "#/$defs/safe_uint"
+              }
+            }
+          }
+        }
+      }
+    },
+    "terms_rows": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "named"
+      ],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/row"
+          }
+        },
+        "named": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/row_id"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "side",
+              "latest"
+            ],
+            "properties": {
+              "side": {
+                "$ref": "#/$defs/role"
+              },
+              "latest": {
+                "$ref": "#/$defs/utc"
+              }
+            }
+          }
+        }
+      }
+    },
+    "adjudicator": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key_id",
+            "rules_digest",
+            "rules_url"
+          ],
+          "properties": {
+            "key_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rules_digest": {
+              "$ref": "#/$defs/hex64"
+            },
+            "rules_url": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "witnesses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/witness"
+      },
+      "description": "The witnesses, each key id once; possibly empty (u186)."
+    },
+    "remedy_for": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row"
+      ],
+      "properties": {
+        "row": {
+          "$ref": "#/$defs/row_id"
+        },
+        "ruling": {
+          "$ref": "#/$defs/digest_ref"
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "canonicalization",
+        "record_type",
+        "at"
+      ],
+      "properties": {
+        "profile": {
+          "const": "x-deal-v1"
+        },
+        "canonicalization": {
+          "const": "jcs"
+        },
+        "deal_id": {
+          "type": "string",
+          "pattern": "^deal-[0-9a-f]{16,64}$"
+        },
+        "record_type": {
+          "enum": [
+            "propose",
+            "agree",
+            "perform",
+            "settle",
+            "statement",
+            "dispute",
+            "ruling",
+            "ask",
+            "answer",
+            "admit",
+            "intent",
+            "check",
+            "verdict",
+            "approval",
+            "rules_verdict",
+            "message",
+            "claim",
+            "evidence",
+            "detail_change",
+            "agent_move",
+            "disclosure",
+            "sale",
+            "thread",
+            "thread_opened",
+            "sale_unpost",
+            "counterparty_profile"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/utc"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "prev": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "agreement_ref": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "seen": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/record_id"
+            }
+          ]
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rel_ref"
+          }
+        },
+        "marks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/row_id"
+          }
+        },
+        "counterparty": {
+          "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/counterparty"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        },
+        "commit_alg": {
+          "const": "sha256-jcs-nonce256"
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "commit"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      }
+    },
+    "body_propose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "to",
+        "terms",
+        "pack_digest",
+        "stated_at",
+        "agree_by",
+        "terms_rows",
+        "adjudicator",
+        "forums",
+        "witnesses"
+      ],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "to": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "counter_to": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "terms": {
+          "$ref": "https://agentactioncapsule.org/profiles/x-deal-v0/record.schema.json#/$defs/terms"
+        },
+        "pack_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "pack_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stated_at": {
+          "$ref": "#/$defs/utc"
+        },
+        "agree_by": {
+          "$ref": "#/$defs/utc"
+        },
+        "terms_rows": {
+          "$ref": "#/$defs/terms_rows"
+        },
+        "adjudicator": {
+          "$ref": "#/$defs/adjudicator"
+        },
+        "witnesses": {
+          "$ref": "#/$defs/witnesses"
+        },
+        "ask": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "url",
+            "digest"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "digest": {
+              "$ref": "#/$defs/hex64"
+            }
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^x-deal-v[0-9]+$"
+          }
+        },
+        "listing_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "forums": {
+          "$ref": "#/$defs/forums"
+        }
+      }
+    },
+    "body_agree": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "offer",
+            "rows_digest",
+            "side",
+            "role",
+            "admit",
+            "forums",
+            "witnesses",
+            "adjudicator",
+            "counterparty_layer",
+            "counterparty_key",
+            "checkpoint_key",
+            "shelf_log_id"
+          ],
+          "properties": {
+            "kind": {
+              "const": "agreement"
+            },
+            "offer": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "rows_digest": {
+              "$ref": "#/$defs/hex64"
+            },
+            "side": {
+              "enum": [
+                "offerer",
+                "acceptor"
+              ]
+            },
+            "role": {
+              "$ref": "#/$defs/role"
+            },
+            "admit": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "intent": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "witnesses": {
+              "$ref": "#/$defs/witnesses"
+            },
+            "adjudicator": {
+              "$ref": "#/$defs/adjudicator"
+            },
+            "counterparty_layer": {
+              "type": "boolean"
+            },
+            "counterparty_key": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
+              ]
+            },
+            "checkpoint_key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "shelf_log_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "forums": {
+              "$ref": "#/$defs/forums"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "offer"
+          ],
+          "properties": {
+            "kind": {
+              "const": "decline"
+            },
+            "offer": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "reason": {
+              "enum": [
+                "not_selected",
+                "other"
+              ]
+            },
+            "reason_commitment": {
+              "$ref": "#/$defs/hex64"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "offer"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cancellation"
+            },
+            "offer": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "reason_commitment": {
+              "$ref": "#/$defs/hex64"
+            }
+          }
+        }
+      ]
+    },
+    "body_perform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "act",
+        "observed",
+        "statements"
+      ],
+      "properties": {
+        "act": {
+          "$ref": "#/$defs/token"
+        },
+        "observed": {
+          "$ref": "#/$defs/token"
+        },
+        "detail_commitment": {
+          "$ref": "#/$defs/hex64"
+        },
+        "statements": {
+          "$ref": "#/$defs/statements"
+        },
+        "check": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "remedy_for": {
+          "$ref": "#/$defs/remedy_for"
+        }
+      }
+    },
+    "body_settle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leg",
+        "statements"
+      ],
+      "properties": {
+        "leg": {
+          "enum": [
+            "payer",
+            "payee"
+          ]
+        },
+        "statements": {
+          "$ref": "#/$defs/statements"
+        },
+        "check": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "supersedes": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "reverses": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "remedy_for": {
+          "$ref": "#/$defs/remedy_for"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "leg": {
+                "const": "payer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "check"
+            ]
+          }
+        }
+      ]
+    },
+    "body_statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statements"
+      ],
+      "properties": {
+        "statements": {
+          "$ref": "#/$defs/statements"
+        },
+        "names": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cancellation"
+              ],
+              "properties": {
+                "cancellation": {
+                  "$ref": "#/$defs/digest_ref"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ruling"
+              ],
+              "properties": {
+                "ruling": {
+                  "$ref": "#/$defs/digest_ref"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "names"
+          ]
+        },
+        {
+          "properties": {
+            "statements": {
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "body_dispute": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "row",
+            "statements",
+            "adjudicator",
+            "forum"
+          ],
+          "properties": {
+            "kind": {
+              "const": "dispute"
+            },
+            "row": {
+              "$ref": "#/$defs/row_id"
+            },
+            "statements": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/digest_ref"
+              }
+            },
+            "adjudicator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "forum": {
+              "$ref": "#/$defs/forum"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "row"
+          ],
+          "properties": {
+            "kind": {
+              "const": "withdrawal"
+            },
+            "row": {
+              "$ref": "#/$defs/row_id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "ruling",
+            "grounds_commitment"
+          ],
+          "properties": {
+            "kind": {
+              "const": "challenge"
+            },
+            "ruling": {
+              "$ref": "#/$defs/digest_ref"
+            },
+            "grounds_commitment": {
+              "$ref": "#/$defs/hex64"
+            }
+          }
+        }
+      ]
+    },
+    "body_ruling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row",
+        "keys",
+        "against",
+        "value",
+        "read",
+        "forum",
+        "rules_digest",
+        "final"
+      ],
+      "properties": {
+        "row": {
+          "$ref": "#/$defs/row_id"
+        },
+        "keys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "buyer",
+            "seller"
+          ],
+          "properties": {
+            "buyer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "seller": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "against": {
+          "enum": [
+            "buyer",
+            "seller",
+            null
+          ]
+        },
+        "value": {
+          "enum": [
+            "met",
+            "not_met"
+          ]
+        },
+        "remedy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "due"
+          ],
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/token"
+            },
+            "amount_minor": {
+              "$ref": "#/$defs/safe_uint"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "due": {
+              "$ref": "#/$defs/utc"
+            }
+          },
+          "dependentRequired": {
+            "amount_minor": [
+              "currency"
+            ],
+            "currency": [
+              "amount_minor"
+            ]
+          }
+        },
+        "read": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "buyer",
+            "seller"
+          ],
+          "properties": {
+            "buyer": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/record_id"
+                }
+              ]
+            },
+            "seller": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/record_id"
+                }
+              ]
+            }
+          }
+        },
+        "rules_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "final": {
+          "type": "boolean"
+        },
+        "forum": {
+          "$ref": "#/$defs/forum"
+        }
+      }
+    },
+    "body_ask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "to"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "to": {
+          "enum": [
+            "counterparty",
+            "adjudicator"
+          ]
+        }
+      }
+    },
+    "body_answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "outcome",
+        "answer"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/digest_ref"
+        },
+        "outcome": {
+          "enum": [
+            "evidence",
+            "refusal",
+            "absence"
+          ]
+        },
+        "answer": {
+          "$ref": "#/$defs/digest_ref"
+        }
+      }
+    },
+    "body_admit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "tier",
+        "rows",
+        "asks",
+        "pack_digest",
+        "card_digest",
+        "answers",
+        "nonce"
+      ],
+      "properties": {
+        "outcome": {
+          "enum": [
+            "GO",
+            "ASK",
+            "LIMIT",
+            "NO"
+          ]
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/row_id"
+          }
+        },
+        "asks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/digest_ref"
+          }
+        },
+        "pack_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "card_digest": {
+          "$ref": "#/$defs/hex64"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/digest_ref"
+          }
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      }
+    },
+    "body_check": {
+      "type": "object",
+      "properties": {
+        "payment_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "description": "v0's body_check, payment_ref and nonce. The record checks validate the body without payment_ref and nonce against v0's body_check, which is closed, so the two are not merged here.",
+      "required": [
+        "nonce"
+      ]
+    },
+    "forum": {
+      "type": "string",
+      "pattern": "^(auto:(twin|ref)|(network|rail|external):[a-z0-9][a-z0-9._-]{0,63})$",
+      "description": "The process that resolves a dispute (evidencebook#404, Steven 2026-11-05; carried on dispute and ruling records per Steven's AAC#626 ruling, u603): auto:twin, auto:ref, network:<id>, rail:<program> or external:<class>. Its prefix is the class standard_history/3 counts by_forum (auto, network, rail, external)."
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key_id"
+      ],
+      "properties": {
+        "key_id": {
+          "$ref": "#/$defs/hex64",
+          "description": "The witness's verified key id: the directory key its receipts verify under, lowercase hex."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where to find the witness: a hint only. A moved witness is the same witness."
+        }
+      },
+      "description": "A witness, named by its verified key id with its URL as a hint (Steven, #482 Q1, u604)."
+    },
+    "forums": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/forum"
+      },
+      "description": "The forums both sides accept for a dispute on this deal: the recourse clause (evidencebook#404; Terms Pack Studio PRD v5 §7, no forum shopping). Empty exactly when adjudicator is null, which allows no dispute."
+    },
+    "nonce": {
+      "description": "A fresh random 256-bit value (64 lowercase hex) in a journal record a sent or deal-book record can cite, so that the citing record's digest gives nobody a way to test a guess at the cited record's content (PROFILE section 5).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "body_verdict": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_verdict and nonce. The record checks validate the body without nonce against v0's body_verdict, which is closed, so the two are not merged here."
+    },
+    "body_approval": {
+      "type": "object",
+      "properties": {
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
+      },
+      "required": [
+        "nonce"
+      ],
+      "description": "v0's body_approval and nonce. The record checks validate the body without nonce against v0's body_approval, which is closed, so the two are not merged here."
+    }
+  }
+}

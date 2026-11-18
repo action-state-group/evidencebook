@@ -46,11 +46,11 @@ test = ["pytest>=8"]
 Homepage = "https://github.com/action-state-group/evidencebook"
 
 [tool.setuptools]
-packages = ["evidencebook", "evidencebook.deal"]
+packages = ["evidencebook", "evidencebook.deal", "evidencebook.deal.v1"]
 
 # The profile's schemas and the public suffix tables ship with the package.
 [tool.setuptools.package-data]
-"evidencebook.deal" = ["_data/schemas/*.json", "_data/schemas/records/*.json", "_data/publicsuffix/*"]
+"evidencebook.deal" = ["_data/*.json", "_data/schemas/*.json", "_data/schemas/records/*.json", "_data/publicsuffix/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

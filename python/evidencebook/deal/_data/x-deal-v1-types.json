@@ -1,0 +1,2311 @@
+{
+ "block": {
+  "struct": "dealprofile/xdealv1.Block"
+ },
+ "bodies": {
+  "admit": {
+   "struct": "dealprofile/xdealv1.AdmitBody"
+  },
+  "agent_move": {
+   "struct": "dealprofile.AgentMoveBody"
+  },
+  "agree": {
+   "struct": "dealprofile/xdealv1.AgreeBody"
+  },
+  "answer": {
+   "struct": "dealprofile/xdealv1.AnswerBody"
+  },
+  "approval": {
+   "struct": "dealprofile/xdealv1.ApprovalBody"
+  },
+  "ask": {
+   "struct": "dealprofile/xdealv1.AskBody"
+  },
+  "check": {
+   "struct": "dealprofile/xdealv1.CheckBody"
+  },
+  "claim": {
+   "struct": "dealprofile.Claim"
+  },
+  "counterparty_profile": {
+   "struct": "dealprofile.CounterpartyProfileBody"
+  },
+  "detail_change": {
+   "struct": "dealprofile.DetailChangeBody"
+  },
+  "disclosure": {
+   "struct": "dealprofile.DisclosureBody"
+  },
+  "dispute": {
+   "struct": "dealprofile/xdealv1.DisputeBody"
+  },
+  "evidence": {
+   "struct": "dealprofile.EvidenceBody"
+  },
+  "intent": {
+   "struct": "dealprofile.IntentBody"
+  },
+  "message": {
+   "struct": "dealprofile.MessageBody"
+  },
+  "perform": {
+   "struct": "dealprofile/xdealv1.PerformBody"
+  },
+  "propose": {
+   "struct": "dealprofile/xdealv1.ProposeBody"
+  },
+  "rules_verdict": {
+   "struct": "dealprofile.RulesVerdictBody"
+  },
+  "ruling": {
+   "struct": "dealprofile/xdealv1.RulingBody"
+  },
+  "sale": {
+   "struct": "dealprofile.SaleBody"
+  },
+  "sale_unpost": {
+   "struct": "dealprofile.SaleUnpostBody"
+  },
+  "settle": {
+   "struct": "dealprofile/xdealv1.SettleBody"
+  },
+  "statement": {
+   "struct": "dealprofile/xdealv1.StatementBody"
+  },
+  "thread": {
+   "struct": "dealprofile.ThreadBody"
+  },
+  "thread_opened": {
+   "struct": "dealprofile.ThreadOpenedBody"
+  },
+  "verdict": {
+   "struct": "dealprofile/xdealv1.VerdictBody"
+  }
+ },
+ "structs": {
+  "dealprofile.AgentMoveBody": [
+   {
+    "name": "move",
+    "type": "string"
+   },
+   {
+    "name": "where_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "results",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "options",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.AgentMoveBodyOptionsItem"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "found",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "option",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "reason_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "item_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "price_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "reason",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "detail_commitment",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.AgentMoveBodyOptionsItem": [
+   {
+    "name": "item_commitment",
+    "type": "string"
+   },
+   {
+    "name": "price_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.ApprovalBodyLimits": [
+   {
+    "name": "previous",
+    "type": {
+     "struct": "dealprofile.LimitSet"
+    }
+   },
+   {
+    "name": "new",
+    "type": {
+     "struct": "dealprofile.LimitSet"
+    }
+   }
+  ],
+  "dealprofile.AuthorityEntry": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "ref",
+    "type": {
+     "struct": "dealprofile.TypedRef"
+    }
+   },
+   {
+    "name": "scope",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.CheckBodyPosting": [
+   {
+    "name": "text_commitment",
+    "type": "string"
+   },
+   {
+    "name": "classes",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "platform",
+    "type": "string"
+   }
+  ],
+  "dealprofile.CheckBodyRepresenting": [
+   {
+    "name": "class",
+    "type": "string"
+   },
+   {
+    "name": "text_commitment",
+    "type": "string"
+   },
+   {
+    "name": "source_ref_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "attributed_to",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Claim": [
+   {
+    "name": "text",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "source",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "text_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "source_kind",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "source_ref_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "class",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "authority_basis",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.AuthorityEntry"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "evaluation_ref",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.TypedRef"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "unchecked",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "rule",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Counterparty": [
+   {
+    "name": "fp_alg",
+    "type": "string"
+   },
+   {
+    "name": "ids",
+    "type": {
+     "map": "string"
+    }
+   }
+  ],
+  "dealprofile.CounterpartyFacts": [
+   {
+    "name": "domain_age_days",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.CounterpartyProfileBody": [],
+  "dealprofile.DetailChangeBody": [
+   {
+    "name": "source",
+    "type": "string"
+   },
+   {
+    "name": "changed",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "terms",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Terms"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "recourse",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Recourse"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Difference": [
+   {
+    "name": "question",
+    "type": "string"
+   },
+   {
+    "name": "rule",
+    "type": "string"
+   },
+   {
+    "name": "field",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.DisclosureBody": [
+   {
+    "name": "to",
+    "type": "string"
+   },
+   {
+    "name": "action_class",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "taxonomy_version",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "fields",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.DisclosureBodyFieldsItem"
+     }
+    }
+   },
+   {
+    "name": "authority",
+    "type": "string"
+   },
+   {
+    "name": "rule",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.DisclosureBodyFieldsItem": [
+   {
+    "name": "class",
+    "type": "string"
+   },
+   {
+    "name": "value_commitment",
+    "type": "string"
+   }
+  ],
+  "dealprofile.EvidenceBody": [
+   {
+    "name": "source",
+    "type": "string"
+   },
+   {
+    "name": "verified",
+    "type": "bool"
+   },
+   {
+    "name": "detail_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "counterparty_facts",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.CounterpartyFacts"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "merchant_email",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.MerchantEmail"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "obligation",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Obligation"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "resolves_obligation",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "wrapped",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.EvidenceBodyWrappedItem"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "wrapped_octets",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "wrapped_held",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "carrier_headers_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "received_to",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.EvidenceBodyReceivedTo"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "preimage",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.EvidenceBodyReceivedTo": [
+   {
+    "name": "fp_alg",
+    "type": "string"
+   },
+   {
+    "name": "payee",
+    "type": "string"
+   }
+  ],
+  "dealprofile.EvidenceBodyWrappedItem": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "digest_alg",
+    "type": "string"
+   },
+   {
+    "name": "digest",
+    "type": "string"
+   }
+  ],
+  "dealprofile.IntentBody": [
+   {
+    "name": "verbatim_commitment",
+    "type": "string"
+   },
+   {
+    "name": "party_role",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "asked",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Terms"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "max_total_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "bounds_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "allowed",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "ordered_representations",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "delegated",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "delegated_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "move",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "proposed",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "why_commitment",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.LimitSet": [
+   {
+    "name": "max_total_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "bounds_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "allowed",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "ordered_representations",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "delegated",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.MaterialityRef": [
+   {
+    "name": "digest",
+    "type": "string"
+   },
+   {
+    "name": "label_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "name",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "version",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.MerchantEmail": [
+   {
+    "name": "message_digest",
+    "type": "string"
+   },
+   {
+    "name": "key_records_digest",
+    "type": "string"
+   },
+   {
+    "name": "key_source",
+    "type": "string"
+   },
+   {
+    "name": "key_resolver",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "key_dnssec",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "dkim",
+    "type": "string"
+   },
+   {
+    "name": "merchant_signed",
+    "type": "bool"
+   },
+   {
+    "name": "dmarc_policy",
+    "type": "string"
+   },
+   {
+    "name": "dmarc_record_digest",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "dmarc_source",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "signer_matches_baseline",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "parsed",
+    "type": {
+     "struct": "dealprofile.MerchantEmailParsed"
+    }
+   }
+  ],
+  "dealprofile.MerchantEmailParsed": [
+   {
+    "name": "method",
+    "type": "string"
+   },
+   {
+    "name": "total_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "order_id_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "cancel_by",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "sent_at",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "item_count",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "kind",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.MessageBody": [
+   {
+    "name": "from",
+    "type": "string"
+   },
+   {
+    "name": "content_commitment",
+    "type": "string"
+   },
+   {
+    "name": "sent_at",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Obligation": [
+   {
+    "name": "kind",
+    "type": "string"
+   },
+   {
+    "name": "cancel_by",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "due_by",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "takes_effect",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "amount_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "period",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "terms_commitment",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Producer": [
+   {
+    "name": "name",
+    "type": "string"
+   },
+   {
+    "name": "version",
+    "type": "string"
+   },
+   {
+    "name": "commit",
+    "type": "string"
+   }
+  ],
+  "dealprofile.Recourse": [
+   {
+    "name": "rail",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "refundable",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.Ref": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "digest_alg",
+    "type": "string"
+   },
+   {
+    "name": "digest",
+    "type": "string"
+   }
+  ],
+  "dealprofile.RelRef": [
+   {
+    "name": "rel",
+    "type": "string"
+   },
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "digest_alg",
+    "type": "string"
+   },
+   {
+    "name": "digest",
+    "type": "string"
+   }
+  ],
+  "dealprofile.RulesVerdictBody": [
+   {
+    "name": "word",
+    "type": "string"
+   },
+   {
+    "name": "pack_digest",
+    "type": "string"
+   },
+   {
+    "name": "pack_id",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.SaleBody": [
+   {
+    "name": "deal_type",
+    "type": "string"
+   },
+   {
+    "name": "demo",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "intent",
+    "type": {
+     "struct": "dealprofile.IntentBody"
+    }
+   },
+   {
+    "name": "terms",
+    "type": {
+     "struct": "dealprofile.Terms"
+    }
+   },
+   {
+    "name": "recourse",
+    "type": {
+     "struct": "dealprofile.Recourse"
+    }
+   },
+   {
+    "name": "item_ref_commitment",
+    "type": "string"
+   }
+  ],
+  "dealprofile.SaleUnpostBody": [
+   {
+    "name": "platform",
+    "type": "string"
+   }
+  ],
+  "dealprofile.Terms": [
+   {
+    "name": "item",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "quantity",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "price_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "deposit_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "when",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "place",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "conditions",
+    "type": {
+     "map": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "handover",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.ThreadBody": [
+   {
+    "name": "thread_ref_commitment",
+    "type": "string"
+   }
+  ],
+  "dealprofile.ThreadOpenedBody": [
+   {
+    "name": "task_authority_commitment",
+    "type": "string"
+   }
+  ],
+  "dealprofile.TypedRef": [
+   {
+    "name": "type",
+    "type": "string"
+   },
+   {
+    "name": "digest_alg",
+    "type": "string"
+   },
+   {
+    "name": "digest",
+    "type": "string"
+   }
+  ],
+  "dealprofile.VerdictBodyJudge": [
+   {
+    "name": "kind",
+    "type": "string"
+   },
+   {
+    "name": "status",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "response_digest",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.VerdictBodyRules": [
+   {
+    "name": "status",
+    "type": "string"
+   },
+   {
+    "name": "cause",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "ruleset_id",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "kind",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "definition_digest",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "checker_sha256",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "verdict",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "tier",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "grade",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "history",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.VerdictBodyRulesHistory"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "findings",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.VerdictBodyRulesFindingsItem"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile.VerdictBodyRulesFindingsItem": [
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "check",
+    "type": {
+     "ptr": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "verdict",
+    "type": "string"
+   },
+   {
+    "name": "disposition",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "limit",
+    "type": "raw",
+    "omitzero": true
+   },
+   {
+    "name": "value",
+    "type": "raw",
+    "omitzero": true
+   }
+  ],
+  "dealprofile.VerdictBodyRulesHistory": [
+   {
+    "name": "days",
+    "type": "int64"
+   },
+   {
+    "name": "acts",
+    "type": "int64"
+   },
+   {
+    "name": "complete",
+    "type": "bool"
+   }
+  ],
+  "dealprofile.VerdictBodyUnverifiedClaimsItem": [
+   {
+    "name": "claim",
+    "type": {
+     "struct": "dealprofile.Ref"
+    }
+   },
+   {
+    "name": "index",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.Adjudicator": [
+   {
+    "name": "key_id",
+    "type": "string"
+   },
+   {
+    "name": "rules_digest",
+    "type": "string"
+   },
+   {
+    "name": "rules_url",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.AdmitBody": [
+   {
+    "name": "outcome",
+    "type": "string"
+   },
+   {
+    "name": "tier",
+    "type": "string"
+   },
+   {
+    "name": "rows",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "asks",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.Ref"
+     }
+    }
+   },
+   {
+    "name": "pack_digest",
+    "type": "string"
+   },
+   {
+    "name": "card_digest",
+    "type": "string"
+   },
+   {
+    "name": "answers",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.Ref"
+     }
+    }
+   },
+   {
+    "name": "nonce",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.AgreeBody": [
+   {
+    "name": "kind",
+    "type": "string"
+   },
+   {
+    "name": "offer",
+    "type": {
+     "struct": "dealprofile.Ref"
+    }
+   },
+   {
+    "name": "rows_digest",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "side",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "role",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "admit",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "intent",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "witnesses",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.Witness"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "adjudicator",
+    "type": {
+     "null": {
+      "struct": "dealprofile/xdealv1.Adjudicator"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "forums",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "counterparty_layer",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "counterparty_key",
+    "type": {
+     "null": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "checkpoint_key",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "shelf_log_id",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "reason",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "reason_commitment",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.AnswerBody": [
+   {
+    "name": "request",
+    "type": {
+     "struct": "dealprofile.Ref"
+    }
+   },
+   {
+    "name": "outcome",
+    "type": "string"
+   },
+   {
+    "name": "answer",
+    "type": {
+     "struct": "dealprofile.Ref"
+    }
+   }
+  ],
+  "dealprofile/xdealv1.ApprovalBody": [
+   {
+    "name": "choice",
+    "type": "string"
+   },
+   {
+    "name": "proceed",
+    "type": "bool"
+   },
+   {
+    "name": "approver",
+    "type": "string"
+   },
+   {
+    "name": "said_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "card_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "limits",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.ApprovalBodyLimits"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "nonce",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.AskAddress": [
+   {
+    "name": "url",
+    "type": "string"
+   },
+   {
+    "name": "digest",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.AskBody": [
+   {
+    "name": "request",
+    "type": {
+     "struct": "dealprofile.Ref"
+    }
+   },
+   {
+    "name": "to",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.Block": [
+   {
+    "name": "profile",
+    "type": "string"
+   },
+   {
+    "name": "canonicalization",
+    "type": "string"
+   },
+   {
+    "name": "deal_id",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "record_type",
+    "type": "string"
+   },
+   {
+    "name": "at",
+    "type": "string"
+   },
+   {
+    "name": "seq",
+    "type": "int64",
+    "omitzero": true
+   },
+   {
+    "name": "prev",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "agreement_ref",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "seen",
+    "type": {
+     "null": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "refs",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.RelRef"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "marks",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "counterparty",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Counterparty"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "producer",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Producer"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "commit_alg",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.CheckBody": [
+   {
+    "name": "action",
+    "type": "string"
+   },
+   {
+    "name": "posting",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.CheckBodyPosting"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "listing_classes",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "representing",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.CheckBodyRepresenting"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "item_ref_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "action_class",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "taxonomy_version",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "spend_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "authorized_max_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "spend_authorized_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "direction",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "reverses_ref",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.TypedRef"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "fee_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "cancelled_amount_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "amount_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "seen_item",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "disclosing",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "disclosing_to",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "terms",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Terms"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "recipient_role",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "repeat_disclosures",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "recipient_told_before",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "channel",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "first_contact_channel",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "material_fields_changed",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "material_fields_basis",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "rule_inputs_version",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "offer_fields_changed",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "offer_fields_basis",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "upfront_amount_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "recourse",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Recourse"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "description_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "no_proposal",
+    "type": {
+     "ptr": "bool"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "pack_id",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "pack_digest",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "payment_ref",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "nonce",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.Date": [
+   {
+    "name": "at",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "after",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "seconds",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.DisputeBody": [
+   {
+    "name": "kind",
+    "type": "string"
+   },
+   {
+    "name": "row",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "statements",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "adjudicator",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "forum",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "ruling",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "grounds_commitment",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.Named": [
+   {
+    "name": "side",
+    "type": "string"
+   },
+   {
+    "name": "latest",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.PerformBody": [
+   {
+    "name": "act",
+    "type": "string"
+   },
+   {
+    "name": "observed",
+    "type": "string"
+   },
+   {
+    "name": "detail_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "statements",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatementItem"
+     }
+    }
+   },
+   {
+    "name": "check",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "remedy_for",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.RemedyFor"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.ProposeBody": [
+   {
+    "name": "role",
+    "type": "string"
+   },
+   {
+    "name": "to",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "counter_to",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "terms",
+    "type": {
+     "struct": "dealprofile.Terms"
+    }
+   },
+   {
+    "name": "pack_digest",
+    "type": "string"
+   },
+   {
+    "name": "pack_url",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "stated_at",
+    "type": "string"
+   },
+   {
+    "name": "agree_by",
+    "type": "string"
+   },
+   {
+    "name": "terms_rows",
+    "type": {
+     "struct": "dealprofile/xdealv1.TermsRows"
+    }
+   },
+   {
+    "name": "adjudicator",
+    "type": {
+     "null": {
+      "struct": "dealprofile/xdealv1.Adjudicator"
+     }
+    }
+   },
+   {
+    "name": "forums",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "witnesses",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.Witness"
+     }
+    }
+   },
+   {
+    "name": "ask",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.AskAddress"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "profiles",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "listing_digest",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.RemedyFor": [
+   {
+    "name": "row",
+    "type": "string"
+   },
+   {
+    "name": "ruling",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.Row": [
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "owed_by",
+    "type": "string"
+   },
+   {
+    "name": "owed",
+    "type": "raw"
+   },
+   {
+    "name": "due",
+    "type": {
+     "struct": "dealprofile/xdealv1.Date"
+    }
+   },
+   {
+    "name": "window_end",
+    "type": {
+     "struct": "dealprofile/xdealv1.Date"
+    }
+   },
+   {
+    "name": "recomputed",
+    "type": "bool",
+    "omitzero": true
+   },
+   {
+    "name": "remedies",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.RowRemedy"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.RowRemedy": [
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "within_seconds",
+    "type": "int64"
+   }
+  ],
+  "dealprofile/xdealv1.RulingBody": [
+   {
+    "name": "row",
+    "type": "string"
+   },
+   {
+    "name": "keys",
+    "type": {
+     "struct": "dealprofile/xdealv1.RulingKeys"
+    }
+   },
+   {
+    "name": "against",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "value",
+    "type": "string"
+   },
+   {
+    "name": "remedy",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.RulingRemedy"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "read",
+    "type": {
+     "struct": "dealprofile/xdealv1.RulingRead"
+    }
+   },
+   {
+    "name": "forum",
+    "type": "string"
+   },
+   {
+    "name": "rules_digest",
+    "type": "string"
+   },
+   {
+    "name": "final",
+    "type": "bool"
+   }
+  ],
+  "dealprofile/xdealv1.RulingKeys": [
+   {
+    "name": "buyer",
+    "type": "string"
+   },
+   {
+    "name": "seller",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.RulingRead": [
+   {
+    "name": "buyer",
+    "type": {
+     "null": "string"
+    }
+   },
+   {
+    "name": "seller",
+    "type": {
+     "null": "string"
+    }
+   }
+  ],
+  "dealprofile/xdealv1.RulingRemedy": [
+   {
+    "name": "kind",
+    "type": "string"
+   },
+   {
+    "name": "amount_minor",
+    "type": {
+     "ptr": "int64"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "currency",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "due",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.SettleBody": [
+   {
+    "name": "leg",
+    "type": "string"
+   },
+   {
+    "name": "statements",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatementItem"
+     }
+    }
+   },
+   {
+    "name": "check",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "supersedes",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "reverses",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "remedy_for",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.RemedyFor"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.StatementBody": [
+   {
+    "name": "statements",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.StatementItem"
+     }
+    }
+   },
+   {
+    "name": "names",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile/xdealv1.StatementNames"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.StatementItem": [
+   {
+    "name": "row",
+    "type": "string"
+   },
+   {
+    "name": "value",
+    "type": "string"
+   },
+   {
+    "name": "remedy",
+    "type": "string",
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.StatementNames": [
+   {
+    "name": "cancellation",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "ruling",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.Ref"
+     }
+    },
+    "omitzero": true
+   }
+  ],
+  "dealprofile/xdealv1.TermsRows": [
+   {
+    "name": "rows",
+    "type": {
+     "slice": {
+      "struct": "dealprofile/xdealv1.Row"
+     }
+    }
+   },
+   {
+    "name": "named",
+    "type": {
+     "map": {
+      "struct": "dealprofile/xdealv1.Named"
+     }
+    }
+   }
+  ],
+  "dealprofile/xdealv1.VerdictBody": [
+   {
+    "name": "result",
+    "type": "string"
+   },
+   {
+    "name": "materiality",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.MaterialityRef"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "rules",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.VerdictBodyRules"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "pack_id",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "differences",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.Difference"
+     }
+    }
+   },
+   {
+    "name": "unverified",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "unverified_claims",
+    "type": {
+     "slice": {
+      "struct": "dealprofile.VerdictBodyUnverifiedClaimsItem"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "notes",
+    "type": {
+     "slice": "string"
+    },
+    "omitzero": true
+   },
+   {
+    "name": "options",
+    "type": {
+     "slice": "string"
+    }
+   },
+   {
+    "name": "card_commitment",
+    "type": "string",
+    "omitzero": true
+   },
+   {
+    "name": "judge",
+    "type": {
+     "ptr": {
+      "struct": "dealprofile.VerdictBodyJudge"
+     }
+    },
+    "omitzero": true
+   },
+   {
+    "name": "nonce",
+    "type": "string"
+   }
+  ],
+  "dealprofile/xdealv1.Witness": [
+   {
+    "name": "key_id",
+    "type": "string"
+   },
+   {
+    "name": "url",
+    "type": "string",
+    "omitzero": true
+   }
+  ]
+ },
+ "terms_rows": {
+  "struct": "dealprofile/xdealv1.TermsRows"
+ }
+}
