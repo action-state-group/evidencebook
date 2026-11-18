@@ -184,3 +184,44 @@ def test_book_pair_takes_and_refuses_what_go_s_marshal_does():
     for bad in ((cap + b"garbage", env, hdr, pay), (cap[:-1] + b",}", env, hdr, pay), (cap, env, hdr, b"1 2")):
         with pytest.raises(ValueError):
             v1sent.book_pair(*bad)
+
+
+# -- #552 review r2: each outcome Go's, from the same probe ----------------------------
+
+
+def test_capsule_id_is_read_occurrence_by_occurrence():
+    case = PAYMENT["pair"][0]
+    h = bytes.fromhex
+    cap, env, hdr, pay = h(case["capsule"]).decode(), h(case["envelope"]), h(case["header"]), h(case["payload"])
+    cid = json.loads(cap)["capsule_id"]
+    with pytest.raises(ValueError):  # a type error Go keeps to the end
+        v1sent.book_pair(cap.replace('"capsule_id":', '"capsule_id":5,"capsule_id":', 1).encode(), env, hdr, pay)
+    # A later null leaves the id as it was.
+    later_null = cap.replace(f'"capsule_id":"{cid}"', f'"capsule_id":"{cid}","Capsule_ID":null', 1)
+    assert v1sent.book_pair(later_null.encode(), env, hdr, pay)
+
+
+@pytest.mark.parametrize("agent_input, stage", [("1e400", "canonicalization"), ("1e300", "sent")])
+def test_a_number_past_float64_is_a_text_refusal(agent_input, stage):
+    with pytest.raises(StageError) as exc:
+        v1sent.verify_sent(('{"record":{},"agent_input":' + agent_input + "}").encode())
+    assert exc.value.stage == stage
+
+
+@pytest.mark.parametrize("depth, ok", [(1200, True), (9999, True), (10000, False)])
+def test_a_raw_member_s_depth_is_go_s_marshal_bound(depth, ok):
+    case = PAYMENT["pair"][0]
+    h = bytes.fromhex
+    args = (h(case["capsule"]), h(case["envelope"]), h(case["header"]), ("[" * depth + "]" * depth).encode())
+    if ok:
+        assert v1sent.book_pair(*args)
+    else:
+        with pytest.raises(ValueError):
+            v1sent.book_pair(*args)
+
+
+def test_a_pair_past_go_s_scanner_depth_is_a_text_refusal():
+    deep = "[" * 10001 + "]" * 10001
+    with pytest.raises(StageError) as exc:
+        v1sent.verify_sent(('{"record":{},"agent_input":' + deep + "}").encode())
+    assert exc.value.stage == "canonicalization"

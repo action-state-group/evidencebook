@@ -173,7 +173,8 @@ def _raw_message(v: Any) -> str:
     if v is None:
         return "null"
     text = _text(v)
-    if not rawjson.valid(text):
+    # Inside the pair's map: Go's json.Marshal refuses it nested 10,000 deep.
+    if not rawjson.valid(text, depth=9999):
         raise ValueError("json: error calling MarshalJSON for type json.RawMessage: invalid JSON")
     return text
 

@@ -53,10 +53,56 @@ class _Repeat(Exception):
         self.name = name
 
 
-def _value_end(s: str, i: int, hook: Any = None) -> int:
+#: Go's scanner refuses JSON nested deeper than this (encoding/json maxNestingDepth).
+_MAX_DEPTH = 10000
+
+
+def _too_deep(s: str, i: int, limit: int = _MAX_DEPTH) -> bool:
+    """Whether the value at ``s[i:]`` nests past Go's scanner bound, counted
+    outside strings."""
+    depth, in_str, esc = 0, False, False
+    for c in s[i:]:
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c in "[{":
+            depth += 1
+            if depth > limit:
+                return True
+        elif c in "]}":
+            depth -= 1
+            if depth == 0:
+                return False
+        elif depth == 0 and c not in _WS:
+            return False
+    return False
+
+
+def _float64(text: str) -> Any:
+    """A number as Go's ``Decoder.Token`` reads it, a float64: one that
+    overflows it is refused."""
+    v = float(text)
+    if v in (float("inf"), float("-inf")):
+        raise GoJSONError(f"json: cannot unmarshal number {text} into Go value of type float64")
+    return v
+
+
+def _value_end(s: str, i: int, hook: Any = None, numbers: bool = False) -> int:
     """The end of the one JSON value at ``s[i:]`` (Python's own reader
-    checks its syntax)."""
-    dec = json.JSONDecoder(object_pairs_hook=hook, parse_constant=_refuse_constant)
+    checks its syntax; Go's nesting bound is checked first). With
+    ``numbers``, each number is read as a float64, as Go's tokens are."""
+    if _too_deep(s, i):
+        raise GoJSONError("exceeded max depth")
+    kw: dict[str, Any] = {"object_pairs_hook": hook, "parse_constant": _refuse_constant}
+    if numbers:
+        kw.update(parse_float=_float64, parse_int=_float64)
+    dec = json.JSONDecoder(**kw)
     try:
         _, end = dec.raw_decode(s, i)
     except RecursionError:
@@ -72,7 +118,7 @@ def text_check(raw: bytes) -> str:
     _check_text(raw)
     s = raw.decode("utf-8")
     try:
-        _value_end(s, _skip(s, 0), _repeat_hook)
+        _value_end(s, _skip(s, 0), _repeat_hook, numbers=True)
     except _Repeat as exc:
         raise StageError("canonicalization", f"member {_go_quote(exc.name)} given twice") from None
     except GoJSONError as exc:
@@ -116,10 +162,14 @@ def unmarshal_map(text: str) -> dict[str, str] | None:
     return dict(members(v))
 
 
-def valid(text: str) -> bool:
-    """Go's ``json.Valid``: exactly one JSON value, white space around it."""
+def valid(text: str, depth: int = _MAX_DEPTH) -> bool:
+    """Go's ``json.Valid``: exactly one JSON value, white space around it,
+    nested at most ``depth`` deep. A raw member that ``json.Marshal`` writes
+    inside a map may nest one level less than the map's own bound."""
     try:
         i = _skip(text, 0)
+        if _too_deep(text, i, depth):
+            return False
         return _skip(text, _value_end(text, i)) == len(text)
     except GoJSONError:
         return False
@@ -161,18 +211,20 @@ def strict_struct(s: str, fields: dict[str, str]) -> dict[str, Any]:
 
 
 def string_member(text: str, name: str) -> str:
-    """``json.Unmarshal(text, &struct{Name string})``'s ``Name``: the member
-    in any case, the later spelling winning, a null leaving it empty; a
-    value of another type refused."""
-    v = json.loads(text, parse_constant=_refuse_constant)
-    if not isinstance(v, dict):
-        raise GoJSONError("json: cannot unmarshal into a struct")
-    out = ""
-    for k, e in v.items():
+    """``json.Unmarshal(text, &struct{Name string})``'s ``Name``: each
+    occurrence in order, the member in any case, a later one replacing an
+    earlier, a null leaving it as it was; a value of another type refused
+    once the rest is read."""
+    out, err = "", None
+    for k, e in members(text):
         if k == name or golenient.fold(k) == golenient.fold(name):
-            if e is None:
+            if e == "null":
                 continue
-            if not isinstance(e, str):
-                raise GoJSONError(f"json: cannot unmarshal into Go struct field .{name} of type string")
-            out = e
+            v = json.loads(e, parse_constant=_refuse_constant)
+            if isinstance(v, str):
+                out = v
+            elif err is None:
+                err = GoJSONError(f"json: cannot unmarshal into Go struct field .{name} of type string")
+    if err is not None:
+        raise err
     return out
