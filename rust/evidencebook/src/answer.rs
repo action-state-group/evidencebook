@@ -75,6 +75,17 @@ use sha2::{Digest, Sha256};
 /// The token of the one derivation -00 registers (§8.1).
 pub const DERIVATION_HISTORY_CARD: &str = "history_card/1";
 
+/// The token of `history_card/2` (ER -03 §8.1.2): a logarithmic sample of
+/// the stream's checkpoints, where `history_card/1` lists every one.
+pub use evidence_request::history_card::DERIVATION_HISTORY_CARD_2;
+
+/// The window a `history_card/2` states when the responder sets none: the
+/// number of newest checkpoints it lists in full.
+pub const DEFAULT_HISTORY_WINDOW: usize = 16;
+/// The smallest and largest window a responder may choose (ER -03 §8.1.2).
+pub const MIN_HISTORY_WINDOW: usize = 1;
+pub const MAX_HISTORY_WINDOW: usize = evidence_request::history_card::MAX_WINDOW as usize;
+
 /// The registered token of the standard card ([`crate::standard_history`]).
 pub const DERIVATION_STANDARD_HISTORY: &str = crate::standard_history::DERIVATION;
 
@@ -113,6 +124,9 @@ pub enum AnswerError {
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
     OverLimit,
+    /// The responder's `history_card/2` window is outside 1 to 64.
+    #[error("the history window is {0}, not 1 to 64")]
+    HistoryWindow(usize),
     /// The artifact has no RFC 8785 form (a derived value holds a fraction).
     #[error("the artifact cannot be canonicalized: {0}")]
     Artifact(String),
@@ -157,6 +171,9 @@ pub struct Options<'a> {
     /// card alone. Without it that derivation is
     /// [`AnswerError::DerivationUnsupported`].
     pub standard_card: Option<&'a [u8]>,
+    /// The window a `history_card/2` states, 1 to 64; zero is
+    /// [`DEFAULT_HISTORY_WINDOW`].
+    pub history_window: usize,
 }
 
 /// What an answer is served under and carries: the position of the serving
@@ -292,6 +309,7 @@ pub fn select(
             }
             Vec::new()
         }
+        // A logarithmic sample and no record: no cap applies.
         (Some(Derivation::Token(_)), _) => Vec::new(),
         // No derivation is defined over checkpoints ([`crate::derivation`]).
         (Some(Derivation::Digest(_)), Subject::Checkpoints) => Vec::new(),
@@ -299,6 +317,15 @@ pub fn select(
         // carries the same records.
         (_, Subject::Checkpoints) => {
             if listed > limit {
+                return Err(AnswerError::OverLimit);
+            }
+            Vec::new()
+        }
+        // The checkpoints at positions a through b (ER -03 §8.1.3): more
+        // than the limit is an over-limit answer. The range lies under the
+        // anchor, which the decision checked.
+        (_, Subject::CheckpointRange(a, b)) => {
+            if b - a + 1 > limit {
                 return Err(AnswerError::OverLimit);
             }
             Vec::new()
@@ -366,7 +393,9 @@ pub fn build(
     let registered = |id: &str| options.derivations.and_then(|d| d.get(id)).is_some();
     let derived = match (&request.derivation, options.derive) {
         (Some(Derivation::Token(t)), Some(derive))
-            if t != DERIVATION_HISTORY_CARD && t != DERIVATION_STANDARD_HISTORY =>
+            if t != DERIVATION_HISTORY_CARD
+                && t != DERIVATION_HISTORY_CARD_2
+                && t != DERIVATION_STANDARD_HISTORY =>
         {
             derive(t, &request.subject, at).map(|d| (t.clone(), d))
         }
@@ -397,6 +426,24 @@ pub fn build(
             }
             head.insert("derivation".into(), json!(DERIVATION_HISTORY_CARD));
             head.insert("history".into(), Value::Array(history));
+            jcs(head)?
+        }
+        (Some(Derivation::Token(t)), _) if t == DERIVATION_HISTORY_CARD_2 => {
+            let window = match options.history_window {
+                0 => DEFAULT_HISTORY_WINDOW,
+                w => w,
+            };
+            if !(MIN_HISTORY_WINDOW..=MAX_HISTORY_WINDOW).contains(&window) {
+                return Err(AnswerError::HistoryWindow(window));
+            }
+            let positions =
+                evidence_request::history_card::positions(selection.at as u64, window as u64);
+            head.insert("derivation".into(), json!(DERIVATION_HISTORY_CARD_2));
+            head.insert(
+                "history".into(),
+                Value::Array(sampled(log, chain, &positions)?),
+            );
+            head.insert("window".into(), json!(window));
             jcs(head)?
         }
         // The card is the whole artifact (SH §3) and carries no
@@ -436,6 +483,33 @@ pub fn build(
                 .collect();
             head.insert("checkpoints".into(), Value::Array(list));
             jcs(head)?
+        }
+        // The entries alone, one per position from a to b, each proof from
+        // the position before it (ER -03 §8.1.3).
+        (None, Subject::CheckpointRange(a, b)) => {
+            let positions: Vec<u64> = (*a..=*b).collect();
+            let history = sampled(log, chain, &positions)?;
+            // consistency_to_anchor: from the checkpoint at b to the anchor's,
+            // null when b is the anchor's position; the anchor's checkpoint is
+            // the material a requester checks it against.
+            let end = usize::try_from(*b)
+                .ok()
+                .and_then(|i| chain.get(i))
+                .ok_or(AnswerError::AnchorNotFound)?;
+            let to_anchor = if end.checkpoint.mmr_size < at.checkpoint.mmr_size {
+                json!(hex::encode(consistency(
+                    log,
+                    end.checkpoint.mmr_size,
+                    at.checkpoint.mmr_size
+                )?))
+            } else {
+                Value::Null
+            };
+            material.push((KIND_CHECKPOINT.into(), at.statement.clone()));
+            jcs(Map::from_iter([
+                ("history".to_owned(), Value::Array(history)),
+                ("consistency_to_anchor".to_owned(), to_anchor),
+            ]))?
         }
         (None, Subject::Record(d)) => {
             let [leaf] = selection.records[..] else {
@@ -523,6 +597,44 @@ fn jcs(object: Map<String, Value>) -> Result<Vec<u8>, AnswerError> {
     evidence_request::jcs::to_string(&Value::Object(object))
         .map(String::into_bytes)
         .map_err(|e| AnswerError::Artifact(e.to_string()))
+}
+
+/// The entries of a `history_card/2` (or a ranged `checkpoints` answer):
+/// `{position, checkpoint, receipts, consistency_from_previous}` for each
+/// position, each proof from the entry listed before it. This responder
+/// holds no witness receipts for its checkpoints, so every list is empty.
+fn sampled(
+    log: &dyn CheckpointedLog,
+    chain: &[StatedCheckpoint],
+    positions: &[u64],
+) -> Result<Vec<Value>, AnswerError> {
+    let mut entries = Vec::with_capacity(positions.len());
+    let mut before: Option<&StatedCheckpoint> = None;
+    for &p in positions {
+        let cp = usize::try_from(p)
+            .ok()
+            .and_then(|i| chain.get(i))
+            .ok_or(AnswerError::AnchorNotFound)?;
+        let proof = match before {
+            None => Value::Null,
+            Some(prev) if prev.checkpoint.mmr_size < cp.checkpoint.mmr_size => json!(hex::encode(
+                consistency(log, prev.checkpoint.mmr_size, cp.checkpoint.mmr_size)?
+            )),
+            Some(_) => {
+                return Err(AnswerError::Substrate(SubstrateError::Mmr(format!(
+                    "checkpoint {p} does not grow the log past the checkpoint listed before it"
+                ))))
+            }
+        };
+        entries.push(json!({
+            "position": p,
+            "checkpoint": hex::encode(&cp.statement),
+            "receipts": [],
+            "consistency_from_previous": proof,
+        }));
+        before = Some(cp);
+    }
+    Ok(entries)
 }
 
 fn consistency(log: &dyn CheckpointedLog, from: u64, to: u64) -> Result<Vec<u8>, AnswerError> {

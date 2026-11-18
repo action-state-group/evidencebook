@@ -61,13 +61,13 @@ func (b *Book) Manifest(opts ManifestOptions) ([]byte, error) {
 	}
 	// A registered derivation is never listed: one names its recipient.
 	// standard_history/1 is a registered token, the same for everyone.
-	derivations := []any{DerivationHistoryCard}
+	derivations := []any{DerivationHistoryCard, DerivationHistoryCard2}
 	if b.standardHistory != nil {
 		derivations = append(derivations, DerivationStandardHistory)
 	}
 	manifest := map[string]any{
 		"profiles":       []any{ProfileID, ProfileIDv1},
-		"drafts":         []any{RequestDraft, RequestDraft01, RequestDraft02},
+		"drafts":         []any{RequestDraft, RequestDraft01, RequestDraft02, RequestDraft03},
 		"subject_forms":  forms,
 		"derivations":    derivations,
 		"bindings":       listed,

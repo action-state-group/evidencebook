@@ -25,6 +25,12 @@ import (
 //     evidence_stream, subject}, each checkpoint its signed statement in hex;
 //   - history_card/1: JCS of {anchor, derivation, evidence_stream, history,
 //     subject}, each entry {checkpoint, consistency_from_previous} (ER §8.1);
+//   - checkpoints with a range [a, b], no derivation: JCS of {consistency_to_anchor,
+//     history}, each entry {checkpoint, consistency_from_previous, position,
+//     receipts} (ER -03 §8.1.3), the anchor's checkpoint as material;
+//   - history_card/2: JCS of {anchor, derivation, evidence_stream, history,
+//     subject, window}, each entry {checkpoint, consistency_from_previous,
+//     position, receipts} (ER -03 §8.1.2);
 //   - standard_history/1: JCS of the card (SH §4), counts only;
 //   - a registered derivation: JCS of {anchor, derivation, evidence_stream,
 //     records, subject}, each record carrying only its digest, its position
@@ -58,9 +64,11 @@ type declaredFields struct {
 }
 
 var (
-	recordSetFields   = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
-	checkpointsFields = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
-	historyFields     = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
+	recordSetFields     = declaredFields{top: []string{"anchor", "evidence_stream", "records", "subject"}, entry: []string{"body", "digest", "leaf_index"}, list: "records"}
+	checkpointsFields   = declaredFields{top: []string{"anchor", "checkpoints", "evidence_stream", "subject"}, list: "checkpoints"}
+	history2Fields      = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject", "window"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
+	history2RangeFields = declaredFields{top: []string{"consistency_to_anchor", "history"}, entry: []string{"checkpoint", "consistency_from_previous", "position", "receipts"}, list: "history"}
+	historyFields       = declaredFields{top: []string{"anchor", "derivation", "evidence_stream", "history", "subject"}, entry: []string{"checkpoint", "consistency_from_previous"}, list: "history"}
 )
 
 // buildArtifact builds the canonical Artifact from view's snapshot. It
@@ -76,13 +84,44 @@ func (b *Book) buildArtifact(ctx context.Context, view *bookView, req EvidenceRe
 	if maxItems == 0 {
 		maxItems = DefaultMaxAnswerItems
 	}
-	if len(leaves) > maxItems {
+	// history_card/2 lists a logarithmic sample and no record, so neither
+	// the record cap nor the checkpoint cap applies to it.
+	if req.Derivation != DerivationHistoryCard2 && len(leaves) > maxItems {
 		return builtArtifact{overLimit: true}, nil
 	}
 	head := map[string]any{"anchor": anchorDigest(anchor), "evidence_stream": anchor.LogID, "subject": req.Subject.Value()}
 	var built builtArtifact
 	var declared declaredFields
 	switch {
+	case req.Derivation == "" && req.Subject.Kind == SubjectCheckpoints && req.Subject.Ranged:
+		// The checkpoints at positions a through b (ER -03 §8.1.3): the
+		// artifact is the entries alone, and the envelope's anchor is the
+		// checkpoint the request's coverage resolved.
+		first, last := req.Subject.Range[0], req.Subject.Range[1]
+		chain := checkpointsThrough(view.checkpoints, anchor)
+		if last >= uint64(len(chain)) {
+			return builtArtifact{}, fmt.Errorf("%w: checkpoint position %d is past the anchor", ErrCorrupt, last)
+		}
+		if last-first+1 > uint64(maxItems) {
+			return builtArtifact{overLimit: true}, nil
+		}
+		history, toAnchor, err := b.checkpointsRange(ctx, chain, anchor, first, last)
+		if err != nil {
+			return builtArtifact{}, err
+		}
+		head, declared = map[string]any{"history": history, "consistency_to_anchor": toAnchor}, history2RangeFields
+		// The anchor's checkpoint is the material that lets a requester check
+		// consistency_to_anchor; its digest is the envelope's anchor.
+		built.verification = []VerificationEntry{{Kind: KindCLLCheckpoint, Digest: digestBytes(anchor.Statement)}}
+		built.material = [][]byte{anchor.Statement}
+	case req.Derivation == DerivationHistoryCard2:
+		chain := checkpointsThrough(view.checkpoints, anchor)
+		window := b.responder.historyWindow()
+		history, err := b.historyCard2(ctx, chain, anchor, window)
+		if err != nil {
+			return builtArtifact{}, err
+		}
+		head["derivation"], head["history"], head["window"], declared = DerivationHistoryCard2, history, uint64(window), history2Fields
 	case req.Derivation == DerivationHistoryCard || req.Subject.Kind == SubjectCheckpoints:
 		chain := checkpointsThrough(view.checkpoints, anchor)
 		if len(chain) > maxItems {

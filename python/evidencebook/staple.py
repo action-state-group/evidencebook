@@ -20,10 +20,11 @@ from agent_action_capsule import standard_history as sh
 from agent_action_capsule.evidence_request import VerificationError
 
 from ._cll import read_checkpoint
-from .book import _verify_checkpoint_chain
+from .book import _verify_checkpoint_chain, check_history_card_2
 from .errors import InvalidError
 from .request import (
     DERIVATION_HISTORY_CARD,
+    DERIVATION_HISTORY_CARD_2,
     MEDIA_TYPE_JSON,
     PROFILE,
     Coverage,
@@ -41,7 +42,8 @@ DERIVATION_STANDARD_HISTORY = sh.DERIVATION
 
 #: The cap: each derivation a staple may carry and the one subject it is
 #: answered over.
-_STAPLE_SUBJECTS = {DERIVATION_HISTORY_CARD: "checkpoints", DERIVATION_STANDARD_HISTORY: "full_history"}
+_STAPLE_SUBJECTS = {DERIVATION_HISTORY_CARD: "checkpoints", DERIVATION_HISTORY_CARD_2: "checkpoints",
+                    DERIVATION_STANDARD_HISTORY: "full_history"}
 
 __all__ = ["DERIVATION_STANDARD_HISTORY", "Staple", "StapleCheck", "staple", "check_staple"]
 
@@ -75,7 +77,8 @@ def staple(book, derivation: str) -> Staple:
 
     subject = _STAPLE_SUBJECTS.get(derivation)
     if subject is None:
-        raise InvalidError(f"a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_STANDARD_HISTORY}, not {derivation!r}")
+        raise InvalidError(f"a staple carries {DERIVATION_HISTORY_CARD}, {DERIVATION_HISTORY_CARD_2} or "
+                           f"{DERIVATION_STANDARD_HISTORY}, not {derivation!r}")
     checkpoint = book.checkpoint()
     request = Message(encode_request(EvidenceRequest(
         Subject(subject), Coverage(expected_pin=checkpoint.anchor_digest), derivation=derivation,
@@ -97,7 +100,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     :class:`InvalidError`. It does not check the anchor's checkpoint, the
     card's own properties or the nonce's freshness: those are the reader's.
     A ``history_card/1`` artifact must have the card's members and nothing
-    else (:func:`_history_card_form`)."""
+    else (:func:`_history_card_form`); a ``history_card/2`` one passes the
+    seven checks of ER -03 §8.1.2 (:func:`check_history_card_2`)."""
     if s.request.media_type != MEDIA_TYPE_JSON or s.reply.message.media_type != MEDIA_TYPE_JSON:
         raise InvalidError("a staple's request and reply are JSON")
     parsed = read_request(s.request)
@@ -105,7 +109,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
         raise InvalidError(f"a staple's request is malformed: {parsed.why}")
     req = parsed.request
     if req.derivation not in _STAPLE_SUBJECTS or req.subject.form != _STAPLE_SUBJECTS[req.derivation]:
-        raise InvalidError(f"a staple carries {DERIVATION_HISTORY_CARD} over checkpoints or {DERIVATION_STANDARD_HISTORY} "
+        raise InvalidError(f"a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or "
+                           f"{DERIVATION_STANDARD_HISTORY} "
                            f"over full_history, not {req.derivation!r} over {req.subject.form}")
     if req.coverage.expected_pin is None or not req.nonce:
         raise InvalidError("a staple's request pins its anchor and carries a nonce")
@@ -129,6 +134,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     if req.derivation == DERIVATION_HISTORY_CARD:
         _history_card_form(e.artifact, e.anchor_digest)
         _history_card_chain(e)
+    if req.derivation == DERIVATION_HISTORY_CARD_2:
+        check_history_card_2(e.artifact, e.anchor_digest)
     if req.derivation == DERIVATION_STANDARD_HISTORY:
         try:
             card = strict_json(e.artifact)

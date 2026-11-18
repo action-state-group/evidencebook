@@ -128,6 +128,10 @@ pub struct ResponderPolicy {
     /// is refused for a limit, as a request over the limiter is. Zero is
     /// [`DEFAULT_MAX_ANSWER_ITEMS`].
     pub max_answer_items: usize,
+    /// The window a `history_card/2` states: how many of the newest
+    /// checkpoints it lists in full, 1 to 64. Zero is
+    /// [`answer::DEFAULT_HISTORY_WINDOW`].
+    pub history_window: usize,
 }
 
 /// The four-switch sharing policy, carried unchanged from the host's `share.*`
@@ -478,9 +482,12 @@ impl Run<'_, '_> {
         // A card of counts whatever the history's length: the item cap
         // bounds record lists, and the card lists none.
         let over = !is_standard_history(&req)
+            && !is_history_card_2(&req)
             && (leaves.len() > max_items
                 || (matches!(req.subject, Subject::Checkpoints) || is_history_card(&req))
-                    && chain > max_items);
+                    && chain > max_items
+                || matches!(req.subject, Subject::CheckpointRange(a, b)
+                    if b - a + 1 > max_items as u64));
         if over {
             return self.refuse(limit_reason(self.octets, self.binding), None);
         }
@@ -517,6 +524,7 @@ impl Run<'_, '_> {
                 derivations: Some(self.responder.derivations),
                 requester,
                 standard_card: standard_card.as_deref(),
+                history_window: self.responder.policy.history_window,
                 ..Options::default()
             },
             self.responder.signer,
@@ -577,6 +585,10 @@ fn is_history_card(req: &Request) -> bool {
     matches!(&req.derivation, Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD)
 }
 
+fn is_history_card_2(req: &Request) -> bool {
+    matches!(&req.derivation, Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD_2)
+}
+
 fn encode_envelope(envelope: &Envelope, binding: Binding) -> Vec<u8> {
     envelope.encode(binding)
 }
@@ -626,7 +638,7 @@ fn encode_refusal(
 fn subject_kind(subject: &Subject) -> SubjectKind {
     match subject {
         Subject::FullHistory => SubjectKind::FullHistory,
-        Subject::Checkpoints => SubjectKind::Checkpoints,
+        Subject::Checkpoints | Subject::CheckpointRange(..) => SubjectKind::Checkpoints,
         Subject::Record(_) => SubjectKind::Record,
         Subject::Range(..) => SubjectKind::Range,
         Subject::Correlation(_) => SubjectKind::Correlation,
@@ -1133,7 +1145,9 @@ fn decide_inner(
     let form = req.subject.form();
     let mut registered: Option<&Registered> = None;
     match &req.derivation {
-        Some(Derivation::Token(t)) if t == answer::DERIVATION_HISTORY_CARD => {
+        Some(Derivation::Token(t))
+            if t == answer::DERIVATION_HISTORY_CARD || t == answer::DERIVATION_HISTORY_CARD_2 =>
+        {
             if !matches!(req.subject, Subject::FullHistory | Subject::Checkpoints) {
                 return Refuse(Reason::NoSuchSubject);
             }
@@ -1183,8 +1197,12 @@ fn authorized(
     gate: &Gate<'_>,
     registered: Option<&Registered>,
 ) -> bool {
-    let public = (matches!(req.subject, Subject::Checkpoints) && req.derivation.is_none())
-        || is_history_card(req);
+    let public = (matches!(
+        req.subject,
+        Subject::Checkpoints | Subject::CheckpointRange(..)
+    ) && req.derivation.is_none())
+        || is_history_card(req)
+        || is_history_card_2(req);
     if public {
         return true; // commitments only
     }
@@ -1317,6 +1335,15 @@ fn resolve_subject(
     };
     match &req.subject {
         Subject::Checkpoints => serve(Vec::new()),
+        // The anchors are the checkpoints in the order issued, so an anchor's
+        // index is its checkpoint position: a range past it is not covered
+        // (ER -03 §8.1.3).
+        Subject::CheckpointRange(_, end) => {
+            if *end > anchor as u64 {
+                return Refuse(Reason::CoverageUnsatisfiable);
+            }
+            serve(Vec::new())
+        }
         Subject::FullHistory => {
             let leaves: Vec<u64> = (0..covered).filter(|&l| view.servable(l)).collect();
             if leaves.is_empty() && req.derivation.is_none() {

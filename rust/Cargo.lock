@@ -14,6 +14,18 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c446d9358832e793d33bd8df1b3944b10693915baa21660dee85c7a681715a4d"
 dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "agent-action-capsule"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e4ad5a4c1d7d2954570d78e7ffb2a7746a534a4dfbc6062d87cafac170a7dd6"
+dependencies = [
  "base64",
  "checkpointed-local-log",
  "ed25519-dalek",
@@ -124,7 +136,7 @@ version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44a9332729b442e83bb9ad1fc0132f77c8e60ae33a586c47e24f02830d45643f"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.11.0",
  "base64",
  "hex",
  "rusqlite",
@@ -396,9 +408,9 @@ dependencies = [
 
 [[package]]
 name = "evidence-request"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25d2b70d556157b58a625148451f7ccdfbad424df50f95448b6a7d55b0a2396f"
+checksum = "efb48cc95fada13e1b10d17adcc5e0b0f717fd3f589d62b43ca16b8fa9bc09f9"
 dependencies = [
  "base64",
  "checkpointed-local-log",
@@ -416,7 +428,7 @@ dependencies = [
 name = "evidencebook"
 version = "0.0.20"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.12.0",
  "base64",
  "boon",
  "capsule-emit-artifact",
@@ -446,7 +458,7 @@ dependencies = [
 name = "evidencebook-interop"
 version = "0.0.0"
 dependencies = [
- "agent-action-capsule",
+ "agent-action-capsule 0.12.0",
  "base64",
  "capsule-emit-artifact",
  "checkpointed-local-log",

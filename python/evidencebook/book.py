@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from agent_action_capsule import standard_history as sh
+from agent_action_capsule.history_card import check_history_card_2 as _check_card, positions as history_positions
 from agent_action_capsule.canonical import compute_capsule_id, jcs
 from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
@@ -90,6 +91,7 @@ from .record import (
     Record,
 )
 from .request import (
+    DERIVATION_HISTORY_CARD_2,
     PROFILE,
     PROFILE_V1,
     MEDIA_TYPE_CBOR,
@@ -322,6 +324,21 @@ class WindowLimiter:
             return True
 
 
+#: The window a history_card/2 states when the responder sets none, and the
+#: bounds a responder may choose (ER -03 §8.1.2).
+DEFAULT_HISTORY_WINDOW = 16
+MIN_HISTORY_WINDOW = 1
+MAX_HISTORY_WINDOW = 64
+
+
+def history_card_positions(n: int, window: int) -> list[int] | None:
+    """P(n, W) of ER -03 §8.1.2 (agent-action-capsule's ``positions``), or
+    None when the window is outside 1 to 64."""
+    if not MIN_HISTORY_WINDOW <= window <= MAX_HISTORY_WINDOW:
+        return None
+    return history_positions(n, window)
+
+
 @dataclass(frozen=True)
 class ResponderPolicy:
     """The responder's cost and abuse policy. The default answers
@@ -331,12 +348,22 @@ class ResponderPolicy:
     limiter: RequestLimiter | None = None
     max_request_bytes: int = DEFAULT_MAX_REQUEST_BYTES
     max_answer_items: int = DEFAULT_MAX_ANSWER_ITEMS
+    #: The window a history_card/2 states: how many of the newest checkpoints
+    #: it lists in full, 1 to 64 (ER -03 §8.1.2). Zero reads as
+    #: DEFAULT_HISTORY_WINDOW.
+    history_window: int = 0
+
+    @property
+    def window(self) -> int:
+        return self.history_window or DEFAULT_HISTORY_WINDOW
 
     def validate(self) -> None:
         if self.refusal_policy not in ("", REFUSAL_POLICY_SPECIFIC, REFUSAL_POLICY_UNIFORM):
             raise InvalidError(f"refusal policy {self.refusal_policy!r} is neither specific nor uniform")
         if self.max_request_bytes < 0 or self.max_answer_items < 0:
             raise InvalidError("responder limits must not be negative")
+        if self.history_window != 0 and not MIN_HISTORY_WINDOW <= self.history_window <= MAX_HISTORY_WINDOW:
+            raise InvalidError(f"the history window is {MIN_HISTORY_WINDOW} to {MAX_HISTORY_WINDOW}, not {self.history_window}")
 
 
 @dataclass(frozen=True)
@@ -1288,6 +1315,13 @@ _HISTORY_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history
                             ("checkpoint", "consistency_from_previous"), "history")
 
 
+_HISTORY_2_FIELDS = _Declared(("anchor", "derivation", "evidence_stream", "history", "subject", "window"),
+                              ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
+
+
+_HISTORY_2_RANGE_FIELDS = _Declared(("consistency_to_anchor", "history"), ("checkpoint", "consistency_from_previous", "position", "receipts"), "history")
+
+
 class _OverLimit:
     """An answer refused for the cost policy's item cap (see _Answer._build)."""
 
@@ -1414,7 +1448,7 @@ class _Answer:
             return None if entry is None else entry.forms
 
         def authorize(r: EvidenceRequest) -> bool:
-            if r.subject.form == "checkpoints" and r.derivation is None or r.derivation == DERIVATION_HISTORY_CARD:
+            if r.subject.form == "checkpoints" and r.derivation is None or r.derivation in (DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2):
                 return True  # public: commitments only
             if r.derivation == DERIVATION_STANDARD_HISTORY:
                 # Counts only, the same for every requester it is answered to
@@ -1453,12 +1487,39 @@ class _Answer:
             # disclosure scan has nothing to read.
             return self._standard_history_card(view, anchor, leaves), []
         max_items = book._responder.max_answer_items or DEFAULT_MAX_ANSWER_ITEMS
-        if len(leaves) > max_items:
+        # history_card/2 lists a logarithmic sample and no record, so neither
+        # the record cap nor the checkpoint cap applies to it.
+        if req.derivation != DERIVATION_HISTORY_CARD_2 and len(leaves) > max_items:
             return _OVER_LIMIT
+        ranged_material: list[tuple[str, bytes]] = []
         head: dict[str, Any] = {"anchor": anchor.anchor_digest, "evidence_stream": anchor.log_id,
                                 "subject": req.subject.to_wire()}
         definition = book._derivations.get(req.derivation) if req.derivation is not None else None
-        if req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
+        if req.derivation is None and req.subject.form == "checkpoints" and req.subject.content is not None:
+            # The checkpoints at positions a through b (ER -03 §8.1.3): the
+            # artifact is the entries alone.
+            first, last = req.subject.content
+            chain = _checkpoints_through(view.checkpoints, anchor)
+            if last >= len(chain):
+                raise CorruptError(f"checkpoint position {last} is past the anchor")
+            if last - first + 1 > max_items:
+                return _OVER_LIMIT
+            # consistency_to_anchor: from the checkpoint at b to the anchor's,
+            # null when b is the anchor's position; the anchor's checkpoint is
+            # the material a requester checks it against.
+            to_anchor = None
+            if last != len(chain) - 1:
+                to_anchor = self.log._substrate.consistency_proof(chain[last].tree_size, anchor.tree_size, anchor).hex()
+            head = {"history": self._history_card_2(chain, anchor, list(range(first, last + 1))),
+                    "consistency_to_anchor": to_anchor}
+            declared = _HISTORY_2_RANGE_FIELDS
+            ranged_material = [(KIND_CLL_CHECKPOINT, anchor.statement)]
+        elif req.derivation == DERIVATION_HISTORY_CARD_2:
+            chain = _checkpoints_through(view.checkpoints, anchor)
+            window = book._responder.window
+            head["derivation"], head["window"], declared = DERIVATION_HISTORY_CARD_2, window, _HISTORY_2_FIELDS
+            head["history"] = self._history_card_2(chain, anchor, history_card_positions(len(chain) - 1, window))
+        elif req.derivation == DERIVATION_HISTORY_CARD or req.subject.form == "checkpoints":
             chain = _checkpoints_through(view.checkpoints, anchor)
             if len(chain) > max_items:
                 return _OVER_LIMIT
@@ -1487,7 +1548,7 @@ class _Answer:
         artifact = jcs(head)
         if not self._clean(artifact, declared):
             return None
-        return artifact, []
+        return artifact, ranged_material
 
     def _standard_history_card(self, view: _View, anchor: Checkpoint, leaves: Sequence[int]) -> bytes:
         book = self.log
@@ -1519,6 +1580,25 @@ class _Answer:
             if i > 0 and chain[i - 1].tree_size < cp.tree_size:
                 consistency = self.log._substrate.consistency_proof(chain[i - 1].tree_size, cp.tree_size, anchor).hex()
             history.append({"checkpoint": cp.statement.hex(), "consistency_from_previous": consistency})
+        return history
+
+    def _history_card_2(self, chain: list[Checkpoint], anchor: Checkpoint, positions: list[int]) -> list[dict]:
+        """The entries of a history_card/2 (ER -03 §8.1.2): the checkpoint at
+        each position with its receipts (this book holds none) and the
+        consistency proof from the entry listed before it."""
+        history = []
+        for i, p in enumerate(positions):
+            if p >= len(chain):
+                raise InvalidError(f"checkpoint position {p} is past the stream's {len(chain)} checkpoints")
+            cp = chain[p]
+            consistency = None
+            if i > 0:
+                before = chain[positions[i - 1]]
+                if before.tree_size >= cp.tree_size:
+                    raise CorruptError(f"checkpoint {p} does not grow the log past checkpoint {positions[i - 1]}")
+                consistency = self.log._substrate.consistency_proof(before.tree_size, cp.tree_size, anchor).hex()
+            history.append({"position": p, "checkpoint": cp.statement.hex(), "receipts": [],
+                            "consistency_from_previous": consistency})
         return history
 
     def _project(self, leaves: Sequence[int], definition: DerivationDefinition) -> list[dict]:
@@ -1693,6 +1773,12 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     half_pin = req.subject.form == "exchange" and req.coverage.expected_pin == req.subject.content
     if req.subject.form == "record" and req.derivation is None:
         return [], _verify_record_inclusion(e, checkpoint_key)
+    if req.subject.form == "checkpoints" and req.subject.content is not None and req.derivation is None:
+        return [], _verify_checkpoint_range(req, e, checkpoint_key)
+    if req.derivation == DERIVATION_HISTORY_CARD_2:
+        last = check_history_card_2(e.artifact, e.anchor_digest, checkpoint_key)
+        _check_freshness_committed(e, read_checkpoint(last))
+        return [], last
     if req.subject.form == "checkpoints" or req.derivation == DERIVATION_HISTORY_CARD:
         return [], _verify_checkpoint_chain(e, checkpoint_key)
     # Record sets and registered derivations: the profile defines no
@@ -1751,6 +1837,130 @@ def _signed_checkpoint(statement: bytes, pinned: str) -> Checkpoint:
     return cp
 
 
+_LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+\Z")
+
+
+def check_history_card_2(artifact: bytes, anchor: str, checkpoint_key: str | None = None) -> bytes:
+    """A history_card/2 artifact: the card's members and nothing else, then
+    the seven ordered checks of ER -03 §8.1.2 (agent-action-capsule's
+    ``check_history_card_2``), as Go's ``CheckHistoryCard2`` runs them.
+    ``anchor`` is the digest the response resolved; ``checkpoint_key`` the key
+    every checkpoint must be signed by (None names the first checkpoint's,
+    the reader's to judge). Which receipts count is the requester's policy.
+    Returns the last checkpoint's statement. Every failure is InvalidError."""
+    def bad(why: str) -> InvalidError:
+        return InvalidError(f"the history_card/2 {why}")
+    try:
+        card = strict_json(artifact)
+    except ValueError:
+        card = None
+    if not isinstance(card, dict):
+        raise bad("is not a JSON object")
+    if set(card) != {"anchor", "derivation", "evidence_stream", "history", "subject", "window"}:
+        raise bad("has members other than the card's")
+    stream = card["evidence_stream"]
+    if card["derivation"] != DERIVATION_HISTORY_CARD_2 or card["anchor"] != anchor or not isinstance(stream, str) \
+            or not stream or card["subject"] not in ({"checkpoints": None}, {"full_history": None}):
+        raise bad("does not name its derivation, anchor, stream and subject")
+    history = card["history"]
+    for i, entry in enumerate(history if isinstance(history, list) else ()):
+        if not isinstance(entry, dict) or set(entry) != {"position", "checkpoint", "receipts", "consistency_from_previous"}:
+            raise bad(f"entry {i} has members other than a position, checkpoint, receipts and consistency proof")
+    key = checkpoint_key
+    if key is None:
+        first = history[0].get("checkpoint") if isinstance(history, list) and history and isinstance(history[0], dict) else None
+        raw = strict_hex(first) if isinstance(first, str) else None
+        try:
+            key = read_checkpoint(raw).key_id if raw else ""
+        except InvalidError:
+            key = ""
+    finding = _check_card(card, anchor, [key])
+    if finding is not None:
+        raise bad(f"fails {finding}")
+    return bytes.fromhex(history[-1]["checkpoint"])
+
+
+def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: str) -> bytes:
+    """The artifact of a checkpoints subject with a range (ER -03 §8.1.3): one
+    entry per position from a to b in order, every checkpoint signed under the
+    pinned key in one log, each proof extending the entry before it, the first
+    without one. Whether the range reaches the envelope's anchor is the
+    request's coverage, not the artifact's. Returns the last statement."""
+    def bad(why: str) -> InvalidError:
+        return InvalidError(f"anchor_inclusion: the checkpoint range {why}")
+    fields = _json_object(e.artifact)
+    history = fields.get("history")
+    first, last = req.subject.content
+    if set(fields) != {"history", "consistency_to_anchor"} or not isinstance(history, list) \
+            or len(history) != last - first + 1:
+        raise bad("does not hold one entry per position and a consistency_to_anchor")
+    previous: Checkpoint | None = None
+    raw = b""
+    for i, entry in enumerate(history):
+        if not isinstance(entry, dict) or set(entry) != {"position", "checkpoint", "receipts", "consistency_from_previous"}:
+            raise bad(f"entry {i} has members other than a position, checkpoint, receipts and consistency proof")
+        if entry["position"] != first + i or not _is_uint(entry["position"]):
+            raise bad(f"entry {i} is not at position {first + i}")
+        if not isinstance(entry["receipts"], list):
+            raise bad(f"entry {i}'s receipts are not a list")
+        # A receipt's check is the card checker's, which takes a whole card;
+        # this requester cannot judge one in a range, so it fails closed.
+        if entry["receipts"]:
+            raise bad(f"entry {i} lists receipts, which this requester cannot check in a range")
+        raw = strict_hex(entry["checkpoint"]) or b""
+        if not raw:
+            raise bad(f"entry {i}'s checkpoint is not hex")
+        cp = _signed_checkpoint(raw, checkpoint_key)
+        proof = entry["consistency_from_previous"]
+        if (proof is None) != (i == 0) or (i > 0 and strict_hex(proof) is None):
+            raise bad(f"entry {i} is not a checkpoint with its consistency proof")
+        if previous is not None:
+            if cp.log_id != previous.log_id or cp.tree_size <= previous.tree_size:
+                raise bad(f"entry {i} does not extend the log")
+            try:
+                verify_cll_consistency(previous.peaks, cp.peaks, strict_hex(proof))
+            except (VerificationError, ValueError) as exc:
+                raise InvalidError(f"anchor_inclusion: entry {i}: {exc}") from None
+        previous = cp
+    # consistency_to_anchor binds the answer to the coverage anchor: null when
+    # the last entry is the anchor, else a proof to the anchor's checkpoint,
+    # which the envelope carries as material.
+    proof = fields["consistency_to_anchor"]
+    if proof is None:
+        if _digest(raw) != e.anchor_digest:
+            raise bad("ends before its anchor and carries no consistency_to_anchor")
+        _check_freshness_committed(e, previous)
+        return raw
+    octets = strict_hex(proof) if isinstance(proof, str) else None
+    if octets is None:
+        raise bad("has a consistency_to_anchor that is not hex")
+    statement = next((item for kind, item in e.verification if kind == KIND_CLL_CHECKPOINT), None)
+    if statement is None or _digest(statement) != e.anchor_digest:
+        raise bad("carries no anchor checkpoint to check consistency_to_anchor against")
+    anchor_cp = _signed_checkpoint(statement, checkpoint_key)
+    if anchor_cp.log_id != previous.log_id or anchor_cp.tree_size <= previous.tree_size:
+        raise bad("does not reach an anchor that extends it")
+    try:
+        verify_cll_consistency(previous.peaks, anchor_cp.peaks, octets)
+    except (VerificationError, ValueError) as exc:
+        raise InvalidError(f"anchor_inclusion: consistency_to_anchor: {exc}") from None
+    _check_freshness_committed(e, anchor_cp)
+    return statement
+
+
+def _is_uint(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def _check_freshness_committed(e: Envelope, cp: Checkpoint) -> None:
+    """The freshness an envelope states for its anchor is what the anchor's
+    signed checkpoint commits, so a responder cannot sign a newer size or time
+    than its checkpoint holds."""
+    if type(e.freshness) is int and e.freshness != cp.tree_size or \
+            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
+        raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
+
+
 def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:
     """The §6.2.1 procedure under the pinned checkpoint key. Returns the
     anchor's checkpoint statement."""
@@ -1768,9 +1978,7 @@ def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:
     if _digest(items[KIND_CLL_CHECKPOINT]) != e.anchor_digest:
         raise InvalidError("anchor_inclusion: the checkpoint is not the anchor")
     cp = _signed_checkpoint(items[KIND_CLL_CHECKPOINT], checkpoint_key)
-    if type(e.freshness) is int and e.freshness != cp.tree_size or \
-            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
-        raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
+    _check_freshness_committed(e, cp)
     try:
         verify_cll_inclusion(cp.peaks, bytes.fromhex(e.artifact_digest), items[KIND_CLL_INCLUSION_PROOF])
         if KIND_CLL_CONSISTENCY_PROOF in items:

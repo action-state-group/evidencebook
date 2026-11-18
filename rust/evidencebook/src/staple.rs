@@ -16,7 +16,7 @@
 //! which has no Rust checker yet. The card's properties are the reader's
 //! verifier in every language.
 
-use crate::answer::{self, DERIVATION_HISTORY_CARD};
+use crate::answer::{self, DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2};
 use crate::ask::Book;
 use crate::canonical::jcs;
 use crate::derivation::decode_strict;
@@ -81,7 +81,8 @@ fn refuse<T>(why: impl Into<String>) -> Result<T, StapleError> {
 /// one the request pinned, as is the profile. It does not check the
 /// anchor's checkpoint, the card's properties or the nonce's freshness:
 /// those are the reader's. A `history_card/1` artifact must have the card's
-/// members and nothing else, and end at its anchor.
+/// members and nothing else, and end at its anchor; a `history_card/2`
+/// artifact passes [`check_history_card_2`].
 pub fn check_staple(
     request: &[u8],
     reply: &[u8],
@@ -98,11 +99,12 @@ pub fn check_staple(
     let capped = matches!(
         (derivation, &req.subject),
         (DERIVATION_HISTORY_CARD, Subject::Checkpoints)
+            | (DERIVATION_HISTORY_CARD_2, Subject::Checkpoints)
             | (DERIVATION_STANDARD_HISTORY, Subject::FullHistory)
     );
     if !capped {
         return refuse(format!(
-            "a staple carries {DERIVATION_HISTORY_CARD} over checkpoints or {DERIVATION_STANDARD_HISTORY} over full_history, not {derivation:?}"
+            "a staple carries {DERIVATION_HISTORY_CARD} or {DERIVATION_HISTORY_CARD_2} over checkpoints or {DERIVATION_STANDARD_HISTORY} over full_history, not {derivation:?}"
         ));
     }
     let (Coverage::ExpectedPin(pin), Some(nonce)) = (&req.coverage, &req.nonce) else {
@@ -143,6 +145,9 @@ pub fn check_staple(
     if derivation == DERIVATION_HISTORY_CARD {
         history_card_form(&e.artifact, pin)?;
         history_card_chain(&e.artifact)?;
+    }
+    if derivation == DERIVATION_HISTORY_CARD_2 {
+        check_history_card_2(&e.artifact, pin)?;
     }
     if derivation == DERIVATION_STANDARD_HISTORY {
         let card = match decode_strict(&e.artifact) {
@@ -309,6 +314,84 @@ fn history_card_chain(artifact: &[u8]) -> Result<(), StapleError> {
     Ok(())
 }
 
+/// A `history_card/2` artifact (ER -03 §8.1.2): the card's members and
+/// nothing else, then the seven ordered checks, which are
+/// `evidence_request::cll_material::check_history_card_2`'s, as Go's
+/// `CheckHistoryCard2` runs them. The key every checkpoint must be signed by
+/// is the first checkpoint's, which the reader judges; which receipts count
+/// is the requester's policy.
+pub fn check_history_card_2(artifact: &[u8], anchor: &str) -> Result<(), StapleError> {
+    let bad = |why: &str| StapleError(format!("the history_card/2 {why}"));
+    let card = decode_strict(artifact).map_err(|_| bad("is not a JSON object"))?;
+    let Some(members) = card.as_object() else {
+        return Err(bad("is not a JSON object"));
+    };
+    let mut names: Vec<&str> = members.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    if names
+        != [
+            "anchor",
+            "derivation",
+            "evidence_stream",
+            "history",
+            "subject",
+            "window",
+        ]
+    {
+        return Err(bad("has members other than the card's"));
+    }
+    let stream_ok = members["evidence_stream"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty());
+    let subject_ok = members["subject"] == serde_json::json!({"checkpoints": null})
+        || members["subject"] == serde_json::json!({"full_history": null});
+    if members["derivation"] != DERIVATION_HISTORY_CARD_2
+        || members["anchor"] != anchor
+        || !stream_ok
+        || !subject_ok
+    {
+        return Err(bad(
+            "does not name its derivation, anchor, stream and subject",
+        ));
+    }
+    // The profile's entry has these members and no other.
+    for (i, entry) in members["history"]
+        .as_array()
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .enumerate()
+    {
+        let mut names: Vec<&str> = entry
+            .as_object()
+            .map_or(Vec::new(), |m| m.keys().map(String::as_str).collect());
+        names.sort_unstable();
+        if names
+            != [
+                "checkpoint",
+                "consistency_from_previous",
+                "position",
+                "receipts",
+            ]
+        {
+            return Err(bad(&format!(
+                "entry {i} has members other than a position, checkpoint, receipts and consistency proof"
+            )));
+        }
+    }
+    let first_key = members["history"][0]["checkpoint"]
+        .as_str()
+        .and_then(|h| hex::decode(h).ok())
+        .and_then(|raw| {
+            let verified = cll::checkpoint::verify_checkpoint_cose_offline(&raw);
+            verified.decoded.map(|cp| cp.key_id)
+        })
+        .unwrap_or_default();
+    match evidence_request::cll_material::check_history_card_2(&card, anchor, &[first_key]) {
+        None => Ok(()),
+        Some(finding) => Err(bad(&format!("fails {finding}"))),
+    }
+}
+
 /// Whether `proof` (consistency-proof octets, deterministic CBOR) shows
 /// `next`'s commitment extends `prev`'s.
 fn consistency_holds(
@@ -405,6 +488,15 @@ pub fn staple_history_card<B: Book + CheckpointedLog>(
     staple_of(book, responder, DERIVATION_HISTORY_CARD)
 }
 
+/// Build a `history_card/2` staple from `book`, as of its newest checkpoint,
+/// as Go's `Book.Staple` does. A public card grows no record.
+pub fn staple_history_card_2<B: Book + CheckpointedLog>(
+    book: &mut B,
+    responder: &Responder<'_>,
+) -> Result<Staple, StapleError> {
+    staple_of(book, responder, DERIVATION_HISTORY_CARD_2)
+}
+
 /// Build a `standard_history/1` staple from `book`, as Go's `Book.Staple`
 /// does: the holder asks its own book as its own authenticated requester, so
 /// the answer is sealed as an `evidence_request_answered` record and the
@@ -463,6 +555,7 @@ fn staple_of<B: Book + CheckpointedLog>(
         limiter: None,
         max_request_bytes: responder.policy.max_request_bytes,
         max_answer_items: responder.policy.max_answer_items,
+        history_window: responder.policy.history_window,
     };
     let responder = Responder {
         signer: responder.signer,
@@ -505,6 +598,22 @@ mod tests {
         let vectors: Vec<Vector> =
             serde_json::from_slice(&std::fs::read(path).expect("vectors")).expect("parse");
         assert!(vectors.len() >= 2);
+        for v in vectors {
+            let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
+            assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);
+            if let Ok(c) = got {
+                assert_eq!((c.nonce, c.anchor), (v.nonce, v.anchor), "{}", v.name);
+            }
+        }
+    }
+
+    /// The `history_card/2` vectors Go writes (testdata/history-card-2).
+    #[test]
+    fn agrees_with_the_go_history_card_2_vectors() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../testdata/history-card-2");
+        let vectors: Vec<Vector> =
+            serde_json::from_slice(&std::fs::read(format!("{dir}/staples.json")).unwrap()).unwrap();
+        assert!(vectors.len() >= 10);
         for v in vectors {
             let got = check_staple(v.request.as_bytes(), v.reply.as_bytes(), &v.holder);
             assert_eq!(got.is_ok(), v.pass, "{}: {got:?}", v.name);

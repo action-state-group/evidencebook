@@ -16,6 +16,7 @@ from typing import Protocol
 
 from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
+    DERIVATION_HISTORY_CARD_2,
     REASON_COVERAGE_UNSATISFIABLE,
     REASON_DEADLINE_UNMET,
     REASON_DERIVATION_UNSUPPORTED,
@@ -153,6 +154,10 @@ def resolve_subject(view: View, req: EvidenceRequest, r: Resolution, now: int) -
     covered = anchors[r.anchor].entries
     form = subject.form
     if form == "checkpoints":
+        # Anchors are the checkpoints oldest first, so an anchor's index is
+        # its checkpoint position: a range past it is not covered (ER -03 §8.1.3).
+        if subject.content is not None and subject.content[1] > r.anchor:
+            return _refuse(REASON_COVERAGE_UNSATISFIABLE)
         return r
     if form == "full_history":
         leaves = tuple(leaf for leaf in range(covered) if view.servable(leaf))
@@ -199,8 +204,10 @@ def decide(view: View, req: EvidenceRequest, p: Policy, now: int) -> Resolution:
             return _refuse(REASON_DEADLINE_UNMET)
     forms: Collection[str] = ()
     registered = False
-    if req.derivation == DERIVATION_HISTORY_CARD:
-        if req.subject.form not in ("full_history", "checkpoints"):
+    ranged = req.subject.form == "checkpoints" and req.subject.content is not None
+    if req.derivation in (DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2):
+        # A history card answers checkpoints only without a range (ER -03 §8.1).
+        if req.subject.form not in ("full_history", "checkpoints") or ranged:
             return _refuse(REASON_NO_SUCH_SUBJECT)
     elif req.derivation is not None:
         found = p.derivation(req.derivation) if p.derivation is not None else None
