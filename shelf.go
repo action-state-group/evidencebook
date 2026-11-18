@@ -223,10 +223,6 @@ func (s *Shelf) Journal(ctx context.Context) (*Book, error) {
 	if s.released {
 		return nil, ErrReleased
 	}
-	return s.journalLocked(ctx)
-}
-
-func (s *Shelf) journalLocked(ctx context.Context) (*Book, error) {
 	if book, ok := s.books[JournalLogID]; ok {
 		// Opened before: as the journal, or as a book that holds its id.
 		if kind, err := s.logKind(ctx, JournalLogID); err != nil {

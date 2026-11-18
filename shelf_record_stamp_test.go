@@ -225,9 +225,9 @@ func TestABookStatusProviderReadsTheHandles(t *testing.T) {
 		require.NoError(t, err)
 	})
 	assert.Equal(t, fmt.Sprintf("%d deal/a %d -1", s.Tick.N, size), values.last(), "no journal opened yet, and the stamp does not create one")
-	logs, err := shelf.cadenceLogIDs(ctx)
+	kind, err := shelf.logKind(ctx, JournalLogID)
 	require.NoError(t, err)
-	assert.NotContains(t, logs, JournalLogID)
+	assert.Empty(t, kind, "the stamp claimed no journal log")
 
 	journal, err := shelf.Journal(ctx)
 	require.NoError(t, err)
