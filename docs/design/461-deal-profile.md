@@ -1475,7 +1475,9 @@ same vectors, each in its own pull request.
 4. **The status value, the link value, `StatusProvider`, `ReceiveProfile`, `PaymentCheck`,
    `CanAct`**, with the order vectors (7.3), acceptance 3's two remaining vectors (the other side's
    stamp covering our record first; a statement whose in-time state is known only at its first
-   stamp), and status vectors. The status value meets invariant A (8.1), and `CanAct` gate B
+   stamp), and status vectors. The status value meets invariant A (8.1) with the holder's stamps;
+   a counterparty record's earlier time from its author's stamp waits for receipts to travel with
+   proofs (Q8). `CanAct` gate B
    (7.2). Acceptance: vectors `times-three-cases`, `unwitnessed-then-witnessed`, `carry-forward`,
    `carry-forward-lower-bound` (REQUIRED), and the order vectors of 7.3.
 5. **The v1 report** and its vectors (section 9).
