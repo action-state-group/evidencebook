@@ -33,3 +33,22 @@ func TestSealedIsTheRecordAsSealed(t *testing.T) {
 	_, err = book.Sealed(ctx, "0000000000000000000000000000000000000000000000000000000000000000")
 	assert.ErrorIs(t, err, ErrNotFound)
 }
+
+// AppendAt appends only as the book's next record: a stale place is refused
+// with ErrBusy and writes nothing.
+func TestAppendAtIsTheNextRecordOnly(t *testing.T) {
+	ctx := context.Background()
+	shelf := newShelfFixture(t).open(t)
+	book := mustOpenBook(t, shelf, "deal/a")
+	r, err := book.AppendAt(ctx, 1, observation("a", "1"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), r.Seq)
+	_, err = book.AppendAt(ctx, 1, observation("a", "2"))
+	assert.ErrorIs(t, err, ErrBusy, "record 1 is taken")
+	_, err = book.AppendAt(ctx, 3, observation("a", "2"))
+	assert.ErrorIs(t, err, ErrBusy, "record 3 is not next")
+	assert.Equal(t, uint64(1), book.Size())
+	r, err = book.AppendAt(ctx, 2, observation("a", "2"))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), r.Seq)
+}

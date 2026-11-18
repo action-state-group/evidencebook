@@ -187,12 +187,14 @@ of the payment row's own payment has `terms_ref` set to the id of the offer's se
 carries the terms leg (section 7); a payer leg is the owing party's, a payee leg the other's.
 
 **`statement`.** `statements` and `names`, which names one arrived record: a `cancellation` or a
-`ruling`, never both. A statement with empty `statements` and no `names` is invalid. A receiving library
-MUST seal a statement naming a ruling when a counted ruling for one of the holder's deals arrives
-from that deal's adjudicator (evidencebook#527), so the holder's own status reads it whether or not
-the ruling went its way. `xdealv1.NameRulings` does it: a host calls it after each `Receive` with
-the deals whose counted records grew (`ReceiveResult.Changes.Grew`). It seals each record through
-`xdealv1.BookEntry`, the entry that seals any x-deal-v1 deal-book record.
+`ruling`, never both. A statement with empty `statements` and no `names` is invalid. An implementation that
+receives a deal's records MUST seal a statement naming each counted ruling of one of the holder's
+deals from that deal's adjudicator, so the holder's own status reads it whether or not the ruling
+went its way (evidencebook#527). This library's `Shelf.Receive` does it before it returns:
+`xdealv1.ReceiveProfile.AfterReceive` calls `xdealv1.NameRulings` with the deals whose counted
+records grew, so a host cannot skip it. A failed naming is `Receive`'s error, and the next
+`Receive` of the deal names it again. Each record is sealed through `xdealv1.BookEntry`, the entry
+that seals any x-deal-v1 deal-book record.
 
 **`dispute`.** Kind `dispute`: `row`, `statements` (the record digests of the statements on that
 row when it is sealed), `adjudicator` and `forum`. Read against its book's agreement
