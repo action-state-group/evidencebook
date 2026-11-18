@@ -90,6 +90,14 @@ func negatives() []negative {
 		{name: "neg-decline-with-refs", description: "a decline names nothing beyond the offer it answers", base: nDecline, check: "record",
 			stage: StageRecord, contains: "carries no refs, marks or counterparty",
 			edit: func(b, _ map[string]any) { set(b, "marks", []any{"declined"}) }},
+		{name: "neg-recomputed-false", description: "an optional member is absent rather than holding its zero value: recomputed is present only as true", base: nOffer, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(_, b map[string]any) {
+				b["terms_rows"].(map[string]any)["rows"].([]any)[1].(map[string]any)["recomputed"] = false
+			}},
+		{name: "neg-deal-id-trailing-newline", description: "a pattern's $ is the end of the text: a deal id with a final newline is not one", base: nPayment, check: "record",
+			stage: StageSchema, contains: "",
+			edit: func(b, _ map[string]any) { set(b, "deal_id", fxDealID+"\n") }},
 		{name: "neg-v0-close-type", description: "v1 has no close: v0's close is not a v1 record type", base: nPayment, check: "record",
 			stage: StageSchema, contains: "",
 			edit: func(b, _ map[string]any) { set(b, "record_type", "close") }},

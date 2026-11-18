@@ -667,7 +667,8 @@
           "$ref": "#/$defs/date"
         },
         "recomputed": {
-          "type": "boolean"
+          "const": true,
+          "description": "Present only as true: an optional member is absent rather than holding its zero value."
         },
         "remedies": {
           "type": "array",

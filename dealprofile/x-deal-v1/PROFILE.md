@@ -14,6 +14,7 @@ Files in this directory:
 | `PROFILE.md` | This document. |
 | `x-deal-v1.schema.json` | JSON Schema (Draft 2020-12) for one record: the block and each v1 body. The journal and journey overlays keep v0's bodies, which `x-deal-v0/x-deal-v0.schema.json` defines. |
 | `fixtures/` | The deal of the integrated design's Appendix A, record by record, and one negative for each record check (section 9). Its README says how they are built. |
+| `check_profile.py` | The reference checker in Python (section 9). Stdlib only, with `jsonschema` for the schema stage. |
 
 The Go package is `dealprofile/xdealv1`. The key words MUST, MUST NOT, SHOULD and MAY are used as
 in BCP 14 (RFC 2119, RFC 8174).
@@ -32,7 +33,9 @@ A record is a JSON object with exactly two members: the profile block, named `x-
 Records are closed: a member the schema does not name fails the schema. Numbers are integers;
 a number written with a fraction or an exponent is refused before the schema. Text is read as
 written: invalid UTF-8, an escaped surrogate outside a pair and an object member given twice are
-refused, since a decoder would read them otherwise than the digest covers.
+refused, since a decoder would read them otherwise than the digest covers. An OPTIONAL member is
+absent rather than holding its type's zero value (`false`, `0`, `""`): a row's `recomputed` is
+present only as `true`. A text that names one record two ways would give it two digests.
 
 **Versions** (design note §2.3). A record carries exactly one top-level member whose name matches
 `^x-deal-v[0-9]+$`, and its block's `profile` equals that name. A typed v0 record (one whose
@@ -282,8 +285,14 @@ digest and refuse each negative at its stage. The vectors in `testdata/deal-v1/`
 `deal_id` presence (`records/`), the decline and cancellation pairs (`decline/`) and the
 authorization of acts (`authorization/`).
 
-A reference checker for v1 in Python (`check_profile.py`, as v0 has), which design note §11.1
-item 2 lists with this profile, is not yet here; it follows in a later pull request of this step.
+`check_profile.py` is the reference checker in Python, independent of the Go package. Run with no
+arguments, it checks every fixture: each positive at every stage and against its expected digest,
+the agreements, the dispute and the rulings against the records they are read against, each
+positive book's `seq`, `prev` and `agreement_ref`, and each negative refused at its stage with its
+text. It ends "ALL OK"; without `jsonschema` it skips the schema stage, lists the negatives it could
+not run, and ends "OK, reduced coverage". Given files, it checks each record on its own. It does
+not check the authorization of acts (section 8) or a pair sent whole (section 7): the Go package's
+vectors in `testdata/deal-v1/` do.
 
 ## 10. Not defined here yet
 
