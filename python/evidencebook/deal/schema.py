@@ -10,6 +10,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from .re2 import go_patterns
 from .names import (
     TYPE_ACTION_APPROVAL, TYPE_ACTION_EVALUATION, TYPE_ACTION_OUTCOME, TYPE_ACTION_RECORD, TYPE_ACTION_REPORT,
     TYPE_CHECK_REQUEST, TYPE_CHECK_RESPONSE, TYPE_COMMERCIAL_BOUNDS, TYPE_PROPOSED_ACTION, TYPE_TASK_AUTHORITY,
@@ -33,14 +34,15 @@ def profile_schema() -> bytes:
 
 @lru_cache(maxsize=None)
 def profile_validator() -> Draft202012Validator:
-    return Draft202012Validator(json.loads(profile_schema()))
+    # Patterns as Go's validator (RE2) reads them (evidencebook#546).
+    return Draft202012Validator(go_patterns(json.loads(profile_schema())))
 
 
 @lru_cache(maxsize=None)
 def _registry() -> Registry:
     registry = Registry()
     for p in sorted((_DIR / "records").glob("*.schema.json")):
-        doc = json.loads(p.read_bytes())
+        doc = go_patterns(json.loads(p.read_bytes()))
         registry = registry.with_resource(doc["$id"], Resource.from_contents(doc))
     return registry
 
@@ -51,5 +53,5 @@ def record_validator(type_name: str) -> Draft202012Validator:
     as ``"task-authority/v0"``; raises ``ValueError`` for another name."""
     if type_name not in RECORD_SCHEMA_TYPES:
         raise ValueError(f"unknown record type {type_name!r}")
-    doc = json.loads((_DIR / "records" / (type_name.replace("/", "-") + ".schema.json")).read_bytes())
+    doc = go_patterns(json.loads((_DIR / "records" / (type_name.replace("/", "-") + ".schema.json")).read_bytes()))
     return Draft202012Validator(doc, registry=_registry())

@@ -1007,6 +1007,35 @@
       "digest": "f9c1b032be606cc18fd3741fb5183716c731144322164b246c4d145b71a81f09"
     },
     {
+      "name": "a pattern's $ before a final newline (at)",
+      "record": "{\"body\":{\"platform\":\"marketplace.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\\n\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a pattern's $ before a final newline (deal_id)",
+      "record": "{\"body\":{\"platform\":\"marketplace.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\\n\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "stage": "schema"
+    },
+    {
+      "name": "a pattern's \\s: a no-break space, not RE2 white space",
+      "record": "{\"body\":{\"platform\":\"shop x.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "stage": "",
+      "payload": "{\"body\":{\"platform\":\"shop x.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "digest": "3b062392118bae00596911f2b24a75ab5fd716e60e56c4f2714b61469c48d4d2"
+    },
+    {
+      "name": "a pattern's \\s: a vertical tab, not RE2 white space",
+      "record": "{\"body\":{\"platform\":\"a\\u000bb.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "stage": "",
+      "payload": "{\"body\":{\"platform\":\"a\\u000bb.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "digest": "b6a9a7d738bedc2734da060a856cd8109d66feea929149a66b3806b1edb82e12"
+    },
+    {
+      "name": "a pattern's \\s: a tab, RE2 white space",
+      "record": "{\"body\":{\"platform\":\"a\\tb.example\"},\"x-deal-v0\":{\"at\":\"2026-10-06T08:00:00Z\",\"baseline_ref\":{\"digest\":\"902ce82ea4c41861520d5f4f4c9dc24473d090c5dd2a70ef7adcd759bbf88f2f\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"canonicalization\":\"jcs\",\"deal_id\":\"sale-3c9e1a7b5d2f8064\",\"prev\":{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"type\":\"deal-record\"},\"profile\":\"x-deal-v0\",\"record_type\":\"sale_unpost\",\"refs\":[{\"digest\":\"e12b4fa121cf75632ff14f37e49805829c45357bea0573c08a2800ccc5df896d\",\"digest_alg\":\"SHA-256\",\"rel\":\"unposts\",\"type\":\"deal-record\"}],\"seq\":9}}",
+      "stage": "schema"
+    },
+    {
       "name": "text \"hello\"",
       "record": "{\"x-deal-v0\":{\"canonicalization\":\"jcs\"},\"body\":{\"text\":\"hello\"}}",
       "stage": "schema"

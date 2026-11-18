@@ -1,0 +1,2 @@
+<!-- changelog: python/CHANGELOG.md -->
+- **Fixed (`evidencebook.deal`):** the x-deal-v0 schema stage reads each schema `pattern` as Go's validator (RE2) does, as x-deal-v1's already does (evidencebook#546). A final `$` no longer matches before a trailing newline, and `\s` no longer takes `\v` or Unicode white space, so a record that Go refuses or passes at the schema stage is refused or passed here too. The parity vectors carry both cases.
