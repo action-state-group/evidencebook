@@ -389,6 +389,9 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 		return nil, anchor, err
 	case req.Derivation == DerivationHistoryCard2:
 		anchor, err := checkHistoryCard2(e.Artifact, e.Anchor.Digest, checkpointKey)
+		if err == nil {
+			err = freshnessOfStatement(e, anchor)
+		}
 		return nil, anchor, err
 	case req.Subject.Kind == SubjectCheckpoints || req.Derivation == DerivationHistoryCard:
 		anchor, err := verifyCheckpointChain(e, checkpointKey)
@@ -420,6 +423,17 @@ func verifyAnchorInclusion(req EvidenceRequest, e Envelope, checkpointKey string
 	return []string{"anchor_inclusion"}, nil, nil
 }
 
+// checkFreshnessCommitted checks that the freshness an envelope states for
+// its anchor is what the anchor's signed checkpoint commits, so a responder
+// cannot sign a newer size or time than its checkpoint holds.
+func checkFreshnessCommitted(e Envelope, cp Checkpoint) error {
+	if e.Anchor.FreshnessSize != nil && *e.Anchor.FreshnessSize != cp.TreeSize ||
+		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != evidencerequest.ProfileTime(cp.IssuedAt) {
+		return fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
+	}
+	return nil
+}
+
 // verifyRecordInclusion is the §6.2.1 procedure, steps 2 to 13, under the
 // pinned checkpoint key. It returns the anchor's checkpoint statement.
 func verifyRecordInclusion(e Envelope, checkpointKey string) ([]byte, error) {
@@ -446,9 +460,8 @@ func verifyRecordInclusion(e Envelope, checkpointKey string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("anchor_inclusion: %w", err)
 	}
-	if e.Anchor.FreshnessSize != nil && *e.Anchor.FreshnessSize != cp.TreeSize ||
-		e.Anchor.FreshnessTime != "" && e.Anchor.FreshnessTime != evidencerequest.ProfileTime(cp.IssuedAt) {
-		return nil, fmt.Errorf("%w: anchor_inclusion: anchor.freshness is not what the checkpoint commits", ErrInvalid)
+	if err := checkFreshnessCommitted(e, cp.Checkpoint); err != nil {
+		return nil, err
 	}
 	entry, err := hex.DecodeString(e.ArtifactDigest)
 	if err != nil {

@@ -1776,7 +1776,9 @@ def _verify_anchor_inclusion(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     if req.subject.form == "checkpoints" and req.subject.content is not None and req.derivation is None:
         return [], _verify_checkpoint_range(req, e, checkpoint_key)
     if req.derivation == DERIVATION_HISTORY_CARD_2:
-        return [], check_history_card_2(e.artifact, e.anchor_digest, checkpoint_key)
+        last = check_history_card_2(e.artifact, e.anchor_digest, checkpoint_key)
+        _check_freshness_committed(e, read_checkpoint(last))
+        return [], last
     if req.subject.form == "checkpoints" or req.derivation == DERIVATION_HISTORY_CARD:
         return [], _verify_checkpoint_chain(e, checkpoint_key)
     # Record sets and registered derivations: the profile defines no
@@ -1901,6 +1903,10 @@ def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: 
             raise bad(f"entry {i} is not at position {first + i}")
         if not isinstance(entry["receipts"], list):
             raise bad(f"entry {i}'s receipts are not a list")
+        # A receipt's check is the card checker's, which takes a whole card;
+        # this requester cannot judge one in a range, so it fails closed.
+        if entry["receipts"]:
+            raise bad(f"entry {i} lists receipts, which this requester cannot check in a range")
         raw = strict_hex(entry["checkpoint"]) or b""
         if not raw:
             raise bad(f"entry {i}'s checkpoint is not hex")
@@ -1923,6 +1929,7 @@ def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: 
     if proof is None:
         if _digest(raw) != e.anchor_digest:
             raise bad("ends before its anchor and carries no consistency_to_anchor")
+        _check_freshness_committed(e, previous)
         return raw
     octets = strict_hex(proof) if isinstance(proof, str) else None
     if octets is None:
@@ -1937,11 +1944,21 @@ def _verify_checkpoint_range(req: EvidenceRequest, e: Envelope, checkpoint_key: 
         verify_cll_consistency(previous.peaks, anchor_cp.peaks, octets)
     except (VerificationError, ValueError) as exc:
         raise InvalidError(f"anchor_inclusion: consistency_to_anchor: {exc}") from None
+    _check_freshness_committed(e, anchor_cp)
     return statement
 
 
 def _is_uint(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def _check_freshness_committed(e: Envelope, cp: Checkpoint) -> None:
+    """The freshness an envelope states for its anchor is what the anchor's
+    signed checkpoint commits, so a responder cannot sign a newer size or time
+    than its checkpoint holds."""
+    if type(e.freshness) is int and e.freshness != cp.tree_size or \
+            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
+        raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
 
 
 def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:
@@ -1961,9 +1978,7 @@ def _verify_record_inclusion(e: Envelope, checkpoint_key: str) -> bytes:
     if _digest(items[KIND_CLL_CHECKPOINT]) != e.anchor_digest:
         raise InvalidError("anchor_inclusion: the checkpoint is not the anchor")
     cp = _signed_checkpoint(items[KIND_CLL_CHECKPOINT], checkpoint_key)
-    if type(e.freshness) is int and e.freshness != cp.tree_size or \
-            isinstance(e.freshness, str) and e.freshness != profile_time_ns(cp.issued_at_ns):
-        raise InvalidError("anchor_inclusion: anchor.freshness is not what the checkpoint commits")
+    _check_freshness_committed(e, cp)
     try:
         verify_cll_inclusion(cp.peaks, bytes.fromhex(e.artifact_digest), items[KIND_CLL_INCLUSION_PROOF])
         if KIND_CLL_CONSISTENCY_PROOF in items:

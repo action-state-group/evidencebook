@@ -81,7 +81,8 @@ fn refuse<T>(why: impl Into<String>) -> Result<T, StapleError> {
 /// one the request pinned, as is the profile. It does not check the
 /// anchor's checkpoint, the card's properties or the nonce's freshness:
 /// those are the reader's. A `history_card/1` artifact must have the card's
-/// members and nothing else, and end at its anchor.
+/// members and nothing else, and end at its anchor; a `history_card/2`
+/// artifact passes [`check_history_card_2`].
 pub fn check_staple(
     request: &[u8],
     reply: &[u8],

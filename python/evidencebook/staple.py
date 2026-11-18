@@ -100,7 +100,8 @@ def check_staple(s: Staple, holder: str) -> StapleCheck:
     :class:`InvalidError`. It does not check the anchor's checkpoint, the
     card's own properties or the nonce's freshness: those are the reader's.
     A ``history_card/1`` artifact must have the card's members and nothing
-    else (:func:`_history_card_form`)."""
+    else (:func:`_history_card_form`); a ``history_card/2`` one passes the
+    seven checks of ER -03 §8.1.2 (:func:`check_history_card_2`)."""
     if s.request.media_type != MEDIA_TYPE_JSON or s.reply.message.media_type != MEDIA_TYPE_JSON:
         raise InvalidError("a staple's request and reply are JSON")
     parsed = read_request(s.request)

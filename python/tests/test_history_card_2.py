@@ -209,3 +209,24 @@ def test_a_ranged_answer_must_reach_its_anchor() -> None:
                 replace(e, verification=())):
         with pytest.raises(eb.InvalidError):
             _verify_checkpoint_range(req, bad, key)
+
+
+def test_freshness_and_unread_receipts_are_refused() -> None:
+    from dataclasses import replace
+    from evidencebook.book import _verify_anchor_inclusion, _verify_checkpoint_range
+    b = many(20)
+    key = b.checkpoints()[0].key_id
+    e = ranged(b, 4, 12).envelope
+    req = eb.EvidenceRequest(eb.Subject("checkpoints", (4, 12)), eb.Coverage(expected_pin=e.anchor_digest))
+    with pytest.raises(eb.InvalidError, match="freshness"):
+        _verify_checkpoint_range(req, replace(e, freshness=1 << 40), key)
+    card = ask(b, eb.DERIVATION_HISTORY_CARD_2).envelope
+    card_req = eb.EvidenceRequest(eb.Subject("checkpoints"), eb.Coverage(expected_pin=card.anchor_digest),
+                                  derivation=eb.DERIVATION_HISTORY_CARD_2)
+    _verify_anchor_inclusion(card_req, card, key)
+    with pytest.raises(eb.InvalidError, match="freshness"):
+        _verify_anchor_inclusion(card_req, replace(card, freshness=1 << 40), key)
+    body = json.loads(e.artifact)
+    body["history"][1]["receipts"] = [{"checkpoint": "00", "witness": "w", "sig": "00"}]
+    with pytest.raises(eb.InvalidError, match="receipts"):
+        _verify_checkpoint_range(req, replace(e, artifact=json.dumps(body, separators=(",", ":")).encode()), key)

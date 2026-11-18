@@ -124,10 +124,10 @@ pub enum AnswerError {
     /// Answer with a `policy_declined` refusal.
     #[error("the answer would carry more than the limit of records or checkpoints")]
     OverLimit,
-    /// The artifact has no RFC 8785 form (a derived value holds a fraction).
     /// The responder's `history_card/2` window is outside 1 to 64.
     #[error("the history window is {0}, not 1 to 64")]
     HistoryWindow(usize),
+    /// The artifact has no RFC 8785 form (a derived value holds a fraction).
     #[error("the artifact cannot be canonicalized: {0}")]
     Artifact(String),
     #[error("the envelope could not be signed: {0}")]

@@ -12,6 +12,8 @@ checkpoints and answers with the same reply octets.
 from ._cll import Checkpoint
 from .book import (
     DEFAULT_DEVELOPER,
+    check_history_card_2,
+    history_card_positions,
     MINIMUM_ABSENCE_WINDOW,
     MAX_REPLY_BYTES,
     MAX_REPLY_DEPTH,
@@ -109,7 +111,7 @@ __all__ = [
     "Shelf", "ShelfRecord", "ShelfRecords", "SqliteStore", "SqliteSubstrate", "HostLog", "HostLogStores", "HeldLock",
     "Cadence", "CadenceConfig", "CadenceTick", "LegacyCadence", "StandardHistoryAnchor", "TickResult", "WitnessCheck",
     "WitnessReceipt", "WitnessRejected",
-    "encode_request", "parse_reply", "Staple", "StapleCheck", "staple", "check_staple", "DERIVATION_STANDARD_HISTORY",
+    "check_history_card_2", "history_card_positions", "encode_request", "parse_reply", "Staple", "StapleCheck", "staple", "check_staple", "DERIVATION_STANDARD_HISTORY",
     "PROFILE", "PROFILE_V1", "DERIVATION_HISTORY_CARD", "DERIVATION_HISTORY_CARD_2", "MEDIA_TYPE_JSON", "MEDIA_TYPE_CBOR", "DEFAULT_DEVELOPER",
     "MINIMUM_ABSENCE_WINDOW", "MAX_REPLY_BYTES", "MAX_REPLY_DEPTH", "MAX_REPLY_ITEMS", "MAX_REPLY_RECEIPTS",
     "WITNESSED", "UNWITNESSED", "WITNESS_RECEIPTS_MEMBER", "WitnessRow", "OUTCOME_ARTIFACT", "OUTCOME_ARTIFACT_FAILED", "OUTCOME_REFUSAL",

@@ -25,6 +25,9 @@ import (
 //     evidence_stream, subject}, each checkpoint its signed statement in hex;
 //   - history_card/1: JCS of {anchor, derivation, evidence_stream, history,
 //     subject}, each entry {checkpoint, consistency_from_previous} (ER §8.1);
+//   - checkpoints with a range [a, b], no derivation: JCS of {consistency_to_anchor,
+//     history}, each entry {checkpoint, consistency_from_previous, position,
+//     receipts} (ER -03 §8.1.3), the anchor's checkpoint as material;
 //   - history_card/2: JCS of {anchor, derivation, evidence_stream, history,
 //     subject, window}, each entry {checkpoint, consistency_from_previous,
 //     position, receipts} (ER -03 §8.1.2);

@@ -97,6 +97,16 @@ func (b *Book) checkpointsRange(ctx context.Context, chain []Checkpoint, anchor 
 	return history, toAnchor, nil
 }
 
+// freshnessOfStatement binds the envelope's stated freshness to the anchor's
+// signed checkpoint statement.
+func freshnessOfStatement(e Envelope, statement []byte) error {
+	cp, err := checkpointFromStatement(statement)
+	if err != nil {
+		return fmt.Errorf("%w: anchor_inclusion: the anchor: %v", ErrInvalid, err)
+	}
+	return checkFreshnessCommitted(e, cp)
+}
+
 // verifyCheckpointRange checks the artifact of a checkpoints subject with a
 // range (ER -03 §8.1.3): one entry per position from a to b in order, every
 // checkpoint signed under the pinned key in one log, each proof extending the
@@ -127,8 +137,15 @@ func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string
 		if position, ok := evidencerequest.UintValue(entry["position"]); !ok || position != first+uint64(i) {
 			return nil, bad(fmt.Sprintf("entry %d is not at position %d", i, first+uint64(i)))
 		}
-		if _, isList := entry["receipts"].([]any); !isList {
+		receipts, isList := entry["receipts"].([]any)
+		if !isList {
 			return nil, bad(fmt.Sprintf("entry %d's receipts are not a list", i))
+		}
+		// A receipt's check is the card checker's (evidencerequest), which
+		// takes a whole card; this requester cannot judge one in a range, so
+		// it fails closed rather than accept one unread.
+		if len(receipts) > 0 {
+			return nil, bad(fmt.Sprintf("entry %d lists receipts, which this requester cannot check in a range", i))
 		}
 		text, _ := entry["checkpoint"].(string)
 		if !lowerHex(text) {
@@ -162,7 +179,7 @@ func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string
 		if digestBytes(raw) != e.Anchor.Digest {
 			return nil, bad("ends before its anchor and carries no consistency_to_anchor")
 		}
-		return raw, nil
+		return raw, freshnessOfStatement(e, raw)
 	}
 	text, isText := proof.(string)
 	if !isText || !lowerHex(text) {
@@ -188,7 +205,7 @@ func verifyCheckpointRange(req EvidenceRequest, e Envelope, checkpointKey string
 	if err := checkCLLConsistency(previous.commitment, anchorCp.commitment, octets); err != nil {
 		return nil, fmt.Errorf("anchor_inclusion: consistency_to_anchor: %w", err)
 	}
-	return anchorStatement, nil
+	return anchorStatement, checkFreshnessCommitted(e, anchorCp.Checkpoint)
 }
 
 // CheckHistoryCard2 checks a history_card/2 artifact by the seven ordered

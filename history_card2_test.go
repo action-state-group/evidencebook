@@ -487,3 +487,42 @@ func TestARangedAnswerMustReachItsAnchor(t *testing.T) {
 		t.Error("an answer without the anchor checkpoint passed")
 	}
 }
+
+// A receipt this requester cannot check is refused, and a stated freshness
+// the anchor's checkpoint does not commit is refused (ER -03 §8.1.3).
+func TestAHistoryCard2OrRangeAnswerCannotMisstateFreshnessOrCarryUnreadReceipts(t *testing.T) {
+	book := cardBook(t, 3, 20)
+	pin := anchorPin(t, book)
+	key := responderKeys(book, 9).Checkpoint
+	req := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints, Ranged: true, Range: [2]uint64{4, 12}}, Coverage: Coverage{ExpectedPin: pin}}
+	e := mustEnvelope(t, respondAs(t, book, jsonRequest(t, req), ""))
+	card := mustEnvelope(t, askCard2(t, book, SubjectCheckpoints))
+	lie := func(e Envelope) Envelope {
+		size := uint64(1 << 40)
+		e.Anchor.FreshnessSize = &size
+		return e
+	}
+	if _, err := verifyCheckpointRange(req, lie(e), key); err == nil {
+		t.Error("a range answer stating a size its anchor does not commit passed")
+	}
+	cardReq := EvidenceRequest{Subject: Subject{Kind: SubjectCheckpoints}, Derivation: DerivationHistoryCard2, Coverage: Coverage{ExpectedPin: pin}}
+	if _, _, err := verifyAnchorInclusion(cardReq, lie(card), key); err == nil {
+		t.Error("a card stating a size its anchor does not commit passed")
+	}
+	if _, _, err := verifyAnchorInclusion(cardReq, card, key); err != nil {
+		t.Errorf("the honest card: %v", err)
+	}
+	decoded, err := evidencerequest.DecodeJSON(e.Artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := decoded.(map[string]any)
+	m["history"].([]any)[1].(map[string]any)["receipts"] = []any{map[string]any{"checkpoint": "00", "witness": "w", "sig": "00"}}
+	withReceipt := e
+	if withReceipt.Artifact, err = evidencerequest.EncodeJCS(m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyCheckpointRange(req, withReceipt, key); err == nil {
+		t.Error("a range answer with a receipt this requester cannot read passed")
+	}
+}
