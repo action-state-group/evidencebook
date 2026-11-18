@@ -113,7 +113,7 @@ func entryOf(t *testing.T, r Record) evidencebook.Entry {
 
 // sendOffer seals the offer in the party's journal and its standalone
 // Capsule, and returns the sent pair.
-func (p *party) sendOffer(r Record) []byte { return p.sendOfferWith(r, nil) }
+func (p *party) sendOffer(r Record) []byte { return p.sendOfferWith(r, termsMembers(p.t, r)) }
 
 // sendOfferWith is sendOffer with further members on the sent Capsule.
 func (p *party) sendOfferWith(r Record, members map[string]json.RawMessage) []byte {

@@ -230,20 +230,24 @@ no `evidence_record_header`, and the record as its payload, so its `agent_input_
 record digest. It travels as `{"record": <the Capsule>, "agent_input": <the record>}`.
 
 An offer whose terms have exactly one payment row (a recomputed row whose `owed` is exactly
-`{"amount_minor", "currency"}` in a currency with a known `assetScale`) may carry, on its sent
+`{"amount_minor", "currency"}` in a currency with a known `assetScale`) MUST carry, on its sent
 Capsule only, the settlement terms leg as a top-level `settlement` member: `{"version": "0",
 "leg": "terms", "sealer_role", "amount"}`. `sealer_role` is `payer` when the offer's `role` owes
 that row, else `payee`. `amount` is the row's `owed` as `{"value": <amount_minor as a string>,
-"assetCode": <currency>, "assetScale": <its scale>}` (`xdealv1.TermsLeg`). No other sent record
-carries a `settlement` member. The price this puts at the Capsule's top level is the offer's own
-terms, which `agent_input` carries beside it. Without a terms leg, or with more than one payment
-row, the payment check is not run. The check is `xdealv1.PaymentCheck`, AAC's `settlement.Verify`
-over the terms leg and the two sides' legs.
+"assetCode": <currency>, "assetScale": <its scale>}` (`xdealv1.TermsLeg`; the sender passes it to
+`SealSent` as `Entry.Members`). No other sent record carries a `settlement` member, and
+`VerifySent` refuses an offer with one payment row that carries none. The price this puts at the
+Capsule's top level is the offer's own terms, which `agent_input` carries beside it. The payment
+check is `xdealv1.PaymentCheck`, AAC's `settlement.Verify` over the terms leg and the two sides'
+legs. It is not run when the terms have more than one payment row, or when a refund or remedy leg
+(`reverses`, `remedy_for`) cites the offer's terms leg; a remedy that is a payment is not counted
+until it has its own terms leg, which this profile does not define yet.
 
 `xdealv1.VerifySent` reads such a pair on its own: the Capsule's signature, that the payload is
 the record whose digest is `agent_input_digest`, that the record passes sections 1 to 5, and,
-given the offer, that `offer` cites it and the signer is the one section 5 names, and that a
-`settlement` member is on an offer only and is exactly its terms leg. The pair does
+given the offer, that `offer` cites it and the signer is the one section 5 names, and that an
+offer with one payment row carries exactly its terms leg and no other record a `settlement`
+member. The pair does
 not show the record's place in the sender's journal, nor when it was written: `at` is the
 sender's word.
 

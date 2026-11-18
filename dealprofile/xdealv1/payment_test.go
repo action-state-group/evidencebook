@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
+	emit "github.com/action-state-group/capsule-emit/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -144,6 +146,15 @@ func TestTermsLeg(t *testing.T) {
 		"a negative amount": func(o *ProposeBody) {
 			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":-1,"currency":"USD"}`)
 		},
+		"a case alias": func(o *ProposeBody) {
+			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":6000,"currency":"USD","Currency":"BTC"}`)
+		},
+		"another case": func(o *ProposeBody) {
+			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":6000,"Currency":"USD"}`)
+		},
+		"a fractional amount": func(o *ProposeBody) {
+			o.TermsRows.Rows[0].Owed = json.RawMessage(`{"amount_minor":60.5,"currency":"USD"}`)
+		},
 	} {
 		o := fxOffer()
 		edit(o)
@@ -228,19 +239,15 @@ func TestPaymentCheckReadsTheLegsThatAnswer(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 // The check runs on the paid row's own payment only (Sherlock2 and its twin
-// on the 4a door): no terms leg, several payment rows, or a refund or remedy
+// on the 4a door): several payment rows, or a refund or remedy
 // leg citing the offer's terms leg leave it not run.
 func TestPaymentCheckNotRun(t *testing.T) {
-	d := newPaymentDeal(t, nil, false)
-	res := d.check(t, d.leg(t, true, payerBody(), d.payerMember("settled", "6000")), d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000")))
-	assert.Equal(t, PaymentResult{Reason: ReasonNoTermsLeg, CheckedOver: []string{d.offerDigest}}, res)
-
 	two := func(o *ProposeBody) {
 		o.TermsRows.Rows = append(o.TermsRows.Rows, o.TermsRows.Rows[0])
 		o.TermsRows.Rows[len(o.TermsRows.Rows)-1].ID = "balance"
 	}
-	d = newPaymentDeal(t, two, false)
-	res = d.check(t)
+	d := newPaymentDeal(t, two, false)
+	res := d.check(t)
 	assert.Equal(t, ReasonSeveralPayments, res.Reason)
 	assert.Empty(t, res.Check)
 
@@ -376,4 +383,75 @@ func TestVerifySentChecksTheTermsLeg(t *testing.T) {
 	pair := d.seller.sendOfferWith(decline, map[string]json.RawMessage{SettlementMember: leg})
 	_, err = VerifySent(pair, nil)
 	assert.ErrorContains(t, err, "carries no settlement member", "a decline carries no settlement member")
+}
+
+// chained reseals a leg's header as a Capsule with a supersedes chain to
+// parent, signed by the same key: a record a deal book never seals.
+func chained(t *testing.T, name string, pair []byte, parent string) []byte {
+	t.Helper()
+	var p struct {
+		Record  map[string]json.RawMessage `json:"record"`
+		Header  json.RawMessage            `json:"header"`
+		Payload json.RawMessage            `json:"payload"`
+	}
+	require.NoError(t, json.Unmarshal(pair, &p))
+	var c struct {
+		ActionID   string `json:"action_id"`
+		Operator   string `json:"operator"`
+		Developer  string `json:"developer"`
+		Timestamp  string `json:"timestamp"`
+		References []struct {
+			Type      string `json:"type"`
+			DigestAlg string `json:"digest_alg"`
+			Digest    string `json:"digest"`
+		} `json:"references"`
+	}
+	raw, err := json.Marshal(p.Record)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &c))
+	at, err := time.Parse(time.RFC3339Nano, c.Timestamp)
+	require.NoError(t, err)
+	var refs []emit.Reference
+	for _, r := range c.References {
+		refs = append(refs, emit.Reference{Type: r.Type, DigestAlg: r.DigestAlg, Digest: r.Digest})
+	}
+	id, err := emit.NewEd25519SigningIdentity(seed(name + " record key"))
+	require.NoError(t, err)
+	sealed, err := emit.Seal(emit.SealInput{Capsule: emit.Input{ActionID: c.ActionID, ActionType: emit.ActionTypeFYI,
+		Operator: c.Operator, Developer: c.Developer, Timestamp: at, References: refs,
+		Chain:      &emit.Chain{ParentCapsuleID: parent, Relation: emit.ChainSupersedes},
+		Extensions: []emit.Extension{{Name: SettlementMember, Value: p.Record[SettlementMember]}}},
+		Payload: p.Header, Identity: id})
+	require.NoError(t, err)
+	signed, err := signedCapsule(sealed.Payload, sealed.Envelope)
+	require.NoError(t, err)
+	out, err := json.Marshal(map[string]json.RawMessage{"record": signed, "header": p.Header, "payload": p.Payload})
+	require.NoError(t, err)
+	return out
+}
+
+// A leg whose Capsule carries a chain is refused: AAC's verifier would drop
+// the leg its supersedes names, outside the deal's own supersedes rule, and
+// turn two disagreeing payer legs into a pass.
+func TestPaymentCheckRefusesAChainedLeg(t *testing.T) {
+	d := newPaymentDeal(t, nil, true)
+	pending := d.leg(t, true, payerBody(), d.payerMember("pending", "6000"))
+	pendingRead, err := VerifyBook(pending)
+	require.NoError(t, err)
+	// A record between, so the chain's parent is not also the record cited.
+	d.buyerSeq++
+	sb := journalBlock(TypeStatement, "2026-11-01T10:19:00Z", true)
+	pr, ar := RefTo(mustDigest(t, d.buyerLast)), RefTo(mustDigest(t, d.buyerAg))
+	sb.Seq, sb.Prev, sb.AgreementRef, sb.Seen = d.buyerSeq, &pr, &ar, Some(d.sellerAgID)
+	between := Record{Block: sb, Body: &StatementBody{Statements: statements(item("delivered", ValueMet))}}
+	require.NoError(t, Check(between))
+	d.buyer.seal(d.buyerLog, between)
+	d.buyerLast = between
+	settled := chained(t, "buyer", d.leg(t, true, payerBody(), d.payerMember("settled", "6000")), pendingRead.RecordID)
+	_, err = VerifyBook(settled)
+	require.NoError(t, err, "the chained leg verifies on its own")
+	payee := d.leg(t, false, payeeBody(), d.payeeMember("settled", "6000"))
+	_, err = PaymentCheck(PaymentInput{Offer: d.offerPair, OfferDigest: d.offerDigest, AcceptorKey: d.seller.key(), Row: "paid_as_agreed",
+		Legs: [][]byte{pending, settled, payee}})
+	assert.ErrorContains(t, err, "carries a chain")
 }

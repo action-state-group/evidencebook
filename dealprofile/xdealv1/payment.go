@@ -44,7 +44,6 @@ const (
 
 // Why a payment check was not run, or failed (PaymentResult.Reason).
 const (
-	ReasonNoTermsLeg       = "no_terms_leg"       // the offer's sent Capsule carries no terms leg
 	ReasonSeveralPayments  = "several_payments"   // the terms have more than one payment row
 	ReasonRefundCitesOffer = "refund_cites_offer" // a refund or remedy leg cites the offer's terms leg
 	ReasonNotAgreed        = "not_agreed"         // the legs are not agreed (yet): AAC's PaymentState
@@ -76,18 +75,22 @@ func isPaymentRow(row Row) bool {
 // owedAmount is a row's owed as a settlement amount: amount_minor as the
 // value, the currency as the assetCode, and its assetScale.
 func owedAmount(row Row) (map[string]any, bool) {
-	var owed struct {
-		AmountMinor *int64 `json:"amount_minor"`
-		Currency    string `json:"currency"`
-	}
-	if len(row.Owed) == 0 || strictUnmarshal(row.Owed, &owed) != nil || owed.AmountMinor == nil || *owed.AmountMinor < 0 {
+	// Exactly the two members, by their exact names: a struct decode would
+	// also take "Currency" for currency.
+	var owed map[string]json.RawMessage
+	if len(row.Owed) == 0 || json.Unmarshal(row.Owed, &owed) != nil || len(owed) != 2 || owed["amount_minor"] == nil || owed["currency"] == nil {
 		return nil, false
 	}
-	scale, ok := dealprofile.AssetScale(owed.Currency)
+	var minor int64
+	var currency string
+	if json.Unmarshal(owed["amount_minor"], &minor) != nil || minor < 0 || json.Unmarshal(owed["currency"], &currency) != nil {
+		return nil, false
+	}
+	scale, ok := dealprofile.AssetScale(currency)
 	if !ok {
 		return nil, false
 	}
-	return map[string]any{"value": strconv.FormatInt(*owed.AmountMinor, 10), "assetCode": owed.Currency, "assetScale": json.Number(strconv.Itoa(scale))}, true
+	return map[string]any{"value": strconv.FormatInt(minor, 10), "assetCode": currency, "assetScale": json.Number(strconv.Itoa(scale))}, true
 }
 
 // TermsLeg is the terms leg an offer's sent Capsule carries as its
@@ -130,18 +133,23 @@ func settlementRole(party, owedBy string) string {
 	return "payee"
 }
 
-// checkTermsMember checks the settlement member a sent Capsule carries: only
-// an offer carries one, and it is exactly TermsLeg of that offer.
+// checkTermsMember checks the settlement member a sent Capsule carries: an
+// offer whose terms have exactly one payment row carries exactly its
+// TermsLeg; no other sent record carries one.
 func checkTermsMember(member json.RawMessage, r Record) error {
-	if member == nil {
+	of, isOffer := asPropose(r.Body)
+	if !isOffer || len(PaymentRows(of.TermsRows)) != 1 {
+		if member != nil {
+			return stageErr(StageSent, "this sent %s carries no settlement member; only an offer with one payment row carries its terms leg", r.Block.RecordType)
+		}
 		return nil
-	}
-	if r.Block.RecordType != TypePropose {
-		return stageErr(StageSent, "a sent %s carries no settlement member; only an offer's terms leg travels", r.Block.RecordType)
 	}
 	want, err := TermsLeg(r)
 	if err != nil {
-		return stageErr(StageSent, "the settlement member: %v", err)
+		return stageErr(StageSent, "the terms leg: %v", err)
+	}
+	if member == nil {
+		return stageErr(StageSent, "an offer with one payment row carries its terms leg as the settlement member")
 	}
 	doc, err := decodeJSON(member)
 	if err != nil {
@@ -189,8 +197,8 @@ type PaymentResult struct {
 // Records -01): pass when the payer's and the payee's legs answering the
 // offer's terms leg are agreed, with status settled and the terms' amount;
 // fail on a mismatch, and with agreed legs on a status of failed or reversed
-// or another amount; not run otherwise, and when the offer carries no terms
-// leg or its terms have more than one payment row. Sealer conflation (both
+// or another amount; not run otherwise, and when the offer's terms have more
+// than one payment row (an offer with one carries its terms leg: VerifySent). Sealer conflation (both
 // observed legs under one key) cannot arise: the two parties' keys are
 // distinct, and a leg sealed by the key of the other role is refused.
 //
@@ -237,15 +245,12 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		out.Reason = ReasonSeveralPayments
 		return out, nil
 	}
+	// VerifySent checked that the sent Capsule carries the terms leg.
 	var offerPair struct {
 		Record map[string]json.RawMessage `json:"record"`
 	}
 	if err := json.Unmarshal(in.Offer, &offerPair); err != nil {
 		return PaymentResult{}, err
-	}
-	if offerPair.Record[SettlementMember] == nil {
-		out.Reason = ReasonNoTermsLeg
-		return out, nil
 	}
 
 	// The parties' keys and payment roles: the payer owes the payment row.
@@ -286,6 +291,12 @@ func PaymentCheck(in PaymentInput) (PaymentResult, error) {
 		}
 		if err := json.Unmarshal(raw, &pair); err != nil {
 			return PaymentResult{}, err
+		}
+		// A deal-book record's Capsule has no chain. AAC's verifier reads a
+		// chain's supersedes to drop a leg, which would replace the deal's
+		// own supersedes rule below.
+		if c := pair.Record["chain"]; c != nil && string(c) != "null" {
+			return bad("leg %d's Capsule carries a chain; a deal-book record's has none", i)
 		}
 		var member struct {
 			Leg        string `json:"leg"`

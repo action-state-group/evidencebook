@@ -927,9 +927,11 @@ already is, and the x-deal agreement stays the acceptance.
     `assetScale` is `dealprofile.AssetScale`: BTC's as x-deal-v0 defines it, else ISO 4217.
   - A payment row is a recomputed row whose `owed` is exactly such an amount
     (`xdealv1.PaymentRows`).
-  - `VerifySent` refuses a `settlement` member on anything but an offer, and one that is not
-    exactly `TermsLeg` of that offer. The library seals it through `Entry.Members`, which
-    `SealSent` puts on the standalone Capsule only.
+  - An offer with exactly one payment row MUST carry it (Sherlock2, PR 4a review: otherwise such
+    a row would read "not run" with no sign of why). `VerifySent` refuses such an offer without
+    it, a `settlement` member on any other record, and one that is not exactly `TermsLeg` of
+    that offer. The sender seals it through `Entry.Members`, which `SealSent` puts on the
+    standalone Capsule only.
 - **One amount per terms leg** (both Sherlock2 answers). An offer carries a terms leg only when its
   terms have exactly one payment row. The check runs on that row's own payment only. A refund or
   another remedy that is a payment, and a second paid row (a deposit and a balance), need their own
@@ -955,7 +957,8 @@ already is, and the x-deal agreement stays the acceptance.
 - **Disclosure** (the twin's condition). The terms leg puts the price at the Capsule's top level,
   where it is in the clear. Nothing new is disclosed, because the sent Capsule travels only as the
   §7 pair `{record, agent_input}`, and `agent_input` already holds the offer's terms. A copy that
-  carries the sent Capsule carries its record. No copy holds the Capsule without it.
+  carries the sent Capsule carries its record. No copy the library writes holds the Capsule
+  without it.
 
 The other recomputed rows wait for design §13, step 3 ("Each recomputed deal row computed in one
 engine"), and until then report "not run". The digests the check ran over
