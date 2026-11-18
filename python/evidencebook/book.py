@@ -1442,10 +1442,6 @@ class _Answer:
         derivations = book._derivations
 
         def derivation(name: str):
-            if name == DERIVATION_HISTORY_CARD_2:
-                # Registered beside /1, which the decision knows by name: the
-                # same two subjects, no record content.
-                return ("full_history", "checkpoints")
             if name == DERIVATION_STANDARD_HISTORY:
                 return ("full_history",) if book._standard_history is not None else None
             entry = derivations.get(name)

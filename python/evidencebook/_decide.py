@@ -16,6 +16,7 @@ from typing import Protocol
 
 from agent_action_capsule.evidence_request import (
     DERIVATION_HISTORY_CARD,
+    DERIVATION_HISTORY_CARD_2,
     REASON_COVERAGE_UNSATISFIABLE,
     REASON_DEADLINE_UNMET,
     REASON_DERIVATION_UNSUPPORTED,
@@ -204,7 +205,7 @@ def decide(view: View, req: EvidenceRequest, p: Policy, now: int) -> Resolution:
     forms: Collection[str] = ()
     registered = False
     ranged = req.subject.form == "checkpoints" and req.subject.content is not None
-    if req.derivation == DERIVATION_HISTORY_CARD:
+    if req.derivation in (DERIVATION_HISTORY_CARD, DERIVATION_HISTORY_CARD_2):
         # A history card answers checkpoints only without a range (ER -03 §8.1).
         if req.subject.form not in ("full_history", "checkpoints") or ranged:
             return _refuse(REASON_NO_SUCH_SUBJECT)
@@ -215,7 +216,7 @@ def decide(view: View, req: EvidenceRequest, p: Policy, now: int) -> Resolution:
         forms, registered = found, True
     if p.authorize is not None and not p.authorize(req):
         return _refuse(p.disclose(REASON_NOT_AUTHORIZED))
-    if registered and (req.subject.form not in forms or ranged and req.derivation == "history_card/2"):
+    if registered and req.subject.form not in forms:
         return _refuse(p.disclose(REASON_NO_SUCH_SUBJECT))
     if p.unanchored or p.unpositioned and req.subject.form == "range":
         return _refuse(p.disclose(REASON_COVERAGE_UNSATISFIABLE))

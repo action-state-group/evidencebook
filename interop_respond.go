@@ -394,11 +394,6 @@ func (g gate) uniform(reason string) string {
 func (g gate) responderPolicy(mayIssue bool) evidencerequest.Policy {
 	return evidencerequest.Policy{
 		Derivation: func(name string) ([]SubjectKind, bool) {
-			if name == DerivationHistoryCard2 {
-				// Registered beside /1, which the library knows by name:
-				// the same two subjects, no record content.
-				return []SubjectKind{SubjectFullHistory, SubjectCheckpoints}, true
-			}
 			if name == DerivationStandardHistory {
 				return []SubjectKind{SubjectFullHistory}, g.standardHistory
 			}
