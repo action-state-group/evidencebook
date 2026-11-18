@@ -314,6 +314,16 @@ func (o ours) offerByDigest(d string) (ProposeBody, Record, bool) {
 	return ProposeBody{}, Record{}, false
 }
 
+// agreementRecord is the holder's own agreement of a deal, as sealed.
+func (o ours) agreementRecord(dealID string) (Record, bool) {
+	for _, r := range o.agreements {
+		if a, ok := asAgree(r.Body); ok && a.Kind == KindAgreement && r.Block.DealID == dealID {
+			return r, true
+		}
+	}
+	return Record{}, false
+}
+
 func (o ours) agreement(dealID string) (AgreeBody, bool) {
 	for _, r := range o.agreements {
 		if a, ok := asAgree(r.Body); ok && r.Block.DealID == dealID {

@@ -46,8 +46,9 @@ type ActGate struct {
 
 // GateAct applies the first-act gate (u610) to an act the holder is about to
 // seal. It refuses input that is not the holder's book of the act's deal:
-// an empty book, one that does not open with an agreement, or an act or
-// record of another deal.
+// an empty book, one that does not open with the agreement the holder has
+// sealed for that deal (the counterparty's would invert counterparty_layer),
+// or an act or record of another deal.
 func (p *ReceiveProfile) GateAct(ctx context.Context, in ActGateInput) (ActGate, error) {
 	if len(in.Own) == 0 {
 		return ActGate{}, fmt.Errorf("xdealv1: gate: the holder's book is empty")
@@ -57,6 +58,27 @@ func (p *ReceiveProfile) GateAct(ctx context.Context, in ActGateInput) (ActGate,
 		return ActGate{}, fmt.Errorf("xdealv1: gate: the holder's book does not open with its agreement")
 	}
 	deal := in.Own[0].Block.DealID
+	// The flags read below are the holder's own agreement's: the
+	// counterparty's says whether the holder runs the layer, the reverse.
+	o, err := p.ours(ctx)
+	if err != nil {
+		return ActGate{}, err
+	}
+	mine, held := o.agreementRecord(deal)
+	if !held {
+		return ActGate{}, fmt.Errorf("xdealv1: gate: the holder has sealed no agreement of deal %q", deal)
+	}
+	got, err := Digest(in.Own[0])
+	if err != nil {
+		return ActGate{}, err
+	}
+	want, err := Digest(mine)
+	if err != nil {
+		return ActGate{}, err
+	}
+	if got != want {
+		return ActGate{}, fmt.Errorf("xdealv1: gate: the book does not open with the holder's own agreement of deal %q", deal)
+	}
 	if in.Act.Block.DealID != deal {
 		return ActGate{}, fmt.Errorf("xdealv1: gate: the act is of deal %q, the book of %q", in.Act.Block.DealID, deal)
 	}
