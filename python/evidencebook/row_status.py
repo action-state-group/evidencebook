@@ -167,6 +167,8 @@ class _Stmt:
     value: str
     t: Optional[datetime]
     floor: Optional[datetime]
+    #: The statement's index in the input's statements.
+    idx: int = -1
 
 
 @dataclass
@@ -181,6 +183,8 @@ class _Calc:
     local: bool = False
     stmts: list[_Stmt] = field(default_factory=list)
     disputes: list[tuple[int, Optional[datetime], bool]] = field(default_factory=list)
+    #: Each held dispute's index in the input's disputes.
+    d_idx: list[int] = field(default_factory=list)
     rulings: list[tuple[dict[str, Any], Optional[datetime]]] = field(default_factory=list)
     remedies: list[Optional[datetime]] = field(default_factory=list)
     withdrawn: list[bool] = field(default_factory=lambda: [False, False])
@@ -352,6 +356,32 @@ class _Calc:
 
 def compute(inp: dict[str, Any]) -> Outcome:
     """Applies the rule to one row as of ``inp["at"]``."""
+    return _new_calc(inp).compute()
+
+
+def compute_late(inp: dict[str, Any]) -> dict[str, list[int]]:
+    """What the rule set aside as late on a row as of ``inp["at"]`` (Go
+    ``ComputeLate``): indices into the input's statements and disputes, in
+    input order, as ``{"late_statements": [...], "late_disputes": [...]}``.
+    Both are empty while the row is not reached or either of its dates is
+    unset, since lateness is read against the contest window's end. A late
+    statement is one whose time is after the window's end, or an untimed one
+    after a timed statement of its side that already is; a late dispute is
+    one rule 2 does not count because it is late."""
+    c = _new_calc(inp)
+    out: dict[str, list[int]] = {"late_statements": [], "late_disputes": []}
+    if not c.reached or c.unset:
+        return out
+    out["late_statements"] = [s.idx for s in c.stmts if c.late(s)]
+    in_time = c.values()
+    failed = c.inp.get("check") == "fail"
+    for (side, t, seen), i in zip(c.disputes, c.d_idx):
+        if c.dispute_late(t, seen, in_time, failed):
+            out["late_disputes"].append(i)
+    return out
+
+
+def _new_calc(inp: dict[str, Any]) -> _Calc:
     at = _time(inp.get("at") or "")
     parties = inp.get("parties") or []
     if len(parties) != 2 or not parties[0] or not parties[1] or parties[0] == parties[1]:
@@ -370,7 +400,7 @@ def compute(inp: dict[str, Any]) -> Outcome:
     if c.due is not None and c.end is not None and c.end < c.due:
         raise Invalid("the contest window ends before the due date")
     floors: list[Optional[datetime]] = [None, None]
-    for s in inp.get("statements") or []:
+    for si, s in enumerate(inp.get("statements") or []):
         s = s or {}
         i = c.side(s.get("side") or "")
         if s.get("value") not in (_MET, _NOT_MET, _CANNOT_TELL):
@@ -381,7 +411,7 @@ def compute(inp: dict[str, Any]) -> Outcome:
             floors[i] = t
         if (t is not None and t > at) or (t is None and floor is not None and floor > at):
             continue
-        c.stmts.append(_Stmt(i, s["value"], t, floor))
+        c.stmts.append(_Stmt(i, s["value"], t, floor, si))
     for w in inp.get("withdrawals") or []:
         w = w or {}
         i = c.side(w.get("side") or "")
@@ -389,12 +419,13 @@ def compute(inp: dict[str, Any]) -> Outcome:
         if ok:
             c.withdrawn[i] = True
             c.w_timed[i] = c.w_timed[i] or t is not None
-    for d in inp.get("disputes") or []:
+    for di, d in enumerate(inp.get("disputes") or []):
         d = d or {}
         i = c.side(d.get("side") or "")
         ok, t = c.held(d.get("time"))
         if ok:
             c.disputes.append((i, t, bool(d.get("seen_in_time"))))
+            c.d_idx.append(di)
     for r in inp.get("rulings") or []:
         r = r or {}
         if r.get("value") not in (_MET, _NOT_MET):
@@ -408,4 +439,4 @@ def compute(inp: dict[str, Any]) -> Outcome:
         ok, t = c.held((r or {}).get("time"))
         if ok:
             c.remedies.append(t)
-    return c.compute()
+    return c
