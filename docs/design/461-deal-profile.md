@@ -1270,6 +1270,42 @@ the witness receipts it is handed (A, above).
 - Disputes, withdrawals, the first final ruling with its date (or the conflicting flag) and
   remedies are in each row's `input`. The witnesses are deal-level (design §4.3, "For the deal").
 
+**Built in PR 4c-2b-2** (`xdealv1.StatusProvider`, `xdealv1.BuildStatus`, vectors
+`testdata/deal-v1/status/vectors.json`). It follows A above, and decides these points for review:
+
+- **Where it reads.** It is a `BookStatusProvider` (#525). It reads its own book and the journal
+  through the handles the stamp hands it. It reads the counterparty's counted prefix and the case
+  book through lock-free readers: `HeldByDeal`, `CountedPrefix` and the received records' `prev`.
+  The offer's sent pair comes from the host (`OfferPair`), because the library keeps no sent
+  Capsule. Without it, a payment row's check is not run.
+- **As of when.** The rows are read as of the latest time the fact states as known. The fact is
+  written after each of them, so a window end hanging on a named record is known once that
+  record's time is. Reading as of the agreement instead would leave every such window end unknown
+  and carry every statement.
+- **Ruling times.** A ruling is an input once the holder's own book names its arrival (a
+  `statement` whose `names.ruling` cites it), and it takes that record's time. Before then its
+  arrival has no time on the holder's shelf. The holder's stamps cover only its own book and the
+  counterparty's (the link value names that log only).
+- **A forked case book.** Rows are conflicting when the adjudicator's log has a fork (`ForkAt` >
+  0) and its held final rulings on the row differ.
+- **The payment check on the row.** `check` is `PaymentCheck`'s pass, fail or empty.
+  `check_reason` says why the check failed or did not run. `check_excluded` is how many settle
+  records it left out, never which: their digests are record digests, which the status value
+  never holds (no shared identifier). The digests the check ran over go in the link value's
+  `checked_over` (8.2).
+- **`counterparty_kind`** is `null` until the counterparty's profile record feeds it. No v1 record
+  carries SH §7's class yet.
+- **The u611 marking.** A deal whose counterparty runs no layer has `counterparty_layer` false and
+  `counterparty_proof_held` false. Counted from the holder's receipt only, that is what the
+  receipt and the card read to say the other side sent no stamp proof (PR 5).
+- **One dispute record is one entry** (Steven's #95 ruling, as Sherlock2 read it on
+  evidencebook-deal#224). A contest is the `dispute` record itself, with no `rebuts` link or
+  contest verb. `disputes` and the row's rowstatus input each carry it once
+  (`TestBuildStatusAppendixA`).
+- **A shared status shows earlier statements** (the twin's product note on 4c). The status
+  opening goes to the counterparty and a reader the holder chooses (8.2). It carries the holder's
+  statements that A keeps, earlier ones included, so that reader sees them.
+
 ### 8.2 StatusProvider: the link value
 
 The link value is the library's `LinkValue` (`shelf_facts.go:58-69`; Forms §4.2):

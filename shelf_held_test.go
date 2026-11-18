@@ -144,3 +144,34 @@ func TestHeldProofsReportAContradictedProof(t *testing.T) {
 	assert.False(t, got[0].Recomputed)
 	assert.Zero(t, got[0].Covers)
 }
+
+// HeldByDeal is every record held for one deal, across senders and logs and
+// forks, in sender, log, position, digest order; another deal's are not.
+func TestHeldByDealReturnsEveryRecordOfTheDeal(t *testing.T) {
+	ctx := context.Background()
+	f, s := newReceiveFixture(t, ReceiveConfig{})
+	f.profile.admitted["bob"] = true
+	empty, err := s.HeldByDeal(ctx, "deal-1")
+	require.NoError(t, err)
+	assert.NotNil(t, empty)
+	assert.Empty(t, empty)
+
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 2, "a2", "a1"), nil)
+	mustReceive(t, s, chainRecord(t, "bob", "deal/c", "deal-1", 1, "c1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/b", "deal-3", 1, "b1", ""), nil)
+	mustReceive(t, s, chainRecord(t, "alice", "deal/a", "deal-1", 1, "a1-other", ""), nil)
+
+	got, err := s.HeldByDeal(ctx, "deal-1")
+	require.NoError(t, err)
+	var keys []string
+	for _, h := range got {
+		keys = append(keys, h.SenderKey+" "+h.LogID+" "+fmt.Sprint(h.Position))
+		assert.Equal(t, "deal-1", h.DealID)
+		assert.NotEmpty(t, h.Record)
+	}
+	assert.Equal(t, []string{"alice deal/a 1", "alice deal/a 1", "alice deal/a 2", "bob deal/c 1"}, keys)
+	require.NoError(t, s.Release())
+	_, err = s.HeldByDeal(ctx, "deal-1")
+	assert.ErrorIs(t, err, ErrReleased)
+}

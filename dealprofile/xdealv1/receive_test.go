@@ -28,6 +28,9 @@ type party struct {
 	profile *ReceiveProfile
 	cadence *evidencebook.Cadence
 	now     time.Time
+	// status, when set, is the cadence's status provider (noStatus
+	// otherwise); open points it at the shelf.
+	status *StatusProvider
 }
 
 const testCadenceLog = "deal-cadence/0123456789abcdef"
@@ -68,8 +71,13 @@ func (p *party) open() {
 	require.NoError(p.t, err)
 	p.t.Cleanup(func() { _ = shelf.Release() })
 	p.shelf, p.profile.Shelf = shelf, shelf
+	var status evidencebook.StatusProvider = noStatus{}
+	if p.status != nil {
+		p.status.Shelf = shelf
+		status = p.status
+	}
 	c, err := shelf.Cadence(context.Background(), evidencebook.CadenceConfig{LogID: testCadenceLog,
-		Ended: func(context.Context, string) (bool, error) { return false, nil }, Status: noStatus{}})
+		Ended: func(context.Context, string) (bool, error) { return false, nil }, Status: status})
 	require.NoError(p.t, err)
 	p.cadence = c
 	// The journal and SealSent need a shelf of book facts.

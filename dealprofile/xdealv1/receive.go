@@ -753,13 +753,22 @@ func (p *ReceiveProfile) CanAct(ctx context.Context, in CanActInput) (bool, erro
 	if prefix.Size < 1 {
 		return false, nil
 	}
-	proofs, err := p.Shelf.HeldProofs(ctx, h.SenderKey, h.LogID)
+	return proofCovers(ctx, p.Shelf, h.SenderKey, h.LogID, counterpartAgreement, ag)
+}
+
+// proofCovers reports whether a stamp proof held from sender for logID
+// covers the counterparty's agreement agreementID (ag): its fact's book id is
+// the agreement's record id, its checkpoints are signed by the agreement's
+// checkpoint_key, its shelf log is the agreement's shelf_log_id, and it
+// covers the agreement in the sender's counted prefix now. It takes no lock.
+func proofCovers(ctx context.Context, shelf *evidencebook.Shelf, sender, logID, agreementID string, ag AgreeBody) (bool, error) {
+	proofs, err := shelf.HeldProofs(ctx, sender, logID)
 	if err != nil {
 		return false, err
 	}
 	for _, hp := range proofs {
 		v := hp.Verified
-		if v.Fact.BookID == counterpartAgreement && v.KeyID == ag.CheckpointKey &&
+		if v.Fact.BookID == agreementID && v.KeyID == ag.CheckpointKey &&
 			v.ShelfCheckpoint.LogID == ag.ShelfLogID && hp.Covers >= 1 {
 			return true, nil
 		}

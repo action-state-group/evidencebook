@@ -46,32 +46,61 @@ type RowBooks struct {
 // profile does not define yet. A non-payment remedy counts when its act is
 // the effective ruling's remedy kind.
 func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
+	ins, _, err := rowInputs(b, at)
+	return ins, err
+}
+
+// recRef names a record rowInputs read: its book (bookOwn, bookCounterpart,
+// bookCase) and its index there.
+type recRef struct {
+	book byte
+	i    int
+}
+
+const (
+	bookOwn         byte = 'o'
+	bookCounterpart byte = 'c'
+	bookCase        byte = 'k'
+)
+
+// rowSources are, for one row's input, the record each element came from, in
+// the input's order, so a status value can give each its own time encoding
+// (design §8.1). named maps a name to the first marked record, when one is.
+type rowSources struct {
+	statements, disputes, withdrawals, rulings, remedies []recRef
+	named                                                map[string]recRef
+}
+
+func rowInputs(b RowBooks, at string) ([]rowstatus.Input, []rowSources, error) {
 	of, ok := asPropose(b.Offer.Body)
 	if !ok {
-		return nil, fmt.Errorf("xdealv1: row inputs: the offer is a %s record", b.Offer.Block.RecordType)
+		return nil, nil, fmt.Errorf("xdealv1: row inputs: the offer is a %s record", b.Offer.Block.RecordType)
 	}
 	if len(b.Own) == 0 {
-		return nil, fmt.Errorf("xdealv1: row inputs: the holder's book is empty")
+		return nil, nil, fmt.Errorf("xdealv1: row inputs: the holder's book is empty")
 	}
 	own, ok := asAgree(b.Own[0].Record.Body)
 	if !ok || own.Kind != KindAgreement {
-		return nil, fmt.Errorf("xdealv1: row inputs: the holder's book does not open with its agreement")
+		return nil, nil, fmt.Errorf("xdealv1: row inputs: the holder's book does not open with its agreement")
 	}
 	ownRole, otherRole := own.Role, RoleBuyer
 	if ownRole == RoleBuyer {
 		otherRole = RoleSeller
 	}
 	books := map[string][]TimedRecord{ownRole: b.Own, otherRole: b.Counterpart}
+	bookOf := map[string]byte{ownRole: bookOwn, otherRole: bookCounterpart}
 	tr := of.TermsRows
 
 	// Named records (§4.4): the first record of the named side's book that
 	// carries the mark.
 	named := map[string]rowstatus.Named{}
+	namedSrc := map[string]recRef{}
 	for name, n := range tr.Named {
 		var t rowstatus.Time
-		for _, r := range books[n.Side] {
+		for i, r := range books[n.Side] {
 			if slices.Contains(r.Record.Block.Marks, name) {
 				t = r.Time
+				namedSrc[name] = recRef{bookOf[n.Side], i}
 				break
 			}
 		}
@@ -81,49 +110,57 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 	// The effective ruling (§8.1): the adjudicator's first final ruling, or
 	// none when its case book forked.
 	var rulings []TimedRecord
+	var rulingAt []int
 	if adj := own.Adjudicator; adj.V != nil {
-		for _, r := range b.CaseBook {
+		for i, r := range b.CaseBook {
 			if r.Record.Block.RecordType == TypeRuling && r.Record.Block.DealID == b.Offer.Block.DealID {
 				rulings = append(rulings, r)
+				rulingAt = append(rulingAt, i)
 			}
 		}
 	}
 
 	for id := range b.Checks {
 		if !slices.ContainsFunc(tr.Rows, func(r Row) bool { return r.ID == id }) {
-			return nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which the terms do not have", id)
+			return nil, nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which the terms do not have", id)
 		}
 	}
 	var out []rowstatus.Input
+	var srcs []rowSources
 	for _, row := range tr.Rows {
+		src := rowSources{named: namedSrc}
 		in := rowstatus.Input{At: at, Parties: []string{RoleBuyer, RoleSeller}, Named: named,
 			Row:                     rowstatus.Row{ID: row.ID, OwedBy: row.OwedBy, Due: projectDate(row.Due), WindowEnd: projectDate(row.WindowEnd), Recomputed: row.Recomputed},
 			ConflictingFinalRulings: slices.Contains(b.ConflictingFinalRulings, row.ID)}
 		if c, given := b.Checks[row.ID]; given {
 			if !row.Recomputed {
-				return nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which is not recomputed", row.ID)
+				return nil, nil, fmt.Errorf("xdealv1: row inputs: a check given for row %q, which is not recomputed", row.ID)
 			}
 			in.Check = c
 		}
 		for _, side := range []string{RoleBuyer, RoleSeller} {
-			for _, r := range books[side] {
+			for i, r := range books[side] {
+				ref := recRef{bookOf[side], i}
 				for _, it := range statementItems(r.Record) {
 					if it.Row == row.ID {
 						in.Statements = append(in.Statements, rowstatus.Statement{Side: side, Value: it.Value, Time: r.Time})
+						src.statements = append(src.statements, ref)
 					}
 				}
 				if d, ok := bodyOf[DisputeBody](r.Record.Body); ok && d.Row == row.ID {
 					switch d.Kind {
 					case KindDispute:
 						in.Disputes = append(in.Disputes, rowstatus.Dispute{Side: side, Time: r.Time})
+						src.disputes = append(src.disputes, ref)
 					case KindWithdrawal:
 						in.Withdrawals = append(in.Withdrawals, rowstatus.Withdrawal{Side: side, Time: r.Time})
+						src.withdrawals = append(src.withdrawals, ref)
 					}
 				}
 			}
 		}
 		var effective *RulingBody
-		for _, r := range rulings {
+		for k, r := range rulings {
 			rb, _ := bodyOf[RulingBody](r.Record.Body)
 			if rb == nil || rb.Row != row.ID {
 				continue
@@ -134,23 +171,26 @@ func RowInputs(b RowBooks, at string) ([]rowstatus.Input, error) {
 				ru.RemedyDue = &due
 			}
 			in.Rulings = append(in.Rulings, ru)
+			src.rulings = append(src.rulings, recRef{bookCase, rulingAt[k]})
 			if rb.Final && effective == nil && !in.ConflictingFinalRulings {
 				effective = rb
 			}
 		}
 		if effective != nil && effective.Against.V != nil && effective.Remedy != nil {
-			for _, r := range books[*effective.Against.V] {
+			for i, r := range books[*effective.Against.V] {
 				if p, ok := bodyOf[PerformBody](r.Record.Body); ok && p.RemedyFor != nil && p.RemedyFor.Row == row.ID && p.Act == effective.Remedy.Kind {
 					in.Remedies = append(in.Remedies, rowstatus.Remedy{Time: r.Time})
+					src.remedies = append(src.remedies, recRef{bookOf[*effective.Against.V], i})
 				}
 			}
 		}
 		if err := seenInTime(&in, books, row.ID); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, in)
+		srcs = append(srcs, src)
 	}
-	return out, nil
+	return out, srcs, nil
 }
 
 func projectDate(d Date) rowstatus.Date {
