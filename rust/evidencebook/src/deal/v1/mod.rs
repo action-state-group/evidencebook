@@ -93,7 +93,9 @@ pub use sent::{
     SETTLEMENT_VERSION, STAGE_SENT,
 };
 #[cfg(feature = "shelf")]
-pub use shelf_status::{book_entry, name_all_rulings, name_rulings, DealStatus, OfferPair};
+pub use shelf_status::{
+    book_entry, name_all_rulings, name_rulings, DealStatus, NamingError, OfferPair,
+};
 pub use start::{
     start, start_from_books, BookRecord, FirstAct, StartBooks, StartInput, StartResult,
     BY_ACCEPTOR_NAMED, BY_FIRST_ACT, BY_OFFERER_IN_TIME, STATE_AWAITING_AGREEMENT,

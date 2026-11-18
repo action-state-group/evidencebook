@@ -5,6 +5,7 @@
 - **`deal::v1::name_rulings` and `name_all_rulings`** seal, in the holder's deal book, a statement naming each counted ruling of the deal's adjudicator that the book does not name yet (PROFILE §5; evidencebook#527).
   - The x-deal-v1 `ReceiveProfile` now names rulings on every receive (`after_receive`).
   - A book that is not readable whole is never written to.
+  - A failure returns, beside its error, the record ids sealed before it (`NamingError`).
 - **`deal::v1::DealStatus`** is Go's `xdealv1.StatusProvider` as a `shelf::BookStatus`. It gives a v1 deal book's profile, link value and status value at each stamp, and names rulings before each stamp.
   - `DealStatus::report` is the report of a deal book from the shelf, resting on its latest checkpoint.
   - An optional `OfferPair` lets a payment row's check run.

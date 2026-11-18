@@ -116,6 +116,11 @@ fn counted_with(
     if prefix.fork_at > 0 && prefix.fork_at - 1 < limit {
         limit = prefix.fork_at - 1;
     }
+    Ok((walk(held, sender, log_id, limit), prefix))
+}
+
+/// The walk of [`counted_with`] over the first `limit` positions.
+fn walk(held: &[HeldRecord], sender: &str, log_id: &str, limit: u64) -> Vec<HeldBook> {
     let mut next: HashMap<&str, Vec<&HeldRecord>> = HashMap::new();
     for h in held {
         if h.received.sender_key == sender && h.received.log_id == log_id {
@@ -144,7 +149,7 @@ fn counted_with(
         });
         prev = h.received.digest.clone();
     }
-    Ok((out, prefix))
+    out
 }
 
 fn counted(
@@ -449,20 +454,37 @@ fn name_rulings_in(
     }
 }
 
+/// A ruling naming that failed (Go `NameRulings`'s error beside its ids):
+/// the statements it sealed before the failure, and the failure.
+#[derive(Debug, thiserror::Error)]
+#[error("{error}")]
+pub struct NamingError {
+    /// The record ids sealed before the failure, in order.
+    pub sealed: Vec<String>,
+    pub error: ShelfError,
+}
+
 fn name_rulings_where(
     shelf: &Shelf,
     want: impl Fn(&str) -> bool,
     at: Time,
-) -> Result<Vec<String>, ShelfError> {
+) -> Result<Vec<String>, NamingError> {
+    let fail = |sealed: Vec<String>, error: ShelfError| NamingError { sealed, error };
     let mut sealed = Vec::new();
-    for log_id in shelf.books()? {
-        let book = shelf.open(&log_id)?;
+    let logs = shelf.books().map_err(|e| fail(Vec::new(), e))?;
+    for log_id in logs {
+        let book = match shelf.open(&log_id) {
+            Ok(book) => book,
+            Err(e) => return Err(fail(sealed, e)),
+        };
         // The first record decides whether the book is one of these deals'.
         let Some(first) = book.record_by_seq(1) else {
             continue;
         };
-        let Payload::V1(rec) = v1_payload(&book, &first)? else {
-            continue;
+        let rec = match v1_payload(&book, &first) {
+            Ok(Payload::V1(rec)) => rec,
+            Ok(_) => continue,
+            Err(e) => return Err(fail(sealed, e)),
         };
         let Some(ag) = rec.agree().filter(|a| a.kind == KIND_AGREEMENT) else {
             continue;
@@ -477,7 +499,7 @@ fn name_rulings_where(
             Ok(ids) => sealed.extend(ids),
             Err((ids, e)) => {
                 sealed.extend(ids);
-                return Err(e);
+                return Err(fail(sealed, e));
             }
         }
     }
@@ -491,12 +513,13 @@ fn name_rulings_where(
 /// the holder has no v1 deal book for, or whose agreement names no
 /// adjudicator, is passed over. It takes the shelf's locks, so never call
 /// it from a [`BookStatus`]'s values or from a receive profile's `read`,
-/// `admit`, `answered` or `proof_sender`.
+/// `admit`, `answered` or `proof_sender`. A failure returns, beside its
+/// error, the ids sealed before it ([`NamingError`]).
 pub fn name_rulings(
     shelf: &Shelf,
     deal_ids: &[String],
     at: Time,
-) -> Result<Vec<String>, ShelfError> {
+) -> Result<Vec<String>, NamingError> {
     if deal_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -507,7 +530,7 @@ pub fn name_rulings(
 /// `NameAllRulings`): [`DealStatus`]'s `before_stamp` runs it before each
 /// stamp, since a ruling is often a deal's last record and nothing may
 /// arrive to retry a naming that failed.
-pub fn name_all_rulings(shelf: &Shelf, at: Time) -> Result<Vec<String>, ShelfError> {
+pub fn name_all_rulings(shelf: &Shelf, at: Time) -> Result<Vec<String>, NamingError> {
     name_rulings_where(shelf, |_| true, at)
 }
 
@@ -528,6 +551,17 @@ pub(crate) fn proof_covers(
             && v.shelf_checkpoint.log_id == ag.shelf_log_id
             && hp.covers >= 1
     }))
+}
+
+/// The stamp a record's time is read at: the first stamp covering it, else
+/// the stamp `n` being taken, which is the first to; none when no stamp is
+/// being taken (`n` 0, a report), as Go's zero `StatusTime` is none.
+fn stamp_time(first: Option<u64>, n: u64) -> StatusTime {
+    match first {
+        Some(s) => StatusTime::Stamp(s),
+        None if n == 0 => StatusTime::None,
+        None => StatusTime::Stamp(n),
+    }
 }
 
 /// Gives the sent pair of the offer whose record digest is given, as the
@@ -647,9 +681,7 @@ impl DealStatus {
         if let Some(t) = shelf.record_time_by_key(input.book_id, seq, keys)? {
             return Ok(StatusTime::Known(t.rfc3339()));
         }
-        Ok(StatusTime::Stamp(
-            shelf.record_stamp(input.book_id, seq)?.unwrap_or(input.n),
-        ))
+        Ok(stamp_time(shelf.record_stamp(input.book_id, seq)?, input.n))
     }
 
     /// The time the holder's stamps give the counterparty's record at `pos`
@@ -664,10 +696,9 @@ impl DealStatus {
         if let Some(t) = shelf.received_record_time_by_key(input.book_id, log_id, pos, keys)? {
             return Ok(StatusTime::Known(t.rfc3339()));
         }
-        Ok(StatusTime::Stamp(
-            shelf
-                .received_record_stamp(input.book_id, log_id, pos)?
-                .unwrap_or(input.n),
+        Ok(stamp_time(
+            shelf.received_record_stamp(input.book_id, log_id, pos)?,
+            input.n,
         ))
     }
 
@@ -983,6 +1014,370 @@ impl BookStatus for DealStatus {
         let shelf = self.shelf().map_err(|e| e.to_string())?;
         name_all_rulings(&shelf, at)
             .map(drop)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Go's `TestForkedFinals`, `TestRulingNamedByTheCounterparty` and
+    //! `TestCountedStopsAtARecordNotHeld`, on book pairs sealed with an
+    //! adjudicator's key and held as a receive would hold them.
+
+    use super::*;
+    use crate::retention::RetentionState;
+    use crate::seal::{header, seal_record, Producer, DEFAULT_DEVELOPER};
+    use crate::shelf::ReceivedRecord;
+    use ed25519_dalek::SigningKey;
+    use sha2::{Digest as _, Sha256};
+
+    const LOG: &str = "case/0123456789abcdef0123456789abcdef";
+
+    fn fixture(rel: &str) -> Value {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dealprofile/x-deal-v1/fixtures/appendix-a")
+            .join(rel);
+        let v: Value = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
+        v["record"].clone()
+    }
+
+    fn signer() -> SigningKey {
+        SigningKey::from_bytes(&Sha256::digest(b"adjudicator record key").into())
+    }
+
+    /// `record` sealed at `seq` of `log` by `signer`, citing `prev`: its
+    /// record id and book pair.
+    fn seal(
+        signer: &SigningKey,
+        log: &str,
+        seq: u64,
+        record: &Value,
+        prev: &str,
+    ) -> (String, Vec<u8>) {
+        let payload = jcs(record).unwrap();
+        check(&payload).unwrap_or_else(|e| panic!("{e}: {record}"));
+        let entry = crate::ask::Entry {
+            record_type: crate::deal::STEP_RECORD_TYPE.into(),
+            epistemic_type: EpistemicType::ProducerClaim,
+            links: if prev.is_empty() {
+                Vec::new()
+            } else {
+                vec![Link {
+                    link_type: LinkType::Cites,
+                    target: prev.into(),
+                }]
+            },
+            statement: Value::Null,
+        };
+        let mut h = header(log, seq, "2026-11-13T10:00:00Z", &entry).unwrap();
+        h.payload_commitments = vec![hex::encode(Sha256::digest(&payload))];
+        h.retention_state = Some(RetentionState::Available);
+        let sealed = seal_record(
+            &h,
+            &Producer {
+                operator: "adjudicator",
+                developer: DEFAULT_DEVELOPER,
+                signer,
+            },
+        )
+        .unwrap();
+        let pair = book_pair(&sealed.header, &sealed.capsule, &sealed.envelope, &payload).unwrap();
+        (sealed.record_id, pair)
+    }
+
+    fn held(pair: Vec<u8>, key: &str, log: &str, pos: u64, prev: &str, digest: &str) -> HeldRecord {
+        HeldRecord {
+            received: ReceivedRecord {
+                digest: digest.into(),
+                sender_key: key.into(),
+                log_id: log.into(),
+                position: pos,
+                prev: prev.into(),
+                deal_id: "deal-6a1f0c93b27d4e58".into(),
+                offer: false,
+            },
+            record: pair,
+            received_at: Time::parse("2026-11-13T10:00:00Z").unwrap(),
+        }
+    }
+
+    /// A ruling of `row`, as Go's test helper `ruling` builds it.
+    fn ruling(row: &str, against: &str, value: &str, fin: bool, remedy: Option<&str>) -> Value {
+        let mut r = fixture("case-book/01-ruling.json");
+        let b = &mut r["body"];
+        b["row"] = json!(row);
+        b["against"] = if against.is_empty() {
+            Value::Null
+        } else {
+            json!(against)
+        };
+        b["value"] = json!(value);
+        b["final"] = json!(fin);
+        b["read"] = json!({"buyer": null, "seller": null});
+        match remedy {
+            Some(kind) => b["remedy"] = json!({"kind": kind, "due": "2026-11-20T23:59:59Z"}),
+            None => {
+                b.as_object_mut().unwrap().remove("remedy");
+            }
+        }
+        r
+    }
+
+    /// A case book sealed on two branches that share `common` from position
+    /// 1 and then hold `left` and `right`, every record held once (Go
+    /// `forkedCaseBook`).
+    fn forked_case_book(
+        common: &[Value],
+        left: &[Value],
+        right: &[Value],
+    ) -> (Vec<HeldRecord>, String) {
+        let key = signer();
+        let key_id = hex::encode(key.verifying_key().to_bytes());
+        let mut out: Vec<HeldRecord> = Vec::new();
+        // Per branch: the last record and its record id.
+        let mut last: [Option<(Value, String)>; 2] = [None, None];
+        let mut add = |branch: usize, body: &Value, seq: u64, out: &mut Vec<HeldRecord>| {
+            let mut r = body.clone();
+            r["x-deal-v1"]["seq"] = json!(seq);
+            let prev_id = match &last[branch] {
+                Some((prev, id)) => {
+                    let d =
+                        record_digest(&super::super::record::decode(&jcs(prev).unwrap()).unwrap())
+                            .unwrap();
+                    r["x-deal-v1"]["prev"] = json!(ref_to(&d));
+                    id.clone()
+                }
+                None => String::new(),
+            };
+            let (id, pair) = seal(&key, LOG, seq, &r, &prev_id);
+            last[branch] = Some((r, id.clone()));
+            if !out.iter().any(|h| h.received.digest == id) {
+                out.push(held(pair, &key_id, LOG, seq, &prev_id, &id));
+            }
+        };
+        let mut seq = 0;
+        for c in common {
+            seq += 1;
+            add(0, c, seq, &mut out);
+            add(1, c, seq, &mut out);
+        }
+        for (i, l) in left.iter().enumerate() {
+            add(0, l, seq + i as u64 + 1, &mut out);
+        }
+        for (i, r) in right.iter().enumerate() {
+            add(1, r, seq + i as u64 + 1, &mut out);
+        }
+        (out, key_id)
+    }
+
+    // A forked case book conflicts on a row only when two branches' first
+    // final rulings differ in their decision; a run after a gap is no
+    // branch.
+    #[test]
+    fn forked_finals_compare_first_final_decisions() {
+        let (all, key) = forked_case_book(
+            &[
+                ruling("as_described", "seller", "not_met", true, None),
+                ruling("delivered", "", "met", false, None),
+                ruling("as_described", "buyer", "met", true, None),
+            ],
+            &[],
+            &[],
+        );
+        let gapped: Vec<HeldRecord> = all
+            .into_iter()
+            .filter(|h| h.received.position != 2)
+            .collect();
+        assert!(
+            forked_finals(&gapped, &key, LOG).is_empty(),
+            "a run after a gap is not a branch"
+        );
+        let s = |r: &str, a: &str, v: &str, f: bool, m: Option<&str>| ruling(r, a, v, f, m);
+        // name, common, left, right, the rows that conflict
+        type Case<'a> = (&'a str, Vec<Value>, Vec<Value>, Vec<Value>, Vec<&'a str>);
+        let cases: Vec<Case> = vec![
+            (
+                "a linear book",
+                vec![s("as_described", "seller", "not_met", true, None)],
+                vec![],
+                vec![],
+                vec![],
+            ),
+            (
+                "against differs, value the same",
+                vec![],
+                vec![s("as_described", "seller", "not_met", true, None)],
+                vec![s("as_described", "buyer", "not_met", true, None)],
+                vec!["as_described"],
+            ),
+            (
+                "remedy differs",
+                vec![],
+                vec![s("as_described", "seller", "not_met", true, Some("refund"))],
+                vec![s(
+                    "as_described",
+                    "seller",
+                    "not_met",
+                    true,
+                    Some("replace"),
+                )],
+                vec!["as_described"],
+            ),
+            (
+                "a common first final, later finals differ",
+                vec![s("as_described", "seller", "not_met", true, None)],
+                vec![s("as_described", "buyer", "met", true, None)],
+                vec![s("as_described", "", "met", true, None)],
+                vec![],
+            ),
+            (
+                "one branch has no final",
+                vec![],
+                vec![s("as_described", "seller", "not_met", true, None)],
+                vec![s("as_described", "buyer", "met", false, None)],
+                vec![],
+            ),
+            (
+                "the same decision on both",
+                vec![],
+                vec![
+                    s("as_described", "seller", "not_met", true, Some("refund")),
+                    s("delivered", "", "met", false, None),
+                ],
+                vec![s("as_described", "seller", "not_met", true, Some("refund"))],
+                vec![],
+            ),
+        ];
+        for (name, common, left, right, want) in cases {
+            let (held, key) = forked_case_book(&common, &left, &right);
+            assert_eq!(forked_finals(&held, &key, LOG), want, "{name}");
+        }
+    }
+
+    fn status_records(dir: &str, files: &[&str], known: bool) -> Vec<StatusRecord> {
+        files
+            .iter()
+            .map(|f| {
+                let v = fixture(&format!("{dir}/{f}"));
+                let record = super::super::record::decode(&jcs(&v).unwrap()).unwrap();
+                let time = if known {
+                    StatusTime::Known(record.block.at.clone())
+                } else {
+                    StatusTime::None
+                };
+                StatusRecord {
+                    record,
+                    record_id: String::new(),
+                    time,
+                }
+            })
+            .collect()
+    }
+
+    // The side a ruling goes against cannot keep it off its own status by
+    // not naming it: the counterparty's naming times it. Named by neither, a
+    // ruling is not an input yet; the earliest naming wins.
+    #[test]
+    fn a_ruling_named_by_the_counterparty() {
+        let rulings = status_records(
+            "case-book",
+            &["01-ruling.json", "02-ruling-final.json"],
+            false,
+        );
+        let mut seller = status_records(
+            "seller-book",
+            &[
+                "01-agreement.json",
+                "02-payment-received.json",
+                "03-delivery.json",
+                "04-reply.json",
+                "05-ruling-received.json",
+                "06-final-ruling-received.json",
+                "07-refund.json",
+            ],
+            true,
+        );
+        let mut dropped = 0;
+        for r in &mut seller {
+            if let Body::Statement(st) = &mut r.record.body {
+                if st.names.as_ref().is_some_and(|n| n.ruling.is_some()) {
+                    st.names = None;
+                    dropped += 1;
+                }
+            }
+        }
+        assert!(dropped > 0, "the seller's book named the rulings");
+        let buyer = status_records(
+            "buyer-book",
+            &[
+                "01-agreement.json",
+                "02-payment.json",
+                "03-receipt.json",
+                "04-not-as-described.json",
+                "05-dispute.json",
+                "06-ruling-received.json",
+                "07-final-ruling-received.json",
+                "08-refund-received.json",
+            ],
+            true,
+        );
+        let named = named_rulings(&rulings, &seller, &buyer).unwrap();
+        assert_eq!(named.len(), 2, "the buyer named both");
+        assert!(named.iter().all(|r| r.time != StatusTime::None));
+        assert!(
+            named_rulings(&rulings, &seller, &[]).unwrap().is_empty(),
+            "named by neither"
+        );
+        let k = |t: &str| StatusTime::Known(t.into());
+        assert!(earlier(&k("2026-11-20T00:00:00Z"), &StatusTime::Stamp(1)));
+        assert!(earlier(
+            &k("2026-11-19T00:00:00Z"),
+            &k("2026-11-20T00:00:00Z")
+        ));
+        assert!(earlier(&StatusTime::Stamp(2), &StatusTime::Stamp(3)));
+        assert!(!earlier(&StatusTime::Stamp(3), &k("2026-11-20T00:00:00Z")));
+    }
+
+    // The counted walk stops, never fails, at a counted record not held
+    // for the deal.
+    #[test]
+    fn the_counted_walk_stops_at_a_record_not_held() {
+        let key = signer();
+        let key_id = hex::encode(key.verifying_key().to_bytes());
+        let log = "deal/0123456789abcdef0123456789abcdef";
+        let ag = fixture("seller-book/01-agreement.json");
+        let next = fixture("seller-book/02-payment-received.json");
+        let (ag_id, ag_pair) = seal(&key, log, 1, &ag, "");
+        let (next_id, next_pair) = seal(&key, log, 2, &next, &ag_id);
+        let all = vec![
+            held(ag_pair, &key_id, log, 1, "", &ag_id),
+            held(next_pair, &key_id, log, 2, &ag_id, &next_id),
+        ];
+        assert_eq!(walk(&all, &key_id, log, 2).len(), 2);
+        let first: Vec<HeldRecord> = all
+            .iter()
+            .filter(|h| h.received.position == 1)
+            .cloned()
+            .collect();
+        let part = walk(&first, &key_id, log, 2);
+        assert_eq!(
+            part.len(),
+            1,
+            "a counted record missing from the held records stops the walk"
+        );
+        assert_eq!(part[0].rec.record_id, ag_id);
+        assert_eq!(
+            walk(&all, &key_id, log, 1).len(),
+            1,
+            "the counted prefix's size bounds it"
+        );
+        assert_eq!(logs_of(&all, &key_id, is_agreement), vec![log.to_string()]);
+    }
+
+    #[test]
+    fn a_time_with_no_stamp_taken_is_none() {
+        assert_eq!(stamp_time(None, 0), StatusTime::None);
+        assert_eq!(stamp_time(None, 4), StatusTime::Stamp(4));
+        assert_eq!(stamp_time(Some(2), 0), StatusTime::Stamp(2));
     }
 }

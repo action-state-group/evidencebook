@@ -802,6 +802,6 @@ impl ShelfReceiveProfile for ReceiveProfile {
         let shelf = self.shelf().map_err(profile_err)?;
         super::shelf_status::name_rulings(&shelf, &deals, at)
             .map(drop)
-            .map_err(profile_err)
+            .map_err(|e| profile_err(e.error))
     }
 }
